@@ -352,6 +352,48 @@ func (q *Queries) ListDevicesByWorkspace(ctx context.Context, workspaceID uuid.U
 	return items, nil
 }
 
+const transferDevice = `-- name: TransferDevice :one
+UPDATE devices
+SET workspace_id = $2,
+    project_id = $3,
+    site_id = $4,
+    updated_at = now()
+WHERE id = $1
+RETURNING id, workspace_id, project_id, site_id, product_id, serial_no, name, status, activated_at, bound_by, created_at, updated_at
+`
+
+type TransferDeviceParams struct {
+	ID          uuid.UUID  `json:"id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	ProjectID   *uuid.UUID `json:"project_id"`
+	SiteID      *uuid.UUID `json:"site_id"`
+}
+
+func (q *Queries) TransferDevice(ctx context.Context, arg TransferDeviceParams) (Device, error) {
+	row := q.db.QueryRow(ctx, transferDevice,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.ProjectID,
+		arg.SiteID,
+	)
+	var i Device
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ProjectID,
+		&i.SiteID,
+		&i.ProductID,
+		&i.SerialNo,
+		&i.Name,
+		&i.Status,
+		&i.ActivatedAt,
+		&i.BoundBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateDevice = `-- name: UpdateDevice :one
 UPDATE devices
 SET project_id = $2,

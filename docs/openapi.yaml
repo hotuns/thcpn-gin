@@ -1355,6 +1355,43 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/devices/{device_id}/transfer:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    post:
+      tags:
+        - Devices
+      operationId: transferDevice
+      summary: Transfer a device
+      description: Requires `device.transfer` on the source device and `device.bind` in the target workspace. The first version transfers the device and its data-stream metadata only; historical datasets are not moved and the caller must confirm that policy. Success and failure are written to AuditLog with action `device.transfer`.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferDeviceRequest"
+      responses:
+        "200":
+          description: Device transferred.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
   /api/v1/devices/{device_id}/telemetry:
     parameters:
       - $ref: "#/components/parameters/DeviceID"
@@ -4040,6 +4077,25 @@ components:
           type: string
         scheduled_at:
           $ref: "#/components/schemas/Timestamp"
+    TransferDeviceRequest:
+      type: object
+      required:
+        - target_workspace_id
+        - confirm_dataset_policy
+      properties:
+        target_workspace_id:
+          $ref: "#/components/schemas/UUID"
+        project_id:
+          $ref: "#/components/schemas/UUID"
+        site_id:
+          $ref: "#/components/schemas/UUID"
+        transfer_historical_datasets:
+          type: boolean
+          default: false
+          description: Reserved for a future workflow. The current implementation rejects `true`.
+        confirm_dataset_policy:
+          type: boolean
+          description: Must be true to confirm historical datasets remain in their original workspace/project.
     DataStream:
       type: object
       required:

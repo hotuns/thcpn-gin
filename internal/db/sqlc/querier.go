@@ -109,6 +109,7 @@ type Querier interface {
 	RevokeRefreshSessionByHash(ctx context.Context, refreshTokenHash string) error
 	RevokeRefreshSessionForUser(ctx context.Context, arg RevokeRefreshSessionForUserParams) (int64, error)
 	RotateRefreshSession(ctx context.Context, arg RotateRefreshSessionParams) (AuthRefreshSession, error)
+	TransferDevice(ctx context.Context, arg TransferDeviceParams) (Device, error)
 	UpdateDataSource(ctx context.Context, arg UpdateDataSourceParams) (DataSource, error)
 	UpdateDataStream(ctx context.Context, arg UpdateDataStreamParams) (DataStream, error)
 	UpdateDataStreamBinding(ctx context.Context, arg UpdateDataStreamBindingParams) (DataStreamBinding, error)

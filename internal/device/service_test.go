@@ -145,3 +145,47 @@ func TestDeviceOperationValidation(t *testing.T) {
 		t.Fatal("unexpected firmware capability")
 	}
 }
+
+func TestTransferRequiresDatasetPolicyConfirmation(t *testing.T) {
+	service := NewService(nil)
+
+	_, err := service.Transfer(context.Background(), TransferInput{
+		DeviceID:          uuid.New(),
+		TargetWorkspaceID: uuid.New(),
+		ActorUserID:       uuid.New(),
+	})
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected invalid argument for missing confirmation, got %v", err)
+	}
+}
+
+func TestTransferRejectsHistoricalDatasetTransfer(t *testing.T) {
+	service := NewService(nil)
+
+	_, err := service.Transfer(context.Background(), TransferInput{
+		DeviceID:                   uuid.New(),
+		TargetWorkspaceID:          uuid.New(),
+		TransferHistoricalDatasets: true,
+		ConfirmDatasetPolicy:       true,
+		ActorUserID:                uuid.New(),
+	})
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected invalid argument for historical dataset transfer, got %v", err)
+	}
+}
+
+func TestTransferRequiresProjectWhenSiteSet(t *testing.T) {
+	service := NewService(nil)
+	siteID := uuid.New()
+
+	_, err := service.Transfer(context.Background(), TransferInput{
+		DeviceID:             uuid.New(),
+		TargetWorkspaceID:    uuid.New(),
+		SiteID:               &siteID,
+		ConfirmDatasetPolicy: true,
+		ActorUserID:          uuid.New(),
+	})
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected invalid argument for site without project, got %v", err)
+	}
+}

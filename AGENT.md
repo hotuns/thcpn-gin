@@ -162,6 +162,10 @@
   - `POST /api/v1/devices/:device_id/calibrations`
   - `POST /api/v1/devices/:device_id/firmware-upgrades`
   - 校准请求要求设备具备 `calibratable` capability；固件升级请求要求设备具备 `firmware_update` capability。
+- 已新增设备转移约束 migration `000014_device_transfer_cascade`，DataStream 归属随设备 workspace 变更级联更新。
+- 已实现第一版设备转移接口：
+  - `POST /api/v1/devices/:device_id/transfer`
+  - 需要源设备 `device.transfer` 和目标 workspace `device.bind`；要求确认历史 Dataset 归属策略，当前不自动迁移历史 Dataset。
 - 已实现 DataStream 元信息接口：
   - `GET /api/v1/data-streams?device_id=...`
   - `POST /api/v1/data-streams`
@@ -294,6 +298,7 @@
   - `service_engineer` 授权使用 `service_access.grant` action 写审计。
   - 创建、更新 Project / Site / DataStream 成功和失败。
   - 设备校准、固件升级请求成功和失败。
+  - 设备转移成功和失败。
   - 创建、更新、锁定、删除 Dataset 成功和失败。
   - 媒体下载成功和权限拒绝。
   - 创建导出任务成功和失败，导出文件下载准备成功和失败。
@@ -322,10 +327,11 @@
 
 - `make sqlc` 可正常生成代码。
 - `go test ./...` / `make test` 通过。
-- `make migrate-up` 可迁移到版本 13。
-- `make migrate-down MIGRATE_STEPS=1` 已验证 `000013` down 可用，随后已重新 `make migrate-up` 到版本 13。
+- `make migrate-up` 可迁移到版本 14。
+- `make migrate-down MIGRATE_STEPS=1` 已验证 `000014` down 可用，随后已重新 `make migrate-up` 到版本 14。
 - 已通过真实 HTTP 验证健康检查、密码注册、密码登录、JWT 调 `/me`、短信验证码发送、短信登录自动注册、JWT 调 workspace 列表、普通成员 JWT 访问成员管理被拒绝。
 - 已通过真实 HTTP 验证 Project / Site / Device / DataStream 创建和列表查询。
+- 已通过事务内 SQL 验证设备 workspace 变更会级联更新其 DataStream workspace，且验证数据已回滚。
 - 已通过真实 HTTP 验证 DataSource 创建/列表，以及 DataStreamBinding 创建/列表。
 - 已通过真实 HTTP 验证 PostgreSQL Telemetry Query：创建外部表样例、配置 `env:PLATFORM_DATABASE_DSN` DataSource、绑定 DataStream 后返回 2 个时序点。
 - 已通过真实 HTTP 验证 PostgreSQL Media Query：创建媒体表样例、绑定 image DataStream 后返回 2 条媒体记录，`/media/download` 返回临时对象 URL，并确认 `media.download` audit log 写入。
@@ -349,7 +355,6 @@
 
 - Export Worker 的更完整对象存储集成。
 - Project / Site / Device / DataStream / Dataset 当前完成资产、元信息、查询定义、关键变更审计、PostgreSQL / MySQL / ClickHouse / HTTP API telemetry 读取和 media 记录查询。
-- 设备转移流程仍待实现；后续应避免直接修改 `workspace_id`，并确保历史 Dataset 归属不随设备自动迁移。
 - 更完整对象存储集成。
 
 ## 重要目录

@@ -95,6 +95,16 @@ type FirmwareUpgradeInput struct {
 	ActorUserID     uuid.UUID
 }
 
+type TransferInput struct {
+	DeviceID                   uuid.UUID
+	TargetWorkspaceID          uuid.UUID
+	ProjectID                  *uuid.UUID
+	SiteID                     *uuid.UUID
+	TransferHistoricalDatasets bool
+	ConfirmDatasetPolicy       bool
+	ActorUserID                uuid.UUID
+}
+
 func NewService(db *pgxpool.Pool) *Service {
 	return &Service{
 		db:      db,
@@ -344,6 +354,81 @@ func (s *Service) RequestFirmwareUpgrade(ctx context.Context, input FirmwareUpgr
 		RequestJSON:        requestJSON,
 		ActorUserID:        input.ActorUserID,
 	})
+}
+
+func (s *Service) Transfer(ctx context.Context, input TransferInput) (Device, error) {
+	if input.DeviceID == uuid.Nil {
+		return Device{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
+	}
+	if input.TargetWorkspaceID == uuid.Nil {
+		return Device{}, apperr.New(apperr.KindInvalidArgument, "target_workspace_id is required")
+	}
+	if input.ActorUserID == uuid.Nil {
+		return Device{}, apperr.New(apperr.KindInvalidArgument, "actor user id is required")
+	}
+	if input.SiteID != nil && input.ProjectID == nil {
+		return Device{}, apperr.New(apperr.KindInvalidArgument, "project_id is required when site_id is set")
+	}
+	if !input.ConfirmDatasetPolicy {
+		return Device{}, apperr.New(apperr.KindInvalidArgument, "confirm_dataset_policy is required")
+	}
+	if input.TransferHistoricalDatasets {
+		return Device{}, apperr.New(apperr.KindInvalidArgument, "historical dataset transfer is not supported")
+	}
+
+	current, err := s.queries.GetDevice(ctx, input.DeviceID)
+	if err != nil {
+		return Device{}, mapNotFoundOrInternal(err, "device not found")
+	}
+	if current.WorkspaceID == input.TargetWorkspaceID {
+		return Device{}, apperr.New(apperr.KindInvalidArgument, "target workspace must differ from current workspace")
+	}
+	if err := s.validateTransferTarget(ctx, input.TargetWorkspaceID, input.ProjectID, input.SiteID); err != nil {
+		return Device{}, err
+	}
+
+	updated, err := s.queries.TransferDevice(ctx, sqlc.TransferDeviceParams{
+		ID:          input.DeviceID,
+		WorkspaceID: input.TargetWorkspaceID,
+		ProjectID:   input.ProjectID,
+		SiteID:      input.SiteID,
+	})
+	if err != nil {
+		return Device{}, mapWriteError(err, "transfer device")
+	}
+	capabilities, err := s.queries.ListDeviceCapabilities(ctx, input.DeviceID)
+	if err != nil {
+		return Device{}, apperr.Wrap(apperr.KindInternal, "list device capabilities", err)
+	}
+	return fromSQL(updated, capabilities), nil
+}
+
+func (s *Service) validateTransferTarget(ctx context.Context, workspaceID uuid.UUID, projectID *uuid.UUID, siteID *uuid.UUID) error {
+	if _, err := s.queries.GetWorkspace(ctx, workspaceID); err != nil {
+		return mapNotFoundOrInternal(err, "target workspace not found")
+	}
+	if projectID != nil {
+		project, err := s.queries.GetProject(ctx, *projectID)
+		if err != nil {
+			return mapNotFoundOrInternal(err, "target project not found")
+		}
+		if project.WorkspaceID != workspaceID {
+			return apperr.New(apperr.KindInvalidArgument, "target project does not belong to target workspace")
+		}
+	}
+	if siteID != nil {
+		site, err := s.queries.GetSite(ctx, *siteID)
+		if err != nil {
+			return mapNotFoundOrInternal(err, "target site not found")
+		}
+		if site.WorkspaceID != workspaceID {
+			return apperr.New(apperr.KindInvalidArgument, "target site does not belong to target workspace")
+		}
+		if projectID != nil && site.ProjectID != *projectID {
+			return apperr.New(apperr.KindInvalidArgument, "target site does not belong to target project")
+		}
+	}
+	return nil
 }
 
 type createOperationInput struct {

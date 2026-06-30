@@ -21,6 +21,7 @@ const (
 	deviceConfigureAction = "device.configure"
 	deviceCalibrateAction = "device.calibrate"
 	deviceFirmwareAction  = "device.firmware_upgrade"
+	deviceTransferAction  = "device.transfer"
 )
 
 type Handler struct {
@@ -59,6 +60,14 @@ type createFirmwareUpgradeRequest struct {
 	PackageURI      string     `json:"package_uri"`
 	Checksum        string     `json:"checksum"`
 	ScheduledAt     *time.Time `json:"scheduled_at"`
+}
+
+type transferDeviceRequest struct {
+	TargetWorkspaceID          string `json:"target_workspace_id"`
+	ProjectID                  string `json:"project_id"`
+	SiteID                     string `json:"site_id"`
+	TransferHistoricalDatasets bool   `json:"transfer_historical_datasets"`
+	ConfirmDatasetPolicy       bool   `json:"confirm_dataset_policy"`
 }
 
 func NewHandler(service *Service, checker *permission.Checker, auditServices ...*audit.Service) *Handler {
@@ -357,6 +366,84 @@ func (h *Handler) RequestFirmwareUpgrade(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, result)
+}
+
+func (h *Handler) Transfer(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	if !h.authorize(c, "device", deviceID, deviceTransferAction) {
+		return
+	}
+	actor, _ := auth.ActorFromContext(c)
+
+	current, err := h.service.Get(c.Request.Context(), deviceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+
+	var req transferDeviceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+
+	targetWorkspaceID, ok := parseUUIDValue(req.TargetWorkspaceID, "target_workspace_id", c)
+	if !ok {
+		return
+	}
+	if !h.authorize(c, "workspace", targetWorkspaceID, deviceBindAction) {
+		return
+	}
+	projectID, ok := parseOptionalUUIDValue(req.ProjectID, "project_id", c)
+	if !ok {
+		return
+	}
+	siteID, ok := parseOptionalUUIDValue(req.SiteID, "site_id", c)
+	if !ok {
+		return
+	}
+
+	result, err := h.service.Transfer(c.Request.Context(), TransferInput{
+		DeviceID:                   deviceID,
+		TargetWorkspaceID:          targetWorkspaceID,
+		ProjectID:                  projectID,
+		SiteID:                     siteID,
+		TransferHistoricalDatasets: req.TransferHistoricalDatasets,
+		ConfirmDatasetPolicy:       req.ConfirmDatasetPolicy,
+		ActorUserID:                actor.UserID,
+	})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			WorkspaceID:  audit.WorkspaceID(current.WorkspaceID),
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "device.transfer",
+			ResourceType: "device",
+			ResourceID:   audit.ResourceID(deviceID),
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		WorkspaceID:  audit.WorkspaceID(current.WorkspaceID),
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "device.transfer",
+		ResourceType: "device",
+		ResourceID:   audit.ResourceID(result.ID),
+		Result:       audit.ResultSuccess,
+	}) {
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 func (h *Handler) authorize(c *gin.Context, resourceType string, resourceID uuid.UUID, action string) bool {

@@ -48,6 +48,15 @@ SET project_id = $2,
 WHERE id = $1
 RETURNING id, workspace_id, project_id, site_id, product_id, serial_no, name, status, activated_at, bound_by, created_at, updated_at;
 
+-- name: TransferDevice :one
+UPDATE devices
+SET workspace_id = $2,
+    project_id = $3,
+    site_id = $4,
+    updated_at = now()
+WHERE id = $1
+RETURNING id, workspace_id, project_id, site_id, product_id, serial_no, name, status, activated_at, bound_by, created_at, updated_at;
+
 -- name: ListDeviceCapabilities :many
 SELECT capability_code
 FROM device_capabilities
