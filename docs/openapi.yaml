@@ -1,12 +1,12 @@
 openapi: 3.1.0
 info:
   title: THCPN IoT Research Platform API
-  version: 0.9.0
+  version: 0.10.0
   description: |
     THCPN 科研物联网数据管理平台后端 API。
 
     当前文档覆盖已实现的阶段功能：健康检查、短信验证码登录/注册、密码注册/登录、
-    JWT 认证、Workspace 列表/创建、Workspace 成员管理、Project、Site、Device、DataStream、DataSource、DataStreamBinding、Telemetry Query、Media Query 和 Dataset 元信息管理、
+    JWT 认证、Workspace 列表/创建、Workspace 成员管理、Project、Site、Device、DataStream、DataSource、DataStreamBinding、Telemetry Query、Media Query、Dataset 元信息管理和 ExportJob 导出任务、
     AccessGrant 外部分享/售后临时授权、Invitation 和 AuditLog。
 
     正式业务接口优先使用 `Authorization: Bearer <token>`。
@@ -41,6 +41,8 @@ tags:
     description: Image, video and audio media query and download APIs
   - name: Datasets
     description: Dataset query definition and source metadata APIs
+  - name: ExportJobs
+    description: Asynchronous telemetry, media and dataset export job APIs
   - name: AccessGrants
     description: Resource sharing and temporary authorization APIs
   - name: Invitations
@@ -1828,6 +1830,193 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/datasets/{dataset_id}/export:
+    parameters:
+      - $ref: "#/components/parameters/DatasetID"
+    post:
+      tags:
+        - ExportJobs
+      operationId: exportDataset
+      summary: Create a dataset export job
+      description: |
+        Convenience route for creating a `dataset_zip` export job for a dataset.
+        Requires `dataset.export` on the dataset scope. Creation attempts are written to audit logs.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DatasetExportRequest"
+      responses:
+        "201":
+          description: Export job created in `pending` status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportJob"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/export-jobs:
+    get:
+      tags:
+        - ExportJobs
+      operationId: listExportJobs
+      summary: List export jobs
+      description: |
+        With `mine=true`, returns export jobs requested by the current user. If `workspace_id` is also supplied, the user's jobs are limited to that workspace.
+        Without `mine=true`, `workspace_id` is required and the caller needs `audit.view` in that workspace to inspect all export jobs.
+        If neither `workspace_id` nor `mine` is supplied, the API defaults to `mine=true`.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - name: workspace_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/UUID"
+        - name: mine
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        "200":
+          description: Export jobs ordered by newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportJobListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      tags:
+        - ExportJobs
+      operationId: createExportJob
+      summary: Create an export job
+      description: |
+        Creates an asynchronous export job in `pending` status.
+        `telemetry_csv` and `telemetry_excel` require `telemetry.export` on a device or data stream.
+        `dataset_zip` requires `dataset.export` on a dataset.
+        `media_zip` requires `media.download` on a device, data stream, or media data-stream alias.
+        Creation success and permission-denied or service failures are written to audit logs.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExportJobRequest"
+      responses:
+        "201":
+          description: Export job created in `pending` status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportJob"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/export-jobs/{export_job_id}:
+    parameters:
+      - $ref: "#/components/parameters/ExportJobID"
+    get:
+      tags:
+        - ExportJobs
+      operationId: getExportJob
+      summary: Get export job status
+      description: Returns an export job requested by the current user, or a job on a resource where the caller still has the export/download permission.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Export job detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportJob"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/export-jobs/{export_job_id}/download:
+    parameters:
+      - $ref: "#/components/parameters/ExportJobID"
+    get:
+      tags:
+        - ExportJobs
+      operationId: prepareExportDownload
+      summary: Prepare an export file download URL
+      description: |
+        Requires ownership of the export job or the current export/download permission on its protected resource.
+        The export job must be `success`, unexpired, and have a generated object key.
+        Successful and failed download attempts are written to audit logs.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Temporary object download URL for the generated export file.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportDownloadResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
   /api/v1/access-grants:
     get:
       tags:
@@ -2247,6 +2436,14 @@ components:
         type: string
         format: uuid
       description: Dataset UUID.
+    ExportJobID:
+      name: export_job_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Export job UUID.
     AccessGrantID:
       name: access_grant_id
       in: path
@@ -2525,6 +2722,28 @@ components:
         - locked
         - archived
         - published
+    ExportResourceType:
+      type: string
+      enum:
+        - device
+        - data_stream
+        - dataset
+        - media
+    ExportType:
+      type: string
+      enum:
+        - telemetry_csv
+        - telemetry_excel
+        - media_zip
+        - dataset_zip
+    ExportStatus:
+      type: string
+      enum:
+        - pending
+        - running
+        - success
+        - failed
+        - expired
     DatasetSourceType:
       type: string
       enum:
@@ -3743,6 +3962,97 @@ components:
           minItems: 1
           items:
             $ref: "#/components/schemas/DatasetSourceInput"
+    ExportJob:
+      type: object
+      required:
+        - id
+        - workspace_id
+        - requested_by
+        - resource_type
+        - resource_id
+        - export_type
+        - status
+        - created_at
+        - updated_at
+        - expires_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        workspace_id:
+          $ref: "#/components/schemas/UUID"
+        requested_by:
+          $ref: "#/components/schemas/UUID"
+        resource_type:
+          $ref: "#/components/schemas/ExportResourceType"
+        resource_id:
+          $ref: "#/components/schemas/UUID"
+        export_type:
+          $ref: "#/components/schemas/ExportType"
+        status:
+          $ref: "#/components/schemas/ExportStatus"
+        file_object_key:
+          type: string
+          description: Object store key for a completed export. Present only after worker generation succeeds.
+        error_message:
+          type: string
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+        started_at:
+          $ref: "#/components/schemas/Timestamp"
+        finished_at:
+          $ref: "#/components/schemas/Timestamp"
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+    ExportJobListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExportJob"
+    CreateExportJobRequest:
+      type: object
+      required:
+        - resource_type
+        - resource_id
+        - export_type
+      properties:
+        resource_type:
+          $ref: "#/components/schemas/ExportResourceType"
+        resource_id:
+          $ref: "#/components/schemas/UUID"
+        export_type:
+          $ref: "#/components/schemas/ExportType"
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+    DatasetExportRequest:
+      type: object
+      properties:
+        export_type:
+          type: string
+          enum:
+            - dataset_zip
+          default: dataset_zip
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+    ExportDownloadResponse:
+      type: object
+      required:
+        - export_job_id
+        - url
+        - expires_at
+      properties:
+        export_job_id:
+          $ref: "#/components/schemas/UUID"
+        url:
+          type: string
+          description: Temporary signed object URL for the generated export file.
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
     AccessGrantRoleCode:
       type: string
       enum:

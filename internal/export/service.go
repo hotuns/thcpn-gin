@@ -194,10 +194,18 @@ func (s *Service) List(ctx context.Context, input ListInput) ([]Job, error) {
 		err  error
 	)
 	if input.RequestedBy != nil {
-		rows, err = s.queries.ListExportJobsByRequester(ctx, sqlc.ListExportJobsByRequesterParams{
-			RequestedBy: *input.RequestedBy,
-			Limit:       limit,
-		})
+		if input.WorkspaceID != uuid.Nil {
+			rows, err = s.queries.ListExportJobsByRequesterAndWorkspace(ctx, sqlc.ListExportJobsByRequesterAndWorkspaceParams{
+				WorkspaceID: input.WorkspaceID,
+				RequestedBy: *input.RequestedBy,
+				Limit:       limit,
+			})
+		} else {
+			rows, err = s.queries.ListExportJobsByRequester(ctx, sqlc.ListExportJobsByRequesterParams{
+				RequestedBy: *input.RequestedBy,
+				Limit:       limit,
+			})
+		}
 	} else {
 		if input.WorkspaceID == uuid.Nil {
 			return nil, apperr.New(apperr.KindInvalidArgument, "workspace id is required")

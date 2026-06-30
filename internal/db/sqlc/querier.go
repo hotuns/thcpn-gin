@@ -74,6 +74,7 @@ type Querier interface {
 	ListDevicesBySite(ctx context.Context, siteID *uuid.UUID) ([]Device, error)
 	ListDevicesByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]Device, error)
 	ListExportJobsByRequester(ctx context.Context, arg ListExportJobsByRequesterParams) ([]ExportJob, error)
+	ListExportJobsByRequesterAndWorkspace(ctx context.Context, arg ListExportJobsByRequesterAndWorkspaceParams) ([]ExportJob, error)
 	ListExportJobsByWorkspace(ctx context.Context, arg ListExportJobsByWorkspaceParams) ([]ExportJob, error)
 	ListInvitationsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]ListInvitationsByWorkspaceRow, error)
 	ListPendingInvitationsForIdentity(ctx context.Context, arg ListPendingInvitationsForIdentityParams) ([]ListPendingInvitationsForIdentityRow, error)

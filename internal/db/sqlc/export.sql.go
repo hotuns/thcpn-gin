@@ -139,6 +139,56 @@ func (q *Queries) ListExportJobsByRequester(ctx context.Context, arg ListExportJ
 	return items, nil
 }
 
+const listExportJobsByRequesterAndWorkspace = `-- name: ListExportJobsByRequesterAndWorkspace :many
+SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at
+FROM export_jobs
+WHERE workspace_id = $1
+  AND requested_by = $2
+ORDER BY created_at DESC, id DESC
+LIMIT $3
+`
+
+type ListExportJobsByRequesterAndWorkspaceParams struct {
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	RequestedBy uuid.UUID `json:"requested_by"`
+	Limit       int32     `json:"limit"`
+}
+
+func (q *Queries) ListExportJobsByRequesterAndWorkspace(ctx context.Context, arg ListExportJobsByRequesterAndWorkspaceParams) ([]ExportJob, error) {
+	rows, err := q.db.Query(ctx, listExportJobsByRequesterAndWorkspace, arg.WorkspaceID, arg.RequestedBy, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExportJob{}
+	for rows.Next() {
+		var i ExportJob
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.RequestedBy,
+			&i.ResourceType,
+			&i.ResourceID,
+			&i.ExportType,
+			&i.Status,
+			&i.FileObjectKey,
+			&i.ErrorMessage,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listExportJobsByWorkspace = `-- name: ListExportJobsByWorkspace :many
 SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at
 FROM export_jobs

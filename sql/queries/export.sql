@@ -29,6 +29,14 @@ WHERE requested_by = $1
 ORDER BY created_at DESC, id DESC
 LIMIT $2;
 
+-- name: ListExportJobsByRequesterAndWorkspace :many
+SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at
+FROM export_jobs
+WHERE workspace_id = $1
+  AND requested_by = $2
+ORDER BY created_at DESC, id DESC
+LIMIT $3;
+
 -- name: MarkExportJobRunning :one
 UPDATE export_jobs
 SET status = 'running',

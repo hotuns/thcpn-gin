@@ -204,10 +204,26 @@
   - `GET /api/v1/datasets/:dataset_id`
   - `PATCH /api/v1/datasets/:dataset_id`
   - `DELETE /api/v1/datasets/:dataset_id`
-- 当前 Dataset 第一版仅保存 query definition / metadata，不直接读取设备数据源，也不执行异步导出。
+- 当前 Dataset 第一版保存 query definition / metadata；导出通过 ExportJob 异步任务元信息创建，Worker 真正生成文件仍待实现。
 - Dataset source 当前支持 `device`、`data_stream`、`file`；`device` / `data_stream` 会校验所属 workspace，带 `project_id` 时也校验所属 project。
 - Dataset 权限动作：`dataset.view`、`dataset.create`、`dataset.delete`，将状态更新为 `locked` 时需要 `dataset.lock`。
 - Dataset scope AccessGrant 已接入 checker，可授权到单个 dataset。
+
+### ExportJob
+
+- 已新增导出任务 migration `000009_export_jobs`，创建 `export_jobs`。
+- 已实现 ExportJob API：
+  - `GET /api/v1/export-jobs?mine=true&workspace_id=...&limit=...`
+  - `POST /api/v1/export-jobs`
+  - `GET /api/v1/export-jobs/:export_job_id`
+  - `GET /api/v1/export-jobs/:export_job_id/download`
+  - `POST /api/v1/datasets/:dataset_id/export`
+- 支持的导出任务类型：
+  - `telemetry_csv` / `telemetry_excel`，资源为 `device` 或 `data_stream`，需要 `telemetry.export`。
+  - `dataset_zip`，资源为 `dataset`，需要 `dataset.export`。
+  - `media_zip`，资源为 `device`、`data_stream` 或媒体 data-stream alias，需要 `media.download`。
+- API 当前创建 `pending` 任务、记录文件过期时间，并为成功任务生成临时对象下载 URL；真正读取数据源、生成 CSV/ZIP、上传对象存储和更新任务状态的 Worker 仍待实现。
+- 导出任务创建和下载准备会写 audit log；按 workspace 查询全量导出任务需要 `audit.view`，默认列表只返回当前用户创建的任务。
 
 ### AccessGrant 和 Invitation
 
@@ -244,19 +260,21 @@
   - `service_engineer` 授权使用 `service_access.grant` action 写审计。
   - 创建、更新、锁定、删除 Dataset 成功和失败。
   - 媒体下载成功和权限拒绝。
+  - 创建导出任务成功和失败，导出文件下载准备成功和失败。
 - 审计日志记录 actor、action、resource、result、reason、ip、user_agent、request_id 和 created_at。
 
 ### 已验证事项
 
 - `make sqlc` 可正常生成代码。
 - `go test ./...` / `make test` 通过。
-- `make migrate-up` 可迁移到版本 8。
-- `make migrate-down MIGRATE_STEPS=1` 已验证 `000008` down 可用，随后已重新 `make migrate-up` 到版本 8。
+- `make migrate-up` 可迁移到版本 9。
+- `make migrate-down MIGRATE_STEPS=1` 已验证 `000009` down 可用，随后已重新 `make migrate-up` 到版本 9。
 - 已通过真实 HTTP 验证健康检查、密码注册、密码登录、JWT 调 `/me`、短信验证码发送、短信登录自动注册、JWT 调 workspace 列表、普通成员 JWT 访问成员管理被拒绝。
 - 已通过真实 HTTP 验证 Project / Site / Device / DataStream 创建和列表查询。
 - 已通过真实 HTTP 验证 DataSource 创建/列表，以及 DataStreamBinding 创建/列表。
 - 已通过真实 HTTP 验证 PostgreSQL Telemetry Query：创建外部表样例、配置 `env:PLATFORM_DATABASE_DSN` DataSource、绑定 DataStream 后返回 2 个时序点。
 - 已通过真实 HTTP 验证 PostgreSQL Media Query：创建媒体表样例、绑定 image DataStream 后返回 2 条媒体记录，`/media/download` 返回临时对象 URL，并确认 `media.download` audit log 写入。
+- 已通过真实 HTTP 验证 Dataset ExportJob：`POST /api/v1/datasets/:dataset_id/export` 创建 `pending` 任务，`GET /api/v1/export-jobs?mine=true` 可查到任务，pending 下载返回 409；手动标记 success 后 `/export-jobs/:id/download` 返回临时对象 URL，并确认 `dataset.export` audit log 写入。
 - 已通过真实 HTTP 验证 AccessGrant：未授权用户访问 device 被拒绝，创建 `shared_viewer` device grant 后可读取 device，但仍不能 PATCH device。
 - 已通过真实 HTTP 验证 `service_engineer` device grant 必须通过显式 grant 创建并带过期时间。
 - 已通过真实 HTTP 验证 Invitation：创建 project invitation、受邀用户在 `/invitations/mine` 看到邀请、accept 后可读取 project。
@@ -266,7 +284,7 @@
 ### 尚未实现
 
 - Refresh token、退出登录、session 黑名单、设备会话管理、MFA、邮箱验证码/邮箱验证。
-- Export。
+- Export Worker 真正生成 CSV / ZIP / Excel、上传对象存储和任务状态流转。
 - Project / Site / Device / DataStream / Dataset 当前完成资产、元信息、查询定义、PostgreSQL telemetry 读取和 PostgreSQL media 记录查询；Project / Site / DataStream 变更审计可后续按风险扩展。
 - 尚未实现模块的敏感操作审计仍待对应模块落地时接入，例如 Export、设备校准、固件升级和设备转移。
 - MySQL / ClickHouse / HTTP DataSource 运行时适配器。
@@ -292,6 +310,7 @@
 - `internal/telemetry`: 时序数据查询 workflow。
 - `internal/media`: 图片、视频、音频媒体查询和下载 workflow。
 - `internal/objectstore`: 对象存储 URL / 下载 token 签名。
+- `internal/export`: 导出任务创建、查询、下载准备和权限审计 workflow。
 - `migrations`: PostgreSQL 平台业务库迁移。
 - `sql/queries`: sqlc 查询定义。
 - `web`: 独立前端工程，使用 Vite proxy 调用后端 `/api`、`/healthz`、`/readyz`。

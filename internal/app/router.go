@@ -23,6 +23,7 @@ import (
 	"thcpn-gin/internal/db"
 	"thcpn-gin/internal/db/sqlc"
 	"thcpn-gin/internal/device"
+	"thcpn-gin/internal/export"
 	"thcpn-gin/internal/httpx"
 	"thcpn-gin/internal/media"
 	"thcpn-gin/internal/member"
@@ -90,6 +91,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	telemetryService := telemetry.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil), cfg.QueryLimits)
 	objectSigner := objectstore.NewSigner(cfg.ObjectStore, cfg.Auth.JWTSecret)
 	mediaService := media.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil), objectSigner, cfg.QueryLimits)
+	exportService := export.NewService(deps.Postgres, objectSigner, cfg.Export)
 	tokenManager := auth.NewTokenManager(cfg.Auth.JWTSecret, time.Duration(cfg.Auth.AccessTokenTTLMinutes)*time.Minute)
 	smsSender, err := newSMSSender(cfg.SMS, deps.Logger)
 	if err != nil {
@@ -118,6 +120,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	dataSourceHandler := datasource.NewHandler(dataSourceService, permissionChecker)
 	telemetryHandler := telemetry.NewHandler(telemetryService, permissionChecker)
 	mediaHandler := media.NewHandler(mediaService, permissionChecker, auditService)
+	exportHandler := export.NewHandler(exportService, permissionChecker, auditService)
 	authMiddleware := auth.Middleware(userService, auth.MiddlewareConfig{
 		TokenManager:         tokenManager,
 		DevUserHeaderEnabled: cfg.Auth.DevUserHeaderEnabled,
@@ -156,6 +159,10 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.DELETE("/invitations/:invitation_id", accessGrantHandler.RevokeInvitation)
 	authed.GET("/audit-logs", auditHandler.List)
 	authed.GET("/media/download", mediaHandler.Download)
+	authed.GET("/export-jobs", exportHandler.List)
+	authed.POST("/export-jobs", exportHandler.Create)
+	authed.GET("/export-jobs/:export_job_id", exportHandler.Get)
+	authed.GET("/export-jobs/:export_job_id/download", exportHandler.Download)
 	authed.GET("/projects", projectHandler.List)
 	authed.POST("/projects", projectHandler.Create)
 	authed.GET("/projects/:project_id", projectHandler.Get)
@@ -189,6 +196,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.GET("/datasets", datasetHandler.List)
 	authed.POST("/datasets", datasetHandler.Create)
 	authed.GET("/datasets/:dataset_id", datasetHandler.Get)
+	authed.POST("/datasets/:dataset_id/export", exportHandler.ExportDataset)
 	authed.PATCH("/datasets/:dataset_id", datasetHandler.Update)
 	authed.DELETE("/datasets/:dataset_id", datasetHandler.Delete)
 	return nil
