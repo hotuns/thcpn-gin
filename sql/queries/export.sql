@@ -63,6 +63,25 @@ SET status = 'expired',
 WHERE status IN ('pending', 'running')
   AND expires_at <= now();
 
+-- name: ListExpiredExportFiles :many
+SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json
+FROM export_jobs
+WHERE status = 'success'
+  AND expires_at <= now()
+  AND file_object_key IS NOT NULL
+ORDER BY expires_at ASC, id ASC
+LIMIT $1;
+
+-- name: MarkExportJobExpired :one
+UPDATE export_jobs
+SET status = 'expired',
+    file_object_key = NULL,
+    updated_at = now(),
+    finished_at = COALESCE(finished_at, now())
+WHERE id = $1
+  AND status = 'success'
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json;
+
 -- name: MarkExportJobRunning :one
 UPDATE export_jobs
 SET status = 'running',

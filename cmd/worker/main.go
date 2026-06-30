@@ -81,6 +81,10 @@ func run() int {
 			log.Error("cleanup expired access grants", slog.Any("error", err))
 			return 1
 		}
+		if err := cleanupExpiredExportFiles(ctx, processor, log); err != nil {
+			log.Error("cleanup expired export files", slog.Any("error", err))
+			return 1
+		}
 		processed, err := processor.ProcessAvailable(ctx, 0)
 		if err != nil {
 			log.Error("process export jobs", slog.Any("error", err), slog.Int("processed", processed))
@@ -93,6 +97,7 @@ func run() int {
 	concurrency := envInt("WORKER_CONCURRENCY", 5)
 	server, mux := task.NewExportServer(redisClient, processor, log, concurrency)
 	startExpiredAccessCleanup(ctx, accessGrantService, log, time.Hour)
+	startExpiredExportFileCleanup(ctx, processor, log, time.Hour)
 
 	serverErr := make(chan error, 1)
 	go func() {
@@ -135,6 +140,43 @@ func startExpiredAccessCleanup(ctx context.Context, service *accessgrant.Service
 			}
 		}
 	}()
+}
+
+func startExpiredExportFileCleanup(ctx context.Context, processor *export.Processor, log *slog.Logger, interval time.Duration) {
+	if interval <= 0 {
+		interval = time.Hour
+	}
+	go func() {
+		if err := cleanupExpiredExportFiles(ctx, processor, log); err != nil && log != nil {
+			log.Warn("cleanup expired export files", slog.Any("error", err))
+		}
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := cleanupExpiredExportFiles(ctx, processor, log); err != nil && log != nil {
+					log.Warn("cleanup expired export files", slog.Any("error", err))
+				}
+			}
+		}
+	}()
+}
+
+func cleanupExpiredExportFiles(ctx context.Context, processor *export.Processor, log *slog.Logger) error {
+	result, err := processor.CleanupExpiredFiles(ctx, 100)
+	if err != nil {
+		return err
+	}
+	if log != nil && (result.ExportJobsExpired > 0 || result.ExportFilesExpired > 0) {
+		log.Info("expired export files cleaned",
+			slog.Int64("jobs", result.ExportJobsExpired),
+			slog.Int("files", result.ExportFilesExpired),
+		)
+	}
+	return nil
 }
 
 func cleanupExpiredAccess(ctx context.Context, service *accessgrant.Service, log *slog.Logger) error {

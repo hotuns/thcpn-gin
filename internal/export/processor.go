@@ -91,6 +91,11 @@ type mediaExportItem struct {
 	ArchivePath        string
 }
 
+type CleanupExpiredFilesResult struct {
+	ExportJobsExpired  int64
+	ExportFilesExpired int
+}
+
 func NewProcessor(db *pgxpool.Pool, dataSources *datasource.Service, runtime Runtime, store objectstore.Store, cfg config.ExportConfig, logger *slog.Logger) *Processor {
 	if dataSources == nil {
 		dataSources = datasource.NewService(db)
@@ -171,6 +176,40 @@ func (p *Processor) validate() error {
 		return apperr.New(apperr.KindInternal, "object store is not configured")
 	}
 	return nil
+}
+
+func (p *Processor) CleanupExpiredFiles(ctx context.Context, limit int) (CleanupExpiredFilesResult, error) {
+	if err := p.validate(); err != nil {
+		return CleanupExpiredFilesResult{}, err
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	pendingExpired, err := p.queries.ExpireExportJobs(ctx)
+	if err != nil {
+		return CleanupExpiredFilesResult{}, apperr.Wrap(apperr.KindInternal, "expire export jobs", err)
+	}
+	rows, err := p.queries.ListExpiredExportFiles(ctx, int32(limit))
+	if err != nil {
+		return CleanupExpiredFilesResult{}, apperr.Wrap(apperr.KindInternal, "list expired export files", err)
+	}
+
+	result := CleanupExpiredFilesResult{ExportJobsExpired: pendingExpired}
+	for _, row := range rows {
+		if row.FileObjectKey != nil && strings.TrimSpace(*row.FileObjectKey) != "" {
+			if err := p.store.Delete(ctx, *row.FileObjectKey); err != nil && apperr.KindOf(err) != apperr.KindNotFound {
+				return result, apperr.Wrap(apperr.KindInternal, "delete expired export file", err)
+			}
+		}
+		if _, err := p.queries.MarkExportJobExpired(ctx, row.ID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				continue
+			}
+			return result, apperr.Wrap(apperr.KindInternal, "mark export job expired", err)
+		}
+		result.ExportFilesExpired++
+	}
+	return result, nil
 }
 
 func (p *Processor) skipUnavailableJob(ctx context.Context, jobID uuid.UUID) (bool, error) {

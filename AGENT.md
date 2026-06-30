@@ -265,6 +265,7 @@
   - `telemetry_excel`：支持 `device` / `data_stream` 资源，使用同一 telemetry 查询链路生成最小有效 XLSX 工作簿。
   - `dataset_zip`：支持 Dataset 元信息 ZIP，包含 `dataset.json`、`sources.csv`，并为 telemetry 类型的 device / data_stream source 生成 CSV。
   - `media_zip`：支持 `device` / `data_stream` / 媒体 data-stream alias 资源，使用任务 `request_config_json.start_time`、`end_time`、`limit`、`media_type` 查询已绑定 PostgreSQL / MySQL / ClickHouse / HTTP API media 数据源，读取 object store 原始媒体文件并生成带 `manifest.csv` 的 ZIP。
+- Worker 启动后会周期性清理过期导出文件：删除对象存储里的成功导出文件，并将对应成功任务置为 `expired`。
 - 对象存储当前支持本地文件后端（`object_store.provider=file`）和 MinIO/S3 SigV4 PUT/GET；下载 URL 在配置访问密钥时使用 S3 预签名 GET，否则回退为平台 HMAC 临时 URL 并由对象下载代理校验签名后读取对象。
 - 导出任务创建和下载准备会写 audit log；按 workspace 查询全量导出任务需要 `audit.view`，默认列表只返回当前用户创建的任务。
 

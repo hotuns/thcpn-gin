@@ -154,6 +154,52 @@ func (q *Queries) GetExportJob(ctx context.Context, id uuid.UUID) (ExportJob, er
 	return i, err
 }
 
+const listExpiredExportFiles = `-- name: ListExpiredExportFiles :many
+SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json
+FROM export_jobs
+WHERE status = 'success'
+  AND expires_at <= now()
+  AND file_object_key IS NOT NULL
+ORDER BY expires_at ASC, id ASC
+LIMIT $1
+`
+
+func (q *Queries) ListExpiredExportFiles(ctx context.Context, limit int32) ([]ExportJob, error) {
+	rows, err := q.db.Query(ctx, listExpiredExportFiles, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExportJob{}
+	for rows.Next() {
+		var i ExportJob
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.RequestedBy,
+			&i.ResourceType,
+			&i.ResourceID,
+			&i.ExportType,
+			&i.Status,
+			&i.FileObjectKey,
+			&i.ErrorMessage,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.ExpiresAt,
+			&i.RequestConfigJson,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listExportJobsByRequester = `-- name: ListExportJobsByRequester :many
 SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json
 FROM export_jobs
@@ -301,6 +347,40 @@ func (q *Queries) ListExportJobsByWorkspace(ctx context.Context, arg ListExportJ
 		return nil, err
 	}
 	return items, nil
+}
+
+const markExportJobExpired = `-- name: MarkExportJobExpired :one
+UPDATE export_jobs
+SET status = 'expired',
+    file_object_key = NULL,
+    updated_at = now(),
+    finished_at = COALESCE(finished_at, now())
+WHERE id = $1
+  AND status = 'success'
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json
+`
+
+func (q *Queries) MarkExportJobExpired(ctx context.Context, id uuid.UUID) (ExportJob, error) {
+	row := q.db.QueryRow(ctx, markExportJobExpired, id)
+	var i ExportJob
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.RequestedBy,
+		&i.ResourceType,
+		&i.ResourceID,
+		&i.ExportType,
+		&i.Status,
+		&i.FileObjectKey,
+		&i.ErrorMessage,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.ExpiresAt,
+		&i.RequestConfigJson,
+	)
+	return i, err
 }
 
 const markExportJobFailed = `-- name: MarkExportJobFailed :one
