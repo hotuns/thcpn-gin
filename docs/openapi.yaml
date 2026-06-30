@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: THCPN IoT Research Platform API
-  version: 0.14.0
+  version: 0.15.0
   description: |
     THCPN 科研物联网数据管理平台后端 API。
 
@@ -17,6 +17,8 @@ servers:
 tags:
   - name: Health
     description: Service health and readiness checks
+  - name: Observability
+    description: Metrics and operational visibility endpoints
   - name: Auth
     description: Registration, login, token issuing and current user APIs
   - name: Workspaces
@@ -99,6 +101,21 @@ paths:
                       code: SERVICE_UNAVAILABLE
                       message: postgres is not ready
                       request_id: 4887c2960a37ee423b71193d412dde2d
+  /metrics:
+    get:
+      tags:
+        - Observability
+      operationId: getMetrics
+      summary: Prometheus metrics
+      description: |
+        Exposes Prometheus text metrics, including HTTP request counts and durations, device data source query durations and errors, and export worker job counts and durations.
+      responses:
+        "200":
+          description: Prometheus metrics in text exposition format.
+          content:
+            text/plain:
+              schema:
+                type: string
   /api/v1/auth/sms/send:
     post:
       tags:

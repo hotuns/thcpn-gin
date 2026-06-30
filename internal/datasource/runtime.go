@@ -8,11 +8,13 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	mysql "github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/metrics"
 )
 
 type SecretResolver interface {
@@ -80,7 +82,11 @@ type queryPlan struct {
 	Args  []any
 }
 
-func (r *Runtime) QueryTelemetry(ctx context.Context, source DataSource, req TelemetryQuery) (TelemetryResult, error) {
+func (r *Runtime) QueryTelemetry(ctx context.Context, source DataSource, req TelemetryQuery) (result TelemetryResult, err error) {
+	start := time.Now()
+	defer func() {
+		metrics.ObserveDataSourceQuery(source.Type, "telemetry", req.Binding.PayloadType, err, time.Since(start))
+	}()
 	if source.Status != "active" {
 		return TelemetryResult{}, apperr.New(apperr.KindDataSource, "data source is not active")
 	}
@@ -97,7 +103,11 @@ func (r *Runtime) QueryTelemetry(ctx context.Context, source DataSource, req Tel
 	}
 }
 
-func (r *Runtime) QueryMedia(ctx context.Context, source DataSource, req MediaQuery) (MediaResult, error) {
+func (r *Runtime) QueryMedia(ctx context.Context, source DataSource, req MediaQuery) (result MediaResult, err error) {
+	start := time.Now()
+	defer func() {
+		metrics.ObserveDataSourceQuery(source.Type, "media", req.Binding.PayloadType, err, time.Since(start))
+	}()
 	if source.Status != "active" {
 		return MediaResult{}, apperr.New(apperr.KindDataSource, "data source is not active")
 	}

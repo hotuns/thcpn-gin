@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 
 	"thcpn-gin/internal/accessgrant"
@@ -60,12 +61,14 @@ func NewRouter(deps Dependencies) (*gin.Engine, error) {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(httpx.RequestID())
+	router.Use(httpx.Metrics())
 	router.Use(httpx.AccessLog(deps.Logger))
 
 	router.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, statusResponse{Status: "ok"})
 	})
 	router.GET("/readyz", readyHandler(deps))
+	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	if deps.Postgres != nil {
 		if err := registerAPIV1(router, deps, cfg); err != nil {

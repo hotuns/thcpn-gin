@@ -24,6 +24,7 @@ import (
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/datasource"
 	"thcpn-gin/internal/db/sqlc"
+	"thcpn-gin/internal/metrics"
 	"thcpn-gin/internal/objectstore"
 )
 
@@ -187,8 +188,15 @@ func (p *Processor) skipUnavailableJob(ctx context.Context, jobID uuid.UUID) (bo
 }
 
 func (p *Processor) processClaimed(ctx context.Context, job Job) error {
+	start := time.Now()
+	status := "success"
+	defer func() {
+		metrics.ObserveExportJob(job.ExportType, status, time.Since(start))
+	}()
+
 	rendered, err := p.render(ctx, job)
 	if err != nil {
+		status = "failed"
 		return p.fail(ctx, job.ID, err)
 	}
 	if err := p.store.Put(ctx, objectstore.PutInput{
@@ -196,12 +204,14 @@ func (p *Processor) processClaimed(ctx context.Context, job Job) error {
 		ContentType: rendered.ContentType,
 		Body:        bytes.NewReader(rendered.Body),
 	}); err != nil {
+		status = "failed"
 		return p.fail(ctx, job.ID, err)
 	}
 	if _, err := p.queries.MarkExportJobSuccess(ctx, sqlc.MarkExportJobSuccessParams{
 		ID:            job.ID,
 		FileObjectKey: &rendered.ObjectKey,
 	}); err != nil {
+		status = "error"
 		return apperr.Wrap(apperr.KindInternal, "mark export job success", err)
 	}
 	if p.logger != nil {

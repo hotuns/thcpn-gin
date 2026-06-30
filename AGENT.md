@@ -273,6 +273,20 @@
   - 创建导出任务成功和失败，导出文件下载准备成功和失败。
 - 审计日志记录 actor、action、resource、result、reason、ip、user_agent、request_id 和 created_at。
 
+### 可观测性
+
+- API 请求日志已带 `request_id`、method、path、status、bytes、duration_ms 和 client_ip。
+- 已暴露 Prometheus 指标端点：`GET /metrics`。
+- 已接入核心 Prometheus 指标：
+  - `http_requests_total`
+  - `http_request_duration_seconds`
+  - `datasource_query_duration_seconds`
+  - `datasource_errors_total`
+  - `export_jobs_total`
+  - `export_job_duration_seconds`
+- DataSource runtime 会按 source_type、operation、payload_type 和结果记录查询耗时；失败时记录 error_kind。
+- Export Worker 会按 export_type 和处理状态记录任务数与处理耗时。
+
 ### 已验证事项
 
 - `make sqlc` 可正常生成代码。
@@ -291,6 +305,7 @@
 - 已通过真实 HTTP 验证 `service_engineer` device grant 必须通过显式 grant 创建并带过期时间。
 - 已通过真实 HTTP 验证 Invitation：创建 project invitation、受邀用户在 `/invitations/mine` 看到邀请、accept 后可读取 project。
 - 已通过真实 HTTP 验证 audit log 写入和 `GET /api/v1/audit-logs?workspace_id=...` 查询。
+- 已通过自动化测试验证 `/metrics` 暴露 Prometheus 指标并记录 `/healthz` 请求。
 - 此前已通过真实 HTTP 验证开发注册、workspace 列表、创建 organization workspace、添加成员、列成员、更新成员角色、普通成员访问成员管理被拒绝、删除成员。
 
 ### 尚未实现
@@ -300,7 +315,7 @@
 - Project / Site / Device / DataStream / Dataset 当前完成资产、元信息、查询定义、PostgreSQL / MySQL telemetry 读取和 PostgreSQL / MySQL media 记录查询；Project / Site / DataStream 变更审计可后续按风险扩展。
 - 尚未实现模块的敏感操作审计仍待对应模块落地时接入，例如设备校准、固件升级和设备转移。
 - ClickHouse / HTTP DataSource 运行时适配器。
-- Prometheus、OpenTelemetry 和更完整对象存储集成。
+- OpenTelemetry 和更完整对象存储集成。
 
 ## 重要目录
 
@@ -321,6 +336,7 @@
 - `internal/datasource`: DataSource / DataStreamBinding 元信息和设备数据源运行时适配器。
 - `internal/telemetry`: 时序数据查询 workflow。
 - `internal/media`: 图片、视频、音频媒体查询和下载 workflow。
+- `internal/metrics`: Prometheus 指标定义和记录辅助函数。
 - `internal/objectstore`: 对象存储 URL / 下载 token 签名。
 - `internal/export`: 导出任务创建、查询、下载准备和权限审计 workflow。
 - `internal/task`: Asynq 任务定义、投递和 Worker handler。
