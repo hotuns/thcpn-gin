@@ -93,9 +93,15 @@
 
 ### 权限检查
 
-- 已实现基础 `permission.Checker`。
-- 当前 checker 只支持 `workspace` scope。
-- 当前 checker 只基于 `workspace_members` + `roles` + `role_permissions` 判断权限，尚未接入 `AccessGrant`。
+- 已实现 `permission.Checker`。
+- 当前 checker 支持 `workspace`、`project`、`site`、`device`、`data_stream`、`dataset` 资源解析。
+- 当前 checker 先基于 `workspace_members` + `roles` + `role_permissions` 判断 workspace 成员权限，再基于有效 `access_grants` 判断局部授权权限。
+- 当前 AccessGrant 覆盖规则：
+  - `workspace` grant 覆盖 workspace 下资源。
+  - `project` grant 覆盖 project 下 site、device、data_stream。
+  - `site` grant 覆盖 site 下 device、data_stream。
+  - `device` grant 覆盖 device 和其 data_stream。
+  - `dataset` grant 覆盖单个 dataset。
 - 成员管理接口已经使用 `member.manage` 做实际权限保护。
 
 ### Workspace 成员管理
@@ -112,21 +118,114 @@
 - 删除成员是软删除：`workspace_members.status = 'removed'`。
 - 已保护最后一个 active Owner：不允许删除最后一个 Owner，也不允许把最后一个 Owner 改成非 Owner 角色。
 
+### 项目、站点、设备和数据流
+
+- 已新增平台业务库资源模型 migration `000004_assets`：
+  - `projects`
+  - `sites`
+  - `devices`
+  - `device_capabilities`
+  - `data_streams`
+- 已实现 Project 管理接口：
+  - `GET /api/v1/projects?workspace_id=...`
+  - `POST /api/v1/projects`
+  - `GET /api/v1/projects/:project_id`
+  - `PATCH /api/v1/projects/:project_id`
+- 已实现 Site / Station 管理接口：
+  - `GET /api/v1/sites?workspace_id=...`
+  - `POST /api/v1/sites`
+  - `GET /api/v1/sites/:site_id`
+  - `PATCH /api/v1/sites/:site_id`
+- 已实现 Device 资产管理接口：
+  - `GET /api/v1/devices?workspace_id=...`
+  - `POST /api/v1/devices`
+  - `GET /api/v1/devices/:device_id`
+  - `PATCH /api/v1/devices/:device_id`
+- 已实现 DataStream 元信息接口：
+  - `GET /api/v1/data-streams?device_id=...`
+  - `POST /api/v1/data-streams`
+  - `GET /api/v1/data-streams/:data_stream_id`
+  - `PATCH /api/v1/data-streams/:data_stream_id`
+- 当前阶段三资源接口均需要 JWT；开发环境也可在配置允许时使用 `X-User-ID` fallback。
+- 当前阶段三资源接口需要对应资源权限：
+  - Project: `project.view` / `project.manage`
+  - Site: `site.view` / `site.manage`
+  - Device: `device.view` / `device.bind` / `device.configure`
+  - DataStream: `device.view` / `device.configure`
+- 设备绑定会记录 `bound_by`、`activated_at` 并写入 audit log。
+
+### Dataset
+
+- 已新增 Dataset 元信息 migration `000007_datasets`：
+  - `datasets`
+  - `dataset_sources`
+- 已实现 Dataset 元信息和查询定义接口：
+  - `GET /api/v1/datasets?workspace_id=...&project_id=...`
+  - `POST /api/v1/datasets`
+  - `GET /api/v1/datasets/:dataset_id`
+  - `PATCH /api/v1/datasets/:dataset_id`
+  - `DELETE /api/v1/datasets/:dataset_id`
+- 当前 Dataset 第一版仅保存 query definition / metadata，不直接读取设备数据源，也不执行异步导出。
+- Dataset source 当前支持 `device`、`data_stream`、`file`；`device` / `data_stream` 会校验所属 workspace，带 `project_id` 时也校验所属 project。
+- Dataset 权限动作：`dataset.view`、`dataset.create`、`dataset.delete`，将状态更新为 `locked` 时需要 `dataset.lock`。
+- Dataset scope AccessGrant 已接入 checker，可授权到单个 dataset。
+
+### AccessGrant 和 Invitation
+
+- 已新增分享和临时授权 migration `000005_access_grants`：
+  - `access_grants`
+  - `invitations`
+- 已实现 AccessGrant 接口：
+  - `GET /api/v1/access-grants?workspace_id=...`
+  - `POST /api/v1/access-grants`
+  - `GET /api/v1/access-grants/mine`
+  - `DELETE /api/v1/access-grants/:access_grant_id`
+- 已实现 Invitation 接口：
+  - `GET /api/v1/invitations?workspace_id=...`
+  - `POST /api/v1/invitations`
+  - `GET /api/v1/invitations/mine`
+  - `POST /api/v1/invitations/:invitation_id/accept`
+  - `DELETE /api/v1/invitations/:invitation_id`
+- AccessGrant 第一版只支持 `subject_type = user`。
+- 可授权角色：`project_manager`、`site_operator`、`data_manager`、`researcher`、`viewer`、`shared_viewer`、`shared_downloader`、`service_engineer`；不允许通过 AccessGrant 授予 `owner` 或 `admin`。
+- `service_engineer` 授权必须设置 `expires_at`，且 scope 只能是 `device` 或 `site`。
+- 对已注册用户创建 AccessGrant 时，目标用户可用 `subject_user_id`、`email` 或 `phone` 三选一指定。
+- 对未注册用户使用 Invitation，邀请人可用 `email` 或 `phone` 三选一指定；被邀请用户注册或登录后，若账号 email/phone 匹配，可 accept invitation 并转换为 AccessGrant。
+### AuditLog
+
+- 已新增审计日志 migration `000006_audit_logs`，创建 `audit_logs`。
+- 已实现审计查询接口：`GET /api/v1/audit-logs?workspace_id=...&limit=...`，需要 `audit.view`。
+- 已对当前已实现的敏感操作写入 audit log：
+  - 密码注册、密码登录、短信登录成功和失败。
+  - 创建 organization workspace 成功和失败。
+  - 添加成员、修改成员角色、删除成员成功和失败。
+  - 设备绑定、设备配置修改成功和失败。
+  - 创建 AccessGrant、撤销 AccessGrant 成功和失败。
+  - 创建 Invitation、接受 Invitation、撤销 Invitation 成功和失败。
+  - `service_engineer` 授权使用 `service_access.grant` action 写审计。
+  - 创建、更新、锁定、删除 Dataset 成功和失败。
+- 审计日志记录 actor、action、resource、result、reason、ip、user_agent、request_id 和 created_at。
+
 ### 已验证事项
 
 - `make sqlc` 可正常生成代码。
 - `go test ./...` / `make test` 通过。
-- `make migrate-up` 可迁移到版本 3。
-- `make migrate-down MIGRATE_STEPS=1` 已验证 `000003` down 可用，随后已重新 `make migrate-up` 到版本 3。
+- `make migrate-up` 可迁移到版本 7。
+- `make migrate-down MIGRATE_STEPS=1` 已验证 `000007` down 可用，随后已重新 `make migrate-up` 到版本 7。
 - 已通过真实 HTTP 验证健康检查、密码注册、密码登录、JWT 调 `/me`、短信验证码发送、短信登录自动注册、JWT 调 workspace 列表、普通成员 JWT 访问成员管理被拒绝。
+- 已通过真实 HTTP 验证 Project / Site / Device / DataStream 创建和列表查询。
+- 已通过真实 HTTP 验证 AccessGrant：未授权用户访问 device 被拒绝，创建 `shared_viewer` device grant 后可读取 device，但仍不能 PATCH device。
+- 已通过真实 HTTP 验证 `service_engineer` device grant 必须通过显式 grant 创建并带过期时间。
+- 已通过真实 HTTP 验证 Invitation：创建 project invitation、受邀用户在 `/invitations/mine` 看到邀请、accept 后可读取 project。
+- 已通过真实 HTTP 验证 audit log 写入和 `GET /api/v1/audit-logs?workspace_id=...` 查询。
 - 此前已通过真实 HTTP 验证开发注册、workspace 列表、创建 organization workspace、添加成员、列成员、更新成员角色、普通成员访问成员管理被拒绝、删除成员。
 
 ### 尚未实现
 
 - Refresh token、退出登录、session 黑名单、设备会话管理、MFA、邮箱验证码/邮箱验证。
-- AccessGrant、Invitation、外部分享、售后临时授权。
-- AuditLog 写入。
-- Project、Site、Device、DataStream、Dataset、Export。
+- Export。
+- Project / Site / Device / DataStream / Dataset 当前仅完成资产、元信息和查询定义管理，尚未接入设备数据源读取；Project / Site / DataStream 变更审计可后续按风险扩展。
+- 尚未实现模块的敏感操作审计仍待对应模块落地时接入，例如 Export、Telemetry、Media、设备校准、固件升级和设备转移。
 - 设备数据源适配器、Telemetry Query、Media Query。
 - Asynq 真实任务、对象存储、Prometheus、OpenTelemetry。
 
@@ -140,6 +239,12 @@
 - `internal/db`: PostgreSQL/Redis 连接与健康检查。
 - `internal/db/sqlc`: sqlc 生成代码，禁止手改。
 - `internal/httpx`: request id、统一错误响应、HTTP middleware。
+- `internal/audit`: AuditLog 写入和查询。
+- `internal/accessgrant`: AccessGrant、Invitation、外部分享和售后临时授权。
+- `internal/project`: Project 管理。
+- `internal/site`: Site / Station 管理。
+- `internal/device`: Device 资产和 capability 管理。
+- `internal/datastream`: DataStream 元信息管理。
 - `internal/datasource`: 未来所有设备数据源读取适配器都应放这里。
 - `migrations`: PostgreSQL 平台业务库迁移。
 - `sql/queries`: sqlc 查询定义。

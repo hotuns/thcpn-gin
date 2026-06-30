@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/audit"
 	"thcpn-gin/internal/auth"
 	"thcpn-gin/internal/httpx"
 	"thcpn-gin/internal/permission"
@@ -17,6 +18,7 @@ const memberManageAction = "member.manage"
 type Handler struct {
 	service *Service
 	checker *permission.Checker
+	audit   *audit.Service
 }
 
 type addMemberRequest struct {
@@ -30,8 +32,12 @@ type updateMemberRoleRequest struct {
 	RoleCode string `json:"role_code"`
 }
 
-func NewHandler(service *Service, checker *permission.Checker) *Handler {
-	return &Handler{service: service, checker: checker}
+func NewHandler(service *Service, checker *permission.Checker, auditServices ...*audit.Service) *Handler {
+	var auditService *audit.Service
+	if len(auditServices) > 0 {
+		auditService = auditServices[0]
+	}
+	return &Handler{service: service, checker: checker, audit: auditService}
 }
 
 func (h *Handler) List(c *gin.Context) {
@@ -60,6 +66,7 @@ func (h *Handler) Add(c *gin.Context) {
 	if !h.authorize(c, workspaceID) {
 		return
 	}
+	actor, _ := auth.ActorFromContext(c)
 
 	var req addMemberRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -85,7 +92,30 @@ func (h *Handler) Add(c *gin.Context) {
 		RoleCode:    req.RoleCode,
 	})
 	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			WorkspaceID:  audit.WorkspaceID(workspaceID),
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "member.add",
+			ResourceType: "workspace",
+			ResourceID:   audit.ResourceID(workspaceID),
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
 		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		WorkspaceID:  audit.WorkspaceID(workspaceID),
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "member.add",
+		ResourceType: "workspace_member",
+		ResourceID:   audit.ResourceID(result.ID),
+		Result:       audit.ResultSuccess,
+	}) {
 		return
 	}
 
@@ -100,6 +130,7 @@ func (h *Handler) UpdateRole(c *gin.Context) {
 	if !h.authorize(c, workspaceID) {
 		return
 	}
+	actor, _ := auth.ActorFromContext(c)
 
 	memberID, ok := parseMemberID(c)
 	if !ok {
@@ -118,7 +149,30 @@ func (h *Handler) UpdateRole(c *gin.Context) {
 		RoleCode:    req.RoleCode,
 	})
 	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			WorkspaceID:  audit.WorkspaceID(workspaceID),
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "member.role_update",
+			ResourceType: "workspace_member",
+			ResourceID:   audit.ResourceID(memberID),
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
 		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		WorkspaceID:  audit.WorkspaceID(workspaceID),
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "member.role_update",
+		ResourceType: "workspace_member",
+		ResourceID:   audit.ResourceID(result.ID),
+		Result:       audit.ResultSuccess,
+	}) {
 		return
 	}
 
@@ -133,6 +187,7 @@ func (h *Handler) Remove(c *gin.Context) {
 	if !h.authorize(c, workspaceID) {
 		return
 	}
+	actor, _ := auth.ActorFromContext(c)
 
 	memberID, ok := parseMemberID(c)
 	if !ok {
@@ -143,7 +198,30 @@ func (h *Handler) Remove(c *gin.Context) {
 		WorkspaceID: workspaceID,
 		MemberID:    memberID,
 	}); err != nil {
+		if !h.record(c, audit.RecordInput{
+			WorkspaceID:  audit.WorkspaceID(workspaceID),
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "member.remove",
+			ResourceType: "workspace_member",
+			ResourceID:   audit.ResourceID(memberID),
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
 		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		WorkspaceID:  audit.WorkspaceID(workspaceID),
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "member.remove",
+		ResourceType: "workspace_member",
+		ResourceID:   audit.ResourceID(memberID),
+		Result:       audit.ResultSuccess,
+	}) {
 		return
 	}
 
@@ -193,4 +271,15 @@ func parseMemberID(c *gin.Context) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return id, true
+}
+
+func (h *Handler) record(c *gin.Context, input audit.RecordInput) bool {
+	if h.audit == nil {
+		return true
+	}
+	if _, err := h.audit.Record(c.Request.Context(), audit.FromRequest(c, input)); err != nil {
+		httpx.WriteAppError(c, err)
+		return false
+	}
+	return true
 }

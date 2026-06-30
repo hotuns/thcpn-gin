@@ -1,12 +1,13 @@
 openapi: 3.1.0
 info:
   title: THCPN IoT Research Platform API
-  version: 0.3.0
+  version: 0.6.0
   description: |
     THCPN 科研物联网数据管理平台后端 API。
 
     当前文档覆盖已实现的阶段功能：健康检查、短信验证码登录/注册、密码注册/登录、
-    JWT 认证、Workspace 列表/创建和 Workspace 成员管理。
+    JWT 认证、Workspace 列表/创建、Workspace 成员管理、Project、Site、Device、DataStream 和 Dataset 元信息管理、
+    AccessGrant 外部分享/售后临时授权、Invitation 和 AuditLog。
 
     正式业务接口优先使用 `Authorization: Bearer <token>`。
     开发环境可通过配置启用 `X-User-ID` fallback；生产环境应关闭该能力。
@@ -22,6 +23,22 @@ tags:
     description: Workspace management APIs
   - name: Members
     description: Workspace member management APIs
+  - name: Projects
+    description: Project management APIs
+  - name: Sites
+    description: Site / station management APIs
+  - name: Devices
+    description: Device asset management APIs
+  - name: DataStreams
+    description: Device data stream metadata APIs
+  - name: Datasets
+    description: Dataset query definition and source metadata APIs
+  - name: AccessGrants
+    description: Resource sharing and temporary authorization APIs
+  - name: Invitations
+    description: Pending invite APIs for unregistered users
+  - name: AuditLogs
+    description: Sensitive operation audit log APIs
 paths:
   /healthz:
     get:
@@ -527,6 +544,989 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/projects:
+    get:
+      tags:
+        - Projects
+      operationId: listProjects
+      summary: List projects in a workspace
+      description: Requires `project.view` permission in the target workspace.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - name: workspace_id
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUID"
+      responses:
+        "200":
+          description: Projects in the workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      tags:
+        - Projects
+      operationId: createProject
+      summary: Create a project
+      description: Requires `project.manage` permission in the target workspace.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectRequest"
+            examples:
+              default:
+                value:
+                  workspace_id: 018fa0ec-9b6e-7a3d-9c7b-1d8b04f31988
+                  name: 冻土区土壤水热监测
+                  description: 那曲站点长期观测项目
+      responses:
+        "201":
+          description: Project created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/projects/{project_id}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectID"
+    get:
+      tags:
+        - Projects
+      operationId: getProject
+      summary: Get a project
+      description: Requires `project.view` permission in the owning workspace.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Project detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+    patch:
+      tags:
+        - Projects
+      operationId: updateProject
+      summary: Update a project
+      description: Requires `project.manage` permission in the owning workspace.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectRequest"
+      responses:
+        "200":
+          description: Project updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/sites:
+    get:
+      tags:
+        - Sites
+      operationId: listSites
+      summary: List sites
+      description: Requires `site.view` permission in the target workspace. `project_id` may narrow the list.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - name: workspace_id
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUID"
+        - name: project_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/UUID"
+      responses:
+        "200":
+          description: Sites in the workspace or project.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      tags:
+        - Sites
+      operationId: createSite
+      summary: Create a site
+      description: Requires `site.manage` permission in the target workspace.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSiteRequest"
+      responses:
+        "201":
+          description: Site created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Site"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/sites/{site_id}:
+    parameters:
+      - $ref: "#/components/parameters/SiteID"
+    get:
+      tags:
+        - Sites
+      operationId: getSite
+      summary: Get a site
+      description: Requires `site.view` permission in the owning workspace.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Site detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Site"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+    patch:
+      tags:
+        - Sites
+      operationId: updateSite
+      summary: Update a site
+      description: Requires `site.manage` permission in the owning workspace.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSiteRequest"
+      responses:
+        "200":
+          description: Site updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Site"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/devices:
+    get:
+      tags:
+        - Devices
+      operationId: listDevices
+      summary: List devices
+      description: Requires `device.view` permission in the target workspace. `project_id` and `site_id` may narrow the list.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - name: workspace_id
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUID"
+        - name: project_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/UUID"
+        - name: site_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/UUID"
+      responses:
+        "200":
+          description: Devices in the workspace, project or site.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      tags:
+        - Devices
+      operationId: createDevice
+      summary: Bind or create a device asset
+      description: Requires `device.bind` permission in the target workspace.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDeviceRequest"
+      responses:
+        "201":
+          description: Device asset created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/devices/{device_id}:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags:
+        - Devices
+      operationId: getDevice
+      summary: Get a device
+      description: Requires `device.view` permission in the owning workspace.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Device detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+    patch:
+      tags:
+        - Devices
+      operationId: updateDevice
+      summary: Update a device
+      description: Requires `device.configure` permission in the owning workspace.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDeviceRequest"
+      responses:
+        "200":
+          description: Device updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/data-streams:
+    get:
+      tags:
+        - DataStreams
+      operationId: listDataStreams
+      summary: List data streams for a device
+      description: Requires `device.view` permission in the owning workspace.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - name: device_id
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUID"
+      responses:
+        "200":
+          description: Data streams configured for the device.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataStreamListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      tags:
+        - DataStreams
+      operationId: createDataStream
+      summary: Create data stream metadata
+      description: Requires `device.configure` permission in the owning workspace.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDataStreamRequest"
+      responses:
+        "201":
+          description: Data stream created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataStream"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/data-streams/{data_stream_id}:
+    parameters:
+      - $ref: "#/components/parameters/DataStreamID"
+    get:
+      tags:
+        - DataStreams
+      operationId: getDataStream
+      summary: Get data stream metadata
+      description: Requires `device.view` permission in the owning workspace.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Data stream detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataStream"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+    patch:
+      tags:
+        - DataStreams
+      operationId: updateDataStream
+      summary: Update data stream metadata
+      description: Requires `device.configure` permission in the owning workspace.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDataStreamRequest"
+      responses:
+        "200":
+          description: Data stream updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataStream"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/datasets:
+    get:
+      tags:
+        - Datasets
+      operationId: listDatasets
+      summary: List datasets in a workspace
+      description: Requires `dataset.view` permission in the target workspace. `project_id` narrows the result to one project.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - name: workspace_id
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUID"
+        - name: project_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/UUID"
+      responses:
+        "200":
+          description: Datasets visible in the workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      tags:
+        - Datasets
+      operationId: createDataset
+      summary: Create dataset metadata
+      description: Requires `dataset.create` permission in the owning workspace. The first version stores the query definition and source metadata only; it does not export data.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDatasetRequest"
+      responses:
+        "201":
+          description: Dataset created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dataset"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/datasets/{dataset_id}:
+    parameters:
+      - $ref: "#/components/parameters/DatasetID"
+    get:
+      tags:
+        - Datasets
+      operationId: getDataset
+      summary: Get dataset metadata
+      description: Requires `dataset.view` permission on the dataset scope.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Dataset detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dataset"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+    patch:
+      tags:
+        - Datasets
+      operationId: updateDataset
+      summary: Update dataset metadata
+      description: Requires `dataset.create` permission on the dataset scope. Setting `status` to `locked` requires `dataset.lock`.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDatasetRequest"
+      responses:
+        "200":
+          description: Dataset updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dataset"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+    delete:
+      tags:
+        - Datasets
+      operationId: deleteDataset
+      summary: Delete a dataset
+      description: Requires `dataset.delete` permission on the dataset scope.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "204":
+          description: Dataset deleted.
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/access-grants:
+    get:
+      tags:
+        - AccessGrants
+      operationId: listAccessGrants
+      summary: List access grants in a workspace
+      description: Requires `share.view` permission in the target workspace.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - name: workspace_id
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUID"
+      responses:
+        "200":
+          description: Access grants in the workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessGrantListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      tags:
+        - AccessGrants
+      operationId: createAccessGrant
+      summary: Share a resource with a registered user
+      description: |
+        Creates an active AccessGrant for an existing active user.
+        Non-service grants require `share.create` on the target scope.
+        `service_engineer` grants require `service_access.grant`, `expires_at`, and `device` or `site` scope.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAccessGrantRequest"
+      responses:
+        "201":
+          description: Access grant created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessGrant"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/access-grants/mine:
+    get:
+      tags:
+        - AccessGrants
+      operationId: listMyAccessGrants
+      summary: List resources shared with the current user
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Active non-expired grants for the current user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessGrantListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/access-grants/{access_grant_id}:
+    parameters:
+      - $ref: "#/components/parameters/AccessGrantID"
+    delete:
+      tags:
+        - AccessGrants
+      operationId: revokeAccessGrant
+      summary: Revoke an active access grant
+      description: Requires `share.revoke` on the grant scope, or `service_access.grant` for service engineer grants.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Access grant revoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessGrant"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/invitations:
+    get:
+      tags:
+        - Invitations
+      operationId: listInvitations
+      summary: List invitations in a workspace
+      description: Requires `share.view` permission in the target workspace.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - name: workspace_id
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUID"
+      responses:
+        "200":
+          description: Invitations in the workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      tags:
+        - Invitations
+      operationId: createInvitation
+      summary: Invite an unregistered phone or email to a resource
+      description: Creates a pending Invitation. The invitee can accept it after registering or logging in with the matching phone or email.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInvitationRequest"
+      responses:
+        "201":
+          description: Invitation created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invitation"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/invitations/mine:
+    get:
+      tags:
+        - Invitations
+      operationId: listMyInvitations
+      summary: List pending invitations for the current user identity
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Pending invitations matching the current user's phone or email.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/invitations/{invitation_id}/accept:
+    parameters:
+      - $ref: "#/components/parameters/InvitationID"
+    post:
+      tags:
+        - Invitations
+      operationId: acceptInvitation
+      summary: Accept an invitation
+      description: Converts a pending Invitation into an AccessGrant when the current user's phone or email matches the invitee identity.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Invitation accepted and access grant created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessGrant"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/invitations/{invitation_id}:
+    parameters:
+      - $ref: "#/components/parameters/InvitationID"
+    delete:
+      tags:
+        - Invitations
+      operationId: revokeInvitation
+      summary: Revoke a pending invitation
+      description: Requires `share.revoke` on the invitation scope, or `service_access.grant` for service engineer invitations.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Invitation revoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invitation"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/audit-logs:
+    get:
+      tags:
+        - AuditLogs
+      operationId: listAuditLogs
+      summary: List audit logs in a workspace
+      description: Requires `audit.view` permission in the target workspace. Results are ordered by newest first.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - name: workspace_id
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUID"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        "200":
+          description: Audit logs in the workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditLogListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "500":
+          $ref: "#/components/responses/Internal"
 components:
   securitySchemes:
     bearerAuth:
@@ -556,6 +1556,62 @@ components:
         type: string
         format: uuid
       description: Workspace member UUID.
+    ProjectID:
+      name: project_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Project UUID.
+    SiteID:
+      name: site_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Site UUID.
+    DeviceID:
+      name: device_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Device UUID.
+    DataStreamID:
+      name: data_stream_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Data stream UUID.
+    DatasetID:
+      name: dataset_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Dataset UUID.
+    AccessGrantID:
+      name: access_grant_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Access grant UUID.
+    InvitationID:
+      name: invitation_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Invitation UUID.
   responses:
     InvalidArgument:
       description: Invalid request argument or body.
@@ -712,6 +1768,72 @@ components:
       enum:
         - active
         - disabled
+    ProjectStatus:
+      type: string
+      enum:
+        - active
+        - archived
+    SiteStatus:
+      type: string
+      enum:
+        - active
+        - archived
+    DeviceStatus:
+      type: string
+      enum:
+        - active
+        - disabled
+        - retired
+    DeviceCapabilityCode:
+      type: string
+      enum:
+        - telemetry
+        - image_capture
+        - video_stream
+        - ptz_control
+        - remote_command
+        - configurable
+        - calibratable
+        - firmware_update
+        - edge_storage
+    DataStreamType:
+      type: string
+      enum:
+        - telemetry
+        - image
+        - video
+        - audio
+        - event
+        - log
+    DataStreamStatus:
+      type: string
+      enum:
+        - active
+        - disabled
+        - archived
+    DatasetDataType:
+      type: string
+      enum:
+        - telemetry
+        - image
+        - video
+        - audio
+        - event
+        - log
+        - mixed
+    DatasetStatus:
+      type: string
+      enum:
+        - draft
+        - locked
+        - archived
+        - published
+    DatasetSourceType:
+      type: string
+      enum:
+        - device
+        - data_stream
+        - file
     MembershipStatus:
       type: string
       enum:
@@ -1142,3 +2264,731 @@ components:
       properties:
         role_code:
           $ref: "#/components/schemas/InternalMemberRoleCode"
+    Project:
+      type: object
+      required:
+        - id
+        - workspace_id
+        - name
+        - status
+        - created_by
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        workspace_id:
+          $ref: "#/components/schemas/UUID"
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/ProjectStatus"
+        created_by:
+          $ref: "#/components/schemas/UUID"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    ProjectListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Project"
+    CreateProjectRequest:
+      type: object
+      required:
+        - workspace_id
+        - name
+      properties:
+        workspace_id:
+          $ref: "#/components/schemas/UUID"
+        name:
+          type: string
+        description:
+          type: string
+    UpdateProjectRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/ProjectStatus"
+    Site:
+      type: object
+      required:
+        - id
+        - workspace_id
+        - project_id
+        - name
+        - status
+        - created_by
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        workspace_id:
+          $ref: "#/components/schemas/UUID"
+        project_id:
+          $ref: "#/components/schemas/UUID"
+        name:
+          type: string
+        description:
+          type: string
+        location_text:
+          type: string
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+        status:
+          $ref: "#/components/schemas/SiteStatus"
+        created_by:
+          $ref: "#/components/schemas/UUID"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    SiteListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Site"
+    CreateSiteRequest:
+      type: object
+      required:
+        - workspace_id
+        - project_id
+        - name
+      properties:
+        workspace_id:
+          $ref: "#/components/schemas/UUID"
+        project_id:
+          $ref: "#/components/schemas/UUID"
+        name:
+          type: string
+        description:
+          type: string
+        location_text:
+          type: string
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+    UpdateSiteRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        location_text:
+          type: string
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+        status:
+          $ref: "#/components/schemas/SiteStatus"
+    Device:
+      type: object
+      required:
+        - id
+        - workspace_id
+        - serial_no
+        - name
+        - status
+        - capabilities
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        workspace_id:
+          $ref: "#/components/schemas/UUID"
+        project_id:
+          $ref: "#/components/schemas/UUID"
+        site_id:
+          $ref: "#/components/schemas/UUID"
+        product_id:
+          type: string
+        serial_no:
+          type: string
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/DeviceStatus"
+        activated_at:
+          $ref: "#/components/schemas/Timestamp"
+        bound_by:
+          $ref: "#/components/schemas/UUID"
+        capabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceCapabilityCode"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    DeviceListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Device"
+    CreateDeviceRequest:
+      type: object
+      required:
+        - workspace_id
+        - serial_no
+        - name
+      properties:
+        workspace_id:
+          $ref: "#/components/schemas/UUID"
+        project_id:
+          $ref: "#/components/schemas/UUID"
+        site_id:
+          $ref: "#/components/schemas/UUID"
+        product_id:
+          type: string
+        serial_no:
+          type: string
+        name:
+          type: string
+        capabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceCapabilityCode"
+    UpdateDeviceRequest:
+      type: object
+      properties:
+        project_id:
+          $ref: "#/components/schemas/UUID"
+        site_id:
+          $ref: "#/components/schemas/UUID"
+        product_id:
+          type: string
+        serial_no:
+          type: string
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/DeviceStatus"
+        capabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceCapabilityCode"
+    DataStream:
+      type: object
+      required:
+        - id
+        - workspace_id
+        - device_id
+        - code
+        - name
+        - type
+        - status
+        - created_by
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        workspace_id:
+          $ref: "#/components/schemas/UUID"
+        device_id:
+          $ref: "#/components/schemas/UUID"
+        code:
+          type: string
+        name:
+          type: string
+        type:
+          $ref: "#/components/schemas/DataStreamType"
+        unit:
+          type: string
+        status:
+          $ref: "#/components/schemas/DataStreamStatus"
+        created_by:
+          $ref: "#/components/schemas/UUID"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    DataStreamListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DataStream"
+    CreateDataStreamRequest:
+      type: object
+      required:
+        - device_id
+        - code
+        - name
+        - type
+      properties:
+        device_id:
+          $ref: "#/components/schemas/UUID"
+        code:
+          type: string
+        name:
+          type: string
+        type:
+          $ref: "#/components/schemas/DataStreamType"
+        unit:
+          type: string
+    UpdateDataStreamRequest:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        type:
+          $ref: "#/components/schemas/DataStreamType"
+        unit:
+          type: string
+        status:
+          $ref: "#/components/schemas/DataStreamStatus"
+    DatasetSource:
+      type: object
+      required:
+        - id
+        - dataset_id
+        - source_type
+        - source_id
+        - created_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        dataset_id:
+          $ref: "#/components/schemas/UUID"
+        source_type:
+          $ref: "#/components/schemas/DatasetSourceType"
+        source_id:
+          $ref: "#/components/schemas/UUID"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+    DatasetSourceInput:
+      type: object
+      required:
+        - source_type
+        - source_id
+      properties:
+        source_type:
+          $ref: "#/components/schemas/DatasetSourceType"
+        source_id:
+          $ref: "#/components/schemas/UUID"
+    Dataset:
+      type: object
+      required:
+        - id
+        - workspace_id
+        - name
+        - data_type
+        - time_start
+        - time_end
+        - status
+        - created_by
+        - sources
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        workspace_id:
+          $ref: "#/components/schemas/UUID"
+        project_id:
+          $ref: "#/components/schemas/UUID"
+        name:
+          type: string
+        description:
+          type: string
+        data_type:
+          $ref: "#/components/schemas/DatasetDataType"
+        time_start:
+          $ref: "#/components/schemas/Timestamp"
+        time_end:
+          $ref: "#/components/schemas/Timestamp"
+        status:
+          $ref: "#/components/schemas/DatasetStatus"
+        created_by:
+          $ref: "#/components/schemas/UUID"
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetSource"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    DatasetListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Dataset"
+    CreateDatasetRequest:
+      type: object
+      required:
+        - workspace_id
+        - name
+        - data_type
+        - time_start
+        - time_end
+        - sources
+      properties:
+        workspace_id:
+          $ref: "#/components/schemas/UUID"
+        project_id:
+          $ref: "#/components/schemas/UUID"
+        name:
+          type: string
+        description:
+          type: string
+        data_type:
+          $ref: "#/components/schemas/DatasetDataType"
+        time_start:
+          $ref: "#/components/schemas/Timestamp"
+        time_end:
+          $ref: "#/components/schemas/Timestamp"
+        sources:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/DatasetSourceInput"
+    UpdateDatasetRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        data_type:
+          $ref: "#/components/schemas/DatasetDataType"
+        time_start:
+          $ref: "#/components/schemas/Timestamp"
+        time_end:
+          $ref: "#/components/schemas/Timestamp"
+        status:
+          $ref: "#/components/schemas/DatasetStatus"
+        sources:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/DatasetSourceInput"
+    AccessGrantRoleCode:
+      type: string
+      enum:
+        - project_manager
+        - site_operator
+        - data_manager
+        - researcher
+        - viewer
+        - shared_viewer
+        - shared_downloader
+        - service_engineer
+      description: Roles allowed for scoped access grants. Owner and Admin are intentionally excluded.
+    AccessGrantScopeType:
+      type: string
+      enum:
+        - workspace
+        - project
+        - site
+        - device
+        - dataset
+      description: Scope types supported by AccessGrant. Dataset scope applies to a single dataset.
+    AccessGrantStatus:
+      type: string
+      enum:
+        - active
+        - revoked
+        - expired
+    InvitationStatus:
+      type: string
+      enum:
+        - pending
+        - accepted
+        - expired
+        - revoked
+    AccessGrantSubject:
+      type: object
+      required:
+        - type
+        - id
+      properties:
+        type:
+          type: string
+          enum:
+            - user
+        id:
+          $ref: "#/components/schemas/UUID"
+        name:
+          type: string
+        phone:
+          $ref: "#/components/schemas/Phone"
+        email:
+          $ref: "#/components/schemas/Email"
+    AccessGrant:
+      type: object
+      required:
+        - id
+        - workspace_id
+        - subject
+        - role
+        - scope_type
+        - scope_id
+        - allow_reshare
+        - allow_api_access
+        - created_by
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        workspace_id:
+          $ref: "#/components/schemas/UUID"
+        subject:
+          $ref: "#/components/schemas/AccessGrantSubject"
+        role:
+          $ref: "#/components/schemas/RoleSummary"
+        scope_type:
+          $ref: "#/components/schemas/AccessGrantScopeType"
+        scope_id:
+          $ref: "#/components/schemas/UUID"
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+        allow_reshare:
+          type: boolean
+        allow_api_access:
+          type: boolean
+        created_by:
+          $ref: "#/components/schemas/UUID"
+        status:
+          $ref: "#/components/schemas/AccessGrantStatus"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    AccessGrantListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccessGrant"
+    CreateAccessGrantRequest:
+      type: object
+      required:
+        - role_code
+        - scope_type
+        - scope_id
+      oneOf:
+        - required:
+            - subject_user_id
+        - required:
+            - email
+        - required:
+            - phone
+      properties:
+        subject_user_id:
+          $ref: "#/components/schemas/UUID"
+        email:
+          $ref: "#/components/schemas/Email"
+        phone:
+          $ref: "#/components/schemas/Phone"
+        role_code:
+          $ref: "#/components/schemas/AccessGrantRoleCode"
+        scope_type:
+          $ref: "#/components/schemas/AccessGrantScopeType"
+        scope_id:
+          $ref: "#/components/schemas/UUID"
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+        allow_reshare:
+          type: boolean
+          default: false
+        allow_api_access:
+          type: boolean
+          default: false
+    Invitation:
+      type: object
+      required:
+        - id
+        - workspace_id
+        - role
+        - scope_type
+        - scope_id
+        - invited_by
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        workspace_id:
+          $ref: "#/components/schemas/UUID"
+        invitee_email:
+          $ref: "#/components/schemas/Email"
+        invitee_phone:
+          $ref: "#/components/schemas/Phone"
+        role:
+          $ref: "#/components/schemas/RoleSummary"
+        scope_type:
+          $ref: "#/components/schemas/AccessGrantScopeType"
+        scope_id:
+          $ref: "#/components/schemas/UUID"
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+        invited_by:
+          $ref: "#/components/schemas/UUID"
+        status:
+          $ref: "#/components/schemas/InvitationStatus"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    InvitationListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Invitation"
+    CreateInvitationRequest:
+      type: object
+      required:
+        - role_code
+        - scope_type
+        - scope_id
+      oneOf:
+        - required:
+            - email
+        - required:
+            - phone
+      properties:
+        email:
+          $ref: "#/components/schemas/Email"
+        phone:
+          $ref: "#/components/schemas/Phone"
+        role_code:
+          $ref: "#/components/schemas/AccessGrantRoleCode"
+        scope_type:
+          $ref: "#/components/schemas/AccessGrantScopeType"
+        scope_id:
+          $ref: "#/components/schemas/UUID"
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+    AuditActorType:
+      type: string
+      enum:
+        - user
+        - service_account
+        - system
+        - anonymous
+    AuditResult:
+      type: string
+      enum:
+        - success
+        - failure
+    AuditLog:
+      type: object
+      required:
+        - id
+        - actor_type
+        - action
+        - resource_type
+        - result
+        - created_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        workspace_id:
+          $ref: "#/components/schemas/UUID"
+        actor_type:
+          $ref: "#/components/schemas/AuditActorType"
+        actor_id:
+          $ref: "#/components/schemas/UUID"
+        action:
+          type: string
+          examples:
+            - auth.password_login
+            - workspace.create
+            - device.bind
+            - share.create
+            - service_access.grant
+        resource_type:
+          type: string
+          examples:
+            - auth
+            - workspace
+            - device
+            - access_grant
+        resource_id:
+          $ref: "#/components/schemas/UUID"
+        result:
+          $ref: "#/components/schemas/AuditResult"
+        reason:
+          type: string
+        ip:
+          type: string
+        user_agent:
+          type: string
+        request_id:
+          type: string
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+    AuditLogListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditLog"

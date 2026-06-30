@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS data_streams;
+DROP TABLE IF EXISTS device_capabilities;
+DROP TABLE IF EXISTS devices;
+DROP TABLE IF EXISTS sites;
+DROP TABLE IF EXISTS projects;

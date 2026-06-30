@@ -9,11 +9,118 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AccessGrant struct {
+	ID             uuid.UUID          `json:"id"`
+	WorkspaceID    uuid.UUID          `json:"workspace_id"`
+	SubjectType    string             `json:"subject_type"`
+	SubjectID      uuid.UUID          `json:"subject_id"`
+	RoleID         uuid.UUID          `json:"role_id"`
+	ScopeType      string             `json:"scope_type"`
+	ScopeID        uuid.UUID          `json:"scope_id"`
+	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
+	AllowReshare   bool               `json:"allow_reshare"`
+	AllowApiAccess bool               `json:"allow_api_access"`
+	CreatedBy      uuid.UUID          `json:"created_by"`
+	Status         string             `json:"status"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
 type AppMetadatum struct {
 	Key       string             `json:"key"`
 	Value     string             `json:"value"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type AuditLog struct {
+	ID           uuid.UUID          `json:"id"`
+	WorkspaceID  *uuid.UUID         `json:"workspace_id"`
+	ActorType    string             `json:"actor_type"`
+	ActorID      *uuid.UUID         `json:"actor_id"`
+	Action       string             `json:"action"`
+	ResourceType string             `json:"resource_type"`
+	ResourceID   *uuid.UUID         `json:"resource_id"`
+	Result       string             `json:"result"`
+	Reason       *string            `json:"reason"`
+	Ip           *string            `json:"ip"`
+	UserAgent    *string            `json:"user_agent"`
+	RequestID    *string            `json:"request_id"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+type DataStream struct {
+	ID          uuid.UUID          `json:"id"`
+	WorkspaceID uuid.UUID          `json:"workspace_id"`
+	DeviceID    uuid.UUID          `json:"device_id"`
+	Code        string             `json:"code"`
+	Name        string             `json:"name"`
+	Type        string             `json:"type"`
+	Unit        *string            `json:"unit"`
+	Status      string             `json:"status"`
+	CreatedBy   uuid.UUID          `json:"created_by"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Dataset struct {
+	ID          uuid.UUID          `json:"id"`
+	WorkspaceID uuid.UUID          `json:"workspace_id"`
+	ProjectID   *uuid.UUID         `json:"project_id"`
+	Name        string             `json:"name"`
+	Description *string            `json:"description"`
+	DataType    string             `json:"data_type"`
+	TimeStart   pgtype.Timestamptz `json:"time_start"`
+	TimeEnd     pgtype.Timestamptz `json:"time_end"`
+	Status      string             `json:"status"`
+	CreatedBy   uuid.UUID          `json:"created_by"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type DatasetSource struct {
+	ID         uuid.UUID          `json:"id"`
+	DatasetID  uuid.UUID          `json:"dataset_id"`
+	SourceType string             `json:"source_type"`
+	SourceID   uuid.UUID          `json:"source_id"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+}
+
+type Device struct {
+	ID          uuid.UUID          `json:"id"`
+	WorkspaceID uuid.UUID          `json:"workspace_id"`
+	ProjectID   *uuid.UUID         `json:"project_id"`
+	SiteID      *uuid.UUID         `json:"site_id"`
+	ProductID   *string            `json:"product_id"`
+	SerialNo    string             `json:"serial_no"`
+	Name        string             `json:"name"`
+	Status      string             `json:"status"`
+	ActivatedAt pgtype.Timestamptz `json:"activated_at"`
+	BoundBy     *uuid.UUID         `json:"bound_by"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type DeviceCapability struct {
+	ID             uuid.UUID          `json:"id"`
+	DeviceID       uuid.UUID          `json:"device_id"`
+	CapabilityCode string             `json:"capability_code"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type Invitation struct {
+	ID           uuid.UUID          `json:"id"`
+	WorkspaceID  uuid.UUID          `json:"workspace_id"`
+	InviteeEmail *string            `json:"invitee_email"`
+	InviteePhone *string            `json:"invitee_phone"`
+	RoleID       uuid.UUID          `json:"role_id"`
+	ScopeType    string             `json:"scope_type"`
+	ScopeID      uuid.UUID          `json:"scope_id"`
+	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
+	InvitedBy    uuid.UUID          `json:"invited_by"`
+	Status       string             `json:"status"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Permission struct {
@@ -22,6 +129,17 @@ type Permission struct {
 	Name         string    `json:"name"`
 	ResourceType string    `json:"resource_type"`
 	Action       string    `json:"action"`
+}
+
+type Project struct {
+	ID          uuid.UUID          `json:"id"`
+	WorkspaceID uuid.UUID          `json:"workspace_id"`
+	Name        string             `json:"name"`
+	Description *string            `json:"description"`
+	Status      string             `json:"status"`
+	CreatedBy   uuid.UUID          `json:"created_by"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Role struct {
@@ -37,6 +155,21 @@ type Role struct {
 type RolePermission struct {
 	RoleID       uuid.UUID `json:"role_id"`
 	PermissionID uuid.UUID `json:"permission_id"`
+}
+
+type Site struct {
+	ID           uuid.UUID          `json:"id"`
+	WorkspaceID  uuid.UUID          `json:"workspace_id"`
+	ProjectID    uuid.UUID          `json:"project_id"`
+	Name         string             `json:"name"`
+	Description  *string            `json:"description"`
+	LocationText *string            `json:"location_text"`
+	Latitude     pgtype.Float8      `json:"latitude"`
+	Longitude    pgtype.Float8      `json:"longitude"`
+	Status       string             `json:"status"`
+	CreatedBy    uuid.UUID          `json:"created_by"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
 type User struct {

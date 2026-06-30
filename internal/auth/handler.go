@@ -6,11 +6,13 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/audit"
 	"thcpn-gin/internal/httpx"
 )
 
 type Handler struct {
 	service *Service
+	audit   *audit.Service
 }
 
 type sendSMSRequest struct {
@@ -35,8 +37,12 @@ type passwordLoginRequest struct {
 	Password   string `json:"password"`
 }
 
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *Service, auditServices ...*audit.Service) *Handler {
+	var auditService *audit.Service
+	if len(auditServices) > 0 {
+		auditService = auditServices[0]
+	}
+	return &Handler{service: service, audit: auditService}
 }
 
 func (h *Handler) SendSMS(c *gin.Context) {
@@ -68,7 +74,27 @@ func (h *Handler) LoginWithSMS(c *gin.Context) {
 		Name:  req.Name,
 	})
 	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorAnonymous,
+			Action:       "auth.sms_login",
+			ResourceType: "auth",
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
 		httpx.WriteAppError(c, err)
+		return
+	}
+	userID := result.User.ID
+	if !h.record(c, audit.RecordInput{
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(userID),
+		Action:       "auth.sms_login",
+		ResourceType: "auth",
+		ResourceID:   audit.ResourceID(userID),
+		Result:       audit.ResultSuccess,
+	}) {
 		return
 	}
 
@@ -89,7 +115,27 @@ func (h *Handler) RegisterWithPassword(c *gin.Context) {
 		Password: req.Password,
 	})
 	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorAnonymous,
+			Action:       "auth.password_register",
+			ResourceType: "auth",
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
 		httpx.WriteAppError(c, err)
+		return
+	}
+	userID := result.User.ID
+	if !h.record(c, audit.RecordInput{
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(userID),
+		Action:       "auth.password_register",
+		ResourceType: "auth",
+		ResourceID:   audit.ResourceID(userID),
+		Result:       audit.ResultSuccess,
+	}) {
 		return
 	}
 
@@ -108,9 +154,40 @@ func (h *Handler) LoginWithPassword(c *gin.Context) {
 		Password:   req.Password,
 	})
 	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorAnonymous,
+			Action:       "auth.password_login",
+			ResourceType: "auth",
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
 		httpx.WriteAppError(c, err)
+		return
+	}
+	userID := result.User.ID
+	if !h.record(c, audit.RecordInput{
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(userID),
+		Action:       "auth.password_login",
+		ResourceType: "auth",
+		ResourceID:   audit.ResourceID(userID),
+		Result:       audit.ResultSuccess,
+	}) {
 		return
 	}
 
 	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) record(c *gin.Context, input audit.RecordInput) bool {
+	if h.audit == nil {
+		return true
+	}
+	if _, err := h.audit.Record(c.Request.Context(), audit.FromRequest(c, input)); err != nil {
+		httpx.WriteAppError(c, err)
+		return false
+	}
+	return true
 }
