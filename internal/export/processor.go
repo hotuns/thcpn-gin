@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -34,10 +36,19 @@ type TelemetryRuntime interface {
 	QueryTelemetry(ctx context.Context, source datasource.DataSource, req datasource.TelemetryQuery) (datasource.TelemetryResult, error)
 }
 
+type MediaRuntime interface {
+	QueryMedia(ctx context.Context, source datasource.DataSource, req datasource.MediaQuery) (datasource.MediaResult, error)
+}
+
+type Runtime interface {
+	TelemetryRuntime
+	MediaRuntime
+}
+
 type Processor struct {
 	queries     *sqlc.Queries
 	dataSources *datasource.Service
-	runtime     TelemetryRuntime
+	runtime     Runtime
 	store       objectstore.Store
 	cfg         config.ExportConfig
 	logger      *slog.Logger
@@ -47,6 +58,7 @@ type requestConfig struct {
 	StartTime time.Time `json:"start_time"`
 	EndTime   time.Time `json:"end_time"`
 	Limit     int       `json:"limit"`
+	MediaType string    `json:"media_type"`
 }
 
 type telemetrySeries struct {
@@ -64,7 +76,18 @@ type renderedExport struct {
 	Body        []byte
 }
 
-func NewProcessor(db *pgxpool.Pool, dataSources *datasource.Service, runtime TelemetryRuntime, store objectstore.Store, cfg config.ExportConfig, logger *slog.Logger) *Processor {
+type mediaExportItem struct {
+	DataStreamID       uuid.UUID
+	DeviceID           uuid.UUID
+	MediaID            string
+	MediaType          string
+	CapturedAt         time.Time
+	ObjectKey          string
+	ThumbnailObjectKey string
+	ArchivePath        string
+}
+
+func NewProcessor(db *pgxpool.Pool, dataSources *datasource.Service, runtime Runtime, store objectstore.Store, cfg config.ExportConfig, logger *slog.Logger) *Processor {
 	if dataSources == nil {
 		dataSources = datasource.NewService(db)
 	}
@@ -194,7 +217,19 @@ func (p *Processor) render(ctx context.Context, job Job) (renderedExport, error)
 	case "telemetry_excel":
 		return renderedExport{}, apperr.New(apperr.KindInvalidArgument, "telemetry_excel worker generation is not implemented")
 	case "media_zip":
-		return renderedExport{}, apperr.New(apperr.KindInvalidArgument, "media_zip worker generation is not implemented")
+		cfg, err := parseRequestConfig(job.RequestConfig, p.cfg.MaxRows)
+		if err != nil {
+			return renderedExport{}, err
+		}
+		body, err := p.renderMediaZIP(ctx, job, cfg)
+		if err != nil {
+			return renderedExport{}, err
+		}
+		return renderedExport{
+			ObjectKey:   exportObjectKey(job, "zip"),
+			ContentType: contentTypeZIP,
+			Body:        body,
+		}, nil
 	default:
 		return renderedExport{}, apperr.New(apperr.KindInvalidArgument, "invalid export_type")
 	}
@@ -274,6 +309,147 @@ func (p *Processor) renderDatasetZIP(ctx context.Context, job Job) ([]byte, erro
 		return nil, apperr.Wrap(apperr.KindInternal, "close dataset export zip", err)
 	}
 	return buf.Bytes(), nil
+}
+
+func (p *Processor) renderMediaZIP(ctx context.Context, job Job, cfg requestConfig) ([]byte, error) {
+	items, err := p.queryMedia(ctx, job.ResourceType, job.ResourceID, cfg.StartTime, cfg.EndTime, cfg.Limit, cfg.MediaType)
+	if err != nil {
+		return nil, err
+	}
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+
+	usedPaths := map[string]int{}
+	for i := range items {
+		archivePath := mediaArchivePath(items[i], usedPaths)
+		items[i].ArchivePath = archivePath
+
+		result, err := p.store.Get(ctx, items[i].ObjectKey)
+		if err != nil {
+			_ = zw.Close()
+			return nil, err
+		}
+		if err := writeObjectFile(zw, archivePath, result.Body); err != nil {
+			_ = result.Body.Close()
+			_ = zw.Close()
+			return nil, err
+		}
+		if err := result.Body.Close(); err != nil {
+			_ = zw.Close()
+			return nil, apperr.Wrap(apperr.KindInternal, "close media object", err)
+		}
+	}
+	if err := writeMediaManifestCSV(zw, items); err != nil {
+		_ = zw.Close()
+		return nil, err
+	}
+	if err := zw.Close(); err != nil {
+		return nil, apperr.Wrap(apperr.KindInternal, "close media export zip", err)
+	}
+	return buf.Bytes(), nil
+}
+
+func (p *Processor) queryMedia(ctx context.Context, resourceType string, resourceID uuid.UUID, start time.Time, end time.Time, limit int, mediaType string) ([]mediaExportItem, error) {
+	if start.IsZero() || end.IsZero() {
+		return nil, apperr.New(apperr.KindInvalidArgument, "start_time and end_time are required")
+	}
+	if !end.After(start) {
+		return nil, apperr.New(apperr.KindInvalidArgument, "end_time must be after start_time")
+	}
+	if limit <= 0 || limit > p.cfg.MaxRows {
+		limit = p.cfg.MaxRows
+	}
+	mediaType = strings.TrimSpace(mediaType)
+
+	switch resourceType {
+	case "device":
+		device, err := p.queries.GetDevice(ctx, resourceID)
+		if err != nil {
+			return nil, mapNotFoundOrInternal(err, "device not found")
+		}
+		streams, err := p.queries.ListDataStreamsByDevice(ctx, device.ID)
+		if err != nil {
+			return nil, apperr.Wrap(apperr.KindInternal, "list data streams", err)
+		}
+		items := make([]mediaExportItem, 0)
+		for _, stream := range streams {
+			if !isMediaStreamType(stream.Type) || stream.Status != "active" {
+				continue
+			}
+			if mediaType != "" && stream.Type != mediaType {
+				continue
+			}
+			streamItems, err := p.queryMediaStream(ctx, stream, start, end, remainingLimit(limit, len(items)))
+			if err != nil {
+				return nil, err
+			}
+			items = append(items, streamItems...)
+			if len(items) >= limit {
+				return items[:limit], nil
+			}
+		}
+		return items, nil
+	case "data_stream", "media":
+		stream, err := p.queries.GetDataStream(ctx, resourceID)
+		if err != nil {
+			return nil, mapNotFoundOrInternal(err, "data stream not found")
+		}
+		if !isMediaStreamType(stream.Type) {
+			return nil, apperr.New(apperr.KindInvalidArgument, "data stream is not media")
+		}
+		if stream.Status != "active" {
+			return nil, apperr.New(apperr.KindInvalidArgument, "data stream is not active")
+		}
+		if mediaType != "" && stream.Type != mediaType {
+			return nil, apperr.New(apperr.KindInvalidArgument, "data stream media type does not match")
+		}
+		return p.queryMediaStream(ctx, stream, start, end, limit)
+	default:
+		return nil, apperr.New(apperr.KindInvalidArgument, "media export requires device, data_stream or media resource")
+	}
+}
+
+func (p *Processor) queryMediaStream(ctx context.Context, stream sqlc.DataStream, start time.Time, end time.Time, limit int) ([]mediaExportItem, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	binding, err := p.dataSources.GetActiveDataStreamBinding(ctx, stream.ID)
+	if err != nil {
+		return nil, err
+	}
+	source, err := p.dataSources.GetDataSource(ctx, binding.DataSourceID)
+	if err != nil {
+		return nil, err
+	}
+	result, err := p.runtime.QueryMedia(ctx, source, datasource.MediaQuery{
+		Binding:   binding,
+		Start:     start,
+		End:       end,
+		Page:      1,
+		PageSize:  limit,
+		MediaType: stream.Type,
+	})
+	if err != nil {
+		return nil, err
+	}
+	items := make([]mediaExportItem, 0, len(result.Items))
+	for _, record := range result.Items {
+		thumbnail := ""
+		if record.ThumbnailObjectKey != nil {
+			thumbnail = *record.ThumbnailObjectKey
+		}
+		items = append(items, mediaExportItem{
+			DataStreamID:       stream.ID,
+			DeviceID:           stream.DeviceID,
+			MediaID:            record.ID,
+			MediaType:          record.MediaType,
+			CapturedAt:         record.CapturedAt,
+			ObjectKey:          record.ObjectKey,
+			ThumbnailObjectKey: thumbnail,
+		})
+	}
+	return items, nil
 }
 
 func (p *Processor) queryTelemetry(ctx context.Context, resourceType string, resourceID uuid.UUID, start time.Time, end time.Time, limit int) ([]telemetrySeries, error) {
@@ -386,6 +562,26 @@ func parseRequestConfig(raw json.RawMessage, maxRows int) (requestConfig, error)
 	return cfg, nil
 }
 
+func isMediaStreamType(value string) bool {
+	switch value {
+	case "image", "video", "audio":
+		return true
+	default:
+		return false
+	}
+}
+
+func remainingLimit(limit int, used int) int {
+	if limit <= 0 {
+		return 0
+	}
+	remaining := limit - used
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
 func renderTelemetryCSV(series []telemetrySeries) ([]byte, error) {
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
@@ -433,6 +629,37 @@ func writeSourcesCSV(zw *zip.Writer, sources []sqlc.DatasetSource) error {
 	return writeBytesFile(zw, "sources.csv", buf.Bytes())
 }
 
+func writeMediaManifestCSV(zw *zip.Writer, items []mediaExportItem) error {
+	return writeMediaManifestCSVNamed(zw, "manifest.csv", items)
+}
+
+func writeMediaManifestCSVNamed(zw *zip.Writer, name string, items []mediaExportItem) error {
+	var buf bytes.Buffer
+	writer := csv.NewWriter(&buf)
+	if err := writer.Write([]string{"data_stream_id", "device_id", "media_id", "media_type", "captured_at", "object_key", "archive_path", "thumbnail_object_key"}); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "write media manifest header", err)
+	}
+	for _, item := range items {
+		if err := writer.Write([]string{
+			item.DataStreamID.String(),
+			item.DeviceID.String(),
+			item.MediaID,
+			item.MediaType,
+			item.CapturedAt.UTC().Format(time.RFC3339Nano),
+			item.ObjectKey,
+			item.ArchivePath,
+			item.ThumbnailObjectKey,
+		}); err != nil {
+			return apperr.Wrap(apperr.KindInternal, "write media manifest row", err)
+		}
+	}
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "flush media manifest csv", err)
+	}
+	return writeBytesFile(zw, name, buf.Bytes())
+}
+
 func writeJSONFile(zw *zip.Writer, name string, value any) error {
 	data, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
@@ -451,6 +678,59 @@ func writeBytesFile(zw *zip.Writer, name string, data []byte) error {
 		return apperr.Wrap(apperr.KindInternal, "write "+name, err)
 	}
 	return nil
+}
+
+func writeObjectFile(zw *zip.Writer, name string, reader io.Reader) error {
+	file, err := zw.Create(name)
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "create "+name, err)
+	}
+	if _, err := io.Copy(file, reader); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "write "+name, err)
+	}
+	return nil
+}
+
+func mediaArchivePath(item mediaExportItem, used map[string]int) string {
+	mediaID := safeArchiveSegment(item.MediaID)
+	if mediaID == "" {
+		mediaID = "media"
+	}
+	mediaType := safeArchiveSegment(item.MediaType)
+	if mediaType == "" {
+		mediaType = "media"
+	}
+	ext := strings.ToLower(filepath.Ext(item.ObjectKey))
+	if ext == "" || strings.Contains(ext, "/") || strings.Contains(ext, "\\") {
+		ext = ".bin"
+	}
+	base := path.Join("media", item.DataStreamID.String(), mediaType+"_"+mediaID+ext)
+	count := used[base]
+	used[base] = count + 1
+	if count == 0 {
+		return base
+	}
+	return strings.TrimSuffix(base, ext) + "_" + strconv.Itoa(count+1) + ext
+}
+
+func safeArchiveSegment(value string) string {
+	value = strings.TrimSpace(value)
+	var b strings.Builder
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+		case r >= 'A' && r <= 'Z':
+			b.WriteRune(r)
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '-' || r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('_')
+		}
+	}
+	return strings.Trim(b.String(), "_")
 }
 
 func exportObjectKey(job Job, ext string) string {

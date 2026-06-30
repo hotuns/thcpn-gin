@@ -18,6 +18,7 @@ import (
 )
 
 type Store interface {
+	Get(ctx context.Context, objectKey string) (GetResult, error)
 	Put(ctx context.Context, input PutInput) error
 }
 
@@ -25,6 +26,11 @@ type PutInput struct {
 	ObjectKey   string
 	ContentType string
 	Body        io.Reader
+}
+
+type GetResult struct {
+	Body        io.ReadCloser
+	ContentType string
 }
 
 type FileStore struct {
@@ -59,30 +65,33 @@ func NewStore(cfg config.ObjectStoreConfig) Store {
 	}
 }
 
+func (s *FileStore) Get(ctx context.Context, objectKey string) (GetResult, error) {
+	if err := ctx.Err(); err != nil {
+		return GetResult{}, err
+	}
+	target, err := s.objectPath(objectKey)
+	if err != nil {
+		return GetResult{}, err
+	}
+	file, err := os.Open(target)
+	if err != nil {
+		return GetResult{}, apperr.Wrap(apperr.KindNotFound, "object not found", err)
+	}
+	return GetResult{Body: file}, nil
+}
+
 func (s *FileStore) Put(ctx context.Context, input PutInput) error {
 	if err := ctx.Err(); err != nil {
 		return err
-	}
-	objectKey := strings.TrimSpace(input.ObjectKey)
-	if objectKey == "" {
-		return apperr.New(apperr.KindInvalidArgument, "object key is required")
 	}
 	if input.Body == nil {
 		return apperr.New(apperr.KindInvalidArgument, "object body is required")
 	}
 
-	parts := []string{s.rootDir}
-	if strings.TrimSpace(s.bucket) != "" {
-		parts = append(parts, strings.Trim(strings.TrimSpace(s.bucket), string(filepath.Separator)))
+	target, err := s.objectPath(input.ObjectKey)
+	if err != nil {
+		return err
 	}
-	for _, part := range strings.Split(strings.Trim(objectKey, "/"), "/") {
-		part = strings.TrimSpace(part)
-		if part == "" || part == "." || part == ".." {
-			return apperr.New(apperr.KindInvalidArgument, "invalid object key")
-		}
-		parts = append(parts, part)
-	}
-	target := filepath.Join(parts...)
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return apperr.Wrap(apperr.KindInternal, "create object store directory", err)
 	}
@@ -103,6 +112,62 @@ func (s *FileStore) Put(ctx context.Context, input PutInput) error {
 		return apperr.Wrap(apperr.KindInternal, "commit object file", err)
 	}
 	return nil
+}
+
+func (s *FileStore) objectPath(objectKey string) (string, error) {
+	objectKey = strings.TrimSpace(objectKey)
+	if objectKey == "" {
+		return "", apperr.New(apperr.KindInvalidArgument, "object key is required")
+	}
+	parts := []string{s.rootDir}
+	if strings.TrimSpace(s.bucket) != "" {
+		parts = append(parts, strings.Trim(strings.TrimSpace(s.bucket), string(filepath.Separator)))
+	}
+	for _, part := range strings.Split(strings.Trim(objectKey, "/"), "/") {
+		part = strings.TrimSpace(part)
+		if part == "" || part == "." || part == ".." {
+			return "", apperr.New(apperr.KindInvalidArgument, "invalid object key")
+		}
+		parts = append(parts, part)
+	}
+	return filepath.Join(parts...), nil
+}
+
+func (s *S3Store) Get(ctx context.Context, objectKey string) (GetResult, error) {
+	objectKey = strings.TrimSpace(objectKey)
+	if objectKey == "" {
+		return GetResult{}, apperr.New(apperr.KindInvalidArgument, "object key is required")
+	}
+	if strings.TrimSpace(s.cfg.Endpoint) == "" {
+		return GetResult{}, apperr.New(apperr.KindInternal, "object store endpoint is required")
+	}
+	if strings.TrimSpace(s.cfg.Bucket) == "" {
+		return GetResult{}, apperr.New(apperr.KindInternal, "object store bucket is required")
+	}
+	if s.accessKey == "" || s.secretKey == "" {
+		return GetResult{}, apperr.New(apperr.KindInternal, "object store access key and secret key are required")
+	}
+	url, err := presignGetObjectURL(s.cfg.Endpoint, s.cfg.Bucket, objectKey, s.accessKey, s.secretKey, s.cfg.Region, s.now(), 15*time.Minute)
+	if err != nil {
+		return GetResult{}, apperr.Wrap(apperr.KindInternal, "presign object download", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return GetResult{}, apperr.Wrap(apperr.KindInternal, "create object download request", err)
+	}
+	client := s.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return GetResult{}, apperr.Wrap(apperr.KindInternal, "download object", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		_ = resp.Body.Close()
+		return GetResult{}, apperr.New(apperr.KindInternal, "download object failed with status "+resp.Status)
+	}
+	return GetResult{Body: resp.Body, ContentType: resp.Header.Get("Content-Type")}, nil
 }
 
 func (s *S3Store) Put(ctx context.Context, input PutInput) error {

@@ -1,6 +1,7 @@
 package objectstore
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -87,5 +88,18 @@ func TestFileStorePut(t *testing.T) {
 	}
 	if string(data) != "a,b\n1,2\n" {
 		t.Fatalf("unexpected object content: %q", data)
+	}
+
+	got, err := store.Get(t.Context(), "exports/job-001.csv")
+	if err != nil {
+		t.Fatalf("get object: %v", err)
+	}
+	defer got.Body.Close()
+	readBack, err := io.ReadAll(got.Body)
+	if err != nil {
+		t.Fatalf("read object body: %v", err)
+	}
+	if string(readBack) != "a,b\n1,2\n" {
+		t.Fatalf("unexpected readback content: %q", readBack)
 	}
 }

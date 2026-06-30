@@ -87,3 +87,23 @@ func TestRenderTelemetryCSV(t *testing.T) {
 		t.Fatalf("unexpected csv:\n%s", body)
 	}
 }
+
+func TestMediaArchivePathSanitizesAndDeduplicates(t *testing.T) {
+	streamID := uuid.New()
+	used := map[string]int{}
+	item := mediaExportItem{
+		DataStreamID: streamID,
+		MediaID:      "img/001",
+		MediaType:    "image",
+		ObjectKey:    "raw/camera/photo.jpg",
+	}
+
+	first := mediaArchivePath(item, used)
+	second := mediaArchivePath(item, used)
+
+	expectedFirst := "media/" + streamID.String() + "/image_img_001.jpg"
+	expectedSecond := "media/" + streamID.String() + "/image_img_001_2.jpg"
+	if first != expectedFirst || second != expectedSecond {
+		t.Fatalf("unexpected archive paths: %q %q", first, second)
+	}
+}

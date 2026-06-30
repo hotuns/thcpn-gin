@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: THCPN IoT Research Platform API
-  version: 0.11.0
+  version: 0.12.0
   description: |
     THCPN 科研物联网数据管理平台后端 API。
 
@@ -1924,7 +1924,7 @@ paths:
         Creates an asynchronous export job in `pending` status.
         `telemetry_csv` and `telemetry_excel` require `telemetry.export` on a device or data stream.
         `dataset_zip` requires `dataset.export` on a dataset.
-        `media_zip` requires `media.download` on a device, data stream, or media data-stream alias.
+        `media_zip` requires `media.download` on a device, data stream, or media data-stream alias. The worker writes the original media objects and `manifest.csv` into a ZIP.
         `telemetry_csv`, `telemetry_excel` and `media_zip` require `start_time` and `end_time`; these values are persisted in `request_config`.
         Creation success and permission-denied or service failures are written to audit logs.
       security:
@@ -3992,7 +3992,7 @@ components:
         request_config:
           type: object
           additionalProperties: true
-          description: Worker input such as `start_time`, `end_time`, `limit`, or future export-specific options.
+          description: Worker input such as `start_time`, `end_time`, `limit`, `media_type`, or future export-specific options.
         status:
           $ref: "#/components/schemas/ExportStatus"
         file_object_key:
@@ -4043,7 +4043,7 @@ components:
         request_config:
           type: object
           additionalProperties: true
-          description: Advanced worker input. Top-level `start_time`, `end_time`, and `limit` override matching fields in this object.
+          description: Advanced worker input. Top-level `start_time`, `end_time`, and `limit` override matching fields in this object. `media_type` can narrow device-level `media_zip` exports.
         expires_at:
           $ref: "#/components/schemas/Timestamp"
     DatasetExportRequest:
