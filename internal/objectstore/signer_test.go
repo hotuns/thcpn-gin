@@ -111,6 +111,13 @@ func TestFileStorePut(t *testing.T) {
 	if string(readBack) != "a,b\n1,2\n" {
 		t.Fatalf("unexpected readback content: %q", readBack)
 	}
+
+	if err := store.Delete(t.Context(), "exports/job-001.csv"); err != nil {
+		t.Fatalf("delete object: %v", err)
+	}
+	if _, err := store.Get(t.Context(), "exports/job-001.csv"); err == nil {
+		t.Fatal("expected deleted object to be missing")
+	}
 }
 
 func TestDownloadHandlerServesSignedFileObject(t *testing.T) {

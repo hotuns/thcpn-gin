@@ -1,11 +1,17 @@
 package media
 
 import (
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/config"
+	"thcpn-gin/internal/datasource"
+	"thcpn-gin/internal/db/sqlc"
+	"thcpn-gin/internal/objectstore"
 )
 
 func TestNormalizePage(t *testing.T) {
@@ -44,5 +50,70 @@ func TestIsMediaStreamType(t *testing.T) {
 	}
 	if isMediaStreamType("telemetry") {
 		t.Fatal("telemetry should not be media stream type")
+	}
+}
+
+func TestItemsFromDatasourceIncludesDeleteURLWhenAllowed(t *testing.T) {
+	signer := objectstore.NewSigner(config.ObjectStoreConfig{
+		Provider: "file",
+		Bucket:   "iot-platform",
+	}, "test-secret")
+	service := &Service{signer: signer}
+	stream := sqlc.DataStream{
+		ID:       uuid.New(),
+		DeviceID: uuid.New(),
+		Type:     "image",
+	}
+
+	items, err := service.itemsFromDatasource(stream, []datasource.MediaRecord{{
+		ID:        "img-1",
+		ObjectKey: "raw/img-1.jpg",
+		MediaType: "image",
+	}}, false, true)
+	if err != nil {
+		t.Fatalf("items from datasource: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected one item, got %d", len(items))
+	}
+	if !items[0].DeleteAllowed || items[0].DeleteURL == nil || !strings.HasPrefix(*items[0].DeleteURL, "/api/v1/media?token=") {
+		t.Fatalf("expected delete URL when delete is allowed, got %#v", items[0])
+	}
+	if items[0].DownloadURL != nil {
+		t.Fatalf("did not expect download URL, got %q", *items[0].DownloadURL)
+	}
+}
+
+func TestDeleteMediaObjectDeletesObject(t *testing.T) {
+	store := objectstore.NewStore(config.ObjectStoreConfig{
+		Provider:  "file",
+		Bucket:    "iot-platform",
+		LocalPath: t.TempDir(),
+	})
+	if err := store.Put(t.Context(), objectstore.PutInput{
+		ObjectKey: "raw/img-1.jpg",
+		Body:      strings.NewReader("image-bytes"),
+	}); err != nil {
+		t.Fatalf("put object: %v", err)
+	}
+	service := &Service{store: store}
+	target := MediaTarget{
+		DataStreamID: uuid.New(),
+		DeviceID:     uuid.New(),
+		WorkspaceID:  uuid.New(),
+		MediaID:      "img-1",
+		MediaType:    "image",
+		ObjectKey:    "raw/img-1.jpg",
+	}
+
+	result, err := service.DeleteMediaObject(t.Context(), target)
+	if err != nil {
+		t.Fatalf("delete media object: %v", err)
+	}
+	if !result.Deleted || result.MediaID != "img-1" {
+		t.Fatalf("unexpected delete result: %#v", result)
+	}
+	if _, err := store.Get(t.Context(), "raw/img-1.jpg"); err == nil {
+		t.Fatal("expected deleted object to be missing")
 	}
 }

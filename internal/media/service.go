@@ -28,6 +28,7 @@ type Service struct {
 	dataSources *datasource.Service
 	runtime     Runtime
 	signer      *objectstore.Signer
+	store       objectstore.Store
 	limits      config.QueryLimitsConfig
 }
 
@@ -40,6 +41,7 @@ type QueryInput struct {
 	Page            int
 	PageSize        int
 	DownloadAllowed bool
+	DeleteAllowed   bool
 }
 
 type ListResult struct {
@@ -59,6 +61,8 @@ type Item struct {
 	PreviewURL      string    `json:"preview_url"`
 	DownloadAllowed bool      `json:"download_allowed"`
 	DownloadURL     *string   `json:"download_url,omitempty"`
+	DeleteAllowed   bool      `json:"delete_allowed"`
+	DeleteURL       *string   `json:"delete_url,omitempty"`
 }
 
 type DownloadResult struct {
@@ -71,18 +75,41 @@ type DownloadResult struct {
 	ExpiresAt    time.Time `json:"expires_at"`
 }
 
-func NewService(db *pgxpool.Pool, dataSources *datasource.Service, runtime Runtime, signer *objectstore.Signer, limits config.QueryLimitsConfig) *Service {
+type DeleteResult struct {
+	DataStreamID uuid.UUID `json:"data_stream_id"`
+	DeviceID     uuid.UUID `json:"device_id"`
+	WorkspaceID  uuid.UUID `json:"-"`
+	MediaID      string    `json:"media_id"`
+	MediaType    string    `json:"media_type"`
+	Deleted      bool      `json:"deleted"`
+}
+
+type MediaTarget struct {
+	DataStreamID uuid.UUID
+	DeviceID     uuid.UUID
+	WorkspaceID  uuid.UUID
+	MediaID      string
+	MediaType    string
+	ObjectKey    string
+}
+
+func NewService(db *pgxpool.Pool, dataSources *datasource.Service, runtime Runtime, signer *objectstore.Signer, limits config.QueryLimitsConfig, stores ...objectstore.Store) *Service {
 	if dataSources == nil {
 		dataSources = datasource.NewService(db)
 	}
 	if runtime == nil {
 		runtime = datasource.NewRuntime(nil)
 	}
+	var store objectstore.Store
+	if len(stores) > 0 {
+		store = stores[0]
+	}
 	return &Service{
 		queries:     sqlc.New(db),
 		dataSources: dataSources,
 		runtime:     runtime,
 		signer:      signer,
+		store:       store,
 		limits:      normalizeLimits(limits),
 	}
 }
@@ -99,42 +126,80 @@ func (s *Service) List(ctx context.Context, input QueryInput) (ListResult, error
 		return ListResult{}, err
 	}
 	if input.DataStreamID != nil {
-		return s.listDataStream(ctx, *input.DataStreamID, input.DeviceID, input.MediaType, input.StartTime, input.EndTime, page, pageSize, input.DownloadAllowed)
+		return s.listDataStream(ctx, *input.DataStreamID, input.DeviceID, input.MediaType, input.StartTime, input.EndTime, page, pageSize, input.DownloadAllowed, input.DeleteAllowed)
 	}
-	return s.listDevice(ctx, *input.DeviceID, input.MediaType, input.StartTime, input.EndTime, page, pageSize, input.DownloadAllowed)
+	return s.listDevice(ctx, *input.DeviceID, input.MediaType, input.StartTime, input.EndTime, page, pageSize, input.DownloadAllowed, input.DeleteAllowed)
 }
 
 func (s *Service) PrepareDownload(ctx context.Context, token string) (DownloadResult, error) {
-	if s.signer == nil {
-		return DownloadResult{}, apperr.New(apperr.KindInternal, "object store signer is not configured")
-	}
-	claims, err := s.signer.VerifyDownloadToken(token)
+	target, err := s.ResolveMediaToken(ctx, token)
 	if err != nil {
 		return DownloadResult{}, err
 	}
-	stream, err := s.queries.GetDataStream(ctx, claims.DataStreamID)
-	if err != nil {
-		return DownloadResult{}, mapNotFoundOrInternal(err, "data stream not found")
+	if s.signer == nil {
+		return DownloadResult{}, apperr.New(apperr.KindInternal, "object store signer is not configured")
 	}
-	if stream.DeviceID != claims.DeviceID {
-		return DownloadResult{}, apperr.New(apperr.KindInvalidArgument, "download token does not match data stream")
-	}
-	signed, err := s.signer.SignObjectURL(claims.ObjectKey, mediaURLTTL)
+	signed, err := s.signer.SignObjectURL(target.ObjectKey, mediaURLTTL)
 	if err != nil {
 		return DownloadResult{}, err
 	}
 	return DownloadResult{
-		DataStreamID: claims.DataStreamID,
-		DeviceID:     claims.DeviceID,
-		WorkspaceID:  stream.WorkspaceID,
-		MediaID:      claims.MediaID,
-		MediaType:    claims.MediaType,
+		DataStreamID: target.DataStreamID,
+		DeviceID:     target.DeviceID,
+		WorkspaceID:  target.WorkspaceID,
+		MediaID:      target.MediaID,
+		MediaType:    target.MediaType,
 		URL:          signed.URL,
 		ExpiresAt:    signed.ExpiresAt,
 	}, nil
 }
 
-func (s *Service) listDevice(ctx context.Context, deviceID uuid.UUID, mediaType string, start time.Time, end time.Time, page int, pageSize int, downloadAllowed bool) (ListResult, error) {
+func (s *Service) ResolveMediaToken(ctx context.Context, token string) (MediaTarget, error) {
+	if s.signer == nil {
+		return MediaTarget{}, apperr.New(apperr.KindInternal, "object store signer is not configured")
+	}
+	claims, err := s.signer.VerifyDownloadToken(token)
+	if err != nil {
+		return MediaTarget{}, err
+	}
+	stream, err := s.queries.GetDataStream(ctx, claims.DataStreamID)
+	if err != nil {
+		return MediaTarget{}, mapNotFoundOrInternal(err, "data stream not found")
+	}
+	if stream.DeviceID != claims.DeviceID {
+		return MediaTarget{}, apperr.New(apperr.KindInvalidArgument, "media token does not match data stream")
+	}
+	return MediaTarget{
+		DataStreamID: claims.DataStreamID,
+		DeviceID:     claims.DeviceID,
+		WorkspaceID:  stream.WorkspaceID,
+		MediaID:      claims.MediaID,
+		MediaType:    claims.MediaType,
+		ObjectKey:    claims.ObjectKey,
+	}, nil
+}
+
+func (s *Service) DeleteMediaObject(ctx context.Context, target MediaTarget) (DeleteResult, error) {
+	if s.store == nil {
+		return DeleteResult{}, apperr.New(apperr.KindInternal, "object store is not configured")
+	}
+	if target.DataStreamID == uuid.Nil || target.DeviceID == uuid.Nil {
+		return DeleteResult{}, apperr.New(apperr.KindInvalidArgument, "media target is required")
+	}
+	if err := s.store.Delete(ctx, target.ObjectKey); err != nil {
+		return DeleteResult{}, err
+	}
+	return DeleteResult{
+		DataStreamID: target.DataStreamID,
+		DeviceID:     target.DeviceID,
+		WorkspaceID:  target.WorkspaceID,
+		MediaID:      target.MediaID,
+		MediaType:    target.MediaType,
+		Deleted:      true,
+	}, nil
+}
+
+func (s *Service) listDevice(ctx context.Context, deviceID uuid.UUID, mediaType string, start time.Time, end time.Time, page int, pageSize int, downloadAllowed bool, deleteAllowed bool) (ListResult, error) {
 	if deviceID == uuid.Nil {
 		return ListResult{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
 	}
@@ -157,7 +222,7 @@ func (s *Service) listDevice(ctx context.Context, deviceID uuid.UUID, mediaType 
 		if mediaType != "" && stream.Type != mediaType {
 			continue
 		}
-		result, err := s.queryStream(ctx, stream, start, end, 1, s.limits.MaxMediaPageSize, downloadAllowed)
+		result, err := s.queryStream(ctx, stream, start, end, 1, s.limits.MaxMediaPageSize, downloadAllowed, deleteAllowed)
 		if err != nil {
 			return ListResult{}, err
 		}
@@ -180,7 +245,7 @@ func (s *Service) listDevice(ctx context.Context, deviceID uuid.UUID, mediaType 
 	return ListResult{Items: items, Page: page, PageSize: pageSize, Total: total}, nil
 }
 
-func (s *Service) listDataStream(ctx context.Context, dataStreamID uuid.UUID, deviceID *uuid.UUID, mediaType string, start time.Time, end time.Time, page int, pageSize int, downloadAllowed bool) (ListResult, error) {
+func (s *Service) listDataStream(ctx context.Context, dataStreamID uuid.UUID, deviceID *uuid.UUID, mediaType string, start time.Time, end time.Time, page int, pageSize int, downloadAllowed bool, deleteAllowed bool) (ListResult, error) {
 	if dataStreamID == uuid.Nil {
 		return ListResult{}, apperr.New(apperr.KindInvalidArgument, "data stream id is required")
 	}
@@ -200,10 +265,10 @@ func (s *Service) listDataStream(ctx context.Context, dataStreamID uuid.UUID, de
 	if stream.Status != "active" {
 		return ListResult{}, apperr.New(apperr.KindInvalidArgument, "data stream is not active")
 	}
-	return s.queryStream(ctx, stream, start, end, page, pageSize, downloadAllowed)
+	return s.queryStream(ctx, stream, start, end, page, pageSize, downloadAllowed, deleteAllowed)
 }
 
-func (s *Service) queryStream(ctx context.Context, stream sqlc.DataStream, start time.Time, end time.Time, page int, pageSize int, downloadAllowed bool) (ListResult, error) {
+func (s *Service) queryStream(ctx context.Context, stream sqlc.DataStream, start time.Time, end time.Time, page int, pageSize int, downloadAllowed bool, deleteAllowed bool) (ListResult, error) {
 	binding, err := s.dataSources.GetActiveDataStreamBinding(ctx, stream.ID)
 	if err != nil {
 		return ListResult{}, err
@@ -223,14 +288,14 @@ func (s *Service) queryStream(ctx context.Context, stream sqlc.DataStream, start
 	if err != nil {
 		return ListResult{}, err
 	}
-	items, err := s.itemsFromDatasource(stream, result.Items, downloadAllowed)
+	items, err := s.itemsFromDatasource(stream, result.Items, downloadAllowed, deleteAllowed)
 	if err != nil {
 		return ListResult{}, err
 	}
 	return ListResult{Items: items, Page: page, PageSize: pageSize, Total: result.Total}, nil
 }
 
-func (s *Service) itemsFromDatasource(stream sqlc.DataStream, records []datasource.MediaRecord, downloadAllowed bool) ([]Item, error) {
+func (s *Service) itemsFromDatasource(stream sqlc.DataStream, records []datasource.MediaRecord, downloadAllowed bool, deleteAllowed bool) ([]Item, error) {
 	if s.signer == nil {
 		return nil, apperr.New(apperr.KindInternal, "object store signer is not configured")
 	}
@@ -257,6 +322,7 @@ func (s *Service) itemsFromDatasource(stream sqlc.DataStream, records []datasour
 			ThumbnailURL:    thumbnailURL,
 			PreviewURL:      preview.URL,
 			DownloadAllowed: downloadAllowed,
+			DeleteAllowed:   deleteAllowed,
 		}
 		if downloadAllowed {
 			token, _, err := s.signer.SignDownloadToken(objectstore.DownloadTokenClaims{
@@ -271,6 +337,20 @@ func (s *Service) itemsFromDatasource(stream sqlc.DataStream, records []datasour
 			}
 			downloadURL := "/api/v1/media/download?token=" + token
 			item.DownloadURL = &downloadURL
+		}
+		if deleteAllowed {
+			token, _, err := s.signer.SignDownloadToken(objectstore.DownloadTokenClaims{
+				DataStreamID: stream.ID,
+				DeviceID:     stream.DeviceID,
+				MediaID:      record.ID,
+				ObjectKey:    record.ObjectKey,
+				MediaType:    record.MediaType,
+			}, mediaURLTTL)
+			if err != nil {
+				return nil, err
+			}
+			deleteURL := "/api/v1/media?token=" + token
+			item.DeleteURL = &deleteURL
 		}
 		items = append(items, item)
 	}

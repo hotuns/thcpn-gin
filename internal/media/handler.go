@@ -18,6 +18,7 @@ import (
 const (
 	mediaArchiveViewAction = "media.archive_view"
 	mediaDownloadAction    = "media.download"
+	mediaDeleteAction      = "media.delete"
 )
 
 type Handler struct {
@@ -61,6 +62,10 @@ func (h *Handler) listDevice(c *gin.Context, mediaType string) {
 	if !ok {
 		return
 	}
+	deleteAllowed, ok := h.can(c, "device", deviceID, mediaDeleteAction)
+	if !ok {
+		return
+	}
 
 	input, ok := parseListQuery(c)
 	if !ok {
@@ -69,6 +74,7 @@ func (h *Handler) listDevice(c *gin.Context, mediaType string) {
 	input.DeviceID = &deviceID
 	input.MediaType = mediaType
 	input.DownloadAllowed = downloadAllowed
+	input.DeleteAllowed = deleteAllowed
 
 	result, err := h.service.List(c.Request.Context(), input)
 	if err != nil {
@@ -90,6 +96,10 @@ func (h *Handler) ListDataStream(c *gin.Context) {
 	if !ok {
 		return
 	}
+	deleteAllowed, ok := h.can(c, "data_stream", dataStreamID, mediaDeleteAction)
+	if !ok {
+		return
+	}
 
 	input, ok := parseListQuery(c)
 	if !ok {
@@ -97,6 +107,7 @@ func (h *Handler) ListDataStream(c *gin.Context) {
 	}
 	input.DataStreamID = &dataStreamID
 	input.DownloadAllowed = downloadAllowed
+	input.DeleteAllowed = deleteAllowed
 
 	result, err := h.service.List(c.Request.Context(), input)
 	if err != nil {
@@ -149,6 +160,77 @@ func (h *Handler) Download(c *gin.Context) {
 		ActorType:    audit.ActorUser,
 		ActorID:      audit.UserActorID(actor.UserID),
 		Action:       mediaDownloadAction,
+		ResourceType: "data_stream",
+		ResourceID:   audit.ResourceID(result.DataStreamID),
+		Result:       audit.ResultSuccess,
+	}) {
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) Delete(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	token := c.Query("token")
+	if token == "" {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "token is required"))
+		return
+	}
+
+	target, err := h.service.ResolveMediaToken(c.Request.Context(), token)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+
+	allowed, err := h.check(c, "data_stream", target.DataStreamID, mediaDeleteAction)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !allowed {
+		if !h.record(c, audit.RecordInput{
+			WorkspaceID:  audit.WorkspaceID(target.WorkspaceID),
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       mediaDeleteAction,
+			ResourceType: "data_stream",
+			ResourceID:   audit.ResourceID(target.DataStreamID),
+			Result:       audit.ResultFailure,
+			Reason:       "permission denied",
+		}) {
+			return
+		}
+		httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "permission denied"))
+		return
+	}
+
+	result, err := h.service.DeleteMediaObject(c.Request.Context(), target)
+	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			WorkspaceID:  audit.WorkspaceID(target.WorkspaceID),
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       mediaDeleteAction,
+			ResourceType: "data_stream",
+			ResourceID:   audit.ResourceID(target.DataStreamID),
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		WorkspaceID:  audit.WorkspaceID(result.WorkspaceID),
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       mediaDeleteAction,
 		ResourceType: "data_stream",
 		ResourceID:   audit.ResourceID(result.DataStreamID),
 		Result:       audit.ResultSuccess,

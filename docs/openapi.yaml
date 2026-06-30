@@ -2860,6 +2860,41 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/media:
+    delete:
+      tags:
+        - Media
+      operationId: deleteMediaObject
+      summary: Delete a media object
+      description: |
+        Requires `media.delete` on the media data stream. The token is issued by media list APIs only when delete is allowed and expires quickly.
+        The platform deletes the object-store object referenced by the token and writes success, denied, and deletion failure attempts to audit logs.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Media object deleted from object storage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaDeleteResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
 components:
   securitySchemes:
     bearerAuth:
@@ -4307,6 +4342,7 @@ components:
         - media_type
         - preview_url
         - download_allowed
+        - delete_allowed
       properties:
         id:
           type: string
@@ -4329,6 +4365,11 @@ components:
         download_url:
           type: string
           description: Authenticated API URL for preparing a temporary download URL. Present only when `download_allowed` is true.
+        delete_allowed:
+          type: boolean
+        delete_url:
+          type: string
+          description: Authenticated API URL for deleting the object-store object. Present only when `delete_allowed` is true.
     MediaListResponse:
       type: object
       required:
@@ -4370,6 +4411,25 @@ components:
           description: Temporary signed object URL.
         expires_at:
           $ref: "#/components/schemas/Timestamp"
+    MediaDeleteResponse:
+      type: object
+      required:
+        - data_stream_id
+        - device_id
+        - media_id
+        - media_type
+        - deleted
+      properties:
+        data_stream_id:
+          $ref: "#/components/schemas/UUID"
+        device_id:
+          $ref: "#/components/schemas/UUID"
+        media_id:
+          type: string
+        media_type:
+          $ref: "#/components/schemas/MediaType"
+        deleted:
+          type: boolean
     DataSource:
       type: object
       required:

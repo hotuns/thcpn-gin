@@ -222,6 +222,7 @@
   - Telemetry Query: `telemetry.view_history`
   - Media Query: `media.archive_view`
   - Media Download: `media.download`
+  - Media Delete: `media.delete`
 - 设备绑定会记录 `bound_by`、`activated_at` 并写入 audit log。
 
 ### Dataset
@@ -304,6 +305,7 @@
   - 设备解绑成功和失败。
   - 创建、更新、锁定、删除 Dataset 成功和失败。
   - 媒体下载成功和权限拒绝。
+  - 媒体对象删除成功、权限拒绝和删除失败。
   - 创建导出任务成功和失败，导出文件下载准备成功和失败。
 - 审计日志记录 actor、action、resource、result、reason、ip、user_agent、request_id 和 created_at。
 
