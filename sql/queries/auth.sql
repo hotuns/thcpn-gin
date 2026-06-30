@@ -50,3 +50,56 @@ SET phone_verified_at = COALESCE(phone_verified_at, now()),
     updated_at = now()
 WHERE id = $1
 RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at;
+
+-- name: CreateRefreshSession :one
+INSERT INTO auth_refresh_sessions (user_id, refresh_token_hash, user_agent, client_ip, expires_at)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, user_id, refresh_token_hash, user_agent, client_ip, expires_at, last_used_at, revoked_at, created_at, updated_at;
+
+-- name: GetActiveRefreshSessionByHash :one
+SELECT id, user_id, refresh_token_hash, user_agent, client_ip, expires_at, last_used_at, revoked_at, created_at, updated_at
+FROM auth_refresh_sessions
+WHERE refresh_token_hash = $1
+  AND revoked_at IS NULL
+  AND expires_at > now();
+
+-- name: RotateRefreshSession :one
+UPDATE auth_refresh_sessions
+SET refresh_token_hash = $2,
+    user_agent = $3,
+    client_ip = $4,
+    expires_at = $5,
+    last_used_at = now(),
+    updated_at = now()
+WHERE id = $1
+  AND revoked_at IS NULL
+RETURNING id, user_id, refresh_token_hash, user_agent, client_ip, expires_at, last_used_at, revoked_at, created_at, updated_at;
+
+-- name: RevokeRefreshSession :exec
+UPDATE auth_refresh_sessions
+SET revoked_at = COALESCE(revoked_at, now()),
+    updated_at = now()
+WHERE id = $1;
+
+-- name: RevokeRefreshSessionByHash :exec
+UPDATE auth_refresh_sessions
+SET revoked_at = COALESCE(revoked_at, now()),
+    updated_at = now()
+WHERE refresh_token_hash = $1;
+
+-- name: BlacklistAccessToken :exec
+INSERT INTO auth_access_token_blacklist (token_hash, user_id, expires_at)
+VALUES ($1, $2, $3)
+ON CONFLICT (token_hash) DO NOTHING;
+
+-- name: IsAccessTokenBlacklisted :one
+SELECT EXISTS (
+    SELECT 1
+    FROM auth_access_token_blacklist
+    WHERE token_hash = $1
+      AND expires_at > now()
+);
+
+-- name: DeleteExpiredAuthTokens :exec
+DELETE FROM auth_access_token_blacklist
+WHERE expires_at <= now();

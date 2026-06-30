@@ -5,7 +5,7 @@ info:
   description: |
     THCPN 科研物联网数据管理平台后端 API。
 
-    当前文档覆盖已实现的阶段功能：健康检查、短信验证码登录/注册、密码注册/登录、
+    当前文档覆盖已实现的阶段功能：健康检查、短信验证码登录/注册、密码注册/登录、refresh token、logout、
     JWT 认证、Workspace 列表/创建、Workspace 成员管理、Project、Site、Device、DataStream、DataSource、DataStreamBinding、Telemetry Query、Media Query、Dataset 元信息管理和 ExportJob 导出任务、
     AccessGrant 外部分享/售后临时授权、Invitation 和 AuditLog。
 
@@ -161,7 +161,7 @@ paths:
       operationId: loginWithSms
       summary: Login or register with SMS verification code
       description: |
-        Verifies the SMS code and issues a JWT access token.
+        Verifies the SMS code and issues a JWT access token plus a refresh token.
         If the phone number does not belong to an active user, a new user, personal workspace and Owner membership are created.
       requestBody:
         required: true
@@ -186,8 +186,10 @@ paths:
                 loggedIn:
                   value:
                     access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                    refresh_token: wJalrXUtnFEMI-K7MDENG_bPxRfiCYEXAMPLE
                     token_type: Bearer
                     expires_in: 86400
+                    refresh_expires_in: 2592000
                     user:
                       id: 018fa0ec-9b6e-7a3d-9c7b-1d8b04f31988
                       name: 张三
@@ -212,7 +214,7 @@ paths:
       summary: Register with password
       description: |
         Creates a user, personal workspace, Owner membership and password credential in one transaction,
-        then issues a JWT access token.
+        then issues a JWT access token plus a refresh token.
       requestBody:
         required: true
         content:
@@ -237,8 +239,10 @@ paths:
                 registered:
                   value:
                     access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                    refresh_token: wJalrXUtnFEMI-K7MDENG_bPxRfiCYEXAMPLE
                     token_type: Bearer
                     expires_in: 86400
+                    refresh_expires_in: 2592000
                     user:
                       id: 018fa0ec-9b6e-7a3d-9c7b-1d8b04f31988
                       name: 张三
@@ -260,7 +264,7 @@ paths:
       operationId: loginWithPassword
       summary: Login with phone/email and password
       description: |
-        Authenticates an existing active user by phone or email and password, then issues a JWT access token.
+        Authenticates an existing active user by phone or email and password, then issues a JWT access token plus a refresh token.
         Repeated password failures increment the credential failure count and may temporarily lock the account.
       requestBody:
         required: true
@@ -288,8 +292,10 @@ paths:
                 loggedIn:
                   value:
                     access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                    refresh_token: wJalrXUtnFEMI-K7MDENG_bPxRfiCYEXAMPLE
                     token_type: Bearer
                     expires_in: 86400
+                    refresh_expires_in: 2592000
                     user:
                       id: 018fa0ec-9b6e-7a3d-9c7b-1d8b04f31988
                       name: 张三
@@ -303,6 +309,71 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "429":
           $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/auth/refresh:
+    post:
+      tags:
+        - Auth
+      operationId: refreshAuthToken
+      summary: Refresh access token
+      description: |
+        Exchanges an active refresh token for a new JWT access token and rotates the refresh session.
+        The old refresh token is no longer usable after a successful refresh.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshTokenRequest"
+            examples:
+              default:
+                value:
+                  refresh_token: wJalrXUtnFEMI-K7MDENG_bPxRfiCYEXAMPLE
+      responses:
+        "200":
+          description: Token refresh succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/auth/logout:
+    post:
+      tags:
+        - Auth
+      operationId: logout
+      summary: Logout current session
+      description: |
+        Revokes the current access token by adding it to the access-token blacklist.
+        When `refresh_token` is supplied, the matching refresh session is also revoked.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogoutRequest"
+            examples:
+              default:
+                value:
+                  refresh_token: wJalrXUtnFEMI-K7MDENG_bPxRfiCYEXAMPLE
+      responses:
+        "204":
+          description: Logout succeeded.
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
         "500":
           $ref: "#/components/responses/Internal"
   /api/v1/auth/register:
@@ -2880,17 +2951,36 @@ components:
           type: string
           format: password
           example: Str0ngPassword!
+    RefreshTokenRequest:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          type: string
+          description: Opaque refresh token issued by login or refresh APIs.
+    LogoutRequest:
+      type: object
+      properties:
+        refresh_token:
+          type: string
+          description: Optional refresh token to revoke along with the current access token.
     LoginResponse:
       type: object
       required:
         - access_token
+        - refresh_token
         - token_type
         - expires_in
+        - refresh_expires_in
         - user
       properties:
         access_token:
           type: string
           description: JWT access token.
+        refresh_token:
+          type: string
+          description: Opaque refresh token. Store securely and send only to `/api/v1/auth/refresh` or `/api/v1/auth/logout`.
         token_type:
           type: string
           enum:
@@ -2898,7 +2988,11 @@ components:
         expires_in:
           type: integer
           format: int64
-          description: Token lifetime in seconds.
+          description: Access token lifetime in seconds.
+        refresh_expires_in:
+          type: integer
+          format: int64
+          description: Refresh token lifetime in seconds.
         user:
           $ref: "#/components/schemas/UserProfile"
         created:

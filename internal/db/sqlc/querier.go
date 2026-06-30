@@ -13,6 +13,7 @@ import (
 type Querier interface {
 	AcceptInvitation(ctx context.Context, id uuid.UUID) (Invitation, error)
 	AddDeviceCapability(ctx context.Context, arg AddDeviceCapabilityParams) (DeviceCapability, error)
+	BlacklistAccessToken(ctx context.Context, arg BlacklistAccessTokenParams) error
 	ClaimNextPendingExportJob(ctx context.Context) (ExportJob, error)
 	CountActiveWorkspaceOwners(ctx context.Context, workspaceID uuid.UUID) (int64, error)
 	CreateAccessGrant(ctx context.Context, arg CreateAccessGrantParams) (AccessGrant, error)
@@ -28,6 +29,7 @@ type Querier interface {
 	CreateOrganizationWorkspace(ctx context.Context, arg CreateOrganizationWorkspaceParams) (Workspace, error)
 	CreatePersonalWorkspace(ctx context.Context, arg CreatePersonalWorkspaceParams) (Workspace, error)
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
+	CreateRefreshSession(ctx context.Context, arg CreateRefreshSessionParams) (AuthRefreshSession, error)
 	CreateSite(ctx context.Context, arg CreateSiteParams) (Site, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateUserCredential(ctx context.Context, arg CreateUserCredentialParams) (UserCredential, error)
@@ -35,6 +37,7 @@ type Querier interface {
 	DeleteDataset(ctx context.Context, id uuid.UUID) (Dataset, error)
 	DeleteDatasetSources(ctx context.Context, datasetID uuid.UUID) error
 	DeleteDeviceCapabilities(ctx context.Context, deviceID uuid.UUID) error
+	DeleteExpiredAuthTokens(ctx context.Context) error
 	ExpireExportJobs(ctx context.Context) (int64, error)
 	FindActiveUserByEmail(ctx context.Context, email *string) (User, error)
 	FindActiveUserByIdentifier(ctx context.Context, identifier *string) (User, error)
@@ -42,6 +45,7 @@ type Querier interface {
 	FindActiveUserByPhoneForAuth(ctx context.Context, phone *string) (User, error)
 	GetAccessGrant(ctx context.Context, id uuid.UUID) (GetAccessGrantRow, error)
 	GetActiveDataStreamBinding(ctx context.Context, dataStreamID uuid.UUID) (DataStreamBinding, error)
+	GetActiveRefreshSessionByHash(ctx context.Context, refreshTokenHash string) (AuthRefreshSession, error)
 	GetActiveUser(ctx context.Context, id uuid.UUID) (User, error)
 	GetAppMetadata(ctx context.Context, key string) (AppMetadatum, error)
 	GetDataSource(ctx context.Context, id uuid.UUID) (DataSource, error)
@@ -61,6 +65,7 @@ type Querier interface {
 	GetWorkspaceMemberDetail(ctx context.Context, arg GetWorkspaceMemberDetailParams) (GetWorkspaceMemberDetailRow, error)
 	HasAccessGrantPermission(ctx context.Context, arg HasAccessGrantPermissionParams) (bool, error)
 	HasWorkspacePermission(ctx context.Context, arg HasWorkspacePermissionParams) (bool, error)
+	IsAccessTokenBlacklisted(ctx context.Context, tokenHash string) (bool, error)
 	ListAccessGrantsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]ListAccessGrantsByWorkspaceRow, error)
 	ListAccessGrantsForUser(ctx context.Context, subjectID uuid.UUID) ([]ListAccessGrantsForUserRow, error)
 	ListAppMetadata(ctx context.Context) ([]AppMetadatum, error)
@@ -93,6 +98,9 @@ type Querier interface {
 	ResetUserCredentialFailure(ctx context.Context, userID uuid.UUID) (UserCredential, error)
 	RevokeAccessGrant(ctx context.Context, id uuid.UUID) (AccessGrant, error)
 	RevokeInvitation(ctx context.Context, id uuid.UUID) (Invitation, error)
+	RevokeRefreshSession(ctx context.Context, id uuid.UUID) error
+	RevokeRefreshSessionByHash(ctx context.Context, refreshTokenHash string) error
+	RotateRefreshSession(ctx context.Context, arg RotateRefreshSessionParams) (AuthRefreshSession, error)
 	UpdateDataSource(ctx context.Context, arg UpdateDataSourceParams) (DataSource, error)
 	UpdateDataStream(ctx context.Context, arg UpdateDataStreamParams) (DataStream, error)
 	UpdateDataStreamBinding(ctx context.Context, arg UpdateDataStreamBindingParams) (DataStreamBinding, error)

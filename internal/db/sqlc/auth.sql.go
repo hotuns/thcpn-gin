@@ -12,6 +12,61 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const blacklistAccessToken = `-- name: BlacklistAccessToken :exec
+INSERT INTO auth_access_token_blacklist (token_hash, user_id, expires_at)
+VALUES ($1, $2, $3)
+ON CONFLICT (token_hash) DO NOTHING
+`
+
+type BlacklistAccessTokenParams struct {
+	TokenHash string             `json:"token_hash"`
+	UserID    uuid.UUID          `json:"user_id"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+}
+
+func (q *Queries) BlacklistAccessToken(ctx context.Context, arg BlacklistAccessTokenParams) error {
+	_, err := q.db.Exec(ctx, blacklistAccessToken, arg.TokenHash, arg.UserID, arg.ExpiresAt)
+	return err
+}
+
+const createRefreshSession = `-- name: CreateRefreshSession :one
+INSERT INTO auth_refresh_sessions (user_id, refresh_token_hash, user_agent, client_ip, expires_at)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, user_id, refresh_token_hash, user_agent, client_ip, expires_at, last_used_at, revoked_at, created_at, updated_at
+`
+
+type CreateRefreshSessionParams struct {
+	UserID           uuid.UUID          `json:"user_id"`
+	RefreshTokenHash string             `json:"refresh_token_hash"`
+	UserAgent        *string            `json:"user_agent"`
+	ClientIp         *string            `json:"client_ip"`
+	ExpiresAt        pgtype.Timestamptz `json:"expires_at"`
+}
+
+func (q *Queries) CreateRefreshSession(ctx context.Context, arg CreateRefreshSessionParams) (AuthRefreshSession, error) {
+	row := q.db.QueryRow(ctx, createRefreshSession,
+		arg.UserID,
+		arg.RefreshTokenHash,
+		arg.UserAgent,
+		arg.ClientIp,
+		arg.ExpiresAt,
+	)
+	var i AuthRefreshSession
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.RefreshTokenHash,
+		&i.UserAgent,
+		&i.ClientIp,
+		&i.ExpiresAt,
+		&i.LastUsedAt,
+		&i.RevokedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createUserCredential = `-- name: CreateUserCredential :one
 INSERT INTO user_credentials (user_id, password_hash)
 VALUES ($1, $2)
@@ -36,6 +91,16 @@ func (q *Queries) CreateUserCredential(ctx context.Context, arg CreateUserCreden
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const deleteExpiredAuthTokens = `-- name: DeleteExpiredAuthTokens :exec
+DELETE FROM auth_access_token_blacklist
+WHERE expires_at <= now()
+`
+
+func (q *Queries) DeleteExpiredAuthTokens(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteExpiredAuthTokens)
+	return err
 }
 
 const findActiveUserByIdentifier = `-- name: FindActiveUserByIdentifier :one
@@ -88,6 +153,32 @@ func (q *Queries) FindActiveUserByPhoneForAuth(ctx context.Context, phone *strin
 	return i, err
 }
 
+const getActiveRefreshSessionByHash = `-- name: GetActiveRefreshSessionByHash :one
+SELECT id, user_id, refresh_token_hash, user_agent, client_ip, expires_at, last_used_at, revoked_at, created_at, updated_at
+FROM auth_refresh_sessions
+WHERE refresh_token_hash = $1
+  AND revoked_at IS NULL
+  AND expires_at > now()
+`
+
+func (q *Queries) GetActiveRefreshSessionByHash(ctx context.Context, refreshTokenHash string) (AuthRefreshSession, error) {
+	row := q.db.QueryRow(ctx, getActiveRefreshSessionByHash, refreshTokenHash)
+	var i AuthRefreshSession
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.RefreshTokenHash,
+		&i.UserAgent,
+		&i.ClientIp,
+		&i.ExpiresAt,
+		&i.LastUsedAt,
+		&i.RevokedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getUserCredential = `-- name: GetUserCredential :one
 SELECT user_id, password_hash, password_updated_at, failed_attempts, locked_until, created_at, updated_at
 FROM user_credentials
@@ -109,6 +200,22 @@ func (q *Queries) GetUserCredential(ctx context.Context, userID uuid.UUID) (User
 	return i, err
 }
 
+const isAccessTokenBlacklisted = `-- name: IsAccessTokenBlacklisted :one
+SELECT EXISTS (
+    SELECT 1
+    FROM auth_access_token_blacklist
+    WHERE token_hash = $1
+      AND expires_at > now()
+)
+`
+
+func (q *Queries) IsAccessTokenBlacklisted(ctx context.Context, tokenHash string) (bool, error) {
+	row := q.db.QueryRow(ctx, isAccessTokenBlacklisted, tokenHash)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const resetUserCredentialFailure = `-- name: ResetUserCredentialFailure :one
 UPDATE user_credentials
 SET failed_attempts = 0,
@@ -127,6 +234,75 @@ func (q *Queries) ResetUserCredentialFailure(ctx context.Context, userID uuid.UU
 		&i.PasswordUpdatedAt,
 		&i.FailedAttempts,
 		&i.LockedUntil,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const revokeRefreshSession = `-- name: RevokeRefreshSession :exec
+UPDATE auth_refresh_sessions
+SET revoked_at = COALESCE(revoked_at, now()),
+    updated_at = now()
+WHERE id = $1
+`
+
+func (q *Queries) RevokeRefreshSession(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, revokeRefreshSession, id)
+	return err
+}
+
+const revokeRefreshSessionByHash = `-- name: RevokeRefreshSessionByHash :exec
+UPDATE auth_refresh_sessions
+SET revoked_at = COALESCE(revoked_at, now()),
+    updated_at = now()
+WHERE refresh_token_hash = $1
+`
+
+func (q *Queries) RevokeRefreshSessionByHash(ctx context.Context, refreshTokenHash string) error {
+	_, err := q.db.Exec(ctx, revokeRefreshSessionByHash, refreshTokenHash)
+	return err
+}
+
+const rotateRefreshSession = `-- name: RotateRefreshSession :one
+UPDATE auth_refresh_sessions
+SET refresh_token_hash = $2,
+    user_agent = $3,
+    client_ip = $4,
+    expires_at = $5,
+    last_used_at = now(),
+    updated_at = now()
+WHERE id = $1
+  AND revoked_at IS NULL
+RETURNING id, user_id, refresh_token_hash, user_agent, client_ip, expires_at, last_used_at, revoked_at, created_at, updated_at
+`
+
+type RotateRefreshSessionParams struct {
+	ID               uuid.UUID          `json:"id"`
+	RefreshTokenHash string             `json:"refresh_token_hash"`
+	UserAgent        *string            `json:"user_agent"`
+	ClientIp         *string            `json:"client_ip"`
+	ExpiresAt        pgtype.Timestamptz `json:"expires_at"`
+}
+
+func (q *Queries) RotateRefreshSession(ctx context.Context, arg RotateRefreshSessionParams) (AuthRefreshSession, error) {
+	row := q.db.QueryRow(ctx, rotateRefreshSession,
+		arg.ID,
+		arg.RefreshTokenHash,
+		arg.UserAgent,
+		arg.ClientIp,
+		arg.ExpiresAt,
+	)
+	var i AuthRefreshSession
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.RefreshTokenHash,
+		&i.UserAgent,
+		&i.ClientIp,
+		&i.ExpiresAt,
+		&i.LastUsedAt,
+		&i.RevokedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

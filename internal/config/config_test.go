@@ -15,6 +15,7 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("REDIS_ADDR", "127.0.0.1:6380")
 	t.Setenv("REDIS_DB", "2")
 	t.Setenv("AUTH_ACCESS_TOKEN_TTL_MINUTES", "60")
+	t.Setenv("AUTH_REFRESH_TOKEN_TTL_DAYS", "14")
 	t.Setenv("AUTH_DEV_USER_HEADER_ENABLED", "false")
 	t.Setenv("AUTH_PASSWORD_LOCK_MINUTES", "5")
 	t.Setenv("SMS_PROVIDER", "noop")
@@ -48,6 +49,9 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.Auth.AccessTokenTTLMinutes != 60 {
 		t.Fatalf("expected auth ttl override, got %d", cfg.Auth.AccessTokenTTLMinutes)
+	}
+	if cfg.Auth.RefreshTokenTTLDays != 14 {
+		t.Fatalf("expected auth refresh ttl override, got %d", cfg.Auth.RefreshTokenTTLDays)
 	}
 	if cfg.Auth.DevUserHeaderEnabled {
 		t.Fatal("expected dev user header override")

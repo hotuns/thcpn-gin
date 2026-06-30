@@ -53,9 +53,10 @@ type SendSMSResult struct {
 }
 
 type SMSLoginInput struct {
-	Phone string
-	Code  string
-	Name  string
+	Phone   string
+	Code    string
+	Name    string
+	Request RequestInfo
 }
 
 type PasswordRegisterInput struct {
@@ -63,19 +64,39 @@ type PasswordRegisterInput struct {
 	Phone    string
 	Email    string
 	Password string
+	Request  RequestInfo
 }
 
 type PasswordLoginInput struct {
 	Identifier string
 	Password   string
+	Request    RequestInfo
+}
+
+type RequestInfo struct {
+	UserAgent string
+	ClientIP  string
+}
+
+type RefreshInput struct {
+	RefreshToken string
+	Request      RequestInfo
+}
+
+type LogoutInput struct {
+	AccessToken  string
+	RefreshToken string
+	UserID       uuid.UUID
 }
 
 type LoginResult struct {
-	AccessToken string      `json:"access_token"`
-	TokenType   string      `json:"token_type"`
-	ExpiresIn   int64       `json:"expires_in"`
-	User        UserProfile `json:"user"`
-	Created     bool        `json:"created,omitempty"`
+	AccessToken      string      `json:"access_token"`
+	RefreshToken     string      `json:"refresh_token"`
+	TokenType        string      `json:"token_type"`
+	ExpiresIn        int64       `json:"expires_in"`
+	RefreshExpiresIn int64       `json:"refresh_expires_in"`
+	User             UserProfile `json:"user"`
+	Created          bool        `json:"created,omitempty"`
 }
 
 func NewService(db *pgxpool.Pool, tokens *TokenManager, codeStore *SMSCodeStore, sender smsx.Sender, authCfg config.AuthConfig, smsCfg config.SMSConfig) *Service {
@@ -143,7 +164,7 @@ func (s *Service) LoginWithSMS(ctx context.Context, input SMSLoginInput) (LoginR
 		if err != nil {
 			return LoginResult{}, apperr.Wrap(apperr.KindInternal, "update sms login user", err)
 		}
-		return s.loginResult(userModel, false)
+		return s.loginResult(ctx, userModel, false, input.Request)
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return LoginResult{}, apperr.Wrap(apperr.KindInternal, "find user by phone", err)
@@ -153,7 +174,7 @@ func (s *Service) LoginWithSMS(ctx context.Context, input SMSLoginInput) (LoginR
 	if err != nil {
 		return LoginResult{}, err
 	}
-	return s.loginResult(userModel, true)
+	return s.loginResult(ctx, userModel, true, input.Request)
 }
 
 func (s *Service) RegisterWithPassword(ctx context.Context, input PasswordRegisterInput) (LoginResult, error) {
@@ -183,7 +204,7 @@ func (s *Service) RegisterWithPassword(ctx context.Context, input PasswordRegist
 	if err != nil {
 		return LoginResult{}, err
 	}
-	return s.loginResult(userModel, true)
+	return s.loginResult(ctx, userModel, true, input.Request)
 }
 
 func (s *Service) LoginWithPassword(ctx context.Context, input PasswordLoginInput) (LoginResult, error) {
@@ -228,7 +249,7 @@ func (s *Service) LoginWithPassword(ctx context.Context, input PasswordLoginInpu
 	if err != nil {
 		return LoginResult{}, apperr.Wrap(apperr.KindInternal, "update password login user", err)
 	}
-	return s.loginResult(userModel, false)
+	return s.loginResult(ctx, userModel, false, input.Request)
 }
 
 func (s *Service) createSMSUser(ctx context.Context, name string, phone string) (sqlc.User, error) {
@@ -364,7 +385,107 @@ func (s *Service) recordPasswordFailure(ctx context.Context, credential sqlc.Use
 	return nil
 }
 
-func (s *Service) loginResult(userModel sqlc.User, created bool) (LoginResult, error) {
+func (s *Service) Refresh(ctx context.Context, input RefreshInput) (LoginResult, error) {
+	refreshToken := strings.TrimSpace(input.RefreshToken)
+	if refreshToken == "" {
+		return LoginResult{}, apperr.New(apperr.KindInvalidArgument, "refresh_token is required")
+	}
+	if s.tokens == nil {
+		return LoginResult{}, apperr.New(apperr.KindInternal, "token manager is not configured")
+	}
+	session, err := s.queries.GetActiveRefreshSessionByHash(ctx, TokenHash(refreshToken))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return LoginResult{}, apperr.New(apperr.KindUnauthorized, "invalid refresh token")
+		}
+		return LoginResult{}, apperr.Wrap(apperr.KindInternal, "get refresh session", err)
+	}
+	userModel, err := s.queries.GetActiveUser(ctx, session.UserID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return LoginResult{}, apperr.New(apperr.KindUnauthorized, "user is not active")
+		}
+		return LoginResult{}, apperr.Wrap(apperr.KindInternal, "get refresh user", err)
+	}
+
+	access, err := s.tokens.Generate(userModel.ID)
+	if err != nil {
+		return LoginResult{}, apperr.Wrap(apperr.KindInternal, "generate access token", err)
+	}
+	nextRefresh, refreshExpiresAt, refreshExpiresIn, err := s.newRefreshToken()
+	if err != nil {
+		return LoginResult{}, err
+	}
+	if _, err := s.queries.RotateRefreshSession(ctx, sqlc.RotateRefreshSessionParams{
+		ID:               session.ID,
+		RefreshTokenHash: TokenHash(nextRefresh),
+		UserAgent:        optionalRequestValue(input.Request.UserAgent),
+		ClientIp:         optionalRequestValue(input.Request.ClientIP),
+		ExpiresAt:        pgTimestamp(refreshExpiresAt),
+	}); err != nil {
+		return LoginResult{}, apperr.Wrap(apperr.KindInternal, "rotate refresh session", err)
+	}
+	return loginResultFromTokens(userModel, access, nextRefresh, refreshExpiresIn, false), nil
+}
+
+func (s *Service) Logout(ctx context.Context, input LogoutInput) error {
+	refreshToken := strings.TrimSpace(input.RefreshToken)
+	accessToken := strings.TrimSpace(input.AccessToken)
+	if refreshToken == "" && accessToken == "" {
+		return apperr.New(apperr.KindInvalidArgument, "access token or refresh_token is required")
+	}
+	if refreshToken != "" {
+		session, err := s.queries.GetActiveRefreshSessionByHash(ctx, TokenHash(refreshToken))
+		if err != nil {
+			if !errors.Is(err, pgx.ErrNoRows) {
+				return apperr.Wrap(apperr.KindInternal, "get refresh session", err)
+			}
+		} else if input.UserID != uuid.Nil && session.UserID != input.UserID {
+			return apperr.New(apperr.KindPermissionDenied, "refresh token does not belong to actor")
+		} else if err := s.queries.RevokeRefreshSession(ctx, session.ID); err != nil {
+			return apperr.Wrap(apperr.KindInternal, "revoke refresh session", err)
+		}
+	}
+	if accessToken == "" {
+		return nil
+	}
+	if s.tokens == nil {
+		return apperr.New(apperr.KindInternal, "token manager is not configured")
+	}
+	info, err := s.tokens.ParseInfo(accessToken)
+	if err != nil {
+		return apperr.New(apperr.KindUnauthorized, "invalid bearer token")
+	}
+	if input.UserID != uuid.Nil && info.UserID != input.UserID {
+		return apperr.New(apperr.KindPermissionDenied, "access token does not belong to actor")
+	}
+	if !info.ExpiresAt.After(s.now()) {
+		return nil
+	}
+	if err := s.queries.BlacklistAccessToken(ctx, sqlc.BlacklistAccessTokenParams{
+		TokenHash: TokenHash(accessToken),
+		UserID:    info.UserID,
+		ExpiresAt: pgTimestamp(info.ExpiresAt),
+	}); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "blacklist access token", err)
+	}
+	_ = s.queries.DeleteExpiredAuthTokens(ctx)
+	return nil
+}
+
+func (s *Service) IsAccessTokenRevoked(ctx context.Context, rawToken string) (bool, error) {
+	rawToken = strings.TrimSpace(rawToken)
+	if rawToken == "" {
+		return false, nil
+	}
+	revoked, err := s.queries.IsAccessTokenBlacklisted(ctx, TokenHash(rawToken))
+	if err != nil {
+		return false, apperr.Wrap(apperr.KindInternal, "check access token blacklist", err)
+	}
+	return revoked, nil
+}
+
+func (s *Service) loginResult(ctx context.Context, userModel sqlc.User, created bool, request RequestInfo) (LoginResult, error) {
 	if s.tokens == nil {
 		return LoginResult{}, apperr.New(apperr.KindInternal, "token manager is not configured")
 	}
@@ -372,13 +493,61 @@ func (s *Service) loginResult(userModel sqlc.User, created bool) (LoginResult, e
 	if err != nil {
 		return LoginResult{}, apperr.Wrap(apperr.KindInternal, "generate access token", err)
 	}
+	refreshToken, refreshExpiresAt, refreshExpiresIn, err := s.newRefreshToken()
+	if err != nil {
+		return LoginResult{}, err
+	}
+	if _, err := s.queries.CreateRefreshSession(ctx, sqlc.CreateRefreshSessionParams{
+		UserID:           userModel.ID,
+		RefreshTokenHash: TokenHash(refreshToken),
+		UserAgent:        optionalRequestValue(request.UserAgent),
+		ClientIp:         optionalRequestValue(request.ClientIP),
+		ExpiresAt:        pgTimestamp(refreshExpiresAt),
+	}); err != nil {
+		return LoginResult{}, apperr.Wrap(apperr.KindInternal, "create refresh session", err)
+	}
+	return loginResultFromTokens(userModel, token, refreshToken, refreshExpiresIn, created), nil
+}
+
+func (s *Service) newRefreshToken() (string, time.Time, int64, error) {
+	token, err := NewRefreshToken()
+	if err != nil {
+		return "", time.Time{}, 0, apperr.Wrap(apperr.KindInternal, "generate refresh token", err)
+	}
+	ttl := time.Duration(s.refreshTokenTTLDays()) * 24 * time.Hour
+	expiresAt := s.now().Add(ttl).UTC()
+	return token, expiresAt, int64(ttl.Seconds()), nil
+}
+
+func (s *Service) refreshTokenTTLDays() int {
+	if s.authCfg.RefreshTokenTTLDays > 0 {
+		return s.authCfg.RefreshTokenTTLDays
+	}
+	return 30
+}
+
+func loginResultFromTokens(userModel sqlc.User, access TokenPair, refreshToken string, refreshExpiresIn int64, created bool) LoginResult {
 	return LoginResult{
-		AccessToken: token.AccessToken,
-		TokenType:   token.TokenType,
-		ExpiresIn:   token.ExpiresIn,
-		User:        userProfileFromSQL(userModel),
-		Created:     created,
-	}, nil
+		AccessToken:      access.AccessToken,
+		RefreshToken:     refreshToken,
+		TokenType:        access.TokenType,
+		ExpiresIn:        access.ExpiresIn,
+		RefreshExpiresIn: refreshExpiresIn,
+		User:             userProfileFromSQL(userModel),
+		Created:          created,
+	}
+}
+
+func optionalRequestValue(value string) *string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func pgTimestamp(value time.Time) pgtype.Timestamptz {
+	return pgtype.Timestamptz{Time: value.UTC(), Valid: true}
 }
 
 func userProfileFromSQL(model sqlc.User) UserProfile {

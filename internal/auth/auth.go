@@ -17,6 +17,7 @@ const actorContextKey = "actor"
 
 type MiddlewareConfig struct {
 	TokenManager         *TokenManager
+	RevocationChecker    TokenRevocationChecker
 	DevUserHeaderEnabled bool
 }
 
@@ -30,6 +31,10 @@ type Actor struct {
 
 type ActorLookup interface {
 	LookupActor(ctx context.Context, id uuid.UUID) (Actor, error)
+}
+
+type TokenRevocationChecker interface {
+	IsAccessTokenRevoked(ctx context.Context, rawToken string) (bool, error)
 }
 
 func Middleware(lookup ActorLookup, configs ...MiddlewareConfig) gin.HandlerFunc {
@@ -69,7 +74,7 @@ func Middleware(lookup ActorLookup, configs ...MiddlewareConfig) gin.HandlerFunc
 func authenticateRequest(c *gin.Context, cfg MiddlewareConfig) (uuid.UUID, error) {
 	authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
 	if authHeader != "" {
-		return authenticateBearer(authHeader, cfg.TokenManager)
+		return authenticateBearer(c.Request.Context(), authHeader, cfg)
 	}
 
 	if cfg.DevUserHeaderEnabled {
@@ -79,18 +84,34 @@ func authenticateRequest(c *gin.Context, cfg MiddlewareConfig) (uuid.UUID, error
 	return uuid.Nil, apperr.New(apperr.KindUnauthorized, "missing bearer token")
 }
 
-func authenticateBearer(header string, tokens *TokenManager) (uuid.UUID, error) {
-	parts := strings.Fields(header)
-	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-		return uuid.Nil, apperr.New(apperr.KindUnauthorized, "invalid bearer token")
+func BearerTokenFromHeader(header string) (string, error) {
+	parts := strings.Fields(strings.TrimSpace(header))
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || strings.TrimSpace(parts[1]) == "" {
+		return "", apperr.New(apperr.KindUnauthorized, "invalid bearer token")
 	}
-	if tokens == nil {
+	return parts[1], nil
+}
+
+func authenticateBearer(ctx context.Context, header string, cfg MiddlewareConfig) (uuid.UUID, error) {
+	if cfg.TokenManager == nil {
 		return uuid.Nil, apperr.New(apperr.KindUnauthorized, "token authentication is not configured")
 	}
-
-	userID, err := tokens.Parse(parts[1])
+	rawToken, err := BearerTokenFromHeader(header)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	userID, err := cfg.TokenManager.Parse(rawToken)
 	if err != nil {
 		return uuid.Nil, apperr.New(apperr.KindUnauthorized, "invalid bearer token")
+	}
+	if cfg.RevocationChecker != nil {
+		revoked, err := cfg.RevocationChecker.IsAccessTokenRevoked(ctx, rawToken)
+		if err != nil {
+			return uuid.Nil, err
+		}
+		if revoked {
+			return uuid.Nil, apperr.New(apperr.KindUnauthorized, "access token has been revoked")
+		}
 	}
 	return userID, nil
 }

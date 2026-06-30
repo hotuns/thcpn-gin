@@ -1,6 +1,10 @@
 package auth
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"time"
 
@@ -18,6 +22,11 @@ type TokenPair struct {
 	TokenType   string    `json:"token_type"`
 	ExpiresIn   int64     `json:"expires_in"`
 	ExpiresAt   time.Time `json:"expires_at"`
+}
+
+type AccessTokenInfo struct {
+	UserID    uuid.UUID
+	ExpiresAt time.Time
 }
 
 type accessClaims struct {
@@ -57,6 +66,14 @@ func (m *TokenManager) Generate(userID uuid.UUID) (TokenPair, error) {
 }
 
 func (m *TokenManager) Parse(accessToken string) (uuid.UUID, error) {
+	info, err := m.ParseInfo(accessToken)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return info.UserID, nil
+}
+
+func (m *TokenManager) ParseInfo(accessToken string) (AccessTokenInfo, error) {
 	parsed, err := jwt.ParseWithClaims(accessToken, &accessClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if token.Method != jwt.SigningMethodHS256 {
 			return nil, errors.New("unexpected jwt signing method")
@@ -64,20 +81,36 @@ func (m *TokenManager) Parse(accessToken string) (uuid.UUID, error) {
 		return m.secret, nil
 	})
 	if err != nil {
-		return uuid.Nil, err
+		return AccessTokenInfo{}, err
 	}
 
 	claims, ok := parsed.Claims.(*accessClaims)
 	if !ok || !parsed.Valid {
-		return uuid.Nil, errors.New("invalid jwt claims")
+		return AccessTokenInfo{}, errors.New("invalid jwt claims")
 	}
 	if claims.Subject == "" {
-		return uuid.Nil, errors.New("missing jwt subject")
+		return AccessTokenInfo{}, errors.New("missing jwt subject")
+	}
+	if claims.ExpiresAt == nil {
+		return AccessTokenInfo{}, errors.New("missing jwt expiry")
 	}
 
 	userID, err := uuid.Parse(claims.Subject)
 	if err != nil {
-		return uuid.Nil, err
+		return AccessTokenInfo{}, err
 	}
-	return userID, nil
+	return AccessTokenInfo{UserID: userID, ExpiresAt: claims.ExpiresAt.Time}, nil
+}
+
+func NewRefreshToken() (string, error) {
+	var raw [32]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(raw[:]), nil
+}
+
+func TokenHash(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
 }

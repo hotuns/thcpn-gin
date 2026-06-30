@@ -30,6 +30,13 @@ func TestTokenManagerGenerateAndParse(t *testing.T) {
 	if parsedUserID != userID {
 		t.Fatalf("expected user id %s, got %s", userID, parsedUserID)
 	}
+	info, err := manager.ParseInfo(token.AccessToken)
+	if err != nil {
+		t.Fatalf("parse token info: %v", err)
+	}
+	if info.UserID != userID || info.ExpiresAt.IsZero() {
+		t.Fatalf("unexpected token info: %#v", info)
+	}
 }
 
 func TestTokenManagerRejectsExpiredToken(t *testing.T) {
@@ -74,5 +81,25 @@ func TestTokenManagerRejectsMissingSubject(t *testing.T) {
 	manager := NewTokenManager("test-secret", time.Hour)
 	if _, err := manager.Parse(signed); err == nil {
 		t.Fatal("expected token without subject to be rejected")
+	}
+}
+
+func TestRefreshTokenGenerationAndHash(t *testing.T) {
+	first, err := NewRefreshToken()
+	if err != nil {
+		t.Fatalf("generate first refresh token: %v", err)
+	}
+	second, err := NewRefreshToken()
+	if err != nil {
+		t.Fatalf("generate second refresh token: %v", err)
+	}
+	if first == "" || second == "" {
+		t.Fatal("expected non-empty refresh tokens")
+	}
+	if first == second {
+		t.Fatal("expected refresh tokens to be random")
+	}
+	if TokenHash(first) == first || TokenHash(first) != TokenHash(first) {
+		t.Fatal("expected stable non-plaintext token hash")
 	}
 }

@@ -47,6 +47,7 @@ type AuthConfig struct {
 	JWTSecretEnv          string         `yaml:"jwt_secret_env"`
 	JWTSecret             string         `yaml:"jwt_secret"`
 	AccessTokenTTLMinutes int            `yaml:"access_token_ttl_minutes"`
+	RefreshTokenTTLDays   int            `yaml:"refresh_token_ttl_days"`
 	DevUserHeaderEnabled  bool           `yaml:"dev_user_header_enabled"`
 	DevRegisterEnabled    bool           `yaml:"dev_register_enabled"`
 	Password              PasswordConfig `yaml:"password"`
@@ -127,6 +128,7 @@ func Default() Config {
 			JWTSecretEnv:          "JWT_SECRET",
 			JWTSecret:             "dev-insecure-change-me",
 			AccessTokenTTLMinutes: 1440,
+			RefreshTokenTTLDays:   30,
 			DevUserHeaderEnabled:  true,
 			DevRegisterEnabled:    true,
 			Password: PasswordConfig{
@@ -219,6 +221,9 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.Auth.AccessTokenTTLMinutes <= 0 {
 		return errors.New("auth.access_token_ttl_minutes must be greater than 0")
+	}
+	if cfg.Auth.RefreshTokenTTLDays <= 0 {
+		return errors.New("auth.refresh_token_ttl_days must be greater than 0")
 	}
 	if cfg.Auth.Password.MinLength <= 0 {
 		return errors.New("auth.password.min_length must be greater than 0")
@@ -318,6 +323,11 @@ func applyEnv(cfg *Config) {
 	if value := strings.TrimSpace(os.Getenv("AUTH_ACCESS_TOKEN_TTL_MINUTES")); value != "" {
 		if minutes, err := strconv.Atoi(value); err == nil {
 			cfg.Auth.AccessTokenTTLMinutes = minutes
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("AUTH_REFRESH_TOKEN_TTL_DAYS")); value != "" {
+		if days, err := strconv.Atoi(value); err == nil {
+			cfg.Auth.RefreshTokenTTLDays = days
 		}
 	}
 	if value := strings.TrimSpace(os.Getenv("AUTH_DEV_USER_HEADER_ENABLED")); value != "" {

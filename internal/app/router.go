@@ -133,6 +133,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	}
 	authMiddleware := auth.Middleware(userService, auth.MiddlewareConfig{
 		TokenManager:         tokenManager,
+		RevocationChecker:    authService,
 		DevUserHeaderEnabled: cfg.Auth.DevUserHeaderEnabled,
 	})
 
@@ -141,6 +142,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	api.POST("/auth/sms/login", authHandler.LoginWithSMS)
 	api.POST("/auth/password/register", authHandler.RegisterWithPassword)
 	api.POST("/auth/password/login", authHandler.LoginWithPassword)
+	api.POST("/auth/refresh", authHandler.Refresh)
 	if cfg.Auth.DevRegisterEnabled {
 		api.POST("/auth/register", userHandler.Register)
 	} else {
@@ -151,6 +153,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 
 	authed := api.Group("")
 	authed.Use(authMiddleware)
+	authed.POST("/auth/logout", authHandler.Logout)
 	authed.GET("/me", userHandler.Me)
 	authed.GET("/workspaces", workspaceHandler.List)
 	authed.POST("/workspaces", workspaceHandler.Create)

@@ -18,11 +18,23 @@ type fakeActorLookup struct {
 	err   error
 }
 
+type fakeRevocationChecker struct {
+	revoked bool
+	err     error
+}
+
 func (f fakeActorLookup) LookupActor(context.Context, uuid.UUID) (Actor, error) {
 	if f.err != nil {
 		return Actor{}, f.err
 	}
 	return f.actor, nil
+}
+
+func (f fakeRevocationChecker) IsAccessTokenRevoked(context.Context, string) (bool, error) {
+	if f.err != nil {
+		return false, f.err
+	}
+	return f.revoked, nil
 }
 
 func TestMiddlewareRequiresUserIDHeader(t *testing.T) {
@@ -79,6 +91,31 @@ func TestMiddlewareAcceptsBearerToken(t *testing.T) {
 	})
 	if status != http.StatusOK {
 		t.Fatalf("expected ok, got %d", status)
+	}
+}
+
+func TestMiddlewareRejectsRevokedBearerToken(t *testing.T) {
+	userID := uuid.New()
+	tokens := NewTokenManager("test-secret", time.Hour)
+	token, err := tokens.Generate(userID)
+	if err != nil {
+		t.Fatalf("generate token: %v", err)
+	}
+
+	status := runMiddlewareRequest(t, middlewareTestRequest{
+		authorization: "Bearer " + token.AccessToken,
+		useConfig:     true,
+		config: MiddlewareConfig{
+			TokenManager:         tokens,
+			RevocationChecker:    fakeRevocationChecker{revoked: true},
+			DevUserHeaderEnabled: false,
+		},
+		lookup: fakeActorLookup{
+			actor: Actor{UserID: userID, Name: "tester", Status: "active"},
+		},
+	})
+	if status != http.StatusUnauthorized {
+		t.Fatalf("expected unauthorized, got %d", status)
 	}
 }
 
