@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/audit"
 	"thcpn-gin/internal/auth"
 	"thcpn-gin/internal/httpx"
 	"thcpn-gin/internal/permission"
@@ -20,6 +21,7 @@ const (
 type Handler struct {
 	service *Service
 	checker *permission.Checker
+	audit   *audit.Service
 }
 
 type createDataStreamRequest struct {
@@ -38,8 +40,12 @@ type updateDataStreamRequest struct {
 	Status *string `json:"status"`
 }
 
-func NewHandler(service *Service, checker *permission.Checker) *Handler {
-	return &Handler{service: service, checker: checker}
+func NewHandler(service *Service, checker *permission.Checker, auditServices ...*audit.Service) *Handler {
+	var auditService *audit.Service
+	if len(auditServices) > 0 {
+		auditService = auditServices[0]
+	}
+	return &Handler{service: service, checker: checker, audit: auditService}
 }
 
 func (h *Handler) List(c *gin.Context) {
@@ -91,7 +97,28 @@ func (h *Handler) Create(c *gin.Context) {
 		ActorUserID: actor.UserID,
 	})
 	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "data_stream.create",
+			ResourceType: "data_stream",
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
 		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		WorkspaceID:  audit.WorkspaceID(result.WorkspaceID),
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "data_stream.create",
+		ResourceType: "data_stream",
+		ResourceID:   audit.ResourceID(result.ID),
+		Result:       audit.ResultSuccess,
+	}) {
 		return
 	}
 
@@ -125,6 +152,7 @@ func (h *Handler) Update(c *gin.Context) {
 	if !h.authorize(c, "data_stream", dataStreamID, dataStreamManageAction) {
 		return
 	}
+	actor, _ := auth.ActorFromContext(c)
 
 	var req updateDataStreamRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -141,7 +169,29 @@ func (h *Handler) Update(c *gin.Context) {
 		Status:       req.Status,
 	})
 	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "data_stream.update",
+			ResourceType: "data_stream",
+			ResourceID:   audit.ResourceID(dataStreamID),
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
 		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		WorkspaceID:  audit.WorkspaceID(result.WorkspaceID),
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "data_stream.update",
+		ResourceType: "data_stream",
+		ResourceID:   audit.ResourceID(result.ID),
+		Result:       audit.ResultSuccess,
+	}) {
 		return
 	}
 
@@ -193,4 +243,15 @@ func parseUUIDValue(value string, name string, c *gin.Context) (uuid.UUID, bool)
 		return uuid.Nil, false
 	}
 	return id, true
+}
+
+func (h *Handler) record(c *gin.Context, input audit.RecordInput) bool {
+	if h.audit == nil {
+		return true
+	}
+	if _, err := h.audit.Record(c.Request.Context(), audit.FromRequest(c, input)); err != nil {
+		httpx.WriteAppError(c, err)
+		return false
+	}
+	return true
 }

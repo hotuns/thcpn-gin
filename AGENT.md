@@ -287,6 +287,7 @@
   - 创建 AccessGrant、撤销 AccessGrant 成功和失败。
   - 创建 Invitation、接受 Invitation、撤销 Invitation 成功和失败。
   - `service_engineer` 授权使用 `service_access.grant` action 写审计。
+  - 创建、更新 Project / Site / DataStream 成功和失败。
   - 创建、更新、锁定、删除 Dataset 成功和失败。
   - 媒体下载成功和权限拒绝。
   - 创建导出任务成功和失败，导出文件下载准备成功和失败。
@@ -341,7 +342,7 @@
 ### 尚未实现
 
 - Export Worker 的更完整对象存储集成。
-- Project / Site / Device / DataStream / Dataset 当前完成资产、元信息、查询定义、PostgreSQL / MySQL / ClickHouse / HTTP API telemetry 读取和 media 记录查询；Project / Site / DataStream 变更审计可后续按风险扩展。
+- Project / Site / Device / DataStream / Dataset 当前完成资产、元信息、查询定义、关键变更审计、PostgreSQL / MySQL / ClickHouse / HTTP API telemetry 读取和 media 记录查询。
 - 尚未实现模块的敏感操作审计仍待对应模块落地时接入，例如设备校准、固件升级和设备转移。
 - 更完整对象存储集成。
 

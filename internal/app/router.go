@@ -125,10 +125,10 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 		}
 		return actor.UserID, true
 	})
-	projectHandler := project.NewHandler(projectService, permissionChecker)
-	siteHandler := site.NewHandler(siteService, permissionChecker)
+	projectHandler := project.NewHandler(projectService, permissionChecker, auditService)
+	siteHandler := site.NewHandler(siteService, permissionChecker, auditService)
 	deviceHandler := device.NewHandler(deviceService, permissionChecker, auditService)
-	dataStreamHandler := datastream.NewHandler(dataStreamService, permissionChecker)
+	dataStreamHandler := datastream.NewHandler(dataStreamService, permissionChecker, auditService)
 	datasetHandler := dataset.NewHandler(datasetService, permissionChecker, auditService)
 	dataSourceHandler := datasource.NewHandler(dataSourceService, permissionChecker)
 	telemetryHandler := telemetry.NewHandler(telemetryService, permissionChecker)
