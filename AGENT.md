@@ -234,7 +234,7 @@
   - `GET /api/v1/datasets/:dataset_id`
   - `PATCH /api/v1/datasets/:dataset_id`
   - `DELETE /api/v1/datasets/:dataset_id`
-- 当前 Dataset 第一版保存 query definition / metadata；导出通过 ExportJob 异步任务元信息创建，Worker 真正生成文件仍待实现。
+- 当前 Dataset 第一版保存 query definition / metadata；导出通过 ExportJob 异步任务创建，Worker 可生成 `dataset_zip`、telemetry CSV / Excel 和 media ZIP 文件并上传对象存储。
 - Dataset source 当前支持 `device`、`data_stream`、`file`；`device` / `data_stream` 会校验所属 workspace，带 `project_id` 时也校验所属 project。
 - Dataset 权限动作：`dataset.view`、`dataset.create`、`dataset.delete`，将状态更新为 `locked` 时需要 `dataset.lock`。
 - Dataset scope AccessGrant 已接入 checker，可授权到单个 dataset。
