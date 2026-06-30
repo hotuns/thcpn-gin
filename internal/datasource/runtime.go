@@ -107,6 +107,8 @@ func (r *Runtime) QueryTelemetry(ctx context.Context, source DataSource, req Tel
 		return r.queryPostgresTelemetry(ctx, source, req)
 	case "mysql":
 		return r.queryMySQLTelemetry(ctx, source, req)
+	case "http_api":
+		return r.queryHTTPAPITelemetry(ctx, source, req)
 	default:
 		return TelemetryResult{}, apperr.New(apperr.KindDataSource, "unsupported telemetry data source type")
 	}
@@ -135,6 +137,8 @@ func (r *Runtime) QueryMedia(ctx context.Context, source DataSource, req MediaQu
 		return r.queryPostgresMedia(ctx, source, req)
 	case "mysql":
 		return r.queryMySQLMedia(ctx, source, req)
+	case "http_api":
+		return r.queryHTTPAPIMedia(ctx, source, req)
 	default:
 		return MediaResult{}, apperr.New(apperr.KindDataSource, "unsupported media data source type")
 	}

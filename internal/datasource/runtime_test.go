@@ -1,10 +1,17 @@
 package datasource
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	mysql "github.com/go-sql-driver/mysql"
+	"github.com/google/uuid"
+
+	"thcpn-gin/internal/apperr"
 )
 
 func TestBuildTelemetryQueryPlanDialects(t *testing.T) {
@@ -148,4 +155,136 @@ func TestMySQLDSNWithParseTime(t *testing.T) {
 	if cfg.DBName != "device_data" {
 		t.Fatalf("unexpected db name: %q", cfg.DBName)
 	}
+}
+
+func TestHTTPAPITelemetryQueryGET(t *testing.T) {
+	start := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(time.Hour)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("unexpected method: %s", r.Method)
+		}
+		if r.URL.Path != "/v1/telemetry" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		query := r.URL.Query()
+		if query.Get("serial_no") != "SN-001" {
+			t.Fatalf("unexpected device key: %s", query.Get("serial_no"))
+		}
+		if query.Get("start_time") != start.Format(time.RFC3339Nano) || query.Get("end_time") != end.Format(time.RFC3339Nano) {
+			t.Fatalf("unexpected time query: %s", query.Encode())
+		}
+		if query.Get("limit") != "25" {
+			t.Fatalf("unexpected limit: %s", query.Get("limit"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"points":[{"ts":"2026-06-01T00:05:00Z","value":21.5}]}`))
+	}))
+	defer server.Close()
+
+	runtime := NewRuntime(staticResolver(server.URL))
+	result, err := runtime.QueryTelemetry(context.Background(), DataSource{
+		ID:           uuid.New(),
+		Type:         "http_api",
+		DsnSecretRef: "secret:http",
+		Status:       "active",
+	}, TelemetryQuery{
+		Binding: DataStreamBinding{
+			ID:              uuid.New(),
+			DataStreamID:    uuid.New(),
+			DataSourceID:    uuid.New(),
+			TableName:       "device_data",
+			DeviceKeyField:  "serial_no",
+			DeviceKeyValue:  "SN-001",
+			TimeField:       "collected_at",
+			ValueField:      "soil_moisture",
+			PayloadType:     "json",
+			QueryConfigJSON: json.RawMessage(`{"path":"/v1/telemetry"}`),
+			Status:          "active",
+		},
+		Start: start,
+		End:   end,
+		Limit: 25,
+	})
+	if err != nil {
+		t.Fatalf("query http telemetry: %v", err)
+	}
+	if len(result.Points) != 1 {
+		t.Fatalf("unexpected point count: %d", len(result.Points))
+	}
+	if result.Points[0].Value != 21.5 || result.Points[0].Quality != "valid" {
+		t.Fatalf("unexpected point: %#v", result.Points[0])
+	}
+}
+
+func TestHTTPAPIMediaQueryPOST(t *testing.T) {
+	start := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(time.Hour)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("unexpected method: %s", r.Method)
+		}
+		if r.URL.Path != "/media/search" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if body["sn"] != "CAM-001" || body["page"] != "2" || body["page_size"] != "10" || body["media_type"] != "image" {
+			t.Fatalf("unexpected request body: %#v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"items":[{"id":"img-1","captured_at":"2026-06-01T00:05:00Z","object_key":"raw/img-1.jpg","media_type":"image"}],"total":7}`))
+	}))
+	defer server.Close()
+
+	runtime := NewRuntime(staticResolver(server.URL))
+	result, err := runtime.QueryMedia(context.Background(), DataSource{
+		ID:           uuid.New(),
+		Type:         "http_api",
+		DsnSecretRef: "secret:http",
+		Status:       "active",
+	}, MediaQuery{
+		Binding: DataStreamBinding{
+			ID:              uuid.New(),
+			DataStreamID:    uuid.New(),
+			DataSourceID:    uuid.New(),
+			TableName:       "media_index",
+			DeviceKeyField:  "sn",
+			DeviceKeyValue:  "CAM-001",
+			TimeField:       "captured_at",
+			ValueField:      "object_key",
+			PayloadType:     "media",
+			QueryConfigJSON: json.RawMessage(`{"method":"POST","path":"media/search"}`),
+			Status:          "active",
+		},
+		Start:     start,
+		End:       end,
+		Page:      2,
+		PageSize:  10,
+		MediaType: "image",
+	})
+	if err != nil {
+		t.Fatalf("query http media: %v", err)
+	}
+	if result.Total != 7 || len(result.Items) != 1 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if result.Items[0].ObjectKey != "raw/img-1.jpg" {
+		t.Fatalf("unexpected item: %#v", result.Items[0])
+	}
+}
+
+func TestHTTPAPIPathRejectsAbsoluteURL(t *testing.T) {
+	_, err := parseHTTPAPIConfig(json.RawMessage(`{"path":"https://example.com/telemetry"}`))
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected invalid argument, got %v", err)
+	}
+}
+
+type staticResolver string
+
+func (s staticResolver) Resolve(context.Context, string) (string, error) {
+	return string(s), nil
 }

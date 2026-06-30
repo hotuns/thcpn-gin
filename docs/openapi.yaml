@@ -1474,7 +1474,7 @@ paths:
         - DataSources
       operationId: createDataSource
       summary: Create data source metadata
-      description: Requires `workspace.manage` permission. `dsn_secret_ref` must point to a secret outside the platform database. Runtime query adapters currently support PostgreSQL and MySQL for telemetry columns and media indexes.
+      description: Requires `workspace.manage` permission. `dsn_secret_ref` must point to a secret outside the platform database. Runtime query adapters currently support PostgreSQL, MySQL and HTTP API sources for telemetry and media indexes.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -2693,7 +2693,7 @@ components:
         - archived
     DataSourceType:
       type: string
-      description: Metadata accepts the planned adapter types. Runtime query adapters currently support `postgres` and `mysql`.
+      description: Metadata accepts the planned adapter types. Runtime query adapters currently support `postgres`, `mysql` and `http_api`.
       enum:
         - postgres
         - mysql
@@ -3762,7 +3762,7 @@ components:
         query_config:
           type: object
           additionalProperties: true
-          description: Optional adapter-specific mapping. For media payloads, supported keys include `id_field`, `object_key_field`, `thumbnail_key_field`, `media_type_field` and `media_type`.
+          description: Optional adapter-specific mapping. For media payloads, supported keys include `id_field`, `object_key_field`, `thumbnail_key_field`, `media_type_field` and `media_type`. For `http_api` sources, supported keys include `method`, `path`, `headers`, `device_key_param`, `start_time_param`, `end_time_param`, `limit_param`, `page_param`, `page_size_param` and `media_type_param`.
         status:
           $ref: "#/components/schemas/DataStreamBindingStatus"
         created_by:
@@ -3819,7 +3819,7 @@ components:
         query_config:
           type: object
           additionalProperties: true
-          description: Optional adapter-specific mapping. For media payloads, supported keys include `id_field`, `object_key_field`, `thumbnail_key_field`, `media_type_field` and `media_type`.
+          description: Optional adapter-specific mapping. For media payloads, supported keys include `id_field`, `object_key_field`, `thumbnail_key_field`, `media_type_field` and `media_type`. For `http_api` sources, supported keys include `method`, `path`, `headers`, `device_key_param`, `start_time_param`, `end_time_param`, `limit_param`, `page_param`, `page_size_param` and `media_type_param`.
     UpdateDataStreamBindingRequest:
       type: object
       properties:
