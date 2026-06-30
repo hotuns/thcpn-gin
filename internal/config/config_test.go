@@ -23,6 +23,11 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("OBJECT_STORE_PROVIDER", "file")
 	t.Setenv("OBJECT_STORE_LOCAL_PATH", "/tmp/thcpn-objectstore")
 	t.Setenv("EXPORT_MAX_ROWS", "250000")
+	t.Setenv("TRACING_ENABLED", "true")
+	t.Setenv("TRACING_SERVICE_NAME", "thcpn-test")
+	t.Setenv("TRACING_EXPORTER", "otlp")
+	t.Setenv("TRACING_OTLP_ENDPOINT", "collector:4318")
+	t.Setenv("TRACING_OTLP_INSECURE", "false")
 
 	cfg, err := Load()
 	if err != nil {
@@ -67,5 +72,20 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.Export.MaxRows != 250000 {
 		t.Fatalf("expected export max rows override, got %d", cfg.Export.MaxRows)
+	}
+	if !cfg.Tracing.Enabled {
+		t.Fatal("expected tracing enabled override")
+	}
+	if cfg.Tracing.ServiceName != "thcpn-test" {
+		t.Fatalf("expected tracing service name override, got %q", cfg.Tracing.ServiceName)
+	}
+	if cfg.Tracing.Exporter != "otlp" {
+		t.Fatalf("expected tracing exporter override, got %q", cfg.Tracing.Exporter)
+	}
+	if cfg.Tracing.Endpoint != "collector:4318" {
+		t.Fatalf("expected tracing endpoint override, got %q", cfg.Tracing.Endpoint)
+	}
+	if cfg.Tracing.Insecure {
+		t.Fatal("expected tracing insecure override")
 	}
 }

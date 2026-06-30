@@ -4,9 +4,11 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
 
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/db/sqlc"
+	"thcpn-gin/internal/tracing"
 )
 
 type Store interface {
@@ -51,7 +53,21 @@ func NewChecker(store Store) *Checker {
 	return &Checker{store: store}
 }
 
-func (c *Checker) Can(ctx context.Context, actor Actor, action string, resource ResourceRef) (Decision, error) {
+func (c *Checker) Can(ctx context.Context, actor Actor, action string, resource ResourceRef) (decision Decision, err error) {
+	ctx, span := tracing.Start(ctx, "permission.check",
+		attribute.String("permission.action", action),
+		attribute.String("resource.type", resource.Type),
+		attribute.String("resource.id", resource.ID.String()),
+		attribute.String("actor.user_id", actor.UserID.String()),
+	)
+	defer func() {
+		span.SetAttributes(
+			attribute.Bool("permission.allowed", decision.Allowed),
+			attribute.String("permission.reason", decision.Reason),
+		)
+		tracing.End(span, err)
+	}()
+
 	if actor.UserID == uuid.Nil {
 		return Decision{Allowed: false, Reason: "missing actor"}, nil
 	}

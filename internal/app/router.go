@@ -61,6 +61,9 @@ func NewRouter(deps Dependencies) (*gin.Engine, error) {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(httpx.RequestID())
+	if cfg.Tracing.Enabled {
+		router.Use(httpx.Trace(cfg.Tracing.ServiceName, "/metrics"))
+	}
 	router.Use(httpx.Metrics())
 	router.Use(httpx.AccessLog(deps.Logger))
 

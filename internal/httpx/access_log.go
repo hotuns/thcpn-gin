@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func AccessLog(log *slog.Logger) gin.HandlerFunc {
@@ -25,6 +26,9 @@ func AccessLog(log *slog.Logger) gin.HandlerFunc {
 			slog.Int("bytes", c.Writer.Size()),
 			slog.Int64("duration_ms", time.Since(start).Milliseconds()),
 			slog.String("client_ip", c.ClientIP()),
+		}
+		if spanContext := trace.SpanContextFromContext(c.Request.Context()); spanContext.IsValid() {
+			attrs = append(attrs, slog.String("trace_id", spanContext.TraceID().String()))
 		}
 		if len(c.Errors) > 0 {
 			attrs = append(attrs, slog.String("error", c.Errors.String()))

@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel/attribute"
 
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/config"
@@ -26,6 +27,7 @@ import (
 	"thcpn-gin/internal/db/sqlc"
 	"thcpn-gin/internal/metrics"
 	"thcpn-gin/internal/objectstore"
+	"thcpn-gin/internal/tracing"
 )
 
 const (
@@ -187,10 +189,18 @@ func (p *Processor) skipUnavailableJob(ctx context.Context, jobID uuid.UUID) (bo
 	}
 }
 
-func (p *Processor) processClaimed(ctx context.Context, job Job) error {
+func (p *Processor) processClaimed(ctx context.Context, job Job) (err error) {
 	start := time.Now()
 	status := "success"
+	ctx, span := tracing.Start(ctx, "export.process",
+		attribute.String("export.job_id", job.ID.String()),
+		attribute.String("export.type", job.ExportType),
+		attribute.String("export.resource_type", job.ResourceType),
+		attribute.String("export.workspace_id", job.WorkspaceID.String()),
+	)
 	defer func() {
+		span.SetAttributes(attribute.String("export.status", status))
+		tracing.End(span, err)
 		metrics.ObserveExportJob(job.ExportType, status, time.Since(start))
 	}()
 
@@ -199,13 +209,19 @@ func (p *Processor) processClaimed(ctx context.Context, job Job) error {
 		status = "failed"
 		return p.fail(ctx, job.ID, err)
 	}
-	if err := p.store.Put(ctx, objectstore.PutInput{
+	putCtx, putSpan := tracing.Start(ctx, "objectstore.put",
+		attribute.String("objectstore.key", rendered.ObjectKey),
+		attribute.String("objectstore.content_type", rendered.ContentType),
+	)
+	putErr := p.store.Put(putCtx, objectstore.PutInput{
 		ObjectKey:   rendered.ObjectKey,
 		ContentType: rendered.ContentType,
 		Body:        bytes.NewReader(rendered.Body),
-	}); err != nil {
+	})
+	tracing.End(putSpan, putErr)
+	if putErr != nil {
 		status = "failed"
-		return p.fail(ctx, job.ID, err)
+		return p.fail(ctx, job.ID, putErr)
 	}
 	if _, err := p.queries.MarkExportJobSuccess(ctx, sqlc.MarkExportJobSuccessParams{
 		ID:            job.ID,

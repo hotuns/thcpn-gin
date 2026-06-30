@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
+	"time"
 
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/datasource"
@@ -15,6 +16,7 @@ import (
 	"thcpn-gin/internal/logger"
 	"thcpn-gin/internal/objectstore"
 	"thcpn-gin/internal/task"
+	"thcpn-gin/internal/tracing"
 )
 
 func main() {
@@ -32,6 +34,18 @@ func run() int {
 	}
 
 	log := logger.New(cfg.Logger.Level, cfg.Logger.Format)
+	shutdownTracing, err := tracing.Init(ctx, cfg.Tracing, log)
+	if err != nil {
+		log.Error("initialize tracing", slog.Any("error", err))
+		return 1
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdownTracing(shutdownCtx); err != nil {
+			log.Warn("shutdown tracing", slog.Any("error", err))
+		}
+	}()
 
 	pg, err := db.NewPostgres(ctx, cfg.Database.PlatformDSN)
 	if err != nil {

@@ -57,3 +57,10 @@ query_limits:
 export:
   file_ttl_hours: 72
   max_rows: 100000
+
+tracing:
+  enabled: false
+  service_name: "thcpn-gin"
+  exporter: "stdout"
+  endpoint: "localhost:4318"
+  insecure: true

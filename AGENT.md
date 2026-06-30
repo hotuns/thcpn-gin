@@ -286,6 +286,11 @@
   - `export_job_duration_seconds`
 - DataSource runtime 会按 source_type、operation、payload_type 和结果记录查询耗时；失败时记录 error_kind。
 - Export Worker 会按 export_type 和处理状态记录任务数与处理耗时。
+- 已接入 OpenTelemetry Trace 基础设施：
+  - 配置段为 `tracing.enabled`、`service_name`、`exporter`、`endpoint`、`insecure`；默认关闭。
+  - 支持 `stdout` 和 OTLP/HTTP exporter；环境变量支持 `TRACING_*`，并兼容 `OTEL_SERVICE_NAME` / `OTEL_EXPORTER_OTLP_ENDPOINT`。
+  - API 在启用 tracing 时使用 Gin OpenTelemetry middleware，并在 access log 中追加 `trace_id`。
+  - 权限判断、DataSource 查询、Export Worker 处理和对象存储上传会创建 span，错误会记录到 span status。
 
 ### 已验证事项
 
@@ -315,7 +320,7 @@
 - Project / Site / Device / DataStream / Dataset 当前完成资产、元信息、查询定义、PostgreSQL / MySQL telemetry 读取和 PostgreSQL / MySQL media 记录查询；Project / Site / DataStream 变更审计可后续按风险扩展。
 - 尚未实现模块的敏感操作审计仍待对应模块落地时接入，例如设备校准、固件升级和设备转移。
 - ClickHouse / HTTP DataSource 运行时适配器。
-- OpenTelemetry 和更完整对象存储集成。
+- 更完整对象存储集成。
 
 ## 重要目录
 
@@ -340,6 +345,7 @@
 - `internal/objectstore`: 对象存储 URL / 下载 token 签名。
 - `internal/export`: 导出任务创建、查询、下载准备和权限审计 workflow。
 - `internal/task`: Asynq 任务定义、投递和 Worker handler。
+- `internal/tracing`: OpenTelemetry provider 初始化和 span 辅助函数。
 - `migrations`: PostgreSQL 平台业务库迁移。
 - `sql/queries`: sqlc 查询定义。
 - `web`: 独立前端工程，使用 Vite proxy 调用后端 `/api`、`/healthz`、`/readyz`。

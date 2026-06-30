@@ -20,6 +20,7 @@ type Config struct {
 	ObjectStore ObjectStoreConfig `yaml:"object_store"`
 	QueryLimits QueryLimitsConfig `yaml:"query_limits"`
 	Export      ExportConfig      `yaml:"export"`
+	Tracing     TracingConfig     `yaml:"tracing"`
 }
 
 type ServerConfig struct {
@@ -97,6 +98,14 @@ type ExportConfig struct {
 	MaxRows      int `yaml:"max_rows"`
 }
 
+type TracingConfig struct {
+	Enabled     bool   `yaml:"enabled"`
+	ServiceName string `yaml:"service_name"`
+	Exporter    string `yaml:"exporter"`
+	Endpoint    string `yaml:"endpoint"`
+	Insecure    bool   `yaml:"insecure"`
+}
+
 func Default() Config {
 	return Config{
 		Server: ServerConfig{
@@ -159,6 +168,13 @@ func Default() Config {
 		Export: ExportConfig{
 			FileTTLHours: 72,
 			MaxRows:      100000,
+		},
+		Tracing: TracingConfig{
+			Enabled:     false,
+			ServiceName: "thcpn-gin",
+			Exporter:    "stdout",
+			Endpoint:    "localhost:4318",
+			Insecure:    true,
 		},
 	}
 }
@@ -253,6 +269,14 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.Export.MaxRows <= 0 {
 		return errors.New("export.max_rows must be greater than 0")
+	}
+	if strings.TrimSpace(cfg.Tracing.ServiceName) == "" {
+		return errors.New("tracing.service_name is required")
+	}
+	switch strings.TrimSpace(cfg.Tracing.Exporter) {
+	case "stdout", "otlp", "noop":
+	default:
+		return errors.New("tracing.exporter must be one of stdout, otlp, noop")
 	}
 	return nil
 }
@@ -378,6 +402,29 @@ func applyEnv(cfg *Config) {
 	if value := strings.TrimSpace(os.Getenv("EXPORT_MAX_ROWS")); value != "" {
 		if rows, err := strconv.Atoi(value); err == nil {
 			cfg.Export.MaxRows = rows
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("TRACING_ENABLED")); value != "" {
+		if enabled, err := strconv.ParseBool(value); err == nil {
+			cfg.Tracing.Enabled = enabled
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("TRACING_SERVICE_NAME")); value != "" {
+		cfg.Tracing.ServiceName = value
+	} else if value := strings.TrimSpace(os.Getenv("OTEL_SERVICE_NAME")); value != "" {
+		cfg.Tracing.ServiceName = value
+	}
+	if value := strings.TrimSpace(os.Getenv("TRACING_EXPORTER")); value != "" {
+		cfg.Tracing.Exporter = value
+	}
+	if value := strings.TrimSpace(os.Getenv("TRACING_OTLP_ENDPOINT")); value != "" {
+		cfg.Tracing.Endpoint = value
+	} else if value := strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")); value != "" {
+		cfg.Tracing.Endpoint = value
+	}
+	if value := strings.TrimSpace(os.Getenv("TRACING_OTLP_INSECURE")); value != "" {
+		if insecure, err := strconv.ParseBool(value); err == nil {
+			cfg.Tracing.Insecure = insecure
 		}
 	}
 }
