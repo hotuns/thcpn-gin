@@ -1432,6 +1432,35 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/devices/{device_id}/unbind:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    post:
+      tags:
+        - Devices
+      operationId: unbindDevice
+      summary: Unbind a device
+      description: Requires `device.unbind` on the device. The device is retained for historical references, removed from project/site assignment, and marked `retired`. Success and failure are written to AuditLog with action `device.unbind`.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Device unbound and retired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
   /api/v1/devices/{device_id}/telemetry:
     parameters:
       - $ref: "#/components/parameters/DeviceID"

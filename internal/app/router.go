@@ -210,6 +210,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.POST("/devices/:device_id/calibrations", deviceHandler.RequestCalibration)
 	authed.POST("/devices/:device_id/firmware-upgrades", deviceHandler.RequestFirmwareUpgrade)
 	authed.POST("/devices/:device_id/transfer", deviceHandler.Transfer)
+	authed.POST("/devices/:device_id/unbind", deviceHandler.Unbind)
 	authed.GET("/devices/:device_id", deviceHandler.Get)
 	authed.PATCH("/devices/:device_id", deviceHandler.Update)
 	authed.GET("/data-streams", dataStreamHandler.List)

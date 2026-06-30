@@ -105,6 +105,11 @@ type TransferInput struct {
 	ActorUserID                uuid.UUID
 }
 
+type UnbindInput struct {
+	DeviceID    uuid.UUID
+	ActorUserID uuid.UUID
+}
+
 func NewService(db *pgxpool.Pool) *Service {
 	return &Service{
 		db:      db,
@@ -395,6 +400,25 @@ func (s *Service) Transfer(ctx context.Context, input TransferInput) (Device, er
 	})
 	if err != nil {
 		return Device{}, mapWriteError(err, "transfer device")
+	}
+	capabilities, err := s.queries.ListDeviceCapabilities(ctx, input.DeviceID)
+	if err != nil {
+		return Device{}, apperr.Wrap(apperr.KindInternal, "list device capabilities", err)
+	}
+	return fromSQL(updated, capabilities), nil
+}
+
+func (s *Service) Unbind(ctx context.Context, input UnbindInput) (Device, error) {
+	if input.DeviceID == uuid.Nil {
+		return Device{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
+	}
+	if input.ActorUserID == uuid.Nil {
+		return Device{}, apperr.New(apperr.KindInvalidArgument, "actor user id is required")
+	}
+
+	updated, err := s.queries.UnbindDevice(ctx, input.DeviceID)
+	if err != nil {
+		return Device{}, mapNotFoundOrInternal(err, "device not found")
 	}
 	capabilities, err := s.queries.ListDeviceCapabilities(ctx, input.DeviceID)
 	if err != nil {

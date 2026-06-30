@@ -166,6 +166,7 @@
 - 已实现第一版设备转移接口：
   - `POST /api/v1/devices/:device_id/transfer`
   - 需要源设备 `device.transfer` 和目标 workspace `device.bind`；要求确认历史 Dataset 归属策略，当前不自动迁移历史 Dataset。
+- 已实现设备解绑接口：`POST /api/v1/devices/:device_id/unbind`，要求 `device.unbind`，保留设备记录和历史引用，清空 project/site 并标记为 `retired`。
 - 已实现 DataStream 元信息接口：
   - `GET /api/v1/data-streams?device_id=...`
   - `POST /api/v1/data-streams`
@@ -300,6 +301,7 @@
   - 创建、更新 Project / Site / DataStream 成功和失败。
   - 设备校准、固件升级请求成功和失败。
   - 设备转移成功和失败。
+  - 设备解绑成功和失败。
   - 创建、更新、锁定、删除 Dataset 成功和失败。
   - 媒体下载成功和权限拒绝。
   - 创建导出任务成功和失败，导出文件下载准备成功和失败。

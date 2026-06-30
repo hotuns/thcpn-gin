@@ -394,6 +394,36 @@ func (q *Queries) TransferDevice(ctx context.Context, arg TransferDeviceParams) 
 	return i, err
 }
 
+const unbindDevice = `-- name: UnbindDevice :one
+UPDATE devices
+SET project_id = NULL,
+    site_id = NULL,
+    status = 'retired',
+    updated_at = now()
+WHERE id = $1
+RETURNING id, workspace_id, project_id, site_id, product_id, serial_no, name, status, activated_at, bound_by, created_at, updated_at
+`
+
+func (q *Queries) UnbindDevice(ctx context.Context, id uuid.UUID) (Device, error) {
+	row := q.db.QueryRow(ctx, unbindDevice, id)
+	var i Device
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ProjectID,
+		&i.SiteID,
+		&i.ProductID,
+		&i.SerialNo,
+		&i.Name,
+		&i.Status,
+		&i.ActivatedAt,
+		&i.BoundBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateDevice = `-- name: UpdateDevice :one
 UPDATE devices
 SET project_id = $2,

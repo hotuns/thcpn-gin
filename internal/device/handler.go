@@ -22,6 +22,7 @@ const (
 	deviceCalibrateAction = "device.calibrate"
 	deviceFirmwareAction  = "device.firmware_upgrade"
 	deviceTransferAction  = "device.transfer"
+	deviceUnbindAction    = "device.unbind"
 )
 
 type Handler struct {
@@ -436,6 +437,50 @@ func (h *Handler) Transfer(c *gin.Context) {
 		ActorType:    audit.ActorUser,
 		ActorID:      audit.UserActorID(actor.UserID),
 		Action:       "device.transfer",
+		ResourceType: "device",
+		ResourceID:   audit.ResourceID(result.ID),
+		Result:       audit.ResultSuccess,
+	}) {
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) Unbind(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	if !h.authorize(c, "device", deviceID, deviceUnbindAction) {
+		return
+	}
+	actor, _ := auth.ActorFromContext(c)
+
+	result, err := h.service.Unbind(c.Request.Context(), UnbindInput{
+		DeviceID:    deviceID,
+		ActorUserID: actor.UserID,
+	})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "device.unbind",
+			ResourceType: "device",
+			ResourceID:   audit.ResourceID(deviceID),
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		WorkspaceID:  audit.WorkspaceID(result.WorkspaceID),
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "device.unbind",
 		ResourceType: "device",
 		ResourceID:   audit.ResourceID(result.ID),
 		Result:       audit.ResultSuccess,

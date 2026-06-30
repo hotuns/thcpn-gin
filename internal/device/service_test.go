@@ -189,3 +189,25 @@ func TestTransferRequiresProjectWhenSiteSet(t *testing.T) {
 		t.Fatalf("expected invalid argument for site without project, got %v", err)
 	}
 }
+
+func TestUnbindRequiresActor(t *testing.T) {
+	service := NewService(nil)
+
+	_, err := service.Unbind(context.Background(), UnbindInput{
+		DeviceID: uuid.New(),
+	})
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected invalid argument for missing actor, got %v", err)
+	}
+}
+
+func TestUnbindRequiresDevice(t *testing.T) {
+	service := NewService(nil)
+
+	_, err := service.Unbind(context.Background(), UnbindInput{
+		ActorUserID: uuid.New(),
+	})
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected invalid argument for missing device, got %v", err)
+	}
+}
