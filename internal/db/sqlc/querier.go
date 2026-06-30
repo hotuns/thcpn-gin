@@ -38,6 +38,8 @@ type Querier interface {
 	DeleteDatasetSources(ctx context.Context, datasetID uuid.UUID) error
 	DeleteDeviceCapabilities(ctx context.Context, deviceID uuid.UUID) error
 	DeleteExpiredAuthTokens(ctx context.Context) error
+	DeleteUserTOTP(ctx context.Context, userID uuid.UUID) (int64, error)
+	EnableUserTOTP(ctx context.Context, arg EnableUserTOTPParams) (UserMfaTotp, error)
 	ExpireExportJobs(ctx context.Context) (int64, error)
 	FindActiveUserByEmail(ctx context.Context, email *string) (User, error)
 	FindActiveUserByIdentifier(ctx context.Context, identifier *string) (User, error)
@@ -53,6 +55,7 @@ type Querier interface {
 	GetDataStreamBinding(ctx context.Context, id uuid.UUID) (DataStreamBinding, error)
 	GetDataset(ctx context.Context, id uuid.UUID) (Dataset, error)
 	GetDevice(ctx context.Context, id uuid.UUID) (Device, error)
+	GetEnabledUserTOTP(ctx context.Context, userID uuid.UUID) (UserMfaTotp, error)
 	GetExportJob(ctx context.Context, id uuid.UUID) (ExportJob, error)
 	GetInvitation(ctx context.Context, id uuid.UUID) (GetInvitationRow, error)
 	GetProject(ctx context.Context, id uuid.UUID) (Project, error)
@@ -60,6 +63,7 @@ type Querier interface {
 	GetSystemRoleByCode(ctx context.Context, code string) (Role, error)
 	GetUser(ctx context.Context, id uuid.UUID) (User, error)
 	GetUserCredential(ctx context.Context, userID uuid.UUID) (UserCredential, error)
+	GetUserTOTP(ctx context.Context, userID uuid.UUID) (UserMfaTotp, error)
 	GetWorkspace(ctx context.Context, id uuid.UUID) (Workspace, error)
 	GetWorkspaceMember(ctx context.Context, arg GetWorkspaceMemberParams) (WorkspaceMember, error)
 	GetWorkspaceMemberDetail(ctx context.Context, arg GetWorkspaceMemberDetailParams) (GetWorkspaceMemberDetailRow, error)
@@ -114,9 +118,11 @@ type Querier interface {
 	UpdateUserEmailVerified(ctx context.Context, arg UpdateUserEmailVerifiedParams) (User, error)
 	UpdateUserLastLogin(ctx context.Context, id uuid.UUID) (User, error)
 	UpdateUserPhoneVerifiedAndLogin(ctx context.Context, id uuid.UUID) (User, error)
+	UpdateUserTOTPLastUsedStep(ctx context.Context, arg UpdateUserTOTPLastUsedStepParams) (int64, error)
 	UpdateWorkspaceMemberRole(ctx context.Context, arg UpdateWorkspaceMemberRoleParams) (WorkspaceMember, error)
 	UpdateWorkspaceMemberRoleStatusByUser(ctx context.Context, arg UpdateWorkspaceMemberRoleStatusByUserParams) (WorkspaceMember, error)
 	UpsertAppMetadata(ctx context.Context, arg UpsertAppMetadataParams) (AppMetadatum, error)
+	UpsertUserTOTPSetup(ctx context.Context, arg UpsertUserTOTPSetupParams) (UserMfaTotp, error)
 }
 
 var _ Querier = (*Queries)(nil)

@@ -30,9 +30,10 @@ type verifyEmailRequest struct {
 }
 
 type smsLoginRequest struct {
-	Phone string `json:"phone"`
-	Code  string `json:"code"`
-	Name  string `json:"name"`
+	Phone   string `json:"phone"`
+	Code    string `json:"code"`
+	MFACode string `json:"mfa_code"`
+	Name    string `json:"name"`
 }
 
 type passwordRegisterRequest struct {
@@ -45,6 +46,7 @@ type passwordRegisterRequest struct {
 type passwordLoginRequest struct {
 	Identifier string `json:"identifier"`
 	Password   string `json:"password"`
+	MFACode    string `json:"mfa_code"`
 }
 
 type refreshRequest struct {
@@ -53,6 +55,10 @@ type refreshRequest struct {
 
 type logoutRequest struct {
 	RefreshToken string `json:"refresh_token"`
+}
+
+type mfaCodeRequest struct {
+	Code string `json:"code"`
 }
 
 func NewHandler(service *Service, auditServices ...*audit.Service) *Handler {
@@ -149,6 +155,143 @@ func (h *Handler) VerifyEmail(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"user": user})
 }
 
+func (h *Handler) MFAStatus(c *gin.Context) {
+	actor, ok := ActorFromContext(c)
+	if !ok {
+		httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "missing authenticated user"))
+		return
+	}
+	result, err := h.service.MFAStatus(c.Request.Context(), MFAStatusInput{UserID: actor.UserID})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) SetupTOTP(c *gin.Context) {
+	actor, ok := ActorFromContext(c)
+	if !ok {
+		httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "missing authenticated user"))
+		return
+	}
+	result, err := h.service.SetupTOTP(c.Request.Context(), TOTPSetupInput{UserID: actor.UserID})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "auth.mfa_setup",
+			ResourceType: "auth",
+			ResourceID:   audit.ResourceID(actor.UserID),
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "auth.mfa_setup",
+		ResourceType: "auth",
+		ResourceID:   audit.ResourceID(actor.UserID),
+		Result:       audit.ResultSuccess,
+	}) {
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) EnableTOTP(c *gin.Context) {
+	var req mfaCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	actor, ok := ActorFromContext(c)
+	if !ok {
+		httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "missing authenticated user"))
+		return
+	}
+	result, err := h.service.EnableTOTP(c.Request.Context(), TOTPEnableInput{
+		UserID: actor.UserID,
+		Code:   req.Code,
+	})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "auth.mfa_enable",
+			ResourceType: "auth",
+			ResourceID:   audit.ResourceID(actor.UserID),
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "auth.mfa_enable",
+		ResourceType: "auth",
+		ResourceID:   audit.ResourceID(actor.UserID),
+		Result:       audit.ResultSuccess,
+	}) {
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) DisableTOTP(c *gin.Context) {
+	var req mfaCodeRequest
+	if c.Request.ContentLength != 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+			return
+		}
+	}
+	actor, ok := ActorFromContext(c)
+	if !ok {
+		httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "missing authenticated user"))
+		return
+	}
+	err := h.service.DisableTOTP(c.Request.Context(), TOTPDisableInput{
+		UserID: actor.UserID,
+		Code:   req.Code,
+	})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "auth.mfa_disable",
+			ResourceType: "auth",
+			ResourceID:   audit.ResourceID(actor.UserID),
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "auth.mfa_disable",
+		ResourceType: "auth",
+		ResourceID:   audit.ResourceID(actor.UserID),
+		Result:       audit.ResultSuccess,
+	}) {
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func (h *Handler) LoginWithSMS(c *gin.Context) {
 	var req smsLoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -159,6 +302,7 @@ func (h *Handler) LoginWithSMS(c *gin.Context) {
 	result, err := h.service.LoginWithSMS(c.Request.Context(), SMSLoginInput{
 		Phone:   req.Phone,
 		Code:    req.Code,
+		MFACode: req.MFACode,
 		Name:    req.Name,
 		Request: requestInfo(c),
 	})
@@ -242,6 +386,7 @@ func (h *Handler) LoginWithPassword(c *gin.Context) {
 	result, err := h.service.LoginWithPassword(c.Request.Context(), PasswordLoginInput{
 		Identifier: req.Identifier,
 		Password:   req.Password,
+		MFACode:    req.MFACode,
 		Request:    requestInfo(c),
 	})
 	if err != nil {

@@ -5,7 +5,7 @@ info:
   description: |
     THCPN 科研物联网数据管理平台后端 API。
 
-    当前文档覆盖已实现的阶段功能：健康检查、短信验证码登录/注册、邮箱验证码验证、密码注册/登录、refresh token、logout、会话管理、
+    当前文档覆盖已实现的阶段功能：健康检查、短信验证码登录/注册、邮箱验证码验证、密码注册/登录、TOTP MFA、refresh token、logout、会话管理、
     JWT 认证、Workspace 列表/创建、Workspace 成员管理、Project、Site、Device、DataStream、DataSource、DataStreamBinding、Telemetry Query、Media Query、Dataset 元信息管理和 ExportJob 导出任务、
     AccessGrant 外部分享/售后临时授权、Invitation 和 AuditLog。
 
@@ -233,6 +233,116 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/auth/mfa:
+    get:
+      tags:
+        - Auth
+      operationId: getMfaStatus
+      summary: Get MFA status
+      description: Returns whether the current authenticated user has TOTP MFA enabled.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: MFA status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MfaStatusResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/auth/mfa/totp/setup:
+    post:
+      tags:
+        - Auth
+      operationId: setupTotpMfa
+      summary: Generate TOTP setup secret
+      description: Generates an encrypted pending TOTP MFA secret for the current authenticated user and returns the setup secret and otpauth URI once.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: TOTP setup generated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TotpSetupResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/auth/mfa/totp/enable:
+    post:
+      tags:
+        - Auth
+      operationId: enableTotpMfa
+      summary: Enable TOTP MFA
+      description: Enables TOTP MFA after verifying a code from the pending setup secret.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MfaCodeRequest"
+            examples:
+              default:
+                value:
+                  code: "123456"
+      responses:
+        "200":
+          description: TOTP MFA enabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MfaStatusResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/auth/mfa/totp:
+    delete:
+      tags:
+        - Auth
+      operationId: disableTotpMfa
+      summary: Disable TOTP MFA
+      description: Disables TOTP MFA after verifying a current TOTP code.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MfaCodeRequest"
+            examples:
+              default:
+                value:
+                  code: "123456"
+      responses:
+        "204":
+          description: TOTP MFA disabled.
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
   /api/v1/auth/sms/login:
     post:
       tags:
@@ -242,6 +352,7 @@ paths:
       description: |
         Verifies the SMS code and issues a JWT access token plus a refresh token.
         If the phone number does not belong to an active user, a new user, personal workspace and Owner membership are created.
+        Existing users with TOTP MFA enabled must also supply `mfa_code`.
       requestBody:
         required: true
         content:
@@ -253,6 +364,7 @@ paths:
                 value:
                   phone: "13800000000"
                   code: "123456"
+                  mfa_code: "654321"
                   name: 张三
       responses:
         "200":
@@ -345,6 +457,7 @@ paths:
       description: |
         Authenticates an existing active user by phone or email and password, then issues a JWT access token plus a refresh token.
         Repeated password failures increment the credential failure count and may temporarily lock the account.
+        Accounts with TOTP MFA enabled must also supply `mfa_code`.
       requestBody:
         required: true
         content:
@@ -356,10 +469,12 @@ paths:
                 value:
                   identifier: "13800000000"
                   password: Str0ngPassword!
+                  mfa_code: "654321"
               email:
                 value:
                   identifier: zhangsan@example.com
                   password: Str0ngPassword!
+                  mfa_code: "654321"
       responses:
         "200":
           description: Password login succeeded.
@@ -3079,6 +3194,11 @@ components:
           type: string
           pattern: ^[0-9]{6}$
           example: "123456"
+        mfa_code:
+          type: string
+          pattern: ^[0-9]{6}$
+          description: Required when the existing user has TOTP MFA enabled.
+          example: "654321"
         name:
           type: string
           description: Used as the display name when SMS login auto-registers a new user.
@@ -3123,6 +3243,11 @@ components:
           type: string
           format: password
           example: Str0ngPassword!
+        mfa_code:
+          type: string
+          pattern: ^[0-9]{6}$
+          description: Required when TOTP MFA is enabled for the account.
+          example: "654321"
     RefreshTokenRequest:
       type: object
       required:
@@ -3137,6 +3262,36 @@ components:
         refresh_token:
           type: string
           description: Optional refresh token to revoke along with the current access token.
+    MfaStatusResponse:
+      type: object
+      required:
+        - totp_enabled
+      properties:
+        totp_enabled:
+          type: boolean
+        totp_enabled_at:
+          $ref: "#/components/schemas/Timestamp"
+    TotpSetupResponse:
+      type: object
+      required:
+        - secret
+        - otpauth_uri
+      properties:
+        secret:
+          type: string
+          description: Base32 TOTP secret shown once for authenticator setup.
+        otpauth_uri:
+          type: string
+          description: otpauth URI compatible with authenticator apps.
+    MfaCodeRequest:
+      type: object
+      required:
+        - code
+      properties:
+        code:
+          type: string
+          pattern: ^[0-9]{6}$
+          example: "123456"
     LoginResponse:
       type: object
       required:

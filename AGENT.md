@@ -27,7 +27,7 @@
 - Redis: go-redis
 - Logger: standard library `log/slog`
 - Config: YAML plus environment variable overrides
-- Auth: JWT HS256 access token, bcrypt password hash, SMS / email verification code in Redis
+- Auth: JWT HS256 access token, bcrypt password hash, SMS / email verification code in Redis, TOTP MFA
 - SMS sender: `log` / `noop` / Aliyun Dysmsapi
 - Web: Vite + React + TypeScript，独立工程位于 `web/`
 
@@ -70,6 +70,12 @@
 - 已实现短信验证码发送接口：`POST /api/v1/auth/sms/send`。
 - 已实现短信验证码登录/自动注册接口：`POST /api/v1/auth/sms/login`。
 - 已实现邮箱验证码发送和验证接口：`POST /api/v1/auth/email/send`、`POST /api/v1/auth/email/verify`，用于验证当前登录用户已绑定的邮箱。
+- 已实现 TOTP MFA：
+  - `GET /api/v1/auth/mfa` 查询当前用户 MFA 状态。
+  - `POST /api/v1/auth/mfa/totp/setup` 生成 TOTP secret 和 otpauth URI，secret 使用 `auth.jwt_secret` 派生密钥加密后保存。
+  - `POST /api/v1/auth/mfa/totp/enable` 校验 TOTP code 后启用。
+  - `DELETE /api/v1/auth/mfa/totp` 校验当前 TOTP code 后禁用。
+  - 密码登录和已存在用户的短信登录在账号启用 TOTP 后必须提供 `mfa_code`；成功校验会记录 last used step，防止同一时间步重放。
 - 注册类流程在事务中完成：
   - 创建 `users` 记录。
   - 自动创建 personal workspace。
@@ -87,7 +93,7 @@
   - `POST /api/v1/auth/logout` 会撤销当前 access token；请求体带 `refresh_token` 时同时撤销对应 refresh session。
   - `GET /api/v1/auth/sessions` 列出当前用户活跃 refresh sessions；`DELETE /api/v1/auth/sessions/:session_id` 撤销指定会话。
   - 平台库新增 `auth_refresh_sessions` 和 `auth_access_token_blacklist`，refresh session 保存 token hash、过期时间、user agent 和 client ip。
-- Web 开发控制台已保存 refresh token，可刷新 access token、调用服务端 logout，提供活跃会话列表/撤销入口，并支持发送和提交邮箱验证码。
+- Web 开发控制台已保存 refresh token，可刷新 access token、调用服务端 logout，提供活跃会话列表/撤销入口，支持发送和提交邮箱验证码，并支持 TOTP MFA setup/enable/disable。
 - 账号密码登录失败会累计失败次数，默认 5 次后锁定 15 分钟。
 - 短信验证码默认 5 分钟有效、60 秒冷却、单手机号每日 10 次、最多 5 次校验尝试。
 - 邮箱验证码默认 5 分钟有效、60 秒冷却、单邮箱每日 10 次、最多 5 次校验尝试。
@@ -309,8 +315,8 @@
 
 - `make sqlc` 可正常生成代码。
 - `go test ./...` / `make test` 通过。
-- `make migrate-up` 可迁移到版本 11。
-- `make migrate-down MIGRATE_STEPS=1` 已验证 `000011` down 可用，随后已重新 `make migrate-up` 到版本 11。
+- `make migrate-up` 可迁移到版本 12。
+- `make migrate-down MIGRATE_STEPS=1` 已验证 `000012` down 可用，随后已重新 `make migrate-up` 到版本 12。
 - 已通过真实 HTTP 验证健康检查、密码注册、密码登录、JWT 调 `/me`、短信验证码发送、短信登录自动注册、JWT 调 workspace 列表、普通成员 JWT 访问成员管理被拒绝。
 - 已通过真实 HTTP 验证 Project / Site / Device / DataStream 创建和列表查询。
 - 已通过真实 HTTP 验证 DataSource 创建/列表，以及 DataStreamBinding 创建/列表。
@@ -329,11 +335,11 @@
 - 已通过自动化测试验证 bearer token 可查黑名单并拒绝已撤销 token，refresh token 生成和 hash 稳定且不存明文，并验证 auth session 响应模型映射。
 - 已通过 `npm --prefix web run build` 验证前端会话管理界面、refresh/logout 客户端类型和 API 封装可编译。
 - 已通过自动化测试验证邮箱验证码可签发、验证成功后删除，并与短信验证码共用 Redis 哈希存储和尝试次数控制逻辑。
+- 已通过自动化测试验证 TOTP code 校验、同一时间步重放拒绝、MFA secret AES-GCM 加解密，以及前端 MFA 控制台可编译；本地浏览器已检查 MFA 面板桌面/移动渲染无控制台错误。
 - 此前已通过真实 HTTP 验证开发注册、workspace 列表、创建 organization workspace、添加成员、列成员、更新成员角色、普通成员访问成员管理被拒绝、删除成员。
 
 ### 尚未实现
 
-- MFA。
 - Export Worker 的更完整对象存储集成。
 - Project / Site / Device / DataStream / Dataset 当前完成资产、元信息、查询定义、PostgreSQL / MySQL / ClickHouse / HTTP API telemetry 读取和 media 记录查询；Project / Site / DataStream 变更审计可后续按风险扩展。
 - 尚未实现模块的敏感操作审计仍待对应模块落地时接入，例如设备校准、固件升级和设备转移。
@@ -442,6 +448,7 @@ make build-web
 - 短信和邮箱验证码只存 Redis，value 保存 code hash、attempt count 和过期信息；不要把明文验证码写入数据库或响应体。
 - 密码必须通过 `ValidatePassword` 校验，并使用 `bcrypt` 保存哈希；不要保存明文密码或可逆加密密码。
 - access token 支持 blacklist 主动失效；涉及 logout、踢下线或会话管理时必须继续走 `auth_refresh_sessions` 和 `auth_access_token_blacklist`，不要引入仅客户端删除 token 的实现。
+- TOTP MFA secret 必须加密保存，不要明文写入日志、响应以外的持久层或 audit log；`setup` 响应是唯一允许把 secret 返回给当前登录用户的流程。
 
 ## 数据库和 sqlc 规则
 

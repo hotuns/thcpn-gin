@@ -85,6 +85,16 @@ export interface VerifyEmailResponse {
   user: UserProfile;
 }
 
+export interface MFAStatusResponse {
+  totp_enabled: boolean;
+  totp_enabled_at?: string;
+}
+
+export interface TOTPSetupResponse {
+  secret: string;
+  otpauth_uri: string;
+}
+
 export interface MeResponse {
   user: Actor;
 }

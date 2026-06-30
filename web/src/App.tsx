@@ -5,8 +5,10 @@ import type {
   AuthSession,
   InternalMemberRoleCode,
   LoginResponse,
+  MFAStatusResponse,
   OrganizationType,
   StatusResponse,
+  TOTPSetupResponse,
   WorkspaceMember,
   WorkspaceWithMembership
 } from "./types";
@@ -42,6 +44,8 @@ function App() {
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [sessions, setSessions] = useState<AuthSession[]>([]);
+  const [mfaStatus, setMfaStatus] = useState<MFAStatusResponse | null>(null);
+  const [totpSetup, setTotpSetup] = useState<TOTPSetupResponse | null>(null);
   const [memberRoleDrafts, setMemberRoleDrafts] = useState<Record<string, InternalMemberRoleCode>>({});
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -55,13 +59,16 @@ function App() {
   });
   const [passwordLogin, setPasswordLogin] = useState({
     identifier: "",
-    password: ""
+    password: "",
+    mfa_code: ""
   });
   const [sms, setSms] = useState({
     phone: "",
     code: "",
+    mfa_code: "",
     name: ""
   });
+  const [mfaCode, setMfaCode] = useState("");
   const [emailVerification, setEmailVerification] = useState({
     email: "",
     code: ""
@@ -103,12 +110,18 @@ function App() {
   }
 
   async function loadAuthenticatedData(messageText: string, preserveWorkspaceSelection = true) {
-    const [me, list, sessionList] = await Promise.all([api.me(), api.listWorkspaces(), api.listAuthSessions()]);
+    const [me, list, sessionList, mfa] = await Promise.all([
+      api.me(),
+      api.listWorkspaces(),
+      api.listAuthSessions(),
+      api.mfaStatus()
+    ]);
     setCurrentUser(me.user);
     setEmailVerification((current) => ({ ...current, email: me.user.email || current.email }));
     setEmailVerifiedAt(me.user.email_verified_at || "");
     setWorkspaces(list.items);
     setSessions(sessionList.items);
+    setMfaStatus(mfa);
     setSelectedWorkspaceId((current) =>
       preserveWorkspaceSelection ? current || list.items[0]?.workspace.id || "" : list.items[0]?.workspace.id || ""
     );
@@ -225,6 +238,50 @@ function App() {
     });
   }
 
+  async function loadMfaStatus() {
+    if (!token) {
+      setError("请先登录。");
+      return;
+    }
+
+    await run(async () => {
+      const result = await api.mfaStatus();
+      setMfaStatus(result);
+      setMessage(result.totp_enabled ? "TOTP MFA 已启用。" : "TOTP MFA 未启用。");
+    });
+  }
+
+  async function handleSetupTOTP() {
+    await run(async () => {
+      const result = await api.setupTOTP();
+      setTotpSetup(result);
+      setMfaStatus({ totp_enabled: false });
+      setMessage("TOTP secret 已生成，请录入认证器后提交验证码启用。");
+    });
+  }
+
+  async function handleEnableTOTP(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await run(async () => {
+      const result = await api.enableTOTP(mfaCode);
+      setMfaStatus(result);
+      setTotpSetup(null);
+      setMfaCode("");
+      setMessage("TOTP MFA 已启用。");
+    });
+  }
+
+  async function handleDisableTOTP(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await run(async () => {
+      await api.disableTOTP(mfaCode);
+      setMfaStatus({ totp_enabled: false });
+      setTotpSetup(null);
+      setMfaCode("");
+      setMessage("TOTP MFA 已禁用。");
+    });
+  }
+
   async function handleCreateWorkspace(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await run(async () => {
@@ -329,6 +386,9 @@ function App() {
       setCurrentUser(null);
       setEmailVerification({ email: "", code: "" });
       setEmailVerifiedAt("");
+      setMfaStatus(null);
+      setTotpSetup(null);
+      setMfaCode("");
       setWorkspaces([]);
       setSelectedWorkspaceId("");
       setMembers([]);
@@ -393,6 +453,11 @@ function App() {
               value={passwordLogin.password}
               onChange={(password) => setPasswordLogin({ ...passwordLogin, password })}
             />
+            <TextInput
+              label="MFA 码"
+              value={passwordLogin.mfa_code}
+              onChange={(mfa_code) => setPasswordLogin({ ...passwordLogin, mfa_code })}
+            />
             <button type="submit">登录</button>
           </form>
         </section>
@@ -406,6 +471,7 @@ function App() {
           </form>
           <form onSubmit={handleSmsLogin}>
             <TextInput label="验证码" value={sms.code} onChange={(code) => setSms({ ...sms, code })} />
+            <TextInput label="MFA 码" value={sms.mfa_code} onChange={(mfa_code) => setSms({ ...sms, mfa_code })} />
             <TextInput label="名称" value={sms.name} onChange={(name) => setSms({ ...sms, name })} />
             <button type="submit">短信登录</button>
           </form>
@@ -432,6 +498,38 @@ function App() {
             />
             <button type="submit" disabled={!token}>
               验证邮箱
+            </button>
+          </form>
+        </section>
+
+        <section className="panel">
+          <h2>MFA</h2>
+          <p className="hint">
+            {mfaStatus?.totp_enabled
+              ? `TOTP 已启用：${formatDateTime(mfaStatus.totp_enabled_at)}`
+              : "TOTP 未启用"}
+          </p>
+          <div className="button-row">
+            <button type="button" onClick={() => void loadMfaStatus()} disabled={!token}>
+              刷新 MFA
+            </button>
+            <button type="button" onClick={() => void handleSetupTOTP()} disabled={!token}>
+              生成 TOTP secret
+            </button>
+          </div>
+          {totpSetup ? (
+            <pre>{JSON.stringify({ secret: totpSetup.secret, otpauth_uri: totpSetup.otpauth_uri }, null, 2)}</pre>
+          ) : null}
+          <form onSubmit={handleEnableTOTP}>
+            <TextInput label="TOTP 验证码" value={mfaCode} onChange={setMfaCode} />
+            <button type="submit" disabled={!token}>
+              启用 TOTP
+            </button>
+          </form>
+          <form onSubmit={handleDisableTOTP}>
+            <TextInput label="TOTP 验证码" value={mfaCode} onChange={setMfaCode} />
+            <button className="danger" type="submit" disabled={!token || !mfaStatus?.totp_enabled}>
+              禁用 TOTP
             </button>
           </form>
         </section>

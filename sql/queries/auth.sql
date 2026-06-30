@@ -128,3 +128,45 @@ SELECT EXISTS (
 -- name: DeleteExpiredAuthTokens :exec
 DELETE FROM auth_access_token_blacklist
 WHERE expires_at <= now();
+
+-- name: UpsertUserTOTPSetup :one
+INSERT INTO user_mfa_totp (user_id, secret_ciphertext, secret_nonce)
+VALUES ($1, $2, $3)
+ON CONFLICT (user_id) DO UPDATE
+SET secret_ciphertext = EXCLUDED.secret_ciphertext,
+    secret_nonce = EXCLUDED.secret_nonce,
+    enabled_at = NULL,
+    last_used_step = NULL,
+    updated_at = now()
+RETURNING user_id, secret_ciphertext, secret_nonce, enabled_at, last_used_step, created_at, updated_at;
+
+-- name: GetUserTOTP :one
+SELECT user_id, secret_ciphertext, secret_nonce, enabled_at, last_used_step, created_at, updated_at
+FROM user_mfa_totp
+WHERE user_id = $1;
+
+-- name: GetEnabledUserTOTP :one
+SELECT user_id, secret_ciphertext, secret_nonce, enabled_at, last_used_step, created_at, updated_at
+FROM user_mfa_totp
+WHERE user_id = $1
+  AND enabled_at IS NOT NULL;
+
+-- name: EnableUserTOTP :one
+UPDATE user_mfa_totp
+SET enabled_at = COALESCE(enabled_at, now()),
+    last_used_step = $2,
+    updated_at = now()
+WHERE user_id = $1
+RETURNING user_id, secret_ciphertext, secret_nonce, enabled_at, last_used_step, created_at, updated_at;
+
+-- name: UpdateUserTOTPLastUsedStep :execrows
+UPDATE user_mfa_totp
+SET last_used_step = $2,
+    updated_at = now()
+WHERE user_id = $1
+  AND enabled_at IS NOT NULL
+  AND (last_used_step IS NULL OR last_used_step < $2);
+
+-- name: DeleteUserTOTP :execrows
+DELETE FROM user_mfa_totp
+WHERE user_id = $1;

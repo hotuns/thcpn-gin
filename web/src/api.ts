@@ -4,6 +4,7 @@ import type {
   ErrorEnvelope,
   InternalMemberRoleCode,
   LoginResponse,
+  MFAStatusResponse,
   MeResponse,
   OrganizationType,
   SendCodeResponse,
@@ -13,7 +14,8 @@ import type {
   WorkspaceListResponse,
   WorkspaceMember,
   WorkspaceMemberListResponse,
-  WorkspaceWithMembership
+  WorkspaceWithMembership,
+  TOTPSetupResponse
 } from "./types";
 
 const TOKEN_KEY = "thcpn_access_token";
@@ -118,7 +120,7 @@ export const api = {
     return post<VerifyEmailResponse>("/api/v1/auth/email/verify", input);
   },
 
-  loginWithSms(input: { phone: string; code: string; name: string }): Promise<LoginResponse> {
+  loginWithSms(input: { phone: string; code: string; mfa_code?: string; name: string }): Promise<LoginResponse> {
     return post<LoginResponse>("/api/v1/auth/sms/login", input);
   },
 
@@ -131,7 +133,7 @@ export const api = {
     return post<LoginResponse>("/api/v1/auth/password/register", input);
   },
 
-  loginWithPassword(input: { identifier: string; password: string }): Promise<LoginResponse> {
+  loginWithPassword(input: { identifier: string; password: string; mfa_code?: string }): Promise<LoginResponse> {
     return post<LoginResponse>("/api/v1/auth/password/login", input);
   },
 
@@ -153,6 +155,25 @@ export const api = {
   revokeAuthSession(sessionId: string): Promise<void> {
     return apiFetch<void>(`/api/v1/auth/sessions/${sessionId}`, {
       method: "DELETE"
+    });
+  },
+
+  mfaStatus(): Promise<MFAStatusResponse> {
+    return apiFetch<MFAStatusResponse>("/api/v1/auth/mfa");
+  },
+
+  setupTOTP(): Promise<TOTPSetupResponse> {
+    return post<TOTPSetupResponse>("/api/v1/auth/mfa/totp/setup", {});
+  },
+
+  enableTOTP(code: string): Promise<MFAStatusResponse> {
+    return post<MFAStatusResponse>("/api/v1/auth/mfa/totp/enable", { code });
+  },
+
+  disableTOTP(code: string): Promise<void> {
+    return apiFetch<void>("/api/v1/auth/mfa/totp", {
+      method: "DELETE",
+      body: JSON.stringify({ code })
     });
   },
 

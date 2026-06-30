@@ -103,6 +103,48 @@ func (q *Queries) DeleteExpiredAuthTokens(ctx context.Context) error {
 	return err
 }
 
+const deleteUserTOTP = `-- name: DeleteUserTOTP :execrows
+DELETE FROM user_mfa_totp
+WHERE user_id = $1
+`
+
+func (q *Queries) DeleteUserTOTP(ctx context.Context, userID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteUserTOTP, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const enableUserTOTP = `-- name: EnableUserTOTP :one
+UPDATE user_mfa_totp
+SET enabled_at = COALESCE(enabled_at, now()),
+    last_used_step = $2,
+    updated_at = now()
+WHERE user_id = $1
+RETURNING user_id, secret_ciphertext, secret_nonce, enabled_at, last_used_step, created_at, updated_at
+`
+
+type EnableUserTOTPParams struct {
+	UserID       uuid.UUID   `json:"user_id"`
+	LastUsedStep pgtype.Int8 `json:"last_used_step"`
+}
+
+func (q *Queries) EnableUserTOTP(ctx context.Context, arg EnableUserTOTPParams) (UserMfaTotp, error) {
+	row := q.db.QueryRow(ctx, enableUserTOTP, arg.UserID, arg.LastUsedStep)
+	var i UserMfaTotp
+	err := row.Scan(
+		&i.UserID,
+		&i.SecretCiphertext,
+		&i.SecretNonce,
+		&i.EnabledAt,
+		&i.LastUsedStep,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const findActiveUserByIdentifier = `-- name: FindActiveUserByIdentifier :one
 SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at
 FROM users
@@ -179,6 +221,28 @@ func (q *Queries) GetActiveRefreshSessionByHash(ctx context.Context, refreshToke
 	return i, err
 }
 
+const getEnabledUserTOTP = `-- name: GetEnabledUserTOTP :one
+SELECT user_id, secret_ciphertext, secret_nonce, enabled_at, last_used_step, created_at, updated_at
+FROM user_mfa_totp
+WHERE user_id = $1
+  AND enabled_at IS NOT NULL
+`
+
+func (q *Queries) GetEnabledUserTOTP(ctx context.Context, userID uuid.UUID) (UserMfaTotp, error) {
+	row := q.db.QueryRow(ctx, getEnabledUserTOTP, userID)
+	var i UserMfaTotp
+	err := row.Scan(
+		&i.UserID,
+		&i.SecretCiphertext,
+		&i.SecretNonce,
+		&i.EnabledAt,
+		&i.LastUsedStep,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getUserCredential = `-- name: GetUserCredential :one
 SELECT user_id, password_hash, password_updated_at, failed_attempts, locked_until, created_at, updated_at
 FROM user_credentials
@@ -194,6 +258,27 @@ func (q *Queries) GetUserCredential(ctx context.Context, userID uuid.UUID) (User
 		&i.PasswordUpdatedAt,
 		&i.FailedAttempts,
 		&i.LockedUntil,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getUserTOTP = `-- name: GetUserTOTP :one
+SELECT user_id, secret_ciphertext, secret_nonce, enabled_at, last_used_step, created_at, updated_at
+FROM user_mfa_totp
+WHERE user_id = $1
+`
+
+func (q *Queries) GetUserTOTP(ctx context.Context, userID uuid.UUID) (UserMfaTotp, error) {
+	row := q.db.QueryRow(ctx, getUserTOTP, userID)
+	var i UserMfaTotp
+	err := row.Scan(
+		&i.UserID,
+		&i.SecretCiphertext,
+		&i.SecretNonce,
+		&i.EnabledAt,
+		&i.LastUsedStep,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -483,6 +568,61 @@ func (q *Queries) UpdateUserPhoneVerifiedAndLogin(ctx context.Context, id uuid.U
 		&i.PhoneVerifiedAt,
 		&i.EmailVerifiedAt,
 		&i.LastLoginAt,
+	)
+	return i, err
+}
+
+const updateUserTOTPLastUsedStep = `-- name: UpdateUserTOTPLastUsedStep :execrows
+UPDATE user_mfa_totp
+SET last_used_step = $2,
+    updated_at = now()
+WHERE user_id = $1
+  AND enabled_at IS NOT NULL
+  AND (last_used_step IS NULL OR last_used_step < $2)
+`
+
+type UpdateUserTOTPLastUsedStepParams struct {
+	UserID       uuid.UUID   `json:"user_id"`
+	LastUsedStep pgtype.Int8 `json:"last_used_step"`
+}
+
+func (q *Queries) UpdateUserTOTPLastUsedStep(ctx context.Context, arg UpdateUserTOTPLastUsedStepParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateUserTOTPLastUsedStep, arg.UserID, arg.LastUsedStep)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const upsertUserTOTPSetup = `-- name: UpsertUserTOTPSetup :one
+INSERT INTO user_mfa_totp (user_id, secret_ciphertext, secret_nonce)
+VALUES ($1, $2, $3)
+ON CONFLICT (user_id) DO UPDATE
+SET secret_ciphertext = EXCLUDED.secret_ciphertext,
+    secret_nonce = EXCLUDED.secret_nonce,
+    enabled_at = NULL,
+    last_used_step = NULL,
+    updated_at = now()
+RETURNING user_id, secret_ciphertext, secret_nonce, enabled_at, last_used_step, created_at, updated_at
+`
+
+type UpsertUserTOTPSetupParams struct {
+	UserID           uuid.UUID `json:"user_id"`
+	SecretCiphertext []byte    `json:"secret_ciphertext"`
+	SecretNonce      []byte    `json:"secret_nonce"`
+}
+
+func (q *Queries) UpsertUserTOTPSetup(ctx context.Context, arg UpsertUserTOTPSetupParams) (UserMfaTotp, error) {
+	row := q.db.QueryRow(ctx, upsertUserTOTPSetup, arg.UserID, arg.SecretCiphertext, arg.SecretNonce)
+	var i UserMfaTotp
+	err := row.Scan(
+		&i.UserID,
+		&i.SecretCiphertext,
+		&i.SecretNonce,
+		&i.EnabledAt,
+		&i.LastUsedStep,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

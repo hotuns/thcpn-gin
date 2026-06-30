@@ -77,6 +77,7 @@ type SendEmailResult = SendCodeResult
 type SMSLoginInput struct {
 	Phone   string
 	Code    string
+	MFACode string
 	Name    string
 	Request RequestInfo
 }
@@ -92,6 +93,7 @@ type PasswordRegisterInput struct {
 type PasswordLoginInput struct {
 	Identifier string
 	Password   string
+	MFACode    string
 	Request    RequestInfo
 }
 
@@ -290,6 +292,9 @@ func (s *Service) LoginWithSMS(ctx context.Context, input SMSLoginInput) (LoginR
 	phonePtr := &phone
 	userModel, err := s.queries.FindActiveUserByPhoneForAuth(ctx, phonePtr)
 	if err == nil {
+		if err := s.verifyLoginMFA(ctx, userModel.ID, input.MFACode); err != nil {
+			return LoginResult{}, err
+		}
 		userModel, err = s.queries.UpdateUserPhoneVerifiedAndLogin(ctx, userModel.ID)
 		if err != nil {
 			return LoginResult{}, apperr.Wrap(apperr.KindInternal, "update sms login user", err)
@@ -372,6 +377,9 @@ func (s *Service) LoginWithPassword(ctx context.Context, input PasswordLoginInpu
 		return LoginResult{}, apperr.New(apperr.KindUnauthorized, "invalid identifier or password")
 	}
 
+	if err := s.verifyLoginMFA(ctx, userModel.ID, input.MFACode); err != nil {
+		return LoginResult{}, err
+	}
 	if _, err := s.queries.ResetUserCredentialFailure(ctx, userModel.ID); err != nil {
 		return LoginResult{}, apperr.Wrap(apperr.KindInternal, "reset password failure count", err)
 	}

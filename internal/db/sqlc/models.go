@@ -265,6 +265,16 @@ type UserCredential struct {
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
 }
 
+type UserMfaTotp struct {
+	UserID           uuid.UUID          `json:"user_id"`
+	SecretCiphertext []byte             `json:"secret_ciphertext"`
+	SecretNonce      []byte             `json:"secret_nonce"`
+	EnabledAt        pgtype.Timestamptz `json:"enabled_at"`
+	LastUsedStep     pgtype.Int8        `json:"last_used_step"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Workspace struct {
 	ID               uuid.UUID          `json:"id"`
 	Type             string             `json:"type"`
