@@ -30,6 +30,8 @@ type SignedURL struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
+const signedObjectDownloadPath = "/api/v1/objects/download"
+
 type DownloadTokenClaims struct {
 	DataStreamID uuid.UUID `json:"data_stream_id"`
 	DeviceID     uuid.UUID `json:"device_id"`
@@ -77,17 +79,40 @@ func (s *Signer) SignObjectURL(objectKey string, ttl time.Duration) (SignedURL, 
 	expires := strconv.FormatInt(expiresAt.Unix(), 10)
 	signature := s.signature("GET", objectKey, expires)
 
-	u, err := url.Parse(normalizedEndpoint(s.cfg.Endpoint))
-	if err != nil {
-		return SignedURL{}, apperr.Wrap(apperr.KindInternal, "parse object store endpoint", err)
-	}
-	u.Path = joinURLPath(s.cfg.Bucket, objectKey)
+	u := url.URL{Path: signedObjectDownloadPath}
 	q := u.Query()
+	q.Set("object_key", objectKey)
 	q.Set("expires", expires)
 	q.Set("signature", signature)
 	u.RawQuery = q.Encode()
 
 	return SignedURL{URL: u.String(), ExpiresAt: expiresAt}, nil
+}
+
+func (s *Signer) VerifyObjectURLSignature(method string, objectKey string, expires string, signature string) error {
+	if err := s.validate(); err != nil {
+		return err
+	}
+	objectKey = strings.TrimSpace(objectKey)
+	if objectKey == "" {
+		return apperr.New(apperr.KindInvalidArgument, "object key is required")
+	}
+	expires = strings.TrimSpace(expires)
+	if expires == "" {
+		return apperr.New(apperr.KindInvalidArgument, "expires is required")
+	}
+	expiresAt, err := strconv.ParseInt(expires, 10, 64)
+	if err != nil {
+		return apperr.New(apperr.KindInvalidArgument, "invalid expires")
+	}
+	if expiresAt <= s.now().Unix() {
+		return apperr.New(apperr.KindInvalidArgument, "object url expired")
+	}
+	expected := s.signature(strings.ToUpper(strings.TrimSpace(method)), objectKey, expires)
+	if !hmac.Equal([]byte(expected), []byte(strings.TrimSpace(signature))) {
+		return apperr.New(apperr.KindInvalidArgument, "invalid object signature")
+	}
+	return nil
 }
 
 func (s *Signer) SignDownloadToken(claims DownloadTokenClaims, ttl time.Duration) (string, time.Time, error) {
@@ -155,7 +180,8 @@ func (s *Signer) hmac(value string) string {
 }
 
 func (s *Signer) validate() error {
-	if strings.TrimSpace(s.cfg.Endpoint) == "" {
+	provider := normalizedProvider(s.cfg.Provider)
+	if provider != "file" && provider != "local" && strings.TrimSpace(s.cfg.Endpoint) == "" {
 		return apperr.New(apperr.KindInternal, "object store endpoint is required")
 	}
 	if strings.TrimSpace(s.cfg.Bucket) == "" {

@@ -98,6 +98,8 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	dataSourceService := datasource.NewService(deps.Postgres)
 	telemetryService := telemetry.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil), cfg.QueryLimits)
 	objectSigner := objectstore.NewSigner(cfg.ObjectStore, cfg.Auth.JWTSecret)
+	objectStore := objectstore.NewStore(cfg.ObjectStore)
+	objectHandler := objectstore.NewHandler(objectStore, objectSigner)
 	mediaService := media.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil), objectSigner, cfg.QueryLimits)
 	exportService := export.NewService(deps.Postgres, objectSigner, cfg.Export)
 	tokenManager := auth.NewTokenManager(cfg.Auth.JWTSecret, time.Duration(cfg.Auth.AccessTokenTTLMinutes)*time.Minute)
@@ -144,6 +146,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	})
 
 	api := router.Group("/api/v1")
+	api.GET("/objects/download", objectHandler.Download)
 	api.POST("/auth/sms/send", authHandler.SendSMS)
 	api.POST("/auth/sms/login", authHandler.LoginWithSMS)
 	api.POST("/auth/password/register", authHandler.RegisterWithPassword)

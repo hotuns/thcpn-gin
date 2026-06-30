@@ -255,12 +255,13 @@
   - `dataset_zip`，资源为 `dataset`，需要 `dataset.export`。
   - `media_zip`，资源为 `device`、`data_stream` 或媒体 data-stream alias，需要 `media.download`。
 - API 当前创建 `pending` 任务、记录文件过期时间、把 ExportJob 投递到 Asynq `exports` 队列，并为成功任务生成临时对象下载 URL。
+- 已实现平台签名对象下载代理：`GET /api/v1/objects/download?object_key=...&expires=...&signature=...`，用于本地文件对象存储和非 S3 预签名 fallback。
 - Worker 默认消费 Asynq `export:process` 任务；处理时按 job id claim `pending` 任务、过期旧任务、生成并上传导出文件，然后把任务更新为 `success` 或 `failed`：
   - `telemetry_csv`：支持 `device` / `data_stream` 资源，使用任务 `request_config_json.start_time`、`end_time`、`limit` 查询已绑定 PostgreSQL / MySQL / ClickHouse / HTTP API telemetry 数据源并生成 CSV。
   - `telemetry_excel`：支持 `device` / `data_stream` 资源，使用同一 telemetry 查询链路生成最小有效 XLSX 工作簿。
   - `dataset_zip`：支持 Dataset 元信息 ZIP，包含 `dataset.json`、`sources.csv`，并为 telemetry 类型的 device / data_stream source 生成 CSV。
   - `media_zip`：支持 `device` / `data_stream` / 媒体 data-stream alias 资源，使用任务 `request_config_json.start_time`、`end_time`、`limit`、`media_type` 查询已绑定 PostgreSQL / MySQL / ClickHouse / HTTP API media 数据源，读取 object store 原始媒体文件并生成带 `manifest.csv` 的 ZIP。
-- 对象存储当前支持本地文件后端（`object_store.provider=file`）和 MinIO/S3 SigV4 PUT/GET；下载 URL 在配置访问密钥时使用 S3 预签名 GET，否则回退为平台 HMAC 临时 URL。
+- 对象存储当前支持本地文件后端（`object_store.provider=file`）和 MinIO/S3 SigV4 PUT/GET；下载 URL 在配置访问密钥时使用 S3 预签名 GET，否则回退为平台 HMAC 临时 URL 并由对象下载代理校验签名后读取对象。
 - 导出任务创建和下载准备会写 audit log；按 workspace 查询全量导出任务需要 `audit.view`，默认列表只返回当前用户创建的任务。
 
 ### AccessGrant 和 Invitation
@@ -353,9 +354,7 @@
 
 ### 尚未实现
 
-- Export Worker 的更完整对象存储集成。
-- Project / Site / Device / DataStream / Dataset 当前完成资产、元信息、查询定义、关键变更审计、PostgreSQL / MySQL / ClickHouse / HTTP API telemetry 读取和 media 记录查询。
-- 更完整对象存储集成。
+- 待最终全量验收复核：需对照 `iot_research_go_backend_dev_guide.md` 和 `iot_research_permission_mvp.md` 逐项确认实现证据，当前不再保留已知第一版模块缺口。
 
 ## 重要目录
 

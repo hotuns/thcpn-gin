@@ -2,12 +2,15 @@ package objectstore
 
 import (
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"thcpn-gin/internal/config"
@@ -63,6 +66,12 @@ func TestSignObjectURL(t *testing.T) {
 	if signed.URL == "" || signed.ExpiresAt.IsZero() {
 		t.Fatalf("unexpected signed url: %#v", signed)
 	}
+	if !strings.HasPrefix(signed.URL, signedObjectDownloadPath+"?") {
+		t.Fatalf("expected platform signed object URL, got %q", signed.URL)
+	}
+	if err := signer.VerifyObjectURLSignature(http.MethodGet, "images/raw/img-001.jpg", queryValue(t, signed.URL, "expires"), queryValue(t, signed.URL, "signature")); err != nil {
+		t.Fatalf("verify object signature: %v", err)
+	}
 }
 
 func TestFileStorePut(t *testing.T) {
@@ -102,4 +111,77 @@ func TestFileStorePut(t *testing.T) {
 	if string(readBack) != "a,b\n1,2\n" {
 		t.Fatalf("unexpected readback content: %q", readBack)
 	}
+}
+
+func TestDownloadHandlerServesSignedFileObject(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	root := t.TempDir()
+	cfg := config.ObjectStoreConfig{
+		Provider:  "file",
+		Endpoint:  "127.0.0.1:8080",
+		Bucket:    "iot-platform",
+		LocalPath: root,
+	}
+	store := NewStore(cfg)
+	signer := NewSigner(cfg, "test-secret")
+	signer.now = func() time.Time {
+		return time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC)
+	}
+	if err := store.Put(t.Context(), PutInput{
+		ObjectKey:   "exports/job-001.csv",
+		ContentType: "text/csv",
+		Body:        strings.NewReader("a,b\n1,2\n"),
+	}); err != nil {
+		t.Fatalf("put object: %v", err)
+	}
+
+	signed, err := signer.SignObjectURL("exports/job-001.csv", 15*time.Minute)
+	if err != nil {
+		t.Fatalf("sign object URL: %v", err)
+	}
+
+	router := gin.New()
+	router.GET(signedObjectDownloadPath, NewHandler(store, signer).Download)
+
+	req := httptest.NewRequest(http.MethodGet, signed.URL, nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if rec.Body.String() != "a,b\n1,2\n" {
+		t.Fatalf("unexpected response body: %q", rec.Body.String())
+	}
+}
+
+func TestDownloadHandlerRejectsInvalidSignature(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	cfg := config.ObjectStoreConfig{
+		Provider:  "file",
+		Endpoint:  "127.0.0.1:8080",
+		Bucket:    "iot-platform",
+		LocalPath: t.TempDir(),
+	}
+	store := NewStore(cfg)
+	signer := NewSigner(cfg, "test-secret")
+
+	router := gin.New()
+	router.GET(signedObjectDownloadPath, NewHandler(store, signer).Download)
+
+	req := httptest.NewRequest(http.MethodGet, signedObjectDownloadPath+"?object_key=exports/job-001.csv&expires=9999999999&signature=bad", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
+func queryValue(t *testing.T, rawURL string, key string) string {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, rawURL, nil)
+	return req.URL.Query().Get(key)
 }

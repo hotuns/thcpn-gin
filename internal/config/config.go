@@ -293,6 +293,18 @@ func (cfg Config) Validate() error {
 	if cfg.Email.MaxVerifyAttempts <= 0 {
 		return errors.New("email.max_verify_attempts must be greater than 0")
 	}
+	objectStoreProvider := strings.TrimSpace(cfg.ObjectStore.Provider)
+	switch objectStoreProvider {
+	case "file", "local", "minio", "s3":
+	default:
+		return errors.New("object_store.provider must be one of file, local, minio, s3")
+	}
+	if strings.TrimSpace(cfg.ObjectStore.Bucket) == "" {
+		return errors.New("object_store.bucket is required")
+	}
+	if objectStoreProvider != "file" && objectStoreProvider != "local" && strings.TrimSpace(cfg.ObjectStore.Endpoint) == "" {
+		return errors.New("object_store.endpoint is required")
+	}
 	if cfg.QueryLimits.MaxHistoryDays <= 0 {
 		return errors.New("query_limits.max_history_days must be greater than 0")
 	}
