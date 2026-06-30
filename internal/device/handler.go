@@ -16,13 +16,14 @@ import (
 )
 
 const (
-	deviceViewAction      = "device.view"
-	deviceBindAction      = "device.bind"
-	deviceConfigureAction = "device.configure"
-	deviceCalibrateAction = "device.calibrate"
-	deviceFirmwareAction  = "device.firmware_upgrade"
-	deviceTransferAction  = "device.transfer"
-	deviceUnbindAction    = "device.unbind"
+	deviceViewAction       = "device.view"
+	deviceBindAction       = "device.bind"
+	deviceConfigureAction  = "device.configure"
+	deviceCalibrateAction  = "device.calibrate"
+	deviceFirmwareAction   = "device.firmware_upgrade"
+	deviceTransferAction   = "device.transfer"
+	deviceUnbindAction     = "device.unbind"
+	serviceAccessUseAction = "service_access.device_access"
 )
 
 type Handler struct {
@@ -185,7 +186,8 @@ func (h *Handler) Get(c *gin.Context) {
 		return
 	}
 
-	if !h.authorize(c, "device", deviceID, deviceViewAction) {
+	decision, ok := h.authorizeDecision(c, "device", deviceID, deviceViewAction)
+	if !ok {
 		return
 	}
 
@@ -193,6 +195,20 @@ func (h *Handler) Get(c *gin.Context) {
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
+	}
+	if isServiceEngineerAccess(decision) {
+		actor, _ := auth.ActorFromContext(c)
+		if !h.record(c, audit.RecordInput{
+			WorkspaceID:  audit.WorkspaceID(result.WorkspaceID),
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       serviceAccessUseAction,
+			ResourceType: "device",
+			ResourceID:   audit.ResourceID(result.ID),
+			Result:       audit.ResultSuccess,
+		}) {
+			return
+		}
 	}
 	c.JSON(http.StatusOK, result)
 }
@@ -492,13 +508,18 @@ func (h *Handler) Unbind(c *gin.Context) {
 }
 
 func (h *Handler) authorize(c *gin.Context, resourceType string, resourceID uuid.UUID, action string) bool {
+	_, ok := h.authorizeDecision(c, resourceType, resourceID, action)
+	return ok
+}
+
+func (h *Handler) authorizeDecision(c *gin.Context, resourceType string, resourceID uuid.UUID, action string) (permission.Decision, bool) {
 	actor, ok := actorFromContext(c)
 	if !ok {
-		return false
+		return permission.Decision{}, false
 	}
 	if h.checker == nil {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInternal, "permission checker is not configured"))
-		return false
+		return permission.Decision{}, false
 	}
 
 	decision, err := h.checker.Can(c.Request.Context(), permission.Actor{UserID: actor.UserID}, action, permission.ResourceRef{
@@ -507,13 +528,17 @@ func (h *Handler) authorize(c *gin.Context, resourceType string, resourceID uuid
 	})
 	if err != nil {
 		httpx.WriteAppError(c, err)
-		return false
+		return permission.Decision{}, false
 	}
 	if !decision.Allowed {
 		httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "permission denied"))
-		return false
+		return permission.Decision{}, false
 	}
-	return true
+	return decision, true
+}
+
+func isServiceEngineerAccess(decision permission.Decision) bool {
+	return decision.Source == "access_grant" && decision.GrantRoleCode == "service_engineer"
 }
 
 func actorFromContext(c *gin.Context) (auth.Actor, bool) {

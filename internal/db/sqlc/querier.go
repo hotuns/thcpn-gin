@@ -49,6 +49,7 @@ type Querier interface {
 	FindActiveUserByPhone(ctx context.Context, phone *string) (User, error)
 	FindActiveUserByPhoneForAuth(ctx context.Context, phone *string) (User, error)
 	GetAccessGrant(ctx context.Context, id uuid.UUID) (GetAccessGrantRow, error)
+	GetAccessGrantPermissionRole(ctx context.Context, arg GetAccessGrantPermissionRoleParams) (string, error)
 	GetActiveDataStreamBinding(ctx context.Context, dataStreamID uuid.UUID) (DataStreamBinding, error)
 	GetActiveRefreshSessionByHash(ctx context.Context, refreshTokenHash string) (AuthRefreshSession, error)
 	GetActiveUser(ctx context.Context, id uuid.UUID) (User, error)

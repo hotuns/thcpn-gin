@@ -258,6 +258,63 @@ func (q *Queries) GetAccessGrant(ctx context.Context, id uuid.UUID) (GetAccessGr
 	return i, err
 }
 
+const getAccessGrantPermissionRole = `-- name: GetAccessGrantPermissionRole :one
+SELECT r.code
+FROM access_grants ag
+JOIN roles r ON r.id = ag.role_id
+JOIN role_permissions rp ON rp.role_id = r.id
+JOIN permissions p ON p.id = rp.permission_id
+WHERE ag.subject_type = 'user'
+  AND ag.subject_id = $1
+  AND ag.workspace_id = $2
+  AND ag.status = 'active'
+  AND (ag.expires_at IS NULL OR ag.expires_at > now())
+  AND p.code = $3
+  AND (r.workspace_id IS NULL OR r.workspace_id = ag.workspace_id)
+  AND (
+    ag.scope_type = 'workspace'
+    OR (ag.scope_type = $4 AND ag.scope_id = $5)
+    OR (ag.scope_type = 'project' AND $6::uuid IS NOT NULL AND ag.scope_id = $6::uuid)
+    OR (ag.scope_type = 'site' AND $7::uuid IS NOT NULL AND ag.scope_id = $7::uuid)
+    OR (ag.scope_type = 'device' AND $8::uuid IS NOT NULL AND ag.scope_id = $8::uuid)
+    OR (ag.scope_type = 'dataset' AND $9::uuid IS NOT NULL AND ag.scope_id = $9::uuid)
+  )
+ORDER BY
+  CASE WHEN r.code = 'service_engineer' THEN 0 ELSE 1 END,
+  ag.created_at DESC,
+  ag.id DESC
+LIMIT 1
+`
+
+type GetAccessGrantPermissionRoleParams struct {
+	SubjectID   uuid.UUID `json:"subject_id"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	Code        string    `json:"code"`
+	ScopeType   string    `json:"scope_type"`
+	ScopeID     uuid.UUID `json:"scope_id"`
+	ProjectID   uuid.UUID `json:"project_id"`
+	SiteID      uuid.UUID `json:"site_id"`
+	DeviceID    uuid.UUID `json:"device_id"`
+	DatasetID   uuid.UUID `json:"dataset_id"`
+}
+
+func (q *Queries) GetAccessGrantPermissionRole(ctx context.Context, arg GetAccessGrantPermissionRoleParams) (string, error) {
+	row := q.db.QueryRow(ctx, getAccessGrantPermissionRole,
+		arg.SubjectID,
+		arg.WorkspaceID,
+		arg.Code,
+		arg.ScopeType,
+		arg.ScopeID,
+		arg.ProjectID,
+		arg.SiteID,
+		arg.DeviceID,
+		arg.DatasetID,
+	)
+	var code string
+	err := row.Scan(&code)
+	return code, err
+}
+
 const getInvitation = `-- name: GetInvitation :one
 SELECT
     i.id,

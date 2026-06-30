@@ -2,8 +2,10 @@ package permission
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"go.opentelemetry.io/otel/attribute"
 
 	"thcpn-gin/internal/apperr"
@@ -17,7 +19,7 @@ type Store interface {
 	GetDevice(ctx context.Context, id uuid.UUID) (sqlc.Device, error)
 	GetProject(ctx context.Context, id uuid.UUID) (sqlc.Project, error)
 	GetSite(ctx context.Context, id uuid.UUID) (sqlc.Site, error)
-	HasAccessGrantPermission(ctx context.Context, arg sqlc.HasAccessGrantPermissionParams) (bool, error)
+	GetAccessGrantPermissionRole(ctx context.Context, arg sqlc.GetAccessGrantPermissionRoleParams) (string, error)
 	HasWorkspacePermission(ctx context.Context, arg sqlc.HasWorkspacePermissionParams) (bool, error)
 }
 
@@ -35,8 +37,10 @@ type ResourceRef struct {
 }
 
 type Decision struct {
-	Allowed bool
-	Reason  string
+	Allowed       bool
+	Reason        string
+	Source        string
+	GrantRoleCode string
 }
 
 type resourceScope struct {
@@ -98,10 +102,10 @@ func (c *Checker) Can(ctx context.Context, actor Actor, action string, resource 
 		return Decision{}, apperr.Wrap(apperr.KindInternal, "check workspace permission", err)
 	}
 	if allowed {
-		return Decision{Allowed: true, Reason: "allowed by workspace membership"}, nil
+		return Decision{Allowed: true, Reason: "allowed by workspace membership", Source: "workspace_member"}, nil
 	}
 
-	allowed, err = c.store.HasAccessGrantPermission(ctx, sqlc.HasAccessGrantPermissionParams{
+	grantRoleCode, err := c.store.GetAccessGrantPermissionRole(ctx, sqlc.GetAccessGrantPermissionRoleParams{
 		SubjectID:   actor.UserID,
 		WorkspaceID: scope.WorkspaceID,
 		Code:        action,
@@ -113,10 +117,13 @@ func (c *Checker) Can(ctx context.Context, actor Actor, action string, resource 
 		DatasetID:   scope.DatasetID,
 	})
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Decision{Allowed: false, Reason: "permission denied"}, nil
+		}
 		return Decision{}, apperr.Wrap(apperr.KindInternal, "check access grant permission", err)
 	}
-	if allowed {
-		return Decision{Allowed: true, Reason: "allowed by access grant"}, nil
+	if grantRoleCode != "" {
+		return Decision{Allowed: true, Reason: "allowed by access grant", Source: "access_grant", GrantRoleCode: grantRoleCode}, nil
 	}
 
 	return Decision{Allowed: false, Reason: "permission denied"}, nil

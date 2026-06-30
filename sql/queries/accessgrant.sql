@@ -131,6 +131,33 @@ SELECT EXISTS (
       )
 ) AS allowed;
 
+-- name: GetAccessGrantPermissionRole :one
+SELECT r.code
+FROM access_grants ag
+JOIN roles r ON r.id = ag.role_id
+JOIN role_permissions rp ON rp.role_id = r.id
+JOIN permissions p ON p.id = rp.permission_id
+WHERE ag.subject_type = 'user'
+  AND ag.subject_id = $1
+  AND ag.workspace_id = $2
+  AND ag.status = 'active'
+  AND (ag.expires_at IS NULL OR ag.expires_at > now())
+  AND p.code = $3
+  AND (r.workspace_id IS NULL OR r.workspace_id = ag.workspace_id)
+  AND (
+    ag.scope_type = 'workspace'
+    OR (ag.scope_type = $4 AND ag.scope_id = $5)
+    OR (ag.scope_type = 'project' AND sqlc.arg(project_id)::uuid IS NOT NULL AND ag.scope_id = sqlc.arg(project_id)::uuid)
+    OR (ag.scope_type = 'site' AND sqlc.arg(site_id)::uuid IS NOT NULL AND ag.scope_id = sqlc.arg(site_id)::uuid)
+    OR (ag.scope_type = 'device' AND sqlc.arg(device_id)::uuid IS NOT NULL AND ag.scope_id = sqlc.arg(device_id)::uuid)
+    OR (ag.scope_type = 'dataset' AND sqlc.arg(dataset_id)::uuid IS NOT NULL AND ag.scope_id = sqlc.arg(dataset_id)::uuid)
+  )
+ORDER BY
+  CASE WHEN r.code = 'service_engineer' THEN 0 ELSE 1 END,
+  ag.created_at DESC,
+  ag.id DESC
+LIMIT 1;
+
 -- name: CreateInvitation :one
 INSERT INTO invitations (
     workspace_id,

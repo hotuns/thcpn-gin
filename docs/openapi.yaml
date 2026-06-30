@@ -1270,7 +1270,7 @@ paths:
         - Devices
       operationId: getDevice
       summary: Get a device
-      description: Requires `device.view` permission in the owning workspace.
+      description: Requires `device.view` permission in the owning workspace. When access is granted through a `service_engineer` AccessGrant, the read is written to AuditLog with action `service_access.device_access`.
       security:
         - bearerAuth: []
         - devUserHeader: []

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"thcpn-gin/internal/db/sqlc"
 )
@@ -13,9 +14,10 @@ import (
 type fakePermissionStore struct {
 	workspaceAllowed bool
 	grantAllowed     bool
+	grantRoleCode    string
 	err              error
 	workspaceArg     sqlc.HasWorkspacePermissionParams
-	grantArg         sqlc.HasAccessGrantPermissionParams
+	grantArg         sqlc.GetAccessGrantPermissionRoleParams
 	dataset          sqlc.Dataset
 	project          sqlc.Project
 	site             sqlc.Site
@@ -31,12 +33,18 @@ func (f *fakePermissionStore) HasWorkspacePermission(_ context.Context, arg sqlc
 	return f.workspaceAllowed, nil
 }
 
-func (f *fakePermissionStore) HasAccessGrantPermission(_ context.Context, arg sqlc.HasAccessGrantPermissionParams) (bool, error) {
+func (f *fakePermissionStore) GetAccessGrantPermissionRole(_ context.Context, arg sqlc.GetAccessGrantPermissionRoleParams) (string, error) {
 	f.grantArg = arg
 	if f.err != nil {
-		return false, f.err
+		return "", f.err
 	}
-	return f.grantAllowed, nil
+	if !f.grantAllowed {
+		return "", pgx.ErrNoRows
+	}
+	if f.grantRoleCode != "" {
+		return f.grantRoleCode, nil
+	}
+	return "shared_viewer", nil
 }
 
 func (f *fakePermissionStore) GetProject(_ context.Context, id uuid.UUID) (sqlc.Project, error) {
@@ -79,6 +87,9 @@ func TestCheckerAllowsWorkspacePermission(t *testing.T) {
 	}
 	if !decision.Allowed {
 		t.Fatalf("expected allowed decision, got %#v", decision)
+	}
+	if decision.Source != "workspace_member" {
+		t.Fatalf("expected workspace member source, got %#v", decision)
 	}
 	if store.workspaceArg.UserID != userID || store.workspaceArg.WorkspaceID != workspaceID || store.workspaceArg.Code != "workspace.view" {
 		t.Fatalf("unexpected store arg: %#v", store.workspaceArg)
@@ -138,6 +149,9 @@ func TestCheckerAllowsProjectAccessGrant(t *testing.T) {
 	if !decision.Allowed {
 		t.Fatalf("expected allowed decision, got %#v", decision)
 	}
+	if decision.Source != "access_grant" || decision.GrantRoleCode != "shared_viewer" {
+		t.Fatalf("expected access grant decision metadata, got %#v", decision)
+	}
 	if store.workspaceArg.WorkspaceID != workspaceID {
 		t.Fatalf("expected workspace permission to use resolved workspace id, got %#v", store.workspaceArg)
 	}
@@ -172,6 +186,31 @@ func TestCheckerAllowsProjectGrantForDataset(t *testing.T) {
 	}
 	if store.grantArg.DatasetID != datasetID || store.grantArg.ProjectID != projectID {
 		t.Fatalf("unexpected grant arg: %#v", store.grantArg)
+	}
+}
+
+func TestCheckerReturnsAccessGrantRoleCode(t *testing.T) {
+	workspaceID := uuid.New()
+	deviceID := uuid.New()
+	store := &fakePermissionStore{
+		grantAllowed:  true,
+		grantRoleCode: "service_engineer",
+		device: sqlc.Device{
+			ID:          deviceID,
+			WorkspaceID: workspaceID,
+		},
+	}
+	checker := NewChecker(store)
+
+	decision, err := checker.Can(context.Background(), Actor{UserID: uuid.New()}, "device.view", ResourceRef{
+		Type: "device",
+		ID:   deviceID,
+	})
+	if err != nil {
+		t.Fatalf("check permission: %v", err)
+	}
+	if !decision.Allowed || decision.Source != "access_grant" || decision.GrantRoleCode != "service_engineer" {
+		t.Fatalf("expected service engineer grant metadata, got %#v", decision)
 	}
 }
 

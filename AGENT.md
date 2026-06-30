@@ -302,6 +302,7 @@
   - 创建 AccessGrant、撤销 AccessGrant 成功和失败。
   - 创建 Invitation、接受 Invitation、撤销 Invitation 成功和失败。
   - `service_engineer` 授权使用 `service_access.grant` action 写审计。
+  - `service_engineer` 通过临时授权访问设备详情时使用 `service_access.device_access` action 写审计。
   - 创建、更新 Project / Site / DataStream 成功和失败。
   - 设备校准、固件升级请求成功和失败。
   - 设备转移成功和失败。
