@@ -29,6 +29,7 @@
 - Config: YAML plus environment variable overrides
 - Auth: JWT HS256 access token, bcrypt password hash, SMS verification code in Redis
 - SMS sender: `log` / `noop` / Aliyun Dysmsapi
+- Web: Vite + React + TypeScript，独立工程位于 `web/`
 
 ## 已实现功能
 
@@ -38,8 +39,9 @@
 - API 已接入 Gin、request id、结构化 access log、panic recovery 和统一错误响应。
 - Worker 当前只完成配置、日志、PostgreSQL、Redis 初始化和优雅退出，尚未接入 Asynq 真实任务。
 - 已提供 Docker Compose 本地基础设施：PostgreSQL、Redis、migrate 工具容器。
-- 已提供 Makefile 常用命令：`db-up`、`db-down`、`migrate-up`、`migrate-down`、`sqlc`、`test`、`run-api`、`run-worker`。
+- 已提供 Makefile 常用命令：`db-up`、`db-down`、`migrate-up`、`migrate-down`、`sqlc`、`test`、`run-api`、`run-worker`、`web-install`、`run-web`、`build-web`。
 - 已提供配置加载：默认值、YAML 配置、环境变量覆盖。
+- 已提供独立 Web 前端，可通过 Vite dev server 调用本地 API。
 
 ### 健康检查
 
@@ -141,6 +143,7 @@
 - `internal/datasource`: 未来所有设备数据源读取适配器都应放这里。
 - `migrations`: PostgreSQL 平台业务库迁移。
 - `sql/queries`: sqlc 查询定义。
+- `web`: 独立前端工程，使用 Vite proxy 调用后端 `/api`、`/healthz`、`/readyz`。
 - `configs/config.example.yaml`: 示例配置。
 - `docs/openapi.yaml`: 当前已实现 HTTP API 的 OpenAPI 3.1 文档，新增/调整接口时必须同步更新。
 
@@ -155,6 +158,9 @@ make sqlc
 make test
 make run-api
 make run-worker
+make web-install
+make run-web
+make build-web
 ```
 
 ## 健康检查
