@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: THCPN IoT Research Platform API
-  version: 0.13.0
+  version: 0.14.0
   description: |
     THCPN 科研物联网数据管理平台后端 API。
 
@@ -1457,7 +1457,7 @@ paths:
         - DataSources
       operationId: createDataSource
       summary: Create data source metadata
-      description: Requires `workspace.manage` permission. `dsn_secret_ref` must point to a secret outside the platform database.
+      description: Requires `workspace.manage` permission. `dsn_secret_ref` must point to a secret outside the platform database. Runtime query adapters currently support PostgreSQL and MySQL for telemetry columns and media indexes.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -2676,6 +2676,7 @@ components:
         - archived
     DataSourceType:
       type: string
+      description: Metadata accepts the planned adapter types. Runtime query adapters currently support `postgres` and `mysql`.
       enum:
         - postgres
         - mysql
