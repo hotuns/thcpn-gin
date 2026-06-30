@@ -5,7 +5,7 @@ info:
   description: |
     THCPN 科研物联网数据管理平台后端 API。
 
-    当前文档覆盖已实现的阶段功能：健康检查、短信验证码登录/注册、密码注册/登录、refresh token、logout、
+    当前文档覆盖已实现的阶段功能：健康检查、短信验证码登录/注册、密码注册/登录、refresh token、logout、会话管理、
     JWT 认证、Workspace 列表/创建、Workspace 成员管理、Project、Site、Device、DataStream、DataSource、DataStreamBinding、Telemetry Query、Media Query、Dataset 元信息管理和 ExportJob 导出任务、
     AccessGrant 外部分享/售后临时授权、Invitation 和 AuditLog。
 
@@ -374,6 +374,56 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/PermissionDenied"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/auth/sessions:
+    get:
+      tags:
+        - Auth
+      operationId: listAuthSessions
+      summary: List current auth sessions
+      description: Lists active refresh sessions for the current authenticated user.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Active auth sessions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSessionListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/auth/sessions/{session_id}:
+    delete:
+      tags:
+        - Auth
+      operationId: revokeAuthSession
+      summary: Revoke an auth session
+      description: Revokes one active refresh session owned by the current authenticated user.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Auth refresh session UUID.
+      responses:
+        "204":
+          description: Auth session revoked.
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/Internal"
   /api/v1/auth/register:
@@ -2998,6 +3048,34 @@ components:
         created:
           type: boolean
           description: True when the request created a new user.
+    AuthSession:
+      type: object
+      required:
+        - id
+        - expires_at
+        - created_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        user_agent:
+          type: string
+        client_ip:
+          type: string
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+        last_used_at:
+          $ref: "#/components/schemas/Timestamp"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+    AuthSessionListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuthSession"
     UserProfile:
       type: object
       required:

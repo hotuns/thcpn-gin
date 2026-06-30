@@ -83,6 +83,7 @@
   - 登录和注册会返回 `refresh_token` 与 `refresh_expires_in`。
   - `POST /api/v1/auth/refresh` 使用 refresh token 换取新 access token，并轮换 refresh session。
   - `POST /api/v1/auth/logout` 会撤销当前 access token；请求体带 `refresh_token` 时同时撤销对应 refresh session。
+  - `GET /api/v1/auth/sessions` 列出当前用户活跃 refresh sessions；`DELETE /api/v1/auth/sessions/:session_id` 撤销指定会话。
   - 平台库新增 `auth_refresh_sessions` 和 `auth_access_token_blacklist`，refresh session 保存 token hash、过期时间、user agent 和 client ip。
 - 账号密码登录失败会累计失败次数，默认 5 次后锁定 15 分钟。
 - 短信验证码默认 5 分钟有效、60 秒冷却、单手机号每日 10 次、最多 5 次校验尝试。
@@ -321,12 +322,12 @@
 - 已通过真实 HTTP 验证 Invitation：创建 project invitation、受邀用户在 `/invitations/mine` 看到邀请、accept 后可读取 project。
 - 已通过真实 HTTP 验证 audit log 写入和 `GET /api/v1/audit-logs?workspace_id=...` 查询。
 - 已通过自动化测试验证 `/metrics` 暴露 Prometheus 指标并记录 `/healthz` 请求。
-- 已通过自动化测试验证 bearer token 可查黑名单并拒绝已撤销 token，refresh token 生成和 hash 稳定且不存明文。
+- 已通过自动化测试验证 bearer token 可查黑名单并拒绝已撤销 token，refresh token 生成和 hash 稳定且不存明文，并验证 auth session 响应模型映射。
 - 此前已通过真实 HTTP 验证开发注册、workspace 列表、创建 organization workspace、添加成员、列成员、更新成员角色、普通成员访问成员管理被拒绝、删除成员。
 
 ### 尚未实现
 
-- 设备会话管理界面/API、MFA、邮箱验证码/邮箱验证。
+- 设备会话管理前端界面、MFA、邮箱验证码/邮箱验证。
 - Export Worker 的更完整对象存储集成。
 - Project / Site / Device / DataStream / Dataset 当前完成资产、元信息、查询定义、PostgreSQL / MySQL / ClickHouse / HTTP API telemetry 读取和 media 记录查询；Project / Site / DataStream 变更审计可后续按风险扩展。
 - 尚未实现模块的敏感操作审计仍待对应模块落地时接入，例如设备校准、固件升级和设备转移。
@@ -434,7 +435,7 @@ make build-web
 - 本地/测试默认使用 `SMS_PROVIDER=log` 或 `noop`；只有配置好阿里云环境变量并确认模板审核通过后才使用 `aliyun`。
 - 短信验证码只存 Redis，value 保存 code hash、attempt count 和过期信息；不要把明文验证码写入数据库或响应体。
 - 密码必须通过 `ValidatePassword` 校验，并使用 `bcrypt` 保存哈希；不要保存明文密码或可逆加密密码。
-- 当前 JWT 只有 access token，没有 refresh token 或黑名单；实现退出登录、踢下线或会话管理前，不要假设 token 可主动失效。
+- access token 支持 blacklist 主动失效；涉及 logout、踢下线或会话管理时必须继续走 `auth_refresh_sessions` 和 `auth_access_token_blacklist`，不要引入仅客户端删除 token 的实现。
 
 ## 数据库和 sqlc 规则
 

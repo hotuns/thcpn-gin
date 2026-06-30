@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/audit"
@@ -278,6 +279,51 @@ func (h *Handler) Logout(c *gin.Context) {
 		Action:       "auth.logout",
 		ResourceType: "auth",
 		ResourceID:   audit.ResourceID(actor.UserID),
+		Result:       audit.ResultSuccess,
+	}) {
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) ListSessions(c *gin.Context) {
+	actor, ok := ActorFromContext(c)
+	if !ok {
+		httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "missing authenticated user"))
+		return
+	}
+	items, err := h.service.ListSessions(c.Request.Context(), ListSessionsInput{UserID: actor.UserID})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+func (h *Handler) RevokeSession(c *gin.Context) {
+	actor, ok := ActorFromContext(c)
+	if !ok {
+		httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "missing authenticated user"))
+		return
+	}
+	sessionID, err := uuid.Parse(c.Param("session_id"))
+	if err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid session_id"))
+		return
+	}
+	if err := h.service.RevokeSession(c.Request.Context(), RevokeSessionInput{
+		UserID:    actor.UserID,
+		SessionID: sessionID,
+	}); err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "auth.session_revoke",
+		ResourceType: "auth_session",
+		ResourceID:   audit.ResourceID(sessionID),
 		Result:       audit.ResultSuccess,
 	}) {
 		return

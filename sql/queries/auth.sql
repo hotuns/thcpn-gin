@@ -75,11 +75,27 @@ WHERE id = $1
   AND revoked_at IS NULL
 RETURNING id, user_id, refresh_token_hash, user_agent, client_ip, expires_at, last_used_at, revoked_at, created_at, updated_at;
 
+-- name: ListActiveRefreshSessionsByUser :many
+SELECT id, user_id, refresh_token_hash, user_agent, client_ip, expires_at, last_used_at, revoked_at, created_at, updated_at
+FROM auth_refresh_sessions
+WHERE user_id = $1
+  AND revoked_at IS NULL
+  AND expires_at > now()
+ORDER BY last_used_at DESC NULLS LAST, created_at DESC;
+
 -- name: RevokeRefreshSession :exec
 UPDATE auth_refresh_sessions
 SET revoked_at = COALESCE(revoked_at, now()),
     updated_at = now()
 WHERE id = $1;
+
+-- name: RevokeRefreshSessionForUser :execrows
+UPDATE auth_refresh_sessions
+SET revoked_at = COALESCE(revoked_at, now()),
+    updated_at = now()
+WHERE id = $1
+  AND user_id = $2
+  AND revoked_at IS NULL;
 
 -- name: RevokeRefreshSessionByHash :exec
 UPDATE auth_refresh_sessions

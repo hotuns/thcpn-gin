@@ -154,6 +154,8 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed := api.Group("")
 	authed.Use(authMiddleware)
 	authed.POST("/auth/logout", authHandler.Logout)
+	authed.GET("/auth/sessions", authHandler.ListSessions)
+	authed.DELETE("/auth/sessions/:session_id", authHandler.RevokeSession)
 	authed.GET("/me", userHandler.Me)
 	authed.GET("/workspaces", workspaceHandler.List)
 	authed.POST("/workspaces", workspaceHandler.Create)

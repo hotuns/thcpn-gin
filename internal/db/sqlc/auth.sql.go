@@ -216,6 +216,46 @@ func (q *Queries) IsAccessTokenBlacklisted(ctx context.Context, tokenHash string
 	return exists, err
 }
 
+const listActiveRefreshSessionsByUser = `-- name: ListActiveRefreshSessionsByUser :many
+SELECT id, user_id, refresh_token_hash, user_agent, client_ip, expires_at, last_used_at, revoked_at, created_at, updated_at
+FROM auth_refresh_sessions
+WHERE user_id = $1
+  AND revoked_at IS NULL
+  AND expires_at > now()
+ORDER BY last_used_at DESC NULLS LAST, created_at DESC
+`
+
+func (q *Queries) ListActiveRefreshSessionsByUser(ctx context.Context, userID uuid.UUID) ([]AuthRefreshSession, error) {
+	rows, err := q.db.Query(ctx, listActiveRefreshSessionsByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AuthRefreshSession{}
+	for rows.Next() {
+		var i AuthRefreshSession
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.RefreshTokenHash,
+			&i.UserAgent,
+			&i.ClientIp,
+			&i.ExpiresAt,
+			&i.LastUsedAt,
+			&i.RevokedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const resetUserCredentialFailure = `-- name: ResetUserCredentialFailure :one
 UPDATE user_credentials
 SET failed_attempts = 0,
@@ -262,6 +302,28 @@ WHERE refresh_token_hash = $1
 func (q *Queries) RevokeRefreshSessionByHash(ctx context.Context, refreshTokenHash string) error {
 	_, err := q.db.Exec(ctx, revokeRefreshSessionByHash, refreshTokenHash)
 	return err
+}
+
+const revokeRefreshSessionForUser = `-- name: RevokeRefreshSessionForUser :execrows
+UPDATE auth_refresh_sessions
+SET revoked_at = COALESCE(revoked_at, now()),
+    updated_at = now()
+WHERE id = $1
+  AND user_id = $2
+  AND revoked_at IS NULL
+`
+
+type RevokeRefreshSessionForUserParams struct {
+	ID     uuid.UUID `json:"id"`
+	UserID uuid.UUID `json:"user_id"`
+}
+
+func (q *Queries) RevokeRefreshSessionForUser(ctx context.Context, arg RevokeRefreshSessionForUserParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeRefreshSessionForUser, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const rotateRefreshSession = `-- name: RotateRefreshSession :one

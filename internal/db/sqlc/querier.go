@@ -68,6 +68,7 @@ type Querier interface {
 	IsAccessTokenBlacklisted(ctx context.Context, tokenHash string) (bool, error)
 	ListAccessGrantsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]ListAccessGrantsByWorkspaceRow, error)
 	ListAccessGrantsForUser(ctx context.Context, subjectID uuid.UUID) ([]ListAccessGrantsForUserRow, error)
+	ListActiveRefreshSessionsByUser(ctx context.Context, userID uuid.UUID) ([]AuthRefreshSession, error)
 	ListAppMetadata(ctx context.Context) ([]AppMetadatum, error)
 	ListAuditLogsByWorkspace(ctx context.Context, arg ListAuditLogsByWorkspaceParams) ([]AuditLog, error)
 	ListDataSourcesByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]DataSource, error)
@@ -100,6 +101,7 @@ type Querier interface {
 	RevokeInvitation(ctx context.Context, id uuid.UUID) (Invitation, error)
 	RevokeRefreshSession(ctx context.Context, id uuid.UUID) error
 	RevokeRefreshSessionByHash(ctx context.Context, refreshTokenHash string) error
+	RevokeRefreshSessionForUser(ctx context.Context, arg RevokeRefreshSessionForUserParams) (int64, error)
 	RotateRefreshSession(ctx context.Context, arg RotateRefreshSessionParams) (AuthRefreshSession, error)
 	UpdateDataSource(ctx context.Context, arg UpdateDataSourceParams) (DataSource, error)
 	UpdateDataStream(ctx context.Context, arg UpdateDataStreamParams) (DataStream, error)

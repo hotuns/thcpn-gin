@@ -42,6 +42,15 @@ type UserProfile struct {
 	LastLoginAt     *time.Time `json:"last_login_at,omitempty"`
 }
 
+type Session struct {
+	ID         uuid.UUID  `json:"id"`
+	UserAgent  *string    `json:"user_agent,omitempty"`
+	ClientIP   *string    `json:"client_ip,omitempty"`
+	ExpiresAt  time.Time  `json:"expires_at"`
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
 type SendSMSInput struct {
 	Phone string
 }
@@ -87,6 +96,15 @@ type LogoutInput struct {
 	AccessToken  string
 	RefreshToken string
 	UserID       uuid.UUID
+}
+
+type ListSessionsInput struct {
+	UserID uuid.UUID
+}
+
+type RevokeSessionInput struct {
+	UserID    uuid.UUID
+	SessionID uuid.UUID
 }
 
 type LoginResult struct {
@@ -473,6 +491,41 @@ func (s *Service) Logout(ctx context.Context, input LogoutInput) error {
 	return nil
 }
 
+func (s *Service) ListSessions(ctx context.Context, input ListSessionsInput) ([]Session, error) {
+	if input.UserID == uuid.Nil {
+		return nil, apperr.New(apperr.KindInvalidArgument, "user id is required")
+	}
+	rows, err := s.queries.ListActiveRefreshSessionsByUser(ctx, input.UserID)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindInternal, "list auth sessions", err)
+	}
+	items := make([]Session, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, sessionFromSQL(row))
+	}
+	return items, nil
+}
+
+func (s *Service) RevokeSession(ctx context.Context, input RevokeSessionInput) error {
+	if input.UserID == uuid.Nil {
+		return apperr.New(apperr.KindInvalidArgument, "user id is required")
+	}
+	if input.SessionID == uuid.Nil {
+		return apperr.New(apperr.KindInvalidArgument, "session id is required")
+	}
+	rows, err := s.queries.RevokeRefreshSessionForUser(ctx, sqlc.RevokeRefreshSessionForUserParams{
+		ID:     input.SessionID,
+		UserID: input.UserID,
+	})
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "revoke auth session", err)
+	}
+	if rows == 0 {
+		return apperr.New(apperr.KindNotFound, "auth session not found")
+	}
+	return nil
+}
+
 func (s *Service) IsAccessTokenRevoked(ctx context.Context, rawToken string) (bool, error) {
 	rawToken = strings.TrimSpace(rawToken)
 	if rawToken == "" {
@@ -483,6 +536,17 @@ func (s *Service) IsAccessTokenRevoked(ctx context.Context, rawToken string) (bo
 		return false, apperr.Wrap(apperr.KindInternal, "check access token blacklist", err)
 	}
 	return revoked, nil
+}
+
+func sessionFromSQL(model sqlc.AuthRefreshSession) Session {
+	return Session{
+		ID:         model.ID,
+		UserAgent:  model.UserAgent,
+		ClientIP:   model.ClientIp,
+		ExpiresAt:  pgTimeValue(model.ExpiresAt),
+		LastUsedAt: pgTimePtr(model.LastUsedAt),
+		CreatedAt:  pgTimeValue(model.CreatedAt),
+	}
 }
 
 func (s *Service) loginResult(ctx context.Context, userModel sqlc.User, created bool, request RequestInfo) (LoginResult, error) {
@@ -605,6 +669,13 @@ func pgTimePtr(value pgtype.Timestamptz) *time.Time {
 		return nil
 	}
 	return &value.Time
+}
+
+func pgTimeValue(value pgtype.Timestamptz) time.Time {
+	if !value.Valid {
+		return time.Time{}
+	}
+	return value.Time
 }
 
 func mapCreateUserError(err error) error {
