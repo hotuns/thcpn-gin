@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/config"
 )
 
 func TestNormalizeSourcesDeduplicates(t *testing.T) {
@@ -50,5 +51,51 @@ func TestValidateTimeRange(t *testing.T) {
 	}
 	if err := validateTimeRange(start, start.Add(time.Hour)); err != nil {
 		t.Fatalf("expected valid time range: %v", err)
+	}
+}
+
+func TestResolveTelemetryQueryRangeDefaultsToDatasetRange(t *testing.T) {
+	datasetStart := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	datasetEnd := datasetStart.Add(24 * time.Hour)
+
+	start, end, err := resolveTelemetryQueryRange(datasetStart, datasetEnd, time.Time{}, time.Time{}, config.QueryLimitsConfig{MaxHistoryDays: 31})
+	if err != nil {
+		t.Fatalf("resolve range: %v", err)
+	}
+	if !start.Equal(datasetStart) || !end.Equal(datasetEnd) {
+		t.Fatalf("unexpected resolved range: %s - %s", start, end)
+	}
+}
+
+func TestResolveTelemetryQueryRangeRejectsOutsideDatasetRange(t *testing.T) {
+	datasetStart := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	datasetEnd := datasetStart.Add(24 * time.Hour)
+
+	_, _, err := resolveTelemetryQueryRange(datasetStart, datasetEnd, datasetStart.Add(-time.Second), datasetEnd, config.QueryLimitsConfig{MaxHistoryDays: 31})
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected outside range error, got %v", err)
+	}
+}
+
+func TestResolveTelemetryQueryRangeRejectsLargeSynchronousRange(t *testing.T) {
+	datasetStart := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	datasetEnd := datasetStart.Add(48 * time.Hour)
+
+	_, _, err := resolveTelemetryQueryRange(datasetStart, datasetEnd, time.Time{}, time.Time{}, config.QueryLimitsConfig{MaxHistoryDays: 1})
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected max history range error, got %v", err)
+	}
+}
+
+func TestNormalizeTelemetryQueryLimit(t *testing.T) {
+	limit, err := normalizeTelemetryQueryLimit(0, config.QueryLimitsConfig{MaxPoints: 100})
+	if err != nil {
+		t.Fatalf("default query limit: %v", err)
+	}
+	if limit != 100 {
+		t.Fatalf("expected default max points, got %d", limit)
+	}
+	if _, err := normalizeTelemetryQueryLimit(101, config.QueryLimitsConfig{MaxPoints: 100}); apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected max points error, got %v", err)
 	}
 }

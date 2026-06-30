@@ -94,8 +94,12 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	siteService := site.NewService(deps.Postgres)
 	deviceService := device.NewService(deps.Postgres)
 	dataStreamService := datastream.NewService(deps.Postgres)
-	datasetService := dataset.NewService(deps.Postgres)
 	dataSourceService := datasource.NewService(deps.Postgres)
+	datasetService := dataset.NewService(deps.Postgres, dataset.QueryDependencies{
+		DataSources: dataSourceService,
+		Runtime:     datasource.NewRuntime(nil),
+		Limits:      cfg.QueryLimits,
+	})
 	telemetryService := telemetry.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil), cfg.QueryLimits)
 	objectSigner := objectstore.NewSigner(cfg.ObjectStore, cfg.Auth.JWTSecret)
 	objectStore := objectstore.NewStore(cfg.ObjectStore)
@@ -231,6 +235,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.GET("/datasets", datasetHandler.List)
 	authed.POST("/datasets", datasetHandler.Create)
 	authed.GET("/datasets/:dataset_id", datasetHandler.Get)
+	authed.GET("/datasets/:dataset_id/telemetry", datasetHandler.QueryTelemetry)
 	authed.POST("/datasets/:dataset_id/export", exportHandler.ExportDataset)
 	authed.PATCH("/datasets/:dataset_id", datasetHandler.Update)
 	authed.DELETE("/datasets/:dataset_id", datasetHandler.Delete)

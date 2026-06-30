@@ -2,6 +2,7 @@ package dataset
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -175,6 +176,29 @@ func (h *Handler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+func (h *Handler) QueryTelemetry(c *gin.Context) {
+	datasetID, ok := parseUUIDParam(c, "dataset_id")
+	if !ok {
+		return
+	}
+	if !h.authorize(c, "dataset", datasetID, datasetViewAction) {
+		return
+	}
+
+	input, ok := parseTelemetryQuery(c)
+	if !ok {
+		return
+	}
+	input.DatasetID = datasetID
+
+	result, err := h.service.QueryTelemetry(c.Request.Context(), input)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
 func (h *Handler) Update(c *gin.Context) {
 	actor, ok := actorFromContext(c)
 	if !ok {
@@ -319,6 +343,52 @@ func updateAction(status *string) string {
 		return datasetLockAction
 	}
 	return datasetCreateAction
+}
+
+func parseTelemetryQuery(c *gin.Context) (TelemetryQueryInput, bool) {
+	start, ok := parseOptionalTimeQuery(c, "start_time")
+	if !ok {
+		return TelemetryQueryInput{}, false
+	}
+	end, ok := parseOptionalTimeQuery(c, "end_time")
+	if !ok {
+		return TelemetryQueryInput{}, false
+	}
+	limit, ok := parseOptionalIntQuery(c, "limit")
+	if !ok {
+		return TelemetryQueryInput{}, false
+	}
+	return TelemetryQueryInput{
+		StartTime: start,
+		EndTime:   end,
+		Limit:     limit,
+	}, true
+}
+
+func parseOptionalTimeQuery(c *gin.Context, name string) (time.Time, bool) {
+	value := c.Query(name)
+	if value == "" {
+		return time.Time{}, true
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid "+name))
+		return time.Time{}, false
+	}
+	return parsed, true
+}
+
+func parseOptionalIntQuery(c *gin.Context, name string) (int, bool) {
+	value := c.Query(name)
+	if value == "" {
+		return 0, true
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid "+name))
+		return 0, false
+	}
+	return parsed, true
 }
 
 func actorFromContext(c *gin.Context) (auth.Actor, bool) {

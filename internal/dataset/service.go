@@ -13,12 +13,27 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/config"
+	"thcpn-gin/internal/datasource"
 	"thcpn-gin/internal/db/sqlc"
 )
 
 type Service struct {
-	db      *pgxpool.Pool
-	queries *sqlc.Queries
+	db          *pgxpool.Pool
+	queries     *sqlc.Queries
+	dataSources *datasource.Service
+	runtime     TelemetryRuntime
+	limits      config.QueryLimitsConfig
+}
+
+type TelemetryRuntime interface {
+	QueryTelemetry(ctx context.Context, source datasource.DataSource, req datasource.TelemetryQuery) (datasource.TelemetryResult, error)
+}
+
+type QueryDependencies struct {
+	DataSources *datasource.Service
+	Runtime     TelemetryRuntime
+	Limits      config.QueryLimitsConfig
 }
 
 type Dataset struct {
@@ -43,6 +58,39 @@ type DatasetSource struct {
 	SourceType string    `json:"source_type"`
 	SourceID   uuid.UUID `json:"source_id"`
 	CreatedAt  time.Time `json:"created_at"`
+}
+
+type TelemetryQueryInput struct {
+	DatasetID uuid.UUID
+	StartTime time.Time
+	EndTime   time.Time
+	Limit     int
+}
+
+type TelemetryQueryResult struct {
+	DatasetID   uuid.UUID         `json:"dataset_id"`
+	WorkspaceID uuid.UUID         `json:"workspace_id"`
+	StartTime   time.Time         `json:"start_time"`
+	EndTime     time.Time         `json:"end_time"`
+	Limit       int               `json:"limit"`
+	Series      []TelemetrySeries `json:"series"`
+}
+
+type TelemetrySeries struct {
+	SourceType   string           `json:"source_type"`
+	SourceID     uuid.UUID        `json:"source_id"`
+	DataStreamID uuid.UUID        `json:"data_stream_id"`
+	DeviceID     uuid.UUID        `json:"device_id"`
+	Code         string           `json:"code"`
+	Name         string           `json:"name"`
+	Unit         *string          `json:"unit,omitempty"`
+	Points       []TelemetryPoint `json:"points"`
+}
+
+type TelemetryPoint struct {
+	Timestamp time.Time `json:"ts"`
+	Value     float64   `json:"value"`
+	Quality   string    `json:"quality"`
 }
 
 type SourceInput struct {
@@ -78,10 +126,23 @@ type UpdateInput struct {
 	Sources     *[]SourceInput
 }
 
-func NewService(db *pgxpool.Pool) *Service {
+func NewService(db *pgxpool.Pool, queryDeps ...QueryDependencies) *Service {
+	var deps QueryDependencies
+	if len(queryDeps) > 0 {
+		deps = queryDeps[0]
+	}
+	if deps.DataSources == nil {
+		deps.DataSources = datasource.NewService(db)
+	}
+	if deps.Runtime == nil {
+		deps.Runtime = datasource.NewRuntime(nil)
+	}
 	return &Service{
-		db:      db,
-		queries: sqlc.New(db),
+		db:          db,
+		queries:     sqlc.New(db),
+		dataSources: deps.DataSources,
+		runtime:     deps.Runtime,
+		limits:      normalizeQueryLimits(deps.Limits),
 	}
 }
 
@@ -201,6 +262,54 @@ func (s *Service) List(ctx context.Context, input ListInput) ([]Dataset, error) 
 		items = append(items, datasetFromSQL(row, sources))
 	}
 	return items, nil
+}
+
+func (s *Service) QueryTelemetry(ctx context.Context, input TelemetryQueryInput) (TelemetryQueryResult, error) {
+	if input.DatasetID == uuid.Nil {
+		return TelemetryQueryResult{}, apperr.New(apperr.KindInvalidArgument, "dataset id is required")
+	}
+	if s.dataSources == nil || s.runtime == nil {
+		return TelemetryQueryResult{}, apperr.New(apperr.KindInternal, "dataset telemetry query is not configured")
+	}
+
+	dataset, err := s.queries.GetDataset(ctx, input.DatasetID)
+	if err != nil {
+		return TelemetryQueryResult{}, mapNotFoundOrInternal(err, "dataset not found")
+	}
+	if dataset.DataType != "telemetry" && dataset.DataType != "mixed" {
+		return TelemetryQueryResult{}, apperr.New(apperr.KindInvalidArgument, "dataset does not contain telemetry data")
+	}
+	sources, err := s.queries.ListDatasetSources(ctx, input.DatasetID)
+	if err != nil {
+		return TelemetryQueryResult{}, apperr.Wrap(apperr.KindInternal, "list dataset sources", err)
+	}
+
+	start, end, err := resolveTelemetryQueryRange(pgTimeValue(dataset.TimeStart), pgTimeValue(dataset.TimeEnd), input.StartTime, input.EndTime, s.limits)
+	if err != nil {
+		return TelemetryQueryResult{}, err
+	}
+	limit, err := normalizeTelemetryQueryLimit(input.Limit, s.limits)
+	if err != nil {
+		return TelemetryQueryResult{}, err
+	}
+
+	series := make([]TelemetrySeries, 0)
+	for _, source := range sources {
+		sourceSeries, err := s.queryTelemetrySource(ctx, source, start, end, limit)
+		if err != nil {
+			return TelemetryQueryResult{}, err
+		}
+		series = append(series, sourceSeries...)
+	}
+
+	return TelemetryQueryResult{
+		DatasetID:   dataset.ID,
+		WorkspaceID: dataset.WorkspaceID,
+		StartTime:   start,
+		EndTime:     end,
+		Limit:       limit,
+		Series:      series,
+	}, nil
 }
 
 func (s *Service) Update(ctx context.Context, input UpdateInput) (Dataset, error) {
@@ -325,6 +434,83 @@ func (s *Service) Delete(ctx context.Context, datasetID uuid.UUID) (Dataset, err
 		return Dataset{}, mapNotFoundOrInternal(err, "dataset not found")
 	}
 	return datasetFromSQL(deleted, sources), nil
+}
+
+func (s *Service) queryTelemetrySource(ctx context.Context, source sqlc.DatasetSource, start time.Time, end time.Time, limit int) ([]TelemetrySeries, error) {
+	switch source.SourceType {
+	case "device":
+		device, err := s.queries.GetDevice(ctx, source.SourceID)
+		if err != nil {
+			return nil, mapNotFoundOrInternal(err, "device source not found")
+		}
+		streams, err := s.queries.ListDataStreamsByDevice(ctx, device.ID)
+		if err != nil {
+			return nil, apperr.Wrap(apperr.KindInternal, "list data streams", err)
+		}
+		series := make([]TelemetrySeries, 0)
+		for _, stream := range streams {
+			if stream.Type != "telemetry" || stream.Status != "active" {
+				continue
+			}
+			item, err := s.queryTelemetrySeries(ctx, source.SourceType, source.SourceID, stream, start, end, limit)
+			if err != nil {
+				return nil, err
+			}
+			series = append(series, item)
+		}
+		return series, nil
+	case "data_stream":
+		stream, err := s.queries.GetDataStream(ctx, source.SourceID)
+		if err != nil {
+			return nil, mapNotFoundOrInternal(err, "data stream source not found")
+		}
+		if stream.Type != "telemetry" {
+			return nil, nil
+		}
+		if stream.Status != "active" {
+			return nil, apperr.New(apperr.KindInvalidArgument, "data stream is not active")
+		}
+		item, err := s.queryTelemetrySeries(ctx, source.SourceType, source.SourceID, stream, start, end, limit)
+		if err != nil {
+			return nil, err
+		}
+		return []TelemetrySeries{item}, nil
+	case "file":
+		return nil, nil
+	default:
+		return nil, apperr.New(apperr.KindInvalidArgument, "invalid dataset source_type")
+	}
+}
+
+func (s *Service) queryTelemetrySeries(ctx context.Context, sourceType string, sourceID uuid.UUID, stream sqlc.DataStream, start time.Time, end time.Time, limit int) (TelemetrySeries, error) {
+	binding, err := s.dataSources.GetActiveDataStreamBinding(ctx, stream.ID)
+	if err != nil {
+		return TelemetrySeries{}, err
+	}
+	source, err := s.dataSources.GetDataSource(ctx, binding.DataSourceID)
+	if err != nil {
+		return TelemetrySeries{}, err
+	}
+	result, err := s.runtime.QueryTelemetry(ctx, source, datasource.TelemetryQuery{
+		Binding: binding,
+		Start:   start,
+		End:     end,
+		Limit:   limit,
+	})
+	if err != nil {
+		return TelemetrySeries{}, err
+	}
+
+	return TelemetrySeries{
+		SourceType:   sourceType,
+		SourceID:     sourceID,
+		DataStreamID: stream.ID,
+		DeviceID:     stream.DeviceID,
+		Code:         stream.Code,
+		Name:         stream.Name,
+		Unit:         stream.Unit,
+		Points:       telemetryPointsFromDatasource(result.Points),
+	}, nil
 }
 
 func (s *Service) validateProject(ctx context.Context, workspaceID uuid.UUID, projectID *uuid.UUID) error {
@@ -469,6 +655,60 @@ func validateTimeRange(start time.Time, end time.Time) error {
 	return nil
 }
 
+func normalizeQueryLimits(limits config.QueryLimitsConfig) config.QueryLimitsConfig {
+	if limits.MaxHistoryDays <= 0 {
+		limits.MaxHistoryDays = 31
+	}
+	if limits.MaxPoints <= 0 {
+		limits.MaxPoints = 5000
+	}
+	return limits
+}
+
+func normalizeTelemetryQueryLimit(limit int, limits config.QueryLimitsConfig) (int, error) {
+	limits = normalizeQueryLimits(limits)
+	if limit == 0 {
+		return limits.MaxPoints, nil
+	}
+	if limit < 0 {
+		return 0, apperr.New(apperr.KindInvalidArgument, "limit must be greater than 0")
+	}
+	if limit > limits.MaxPoints {
+		return 0, apperr.New(apperr.KindInvalidArgument, "limit exceeds max_points")
+	}
+	return limit, nil
+}
+
+func resolveTelemetryQueryRange(datasetStart time.Time, datasetEnd time.Time, inputStart time.Time, inputEnd time.Time, limits config.QueryLimitsConfig) (time.Time, time.Time, error) {
+	start := inputStart
+	if start.IsZero() {
+		start = datasetStart
+	}
+	end := inputEnd
+	if end.IsZero() {
+		end = datasetEnd
+	}
+	if start.IsZero() || end.IsZero() {
+		return time.Time{}, time.Time{}, apperr.New(apperr.KindInvalidArgument, "dataset time range is required")
+	}
+	if !end.After(start) {
+		return time.Time{}, time.Time{}, apperr.New(apperr.KindInvalidArgument, "end_time must be after start_time")
+	}
+	if !datasetStart.IsZero() && start.Before(datasetStart) {
+		return time.Time{}, time.Time{}, apperr.New(apperr.KindInvalidArgument, "start_time is outside dataset time range")
+	}
+	if !datasetEnd.IsZero() && end.After(datasetEnd) {
+		return time.Time{}, time.Time{}, apperr.New(apperr.KindInvalidArgument, "end_time is outside dataset time range")
+	}
+
+	limits = normalizeQueryLimits(limits)
+	maxRange := time.Duration(limits.MaxHistoryDays) * 24 * time.Hour
+	if end.Sub(start) > maxRange {
+		return time.Time{}, time.Time{}, apperr.New(apperr.KindInvalidArgument, "time range exceeds max_history_days; use dataset export")
+	}
+	return start, end, nil
+}
+
 func datasetFromSQL(model sqlc.Dataset, sources []sqlc.DatasetSource) Dataset {
 	return Dataset{
 		ID:          model.ID,
@@ -496,6 +736,18 @@ func sourcesFromSQL(sources []sqlc.DatasetSource) []DatasetSource {
 			SourceType: source.SourceType,
 			SourceID:   source.SourceID,
 			CreatedAt:  pgTimeValue(source.CreatedAt),
+		})
+	}
+	return items
+}
+
+func telemetryPointsFromDatasource(points []datasource.TelemetryPoint) []TelemetryPoint {
+	items := make([]TelemetryPoint, 0, len(points))
+	for _, point := range points {
+		items = append(items, TelemetryPoint{
+			Timestamp: point.Timestamp,
+			Value:     point.Value,
+			Quality:   point.Quality,
 		})
 	}
 	return items

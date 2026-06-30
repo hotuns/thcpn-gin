@@ -6,7 +6,7 @@ info:
     THCPN 科研物联网数据管理平台后端 API。
 
     当前文档覆盖已实现的阶段功能：健康检查、短信验证码登录/注册、邮箱验证码验证、密码注册/登录、TOTP MFA、refresh token、logout、会话管理、
-    JWT 认证、Workspace 列表/创建、Workspace 成员管理、Project、Site、Device、DataStream、DataSource、DataStreamBinding、Telemetry Query、Media Query、Dataset 元信息管理和 ExportJob 导出任务、
+    JWT 认证、Workspace 列表/创建、Workspace 成员管理、Project、Site、Device、DataStream、DataSource、DataStreamBinding、Telemetry Query、Media Query、Dataset 元信息与遥测查询管理和 ExportJob 导出任务、
     AccessGrant 外部分享/售后临时授权、Invitation 和 AuditLog。
 
     正式业务接口优先使用 `Authorization: Bearer <token>`。
@@ -2336,6 +2336,58 @@ paths:
           $ref: "#/components/responses/PermissionDenied"
         "404":
           $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/datasets/{dataset_id}/telemetry:
+    parameters:
+      - $ref: "#/components/parameters/DatasetID"
+    get:
+      tags:
+        - Datasets
+      operationId: queryDatasetTelemetry
+      summary: Query dataset telemetry
+      description: |
+        Requires `dataset.view` on the dataset scope. The API reads dataset `device` and `data_stream` sources through active DataStreamBinding metadata,
+        defaults to the dataset time range when `start_time` or `end_time` is omitted, and rejects ranges beyond the synchronous query limit so callers use dataset export for large ranges.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - name: start_time
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/Timestamp"
+        - name: end_time
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/Timestamp"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5000
+            default: 5000
+      responses:
+        "200":
+          description: Dataset telemetry series from telemetry-capable dataset sources.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetTelemetryQueryResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/DataSourceError"
         "500":
           $ref: "#/components/responses/Internal"
   /api/v1/datasets/{dataset_id}/export:
@@ -4711,6 +4763,59 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Dataset"
+    DatasetTelemetrySeries:
+      type: object
+      required:
+        - source_type
+        - source_id
+        - data_stream_id
+        - device_id
+        - code
+        - name
+        - points
+      properties:
+        source_type:
+          $ref: "#/components/schemas/DatasetSourceType"
+        source_id:
+          $ref: "#/components/schemas/UUID"
+        data_stream_id:
+          $ref: "#/components/schemas/UUID"
+        device_id:
+          $ref: "#/components/schemas/UUID"
+        code:
+          type: string
+        name:
+          type: string
+        unit:
+          type: string
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/TelemetryPoint"
+    DatasetTelemetryQueryResponse:
+      type: object
+      required:
+        - dataset_id
+        - workspace_id
+        - start_time
+        - end_time
+        - limit
+        - series
+      properties:
+        dataset_id:
+          $ref: "#/components/schemas/UUID"
+        workspace_id:
+          $ref: "#/components/schemas/UUID"
+        start_time:
+          $ref: "#/components/schemas/Timestamp"
+        end_time:
+          $ref: "#/components/schemas/Timestamp"
+        limit:
+          type: integer
+        series:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetTelemetrySeries"
     CreateDatasetRequest:
       type: object
       required:
