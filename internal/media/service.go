@@ -1,0 +1,342 @@
+package media
+
+import (
+	"context"
+	"errors"
+	"sort"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/config"
+	"thcpn-gin/internal/datasource"
+	"thcpn-gin/internal/db/sqlc"
+	"thcpn-gin/internal/objectstore"
+)
+
+const mediaURLTTL = 15 * time.Minute
+
+type Runtime interface {
+	QueryMedia(ctx context.Context, source datasource.DataSource, req datasource.MediaQuery) (datasource.MediaResult, error)
+}
+
+type Service struct {
+	queries     *sqlc.Queries
+	dataSources *datasource.Service
+	runtime     Runtime
+	signer      *objectstore.Signer
+	limits      config.QueryLimitsConfig
+}
+
+type QueryInput struct {
+	DeviceID        *uuid.UUID
+	DataStreamID    *uuid.UUID
+	MediaType       string
+	StartTime       time.Time
+	EndTime         time.Time
+	Page            int
+	PageSize        int
+	DownloadAllowed bool
+}
+
+type ListResult struct {
+	Items    []Item `json:"items"`
+	Page     int    `json:"page"`
+	PageSize int    `json:"page_size"`
+	Total    int    `json:"total"`
+}
+
+type Item struct {
+	ID              string    `json:"id"`
+	DeviceID        uuid.UUID `json:"device_id"`
+	DataStreamID    uuid.UUID `json:"data_stream_id"`
+	CapturedAt      time.Time `json:"captured_at"`
+	MediaType       string    `json:"media_type"`
+	ThumbnailURL    string    `json:"thumbnail_url,omitempty"`
+	PreviewURL      string    `json:"preview_url"`
+	DownloadAllowed bool      `json:"download_allowed"`
+	DownloadURL     *string   `json:"download_url,omitempty"`
+}
+
+type DownloadResult struct {
+	DataStreamID uuid.UUID `json:"data_stream_id"`
+	DeviceID     uuid.UUID `json:"device_id"`
+	WorkspaceID  uuid.UUID `json:"-"`
+	MediaID      string    `json:"media_id"`
+	MediaType    string    `json:"media_type"`
+	URL          string    `json:"url"`
+	ExpiresAt    time.Time `json:"expires_at"`
+}
+
+func NewService(db *pgxpool.Pool, dataSources *datasource.Service, runtime Runtime, signer *objectstore.Signer, limits config.QueryLimitsConfig) *Service {
+	if dataSources == nil {
+		dataSources = datasource.NewService(db)
+	}
+	if runtime == nil {
+		runtime = datasource.NewRuntime(nil)
+	}
+	return &Service{
+		queries:     sqlc.New(db),
+		dataSources: dataSources,
+		runtime:     runtime,
+		signer:      signer,
+		limits:      normalizeLimits(limits),
+	}
+}
+
+func (s *Service) List(ctx context.Context, input QueryInput) (ListResult, error) {
+	if input.DeviceID == nil && input.DataStreamID == nil {
+		return ListResult{}, apperr.New(apperr.KindInvalidArgument, "device_id or data_stream_id is required")
+	}
+	page, pageSize, err := normalizePage(input.Page, input.PageSize, s.limits)
+	if err != nil {
+		return ListResult{}, err
+	}
+	if err := validateTimeRange(input.StartTime, input.EndTime, s.limits); err != nil {
+		return ListResult{}, err
+	}
+	if input.DataStreamID != nil {
+		return s.listDataStream(ctx, *input.DataStreamID, input.DeviceID, input.MediaType, input.StartTime, input.EndTime, page, pageSize, input.DownloadAllowed)
+	}
+	return s.listDevice(ctx, *input.DeviceID, input.MediaType, input.StartTime, input.EndTime, page, pageSize, input.DownloadAllowed)
+}
+
+func (s *Service) PrepareDownload(ctx context.Context, token string) (DownloadResult, error) {
+	if s.signer == nil {
+		return DownloadResult{}, apperr.New(apperr.KindInternal, "object store signer is not configured")
+	}
+	claims, err := s.signer.VerifyDownloadToken(token)
+	if err != nil {
+		return DownloadResult{}, err
+	}
+	stream, err := s.queries.GetDataStream(ctx, claims.DataStreamID)
+	if err != nil {
+		return DownloadResult{}, mapNotFoundOrInternal(err, "data stream not found")
+	}
+	if stream.DeviceID != claims.DeviceID {
+		return DownloadResult{}, apperr.New(apperr.KindInvalidArgument, "download token does not match data stream")
+	}
+	signed, err := s.signer.SignObjectURL(claims.ObjectKey, mediaURLTTL)
+	if err != nil {
+		return DownloadResult{}, err
+	}
+	return DownloadResult{
+		DataStreamID: claims.DataStreamID,
+		DeviceID:     claims.DeviceID,
+		WorkspaceID:  stream.WorkspaceID,
+		MediaID:      claims.MediaID,
+		MediaType:    claims.MediaType,
+		URL:          signed.URL,
+		ExpiresAt:    signed.ExpiresAt,
+	}, nil
+}
+
+func (s *Service) listDevice(ctx context.Context, deviceID uuid.UUID, mediaType string, start time.Time, end time.Time, page int, pageSize int, downloadAllowed bool) (ListResult, error) {
+	if deviceID == uuid.Nil {
+		return ListResult{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
+	}
+	device, err := s.queries.GetDevice(ctx, deviceID)
+	if err != nil {
+		return ListResult{}, mapNotFoundOrInternal(err, "device not found")
+	}
+	_ = device
+	streams, err := s.queries.ListDataStreamsByDevice(ctx, deviceID)
+	if err != nil {
+		return ListResult{}, apperr.Wrap(apperr.KindInternal, "list data streams", err)
+	}
+
+	items := make([]Item, 0)
+	total := 0
+	for _, stream := range streams {
+		if !isMediaStreamType(stream.Type) || stream.Status != "active" {
+			continue
+		}
+		if mediaType != "" && stream.Type != mediaType {
+			continue
+		}
+		result, err := s.queryStream(ctx, stream, start, end, 1, s.limits.MaxMediaPageSize, downloadAllowed)
+		if err != nil {
+			return ListResult{}, err
+		}
+		total += result.Total
+		items = append(items, result.Items...)
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].CapturedAt.After(items[j].CapturedAt)
+	})
+	offset := (page - 1) * pageSize
+	if offset > len(items) {
+		items = []Item{}
+	} else {
+		endIndex := offset + pageSize
+		if endIndex > len(items) {
+			endIndex = len(items)
+		}
+		items = items[offset:endIndex]
+	}
+	return ListResult{Items: items, Page: page, PageSize: pageSize, Total: total}, nil
+}
+
+func (s *Service) listDataStream(ctx context.Context, dataStreamID uuid.UUID, deviceID *uuid.UUID, mediaType string, start time.Time, end time.Time, page int, pageSize int, downloadAllowed bool) (ListResult, error) {
+	if dataStreamID == uuid.Nil {
+		return ListResult{}, apperr.New(apperr.KindInvalidArgument, "data stream id is required")
+	}
+	stream, err := s.queries.GetDataStream(ctx, dataStreamID)
+	if err != nil {
+		return ListResult{}, mapNotFoundOrInternal(err, "data stream not found")
+	}
+	if deviceID != nil && *deviceID != stream.DeviceID {
+		return ListResult{}, apperr.New(apperr.KindInvalidArgument, "data stream does not belong to device")
+	}
+	if !isMediaStreamType(stream.Type) {
+		return ListResult{}, apperr.New(apperr.KindInvalidArgument, "data stream is not media")
+	}
+	if mediaType != "" && stream.Type != mediaType {
+		return ListResult{}, apperr.New(apperr.KindInvalidArgument, "data stream media type does not match")
+	}
+	if stream.Status != "active" {
+		return ListResult{}, apperr.New(apperr.KindInvalidArgument, "data stream is not active")
+	}
+	return s.queryStream(ctx, stream, start, end, page, pageSize, downloadAllowed)
+}
+
+func (s *Service) queryStream(ctx context.Context, stream sqlc.DataStream, start time.Time, end time.Time, page int, pageSize int, downloadAllowed bool) (ListResult, error) {
+	binding, err := s.dataSources.GetActiveDataStreamBinding(ctx, stream.ID)
+	if err != nil {
+		return ListResult{}, err
+	}
+	source, err := s.dataSources.GetDataSource(ctx, binding.DataSourceID)
+	if err != nil {
+		return ListResult{}, err
+	}
+	result, err := s.runtime.QueryMedia(ctx, source, datasource.MediaQuery{
+		Binding:   binding,
+		Start:     start,
+		End:       end,
+		Page:      page,
+		PageSize:  pageSize,
+		MediaType: stream.Type,
+	})
+	if err != nil {
+		return ListResult{}, err
+	}
+	items, err := s.itemsFromDatasource(stream, result.Items, downloadAllowed)
+	if err != nil {
+		return ListResult{}, err
+	}
+	return ListResult{Items: items, Page: page, PageSize: pageSize, Total: result.Total}, nil
+}
+
+func (s *Service) itemsFromDatasource(stream sqlc.DataStream, records []datasource.MediaRecord, downloadAllowed bool) ([]Item, error) {
+	if s.signer == nil {
+		return nil, apperr.New(apperr.KindInternal, "object store signer is not configured")
+	}
+	items := make([]Item, 0, len(records))
+	for _, record := range records {
+		preview, err := s.signer.SignObjectURL(record.ObjectKey, mediaURLTTL)
+		if err != nil {
+			return nil, err
+		}
+		thumbnailURL := preview.URL
+		if record.ThumbnailObjectKey != nil && *record.ThumbnailObjectKey != "" {
+			thumbnail, err := s.signer.SignObjectURL(*record.ThumbnailObjectKey, mediaURLTTL)
+			if err != nil {
+				return nil, err
+			}
+			thumbnailURL = thumbnail.URL
+		}
+		item := Item{
+			ID:              record.ID,
+			DeviceID:        stream.DeviceID,
+			DataStreamID:    stream.ID,
+			CapturedAt:      record.CapturedAt,
+			MediaType:       record.MediaType,
+			ThumbnailURL:    thumbnailURL,
+			PreviewURL:      preview.URL,
+			DownloadAllowed: downloadAllowed,
+		}
+		if downloadAllowed {
+			token, _, err := s.signer.SignDownloadToken(objectstore.DownloadTokenClaims{
+				DataStreamID: stream.ID,
+				DeviceID:     stream.DeviceID,
+				MediaID:      record.ID,
+				ObjectKey:    record.ObjectKey,
+				MediaType:    record.MediaType,
+			}, mediaURLTTL)
+			if err != nil {
+				return nil, err
+			}
+			downloadURL := "/api/v1/media/download?token=" + token
+			item.DownloadURL = &downloadURL
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
+func isMediaStreamType(value string) bool {
+	switch value {
+	case "image", "video", "audio":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeLimits(limits config.QueryLimitsConfig) config.QueryLimitsConfig {
+	if limits.MaxHistoryDays <= 0 {
+		limits.MaxHistoryDays = 31
+	}
+	if limits.MaxMediaPageSize <= 0 {
+		limits.MaxMediaPageSize = 100
+	}
+	return limits
+}
+
+func normalizePage(page int, pageSize int, limits config.QueryLimitsConfig) (int, int, error) {
+	limits = normalizeLimits(limits)
+	if page == 0 {
+		page = 1
+	}
+	if page < 0 {
+		return 0, 0, apperr.New(apperr.KindInvalidArgument, "page must be greater than 0")
+	}
+	if pageSize == 0 {
+		pageSize = limits.MaxMediaPageSize
+	}
+	if pageSize < 0 {
+		return 0, 0, apperr.New(apperr.KindInvalidArgument, "page_size must be greater than 0")
+	}
+	if pageSize > limits.MaxMediaPageSize {
+		return 0, 0, apperr.New(apperr.KindInvalidArgument, "page_size exceeds max_media_page_size")
+	}
+	return page, pageSize, nil
+}
+
+func validateTimeRange(start time.Time, end time.Time, limits config.QueryLimitsConfig) error {
+	limits = normalizeLimits(limits)
+	if start.IsZero() {
+		return apperr.New(apperr.KindInvalidArgument, "start_time is required")
+	}
+	if end.IsZero() {
+		return apperr.New(apperr.KindInvalidArgument, "end_time is required")
+	}
+	if !end.After(start) {
+		return apperr.New(apperr.KindInvalidArgument, "end_time must be after start_time")
+	}
+	maxRange := time.Duration(limits.MaxHistoryDays) * 24 * time.Hour
+	if end.Sub(start) > maxRange {
+		return apperr.New(apperr.KindInvalidArgument, "time range exceeds max_history_days")
+	}
+	return nil
+}
+
+func mapNotFoundOrInternal(err error, message string) error {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return apperr.New(apperr.KindNotFound, message)
+	}
+	return apperr.Wrap(apperr.KindInternal, message, err)
+}

@@ -146,12 +146,51 @@
   - `POST /api/v1/data-streams`
   - `GET /api/v1/data-streams/:data_stream_id`
   - `PATCH /api/v1/data-streams/:data_stream_id`
+- 已新增设备数据源元信息 migration `000008_data_sources`：
+  - `data_sources`
+  - `data_stream_bindings`
+- 已实现 DataSource 元信息接口：
+  - `GET /api/v1/data-sources?workspace_id=...`
+  - `POST /api/v1/data-sources`
+  - `GET /api/v1/data-sources/:data_source_id`
+  - `PATCH /api/v1/data-sources/:data_source_id`
+- 已实现 DataStreamBinding 元信息接口：
+  - `GET /api/v1/data-stream-bindings?data_stream_id=...`
+  - `POST /api/v1/data-stream-bindings`
+  - `GET /api/v1/data-stream-bindings/:binding_id`
+  - `PATCH /api/v1/data-stream-bindings/:binding_id`
+- DataSource 只保存 `dsn_secret_ref`，不保存明文 DSN。
+- DataStreamBinding 保存已审核的库/表/字段映射；用户侧 Telemetry/Media 查询后续不得直接传入 `table_name`、`field_name` 或 `raw_sql`。
+- 已实现 PostgreSQL Telemetry 运行时适配器：
+  - `dsn_secret_ref` 当前支持 `env:NAME`，运行时从环境变量读取 DSN。
+  - 只支持 `payload_type = columns` 的 telemetry 查询。
+  - 查询 SQL 只使用 DataStreamBinding 中已校验的表名/字段名，设备 key、时间范围和 limit 均使用参数绑定。
+- 已实现 Telemetry Query 接口：
+  - `GET /api/v1/devices/:device_id/telemetry?start_time=...&end_time=...&limit=...`
+  - `GET /api/v1/data-streams/:data_stream_id/telemetry?start_time=...&end_time=...&limit=...`
+  - 需要 `telemetry.view_history` 权限；时间范围和点数受 `query_limits` 限制。
+- 已实现 PostgreSQL Media Query 运行时适配器：
+  - 只支持 `payload_type = media` 的 image/video/audio 查询。
+  - `query_config` 可配置 `id_field`、`object_key_field`、`thumbnail_key_field`、`media_type_field` 和 `media_type`。
+  - 预览、缩略图和下载 URL 使用 HMAC + 过期时间签名，不返回永久公开 URL。
+- 已实现 Media Query / Download 接口：
+  - `GET /api/v1/devices/:device_id/media?start_time=...&end_time=...&media_type=...&page=...&page_size=...`
+  - `GET /api/v1/devices/:device_id/media/images?start_time=...&end_time=...`
+  - `GET /api/v1/devices/:device_id/media/videos?start_time=...&end_time=...`
+  - `GET /api/v1/data-streams/:data_stream_id/media?start_time=...&end_time=...&page=...&page_size=...`
+  - `GET /api/v1/media/download?token=...`
+  - 列表需要 `media.archive_view`；下载需要 `media.download` 并写 audit log。
 - 当前阶段三资源接口均需要 JWT；开发环境也可在配置允许时使用 `X-User-ID` fallback。
 - 当前阶段三资源接口需要对应资源权限：
   - Project: `project.view` / `project.manage`
   - Site: `site.view` / `site.manage`
   - Device: `device.view` / `device.bind` / `device.configure`
   - DataStream: `device.view` / `device.configure`
+  - DataSource: `workspace.manage`
+  - DataStreamBinding: `device.configure`
+  - Telemetry Query: `telemetry.view_history`
+  - Media Query: `media.archive_view`
+  - Media Download: `media.download`
 - 设备绑定会记录 `bound_by`、`activated_at` 并写入 audit log。
 
 ### Dataset
@@ -204,16 +243,20 @@
   - 创建 Invitation、接受 Invitation、撤销 Invitation 成功和失败。
   - `service_engineer` 授权使用 `service_access.grant` action 写审计。
   - 创建、更新、锁定、删除 Dataset 成功和失败。
+  - 媒体下载成功和权限拒绝。
 - 审计日志记录 actor、action、resource、result、reason、ip、user_agent、request_id 和 created_at。
 
 ### 已验证事项
 
 - `make sqlc` 可正常生成代码。
 - `go test ./...` / `make test` 通过。
-- `make migrate-up` 可迁移到版本 7。
-- `make migrate-down MIGRATE_STEPS=1` 已验证 `000007` down 可用，随后已重新 `make migrate-up` 到版本 7。
+- `make migrate-up` 可迁移到版本 8。
+- `make migrate-down MIGRATE_STEPS=1` 已验证 `000008` down 可用，随后已重新 `make migrate-up` 到版本 8。
 - 已通过真实 HTTP 验证健康检查、密码注册、密码登录、JWT 调 `/me`、短信验证码发送、短信登录自动注册、JWT 调 workspace 列表、普通成员 JWT 访问成员管理被拒绝。
 - 已通过真实 HTTP 验证 Project / Site / Device / DataStream 创建和列表查询。
+- 已通过真实 HTTP 验证 DataSource 创建/列表，以及 DataStreamBinding 创建/列表。
+- 已通过真实 HTTP 验证 PostgreSQL Telemetry Query：创建外部表样例、配置 `env:PLATFORM_DATABASE_DSN` DataSource、绑定 DataStream 后返回 2 个时序点。
+- 已通过真实 HTTP 验证 PostgreSQL Media Query：创建媒体表样例、绑定 image DataStream 后返回 2 条媒体记录，`/media/download` 返回临时对象 URL，并确认 `media.download` audit log 写入。
 - 已通过真实 HTTP 验证 AccessGrant：未授权用户访问 device 被拒绝，创建 `shared_viewer` device grant 后可读取 device，但仍不能 PATCH device。
 - 已通过真实 HTTP 验证 `service_engineer` device grant 必须通过显式 grant 创建并带过期时间。
 - 已通过真实 HTTP 验证 Invitation：创建 project invitation、受邀用户在 `/invitations/mine` 看到邀请、accept 后可读取 project。
@@ -224,9 +267,9 @@
 
 - Refresh token、退出登录、session 黑名单、设备会话管理、MFA、邮箱验证码/邮箱验证。
 - Export。
-- Project / Site / Device / DataStream / Dataset 当前仅完成资产、元信息和查询定义管理，尚未接入设备数据源读取；Project / Site / DataStream 变更审计可后续按风险扩展。
-- 尚未实现模块的敏感操作审计仍待对应模块落地时接入，例如 Export、Telemetry、Media、设备校准、固件升级和设备转移。
-- 设备数据源适配器、Telemetry Query、Media Query。
+- Project / Site / Device / DataStream / Dataset 当前完成资产、元信息、查询定义、PostgreSQL telemetry 读取和 PostgreSQL media 记录查询；Project / Site / DataStream 变更审计可后续按风险扩展。
+- 尚未实现模块的敏感操作审计仍待对应模块落地时接入，例如 Export、设备校准、固件升级和设备转移。
+- MySQL / ClickHouse / HTTP DataSource 运行时适配器。
 - Asynq 真实任务、对象存储、Prometheus、OpenTelemetry。
 
 ## 重要目录
@@ -245,7 +288,10 @@
 - `internal/site`: Site / Station 管理。
 - `internal/device`: Device 资产和 capability 管理。
 - `internal/datastream`: DataStream 元信息管理。
-- `internal/datasource`: 未来所有设备数据源读取适配器都应放这里。
+- `internal/datasource`: DataSource / DataStreamBinding 元信息和设备数据源运行时适配器。
+- `internal/telemetry`: 时序数据查询 workflow。
+- `internal/media`: 图片、视频、音频媒体查询和下载 workflow。
+- `internal/objectstore`: 对象存储 URL / 下载 token 签名。
 - `migrations`: PostgreSQL 平台业务库迁移。
 - `sql/queries`: sqlc 查询定义。
 - `web`: 独立前端工程，使用 Vite proxy 调用后端 `/api`、`/healthz`、`/readyz`。

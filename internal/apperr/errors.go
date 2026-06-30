@@ -14,6 +14,7 @@ const (
 	KindNotFound         Kind = "NOT_FOUND"
 	KindConflict         Kind = "CONFLICT"
 	KindRateLimited      Kind = "RATE_LIMITED"
+	KindDataSource       Kind = "DATA_SOURCE_ERROR"
 	KindInternal         Kind = "INTERNAL"
 )
 

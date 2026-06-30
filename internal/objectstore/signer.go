@@ -1,0 +1,176 @@
+package objectstore
+
+import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"net/url"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+
+	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/config"
+)
+
+type Signer struct {
+	cfg    config.ObjectStoreConfig
+	secret string
+	now    func() time.Time
+}
+
+type SignedURL struct {
+	URL       string    `json:"url"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+type DownloadTokenClaims struct {
+	DataStreamID uuid.UUID `json:"data_stream_id"`
+	DeviceID     uuid.UUID `json:"device_id"`
+	MediaID      string    `json:"media_id"`
+	ObjectKey    string    `json:"object_key"`
+	MediaType    string    `json:"media_type"`
+	ExpiresAt    int64     `json:"expires_at"`
+}
+
+func NewSigner(cfg config.ObjectStoreConfig, fallbackSecret string) *Signer {
+	secret := strings.TrimSpace(os.Getenv(strings.TrimSpace(cfg.SecretKeyEnv)))
+	if secret == "" {
+		secret = strings.TrimSpace(fallbackSecret)
+	}
+	return &Signer{
+		cfg:    cfg,
+		secret: secret,
+		now:    time.Now,
+	}
+}
+
+func (s *Signer) SignObjectURL(objectKey string, ttl time.Duration) (SignedURL, error) {
+	objectKey = strings.TrimSpace(objectKey)
+	if objectKey == "" {
+		return SignedURL{}, apperr.New(apperr.KindInvalidArgument, "object key is required")
+	}
+	if ttl <= 0 {
+		return SignedURL{}, apperr.New(apperr.KindInvalidArgument, "url ttl must be greater than 0")
+	}
+	if err := s.validate(); err != nil {
+		return SignedURL{}, err
+	}
+
+	expiresAt := s.now().Add(ttl).UTC()
+	expires := strconv.FormatInt(expiresAt.Unix(), 10)
+	signature := s.signature("GET", objectKey, expires)
+
+	u, err := url.Parse(normalizedEndpoint(s.cfg.Endpoint))
+	if err != nil {
+		return SignedURL{}, apperr.Wrap(apperr.KindInternal, "parse object store endpoint", err)
+	}
+	u.Path = joinURLPath(s.cfg.Bucket, objectKey)
+	q := u.Query()
+	q.Set("expires", expires)
+	q.Set("signature", signature)
+	u.RawQuery = q.Encode()
+
+	return SignedURL{URL: u.String(), ExpiresAt: expiresAt}, nil
+}
+
+func (s *Signer) SignDownloadToken(claims DownloadTokenClaims, ttl time.Duration) (string, time.Time, error) {
+	if claims.DataStreamID == uuid.Nil {
+		return "", time.Time{}, apperr.New(apperr.KindInvalidArgument, "data stream id is required")
+	}
+	if claims.DeviceID == uuid.Nil {
+		return "", time.Time{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
+	}
+	if strings.TrimSpace(claims.ObjectKey) == "" {
+		return "", time.Time{}, apperr.New(apperr.KindInvalidArgument, "object key is required")
+	}
+	if ttl <= 0 {
+		return "", time.Time{}, apperr.New(apperr.KindInvalidArgument, "download token ttl must be greater than 0")
+	}
+	if err := s.validate(); err != nil {
+		return "", time.Time{}, err
+	}
+
+	expiresAt := s.now().Add(ttl).UTC()
+	claims.ExpiresAt = expiresAt.Unix()
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		return "", time.Time{}, apperr.Wrap(apperr.KindInternal, "marshal download token", err)
+	}
+	encodedPayload := base64.RawURLEncoding.EncodeToString(payload)
+	signature := s.hmac(encodedPayload)
+	return encodedPayload + "." + signature, expiresAt, nil
+}
+
+func (s *Signer) VerifyDownloadToken(token string) (DownloadTokenClaims, error) {
+	if err := s.validate(); err != nil {
+		return DownloadTokenClaims{}, err
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) != 2 {
+		return DownloadTokenClaims{}, apperr.New(apperr.KindInvalidArgument, "invalid download token")
+	}
+	expected := s.hmac(parts[0])
+	if !hmac.Equal([]byte(expected), []byte(parts[1])) {
+		return DownloadTokenClaims{}, apperr.New(apperr.KindInvalidArgument, "invalid download token")
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return DownloadTokenClaims{}, apperr.New(apperr.KindInvalidArgument, "invalid download token")
+	}
+	var claims DownloadTokenClaims
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return DownloadTokenClaims{}, apperr.New(apperr.KindInvalidArgument, "invalid download token")
+	}
+	if claims.ExpiresAt <= s.now().Unix() {
+		return DownloadTokenClaims{}, apperr.New(apperr.KindInvalidArgument, "download token expired")
+	}
+	return claims, nil
+}
+
+func (s *Signer) signature(method string, objectKey string, expires string) string {
+	return s.hmac(method + "\n" + strings.TrimSpace(s.cfg.Bucket) + "\n" + objectKey + "\n" + expires)
+}
+
+func (s *Signer) hmac(value string) string {
+	mac := hmac.New(sha256.New, []byte(s.secret))
+	_, _ = mac.Write([]byte(value))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func (s *Signer) validate() error {
+	if strings.TrimSpace(s.cfg.Endpoint) == "" {
+		return apperr.New(apperr.KindInternal, "object store endpoint is required")
+	}
+	if strings.TrimSpace(s.cfg.Bucket) == "" {
+		return apperr.New(apperr.KindInternal, "object store bucket is required")
+	}
+	if strings.TrimSpace(s.secret) == "" {
+		return apperr.New(apperr.KindInternal, "object store signing secret is required")
+	}
+	return nil
+}
+
+func normalizedEndpoint(endpoint string) string {
+	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
+	if endpoint == "" || strings.Contains(endpoint, "://") {
+		return endpoint
+	}
+	return "http://" + endpoint
+}
+
+func joinURLPath(bucket string, objectKey string) string {
+	parts := []string{strings.Trim(strings.TrimSpace(bucket), "/")}
+	for _, part := range strings.Split(strings.Trim(objectKey, "/"), "/") {
+		if part == "" {
+			continue
+		}
+		parts = append(parts, url.PathEscape(part))
+	}
+	return "/" + strings.Join(parts, "/")
+}

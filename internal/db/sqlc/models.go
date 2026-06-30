@@ -49,6 +49,18 @@ type AuditLog struct {
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
+type DataSource struct {
+	ID           uuid.UUID          `json:"id"`
+	WorkspaceID  uuid.UUID          `json:"workspace_id"`
+	Name         string             `json:"name"`
+	Type         string             `json:"type"`
+	DsnSecretRef string             `json:"dsn_secret_ref"`
+	Status       string             `json:"status"`
+	CreatedBy    uuid.UUID          `json:"created_by"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
 type DataStream struct {
 	ID          uuid.UUID          `json:"id"`
 	WorkspaceID uuid.UUID          `json:"workspace_id"`
@@ -61,6 +73,25 @@ type DataStream struct {
 	CreatedBy   uuid.UUID          `json:"created_by"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type DataStreamBinding struct {
+	ID              uuid.UUID          `json:"id"`
+	DataStreamID    uuid.UUID          `json:"data_stream_id"`
+	DataSourceID    uuid.UUID          `json:"data_source_id"`
+	DatabaseName    *string            `json:"database_name"`
+	SchemaName      *string            `json:"schema_name"`
+	TableName       string             `json:"table_name"`
+	DeviceKeyField  string             `json:"device_key_field"`
+	DeviceKeyValue  string             `json:"device_key_value"`
+	TimeField       string             `json:"time_field"`
+	ValueField      string             `json:"value_field"`
+	PayloadType     string             `json:"payload_type"`
+	QueryConfigJson []byte             `json:"query_config_json"`
+	Status          string             `json:"status"`
+	CreatedBy       uuid.UUID          `json:"created_by"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Dataset struct {
@@ -106,6 +137,23 @@ type DeviceCapability struct {
 	DeviceID       uuid.UUID          `json:"device_id"`
 	CapabilityCode string             `json:"capability_code"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type ExportJob struct {
+	ID            uuid.UUID          `json:"id"`
+	WorkspaceID   uuid.UUID          `json:"workspace_id"`
+	RequestedBy   uuid.UUID          `json:"requested_by"`
+	ResourceType  string             `json:"resource_type"`
+	ResourceID    uuid.UUID          `json:"resource_id"`
+	ExportType    string             `json:"export_type"`
+	Status        string             `json:"status"`
+	FileObjectKey *string            `json:"file_object_key"`
+	ErrorMessage  *string            `json:"error_message"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	StartedAt     pgtype.Timestamptz `json:"started_at"`
+	FinishedAt    pgtype.Timestamptz `json:"finished_at"`
+	ExpiresAt     pgtype.Timestamptz `json:"expires_at"`
 }
 
 type Invitation struct {

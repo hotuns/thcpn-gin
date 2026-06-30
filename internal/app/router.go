@@ -18,16 +18,20 @@ import (
 	"thcpn-gin/internal/auth"
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/dataset"
+	"thcpn-gin/internal/datasource"
 	"thcpn-gin/internal/datastream"
 	"thcpn-gin/internal/db"
 	"thcpn-gin/internal/db/sqlc"
 	"thcpn-gin/internal/device"
 	"thcpn-gin/internal/httpx"
+	"thcpn-gin/internal/media"
 	"thcpn-gin/internal/member"
+	"thcpn-gin/internal/objectstore"
 	"thcpn-gin/internal/permission"
 	"thcpn-gin/internal/project"
 	"thcpn-gin/internal/site"
 	smsx "thcpn-gin/internal/sms"
+	"thcpn-gin/internal/telemetry"
 	"thcpn-gin/internal/user"
 	"thcpn-gin/internal/workspace"
 )
@@ -82,6 +86,10 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	deviceService := device.NewService(deps.Postgres)
 	dataStreamService := datastream.NewService(deps.Postgres)
 	datasetService := dataset.NewService(deps.Postgres)
+	dataSourceService := datasource.NewService(deps.Postgres)
+	telemetryService := telemetry.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil), cfg.QueryLimits)
+	objectSigner := objectstore.NewSigner(cfg.ObjectStore, cfg.Auth.JWTSecret)
+	mediaService := media.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil), objectSigner, cfg.QueryLimits)
 	tokenManager := auth.NewTokenManager(cfg.Auth.JWTSecret, time.Duration(cfg.Auth.AccessTokenTTLMinutes)*time.Minute)
 	smsSender, err := newSMSSender(cfg.SMS, deps.Logger)
 	if err != nil {
@@ -107,6 +115,9 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	deviceHandler := device.NewHandler(deviceService, permissionChecker, auditService)
 	dataStreamHandler := datastream.NewHandler(dataStreamService, permissionChecker)
 	datasetHandler := dataset.NewHandler(datasetService, permissionChecker, auditService)
+	dataSourceHandler := datasource.NewHandler(dataSourceService, permissionChecker)
+	telemetryHandler := telemetry.NewHandler(telemetryService, permissionChecker)
+	mediaHandler := media.NewHandler(mediaService, permissionChecker, auditService)
 	authMiddleware := auth.Middleware(userService, auth.MiddlewareConfig{
 		TokenManager:         tokenManager,
 		DevUserHeaderEnabled: cfg.Auth.DevUserHeaderEnabled,
@@ -144,6 +155,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.POST("/invitations/:invitation_id/accept", accessGrantHandler.AcceptInvitation)
 	authed.DELETE("/invitations/:invitation_id", accessGrantHandler.RevokeInvitation)
 	authed.GET("/audit-logs", auditHandler.List)
+	authed.GET("/media/download", mediaHandler.Download)
 	authed.GET("/projects", projectHandler.List)
 	authed.POST("/projects", projectHandler.Create)
 	authed.GET("/projects/:project_id", projectHandler.Get)
@@ -154,12 +166,26 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.PATCH("/sites/:site_id", siteHandler.Update)
 	authed.GET("/devices", deviceHandler.List)
 	authed.POST("/devices", deviceHandler.Create)
+	authed.GET("/devices/:device_id/telemetry", telemetryHandler.QueryDevice)
+	authed.GET("/devices/:device_id/media", mediaHandler.ListDevice)
+	authed.GET("/devices/:device_id/media/images", mediaHandler.ListDeviceImages)
+	authed.GET("/devices/:device_id/media/videos", mediaHandler.ListDeviceVideos)
 	authed.GET("/devices/:device_id", deviceHandler.Get)
 	authed.PATCH("/devices/:device_id", deviceHandler.Update)
 	authed.GET("/data-streams", dataStreamHandler.List)
 	authed.POST("/data-streams", dataStreamHandler.Create)
+	authed.GET("/data-streams/:data_stream_id/telemetry", telemetryHandler.QueryDataStream)
+	authed.GET("/data-streams/:data_stream_id/media", mediaHandler.ListDataStream)
 	authed.GET("/data-streams/:data_stream_id", dataStreamHandler.Get)
 	authed.PATCH("/data-streams/:data_stream_id", dataStreamHandler.Update)
+	authed.GET("/data-sources", dataSourceHandler.ListDataSources)
+	authed.POST("/data-sources", dataSourceHandler.CreateDataSource)
+	authed.GET("/data-sources/:data_source_id", dataSourceHandler.GetDataSource)
+	authed.PATCH("/data-sources/:data_source_id", dataSourceHandler.UpdateDataSource)
+	authed.GET("/data-stream-bindings", dataSourceHandler.ListBindings)
+	authed.POST("/data-stream-bindings", dataSourceHandler.CreateBinding)
+	authed.GET("/data-stream-bindings/:binding_id", dataSourceHandler.GetBinding)
+	authed.PATCH("/data-stream-bindings/:binding_id", dataSourceHandler.UpdateBinding)
 	authed.GET("/datasets", datasetHandler.List)
 	authed.POST("/datasets", datasetHandler.Create)
 	authed.GET("/datasets/:dataset_id", datasetHandler.Get)

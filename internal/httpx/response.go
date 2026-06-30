@@ -45,6 +45,8 @@ func WriteAppError(c *gin.Context, err error) {
 		status = http.StatusConflict
 	case apperr.KindRateLimited:
 		status = http.StatusTooManyRequests
+	case apperr.KindDataSource:
+		status = http.StatusBadGateway
 	}
 
 	WriteError(c, status, string(kind), apperr.MessageOf(err))
