@@ -32,6 +32,7 @@ import (
 	"thcpn-gin/internal/project"
 	"thcpn-gin/internal/site"
 	smsx "thcpn-gin/internal/sms"
+	"thcpn-gin/internal/task"
 	"thcpn-gin/internal/telemetry"
 	"thcpn-gin/internal/user"
 	"thcpn-gin/internal/workspace"
@@ -121,6 +122,9 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	telemetryHandler := telemetry.NewHandler(telemetryService, permissionChecker)
 	mediaHandler := media.NewHandler(mediaService, permissionChecker, auditService)
 	exportHandler := export.NewHandler(exportService, permissionChecker, auditService)
+	if taskClient := task.NewClient(deps.Redis); taskClient != nil {
+		exportHandler.SetJobEnqueuer(taskClient)
+	}
 	authMiddleware := auth.Middleware(userService, auth.MiddlewareConfig{
 		TokenManager:         tokenManager,
 		DevUserHeaderEnabled: cfg.Auth.DevUserHeaderEnabled,

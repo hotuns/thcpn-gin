@@ -37,7 +37,7 @@
 
 - 已初始化 Go 模块化单体工程，包含 `cmd/api` 和 `cmd/worker` 两个入口。
 - API 已接入 Gin、request id、结构化 access log、panic recovery 和统一错误响应。
-- Worker 已完成配置、日志、PostgreSQL、Redis 初始化、优雅退出和 ExportJob 轮询处理；尚未接入 Asynq 真实任务。
+- Worker 已完成配置、日志、PostgreSQL、Redis 初始化、优雅退出和 Asynq ExportJob 任务处理；`WORKER_RUN_ONCE=true` 仍保留一次性 DB claim 补偿/烟测模式。
 - 已提供 Docker Compose 本地基础设施：PostgreSQL、Redis、migrate 工具容器。
 - 已提供 Makefile 常用命令：`db-up`、`db-down`、`migrate-up`、`migrate-down`、`sqlc`、`test`、`run-api`、`run-worker`、`web-install`、`run-web`、`build-web`。
 - 已提供配置加载：默认值、YAML 配置、环境变量覆盖。
@@ -224,8 +224,8 @@
   - `telemetry_csv` / `telemetry_excel`，资源为 `device` 或 `data_stream`，需要 `telemetry.export`。
   - `dataset_zip`，资源为 `dataset`，需要 `dataset.export`。
   - `media_zip`，资源为 `device`、`data_stream` 或媒体 data-stream alias，需要 `media.download`。
-- API 当前创建 `pending` 任务、记录文件过期时间，并为成功任务生成临时对象下载 URL。
-- Worker 当前可 claim `pending` 任务、过期旧任务、生成并上传导出文件，然后把任务更新为 `success` 或 `failed`：
+- API 当前创建 `pending` 任务、记录文件过期时间、把 ExportJob 投递到 Asynq `exports` 队列，并为成功任务生成临时对象下载 URL。
+- Worker 默认消费 Asynq `export:process` 任务；处理时按 job id claim `pending` 任务、过期旧任务、生成并上传导出文件，然后把任务更新为 `success` 或 `failed`：
   - `telemetry_csv`：支持 `device` / `data_stream` 资源，使用任务 `request_config_json.start_time`、`end_time`、`limit` 查询已绑定 PostgreSQL telemetry 数据源并生成 CSV。
   - `dataset_zip`：支持 Dataset 元信息 ZIP，包含 `dataset.json`、`sources.csv`，并为 telemetry 类型的 device / data_stream source 生成 CSV。
   - `media_zip`：支持 `device` / `data_stream` / 媒体 data-stream alias 资源，使用任务 `request_config_json.start_time`、`end_time`、`limit`、`media_type` 查询已绑定 PostgreSQL media 数据源，读取 object store 原始媒体文件并生成带 `manifest.csv` 的 ZIP。
@@ -294,11 +294,11 @@
 ### 尚未实现
 
 - Refresh token、退出登录、session 黑名单、设备会话管理、MFA、邮箱验证码/邮箱验证。
-- Export Worker 的 `telemetry_excel`、Asynq 队列化和更完整对象存储集成。
+- Export Worker 的 `telemetry_excel` 和更完整对象存储集成。
 - Project / Site / Device / DataStream / Dataset 当前完成资产、元信息、查询定义、PostgreSQL telemetry 读取和 PostgreSQL media 记录查询；Project / Site / DataStream 变更审计可后续按风险扩展。
 - 尚未实现模块的敏感操作审计仍待对应模块落地时接入，例如设备校准、固件升级和设备转移。
 - MySQL / ClickHouse / HTTP DataSource 运行时适配器。
-- Asynq 真实任务、对象存储、Prometheus、OpenTelemetry。
+- Prometheus、OpenTelemetry 和更完整对象存储集成。
 
 ## 重要目录
 
@@ -321,6 +321,7 @@
 - `internal/media`: 图片、视频、音频媒体查询和下载 workflow。
 - `internal/objectstore`: 对象存储 URL / 下载 token 签名。
 - `internal/export`: 导出任务创建、查询、下载准备和权限审计 workflow。
+- `internal/task`: Asynq 任务定义、投递和 Worker handler。
 - `migrations`: PostgreSQL 平台业务库迁移。
 - `sql/queries`: sqlc 查询定义。
 - `web`: 独立前端工程，使用 Vite proxy 调用后端 `/api`、`/healthz`、`/readyz`。

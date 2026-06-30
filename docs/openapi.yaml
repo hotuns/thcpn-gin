@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: THCPN IoT Research Platform API
-  version: 0.12.0
+  version: 0.13.0
   description: |
     THCPN 科研物联网数据管理平台后端 API。
 
@@ -1840,7 +1840,7 @@ paths:
       summary: Create a dataset export job
       description: |
         Convenience route for creating a `dataset_zip` export job for a dataset.
-        Requires `dataset.export` on the dataset scope. Creation attempts are written to audit logs.
+        Requires `dataset.export` on the dataset scope. The API persists the job and enqueues an Asynq export task for worker processing. Creation attempts are written to audit logs.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1921,7 +1921,7 @@ paths:
       operationId: createExportJob
       summary: Create an export job
       description: |
-        Creates an asynchronous export job in `pending` status.
+        Creates an asynchronous export job in `pending` status and enqueues an Asynq export task for worker processing.
         `telemetry_csv` and `telemetry_excel` require `telemetry.export` on a device or data stream.
         `dataset_zip` requires `dataset.export` on a dataset.
         `media_zip` requires `media.download` on a device, data stream, or media data-stream alias. The worker writes the original media objects and `manifest.csv` into a ZIP.

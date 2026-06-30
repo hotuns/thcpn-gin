@@ -111,11 +111,8 @@ func NewProcessor(db *pgxpool.Pool, dataSources *datasource.Service, runtime Run
 }
 
 func (p *Processor) ProcessNext(ctx context.Context) (bool, error) {
-	if p == nil || p.queries == nil {
-		return false, apperr.New(apperr.KindInternal, "export processor is not configured")
-	}
-	if p.store == nil {
-		return false, apperr.New(apperr.KindInternal, "object store is not configured")
+	if err := p.validate(); err != nil {
+		return false, err
 	}
 	if _, err := p.queries.ExpireExportJobs(ctx); err != nil {
 		return false, apperr.Wrap(apperr.KindInternal, "expire export jobs", err)
@@ -130,27 +127,87 @@ func (p *Processor) ProcessNext(ctx context.Context) (bool, error) {
 	}
 	job := jobFromSQL(row)
 
+	if err := p.processClaimed(ctx, job); err != nil {
+		return true, err
+	}
+	return true, nil
+}
+
+func (p *Processor) ProcessJob(ctx context.Context, jobID uuid.UUID) (bool, error) {
+	if err := p.validate(); err != nil {
+		return false, err
+	}
+	if jobID == uuid.Nil {
+		return false, apperr.New(apperr.KindInvalidArgument, "export job id is required")
+	}
+	if _, err := p.queries.ExpireExportJobs(ctx); err != nil {
+		return false, apperr.Wrap(apperr.KindInternal, "expire export jobs", err)
+	}
+
+	row, err := p.queries.MarkExportJobRunning(ctx, jobID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return p.skipUnavailableJob(ctx, jobID)
+		}
+		return false, apperr.Wrap(apperr.KindInternal, "claim export job", err)
+	}
+
+	job := jobFromSQL(row)
+	if err := p.processClaimed(ctx, job); err != nil {
+		return true, err
+	}
+	return true, nil
+}
+
+func (p *Processor) validate() error {
+	if p == nil || p.queries == nil {
+		return apperr.New(apperr.KindInternal, "export processor is not configured")
+	}
+	if p.store == nil {
+		return apperr.New(apperr.KindInternal, "object store is not configured")
+	}
+	return nil
+}
+
+func (p *Processor) skipUnavailableJob(ctx context.Context, jobID uuid.UUID) (bool, error) {
+	row, err := p.queries.GetExportJob(ctx, jobID)
+	if err != nil {
+		return false, mapNotFoundOrInternal(err, "export job not found")
+	}
+	job := jobFromSQL(row)
+	switch job.Status {
+	case "success", "failed", "expired", "running":
+		if p.logger != nil {
+			p.logger.Info("export job is not pending", slog.String("job_id", job.ID.String()), slog.String("status", job.Status))
+		}
+		return false, nil
+	default:
+		return false, apperr.New(apperr.KindConflict, "export job is not available for processing")
+	}
+}
+
+func (p *Processor) processClaimed(ctx context.Context, job Job) error {
 	rendered, err := p.render(ctx, job)
 	if err != nil {
-		return true, p.fail(ctx, job.ID, err)
+		return p.fail(ctx, job.ID, err)
 	}
 	if err := p.store.Put(ctx, objectstore.PutInput{
 		ObjectKey:   rendered.ObjectKey,
 		ContentType: rendered.ContentType,
 		Body:        bytes.NewReader(rendered.Body),
 	}); err != nil {
-		return true, p.fail(ctx, job.ID, err)
+		return p.fail(ctx, job.ID, err)
 	}
 	if _, err := p.queries.MarkExportJobSuccess(ctx, sqlc.MarkExportJobSuccessParams{
 		ID:            job.ID,
 		FileObjectKey: &rendered.ObjectKey,
 	}); err != nil {
-		return true, apperr.Wrap(apperr.KindInternal, "mark export job success", err)
+		return apperr.Wrap(apperr.KindInternal, "mark export job success", err)
 	}
 	if p.logger != nil {
 		p.logger.Info("export job processed", slog.String("job_id", job.ID.String()), slog.String("object_key", rendered.ObjectKey))
 	}
-	return true, nil
+	return nil
 }
 
 func (p *Processor) ProcessAvailable(ctx context.Context, limit int) (int, error) {

@@ -7,7 +7,6 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
-	"time"
 
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/datasource"
@@ -15,6 +14,7 @@ import (
 	"thcpn-gin/internal/export"
 	"thcpn-gin/internal/logger"
 	"thcpn-gin/internal/objectstore"
+	"thcpn-gin/internal/task"
 )
 
 func main() {
@@ -70,24 +70,26 @@ func run() int {
 		return 0
 	}
 
-	interval := envDurationSeconds("WORKER_POLL_INTERVAL_SECONDS", 5*time.Second)
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+	concurrency := envInt("WORKER_CONCURRENCY", 5)
+	server, mux := task.NewExportServer(redisClient, processor, log, concurrency)
 
-	log.Info("worker started", slog.Duration("poll_interval", interval))
-	for {
-		processed, err := processor.ProcessAvailable(ctx, 10)
+	serverErr := make(chan error, 1)
+	go func() {
+		log.Info("worker started", slog.String("queue", task.QueueExports), slog.Int("concurrency", concurrency))
+		serverErr <- server.Run(mux)
+	}()
+
+	select {
+	case <-ctx.Done():
+		server.Shutdown()
+		log.Info("worker stopped")
+		return 0
+	case err := <-serverErr:
 		if err != nil {
-			log.Error("process export jobs", slog.Any("error", err), slog.Int("processed", processed))
-		} else if processed > 0 {
-			log.Info("processed export jobs", slog.Int("processed", processed))
+			log.Error("worker failed", slog.Any("error", err))
+			return 1
 		}
-		select {
-		case <-ctx.Done():
-			log.Info("worker stopped")
-			return 0
-		case <-ticker.C:
-		}
+		return 0
 	}
 }
 
@@ -97,11 +99,11 @@ func envBool(name string) bool {
 	return err == nil && parsed
 }
 
-func envDurationSeconds(name string, fallback time.Duration) time.Duration {
+func envInt(name string, fallback int) int {
 	value := os.Getenv(name)
-	seconds, err := strconv.Atoi(value)
-	if err != nil || seconds <= 0 {
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
 		return fallback
 	}
-	return time.Duration(seconds) * time.Second
+	return parsed
 }

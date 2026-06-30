@@ -1,6 +1,7 @@
 package export
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -22,9 +23,14 @@ import (
 const auditViewAction = "audit.view"
 
 type Handler struct {
-	service *Service
-	checker *permission.Checker
-	audit   *audit.Service
+	service  *Service
+	checker  *permission.Checker
+	audit    *audit.Service
+	enqueuer JobEnqueuer
+}
+
+type JobEnqueuer interface {
+	EnqueueExportJob(ctx context.Context, jobID uuid.UUID) error
 }
 
 type createExportJobRequest struct {
@@ -50,6 +56,10 @@ func NewHandler(service *Service, checker *permission.Checker, auditServices ...
 		auditService = auditServices[0]
 	}
 	return &Handler{service: service, checker: checker, audit: auditService}
+}
+
+func (h *Handler) SetJobEnqueuer(enqueuer JobEnqueuer) {
+	h.enqueuer = enqueuer
 }
 
 func (h *Handler) List(c *gin.Context) {
@@ -258,6 +268,15 @@ func (h *Handler) createJob(c *gin.Context, actor auth.Actor, resourceType strin
 		}
 		httpx.WriteAppError(c, err)
 		return Job{}, false
+	}
+	if h.enqueuer != nil {
+		if err := h.enqueuer.EnqueueExportJob(c.Request.Context(), job.ID); err != nil {
+			if !h.record(c, auditInput(actor, resolved, audit.ResultFailure, apperr.MessageOf(err))) {
+				return Job{}, false
+			}
+			httpx.WriteAppError(c, err)
+			return Job{}, false
+		}
 	}
 	if !h.record(c, auditInput(actor, resolved, audit.ResultSuccess, "")) {
 		return Job{}, false

@@ -1,2 +1,2 @@
-// Package task contains worker task definitions and scheduling.
+// Package task contains Asynq task definitions, enqueuing, and worker handlers.
 package task
