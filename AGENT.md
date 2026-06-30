@@ -157,6 +157,11 @@
   - `POST /api/v1/devices`
   - `GET /api/v1/devices/:device_id`
   - `PATCH /api/v1/devices/:device_id`
+- 已新增设备高风险操作请求 migration `000013_device_operations`，创建 `device_operations`。
+- 已实现设备校准和固件升级请求接口：
+  - `POST /api/v1/devices/:device_id/calibrations`
+  - `POST /api/v1/devices/:device_id/firmware-upgrades`
+  - 校准请求要求设备具备 `calibratable` capability；固件升级请求要求设备具备 `firmware_update` capability。
 - 已实现 DataStream 元信息接口：
   - `GET /api/v1/data-streams?device_id=...`
   - `POST /api/v1/data-streams`
@@ -288,6 +293,7 @@
   - 创建 Invitation、接受 Invitation、撤销 Invitation 成功和失败。
   - `service_engineer` 授权使用 `service_access.grant` action 写审计。
   - 创建、更新 Project / Site / DataStream 成功和失败。
+  - 设备校准、固件升级请求成功和失败。
   - 创建、更新、锁定、删除 Dataset 成功和失败。
   - 媒体下载成功和权限拒绝。
   - 创建导出任务成功和失败，导出文件下载准备成功和失败。
@@ -316,8 +322,8 @@
 
 - `make sqlc` 可正常生成代码。
 - `go test ./...` / `make test` 通过。
-- `make migrate-up` 可迁移到版本 12。
-- `make migrate-down MIGRATE_STEPS=1` 已验证 `000012` down 可用，随后已重新 `make migrate-up` 到版本 12。
+- `make migrate-up` 可迁移到版本 13。
+- `make migrate-down MIGRATE_STEPS=1` 已验证 `000013` down 可用，随后已重新 `make migrate-up` 到版本 13。
 - 已通过真实 HTTP 验证健康检查、密码注册、密码登录、JWT 调 `/me`、短信验证码发送、短信登录自动注册、JWT 调 workspace 列表、普通成员 JWT 访问成员管理被拒绝。
 - 已通过真实 HTTP 验证 Project / Site / Device / DataStream 创建和列表查询。
 - 已通过真实 HTTP 验证 DataSource 创建/列表，以及 DataStreamBinding 创建/列表。
@@ -343,7 +349,7 @@
 
 - Export Worker 的更完整对象存储集成。
 - Project / Site / Device / DataStream / Dataset 当前完成资产、元信息、查询定义、关键变更审计、PostgreSQL / MySQL / ClickHouse / HTTP API telemetry 读取和 media 记录查询。
-- 尚未实现模块的敏感操作审计仍待对应模块落地时接入，例如设备校准、固件升级和设备转移。
+- 设备转移流程仍待实现；后续应避免直接修改 `workspace_id`，并确保历史 Dataset 归属不随设备自动迁移。
 - 更完整对象存储集成。
 
 ## 重要目录

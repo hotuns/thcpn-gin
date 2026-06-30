@@ -89,6 +89,49 @@ func (q *Queries) CreateDevice(ctx context.Context, arg CreateDeviceParams) (Dev
 	return i, err
 }
 
+const createDeviceOperation = `-- name: CreateDeviceOperation :one
+INSERT INTO device_operations (
+    workspace_id,
+    device_id,
+    operation_type,
+    request_json,
+    requested_by
+)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, workspace_id, device_id, operation_type, status, request_json, requested_by, created_at, updated_at
+`
+
+type CreateDeviceOperationParams struct {
+	WorkspaceID   uuid.UUID `json:"workspace_id"`
+	DeviceID      uuid.UUID `json:"device_id"`
+	OperationType string    `json:"operation_type"`
+	RequestJson   []byte    `json:"request_json"`
+	RequestedBy   uuid.UUID `json:"requested_by"`
+}
+
+func (q *Queries) CreateDeviceOperation(ctx context.Context, arg CreateDeviceOperationParams) (DeviceOperation, error) {
+	row := q.db.QueryRow(ctx, createDeviceOperation,
+		arg.WorkspaceID,
+		arg.DeviceID,
+		arg.OperationType,
+		arg.RequestJson,
+		arg.RequestedBy,
+	)
+	var i DeviceOperation
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.DeviceID,
+		&i.OperationType,
+		&i.Status,
+		&i.RequestJson,
+		&i.RequestedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const deleteDeviceCapabilities = `-- name: DeleteDeviceCapabilities :exec
 DELETE FROM device_capabilities
 WHERE device_id = $1
@@ -145,6 +188,43 @@ func (q *Queries) ListDeviceCapabilities(ctx context.Context, deviceID uuid.UUID
 			return nil, err
 		}
 		items = append(items, capability_code)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDeviceOperationsByDevice = `-- name: ListDeviceOperationsByDevice :many
+SELECT id, workspace_id, device_id, operation_type, status, request_json, requested_by, created_at, updated_at
+FROM device_operations
+WHERE device_id = $1
+ORDER BY created_at DESC, id DESC
+`
+
+func (q *Queries) ListDeviceOperationsByDevice(ctx context.Context, deviceID uuid.UUID) ([]DeviceOperation, error) {
+	rows, err := q.db.Query(ctx, listDeviceOperationsByDevice, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DeviceOperation{}
+	for rows.Next() {
+		var i DeviceOperation
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.DeviceID,
+			&i.OperationType,
+			&i.Status,
+			&i.RequestJson,
+			&i.RequestedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

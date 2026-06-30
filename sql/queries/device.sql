@@ -63,3 +63,20 @@ INSERT INTO device_capabilities (device_id, capability_code)
 VALUES ($1, $2)
 ON CONFLICT (device_id, capability_code) DO NOTHING
 RETURNING id, device_id, capability_code, created_at;
+
+-- name: CreateDeviceOperation :one
+INSERT INTO device_operations (
+    workspace_id,
+    device_id,
+    operation_type,
+    request_json,
+    requested_by
+)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, workspace_id, device_id, operation_type, status, request_json, requested_by, created_at, updated_at;
+
+-- name: ListDeviceOperationsByDevice :many
+SELECT id, workspace_id, device_id, operation_type, status, request_json, requested_by, created_at, updated_at
+FROM device_operations
+WHERE device_id = $1
+ORDER BY created_at DESC, id DESC;

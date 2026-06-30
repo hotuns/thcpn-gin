@@ -204,6 +204,8 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.GET("/devices/:device_id/media", mediaHandler.ListDevice)
 	authed.GET("/devices/:device_id/media/images", mediaHandler.ListDeviceImages)
 	authed.GET("/devices/:device_id/media/videos", mediaHandler.ListDeviceVideos)
+	authed.POST("/devices/:device_id/calibrations", deviceHandler.RequestCalibration)
+	authed.POST("/devices/:device_id/firmware-upgrades", deviceHandler.RequestFirmwareUpgrade)
 	authed.GET("/devices/:device_id", deviceHandler.Get)
 	authed.PATCH("/devices/:device_id", deviceHandler.Update)
 	authed.GET("/data-streams", dataStreamHandler.List)

@@ -1285,6 +1285,76 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/devices/{device_id}/calibrations:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    post:
+      tags:
+        - Devices
+      operationId: requestDeviceCalibration
+      summary: Request device calibration
+      description: Requires `device.calibrate` permission on the device. The device must declare the `calibratable` capability. Success and failure are written to AuditLog with action `device.calibrate`.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDeviceCalibrationRequest"
+      responses:
+        "201":
+          description: Calibration operation requested.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceOperation"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/devices/{device_id}/firmware-upgrades:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    post:
+      tags:
+        - Devices
+      operationId: requestDeviceFirmwareUpgrade
+      summary: Request device firmware upgrade
+      description: Requires `device.firmware_upgrade` permission on the device. The device must declare the `firmware_update` capability. Success and failure are written to AuditLog with action `device.firmware_upgrade`.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDeviceFirmwareUpgradeRequest"
+      responses:
+        "201":
+          description: Firmware upgrade operation requested.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceOperation"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
   /api/v1/devices/{device_id}/telemetry:
     parameters:
       - $ref: "#/components/parameters/DeviceID"
@@ -2991,6 +3061,19 @@ components:
         - calibratable
         - firmware_update
         - edge_storage
+    DeviceOperationType:
+      type: string
+      enum:
+        - calibration
+        - firmware_upgrade
+    DeviceOperationStatus:
+      type: string
+      enum:
+        - requested
+        - running
+        - success
+        - failed
+        - cancelled
     DataStreamType:
       type: string
       enum:
@@ -3899,6 +3982,64 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/DeviceCapabilityCode"
+    DeviceOperation:
+      type: object
+      required:
+        - id
+        - workspace_id
+        - device_id
+        - operation_type
+        - status
+        - request
+        - requested_by
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        workspace_id:
+          $ref: "#/components/schemas/UUID"
+        device_id:
+          $ref: "#/components/schemas/UUID"
+        operation_type:
+          $ref: "#/components/schemas/DeviceOperationType"
+        status:
+          $ref: "#/components/schemas/DeviceOperationStatus"
+        request:
+          type: object
+          additionalProperties: true
+        requested_by:
+          $ref: "#/components/schemas/UUID"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    CreateDeviceCalibrationRequest:
+      type: object
+      required:
+        - calibration_type
+      properties:
+        calibration_type:
+          type: string
+          description: Calibration mode or procedure identifier, for example `zero_point` or `span`.
+        parameters:
+          type: object
+          additionalProperties: true
+          description: Optional device- or procedure-specific calibration parameters.
+    CreateDeviceFirmwareUpgradeRequest:
+      type: object
+      required:
+        - firmware_version
+      properties:
+        firmware_version:
+          type: string
+        package_uri:
+          type: string
+          description: Optional firmware package URI or object key.
+        checksum:
+          type: string
+        scheduled_at:
+          $ref: "#/components/schemas/Timestamp"
     DataStream:
       type: object
       required:

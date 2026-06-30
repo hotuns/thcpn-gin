@@ -1,7 +1,9 @@
 package device
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -37,6 +39,18 @@ type Device struct {
 	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
+type DeviceOperation struct {
+	ID            uuid.UUID       `json:"id"`
+	WorkspaceID   uuid.UUID       `json:"workspace_id"`
+	DeviceID      uuid.UUID       `json:"device_id"`
+	OperationType string          `json:"operation_type"`
+	Status        string          `json:"status"`
+	Request       json.RawMessage `json:"request"`
+	RequestedBy   uuid.UUID       `json:"requested_by"`
+	CreatedAt     time.Time       `json:"created_at"`
+	UpdatedAt     time.Time       `json:"updated_at"`
+}
+
 type CreateInput struct {
 	WorkspaceID  uuid.UUID
 	ProjectID    *uuid.UUID
@@ -63,6 +77,22 @@ type UpdateInput struct {
 	Name         *string
 	Status       *string
 	Capabilities *[]string
+}
+
+type CalibrationInput struct {
+	DeviceID        uuid.UUID
+	CalibrationType string
+	Parameters      json.RawMessage
+	ActorUserID     uuid.UUID
+}
+
+type FirmwareUpgradeInput struct {
+	DeviceID        uuid.UUID
+	FirmwareVersion string
+	PackageURI      string
+	Checksum        string
+	ScheduledAt     *time.Time
+	ActorUserID     uuid.UUID
 }
 
 func NewService(db *pgxpool.Pool) *Service {
@@ -288,9 +318,160 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (Device, error)
 	return fromSQL(updated, capabilities), nil
 }
 
+func (s *Service) RequestCalibration(ctx context.Context, input CalibrationInput) (DeviceOperation, error) {
+	requestJSON, err := buildCalibrationRequest(input.CalibrationType, input.Parameters)
+	if err != nil {
+		return DeviceOperation{}, err
+	}
+	return s.createOperation(ctx, createOperationInput{
+		DeviceID:           input.DeviceID,
+		OperationType:      "calibration",
+		RequiredCapability: "calibratable",
+		RequestJSON:        requestJSON,
+		ActorUserID:        input.ActorUserID,
+	})
+}
+
+func (s *Service) RequestFirmwareUpgrade(ctx context.Context, input FirmwareUpgradeInput) (DeviceOperation, error) {
+	requestJSON, err := buildFirmwareUpgradeRequest(input)
+	if err != nil {
+		return DeviceOperation{}, err
+	}
+	return s.createOperation(ctx, createOperationInput{
+		DeviceID:           input.DeviceID,
+		OperationType:      "firmware_upgrade",
+		RequiredCapability: "firmware_update",
+		RequestJSON:        requestJSON,
+		ActorUserID:        input.ActorUserID,
+	})
+}
+
+type createOperationInput struct {
+	DeviceID           uuid.UUID
+	OperationType      string
+	RequiredCapability string
+	RequestJSON        []byte
+	ActorUserID        uuid.UUID
+}
+
+func (s *Service) createOperation(ctx context.Context, input createOperationInput) (DeviceOperation, error) {
+	if input.DeviceID == uuid.Nil {
+		return DeviceOperation{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
+	}
+	if input.ActorUserID == uuid.Nil {
+		return DeviceOperation{}, apperr.New(apperr.KindInvalidArgument, "actor user id is required")
+	}
+	if !isValidDeviceOperationType(input.OperationType) {
+		return DeviceOperation{}, apperr.New(apperr.KindInvalidArgument, "invalid device operation type")
+	}
+	if len(input.RequestJSON) == 0 {
+		input.RequestJSON = []byte("{}")
+	}
+
+	device, err := s.queries.GetDevice(ctx, input.DeviceID)
+	if err != nil {
+		return DeviceOperation{}, mapNotFoundOrInternal(err, "device not found")
+	}
+	capabilities, err := s.queries.ListDeviceCapabilities(ctx, input.DeviceID)
+	if err != nil {
+		return DeviceOperation{}, apperr.Wrap(apperr.KindInternal, "list device capabilities", err)
+	}
+	if input.RequiredCapability != "" && !hasCapability(capabilities, input.RequiredCapability) {
+		return DeviceOperation{}, apperr.New(apperr.KindInvalidArgument, "device does not support "+input.RequiredCapability)
+	}
+
+	created, err := s.queries.CreateDeviceOperation(ctx, sqlc.CreateDeviceOperationParams{
+		WorkspaceID:   device.WorkspaceID,
+		DeviceID:      input.DeviceID,
+		OperationType: input.OperationType,
+		RequestJson:   input.RequestJSON,
+		RequestedBy:   input.ActorUserID,
+	})
+	if err != nil {
+		return DeviceOperation{}, mapWriteError(err, "create device operation")
+	}
+	return operationFromSQL(created), nil
+}
+
+func buildCalibrationRequest(calibrationType string, parameters json.RawMessage) ([]byte, error) {
+	calibrationType = strings.TrimSpace(calibrationType)
+	if calibrationType == "" {
+		return nil, apperr.New(apperr.KindInvalidArgument, "calibration_type is required")
+	}
+
+	request := map[string]any{
+		"calibration_type": calibrationType,
+	}
+	normalizedParameters, err := normalizeJSONObject(parameters, "parameters")
+	if err != nil {
+		return nil, err
+	}
+	if len(normalizedParameters) > 0 {
+		request["parameters"] = json.RawMessage(normalizedParameters)
+	}
+	return marshalJSONObject(request, "calibration request")
+}
+
+func buildFirmwareUpgradeRequest(input FirmwareUpgradeInput) ([]byte, error) {
+	firmwareVersion := strings.TrimSpace(input.FirmwareVersion)
+	if firmwareVersion == "" {
+		return nil, apperr.New(apperr.KindInvalidArgument, "firmware_version is required")
+	}
+
+	request := map[string]any{
+		"firmware_version": firmwareVersion,
+	}
+	if packageURI := strings.TrimSpace(input.PackageURI); packageURI != "" {
+		request["package_uri"] = packageURI
+	}
+	if checksum := strings.TrimSpace(input.Checksum); checksum != "" {
+		request["checksum"] = checksum
+	}
+	if input.ScheduledAt != nil {
+		if input.ScheduledAt.IsZero() {
+			return nil, apperr.New(apperr.KindInvalidArgument, "scheduled_at is invalid")
+		}
+		request["scheduled_at"] = input.ScheduledAt.UTC().Format(time.RFC3339Nano)
+	}
+	return marshalJSONObject(request, "firmware upgrade request")
+}
+
+func normalizeJSONObject(value json.RawMessage, name string) ([]byte, error) {
+	trimmed := bytes.TrimSpace(value)
+	if len(trimmed) == 0 {
+		return nil, nil
+	}
+	var object map[string]any
+	if err := json.Unmarshal(trimmed, &object); err != nil || object == nil {
+		return nil, apperr.New(apperr.KindInvalidArgument, name+" must be a JSON object")
+	}
+	normalized, err := json.Marshal(object)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindInternal, "marshal "+name, err)
+	}
+	return normalized, nil
+}
+
+func marshalJSONObject(value map[string]any, name string) ([]byte, error) {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindInternal, "marshal "+name, err)
+	}
+	return encoded, nil
+}
+
 func isValidDeviceStatus(status string) bool {
 	switch status {
 	case "active", "disabled", "retired":
+		return true
+	default:
+		return false
+	}
+}
+
+func isValidDeviceOperationType(operationType string) bool {
+	switch operationType {
+	case "calibration", "firmware_upgrade":
 		return true
 	default:
 		return false
@@ -326,6 +507,15 @@ func isValidCapability(value string) bool {
 	}
 }
 
+func hasCapability(capabilities []string, required string) bool {
+	for _, capability := range capabilities {
+		if capability == required {
+			return true
+		}
+	}
+	return false
+}
+
 func replaceCapabilities(ctx context.Context, q *sqlc.Queries, deviceID uuid.UUID, capabilities []string) error {
 	if err := q.DeleteDeviceCapabilities(ctx, deviceID); err != nil {
 		return apperr.Wrap(apperr.KindInternal, "delete device capabilities", err)
@@ -339,6 +529,20 @@ func replaceCapabilities(ctx context.Context, q *sqlc.Queries, deviceID uuid.UUI
 		}
 	}
 	return nil
+}
+
+func operationFromSQL(model sqlc.DeviceOperation) DeviceOperation {
+	return DeviceOperation{
+		ID:            model.ID,
+		WorkspaceID:   model.WorkspaceID,
+		DeviceID:      model.DeviceID,
+		OperationType: model.OperationType,
+		Status:        model.Status,
+		Request:       json.RawMessage(model.RequestJson),
+		RequestedBy:   model.RequestedBy,
+		CreatedAt:     pgTime(model.CreatedAt),
+		UpdatedAt:     pgTime(model.UpdatedAt),
+	}
 }
 
 func fromSQL(model sqlc.Device, capabilities []string) Device {

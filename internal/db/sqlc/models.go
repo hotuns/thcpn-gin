@@ -160,6 +160,18 @@ type DeviceCapability struct {
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }
 
+type DeviceOperation struct {
+	ID            uuid.UUID          `json:"id"`
+	WorkspaceID   uuid.UUID          `json:"workspace_id"`
+	DeviceID      uuid.UUID          `json:"device_id"`
+	OperationType string             `json:"operation_type"`
+	Status        string             `json:"status"`
+	RequestJson   []byte             `json:"request_json"`
+	RequestedBy   uuid.UUID          `json:"requested_by"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
 type ExportJob struct {
 	ID                uuid.UUID          `json:"id"`
 	WorkspaceID       uuid.UUID          `json:"workspace_id"`

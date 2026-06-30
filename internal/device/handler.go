@@ -1,7 +1,9 @@
 package device
 
 import (
+	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -17,6 +19,8 @@ const (
 	deviceViewAction      = "device.view"
 	deviceBindAction      = "device.bind"
 	deviceConfigureAction = "device.configure"
+	deviceCalibrateAction = "device.calibrate"
+	deviceFirmwareAction  = "device.firmware_upgrade"
 )
 
 type Handler struct {
@@ -43,6 +47,18 @@ type updateDeviceRequest struct {
 	Name         *string   `json:"name"`
 	Status       *string   `json:"status"`
 	Capabilities *[]string `json:"capabilities"`
+}
+
+type createCalibrationRequest struct {
+	CalibrationType string          `json:"calibration_type"`
+	Parameters      json.RawMessage `json:"parameters"`
+}
+
+type createFirmwareUpgradeRequest struct {
+	FirmwareVersion string     `json:"firmware_version"`
+	PackageURI      string     `json:"package_uri"`
+	Checksum        string     `json:"checksum"`
+	ScheduledAt     *time.Time `json:"scheduled_at"`
 }
 
 func NewHandler(service *Service, checker *permission.Checker, auditServices ...*audit.Service) *Handler {
@@ -235,6 +251,112 @@ func (h *Handler) Update(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) RequestCalibration(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	if !h.authorize(c, "device", deviceID, deviceCalibrateAction) {
+		return
+	}
+	actor, _ := auth.ActorFromContext(c)
+
+	var req createCalibrationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+
+	result, err := h.service.RequestCalibration(c.Request.Context(), CalibrationInput{
+		DeviceID:        deviceID,
+		CalibrationType: req.CalibrationType,
+		Parameters:      req.Parameters,
+		ActorUserID:     actor.UserID,
+	})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "device.calibrate",
+			ResourceType: "device",
+			ResourceID:   audit.ResourceID(deviceID),
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		WorkspaceID:  audit.WorkspaceID(result.WorkspaceID),
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "device.calibrate",
+		ResourceType: "device",
+		ResourceID:   audit.ResourceID(result.DeviceID),
+		Result:       audit.ResultSuccess,
+	}) {
+		return
+	}
+
+	c.JSON(http.StatusCreated, result)
+}
+
+func (h *Handler) RequestFirmwareUpgrade(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	if !h.authorize(c, "device", deviceID, deviceFirmwareAction) {
+		return
+	}
+	actor, _ := auth.ActorFromContext(c)
+
+	var req createFirmwareUpgradeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+
+	result, err := h.service.RequestFirmwareUpgrade(c.Request.Context(), FirmwareUpgradeInput{
+		DeviceID:        deviceID,
+		FirmwareVersion: req.FirmwareVersion,
+		PackageURI:      req.PackageURI,
+		Checksum:        req.Checksum,
+		ScheduledAt:     req.ScheduledAt,
+		ActorUserID:     actor.UserID,
+	})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "device.firmware_upgrade",
+			ResourceType: "device",
+			ResourceID:   audit.ResourceID(deviceID),
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		WorkspaceID:  audit.WorkspaceID(result.WorkspaceID),
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "device.firmware_upgrade",
+		ResourceType: "device",
+		ResourceID:   audit.ResourceID(result.DeviceID),
+		Result:       audit.ResultSuccess,
+	}) {
+		return
+	}
+
+	c.JSON(http.StatusCreated, result)
 }
 
 func (h *Handler) authorize(c *gin.Context, resourceType string, resourceID uuid.UUID, action string) bool {
