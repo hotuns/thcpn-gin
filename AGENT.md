@@ -361,9 +361,10 @@
 - 已通过自动化测试验证 TOTP code 校验、同一时间步重放拒绝、MFA secret AES-GCM 加解密，以及前端 MFA 控制台可编译；本地浏览器已检查 MFA 面板桌面/移动渲染无控制台错误。
 - 此前已通过真实 HTTP 验证开发注册、workspace 列表、创建 organization workspace、添加成员、列成员、更新成员角色、普通成员访问成员管理被拒绝、删除成员。
 
-### 尚未实现
+### 最终验收状态
 
-- 待最终全量验收复核：需对照 `iot_research_go_backend_dev_guide.md` 和 `iot_research_permission_mvp.md` 逐项确认实现证据，当前不再保留已知第一版模块缺口。
+- 已对照 `iot_research_go_backend_dev_guide.md` 和 `iot_research_permission_mvp.md` 完成第一版后端全量复核，当前无已知第一版模块缺口。
+- 最终门禁已通过：`go test ./...`、`npm --prefix web run build`、OpenAPI YAML 解析、`git diff --check`、`make migrate-up`、`make migrate-down MIGRATE_STEPS=1 && make migrate-up`。
 
 ## 重要目录
 
