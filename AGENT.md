@@ -287,6 +287,7 @@
 - AccessGrant 第一版只支持 `subject_type = user`。
 - 可授权角色：`project_manager`、`site_operator`、`data_manager`、`researcher`、`viewer`、`shared_viewer`、`shared_downloader`、`service_engineer`；不允许通过 AccessGrant 授予 `owner` 或 `admin`。
 - `service_engineer` 授权必须设置 `expires_at`，且 scope 只能是 `device` 或 `site`。
+- Worker 启动后会周期性把已过期的 active AccessGrant 和 pending Invitation 状态清理为 `expired`；`WORKER_RUN_ONCE=true` 时也会先执行一次清理。
 - 对已注册用户创建 AccessGrant 时，目标用户可用 `subject_user_id`、`email` 或 `phone` 三选一指定。
 - 对未注册用户使用 Invitation，邀请人可用 `email` 或 `phone` 三选一指定；被邀请用户注册或登录后，若账号 email/phone 匹配，可 accept invitation 并转换为 AccessGrant。
 ### AuditLog

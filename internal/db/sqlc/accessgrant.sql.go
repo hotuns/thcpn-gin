@@ -158,6 +158,40 @@ func (q *Queries) CreateInvitation(ctx context.Context, arg CreateInvitationPara
 	return i, err
 }
 
+const expireAccessGrants = `-- name: ExpireAccessGrants :execrows
+UPDATE access_grants
+SET status = 'expired',
+    updated_at = now()
+WHERE status = 'active'
+  AND expires_at IS NOT NULL
+  AND expires_at <= now()
+`
+
+func (q *Queries) ExpireAccessGrants(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, expireAccessGrants)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const expireInvitations = `-- name: ExpireInvitations :execrows
+UPDATE invitations
+SET status = 'expired',
+    updated_at = now()
+WHERE status = 'pending'
+  AND expires_at IS NOT NULL
+  AND expires_at <= now()
+`
+
+func (q *Queries) ExpireInvitations(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, expireInvitations)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getAccessGrant = `-- name: GetAccessGrant :one
 SELECT
     ag.id,

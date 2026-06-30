@@ -53,6 +53,11 @@ type AccessGrant struct {
 	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
+type CleanupExpiredResult struct {
+	AccessGrantsExpired int64
+	InvitationsExpired  int64
+}
+
 type Invitation struct {
 	ID           uuid.UUID   `json:"id"`
 	WorkspaceID  uuid.UUID   `json:"workspace_id"`
@@ -211,6 +216,21 @@ func (s *Service) RevokeGrant(ctx context.Context, grantID uuid.UUID) (AccessGra
 		return AccessGrant{}, mapNotFoundOrInternal(err, "access grant not found")
 	}
 	return grantFromGetRow(row), nil
+}
+
+func (s *Service) CleanupExpired(ctx context.Context) (CleanupExpiredResult, error) {
+	accessGrants, err := s.queries.ExpireAccessGrants(ctx)
+	if err != nil {
+		return CleanupExpiredResult{}, apperr.Wrap(apperr.KindInternal, "expire access grants", err)
+	}
+	invitations, err := s.queries.ExpireInvitations(ctx)
+	if err != nil {
+		return CleanupExpiredResult{}, apperr.Wrap(apperr.KindInternal, "expire invitations", err)
+	}
+	return CleanupExpiredResult{
+		AccessGrantsExpired: accessGrants,
+		InvitationsExpired:  invitations,
+	}, nil
 }
 
 func (s *Service) CreateInvitation(ctx context.Context, input CreateInvitationInput) (Invitation, error) {

@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"thcpn-gin/internal/accessgrant"
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/datasource"
 	"thcpn-gin/internal/db"
@@ -73,8 +74,13 @@ func run() int {
 		cfg.Export,
 		log,
 	)
+	accessGrantService := accessgrant.NewService(pg)
 
 	if envBool("WORKER_RUN_ONCE") {
+		if err := cleanupExpiredAccess(ctx, accessGrantService, log); err != nil {
+			log.Error("cleanup expired access grants", slog.Any("error", err))
+			return 1
+		}
 		processed, err := processor.ProcessAvailable(ctx, 0)
 		if err != nil {
 			log.Error("process export jobs", slog.Any("error", err), slog.Int("processed", processed))
@@ -86,6 +92,7 @@ func run() int {
 
 	concurrency := envInt("WORKER_CONCURRENCY", 5)
 	server, mux := task.NewExportServer(redisClient, processor, log, concurrency)
+	startExpiredAccessCleanup(ctx, accessGrantService, log, time.Hour)
 
 	serverErr := make(chan error, 1)
 	go func() {
@@ -105,6 +112,43 @@ func run() int {
 		}
 		return 0
 	}
+}
+
+func startExpiredAccessCleanup(ctx context.Context, service *accessgrant.Service, log *slog.Logger, interval time.Duration) {
+	if interval <= 0 {
+		interval = time.Hour
+	}
+	go func() {
+		if err := cleanupExpiredAccess(ctx, service, log); err != nil && log != nil {
+			log.Warn("cleanup expired access grants", slog.Any("error", err))
+		}
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := cleanupExpiredAccess(ctx, service, log); err != nil && log != nil {
+					log.Warn("cleanup expired access grants", slog.Any("error", err))
+				}
+			}
+		}
+	}()
+}
+
+func cleanupExpiredAccess(ctx context.Context, service *accessgrant.Service, log *slog.Logger) error {
+	result, err := service.CleanupExpired(ctx)
+	if err != nil {
+		return err
+	}
+	if log != nil && (result.AccessGrantsExpired > 0 || result.InvitationsExpired > 0) {
+		log.Info("expired access records cleaned",
+			slog.Int64("access_grants", result.AccessGrantsExpired),
+			slog.Int64("invitations", result.InvitationsExpired),
+		)
+	}
+	return nil
 }
 
 func envBool(name string) bool {

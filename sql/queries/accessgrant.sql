@@ -99,6 +99,14 @@ WHERE id = $1
   AND status = 'active'
 RETURNING id, workspace_id, subject_type, subject_id, role_id, scope_type, scope_id, expires_at, allow_reshare, allow_api_access, created_by, status, created_at, updated_at;
 
+-- name: ExpireAccessGrants :execrows
+UPDATE access_grants
+SET status = 'expired',
+    updated_at = now()
+WHERE status = 'active'
+  AND expires_at IS NOT NULL
+  AND expires_at <= now();
+
 -- name: HasAccessGrantPermission :one
 SELECT EXISTS (
     SELECT 1
@@ -221,3 +229,11 @@ SET status = 'revoked',
 WHERE id = $1
   AND status = 'pending'
 RETURNING id, workspace_id, invitee_email, invitee_phone, role_id, scope_type, scope_id, expires_at, invited_by, status, created_at, updated_at;
+
+-- name: ExpireInvitations :execrows
+UPDATE invitations
+SET status = 'expired',
+    updated_at = now()
+WHERE status = 'pending'
+  AND expires_at IS NOT NULL
+  AND expires_at <= now();

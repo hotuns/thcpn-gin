@@ -41,7 +41,9 @@ type Querier interface {
 	DeleteExpiredAuthTokens(ctx context.Context) error
 	DeleteUserTOTP(ctx context.Context, userID uuid.UUID) (int64, error)
 	EnableUserTOTP(ctx context.Context, arg EnableUserTOTPParams) (UserMfaTotp, error)
+	ExpireAccessGrants(ctx context.Context) (int64, error)
 	ExpireExportJobs(ctx context.Context) (int64, error)
+	ExpireInvitations(ctx context.Context) (int64, error)
 	FindActiveUserByEmail(ctx context.Context, email *string) (User, error)
 	FindActiveUserByIdentifier(ctx context.Context, identifier *string) (User, error)
 	FindActiveUserByPhone(ctx context.Context, phone *string) (User, error)
