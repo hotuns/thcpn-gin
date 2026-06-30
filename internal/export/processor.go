@@ -31,8 +31,9 @@ import (
 )
 
 const (
-	contentTypeCSV = "text/csv; charset=utf-8"
-	contentTypeZIP = "application/zip"
+	contentTypeCSV  = "text/csv; charset=utf-8"
+	contentTypeXLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	contentTypeZIP  = "application/zip"
 )
 
 type TelemetryRuntime interface {
@@ -287,6 +288,24 @@ func (p *Processor) render(ctx context.Context, job Job) (renderedExport, error)
 			ContentType: contentTypeCSV,
 			Body:        body,
 		}, nil
+	case "telemetry_excel":
+		cfg, err := parseRequestConfig(job.RequestConfig, p.cfg.MaxRows)
+		if err != nil {
+			return renderedExport{}, err
+		}
+		series, err := p.queryTelemetry(ctx, job.ResourceType, job.ResourceID, cfg.StartTime, cfg.EndTime, cfg.Limit)
+		if err != nil {
+			return renderedExport{}, err
+		}
+		body, err := renderTelemetryXLSX(series)
+		if err != nil {
+			return renderedExport{}, err
+		}
+		return renderedExport{
+			ObjectKey:   exportObjectKey(job, "xlsx"),
+			ContentType: contentTypeXLSX,
+			Body:        body,
+		}, nil
 	case "dataset_zip":
 		body, err := p.renderDatasetZIP(ctx, job)
 		if err != nil {
@@ -297,8 +316,6 @@ func (p *Processor) render(ctx context.Context, job Job) (renderedExport, error)
 			ContentType: contentTypeZIP,
 			Body:        body,
 		}, nil
-	case "telemetry_excel":
-		return renderedExport{}, apperr.New(apperr.KindInvalidArgument, "telemetry_excel worker generation is not implemented")
 	case "media_zip":
 		cfg, err := parseRequestConfig(job.RequestConfig, p.cfg.MaxRows)
 		if err != nil {

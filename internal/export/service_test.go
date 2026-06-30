@@ -1,7 +1,11 @@
 package export
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
+	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -88,6 +92,47 @@ func TestRenderTelemetryCSV(t *testing.T) {
 	}
 }
 
+func TestRenderTelemetryXLSX(t *testing.T) {
+	streamID := uuid.New()
+	deviceID := uuid.New()
+	body, err := renderTelemetryXLSX([]telemetrySeries{{
+		DataStreamID: streamID,
+		DeviceID:     deviceID,
+		Code:         "soil_moisture_10",
+		Name:         "Soil & <moisture>",
+		Unit:         "%",
+		Points: []datasource.TelemetryPoint{{
+			Timestamp: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+			Value:     21.5,
+			Quality:   "valid",
+		}},
+	}})
+	if err != nil {
+		t.Fatalf("render xlsx: %v", err)
+	}
+
+	reader, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatalf("open xlsx zip: %v", err)
+	}
+	sheet := readZipFile(t, reader, "xl/worksheets/sheet1.xml")
+	if !strings.Contains(sheet, `<t>data_stream_id</t>`) {
+		t.Fatalf("expected telemetry header in sheet xml:\n%s", sheet)
+	}
+	if !strings.Contains(sheet, `<t>`+streamID.String()+`</t>`) {
+		t.Fatalf("expected stream id in sheet xml:\n%s", sheet)
+	}
+	if !strings.Contains(sheet, `<t>Soil &amp; &lt;moisture&gt;</t>`) {
+		t.Fatalf("expected escaped stream name in sheet xml:\n%s", sheet)
+	}
+	if !strings.Contains(sheet, `<c r="G2"><v>21.5</v></c>`) {
+		t.Fatalf("expected numeric value cell in sheet xml:\n%s", sheet)
+	}
+	if workbook := readZipFile(t, reader, "xl/workbook.xml"); !strings.Contains(workbook, `name="telemetry"`) {
+		t.Fatalf("expected telemetry sheet in workbook xml:\n%s", workbook)
+	}
+}
+
 func TestMediaArchivePathSanitizesAndDeduplicates(t *testing.T) {
 	streamID := uuid.New()
 	used := map[string]int{}
@@ -106,4 +151,25 @@ func TestMediaArchivePathSanitizesAndDeduplicates(t *testing.T) {
 	if first != expectedFirst || second != expectedSecond {
 		t.Fatalf("unexpected archive paths: %q %q", first, second)
 	}
+}
+
+func readZipFile(t *testing.T, reader *zip.Reader, name string) string {
+	t.Helper()
+	for _, file := range reader.File {
+		if file.Name != name {
+			continue
+		}
+		rc, err := file.Open()
+		if err != nil {
+			t.Fatalf("open zip file %s: %v", name, err)
+		}
+		defer rc.Close()
+		body, err := io.ReadAll(rc)
+		if err != nil {
+			t.Fatalf("read zip file %s: %v", name, err)
+		}
+		return string(body)
+	}
+	t.Fatalf("missing zip file %s", name)
+	return ""
 }

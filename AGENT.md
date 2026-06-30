@@ -229,9 +229,9 @@
 - API 当前创建 `pending` 任务、记录文件过期时间、把 ExportJob 投递到 Asynq `exports` 队列，并为成功任务生成临时对象下载 URL。
 - Worker 默认消费 Asynq `export:process` 任务；处理时按 job id claim `pending` 任务、过期旧任务、生成并上传导出文件，然后把任务更新为 `success` 或 `failed`：
   - `telemetry_csv`：支持 `device` / `data_stream` 资源，使用任务 `request_config_json.start_time`、`end_time`、`limit` 查询已绑定 PostgreSQL / MySQL telemetry 数据源并生成 CSV。
+  - `telemetry_excel`：支持 `device` / `data_stream` 资源，使用同一 telemetry 查询链路生成最小有效 XLSX 工作簿。
   - `dataset_zip`：支持 Dataset 元信息 ZIP，包含 `dataset.json`、`sources.csv`，并为 telemetry 类型的 device / data_stream source 生成 CSV。
   - `media_zip`：支持 `device` / `data_stream` / 媒体 data-stream alias 资源，使用任务 `request_config_json.start_time`、`end_time`、`limit`、`media_type` 查询已绑定 PostgreSQL / MySQL media 数据源，读取 object store 原始媒体文件并生成带 `manifest.csv` 的 ZIP。
-  - `telemetry_excel` Worker 真生成仍待实现。
 - 对象存储当前支持本地文件后端（`object_store.provider=file`）和 MinIO/S3 SigV4 PUT/GET；下载 URL 在配置访问密钥时使用 S3 预签名 GET，否则回退为平台 HMAC 临时 URL。
 - 导出任务创建和下载准备会写 audit log；按 workspace 查询全量导出任务需要 `audit.view`，默认列表只返回当前用户创建的任务。
 
@@ -306,6 +306,7 @@
 - 已通过真实 HTTP 验证 Dataset ExportJob：`POST /api/v1/datasets/:dataset_id/export` 创建 `pending` 任务，`GET /api/v1/export-jobs?mine=true` 可查到任务，pending 下载返回 409；手动标记 success 后 `/export-jobs/:id/download` 返回临时对象 URL，并确认 `dataset.export` audit log 写入。
 - 已通过真实 API + Worker 验证 Telemetry CSV 导出：创建设备、DataStream、DataSource、DataStreamBinding 和外部样例表后，`POST /api/v1/export-jobs` 创建 `telemetry_csv` 任务，`WORKER_RUN_ONCE=true go run ./cmd/worker` 将任务处理为 `success`，本地对象存储生成 CSV，`/export-jobs/:id/download` 返回 200。
 - 已通过真实 API + Worker 验证 Media ZIP 导出：创建 image DataStream、media DataStreamBinding、样例 media 表和本地对象文件后，`POST /api/v1/export-jobs` 创建 `media_zip` 任务，Worker 将任务处理为 `success`，本地对象存储生成 ZIP，ZIP 内包含媒体文件和 `manifest.csv`，`/export-jobs/:id/download` 返回 200。
+- 已通过自动化测试验证 `telemetry_excel` 渲染为可解包的 XLSX，包含 telemetry 工作表、表头、遥测行、数值单元格和 XML 转义。
 - 已通过真实 HTTP 验证 AccessGrant：未授权用户访问 device 被拒绝，创建 `shared_viewer` device grant 后可读取 device，但仍不能 PATCH device。
 - 已通过真实 HTTP 验证 `service_engineer` device grant 必须通过显式 grant 创建并带过期时间。
 - 已通过真实 HTTP 验证 Invitation：创建 project invitation、受邀用户在 `/invitations/mine` 看到邀请、accept 后可读取 project。
@@ -316,7 +317,7 @@
 ### 尚未实现
 
 - Refresh token、退出登录、session 黑名单、设备会话管理、MFA、邮箱验证码/邮箱验证。
-- Export Worker 的 `telemetry_excel` 和更完整对象存储集成。
+- Export Worker 的更完整对象存储集成。
 - Project / Site / Device / DataStream / Dataset 当前完成资产、元信息、查询定义、PostgreSQL / MySQL telemetry 读取和 PostgreSQL / MySQL media 记录查询；Project / Site / DataStream 变更审计可后续按风险扩展。
 - 尚未实现模块的敏感操作审计仍待对应模块落地时接入，例如设备校准、固件升级和设备转移。
 - ClickHouse / HTTP DataSource 运行时适配器。
