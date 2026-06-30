@@ -15,6 +15,11 @@ const HeaderUserID = "X-User-ID"
 
 const actorContextKey = "actor"
 
+type MiddlewareConfig struct {
+	TokenManager         *TokenManager
+	DevUserHeaderEnabled bool
+}
+
 type Actor struct {
 	UserID uuid.UUID `json:"id"`
 	Name   string    `json:"name"`
@@ -27,18 +32,18 @@ type ActorLookup interface {
 	LookupActor(ctx context.Context, id uuid.UUID) (Actor, error)
 }
 
-func Middleware(lookup ActorLookup) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		rawUserID := strings.TrimSpace(c.GetHeader(HeaderUserID))
-		if rawUserID == "" {
-			httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "missing X-User-ID header"))
-			c.Abort()
-			return
-		}
+func Middleware(lookup ActorLookup, configs ...MiddlewareConfig) gin.HandlerFunc {
+	cfg := MiddlewareConfig{
+		DevUserHeaderEnabled: true,
+	}
+	if len(configs) > 0 {
+		cfg = configs[0]
+	}
 
-		userID, err := uuid.Parse(rawUserID)
+	return func(c *gin.Context) {
+		userID, err := authenticateRequest(c, cfg)
 		if err != nil {
-			httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "invalid X-User-ID header"))
+			httpx.WriteAppError(c, err)
 			c.Abort()
 			return
 		}
@@ -59,6 +64,48 @@ func Middleware(lookup ActorLookup) gin.HandlerFunc {
 		c.Set(actorContextKey, actor)
 		c.Next()
 	}
+}
+
+func authenticateRequest(c *gin.Context, cfg MiddlewareConfig) (uuid.UUID, error) {
+	authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
+	if authHeader != "" {
+		return authenticateBearer(authHeader, cfg.TokenManager)
+	}
+
+	if cfg.DevUserHeaderEnabled {
+		return authenticateDevUserHeader(c.GetHeader(HeaderUserID))
+	}
+
+	return uuid.Nil, apperr.New(apperr.KindUnauthorized, "missing bearer token")
+}
+
+func authenticateBearer(header string, tokens *TokenManager) (uuid.UUID, error) {
+	parts := strings.Fields(header)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		return uuid.Nil, apperr.New(apperr.KindUnauthorized, "invalid bearer token")
+	}
+	if tokens == nil {
+		return uuid.Nil, apperr.New(apperr.KindUnauthorized, "token authentication is not configured")
+	}
+
+	userID, err := tokens.Parse(parts[1])
+	if err != nil {
+		return uuid.Nil, apperr.New(apperr.KindUnauthorized, "invalid bearer token")
+	}
+	return userID, nil
+}
+
+func authenticateDevUserHeader(rawUserID string) (uuid.UUID, error) {
+	rawUserID = strings.TrimSpace(rawUserID)
+	if rawUserID == "" {
+		return uuid.Nil, apperr.New(apperr.KindUnauthorized, "missing bearer token or X-User-ID header")
+	}
+
+	userID, err := uuid.Parse(rawUserID)
+	if err != nil {
+		return uuid.Nil, apperr.New(apperr.KindUnauthorized, "invalid X-User-ID header")
+	}
+	return userID, nil
 }
 
 func ActorFromContext(c *gin.Context) (Actor, bool) {

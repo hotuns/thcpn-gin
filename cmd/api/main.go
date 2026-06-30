@@ -50,11 +50,16 @@ func run() int {
 		}
 	}()
 
-	router := app.NewRouter(app.Dependencies{
+	router, err := app.NewRouter(app.Dependencies{
 		Logger:   log,
 		Postgres: pg,
 		Redis:    redisClient,
+		Config:   cfg,
 	})
+	if err != nil {
+		log.Error("initialize api router", slog.Any("error", err))
+		return 1
+	}
 
 	server := &http.Server{
 		Addr:              cfg.Server.Addr,

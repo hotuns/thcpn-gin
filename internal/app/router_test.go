@@ -10,9 +10,12 @@ import (
 )
 
 func TestHealthz(t *testing.T) {
-	router := NewRouter(Dependencies{
+	router, err := NewRouter(Dependencies{
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
+	if err != nil {
+		t.Fatalf("new router: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()
@@ -32,9 +35,12 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestReadyzWithoutDependencies(t *testing.T) {
-	router := NewRouter(Dependencies{
+	router, err := NewRouter(Dependencies{
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
+	if err != nil {
+		t.Fatalf("new router: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	rec := httptest.NewRecorder()

@@ -13,6 +13,7 @@ const (
 	KindPermissionDenied Kind = "PERMISSION_DENIED"
 	KindNotFound         Kind = "NOT_FOUND"
 	KindConflict         Kind = "CONFLICT"
+	KindRateLimited      Kind = "RATE_LIMITED"
 	KindInternal         Kind = "INTERNAL"
 )
 

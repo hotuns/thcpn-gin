@@ -25,13 +25,16 @@ type Service struct {
 }
 
 type User struct {
-	ID        uuid.UUID `json:"id"`
-	Name      string    `json:"name"`
-	Phone     *string   `json:"phone,omitempty"`
-	Email     *string   `json:"email,omitempty"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID              uuid.UUID  `json:"id"`
+	Name            string     `json:"name"`
+	Phone           *string    `json:"phone,omitempty"`
+	Email           *string    `json:"email,omitempty"`
+	Status          string     `json:"status"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	PhoneVerifiedAt *time.Time `json:"phone_verified_at,omitempty"`
+	EmailVerifiedAt *time.Time `json:"email_verified_at,omitempty"`
+	LastLoginAt     *time.Time `json:"last_login_at,omitempty"`
 }
 
 type Workspace struct {
@@ -185,13 +188,16 @@ func personalWorkspaceName(name string) string {
 
 func userFromSQL(model sqlc.User) User {
 	return User{
-		ID:        model.ID,
-		Name:      model.Name,
-		Phone:     model.Phone,
-		Email:     model.Email,
-		Status:    model.Status,
-		CreatedAt: pgTime(model.CreatedAt),
-		UpdatedAt: pgTime(model.UpdatedAt),
+		ID:              model.ID,
+		Name:            model.Name,
+		Phone:           model.Phone,
+		Email:           model.Email,
+		Status:          model.Status,
+		CreatedAt:       pgTime(model.CreatedAt),
+		UpdatedAt:       pgTime(model.UpdatedAt),
+		PhoneVerifiedAt: pgTimePtr(model.PhoneVerifiedAt),
+		EmailVerifiedAt: pgTimePtr(model.EmailVerifiedAt),
+		LastLoginAt:     pgTimePtr(model.LastLoginAt),
 	}
 }
 
@@ -226,6 +232,13 @@ func pgTime(value pgtype.Timestamptz) time.Time {
 		return time.Time{}
 	}
 	return value.Time
+}
+
+func pgTimePtr(value pgtype.Timestamptz) *time.Time {
+	if !value.Valid {
+		return nil
+	}
+	return &value.Time
 }
 
 func mapCreateUserError(err error) error {

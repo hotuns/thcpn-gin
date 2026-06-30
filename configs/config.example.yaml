@@ -14,6 +14,32 @@ redis:
   password: ""
   db: 0
 
+auth:
+  jwt_secret_env: "JWT_SECRET"
+  jwt_secret: "dev-insecure-change-me"
+  access_token_ttl_minutes: 1440
+  dev_user_header_enabled: true
+  dev_register_enabled: true
+  password:
+    min_length: 8
+    max_length: 128
+    failed_attempt_limit: 5
+    lock_minutes: 15
+
+sms:
+  provider: "log"
+  code_ttl_seconds: 300
+  cooldown_seconds: 60
+  daily_limit: 10
+  max_verify_attempts: 5
+  template_param_code_key: "code"
+  aliyun:
+    access_key_id_env: "ALIYUN_ACCESS_KEY_ID"
+    access_key_secret_env: "ALIYUN_ACCESS_KEY_SECRET"
+    sign_name_env: "ALIYUN_SMS_SIGN_NAME"
+    template_code_env: "ALIYUN_SMS_TEMPLATE_CODE"
+    endpoint: "dysmsapi.aliyuncs.com"
+
 object_store:
   provider: "minio"
   endpoint: "127.0.0.1:9000"

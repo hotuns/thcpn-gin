@@ -43,6 +43,8 @@ func WriteAppError(c *gin.Context, err error) {
 		status = http.StatusNotFound
 	case apperr.KindConflict:
 		status = http.StatusConflict
+	case apperr.KindRateLimited:
+		status = http.StatusTooManyRequests
 	}
 
 	WriteError(c, status, string(kind), apperr.MessageOf(err))

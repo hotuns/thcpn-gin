@@ -14,7 +14,7 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (name, phone, email)
 VALUES ($1, $2, $3)
-RETURNING id, name, phone, email, status, created_at, updated_at
+RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at
 `
 
 type CreateUserParams struct {
@@ -34,12 +34,63 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PhoneVerifiedAt,
+		&i.EmailVerifiedAt,
+		&i.LastLoginAt,
+	)
+	return i, err
+}
+
+const findActiveUserByEmail = `-- name: FindActiveUserByEmail :one
+SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at
+FROM users
+WHERE email = $1 AND status = 'active'
+`
+
+func (q *Queries) FindActiveUserByEmail(ctx context.Context, email *string) (User, error) {
+	row := q.db.QueryRow(ctx, findActiveUserByEmail, email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Phone,
+		&i.Email,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.PhoneVerifiedAt,
+		&i.EmailVerifiedAt,
+		&i.LastLoginAt,
+	)
+	return i, err
+}
+
+const findActiveUserByPhone = `-- name: FindActiveUserByPhone :one
+SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at
+FROM users
+WHERE phone = $1 AND status = 'active'
+`
+
+func (q *Queries) FindActiveUserByPhone(ctx context.Context, phone *string) (User, error) {
+	row := q.db.QueryRow(ctx, findActiveUserByPhone, phone)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Phone,
+		&i.Email,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.PhoneVerifiedAt,
+		&i.EmailVerifiedAt,
+		&i.LastLoginAt,
 	)
 	return i, err
 }
 
 const getActiveUser = `-- name: GetActiveUser :one
-SELECT id, name, phone, email, status, created_at, updated_at
+SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at
 FROM users
 WHERE id = $1 AND status = 'active'
 `
@@ -55,12 +106,15 @@ func (q *Queries) GetActiveUser(ctx context.Context, id uuid.UUID) (User, error)
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PhoneVerifiedAt,
+		&i.EmailVerifiedAt,
+		&i.LastLoginAt,
 	)
 	return i, err
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, name, phone, email, status, created_at, updated_at
+SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at
 FROM users
 WHERE id = $1
 `
@@ -76,6 +130,9 @@ func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PhoneVerifiedAt,
+		&i.EmailVerifiedAt,
+		&i.LastLoginAt,
 	)
 	return i, err
 }

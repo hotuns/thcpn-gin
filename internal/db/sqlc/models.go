@@ -40,13 +40,26 @@ type RolePermission struct {
 }
 
 type User struct {
-	ID        uuid.UUID          `json:"id"`
-	Name      string             `json:"name"`
-	Phone     *string            `json:"phone"`
-	Email     *string            `json:"email"`
-	Status    string             `json:"status"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	ID              uuid.UUID          `json:"id"`
+	Name            string             `json:"name"`
+	Phone           *string            `json:"phone"`
+	Email           *string            `json:"email"`
+	Status          string             `json:"status"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	PhoneVerifiedAt pgtype.Timestamptz `json:"phone_verified_at"`
+	EmailVerifiedAt pgtype.Timestamptz `json:"email_verified_at"`
+	LastLoginAt     pgtype.Timestamptz `json:"last_login_at"`
+}
+
+type UserCredential struct {
+	UserID            uuid.UUID          `json:"user_id"`
+	PasswordHash      string             `json:"password_hash"`
+	PasswordUpdatedAt pgtype.Timestamptz `json:"password_updated_at"`
+	FailedAttempts    int32              `json:"failed_attempts"`
+	LockedUntil       pgtype.Timestamptz `json:"locked_until"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Workspace struct {

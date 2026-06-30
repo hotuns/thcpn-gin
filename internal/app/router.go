@@ -4,15 +4,22 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/auth"
+	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/db"
+	"thcpn-gin/internal/db/sqlc"
 	"thcpn-gin/internal/httpx"
+	"thcpn-gin/internal/member"
+	"thcpn-gin/internal/permission"
+	smsx "thcpn-gin/internal/sms"
 	"thcpn-gin/internal/user"
 	"thcpn-gin/internal/workspace"
 )
@@ -21,14 +28,20 @@ type Dependencies struct {
 	Logger   *slog.Logger
 	Postgres *pgxpool.Pool
 	Redis    *redis.Client
+	Config   config.Config
 }
 
 type statusResponse struct {
 	Status string `json:"status"`
 }
 
-func NewRouter(deps Dependencies) *gin.Engine {
+func NewRouter(deps Dependencies) (*gin.Engine, error) {
 	gin.SetMode(gin.ReleaseMode)
+
+	cfg := deps.Config
+	if cfg.Auth.JWTSecret == "" {
+		cfg = config.Default()
+	}
 
 	router := gin.New()
 	router.Use(gin.Recovery())
@@ -41,28 +54,72 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	router.GET("/readyz", readyHandler(deps))
 
 	if deps.Postgres != nil {
-		registerAPIV1(router, deps)
+		if err := registerAPIV1(router, deps, cfg); err != nil {
+			return nil, err
+		}
 	}
 
-	return router
+	return router, nil
 }
 
-func registerAPIV1(router *gin.Engine, deps Dependencies) {
+func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) error {
 	userService := user.NewService(deps.Postgres)
 	workspaceService := workspace.NewService(deps.Postgres)
+	permissionChecker := permission.NewChecker(sqlc.New(deps.Postgres))
+	memberService := member.NewService(deps.Postgres)
+	tokenManager := auth.NewTokenManager(cfg.Auth.JWTSecret, time.Duration(cfg.Auth.AccessTokenTTLMinutes)*time.Minute)
+	smsSender, err := newSMSSender(cfg.SMS, deps.Logger)
+	if err != nil {
+		return err
+	}
+	smsCodeStore := auth.NewSMSCodeStore(deps.Redis, cfg.Auth.JWTSecret, cfg.SMS)
+	authService := auth.NewService(deps.Postgres, tokenManager, smsCodeStore, smsSender, cfg.Auth, cfg.SMS)
 
+	authHandler := auth.NewHandler(authService)
 	userHandler := user.NewHandler(userService)
 	workspaceHandler := workspace.NewHandler(workspaceService)
-	authMiddleware := auth.Middleware(userService)
+	memberHandler := member.NewHandler(memberService, permissionChecker)
+	authMiddleware := auth.Middleware(userService, auth.MiddlewareConfig{
+		TokenManager:         tokenManager,
+		DevUserHeaderEnabled: cfg.Auth.DevUserHeaderEnabled,
+	})
 
 	api := router.Group("/api/v1")
-	api.POST("/auth/register", userHandler.Register)
+	api.POST("/auth/sms/send", authHandler.SendSMS)
+	api.POST("/auth/sms/login", authHandler.LoginWithSMS)
+	api.POST("/auth/password/register", authHandler.RegisterWithPassword)
+	api.POST("/auth/password/login", authHandler.LoginWithPassword)
+	if cfg.Auth.DevRegisterEnabled {
+		api.POST("/auth/register", userHandler.Register)
+	} else {
+		api.POST("/auth/register", func(c *gin.Context) {
+			httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "dev registration is disabled"))
+		})
+	}
 
 	authed := api.Group("")
 	authed.Use(authMiddleware)
 	authed.GET("/me", userHandler.Me)
 	authed.GET("/workspaces", workspaceHandler.List)
 	authed.POST("/workspaces", workspaceHandler.Create)
+	authed.GET("/workspaces/:workspace_id/members", memberHandler.List)
+	authed.POST("/workspaces/:workspace_id/members", memberHandler.Add)
+	authed.PATCH("/workspaces/:workspace_id/members/:member_id", memberHandler.UpdateRole)
+	authed.DELETE("/workspaces/:workspace_id/members/:member_id", memberHandler.Remove)
+	return nil
+}
+
+func newSMSSender(cfg config.SMSConfig, logger *slog.Logger) (smsx.Sender, error) {
+	switch strings.ToLower(strings.TrimSpace(cfg.Provider)) {
+	case "log", "":
+		return smsx.LogSender{Logger: logger}, nil
+	case "noop":
+		return smsx.NoopSender{}, nil
+	case "aliyun":
+		return smsx.NewAliyunSender(cfg)
+	default:
+		return nil, apperr.New(apperr.KindInvalidArgument, "unsupported sms provider")
+	}
 }
 
 func readyHandler(deps Dependencies) gin.HandlerFunc {

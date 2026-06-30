@@ -15,6 +15,8 @@ type Config struct {
 	Logger      LoggerConfig      `yaml:"logger"`
 	Database    DatabaseConfig    `yaml:"database"`
 	Redis       RedisConfig       `yaml:"redis"`
+	Auth        AuthConfig        `yaml:"auth"`
+	SMS         SMSConfig         `yaml:"sms"`
 	ObjectStore ObjectStoreConfig `yaml:"object_store"`
 	QueryLimits QueryLimitsConfig `yaml:"query_limits"`
 	Export      ExportConfig      `yaml:"export"`
@@ -38,6 +40,40 @@ type RedisConfig struct {
 	Addr     string `yaml:"addr"`
 	Password string `yaml:"password"`
 	DB       int    `yaml:"db"`
+}
+
+type AuthConfig struct {
+	JWTSecretEnv          string         `yaml:"jwt_secret_env"`
+	JWTSecret             string         `yaml:"jwt_secret"`
+	AccessTokenTTLMinutes int            `yaml:"access_token_ttl_minutes"`
+	DevUserHeaderEnabled  bool           `yaml:"dev_user_header_enabled"`
+	DevRegisterEnabled    bool           `yaml:"dev_register_enabled"`
+	Password              PasswordConfig `yaml:"password"`
+}
+
+type PasswordConfig struct {
+	MinLength          int `yaml:"min_length"`
+	MaxLength          int `yaml:"max_length"`
+	FailedAttemptLimit int `yaml:"failed_attempt_limit"`
+	LockMinutes        int `yaml:"lock_minutes"`
+}
+
+type SMSConfig struct {
+	Provider             string          `yaml:"provider"`
+	CodeTTLSeconds       int             `yaml:"code_ttl_seconds"`
+	CooldownSeconds      int             `yaml:"cooldown_seconds"`
+	DailyLimit           int             `yaml:"daily_limit"`
+	MaxVerifyAttempts    int             `yaml:"max_verify_attempts"`
+	TemplateParamCodeKey string          `yaml:"template_param_code_key"`
+	Aliyun               AliyunSMSConfig `yaml:"aliyun"`
+}
+
+type AliyunSMSConfig struct {
+	AccessKeyIDEnv     string `yaml:"access_key_id_env"`
+	AccessKeySecretEnv string `yaml:"access_key_secret_env"`
+	SignNameEnv        string `yaml:"sign_name_env"`
+	TemplateCodeEnv    string `yaml:"template_code_env"`
+	Endpoint           string `yaml:"endpoint"`
 }
 
 type ObjectStoreConfig struct {
@@ -74,6 +110,34 @@ func Default() Config {
 		Redis: RedisConfig{
 			Addr: "127.0.0.1:6379",
 			DB:   0,
+		},
+		Auth: AuthConfig{
+			JWTSecretEnv:          "JWT_SECRET",
+			JWTSecret:             "dev-insecure-change-me",
+			AccessTokenTTLMinutes: 1440,
+			DevUserHeaderEnabled:  true,
+			DevRegisterEnabled:    true,
+			Password: PasswordConfig{
+				MinLength:          8,
+				MaxLength:          128,
+				FailedAttemptLimit: 5,
+				LockMinutes:        15,
+			},
+		},
+		SMS: SMSConfig{
+			Provider:             "log",
+			CodeTTLSeconds:       300,
+			CooldownSeconds:      60,
+			DailyLimit:           10,
+			MaxVerifyAttempts:    5,
+			TemplateParamCodeKey: "code",
+			Aliyun: AliyunSMSConfig{
+				AccessKeyIDEnv:     "ALIYUN_ACCESS_KEY_ID",
+				AccessKeySecretEnv: "ALIYUN_ACCESS_KEY_SECRET",
+				SignNameEnv:        "ALIYUN_SMS_SIGN_NAME",
+				TemplateCodeEnv:    "ALIYUN_SMS_TEMPLATE_CODE",
+				Endpoint:           "dysmsapi.aliyuncs.com",
+			},
 		},
 		ObjectStore: ObjectStoreConfig{
 			Provider:     "minio",
@@ -128,6 +192,47 @@ func (cfg Config) Validate() error {
 	if cfg.Redis.DB < 0 {
 		return errors.New("redis.db must be greater than or equal to 0")
 	}
+	if strings.TrimSpace(cfg.Auth.JWTSecret) == "" {
+		return errors.New("auth.jwt_secret is required")
+	}
+	if cfg.Auth.AccessTokenTTLMinutes <= 0 {
+		return errors.New("auth.access_token_ttl_minutes must be greater than 0")
+	}
+	if cfg.Auth.Password.MinLength <= 0 {
+		return errors.New("auth.password.min_length must be greater than 0")
+	}
+	if cfg.Auth.Password.MaxLength < cfg.Auth.Password.MinLength {
+		return errors.New("auth.password.max_length must be greater than or equal to auth.password.min_length")
+	}
+	if cfg.Auth.Password.FailedAttemptLimit <= 0 {
+		return errors.New("auth.password.failed_attempt_limit must be greater than 0")
+	}
+	if cfg.Auth.Password.LockMinutes <= 0 {
+		return errors.New("auth.password.lock_minutes must be greater than 0")
+	}
+	switch strings.TrimSpace(cfg.SMS.Provider) {
+	case "log", "noop", "aliyun":
+	default:
+		return errors.New("sms.provider must be one of log, noop, aliyun")
+	}
+	if cfg.SMS.CodeTTLSeconds <= 0 {
+		return errors.New("sms.code_ttl_seconds must be greater than 0")
+	}
+	if cfg.SMS.CooldownSeconds <= 0 {
+		return errors.New("sms.cooldown_seconds must be greater than 0")
+	}
+	if cfg.SMS.DailyLimit <= 0 {
+		return errors.New("sms.daily_limit must be greater than 0")
+	}
+	if cfg.SMS.MaxVerifyAttempts <= 0 {
+		return errors.New("sms.max_verify_attempts must be greater than 0")
+	}
+	if strings.TrimSpace(cfg.SMS.TemplateParamCodeKey) == "" {
+		return errors.New("sms.template_param_code_key is required")
+	}
+	if strings.TrimSpace(cfg.SMS.Aliyun.Endpoint) == "" {
+		return errors.New("sms.aliyun.endpoint is required")
+	}
 	if cfg.QueryLimits.MaxHistoryDays <= 0 {
 		return errors.New("query_limits.max_history_days must be greater than 0")
 	}
@@ -167,5 +272,78 @@ func applyEnv(cfg *Config) {
 		if db, err := strconv.Atoi(value); err == nil {
 			cfg.Redis.DB = db
 		}
+	}
+
+	jwtSecretEnv := strings.TrimSpace(cfg.Auth.JWTSecretEnv)
+	if jwtSecretEnv == "" {
+		jwtSecretEnv = "JWT_SECRET"
+		cfg.Auth.JWTSecretEnv = jwtSecretEnv
+	}
+	if value := strings.TrimSpace(os.Getenv(jwtSecretEnv)); value != "" {
+		cfg.Auth.JWTSecret = value
+	}
+	if value := strings.TrimSpace(os.Getenv("AUTH_ACCESS_TOKEN_TTL_MINUTES")); value != "" {
+		if minutes, err := strconv.Atoi(value); err == nil {
+			cfg.Auth.AccessTokenTTLMinutes = minutes
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("AUTH_DEV_USER_HEADER_ENABLED")); value != "" {
+		if enabled, err := strconv.ParseBool(value); err == nil {
+			cfg.Auth.DevUserHeaderEnabled = enabled
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("AUTH_DEV_REGISTER_ENABLED")); value != "" {
+		if enabled, err := strconv.ParseBool(value); err == nil {
+			cfg.Auth.DevRegisterEnabled = enabled
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("AUTH_PASSWORD_MIN_LENGTH")); value != "" {
+		if length, err := strconv.Atoi(value); err == nil {
+			cfg.Auth.Password.MinLength = length
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("AUTH_PASSWORD_MAX_LENGTH")); value != "" {
+		if length, err := strconv.Atoi(value); err == nil {
+			cfg.Auth.Password.MaxLength = length
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("AUTH_PASSWORD_FAILED_ATTEMPT_LIMIT")); value != "" {
+		if limit, err := strconv.Atoi(value); err == nil {
+			cfg.Auth.Password.FailedAttemptLimit = limit
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("AUTH_PASSWORD_LOCK_MINUTES")); value != "" {
+		if minutes, err := strconv.Atoi(value); err == nil {
+			cfg.Auth.Password.LockMinutes = minutes
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("SMS_PROVIDER")); value != "" {
+		cfg.SMS.Provider = value
+	}
+	if value := strings.TrimSpace(os.Getenv("SMS_CODE_TTL_SECONDS")); value != "" {
+		if seconds, err := strconv.Atoi(value); err == nil {
+			cfg.SMS.CodeTTLSeconds = seconds
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("SMS_COOLDOWN_SECONDS")); value != "" {
+		if seconds, err := strconv.Atoi(value); err == nil {
+			cfg.SMS.CooldownSeconds = seconds
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("SMS_DAILY_LIMIT")); value != "" {
+		if limit, err := strconv.Atoi(value); err == nil {
+			cfg.SMS.DailyLimit = limit
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("SMS_MAX_VERIFY_ATTEMPTS")); value != "" {
+		if attempts, err := strconv.Atoi(value); err == nil {
+			cfg.SMS.MaxVerifyAttempts = attempts
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("SMS_TEMPLATE_PARAM_CODE_KEY")); value != "" {
+		cfg.SMS.TemplateParamCodeKey = value
+	}
+	if value := strings.TrimSpace(os.Getenv("ALIYUN_SMS_ENDPOINT")); value != "" {
+		cfg.SMS.Aliyun.Endpoint = value
 	}
 }

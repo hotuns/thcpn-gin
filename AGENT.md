@@ -27,6 +27,106 @@
 - Redis: go-redis
 - Logger: standard library `log/slog`
 - Config: YAML plus environment variable overrides
+- Auth: JWT HS256 access token, bcrypt password hash, SMS verification code in Redis
+- SMS sender: `log` / `noop` / Aliyun Dysmsapi
+
+## 已实现功能
+
+### 基础工程
+
+- 已初始化 Go 模块化单体工程，包含 `cmd/api` 和 `cmd/worker` 两个入口。
+- API 已接入 Gin、request id、结构化 access log、panic recovery 和统一错误响应。
+- Worker 当前只完成配置、日志、PostgreSQL、Redis 初始化和优雅退出，尚未接入 Asynq 真实任务。
+- 已提供 Docker Compose 本地基础设施：PostgreSQL、Redis、migrate 工具容器。
+- 已提供 Makefile 常用命令：`db-up`、`db-down`、`migrate-up`、`migrate-down`、`sqlc`、`test`、`run-api`、`run-worker`。
+- 已提供配置加载：默认值、YAML 配置、环境变量覆盖。
+
+### 健康检查
+
+- `GET /healthz`：API 进程存活检查。
+- `GET /readyz`：检查 PostgreSQL 和 Redis 是否可用。
+- 依赖不可用时使用统一错误结构返回 `SERVICE_UNAVAILABLE`。
+
+### 数据库和 sqlc
+
+- 已有 migration：
+  - `000001_init`：启用 `pgcrypto`，创建 `app_metadata`。
+  - `000002_accounts_permissions`：创建账户、Workspace、成员、角色、权限和角色权限表。
+  - `000003_auth_credentials`：为 `users` 增加验证/登录时间字段，创建 `user_credentials` 密码凭证表。
+- 已 seed 系统权限基础数据：
+  - 10 个系统角色：`owner`、`admin`、`project_manager`、`site_operator`、`data_manager`、`researcher`、`viewer`、`shared_viewer`、`shared_downloader`、`service_engineer`。
+  - 34 个权限点。
+  - 173 条 `role_permissions` 矩阵记录。
+- sqlc 已生成平台业务库查询代码到 `internal/db/sqlc`。
+
+### 账户和认证
+
+- 已实现开发注册接口：`POST /api/v1/auth/register`。
+- 开发注册由 `auth.dev_register_enabled` / `AUTH_DEV_REGISTER_ENABLED` 控制；默认开发开启，生产应关闭。
+- 已实现密码注册接口：`POST /api/v1/auth/password/register`。
+- 已实现密码登录接口：`POST /api/v1/auth/password/login`。
+- 已实现短信验证码发送接口：`POST /api/v1/auth/sms/send`。
+- 已实现短信验证码登录/自动注册接口：`POST /api/v1/auth/sms/login`。
+- 注册类流程在事务中完成：
+  - 创建 `users` 记录。
+  - 自动创建 personal workspace。
+  - 自动创建 Owner membership。
+- 密码注册额外创建 `user_credentials`，密码使用 bcrypt 哈希保存，不保存明文密码。
+- 短信登录使用 Redis 保存验证码哈希，不把验证码写入 PostgreSQL；手机号不存在时自动创建用户和 personal workspace。
+- 已实现 JWT access token 签发和校验，claims 使用 `sub=user_id`、`iat`、`exp`。
+- API 认证 middleware 优先读取 `Authorization: Bearer <token>`。
+- 仍保留开发期 `X-User-ID` fallback，由 `auth.dev_user_header_enabled` / `AUTH_DEV_USER_HEADER_ENABLED` 控制；默认开发开启，生产应关闭。
+- 已实现当前用户接口：`GET /api/v1/me`。
+- 账号密码登录失败会累计失败次数，默认 5 次后锁定 15 分钟。
+- 短信验证码默认 5 分钟有效、60 秒冷却、单手机号每日 10 次、最多 5 次校验尝试。
+- 阿里云短信 sender 已接入，但本地默认使用 `sms.provider=log`，避免测试消耗短信费用。
+
+### Workspace
+
+- 已实现创建 organization workspace：`POST /api/v1/workspaces`。
+- 已实现当前用户 workspace 列表：`GET /api/v1/workspaces`。
+- 创建 organization workspace 时，创建者自动成为 Owner。
+- personal workspace 只能由注册流程自动创建。
+- organization type 当前支持：`lab`、`institution`、`company`、`government`、`service_provider`、`other`。
+
+### 权限检查
+
+- 已实现基础 `permission.Checker`。
+- 当前 checker 只支持 `workspace` scope。
+- 当前 checker 只基于 `workspace_members` + `roles` + `role_permissions` 判断权限，尚未接入 `AccessGrant`。
+- 成员管理接口已经使用 `member.manage` 做实际权限保护。
+
+### Workspace 成员管理
+
+- 已实现成员管理接口：
+  - `GET /api/v1/workspaces/:workspace_id/members`
+  - `POST /api/v1/workspaces/:workspace_id/members`
+  - `PATCH /api/v1/workspaces/:workspace_id/members/:member_id`
+  - `DELETE /api/v1/workspaces/:workspace_id/members/:member_id`
+- 所有成员管理接口都需要 JWT；开发环境也可在配置允许时使用 `X-User-ID` fallback。当前用户必须对目标 workspace 拥有 `member.manage`。
+- 添加成员只支持已注册 active 用户，可用 `user_id`、`email` 或 `phone` 三选一指定。
+- 添加 workspace member 只允许内部成员角色：`owner`、`admin`、`project_manager`、`site_operator`、`data_manager`、`researcher`、`viewer`。
+- 明确不允许把 `shared_viewer`、`shared_downloader`、`service_engineer` 作为 workspace member；这些应走后续 `AccessGrant`。
+- 删除成员是软删除：`workspace_members.status = 'removed'`。
+- 已保护最后一个 active Owner：不允许删除最后一个 Owner，也不允许把最后一个 Owner 改成非 Owner 角色。
+
+### 已验证事项
+
+- `make sqlc` 可正常生成代码。
+- `go test ./...` / `make test` 通过。
+- `make migrate-up` 可迁移到版本 3。
+- `make migrate-down MIGRATE_STEPS=1` 已验证 `000003` down 可用，随后已重新 `make migrate-up` 到版本 3。
+- 已通过真实 HTTP 验证健康检查、密码注册、密码登录、JWT 调 `/me`、短信验证码发送、短信登录自动注册、JWT 调 workspace 列表、普通成员 JWT 访问成员管理被拒绝。
+- 此前已通过真实 HTTP 验证开发注册、workspace 列表、创建 organization workspace、添加成员、列成员、更新成员角色、普通成员访问成员管理被拒绝、删除成员。
+
+### 尚未实现
+
+- Refresh token、退出登录、session 黑名单、设备会话管理、MFA、邮箱验证码/邮箱验证。
+- AccessGrant、Invitation、外部分享、售后临时授权。
+- AuditLog 写入。
+- Project、Site、Device、DataStream、Dataset、Export。
+- 设备数据源适配器、Telemetry Query、Media Query。
+- Asynq 真实任务、对象存储、Prometheus、OpenTelemetry。
 
 ## 重要目录
 
@@ -42,6 +142,7 @@
 - `migrations`: PostgreSQL 平台业务库迁移。
 - `sql/queries`: sqlc 查询定义。
 - `configs/config.example.yaml`: 示例配置。
+- `docs/openapi.yaml`: 当前已实现 HTTP API 的 OpenAPI 3.1 文档，新增/调整接口时必须同步更新。
 
 ## 常用命令
 
@@ -90,6 +191,29 @@ make run-worker
   - `REDIS_ADDR`
   - `REDIS_PASSWORD`
   - `REDIS_DB`
+  - `JWT_SECRET`
+  - `AUTH_ACCESS_TOKEN_TTL_MINUTES`
+  - `AUTH_DEV_USER_HEADER_ENABLED`
+  - `AUTH_DEV_REGISTER_ENABLED`
+  - `SMS_PROVIDER`
+  - `SMS_CODE_TTL_SECONDS`
+  - `SMS_COOLDOWN_SECONDS`
+  - `SMS_DAILY_LIMIT`
+  - `SMS_MAX_VERIFY_ATTEMPTS`
+  - `ALIYUN_ACCESS_KEY_ID`
+  - `ALIYUN_ACCESS_KEY_SECRET`
+  - `ALIYUN_SMS_SIGN_NAME`
+  - `ALIYUN_SMS_TEMPLATE_CODE`
+
+## 认证开发约束
+
+- 业务接口优先使用 `Authorization: Bearer <token>`；不要新增只依赖 `X-User-ID` 的正式接口。
+- `X-User-ID` 只作为开发期 fallback，生产环境必须关闭 `AUTH_DEV_USER_HEADER_ENABLED`。
+- `POST /api/v1/auth/register` 是开发注册接口，生产环境必须关闭 `AUTH_DEV_REGISTER_ENABLED`。
+- 本地/测试默认使用 `SMS_PROVIDER=log` 或 `noop`；只有配置好阿里云环境变量并确认模板审核通过后才使用 `aliyun`。
+- 短信验证码只存 Redis，value 保存 code hash、attempt count 和过期信息；不要把明文验证码写入数据库或响应体。
+- 密码必须通过 `ValidatePassword` 校验，并使用 `bcrypt` 保存哈希；不要保存明文密码或可逆加密密码。
+- 当前 JWT 只有 access token，没有 refresh token 或黑名单；实现退出登录、踢下线或会话管理前，不要假设 token 可主动失效。
 
 ## 数据库和 sqlc 规则
 

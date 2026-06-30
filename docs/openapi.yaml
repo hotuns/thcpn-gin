@@ -1,0 +1,1144 @@
+openapi: 3.1.0
+info:
+  title: THCPN IoT Research Platform API
+  version: 0.3.0
+  description: |
+    THCPN 科研物联网数据管理平台后端 API。
+
+    当前文档覆盖已实现的阶段功能：健康检查、短信验证码登录/注册、密码注册/登录、
+    JWT 认证、Workspace 列表/创建和 Workspace 成员管理。
+
+    正式业务接口优先使用 `Authorization: Bearer <token>`。
+    开发环境可通过配置启用 `X-User-ID` fallback；生产环境应关闭该能力。
+servers:
+  - url: http://127.0.0.1:8080
+    description: Local development API server
+tags:
+  - name: Health
+    description: Service health and readiness checks
+  - name: Auth
+    description: Registration, login, token issuing and current user APIs
+  - name: Workspaces
+    description: Workspace management APIs
+  - name: Members
+    description: Workspace member management APIs
+paths:
+  /healthz:
+    get:
+      tags:
+        - Health
+      operationId: getHealthz
+      summary: Liveness check
+      description: Checks whether the API process can respond.
+      responses:
+        "200":
+          description: API process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+              examples:
+                ok:
+                  value:
+                    status: ok
+  /readyz:
+    get:
+      tags:
+        - Health
+      operationId: getReadyz
+      summary: Readiness check
+      description: Checks PostgreSQL and Redis connectivity.
+      responses:
+        "200":
+          description: PostgreSQL and Redis are ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+              examples:
+                ok:
+                  value:
+                    status: ok
+        "503":
+          description: A required dependency is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                postgresUnavailable:
+                  value:
+                    error:
+                      code: SERVICE_UNAVAILABLE
+                      message: postgres is not ready
+                      request_id: 4887c2960a37ee423b71193d412dde2d
+  /api/v1/auth/sms/send:
+    post:
+      tags:
+        - Auth
+      operationId: sendSmsCode
+      summary: Send SMS verification code
+      description: |
+        Sends a verification code to a normalized phone number.
+        With `sms.provider=log`, the code is written to the application log instead of an external SMS provider.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendSmsRequest"
+            examples:
+              default:
+                value:
+                  phone: "13800000000"
+      responses:
+        "200":
+          description: Verification code accepted for sending.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendSmsResponse"
+              examples:
+                sent:
+                  value:
+                    sent: true
+                    expires_in: 300
+                    cooldown_seconds: 60
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/auth/sms/login:
+    post:
+      tags:
+        - Auth
+      operationId: loginWithSms
+      summary: Login or register with SMS verification code
+      description: |
+        Verifies the SMS code and issues a JWT access token.
+        If the phone number does not belong to an active user, a new user, personal workspace and Owner membership are created.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SmsLoginRequest"
+            examples:
+              default:
+                value:
+                  phone: "13800000000"
+                  code: "123456"
+                  name: 张三
+      responses:
+        "200":
+          description: SMS login succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+              examples:
+                loggedIn:
+                  value:
+                    access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                    token_type: Bearer
+                    expires_in: 86400
+                    user:
+                      id: 018fa0ec-9b6e-7a3d-9c7b-1d8b04f31988
+                      name: 张三
+                      phone: "13800000000"
+                      status: active
+                      phone_verified_at: "2026-06-30T14:12:54+08:00"
+                      last_login_at: "2026-06-30T14:12:54+08:00"
+                    created: true
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/auth/password/register:
+    post:
+      tags:
+        - Auth
+      operationId: registerWithPassword
+      summary: Register with password
+      description: |
+        Creates a user, personal workspace, Owner membership and password credential in one transaction,
+        then issues a JWT access token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordRegisterRequest"
+            examples:
+              default:
+                value:
+                  name: 张三
+                  phone: "13800000000"
+                  email: zhangsan@example.com
+                  password: Str0ngPassword!
+      responses:
+        "201":
+          description: Password registration succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+              examples:
+                registered:
+                  value:
+                    access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                    token_type: Bearer
+                    expires_in: 86400
+                    user:
+                      id: 018fa0ec-9b6e-7a3d-9c7b-1d8b04f31988
+                      name: 张三
+                      phone: "13800000000"
+                      email: zhangsan@example.com
+                      status: active
+                      last_login_at: "2026-06-30T14:12:44+08:00"
+                    created: true
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/auth/password/login:
+    post:
+      tags:
+        - Auth
+      operationId: loginWithPassword
+      summary: Login with phone/email and password
+      description: |
+        Authenticates an existing active user by phone or email and password, then issues a JWT access token.
+        Repeated password failures increment the credential failure count and may temporarily lock the account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordLoginRequest"
+            examples:
+              phone:
+                value:
+                  identifier: "13800000000"
+                  password: Str0ngPassword!
+              email:
+                value:
+                  identifier: zhangsan@example.com
+                  password: Str0ngPassword!
+      responses:
+        "200":
+          description: Password login succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+              examples:
+                loggedIn:
+                  value:
+                    access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                    token_type: Bearer
+                    expires_in: 86400
+                    user:
+                      id: 018fa0ec-9b6e-7a3d-9c7b-1d8b04f31988
+                      name: 张三
+                      phone: "13800000000"
+                      email: zhangsan@example.com
+                      status: active
+                      last_login_at: "2026-06-30T14:12:44+08:00"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/auth/register:
+    post:
+      tags:
+        - Auth
+      operationId: devRegister
+      summary: Development registration
+      description: |
+        Development-only registration endpoint. It creates a user, personal workspace and Owner membership,
+        but does not create a password credential and does not issue a token.
+
+        Controlled by `auth.dev_register_enabled` / `AUTH_DEV_REGISTER_ENABLED`; production should disable it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DevRegisterRequest"
+            examples:
+              default:
+                value:
+                  name: 张三
+                  phone: "13800000000"
+                  email: zhangsan@example.com
+      responses:
+        "201":
+          description: Development registration succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DevRegisterResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/me:
+    get:
+      tags:
+        - Auth
+      operationId: getMe
+      summary: Get current authenticated user
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Current authenticated user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+              examples:
+                default:
+                  value:
+                    user:
+                      id: 018fa0ec-9b6e-7a3d-9c7b-1d8b04f31988
+                      name: 张三
+                      phone: "13800000000"
+                      email: zhangsan@example.com
+                      status: active
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/workspaces:
+    get:
+      tags:
+        - Workspaces
+      operationId: listWorkspaces
+      summary: List workspaces for current user
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Workspaces joined by the current user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      tags:
+        - Workspaces
+      operationId: createWorkspace
+      summary: Create organization workspace
+      description: |
+        Creates an organization workspace. The current user becomes Owner.
+        Personal workspaces are created only by registration flows.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorkspaceRequest"
+            examples:
+              lab:
+                value:
+                  name: 华中农业大学作物生态课题组
+                  organization_type: lab
+      responses:
+        "201":
+          description: Organization workspace created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceWithMembership"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/workspaces/{workspace_id}/members:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      tags:
+        - Members
+      operationId: listWorkspaceMembers
+      summary: List workspace members
+      description: Requires `member.manage` permission in the target workspace.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Active and non-active workspace member records visible to member management.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceMemberListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      tags:
+        - Members
+      operationId: addWorkspaceMember
+      summary: Add or restore a workspace member
+      description: |
+        Requires `member.manage` permission in the target workspace.
+        Exactly one of `user_id`, `email` or `phone` must be supplied.
+        Only internal member roles are accepted.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddWorkspaceMemberRequest"
+            examples:
+              byEmail:
+                value:
+                  email: researcher@example.com
+                  role_code: viewer
+              byUserId:
+                value:
+                  user_id: 018fa0ec-9b6e-7a3d-9c7b-1d8b04f31988
+                  role_code: researcher
+      responses:
+        "201":
+          description: Workspace member created or restored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceMember"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/workspaces/{workspace_id}/members/{member_id}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/MemberID"
+    patch:
+      tags:
+        - Members
+      operationId: updateWorkspaceMemberRole
+      summary: Update workspace member role
+      description: |
+        Requires `member.manage` permission in the target workspace.
+        The last active Owner cannot be changed to a non-Owner role.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWorkspaceMemberRoleRequest"
+            examples:
+              promote:
+                value:
+                  role_code: project_manager
+      responses:
+        "200":
+          description: Workspace member role updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceMember"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+    delete:
+      tags:
+        - Members
+      operationId: removeWorkspaceMember
+      summary: Remove workspace member
+      description: |
+        Requires `member.manage` permission in the target workspace.
+        Removal is soft delete: `workspace_members.status = 'removed'`.
+        The last active Owner cannot be removed.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "204":
+          description: Workspace member removed.
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token returned by SMS or password login APIs.
+    devUserHeader:
+      type: apiKey
+      in: header
+      name: X-User-ID
+      description: Development-only fallback authentication. Production should disable it.
+  parameters:
+    WorkspaceID:
+      name: workspace_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Workspace UUID.
+    MemberID:
+      name: member_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Workspace member UUID.
+  responses:
+    InvalidArgument:
+      description: Invalid request argument or body.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          examples:
+            invalid:
+              value:
+                error:
+                  code: INVALID_ARGUMENT
+                  message: invalid request body
+                  request_id: req_123
+    Unauthorized:
+      description: Missing, invalid or inactive authentication.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          examples:
+            unauthorized:
+              value:
+                error:
+                  code: UNAUTHORIZED
+                  message: invalid bearer token
+                  request_id: req_123
+    PermissionDenied:
+      description: Authenticated user does not have the required permission.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          examples:
+            forbidden:
+              value:
+                error:
+                  code: PERMISSION_DENIED
+                  message: permission denied
+                  request_id: req_123
+    NotFound:
+      description: Requested resource was not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          examples:
+            notFound:
+              value:
+                error:
+                  code: NOT_FOUND
+                  message: workspace member not found
+                  request_id: req_123
+    Conflict:
+      description: Request conflicts with existing data or invariants.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          examples:
+            conflict:
+              value:
+                error:
+                  code: CONFLICT
+                  message: phone or email already exists
+                  request_id: req_123
+    RateLimited:
+      description: Request was rate-limited or the account is temporarily locked.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          examples:
+            limited:
+              value:
+                error:
+                  code: RATE_LIMITED
+                  message: sms code requested too frequently
+                  request_id: req_123
+    Internal:
+      description: Internal server error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          examples:
+            internal:
+              value:
+                error:
+                  code: INTERNAL
+                  message: internal error
+                  request_id: req_123
+  schemas:
+    StatusResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          example: ok
+    ErrorEnvelope:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorBody"
+    ErrorBody:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          $ref: "#/components/schemas/ErrorCode"
+        message:
+          type: string
+        request_id:
+          type: string
+    ErrorCode:
+      type: string
+      enum:
+        - INVALID_ARGUMENT
+        - UNAUTHORIZED
+        - PERMISSION_DENIED
+        - NOT_FOUND
+        - CONFLICT
+        - RATE_LIMITED
+        - INTERNAL
+        - SERVICE_UNAVAILABLE
+    UUID:
+      type: string
+      format: uuid
+    Timestamp:
+      type: string
+      format: date-time
+    Phone:
+      type: string
+      description: Normalized phone number. Lightweight validation allows digits and an optional leading plus sign.
+      examples:
+        - "13800000000"
+        - "+8613800000000"
+    Email:
+      type: string
+      format: email
+    UserStatus:
+      type: string
+      enum:
+        - active
+        - disabled
+    WorkspaceStatus:
+      type: string
+      enum:
+        - active
+        - disabled
+    MembershipStatus:
+      type: string
+      enum:
+        - active
+        - disabled
+        - removed
+    WorkspaceType:
+      type: string
+      enum:
+        - personal
+        - organization
+    OrganizationType:
+      type: string
+      enum:
+        - lab
+        - institution
+        - company
+        - government
+        - service_provider
+        - other
+    InternalMemberRoleCode:
+      type: string
+      enum:
+        - owner
+        - admin
+        - project_manager
+        - site_operator
+        - data_manager
+        - researcher
+        - viewer
+      description: Roles allowed for workspace members. Shared and service roles are reserved for future AccessGrant flows.
+    SendSmsRequest:
+      type: object
+      required:
+        - phone
+      properties:
+        phone:
+          $ref: "#/components/schemas/Phone"
+    SendSmsResponse:
+      type: object
+      required:
+        - sent
+        - expires_in
+        - cooldown_seconds
+      properties:
+        sent:
+          type: boolean
+        expires_in:
+          type: integer
+          minimum: 1
+          description: Verification code TTL in seconds.
+        cooldown_seconds:
+          type: integer
+          minimum: 1
+          description: Minimum seconds before another code can be requested for the same phone.
+    SmsLoginRequest:
+      type: object
+      required:
+        - phone
+        - code
+      properties:
+        phone:
+          $ref: "#/components/schemas/Phone"
+        code:
+          type: string
+          pattern: ^[0-9]{6}$
+          example: "123456"
+        name:
+          type: string
+          description: Used as the display name when SMS login auto-registers a new user.
+          example: 张三
+    PasswordRegisterRequest:
+      type: object
+      required:
+        - password
+      anyOf:
+        - required:
+            - phone
+        - required:
+            - email
+      properties:
+        name:
+          type: string
+          example: 张三
+        phone:
+          $ref: "#/components/schemas/Phone"
+        email:
+          $ref: "#/components/schemas/Email"
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+          description: Must contain at least one letter and one digit.
+          example: Str0ngPassword!
+    PasswordLoginRequest:
+      type: object
+      required:
+        - identifier
+        - password
+      properties:
+        identifier:
+          type: string
+          description: Phone number or email address.
+          examples:
+            - "13800000000"
+            - zhangsan@example.com
+        password:
+          type: string
+          format: password
+          example: Str0ngPassword!
+    LoginResponse:
+      type: object
+      required:
+        - access_token
+        - token_type
+        - expires_in
+        - user
+      properties:
+        access_token:
+          type: string
+          description: JWT access token.
+        token_type:
+          type: string
+          enum:
+            - Bearer
+        expires_in:
+          type: integer
+          format: int64
+          description: Token lifetime in seconds.
+        user:
+          $ref: "#/components/schemas/UserProfile"
+        created:
+          type: boolean
+          description: True when the request created a new user.
+    UserProfile:
+      type: object
+      required:
+        - id
+        - name
+        - status
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        name:
+          type: string
+        phone:
+          $ref: "#/components/schemas/Phone"
+        email:
+          $ref: "#/components/schemas/Email"
+        status:
+          $ref: "#/components/schemas/UserStatus"
+        phone_verified_at:
+          $ref: "#/components/schemas/Timestamp"
+        email_verified_at:
+          $ref: "#/components/schemas/Timestamp"
+        last_login_at:
+          $ref: "#/components/schemas/Timestamp"
+    Actor:
+      type: object
+      required:
+        - id
+        - name
+        - status
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        name:
+          type: string
+        phone:
+          $ref: "#/components/schemas/Phone"
+        email:
+          $ref: "#/components/schemas/Email"
+        status:
+          $ref: "#/components/schemas/UserStatus"
+    MeResponse:
+      type: object
+      required:
+        - user
+      properties:
+        user:
+          $ref: "#/components/schemas/Actor"
+    DevRegisterRequest:
+      type: object
+      anyOf:
+        - required:
+            - phone
+        - required:
+            - email
+      properties:
+        name:
+          type: string
+          example: 张三
+        phone:
+          $ref: "#/components/schemas/Phone"
+        email:
+          $ref: "#/components/schemas/Email"
+    DevRegisterResponse:
+      type: object
+      required:
+        - user
+        - workspace
+        - membership
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        workspace:
+          $ref: "#/components/schemas/Workspace"
+        membership:
+          $ref: "#/components/schemas/DevRegistrationMembership"
+    User:
+      type: object
+      required:
+        - id
+        - name
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        name:
+          type: string
+        phone:
+          $ref: "#/components/schemas/Phone"
+        email:
+          $ref: "#/components/schemas/Email"
+        status:
+          $ref: "#/components/schemas/UserStatus"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+        phone_verified_at:
+          $ref: "#/components/schemas/Timestamp"
+        email_verified_at:
+          $ref: "#/components/schemas/Timestamp"
+        last_login_at:
+          $ref: "#/components/schemas/Timestamp"
+    Workspace:
+      type: object
+      required:
+        - id
+        - type
+        - name
+        - owner_user_id
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        type:
+          $ref: "#/components/schemas/WorkspaceType"
+        organization_type:
+          $ref: "#/components/schemas/OrganizationType"
+        name:
+          type: string
+        owner_user_id:
+          $ref: "#/components/schemas/UUID"
+        status:
+          $ref: "#/components/schemas/WorkspaceStatus"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    RoleSummary:
+      type: object
+      required:
+        - id
+        - code
+        - name
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        code:
+          type: string
+        name:
+          type: string
+    WorkspaceMembership:
+      type: object
+      required:
+        - id
+        - status
+        - joined_at
+        - role
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        status:
+          $ref: "#/components/schemas/MembershipStatus"
+        joined_at:
+          $ref: "#/components/schemas/Timestamp"
+        role:
+          $ref: "#/components/schemas/RoleSummary"
+    WorkspaceWithMembership:
+      type: object
+      required:
+        - workspace
+        - membership
+      properties:
+        workspace:
+          $ref: "#/components/schemas/Workspace"
+        membership:
+          $ref: "#/components/schemas/WorkspaceMembership"
+    WorkspaceListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceWithMembership"
+    CreateWorkspaceRequest:
+      type: object
+      required:
+        - name
+        - organization_type
+      properties:
+        name:
+          type: string
+          example: 华中农业大学作物生态课题组
+        organization_type:
+          $ref: "#/components/schemas/OrganizationType"
+    DevRegistrationMembership:
+      type: object
+      required:
+        - id
+        - workspace_id
+        - user_id
+        - role_id
+        - role_code
+        - role_name
+        - status
+        - joined_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        workspace_id:
+          $ref: "#/components/schemas/UUID"
+        user_id:
+          $ref: "#/components/schemas/UUID"
+        role_id:
+          $ref: "#/components/schemas/UUID"
+        role_code:
+          type: string
+          example: owner
+        role_name:
+          type: string
+          example: Owner
+        status:
+          $ref: "#/components/schemas/MembershipStatus"
+        joined_at:
+          $ref: "#/components/schemas/Timestamp"
+    UserSummary:
+      type: object
+      required:
+        - id
+        - name
+        - status
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        name:
+          type: string
+        phone:
+          $ref: "#/components/schemas/Phone"
+        email:
+          $ref: "#/components/schemas/Email"
+        status:
+          $ref: "#/components/schemas/UserStatus"
+    WorkspaceMember:
+      type: object
+      required:
+        - id
+        - workspace_id
+        - status
+        - joined_at
+        - user
+        - role
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        workspace_id:
+          $ref: "#/components/schemas/UUID"
+        status:
+          $ref: "#/components/schemas/MembershipStatus"
+        joined_at:
+          $ref: "#/components/schemas/Timestamp"
+        user:
+          $ref: "#/components/schemas/UserSummary"
+        role:
+          $ref: "#/components/schemas/RoleSummary"
+    WorkspaceMemberListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceMember"
+    AddWorkspaceMemberRequest:
+      type: object
+      required:
+        - role_code
+      oneOf:
+        - required:
+            - user_id
+        - required:
+            - email
+        - required:
+            - phone
+      properties:
+        user_id:
+          $ref: "#/components/schemas/UUID"
+        email:
+          $ref: "#/components/schemas/Email"
+        phone:
+          $ref: "#/components/schemas/Phone"
+        role_code:
+          $ref: "#/components/schemas/InternalMemberRoleCode"
+    UpdateWorkspaceMemberRoleRequest:
+      type: object
+      required:
+        - role_code
+      properties:
+        role_code:
+          $ref: "#/components/schemas/InternalMemberRoleCode"
