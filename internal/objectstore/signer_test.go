@@ -1,6 +1,9 @@
 package objectstore
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -58,5 +61,31 @@ func TestSignObjectURL(t *testing.T) {
 	}
 	if signed.URL == "" || signed.ExpiresAt.IsZero() {
 		t.Fatalf("unexpected signed url: %#v", signed)
+	}
+}
+
+func TestFileStorePut(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(config.ObjectStoreConfig{
+		Provider:  "file",
+		Bucket:    "iot-platform",
+		LocalPath: root,
+	})
+
+	err := store.Put(t.Context(), PutInput{
+		ObjectKey:   "exports/job-001.csv",
+		ContentType: "text/csv",
+		Body:        strings.NewReader("a,b\n1,2\n"),
+	})
+	if err != nil {
+		t.Fatalf("put object: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(root, "iot-platform", "exports", "job-001.csv"))
+	if err != nil {
+		t.Fatalf("read object: %v", err)
+	}
+	if string(data) != "a,b\n1,2\n" {
+		t.Fatalf("unexpected object content: %q", data)
 	}
 }

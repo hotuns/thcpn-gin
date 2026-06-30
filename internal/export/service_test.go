@@ -1,7 +1,14 @@
 package export
 
 import (
+	"encoding/json"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
+
+	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/datasource"
 )
 
 func TestResolveAction(t *testing.T) {
@@ -31,5 +38,52 @@ func TestResolveAction(t *testing.T) {
 
 	if _, _, err := resolveAction("dataset", "telemetry_csv"); err == nil {
 		t.Fatal("expected incompatible telemetry export to fail")
+	}
+}
+
+func TestParseRequestConfig(t *testing.T) {
+	cfg, err := parseRequestConfig(json.RawMessage(`{
+		"start_time": "2026-06-01T00:00:00Z",
+		"end_time": "2026-06-02T00:00:00Z",
+		"limit": 5
+	}`), 100)
+	if err != nil {
+		t.Fatalf("parse request config: %v", err)
+	}
+	if cfg.Limit != 5 {
+		t.Fatalf("unexpected limit: %d", cfg.Limit)
+	}
+	if !cfg.EndTime.After(cfg.StartTime) {
+		t.Fatal("expected end_time after start_time")
+	}
+
+	_, err = parseRequestConfig(json.RawMessage(`{"start_time":"2026-06-02T00:00:00Z"}`), 100)
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected missing end_time to be invalid, got %v", err)
+	}
+}
+
+func TestRenderTelemetryCSV(t *testing.T) {
+	streamID := uuid.New()
+	deviceID := uuid.New()
+	body, err := renderTelemetryCSV([]telemetrySeries{{
+		DataStreamID: streamID,
+		DeviceID:     deviceID,
+		Code:         "soil_moisture_10",
+		Name:         "Soil moisture 10cm",
+		Unit:         "%",
+		Points: []datasource.TelemetryPoint{{
+			Timestamp: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+			Value:     21.5,
+			Quality:   "valid",
+		}},
+	}})
+	if err != nil {
+		t.Fatalf("render csv: %v", err)
+	}
+	expectedPrefix := "data_stream_id,device_id,code,name,unit,ts,value,quality\n" +
+		streamID.String() + "," + deviceID.String() + ",soil_moisture_10,Soil moisture 10cm,%,2026-06-01T00:00:00Z,21.5,valid\n"
+	if string(body) != expectedPrefix {
+		t.Fatalf("unexpected csv:\n%s", body)
 	}
 }

@@ -2,6 +2,7 @@ package export
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -31,28 +32,30 @@ type Service struct {
 }
 
 type Job struct {
-	ID            uuid.UUID  `json:"id"`
-	WorkspaceID   uuid.UUID  `json:"workspace_id"`
-	RequestedBy   uuid.UUID  `json:"requested_by"`
-	ResourceType  string     `json:"resource_type"`
-	ResourceID    uuid.UUID  `json:"resource_id"`
-	ExportType    string     `json:"export_type"`
-	Status        string     `json:"status"`
-	FileObjectKey *string    `json:"file_object_key,omitempty"`
-	ErrorMessage  *string    `json:"error_message,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	StartedAt     *time.Time `json:"started_at,omitempty"`
-	FinishedAt    *time.Time `json:"finished_at,omitempty"`
-	ExpiresAt     time.Time  `json:"expires_at"`
+	ID            uuid.UUID       `json:"id"`
+	WorkspaceID   uuid.UUID       `json:"workspace_id"`
+	RequestedBy   uuid.UUID       `json:"requested_by"`
+	ResourceType  string          `json:"resource_type"`
+	ResourceID    uuid.UUID       `json:"resource_id"`
+	ExportType    string          `json:"export_type"`
+	RequestConfig json.RawMessage `json:"request_config"`
+	Status        string          `json:"status"`
+	FileObjectKey *string         `json:"file_object_key,omitempty"`
+	ErrorMessage  *string         `json:"error_message,omitempty"`
+	CreatedAt     time.Time       `json:"created_at"`
+	UpdatedAt     time.Time       `json:"updated_at"`
+	StartedAt     *time.Time      `json:"started_at,omitempty"`
+	FinishedAt    *time.Time      `json:"finished_at,omitempty"`
+	ExpiresAt     time.Time       `json:"expires_at"`
 }
 
 type CreateInput struct {
-	ResourceType string
-	ResourceID   uuid.UUID
-	ExportType   string
-	RequestedBy  uuid.UUID
-	ExpiresAt    *time.Time
+	ResourceType  string
+	ResourceID    uuid.UUID
+	ExportType    string
+	RequestConfig json.RawMessage
+	RequestedBy   uuid.UUID
+	ExpiresAt     *time.Time
 }
 
 type ListInput struct {
@@ -154,14 +157,19 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Job, ResolvedR
 			return Job{}, ResolvedResource{}, apperr.New(apperr.KindInvalidArgument, "expires_at must be in the future")
 		}
 	}
+	requestConfig, err := normalizeRequestConfig(input.RequestConfig)
+	if err != nil {
+		return Job{}, ResolvedResource{}, err
+	}
 
 	row, err := s.queries.CreateExportJob(ctx, sqlc.CreateExportJobParams{
-		WorkspaceID:  resolved.WorkspaceID,
-		RequestedBy:  input.RequestedBy,
-		ResourceType: resolved.ResourceType,
-		ResourceID:   resolved.ResourceID,
-		ExportType:   resolved.ExportType,
-		ExpiresAt:    pgTime(expiresAt),
+		WorkspaceID:       resolved.WorkspaceID,
+		RequestedBy:       input.RequestedBy,
+		ResourceType:      resolved.ResourceType,
+		ResourceID:        resolved.ResourceID,
+		ExportType:        resolved.ExportType,
+		RequestConfigJson: requestConfig,
+		ExpiresAt:         pgTime(expiresAt),
 	})
 	if err != nil {
 		return Job{}, ResolvedResource{}, mapWriteError(err, "create export job")
@@ -286,6 +294,7 @@ func jobFromSQL(model sqlc.ExportJob) Job {
 		ResourceType:  model.ResourceType,
 		ResourceID:    model.ResourceID,
 		ExportType:    model.ExportType,
+		RequestConfig: json.RawMessage(model.RequestConfigJson),
 		Status:        model.Status,
 		FileObjectKey: model.FileObjectKey,
 		ErrorMessage:  model.ErrorMessage,
@@ -295,6 +304,24 @@ func jobFromSQL(model sqlc.ExportJob) Job {
 		FinishedAt:    pgTimePtr(model.FinishedAt),
 		ExpiresAt:     pgTimeValue(model.ExpiresAt),
 	}
+}
+
+func normalizeRequestConfig(value json.RawMessage) ([]byte, error) {
+	if len(value) == 0 {
+		return []byte(`{}`), nil
+	}
+	var object map[string]any
+	if err := json.Unmarshal(value, &object); err != nil {
+		return nil, apperr.New(apperr.KindInvalidArgument, "request_config must be a JSON object")
+	}
+	if object == nil {
+		return nil, apperr.New(apperr.KindInvalidArgument, "request_config must be a JSON object")
+	}
+	normalized, err := json.Marshal(object)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindInternal, "marshal request_config", err)
+	}
+	return normalized, nil
 }
 
 func pgTime(value time.Time) pgtype.Timestamptz {

@@ -1,6 +1,7 @@
 package export
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -27,15 +28,20 @@ type Handler struct {
 }
 
 type createExportJobRequest struct {
-	ResourceType string     `json:"resource_type"`
-	ResourceID   string     `json:"resource_id"`
-	ExportType   string     `json:"export_type"`
-	ExpiresAt    *time.Time `json:"expires_at"`
+	ResourceType  string          `json:"resource_type"`
+	ResourceID    string          `json:"resource_id"`
+	ExportType    string          `json:"export_type"`
+	StartTime     *time.Time      `json:"start_time"`
+	EndTime       *time.Time      `json:"end_time"`
+	Limit         *int            `json:"limit"`
+	RequestConfig json.RawMessage `json:"request_config"`
+	ExpiresAt     *time.Time      `json:"expires_at"`
 }
 
 type datasetExportRequest struct {
-	ExportType string     `json:"export_type"`
-	ExpiresAt  *time.Time `json:"expires_at"`
+	ExportType    string          `json:"export_type"`
+	RequestConfig json.RawMessage `json:"request_config"`
+	ExpiresAt     *time.Time      `json:"expires_at"`
 }
 
 func NewHandler(service *Service, checker *permission.Checker, auditServices ...*audit.Service) *Handler {
@@ -101,7 +107,12 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	job, ok := h.createJob(c, actor, req.ResourceType, resourceID, req.ExportType, req.ExpiresAt)
+	requestConfig, ok := buildRequestConfig(req.ExportType, req.RequestConfig, req.StartTime, req.EndTime, req.Limit, c)
+	if !ok {
+		return
+	}
+
+	job, ok := h.createJob(c, actor, req.ResourceType, resourceID, req.ExportType, requestConfig, req.ExpiresAt)
 	if !ok {
 		return
 	}
@@ -129,7 +140,7 @@ func (h *Handler) ExportDataset(c *gin.Context) {
 		req.ExportType = "dataset_zip"
 	}
 
-	job, ok := h.createJob(c, actor, "dataset", datasetID, req.ExportType, req.ExpiresAt)
+	job, ok := h.createJob(c, actor, "dataset", datasetID, req.ExportType, req.RequestConfig, req.ExpiresAt)
 	if !ok {
 		return
 	}
@@ -213,7 +224,7 @@ func (h *Handler) Download(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-func (h *Handler) createJob(c *gin.Context, actor auth.Actor, resourceType string, resourceID uuid.UUID, exportType string, expiresAt *time.Time) (Job, bool) {
+func (h *Handler) createJob(c *gin.Context, actor auth.Actor, resourceType string, resourceID uuid.UUID, exportType string, requestConfig json.RawMessage, expiresAt *time.Time) (Job, bool) {
 	resolved, err := h.service.Resolve(c.Request.Context(), resourceType, resourceID, exportType)
 	if err != nil {
 		httpx.WriteAppError(c, err)
@@ -234,11 +245,12 @@ func (h *Handler) createJob(c *gin.Context, actor auth.Actor, resourceType strin
 	}
 
 	job, _, err := h.service.Create(c.Request.Context(), CreateInput{
-		ResourceType: resourceType,
-		ResourceID:   resourceID,
-		ExportType:   exportType,
-		RequestedBy:  actor.UserID,
-		ExpiresAt:    expiresAt,
+		ResourceType:  resourceType,
+		ResourceID:    resourceID,
+		ExportType:    exportType,
+		RequestConfig: requestConfig,
+		RequestedBy:   actor.UserID,
+		ExpiresAt:     expiresAt,
 	})
 	if err != nil {
 		if !h.record(c, auditInput(actor, resolved, audit.ResultFailure, apperr.MessageOf(err))) {
@@ -251,6 +263,49 @@ func (h *Handler) createJob(c *gin.Context, actor auth.Actor, resourceType strin
 		return Job{}, false
 	}
 	return job, true
+}
+
+func buildRequestConfig(exportType string, raw json.RawMessage, start *time.Time, end *time.Time, limit *int, c *gin.Context) (json.RawMessage, bool) {
+	config := map[string]any{}
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &config); err != nil || config == nil {
+			httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "request_config must be a JSON object"))
+			return nil, false
+		}
+	}
+	if start != nil {
+		config["start_time"] = start.UTC().Format(time.RFC3339)
+	}
+	if end != nil {
+		config["end_time"] = end.UTC().Format(time.RFC3339)
+	}
+	if limit != nil {
+		config["limit"] = *limit
+	}
+
+	switch strings.TrimSpace(exportType) {
+	case "telemetry_csv", "telemetry_excel", "media_zip":
+		if strings.TrimSpace(stringValue(config["start_time"])) == "" || strings.TrimSpace(stringValue(config["end_time"])) == "" {
+			httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "start_time and end_time are required for this export_type"))
+			return nil, false
+		}
+	}
+
+	encoded, err := json.Marshal(config)
+	if err != nil {
+		httpx.WriteAppError(c, apperr.Wrap(apperr.KindInternal, "marshal request_config", err))
+		return nil, false
+	}
+	return encoded, true
+}
+
+func stringValue(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return typed
+	default:
+		return ""
+	}
 }
 
 func (h *Handler) canAccessJob(c *gin.Context, actor auth.Actor, job Job, resolved ResolvedResource) (bool, bool) {

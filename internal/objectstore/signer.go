@@ -19,9 +19,10 @@ import (
 )
 
 type Signer struct {
-	cfg    config.ObjectStoreConfig
-	secret string
-	now    func() time.Time
+	cfg       config.ObjectStoreConfig
+	accessKey string
+	secret    string
+	now       func() time.Time
 }
 
 type SignedURL struct {
@@ -39,14 +40,16 @@ type DownloadTokenClaims struct {
 }
 
 func NewSigner(cfg config.ObjectStoreConfig, fallbackSecret string) *Signer {
+	accessKey := strings.TrimSpace(os.Getenv(strings.TrimSpace(cfg.AccessKeyEnv)))
 	secret := strings.TrimSpace(os.Getenv(strings.TrimSpace(cfg.SecretKeyEnv)))
 	if secret == "" {
 		secret = strings.TrimSpace(fallbackSecret)
 	}
 	return &Signer{
-		cfg:    cfg,
-		secret: secret,
-		now:    time.Now,
+		cfg:       cfg,
+		accessKey: accessKey,
+		secret:    secret,
+		now:       time.Now,
 	}
 }
 
@@ -63,6 +66,14 @@ func (s *Signer) SignObjectURL(objectKey string, ttl time.Duration) (SignedURL, 
 	}
 
 	expiresAt := s.now().Add(ttl).UTC()
+	if (normalizedProvider(s.cfg.Provider) == "minio" || normalizedProvider(s.cfg.Provider) == "s3") && s.accessKey != "" && strings.TrimSpace(os.Getenv(strings.TrimSpace(s.cfg.SecretKeyEnv))) != "" {
+		u, err := presignGetObjectURL(s.cfg.Endpoint, s.cfg.Bucket, objectKey, s.accessKey, strings.TrimSpace(os.Getenv(strings.TrimSpace(s.cfg.SecretKeyEnv))), s.cfg.Region, s.now(), ttl)
+		if err != nil {
+			return SignedURL{}, apperr.Wrap(apperr.KindInternal, "presign object url", err)
+		}
+		return SignedURL{URL: u, ExpiresAt: expiresAt}, nil
+	}
+
 	expires := strconv.FormatInt(expiresAt.Unix(), 10)
 	signature := s.signature("GET", objectKey, expires)
 

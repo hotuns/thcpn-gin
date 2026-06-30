@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: THCPN IoT Research Platform API
-  version: 0.10.0
+  version: 0.11.0
   description: |
     THCPN 科研物联网数据管理平台后端 API。
 
@@ -1925,6 +1925,7 @@ paths:
         `telemetry_csv` and `telemetry_excel` require `telemetry.export` on a device or data stream.
         `dataset_zip` requires `dataset.export` on a dataset.
         `media_zip` requires `media.download` on a device, data stream, or media data-stream alias.
+        `telemetry_csv`, `telemetry_excel` and `media_zip` require `start_time` and `end_time`; these values are persisted in `request_config`.
         Creation success and permission-denied or service failures are written to audit logs.
       security:
         - bearerAuth: []
@@ -3988,6 +3989,10 @@ components:
           $ref: "#/components/schemas/UUID"
         export_type:
           $ref: "#/components/schemas/ExportType"
+        request_config:
+          type: object
+          additionalProperties: true
+          description: Worker input such as `start_time`, `end_time`, `limit`, or future export-specific options.
         status:
           $ref: "#/components/schemas/ExportStatus"
         file_object_key:
@@ -4027,6 +4032,18 @@ components:
           $ref: "#/components/schemas/UUID"
         export_type:
           $ref: "#/components/schemas/ExportType"
+        start_time:
+          $ref: "#/components/schemas/Timestamp"
+        end_time:
+          $ref: "#/components/schemas/Timestamp"
+        limit:
+          type: integer
+          minimum: 1
+          description: Maximum rows per telemetry stream. Defaults to the worker `export.max_rows`.
+        request_config:
+          type: object
+          additionalProperties: true
+          description: Advanced worker input. Top-level `start_time`, `end_time`, and `limit` override matching fields in this object.
         expires_at:
           $ref: "#/components/schemas/Timestamp"
     DatasetExportRequest:
@@ -4037,6 +4054,9 @@ components:
           enum:
             - dataset_zip
           default: dataset_zip
+        request_config:
+          type: object
+          additionalProperties: true
         expires_at:
           $ref: "#/components/schemas/Timestamp"
     ExportDownloadResponse:

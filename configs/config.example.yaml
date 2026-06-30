@@ -44,6 +44,8 @@ object_store:
   provider: "minio"
   endpoint: "127.0.0.1:9000"
   bucket: "iot-platform"
+  region: "us-east-1"
+  local_path: "var/objectstore"
   access_key_env: "OBJECT_STORE_ACCESS_KEY"
   secret_key_env: "OBJECT_STORE_SECRET_KEY"
 
@@ -54,3 +56,4 @@ query_limits:
 
 export:
   file_ttl_hours: 72
+  max_rows: 100000

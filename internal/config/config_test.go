@@ -20,6 +20,9 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("SMS_PROVIDER", "noop")
 	t.Setenv("SMS_TEMPLATE_PARAM_CODE_KEY", "verify_code")
 	t.Setenv("ALIYUN_SMS_ENDPOINT", "dysmsapi.cn-hangzhou.aliyuncs.com")
+	t.Setenv("OBJECT_STORE_PROVIDER", "file")
+	t.Setenv("OBJECT_STORE_LOCAL_PATH", "/tmp/thcpn-objectstore")
+	t.Setenv("EXPORT_MAX_ROWS", "250000")
 
 	cfg, err := Load()
 	if err != nil {
@@ -55,5 +58,14 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.SMS.Aliyun.Endpoint != "dysmsapi.cn-hangzhou.aliyuncs.com" {
 		t.Fatalf("expected aliyun endpoint override, got %q", cfg.SMS.Aliyun.Endpoint)
+	}
+	if cfg.ObjectStore.Provider != "file" {
+		t.Fatalf("expected object store provider override, got %q", cfg.ObjectStore.Provider)
+	}
+	if cfg.ObjectStore.LocalPath != "/tmp/thcpn-objectstore" {
+		t.Fatalf("expected object store local path override, got %q", cfg.ObjectStore.LocalPath)
+	}
+	if cfg.Export.MaxRows != 250000 {
+		t.Fatalf("expected export max rows override, got %d", cfg.Export.MaxRows)
 	}
 }

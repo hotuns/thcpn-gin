@@ -13,7 +13,7 @@
 - 本项目是科研物联网数据管理平台后端，不负责 MQTT 接入、设备上报解析或实时采集写入。
 - 当前阶段是 Go 模块化单体，包含 `api` 和 `worker` 两个进程。
 - 平台业务库是 PostgreSQL，设备采集数据源库与平台业务库必须分离。
-- Redis 用于后续 Worker/Asynq、缓存和异步任务基础设施。
+- Redis 用于后续 Asynq、缓存和异步任务基础设施。
 - 第一版权限主线是 `Role + Scope + AccessGrant + AuditLog`。
 
 ## 当前技术栈
@@ -37,7 +37,7 @@
 
 - 已初始化 Go 模块化单体工程，包含 `cmd/api` 和 `cmd/worker` 两个入口。
 - API 已接入 Gin、request id、结构化 access log、panic recovery 和统一错误响应。
-- Worker 当前只完成配置、日志、PostgreSQL、Redis 初始化和优雅退出，尚未接入 Asynq 真实任务。
+- Worker 已完成配置、日志、PostgreSQL、Redis 初始化、优雅退出和 ExportJob 轮询处理；尚未接入 Asynq 真实任务。
 - 已提供 Docker Compose 本地基础设施：PostgreSQL、Redis、migrate 工具容器。
 - 已提供 Makefile 常用命令：`db-up`、`db-down`、`migrate-up`、`migrate-down`、`sqlc`、`test`、`run-api`、`run-worker`、`web-install`、`run-web`、`build-web`。
 - 已提供配置加载：默认值、YAML 配置、环境变量覆盖。
@@ -211,7 +211,9 @@
 
 ### ExportJob
 
-- 已新增导出任务 migration `000009_export_jobs`，创建 `export_jobs`。
+- 已新增导出任务 migration：
+  - `000009_export_jobs` 创建 `export_jobs`。
+  - `000010_export_job_request_config` 给导出任务保存 `request_config_json`，用于 Worker 获取 `start_time`、`end_time`、`limit` 等任务参数。
 - 已实现 ExportJob API：
   - `GET /api/v1/export-jobs?mine=true&workspace_id=...&limit=...`
   - `POST /api/v1/export-jobs`
@@ -222,7 +224,12 @@
   - `telemetry_csv` / `telemetry_excel`，资源为 `device` 或 `data_stream`，需要 `telemetry.export`。
   - `dataset_zip`，资源为 `dataset`，需要 `dataset.export`。
   - `media_zip`，资源为 `device`、`data_stream` 或媒体 data-stream alias，需要 `media.download`。
-- API 当前创建 `pending` 任务、记录文件过期时间，并为成功任务生成临时对象下载 URL；真正读取数据源、生成 CSV/ZIP、上传对象存储和更新任务状态的 Worker 仍待实现。
+- API 当前创建 `pending` 任务、记录文件过期时间，并为成功任务生成临时对象下载 URL。
+- Worker 当前可 claim `pending` 任务、过期旧任务、生成并上传导出文件，然后把任务更新为 `success` 或 `failed`：
+  - `telemetry_csv`：支持 `device` / `data_stream` 资源，使用任务 `request_config_json.start_time`、`end_time`、`limit` 查询已绑定 PostgreSQL telemetry 数据源并生成 CSV。
+  - `dataset_zip`：支持 Dataset 元信息 ZIP，包含 `dataset.json`、`sources.csv`，并为 telemetry 类型的 device / data_stream source 生成 CSV。
+  - `telemetry_excel` 和 `media_zip` Worker 真生成仍待实现。
+- 对象存储当前支持本地文件后端（`object_store.provider=file`）和 MinIO/S3 SigV4 PUT；下载 URL 在配置访问密钥时使用 S3 预签名 GET，否则回退为平台 HMAC 临时 URL。
 - 导出任务创建和下载准备会写 audit log；按 workspace 查询全量导出任务需要 `audit.view`，默认列表只返回当前用户创建的任务。
 
 ### AccessGrant 和 Invitation
@@ -267,14 +274,15 @@
 
 - `make sqlc` 可正常生成代码。
 - `go test ./...` / `make test` 通过。
-- `make migrate-up` 可迁移到版本 9。
-- `make migrate-down MIGRATE_STEPS=1` 已验证 `000009` down 可用，随后已重新 `make migrate-up` 到版本 9。
+- `make migrate-up` 可迁移到版本 10。
+- `make migrate-down MIGRATE_STEPS=1` 已验证 `000010` down 可用，随后已重新 `make migrate-up` 到版本 10。
 - 已通过真实 HTTP 验证健康检查、密码注册、密码登录、JWT 调 `/me`、短信验证码发送、短信登录自动注册、JWT 调 workspace 列表、普通成员 JWT 访问成员管理被拒绝。
 - 已通过真实 HTTP 验证 Project / Site / Device / DataStream 创建和列表查询。
 - 已通过真实 HTTP 验证 DataSource 创建/列表，以及 DataStreamBinding 创建/列表。
 - 已通过真实 HTTP 验证 PostgreSQL Telemetry Query：创建外部表样例、配置 `env:PLATFORM_DATABASE_DSN` DataSource、绑定 DataStream 后返回 2 个时序点。
 - 已通过真实 HTTP 验证 PostgreSQL Media Query：创建媒体表样例、绑定 image DataStream 后返回 2 条媒体记录，`/media/download` 返回临时对象 URL，并确认 `media.download` audit log 写入。
 - 已通过真实 HTTP 验证 Dataset ExportJob：`POST /api/v1/datasets/:dataset_id/export` 创建 `pending` 任务，`GET /api/v1/export-jobs?mine=true` 可查到任务，pending 下载返回 409；手动标记 success 后 `/export-jobs/:id/download` 返回临时对象 URL，并确认 `dataset.export` audit log 写入。
+- 已通过真实 API + Worker 验证 Telemetry CSV 导出：创建设备、DataStream、DataSource、DataStreamBinding 和外部样例表后，`POST /api/v1/export-jobs` 创建 `telemetry_csv` 任务，`WORKER_RUN_ONCE=true go run ./cmd/worker` 将任务处理为 `success`，本地对象存储生成 CSV，`/export-jobs/:id/download` 返回 200。
 - 已通过真实 HTTP 验证 AccessGrant：未授权用户访问 device 被拒绝，创建 `shared_viewer` device grant 后可读取 device，但仍不能 PATCH device。
 - 已通过真实 HTTP 验证 `service_engineer` device grant 必须通过显式 grant 创建并带过期时间。
 - 已通过真实 HTTP 验证 Invitation：创建 project invitation、受邀用户在 `/invitations/mine` 看到邀请、accept 后可读取 project。
@@ -284,9 +292,9 @@
 ### 尚未实现
 
 - Refresh token、退出登录、session 黑名单、设备会话管理、MFA、邮箱验证码/邮箱验证。
-- Export Worker 真正生成 CSV / ZIP / Excel、上传对象存储和任务状态流转。
+- Export Worker 的 `telemetry_excel`、真实媒体文件 `media_zip` 打包、Asynq 队列化和更完整对象存储集成。
 - Project / Site / Device / DataStream / Dataset 当前完成资产、元信息、查询定义、PostgreSQL telemetry 读取和 PostgreSQL media 记录查询；Project / Site / DataStream 变更审计可后续按风险扩展。
-- 尚未实现模块的敏感操作审计仍待对应模块落地时接入，例如 Export、设备校准、固件升级和设备转移。
+- 尚未实现模块的敏感操作审计仍待对应模块落地时接入，例如设备校准、固件升级和设备转移。
 - MySQL / ClickHouse / HTTP DataSource 运行时适配器。
 - Asynq 真实任务、对象存储、Prometheus、OpenTelemetry。
 

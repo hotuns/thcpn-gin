@@ -80,6 +80,8 @@ type ObjectStoreConfig struct {
 	Provider     string `yaml:"provider"`
 	Endpoint     string `yaml:"endpoint"`
 	Bucket       string `yaml:"bucket"`
+	Region       string `yaml:"region"`
+	LocalPath    string `yaml:"local_path"`
 	AccessKeyEnv string `yaml:"access_key_env"`
 	SecretKeyEnv string `yaml:"secret_key_env"`
 }
@@ -92,6 +94,7 @@ type QueryLimitsConfig struct {
 
 type ExportConfig struct {
 	FileTTLHours int `yaml:"file_ttl_hours"`
+	MaxRows      int `yaml:"max_rows"`
 }
 
 func Default() Config {
@@ -143,6 +146,8 @@ func Default() Config {
 			Provider:     "minio",
 			Endpoint:     "127.0.0.1:9000",
 			Bucket:       "iot-platform",
+			Region:       "us-east-1",
+			LocalPath:    "var/objectstore",
 			AccessKeyEnv: "OBJECT_STORE_ACCESS_KEY",
 			SecretKeyEnv: "OBJECT_STORE_SECRET_KEY",
 		},
@@ -153,6 +158,7 @@ func Default() Config {
 		},
 		Export: ExportConfig{
 			FileTTLHours: 72,
+			MaxRows:      100000,
 		},
 	}
 }
@@ -244,6 +250,9 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.Export.FileTTLHours <= 0 {
 		return errors.New("export.file_ttl_hours must be greater than 0")
+	}
+	if cfg.Export.MaxRows <= 0 {
+		return errors.New("export.max_rows must be greater than 0")
 	}
 	return nil
 }
@@ -345,5 +354,30 @@ func applyEnv(cfg *Config) {
 	}
 	if value := strings.TrimSpace(os.Getenv("ALIYUN_SMS_ENDPOINT")); value != "" {
 		cfg.SMS.Aliyun.Endpoint = value
+	}
+	if value := strings.TrimSpace(os.Getenv("OBJECT_STORE_PROVIDER")); value != "" {
+		cfg.ObjectStore.Provider = value
+	}
+	if value := strings.TrimSpace(os.Getenv("OBJECT_STORE_ENDPOINT")); value != "" {
+		cfg.ObjectStore.Endpoint = value
+	}
+	if value := strings.TrimSpace(os.Getenv("OBJECT_STORE_BUCKET")); value != "" {
+		cfg.ObjectStore.Bucket = value
+	}
+	if value := strings.TrimSpace(os.Getenv("OBJECT_STORE_REGION")); value != "" {
+		cfg.ObjectStore.Region = value
+	}
+	if value := strings.TrimSpace(os.Getenv("OBJECT_STORE_LOCAL_PATH")); value != "" {
+		cfg.ObjectStore.LocalPath = value
+	}
+	if value := strings.TrimSpace(os.Getenv("EXPORT_FILE_TTL_HOURS")); value != "" {
+		if hours, err := strconv.Atoi(value); err == nil {
+			cfg.Export.FileTTLHours = hours
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("EXPORT_MAX_ROWS")); value != "" {
+		if rows, err := strconv.Atoi(value); err == nil {
+			cfg.Export.MaxRows = rows
+		}
 	}
 }

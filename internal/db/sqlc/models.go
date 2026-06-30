@@ -140,20 +140,21 @@ type DeviceCapability struct {
 }
 
 type ExportJob struct {
-	ID            uuid.UUID          `json:"id"`
-	WorkspaceID   uuid.UUID          `json:"workspace_id"`
-	RequestedBy   uuid.UUID          `json:"requested_by"`
-	ResourceType  string             `json:"resource_type"`
-	ResourceID    uuid.UUID          `json:"resource_id"`
-	ExportType    string             `json:"export_type"`
-	Status        string             `json:"status"`
-	FileObjectKey *string            `json:"file_object_key"`
-	ErrorMessage  *string            `json:"error_message"`
-	CreatedAt     pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
-	StartedAt     pgtype.Timestamptz `json:"started_at"`
-	FinishedAt    pgtype.Timestamptz `json:"finished_at"`
-	ExpiresAt     pgtype.Timestamptz `json:"expires_at"`
+	ID                uuid.UUID          `json:"id"`
+	WorkspaceID       uuid.UUID          `json:"workspace_id"`
+	RequestedBy       uuid.UUID          `json:"requested_by"`
+	ResourceType      string             `json:"resource_type"`
+	ResourceID        uuid.UUID          `json:"resource_id"`
+	ExportType        string             `json:"export_type"`
+	Status            string             `json:"status"`
+	FileObjectKey     *string            `json:"file_object_key"`
+	ErrorMessage      *string            `json:"error_message"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	StartedAt         pgtype.Timestamptz `json:"started_at"`
+	FinishedAt        pgtype.Timestamptz `json:"finished_at"`
+	ExpiresAt         pgtype.Timestamptz `json:"expires_at"`
+	RequestConfigJson []byte             `json:"request_config_json"`
 }
 
 type Invitation struct {

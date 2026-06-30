@@ -13,6 +13,7 @@ import (
 type Querier interface {
 	AcceptInvitation(ctx context.Context, id uuid.UUID) (Invitation, error)
 	AddDeviceCapability(ctx context.Context, arg AddDeviceCapabilityParams) (DeviceCapability, error)
+	ClaimNextPendingExportJob(ctx context.Context) (ExportJob, error)
 	CountActiveWorkspaceOwners(ctx context.Context, workspaceID uuid.UUID) (int64, error)
 	CreateAccessGrant(ctx context.Context, arg CreateAccessGrantParams) (AccessGrant, error)
 	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) (AuditLog, error)
@@ -34,6 +35,7 @@ type Querier interface {
 	DeleteDataset(ctx context.Context, id uuid.UUID) (Dataset, error)
 	DeleteDatasetSources(ctx context.Context, datasetID uuid.UUID) error
 	DeleteDeviceCapabilities(ctx context.Context, deviceID uuid.UUID) error
+	ExpireExportJobs(ctx context.Context) (int64, error)
 	FindActiveUserByEmail(ctx context.Context, email *string) (User, error)
 	FindActiveUserByIdentifier(ctx context.Context, identifier *string) (User, error)
 	FindActiveUserByPhone(ctx context.Context, phone *string) (User, error)
