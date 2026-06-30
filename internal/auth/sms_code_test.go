@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -111,6 +112,36 @@ func TestSMSCodeStoreExpiresCode(t *testing.T) {
 	}
 }
 
+func TestEmailCodeStoreIssueAndVerifyDeletesCode(t *testing.T) {
+	store, _ := newTestEmailCodeStore(t, config.EmailConfig{
+		CodeTTLSeconds:    300,
+		CooldownSeconds:   60,
+		DailyLimit:        10,
+		MaxVerifyAttempts: 5,
+	})
+
+	code, err := store.Issue(context.Background(), "user@example.com")
+	if err != nil {
+		t.Fatalf("issue email code: %v", err)
+	}
+	if len(code) != 6 {
+		t.Fatalf("expected 6 digit code, got %q", code)
+	}
+	raw, err := store.store.redis.Get(context.Background(), "auth:email:code:"+hashSubject("user@example.com")).Result()
+	if err != nil {
+		t.Fatalf("get stored email code record: %v", err)
+	}
+	if strings.Contains(raw, code) {
+		t.Fatalf("email code record should not contain plaintext code: %s", raw)
+	}
+	if err := store.Verify(context.Background(), "user@example.com", code); err != nil {
+		t.Fatalf("verify email code: %v", err)
+	}
+	if err := store.Verify(context.Background(), "user@example.com", code); apperr.KindOf(err) != apperr.KindUnauthorized {
+		t.Fatalf("expected code to be deleted after success, got %v", err)
+	}
+}
+
 func newTestSMSCodeStore(t *testing.T, cfg config.SMSConfig) (*SMSCodeStore, *miniredis.Miniredis) {
 	t.Helper()
 
@@ -121,4 +152,16 @@ func newTestSMSCodeStore(t *testing.T, cfg config.SMSConfig) (*SMSCodeStore, *mi
 	})
 
 	return NewSMSCodeStore(client, "test-secret", cfg), redisServer
+}
+
+func newTestEmailCodeStore(t *testing.T, cfg config.EmailConfig) (*EmailCodeStore, *miniredis.Miniredis) {
+	t.Helper()
+
+	redisServer := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() {
+		_ = client.Close()
+	})
+
+	return NewEmailCodeStore(client, "test-secret", cfg), redisServer
 }

@@ -24,6 +24,7 @@ import (
 	"thcpn-gin/internal/db"
 	"thcpn-gin/internal/db/sqlc"
 	"thcpn-gin/internal/device"
+	emailx "thcpn-gin/internal/email"
 	"thcpn-gin/internal/export"
 	"thcpn-gin/internal/httpx"
 	"thcpn-gin/internal/media"
@@ -105,7 +106,12 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 		return err
 	}
 	smsCodeStore := auth.NewSMSCodeStore(deps.Redis, cfg.Auth.JWTSecret, cfg.SMS)
-	authService := auth.NewService(deps.Postgres, tokenManager, smsCodeStore, smsSender, cfg.Auth, cfg.SMS)
+	emailSender, err := newEmailSender(cfg.Email, deps.Logger)
+	if err != nil {
+		return err
+	}
+	emailCodeStore := auth.NewEmailCodeStore(deps.Redis, cfg.Auth.JWTSecret, cfg.Email)
+	authService := auth.NewService(deps.Postgres, tokenManager, smsCodeStore, smsSender, emailCodeStore, emailSender, cfg.Auth, cfg.SMS, cfg.Email)
 
 	authHandler := auth.NewHandler(authService, auditService)
 	userHandler := user.NewHandler(userService)
@@ -156,6 +162,8 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.POST("/auth/logout", authHandler.Logout)
 	authed.GET("/auth/sessions", authHandler.ListSessions)
 	authed.DELETE("/auth/sessions/:session_id", authHandler.RevokeSession)
+	authed.POST("/auth/email/send", authHandler.SendEmailVerification)
+	authed.POST("/auth/email/verify", authHandler.VerifyEmail)
 	authed.GET("/me", userHandler.Me)
 	authed.GET("/workspaces", workspaceHandler.List)
 	authed.POST("/workspaces", workspaceHandler.Create)
@@ -227,6 +235,17 @@ func newSMSSender(cfg config.SMSConfig, logger *slog.Logger) (smsx.Sender, error
 		return smsx.NewAliyunSender(cfg)
 	default:
 		return nil, apperr.New(apperr.KindInvalidArgument, "unsupported sms provider")
+	}
+}
+
+func newEmailSender(cfg config.EmailConfig, logger *slog.Logger) (emailx.Sender, error) {
+	switch strings.ToLower(strings.TrimSpace(cfg.Provider)) {
+	case "log", "":
+		return emailx.LogSender{Logger: logger}, nil
+	case "noop":
+		return emailx.NoopSender{}, nil
+	default:
+		return nil, apperr.New(apperr.KindInvalidArgument, "unsupported email provider")
 	}
 }
 

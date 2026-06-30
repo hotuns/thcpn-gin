@@ -62,6 +62,11 @@ function App() {
     code: "",
     name: ""
   });
+  const [emailVerification, setEmailVerification] = useState({
+    email: "",
+    code: ""
+  });
+  const [emailVerifiedAt, setEmailVerifiedAt] = useState("");
   const [workspaceForm, setWorkspaceForm] = useState({
     name: "",
     organization_type: "lab" as OrganizationType
@@ -100,6 +105,8 @@ function App() {
   async function loadAuthenticatedData(messageText: string, preserveWorkspaceSelection = true) {
     const [me, list, sessionList] = await Promise.all([api.me(), api.listWorkspaces(), api.listAuthSessions()]);
     setCurrentUser(me.user);
+    setEmailVerification((current) => ({ ...current, email: me.user.email || current.email }));
+    setEmailVerifiedAt(me.user.email_verified_at || "");
     setWorkspaces(list.items);
     setSessions(sessionList.items);
     setSelectedWorkspaceId((current) =>
@@ -143,12 +150,16 @@ function App() {
     storeToken(result.access_token, result.refresh_token);
     setToken(result.access_token);
     setRefreshToken(result.refresh_token);
+    setEmailVerification((current) => ({ ...current, email: result.user.email || current.email }));
+    setEmailVerifiedAt(result.user.email_verified_at || "");
     setCurrentUser({
       id: result.user.id,
       name: result.user.name,
       phone: result.user.phone,
       email: result.user.email,
-      status: result.user.status
+      status: result.user.status,
+      phone_verified_at: result.user.phone_verified_at,
+      email_verified_at: result.user.email_verified_at
     });
     setMessage(messageText);
   }
@@ -185,6 +196,32 @@ function App() {
       const result = await api.loginWithSms(sms);
       applyLogin(result);
       await loadAuthenticatedData(result.created ? "账号已创建并登录。" : "登录成功。", false);
+    });
+  }
+
+  async function handleSendEmailCode(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await run(async () => {
+      const result = await api.sendEmailVerification(emailVerification.email);
+      setMessage(`邮箱验证码请求成功，有效期 ${result.expires_in} 秒，冷却 ${result.cooldown_seconds} 秒。`);
+    });
+  }
+
+  async function handleVerifyEmail(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await run(async () => {
+      const result = await api.verifyEmail(emailVerification);
+      setCurrentUser({
+        id: result.user.id,
+        name: result.user.name,
+        phone: result.user.phone,
+        email: result.user.email,
+        status: result.user.status,
+        phone_verified_at: result.user.phone_verified_at,
+        email_verified_at: result.user.email_verified_at
+      });
+      setEmailVerifiedAt(result.user.email_verified_at || "");
+      setMessage("邮箱已验证。");
     });
   }
 
@@ -290,6 +327,8 @@ function App() {
       setToken("");
       setRefreshToken("");
       setCurrentUser(null);
+      setEmailVerification({ email: "", code: "" });
+      setEmailVerifiedAt("");
       setWorkspaces([]);
       setSelectedWorkspaceId("");
       setMembers([]);
@@ -369,6 +408,31 @@ function App() {
             <TextInput label="验证码" value={sms.code} onChange={(code) => setSms({ ...sms, code })} />
             <TextInput label="名称" value={sms.name} onChange={(name) => setSms({ ...sms, name })} />
             <button type="submit">短信登录</button>
+          </form>
+        </section>
+
+        <section className="panel">
+          <h2>邮箱验证</h2>
+          <p className="hint">{emailVerifiedAt ? `已验证：${formatDateTime(emailVerifiedAt)}` : "未验证或未加载验证状态"}</p>
+          <form onSubmit={handleSendEmailCode}>
+            <TextInput
+              label="邮箱"
+              value={emailVerification.email}
+              onChange={(email) => setEmailVerification({ ...emailVerification, email })}
+            />
+            <button type="submit" disabled={!token}>
+              发送邮箱验证码
+            </button>
+          </form>
+          <form onSubmit={handleVerifyEmail}>
+            <TextInput
+              label="验证码"
+              value={emailVerification.code}
+              onChange={(code) => setEmailVerification({ ...emailVerification, code })}
+            />
+            <button type="submit" disabled={!token}>
+              验证邮箱
+            </button>
           </form>
         </section>
       </section>

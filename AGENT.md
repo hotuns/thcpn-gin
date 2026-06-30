@@ -27,7 +27,7 @@
 - Redis: go-redis
 - Logger: standard library `log/slog`
 - Config: YAML plus environment variable overrides
-- Auth: JWT HS256 access token, bcrypt password hash, SMS verification code in Redis
+- Auth: JWT HS256 access token, bcrypt password hash, SMS / email verification code in Redis
 - SMS sender: `log` / `noop` / Aliyun Dysmsapi
 - Web: Vite + React + TypeScript，独立工程位于 `web/`
 
@@ -69,12 +69,14 @@
 - 已实现密码登录接口：`POST /api/v1/auth/password/login`。
 - 已实现短信验证码发送接口：`POST /api/v1/auth/sms/send`。
 - 已实现短信验证码登录/自动注册接口：`POST /api/v1/auth/sms/login`。
+- 已实现邮箱验证码发送和验证接口：`POST /api/v1/auth/email/send`、`POST /api/v1/auth/email/verify`，用于验证当前登录用户已绑定的邮箱。
 - 注册类流程在事务中完成：
   - 创建 `users` 记录。
   - 自动创建 personal workspace。
   - 自动创建 Owner membership。
 - 密码注册额外创建 `user_credentials`，密码使用 bcrypt 哈希保存，不保存明文密码。
 - 短信登录使用 Redis 保存验证码哈希，不把验证码写入 PostgreSQL；手机号不存在时自动创建用户和 personal workspace。
+- 邮箱验证码使用 Redis 保存验证码哈希、冷却、每日限额和尝试次数；本地默认 `email.provider=log`，验证码写入服务日志。
 - 已实现 JWT access token 签发和校验，claims 使用 `sub=user_id`、`iat`、`exp`。
 - API 认证 middleware 优先读取 `Authorization: Bearer <token>`。
 - 仍保留开发期 `X-User-ID` fallback，由 `auth.dev_user_header_enabled` / `AUTH_DEV_USER_HEADER_ENABLED` 控制；默认开发开启，生产应关闭。
@@ -85,9 +87,10 @@
   - `POST /api/v1/auth/logout` 会撤销当前 access token；请求体带 `refresh_token` 时同时撤销对应 refresh session。
   - `GET /api/v1/auth/sessions` 列出当前用户活跃 refresh sessions；`DELETE /api/v1/auth/sessions/:session_id` 撤销指定会话。
   - 平台库新增 `auth_refresh_sessions` 和 `auth_access_token_blacklist`，refresh session 保存 token hash、过期时间、user agent 和 client ip。
-- Web 开发控制台已保存 refresh token，可刷新 access token、调用服务端 logout，并提供活跃会话列表和撤销入口。
+- Web 开发控制台已保存 refresh token，可刷新 access token、调用服务端 logout，提供活跃会话列表/撤销入口，并支持发送和提交邮箱验证码。
 - 账号密码登录失败会累计失败次数，默认 5 次后锁定 15 分钟。
 - 短信验证码默认 5 分钟有效、60 秒冷却、单手机号每日 10 次、最多 5 次校验尝试。
+- 邮箱验证码默认 5 分钟有效、60 秒冷却、单邮箱每日 10 次、最多 5 次校验尝试。
 - 阿里云短信 sender 已接入，但本地默认使用 `sms.provider=log`，避免测试消耗短信费用。
 
 ### Workspace
@@ -325,11 +328,12 @@
 - 已通过自动化测试验证 `/metrics` 暴露 Prometheus 指标并记录 `/healthz` 请求。
 - 已通过自动化测试验证 bearer token 可查黑名单并拒绝已撤销 token，refresh token 生成和 hash 稳定且不存明文，并验证 auth session 响应模型映射。
 - 已通过 `npm --prefix web run build` 验证前端会话管理界面、refresh/logout 客户端类型和 API 封装可编译。
+- 已通过自动化测试验证邮箱验证码可签发、验证成功后删除，并与短信验证码共用 Redis 哈希存储和尝试次数控制逻辑。
 - 此前已通过真实 HTTP 验证开发注册、workspace 列表、创建 organization workspace、添加成员、列成员、更新成员角色、普通成员访问成员管理被拒绝、删除成员。
 
 ### 尚未实现
 
-- MFA、邮箱验证码/邮箱验证。
+- MFA。
 - Export Worker 的更完整对象存储集成。
 - Project / Site / Device / DataStream / Dataset 当前完成资产、元信息、查询定义、PostgreSQL / MySQL / ClickHouse / HTTP API telemetry 读取和 media 记录查询；Project / Site / DataStream 变更审计可后续按风险扩展。
 - 尚未实现模块的敏感操作审计仍待对应模块落地时接入，例如设备校准、固件升级和设备转移。
@@ -435,7 +439,7 @@ make build-web
 - `X-User-ID` 只作为开发期 fallback，生产环境必须关闭 `AUTH_DEV_USER_HEADER_ENABLED`。
 - `POST /api/v1/auth/register` 是开发注册接口，生产环境必须关闭 `AUTH_DEV_REGISTER_ENABLED`。
 - 本地/测试默认使用 `SMS_PROVIDER=log` 或 `noop`；只有配置好阿里云环境变量并确认模板审核通过后才使用 `aliyun`。
-- 短信验证码只存 Redis，value 保存 code hash、attempt count 和过期信息；不要把明文验证码写入数据库或响应体。
+- 短信和邮箱验证码只存 Redis，value 保存 code hash、attempt count 和过期信息；不要把明文验证码写入数据库或响应体。
 - 密码必须通过 `ValidatePassword` 校验，并使用 `bcrypt` 保存哈希；不要保存明文密码或可逆加密密码。
 - access token 支持 blacklist 主动失效；涉及 logout、踢下线或会话管理时必须继续走 `auth_refresh_sessions` 和 `auth_access_token_blacklist`，不要引入仅客户端删除 token 的实现。
 

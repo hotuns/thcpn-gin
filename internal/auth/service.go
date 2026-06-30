@@ -15,20 +15,24 @@ import (
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/db/sqlc"
+	emailx "thcpn-gin/internal/email"
 	smsx "thcpn-gin/internal/sms"
 )
 
 const ownerRoleCode = "owner"
 
 type Service struct {
-	db        *pgxpool.Pool
-	queries   *sqlc.Queries
-	tokens    *TokenManager
-	codeStore *SMSCodeStore
-	sender    smsx.Sender
-	authCfg   config.AuthConfig
-	smsCfg    config.SMSConfig
-	now       func() time.Time
+	db             *pgxpool.Pool
+	queries        *sqlc.Queries
+	tokens         *TokenManager
+	codeStore      *SMSCodeStore
+	emailCodeStore *EmailCodeStore
+	sender         smsx.Sender
+	emailSender    emailx.Sender
+	authCfg        config.AuthConfig
+	smsCfg         config.SMSConfig
+	emailCfg       config.EmailConfig
+	now            func() time.Time
 }
 
 type UserProfile struct {
@@ -55,11 +59,20 @@ type SendSMSInput struct {
 	Phone string
 }
 
-type SendSMSResult struct {
+type SendCodeResult struct {
 	Sent            bool `json:"sent"`
 	ExpiresIn       int  `json:"expires_in"`
 	CooldownSeconds int  `json:"cooldown_seconds"`
 }
+
+type SendSMSResult = SendCodeResult
+
+type SendEmailInput struct {
+	UserID uuid.UUID
+	Email  string
+}
+
+type SendEmailResult = SendCodeResult
 
 type SMSLoginInput struct {
 	Phone   string
@@ -107,6 +120,12 @@ type RevokeSessionInput struct {
 	SessionID uuid.UUID
 }
 
+type VerifyEmailInput struct {
+	UserID uuid.UUID
+	Email  string
+	Code   string
+}
+
 type LoginResult struct {
 	AccessToken      string      `json:"access_token"`
 	RefreshToken     string      `json:"refresh_token"`
@@ -117,16 +136,19 @@ type LoginResult struct {
 	Created          bool        `json:"created,omitempty"`
 }
 
-func NewService(db *pgxpool.Pool, tokens *TokenManager, codeStore *SMSCodeStore, sender smsx.Sender, authCfg config.AuthConfig, smsCfg config.SMSConfig) *Service {
+func NewService(db *pgxpool.Pool, tokens *TokenManager, codeStore *SMSCodeStore, sender smsx.Sender, emailCodeStore *EmailCodeStore, emailSender emailx.Sender, authCfg config.AuthConfig, smsCfg config.SMSConfig, emailCfg config.EmailConfig) *Service {
 	return &Service{
-		db:        db,
-		queries:   sqlc.New(db),
-		tokens:    tokens,
-		codeStore: codeStore,
-		sender:    sender,
-		authCfg:   authCfg,
-		smsCfg:    smsCfg,
-		now:       time.Now,
+		db:             db,
+		queries:        sqlc.New(db),
+		tokens:         tokens,
+		codeStore:      codeStore,
+		emailCodeStore: emailCodeStore,
+		sender:         sender,
+		emailSender:    emailSender,
+		authCfg:        authCfg,
+		smsCfg:         smsCfg,
+		emailCfg:       emailCfg,
+		now:            time.Now,
 	}
 }
 
@@ -157,6 +179,96 @@ func (s *Service) SendSMS(ctx context.Context, input SendSMSInput) (SendSMSResul
 		ExpiresIn:       s.smsCfg.CodeTTLSeconds,
 		CooldownSeconds: s.smsCfg.CooldownSeconds,
 	}, nil
+}
+
+func (s *Service) SendEmailVerification(ctx context.Context, input SendEmailInput) (SendEmailResult, error) {
+	if input.UserID == uuid.Nil {
+		return SendEmailResult{}, apperr.New(apperr.KindInvalidArgument, "user id is required")
+	}
+	email := normalizeOptionalEmail(input.Email)
+	if email == nil {
+		return SendEmailResult{}, apperr.New(apperr.KindInvalidArgument, "email is required")
+	}
+	userModel, err := s.queries.GetActiveUser(ctx, input.UserID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return SendEmailResult{}, apperr.New(apperr.KindUnauthorized, "user is not active")
+		}
+		return SendEmailResult{}, apperr.Wrap(apperr.KindInternal, "get email verification user", err)
+	}
+	if userModel.Email == nil || *userModel.Email != *email {
+		return SendEmailResult{}, apperr.New(apperr.KindInvalidArgument, "email does not match current user")
+	}
+	if userModel.EmailVerifiedAt.Valid {
+		return SendEmailResult{}, apperr.New(apperr.KindConflict, "email is already verified")
+	}
+	if s.emailCodeStore == nil {
+		return SendEmailResult{}, apperr.New(apperr.KindInternal, "email code store is not configured")
+	}
+	if s.emailSender == nil {
+		return SendEmailResult{}, apperr.New(apperr.KindInternal, "email sender is not configured")
+	}
+
+	code, err := s.emailCodeStore.Issue(ctx, *email)
+	if err != nil {
+		return SendEmailResult{}, err
+	}
+
+	if err := s.emailSender.SendVerificationCode(ctx, emailx.SendRequest{Email: *email, Code: code}); err != nil {
+		_ = s.emailCodeStore.ClearIssue(ctx, *email)
+		return SendEmailResult{}, err
+	}
+
+	return SendEmailResult{
+		Sent:            true,
+		ExpiresIn:       s.emailCfg.CodeTTLSeconds,
+		CooldownSeconds: s.emailCfg.CooldownSeconds,
+	}, nil
+}
+
+func (s *Service) VerifyEmail(ctx context.Context, input VerifyEmailInput) (UserProfile, error) {
+	if input.UserID == uuid.Nil {
+		return UserProfile{}, apperr.New(apperr.KindInvalidArgument, "user id is required")
+	}
+	email := normalizeOptionalEmail(input.Email)
+	if email == nil {
+		return UserProfile{}, apperr.New(apperr.KindInvalidArgument, "email is required")
+	}
+	code := strings.TrimSpace(input.Code)
+	if code == "" {
+		return UserProfile{}, apperr.New(apperr.KindInvalidArgument, "email code is required")
+	}
+	userModel, err := s.queries.GetActiveUser(ctx, input.UserID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return UserProfile{}, apperr.New(apperr.KindUnauthorized, "user is not active")
+		}
+		return UserProfile{}, apperr.Wrap(apperr.KindInternal, "get email verification user", err)
+	}
+	if userModel.Email == nil || *userModel.Email != *email {
+		return UserProfile{}, apperr.New(apperr.KindInvalidArgument, "email does not match current user")
+	}
+	if userModel.EmailVerifiedAt.Valid {
+		return userProfileFromSQL(userModel), nil
+	}
+	if s.emailCodeStore == nil {
+		return UserProfile{}, apperr.New(apperr.KindInternal, "email code store is not configured")
+	}
+	if err := s.emailCodeStore.Verify(ctx, *email, code); err != nil {
+		return UserProfile{}, err
+	}
+
+	userModel, err = s.queries.UpdateUserEmailVerified(ctx, sqlc.UpdateUserEmailVerifiedParams{
+		ID:    input.UserID,
+		Email: email,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return UserProfile{}, apperr.New(apperr.KindNotFound, "email verification user not found")
+		}
+		return UserProfile{}, apperr.Wrap(apperr.KindInternal, "mark email verified", err)
+	}
+	return userProfileFromSQL(userModel), nil
 }
 
 func (s *Service) LoginWithSMS(ctx context.Context, input SMSLoginInput) (LoginResult, error) {

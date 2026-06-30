@@ -17,6 +17,7 @@ type Config struct {
 	Redis       RedisConfig       `yaml:"redis"`
 	Auth        AuthConfig        `yaml:"auth"`
 	SMS         SMSConfig         `yaml:"sms"`
+	Email       EmailConfig       `yaml:"email"`
 	ObjectStore ObjectStoreConfig `yaml:"object_store"`
 	QueryLimits QueryLimitsConfig `yaml:"query_limits"`
 	Export      ExportConfig      `yaml:"export"`
@@ -68,6 +69,14 @@ type SMSConfig struct {
 	MaxVerifyAttempts    int             `yaml:"max_verify_attempts"`
 	TemplateParamCodeKey string          `yaml:"template_param_code_key"`
 	Aliyun               AliyunSMSConfig `yaml:"aliyun"`
+}
+
+type EmailConfig struct {
+	Provider          string `yaml:"provider"`
+	CodeTTLSeconds    int    `yaml:"code_ttl_seconds"`
+	CooldownSeconds   int    `yaml:"cooldown_seconds"`
+	DailyLimit        int    `yaml:"daily_limit"`
+	MaxVerifyAttempts int    `yaml:"max_verify_attempts"`
 }
 
 type AliyunSMSConfig struct {
@@ -152,6 +161,13 @@ func Default() Config {
 				TemplateCodeEnv:    "ALIYUN_SMS_TEMPLATE_CODE",
 				Endpoint:           "dysmsapi.aliyuncs.com",
 			},
+		},
+		Email: EmailConfig{
+			Provider:          "log",
+			CodeTTLSeconds:    300,
+			CooldownSeconds:   60,
+			DailyLimit:        10,
+			MaxVerifyAttempts: 5,
 		},
 		ObjectStore: ObjectStoreConfig{
 			Provider:     "minio",
@@ -259,6 +275,23 @@ func (cfg Config) Validate() error {
 	}
 	if strings.TrimSpace(cfg.SMS.Aliyun.Endpoint) == "" {
 		return errors.New("sms.aliyun.endpoint is required")
+	}
+	switch strings.TrimSpace(cfg.Email.Provider) {
+	case "log", "noop":
+	default:
+		return errors.New("email.provider must be one of log, noop")
+	}
+	if cfg.Email.CodeTTLSeconds <= 0 {
+		return errors.New("email.code_ttl_seconds must be greater than 0")
+	}
+	if cfg.Email.CooldownSeconds <= 0 {
+		return errors.New("email.cooldown_seconds must be greater than 0")
+	}
+	if cfg.Email.DailyLimit <= 0 {
+		return errors.New("email.daily_limit must be greater than 0")
+	}
+	if cfg.Email.MaxVerifyAttempts <= 0 {
+		return errors.New("email.max_verify_attempts must be greater than 0")
 	}
 	if cfg.QueryLimits.MaxHistoryDays <= 0 {
 		return errors.New("query_limits.max_history_days must be greater than 0")
@@ -388,6 +421,29 @@ func applyEnv(cfg *Config) {
 	}
 	if value := strings.TrimSpace(os.Getenv("ALIYUN_SMS_ENDPOINT")); value != "" {
 		cfg.SMS.Aliyun.Endpoint = value
+	}
+	if value := strings.TrimSpace(os.Getenv("EMAIL_PROVIDER")); value != "" {
+		cfg.Email.Provider = value
+	}
+	if value := strings.TrimSpace(os.Getenv("EMAIL_CODE_TTL_SECONDS")); value != "" {
+		if seconds, err := strconv.Atoi(value); err == nil {
+			cfg.Email.CodeTTLSeconds = seconds
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("EMAIL_COOLDOWN_SECONDS")); value != "" {
+		if seconds, err := strconv.Atoi(value); err == nil {
+			cfg.Email.CooldownSeconds = seconds
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("EMAIL_DAILY_LIMIT")); value != "" {
+		if limit, err := strconv.Atoi(value); err == nil {
+			cfg.Email.DailyLimit = limit
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("EMAIL_MAX_VERIFY_ATTEMPTS")); value != "" {
+		if attempts, err := strconv.Atoi(value); err == nil {
+			cfg.Email.MaxVerifyAttempts = attempts
+		}
 	}
 	if value := strings.TrimSpace(os.Getenv("OBJECT_STORE_PROVIDER")); value != "" {
 		cfg.ObjectStore.Provider = value

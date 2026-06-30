@@ -163,11 +163,13 @@ func (s *Service) LookupActor(ctx context.Context, id uuid.UUID) (auth.Actor, er
 		return auth.Actor{}, err
 	}
 	return auth.Actor{
-		UserID: model.ID,
-		Name:   model.Name,
-		Phone:  model.Phone,
-		Email:  model.Email,
-		Status: model.Status,
+		UserID:          model.ID,
+		Name:            model.Name,
+		Phone:           model.Phone,
+		Email:           model.Email,
+		Status:          model.Status,
+		PhoneVerifiedAt: model.PhoneVerifiedAt,
+		EmailVerifiedAt: model.EmailVerifiedAt,
 	}, nil
 }
 

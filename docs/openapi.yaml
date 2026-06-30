@@ -5,7 +5,7 @@ info:
   description: |
     THCPN 科研物联网数据管理平台后端 API。
 
-    当前文档覆盖已实现的阶段功能：健康检查、短信验证码登录/注册、密码注册/登录、refresh token、logout、会话管理、
+    当前文档覆盖已实现的阶段功能：健康检查、短信验证码登录/注册、邮箱验证码验证、密码注册/登录、refresh token、logout、会话管理、
     JWT 认证、Workspace 列表/创建、Workspace 成员管理、Project、Site、Device、DataStream、DataSource、DataStreamBinding、Telemetry Query、Media Query、Dataset 元信息管理和 ExportJob 导出任务、
     AccessGrant 外部分享/售后临时授权、Invitation 和 AuditLog。
 
@@ -152,6 +152,85 @@ paths:
           $ref: "#/components/responses/InvalidArgument"
         "429":
           $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/auth/email/send:
+    post:
+      tags:
+        - Auth
+      operationId: sendEmailVerificationCode
+      summary: Send email verification code
+      description: |
+        Sends a verification code to the current authenticated user's email address.
+        With `email.provider=log`, the code is written to the application log instead of an external email provider.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendEmailVerificationRequest"
+            examples:
+              default:
+                value:
+                  email: zhangsan@example.com
+      responses:
+        "200":
+          description: Verification code accepted for sending.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendCodeResponse"
+              examples:
+                sent:
+                  value:
+                    sent: true
+                    expires_in: 300
+                    cooldown_seconds: 60
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/auth/email/verify:
+    post:
+      tags:
+        - Auth
+      operationId: verifyEmailCode
+      summary: Verify current user's email
+      description: Verifies an email code and marks the current authenticated user's matching email address as verified.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyEmailRequest"
+            examples:
+              default:
+                value:
+                  email: zhangsan@example.com
+                  code: "123456"
+      responses:
+        "200":
+          description: Email verified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyEmailResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/Internal"
   /api/v1/auth/sms/login:
@@ -2945,6 +3024,49 @@ components:
           type: integer
           minimum: 1
           description: Minimum seconds before another code can be requested for the same phone.
+    SendCodeResponse:
+      type: object
+      required:
+        - sent
+        - expires_in
+        - cooldown_seconds
+      properties:
+        sent:
+          type: boolean
+        expires_in:
+          type: integer
+          minimum: 1
+          description: Verification code TTL in seconds.
+        cooldown_seconds:
+          type: integer
+          minimum: 1
+          description: Minimum seconds before another code can be requested for the same target.
+    SendEmailVerificationRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          $ref: "#/components/schemas/Email"
+    VerifyEmailRequest:
+      type: object
+      required:
+        - email
+        - code
+      properties:
+        email:
+          $ref: "#/components/schemas/Email"
+        code:
+          type: string
+          pattern: ^[0-9]{6}$
+          example: "123456"
+    VerifyEmailResponse:
+      type: object
+      required:
+        - user
+      properties:
+        user:
+          $ref: "#/components/schemas/UserProfile"
     SmsLoginRequest:
       type: object
       required:
@@ -3116,6 +3238,10 @@ components:
           $ref: "#/components/schemas/Email"
         status:
           $ref: "#/components/schemas/UserStatus"
+        phone_verified_at:
+          $ref: "#/components/schemas/Timestamp"
+        email_verified_at:
+          $ref: "#/components/schemas/Timestamp"
     MeResponse:
       type: object
       required:

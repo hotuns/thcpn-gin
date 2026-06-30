@@ -111,6 +111,7 @@ type Querier interface {
 	UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error)
 	UpdateSite(ctx context.Context, arg UpdateSiteParams) (Site, error)
 	UpdateUserCredentialFailure(ctx context.Context, arg UpdateUserCredentialFailureParams) (UserCredential, error)
+	UpdateUserEmailVerified(ctx context.Context, arg UpdateUserEmailVerifiedParams) (User, error)
 	UpdateUserLastLogin(ctx context.Context, id uuid.UUID) (User, error)
 	UpdateUserPhoneVerifiedAndLogin(ctx context.Context, id uuid.UUID) (User, error)
 	UpdateWorkspaceMemberRole(ctx context.Context, arg UpdateWorkspaceMemberRoleParams) (WorkspaceMember, error)

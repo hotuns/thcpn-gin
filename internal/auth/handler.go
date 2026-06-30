@@ -20,6 +20,15 @@ type sendSMSRequest struct {
 	Phone string `json:"phone"`
 }
 
+type sendEmailRequest struct {
+	Email string `json:"email"`
+}
+
+type verifyEmailRequest struct {
+	Email string `json:"email"`
+	Code  string `json:"code"`
+}
+
 type smsLoginRequest struct {
 	Phone string `json:"phone"`
 	Code  string `json:"code"`
@@ -68,6 +77,76 @@ func (h *Handler) SendSMS(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) SendEmailVerification(c *gin.Context) {
+	var req sendEmailRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	actor, ok := ActorFromContext(c)
+	if !ok {
+		httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "missing authenticated user"))
+		return
+	}
+
+	result, err := h.service.SendEmailVerification(c.Request.Context(), SendEmailInput{
+		UserID: actor.UserID,
+		Email:  req.Email,
+	})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) VerifyEmail(c *gin.Context) {
+	var req verifyEmailRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	actor, ok := ActorFromContext(c)
+	if !ok {
+		httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "missing authenticated user"))
+		return
+	}
+
+	user, err := h.service.VerifyEmail(c.Request.Context(), VerifyEmailInput{
+		UserID: actor.UserID,
+		Email:  req.Email,
+		Code:   req.Code,
+	})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "auth.email_verify",
+			ResourceType: "auth",
+			ResourceID:   audit.ResourceID(actor.UserID),
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "auth.email_verify",
+		ResourceType: "auth",
+		ResourceID:   audit.ResourceID(actor.UserID),
+		Result:       audit.ResultSuccess,
+	}) {
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"user": user})
 }
 
 func (h *Handler) LoginWithSMS(c *gin.Context) {

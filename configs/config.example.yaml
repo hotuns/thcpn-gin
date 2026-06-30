@@ -41,6 +41,13 @@ sms:
     template_code_env: "ALIYUN_SMS_TEMPLATE_CODE"
     endpoint: "dysmsapi.aliyuncs.com"
 
+email:
+  provider: "log"
+  code_ttl_seconds: 300
+  cooldown_seconds: 60
+  daily_limit: 10
+  max_verify_attempts: 5
+
 object_store:
   provider: "minio"
   endpoint: "127.0.0.1:9000"

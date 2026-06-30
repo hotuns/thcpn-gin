@@ -21,6 +21,11 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("SMS_PROVIDER", "noop")
 	t.Setenv("SMS_TEMPLATE_PARAM_CODE_KEY", "verify_code")
 	t.Setenv("ALIYUN_SMS_ENDPOINT", "dysmsapi.cn-hangzhou.aliyuncs.com")
+	t.Setenv("EMAIL_PROVIDER", "noop")
+	t.Setenv("EMAIL_CODE_TTL_SECONDS", "600")
+	t.Setenv("EMAIL_COOLDOWN_SECONDS", "120")
+	t.Setenv("EMAIL_DAILY_LIMIT", "12")
+	t.Setenv("EMAIL_MAX_VERIFY_ATTEMPTS", "4")
 	t.Setenv("OBJECT_STORE_PROVIDER", "file")
 	t.Setenv("OBJECT_STORE_LOCAL_PATH", "/tmp/thcpn-objectstore")
 	t.Setenv("EXPORT_MAX_ROWS", "250000")
@@ -67,6 +72,21 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.SMS.Aliyun.Endpoint != "dysmsapi.cn-hangzhou.aliyuncs.com" {
 		t.Fatalf("expected aliyun endpoint override, got %q", cfg.SMS.Aliyun.Endpoint)
+	}
+	if cfg.Email.Provider != "noop" {
+		t.Fatalf("expected email provider override, got %q", cfg.Email.Provider)
+	}
+	if cfg.Email.CodeTTLSeconds != 600 {
+		t.Fatalf("expected email code ttl override, got %d", cfg.Email.CodeTTLSeconds)
+	}
+	if cfg.Email.CooldownSeconds != 120 {
+		t.Fatalf("expected email cooldown override, got %d", cfg.Email.CooldownSeconds)
+	}
+	if cfg.Email.DailyLimit != 12 {
+		t.Fatalf("expected email daily limit override, got %d", cfg.Email.DailyLimit)
+	}
+	if cfg.Email.MaxVerifyAttempts != 4 {
+		t.Fatalf("expected email max verify attempts override, got %d", cfg.Email.MaxVerifyAttempts)
 	}
 	if cfg.ObjectStore.Provider != "file" {
 		t.Fatalf("expected object store provider override, got %q", cfg.ObjectStore.Provider)

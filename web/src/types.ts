@@ -59,6 +59,8 @@ export interface Actor {
   phone?: string;
   email?: string;
   status: UserStatus;
+  phone_verified_at?: string;
+  email_verified_at?: string;
 }
 
 export interface LoginResponse {
@@ -75,6 +77,12 @@ export interface SendSmsResponse {
   sent: boolean;
   expires_in: number;
   cooldown_seconds: number;
+}
+
+export type SendCodeResponse = SendSmsResponse;
+
+export interface VerifyEmailResponse {
+  user: UserProfile;
 }
 
 export interface MeResponse {

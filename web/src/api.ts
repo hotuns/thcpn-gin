@@ -6,8 +6,10 @@ import type {
   LoginResponse,
   MeResponse,
   OrganizationType,
+  SendCodeResponse,
   SendSmsResponse,
   StatusResponse,
+  VerifyEmailResponse,
   WorkspaceListResponse,
   WorkspaceMember,
   WorkspaceMemberListResponse,
@@ -106,6 +108,14 @@ export const api = {
 
   sendSms(phone: string): Promise<SendSmsResponse> {
     return post<SendSmsResponse>("/api/v1/auth/sms/send", { phone });
+  },
+
+  sendEmailVerification(email: string): Promise<SendCodeResponse> {
+    return post<SendCodeResponse>("/api/v1/auth/email/send", { email });
+  },
+
+  verifyEmail(input: { email: string; code: string }): Promise<VerifyEmailResponse> {
+    return post<VerifyEmailResponse>("/api/v1/auth/email/verify", input);
   },
 
   loginWithSms(input: { phone: string; code: string; name: string }): Promise<LoginResponse> {

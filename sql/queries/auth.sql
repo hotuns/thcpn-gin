@@ -51,6 +51,15 @@ SET phone_verified_at = COALESCE(phone_verified_at, now()),
 WHERE id = $1
 RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at;
 
+-- name: UpdateUserEmailVerified :one
+UPDATE users
+SET email_verified_at = COALESCE(email_verified_at, now()),
+    updated_at = now()
+WHERE id = $1
+  AND email = $2
+  AND status = 'active'
+RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at;
+
 -- name: CreateRefreshSession :one
 INSERT INTO auth_refresh_sessions (user_id, refresh_token_hash, user_agent, client_ip, expires_at)
 VALUES ($1, $2, $3, $4, $5)

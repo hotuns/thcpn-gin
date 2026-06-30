@@ -401,6 +401,39 @@ func (q *Queries) UpdateUserCredentialFailure(ctx context.Context, arg UpdateUse
 	return i, err
 }
 
+const updateUserEmailVerified = `-- name: UpdateUserEmailVerified :one
+UPDATE users
+SET email_verified_at = COALESCE(email_verified_at, now()),
+    updated_at = now()
+WHERE id = $1
+  AND email = $2
+  AND status = 'active'
+RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at
+`
+
+type UpdateUserEmailVerifiedParams struct {
+	ID    uuid.UUID `json:"id"`
+	Email *string   `json:"email"`
+}
+
+func (q *Queries) UpdateUserEmailVerified(ctx context.Context, arg UpdateUserEmailVerifiedParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserEmailVerified, arg.ID, arg.Email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Phone,
+		&i.Email,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.PhoneVerifiedAt,
+		&i.EmailVerifiedAt,
+		&i.LastLoginAt,
+	)
+	return i, err
+}
+
 const updateUserLastLogin = `-- name: UpdateUserLastLogin :one
 UPDATE users
 SET last_login_at = now(),

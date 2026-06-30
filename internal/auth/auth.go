@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -22,11 +23,13 @@ type MiddlewareConfig struct {
 }
 
 type Actor struct {
-	UserID uuid.UUID `json:"id"`
-	Name   string    `json:"name"`
-	Phone  *string   `json:"phone,omitempty"`
-	Email  *string   `json:"email,omitempty"`
-	Status string    `json:"status"`
+	UserID          uuid.UUID  `json:"id"`
+	Name            string     `json:"name"`
+	Phone           *string    `json:"phone,omitempty"`
+	Email           *string    `json:"email,omitempty"`
+	Status          string     `json:"status"`
+	PhoneVerifiedAt *time.Time `json:"phone_verified_at,omitempty"`
+	EmailVerifiedAt *time.Time `json:"email_verified_at,omitempty"`
 }
 
 type ActorLookup interface {
