@@ -1,7 +1,8 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { ApiError, api, clearStoredToken, getStoredToken, storeToken } from "./api";
+import { ApiError, api, clearStoredToken, getStoredRefreshToken, getStoredToken, storeToken } from "./api";
 import type {
   Actor,
+  AuthSession,
   InternalMemberRoleCode,
   LoginResponse,
   OrganizationType,
@@ -33,12 +34,14 @@ type SelectorKind = "email" | "phone" | "user_id";
 
 function App() {
   const [token, setToken] = useState(getStoredToken());
+  const [refreshToken, setRefreshToken] = useState(getStoredRefreshToken());
   const [currentUser, setCurrentUser] = useState<Actor | null>(null);
   const [healthz, setHealthz] = useState<StatusResponse | null>(null);
   const [readyz, setReadyz] = useState<StatusResponse | null>(null);
   const [workspaces, setWorkspaces] = useState<WorkspaceWithMembership[]>([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
+  const [sessions, setSessions] = useState<AuthSession[]>([]);
   const [memberRoleDrafts, setMemberRoleDrafts] = useState<Record<string, InternalMemberRoleCode>>({});
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -94,13 +97,20 @@ function App() {
     }
   }
 
+  async function loadAuthenticatedData(messageText: string, preserveWorkspaceSelection = true) {
+    const [me, list, sessionList] = await Promise.all([api.me(), api.listWorkspaces(), api.listAuthSessions()]);
+    setCurrentUser(me.user);
+    setWorkspaces(list.items);
+    setSessions(sessionList.items);
+    setSelectedWorkspaceId((current) =>
+      preserveWorkspaceSelection ? current || list.items[0]?.workspace.id || "" : list.items[0]?.workspace.id || ""
+    );
+    setMessage(messageText);
+  }
+
   async function refreshSessionData() {
     await run(async () => {
-      const [me, list] = await Promise.all([api.me(), api.listWorkspaces()]);
-      setCurrentUser(me.user);
-      setWorkspaces(list.items);
-      setSelectedWorkspaceId((current) => current || list.items[0]?.workspace.id || "");
-      setMessage("已加载当前用户和 Workspace。");
+      await loadAuthenticatedData("已加载当前用户、Workspace 和活跃会话。");
     });
   }
 
@@ -129,9 +139,10 @@ function App() {
     });
   }
 
-  function applyLogin(result: LoginResponse) {
-    storeToken(result.access_token);
+  function applyLogin(result: LoginResponse, messageText = result.created ? "账号已创建并登录。" : "登录成功。") {
+    storeToken(result.access_token, result.refresh_token);
     setToken(result.access_token);
+    setRefreshToken(result.refresh_token);
     setCurrentUser({
       id: result.user.id,
       name: result.user.name,
@@ -139,7 +150,7 @@ function App() {
       email: result.user.email,
       status: result.user.status
     });
-    setMessage(result.created ? "账号已创建并登录。" : "登录成功。");
+    setMessage(messageText);
   }
 
   async function handlePasswordRegister(event: FormEvent<HTMLFormElement>) {
@@ -147,9 +158,7 @@ function App() {
     await run(async () => {
       const result = await api.registerWithPassword(passwordRegister);
       applyLogin(result);
-      const list = await api.listWorkspaces();
-      setWorkspaces(list.items);
-      setSelectedWorkspaceId(list.items[0]?.workspace.id || "");
+      await loadAuthenticatedData("账号已创建并登录。", false);
     });
   }
 
@@ -158,9 +167,7 @@ function App() {
     await run(async () => {
       const result = await api.loginWithPassword(passwordLogin);
       applyLogin(result);
-      const list = await api.listWorkspaces();
-      setWorkspaces(list.items);
-      setSelectedWorkspaceId(list.items[0]?.workspace.id || "");
+      await loadAuthenticatedData("登录成功。", false);
     });
   }
 
@@ -177,9 +184,7 @@ function App() {
     await run(async () => {
       const result = await api.loginWithSms(sms);
       applyLogin(result);
-      const list = await api.listWorkspaces();
-      setWorkspaces(list.items);
-      setSelectedWorkspaceId(list.items[0]?.workspace.id || "");
+      await loadAuthenticatedData(result.created ? "账号已创建并登录。" : "登录成功。", false);
     });
   }
 
@@ -229,15 +234,69 @@ function App() {
     });
   }
 
-  function logout() {
-    clearStoredToken();
-    setToken("");
-    setCurrentUser(null);
-    setWorkspaces([]);
-    setSelectedWorkspaceId("");
-    setMembers([]);
-    setMessage("已退出登录。");
+  async function loadAuthSessions() {
+    if (!token) {
+      setError("请先登录。");
+      return;
+    }
+
+    await run(async () => {
+      const result = await api.listAuthSessions();
+      setSessions(result.items);
+      setMessage(`已加载 ${result.items.length} 个活跃会话。`);
+    });
+  }
+
+  async function refreshAuthToken() {
+    if (!refreshToken) {
+      setError("没有可用 refresh token，请重新登录。");
+      return;
+    }
+
+    await run(async () => {
+      const result = await api.refreshAuth(refreshToken);
+      applyLogin(result, "access token 已刷新，refresh session 已轮换。");
+      await loadAuthenticatedData("access token 已刷新，refresh session 已轮换。");
+    });
+  }
+
+  async function revokeSession(session: AuthSession) {
+    if (!window.confirm(`撤销会话 ${session.id}？`)) {
+      return;
+    }
+
+    await run(async () => {
+      await api.revokeAuthSession(session.id);
+      setSessions((current) => current.filter((item) => item.id !== session.id));
+      setMessage("会话已撤销。");
+    });
+  }
+
+  async function logout() {
+    const storedRefreshToken = getStoredRefreshToken();
+
+    setLoading(true);
     setError("");
+    setMessage("");
+    try {
+      if (token) {
+        await api.logout(storedRefreshToken || undefined);
+      }
+      setMessage("已退出登录，服务端会话已撤销。");
+    } catch (err) {
+      setError(`${formatError(err)}；本地登录状态已清除。`);
+    } finally {
+      clearStoredToken();
+      setToken("");
+      setRefreshToken("");
+      setCurrentUser(null);
+      setWorkspaces([]);
+      setSelectedWorkspaceId("");
+      setMembers([]);
+      setSessions([]);
+      setMemberRoleDrafts({});
+      setLoading(false);
+    }
   }
 
   return (
@@ -249,7 +308,7 @@ function App() {
         </div>
         <div className="token-panel">
           <span className={token ? "status status-ok" : "status"}>{token ? "已登录" : "未登录"}</span>
-          {token ? <button onClick={logout}>退出登录</button> : null}
+          {token ? <button onClick={() => void logout()}>退出登录</button> : null}
         </div>
       </header>
 
@@ -318,10 +377,67 @@ function App() {
         <h2>当前用户</h2>
         <div className="button-row">
           <button onClick={() => void refreshSessionData()} disabled={!token}>
-            加载 /me 和 Workspace
+            加载 /me、Workspace 和会话
           </button>
+          <button onClick={() => void refreshAuthToken()} disabled={!refreshToken}>
+            刷新 access token
+          </button>
+          <span className={refreshToken ? "status status-ok" : "status"}>
+            {refreshToken ? "refresh token 已保存" : "无 refresh token"}
+          </span>
         </div>
         <pre>{JSON.stringify({ token: token ? `${token.slice(0, 24)}...` : "", currentUser }, null, 2)}</pre>
+      </section>
+
+      <section className="panel">
+        <h2>会话管理</h2>
+        <div className="button-row">
+          <button onClick={() => void loadAuthSessions()} disabled={!token}>
+            刷新会话
+          </button>
+          <span className="status">活跃会话 {sessions.length}</span>
+        </div>
+
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>客户端</th>
+                <th>IP</th>
+                <th>最近使用</th>
+                <th>创建时间</th>
+                <th>过期时间</th>
+                <th>ID</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sessions.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="hint">
+                    暂无活跃会话。
+                  </td>
+                </tr>
+              ) : (
+                sessions.map((session) => (
+                  <tr key={session.id}>
+                    <td>{session.user_agent || "-"}</td>
+                    <td>{session.client_ip || "-"}</td>
+                    <td>{formatDateTime(session.last_used_at)}</td>
+                    <td>{formatDateTime(session.created_at)}</td>
+                    <td>{formatDateTime(session.expires_at)}</td>
+                    <td className="mono">{session.id}</td>
+                    <td>
+                      <button className="danger" onClick={() => void revokeSession(session)}>
+                        撤销
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className="panel">
@@ -492,6 +608,17 @@ function RoleSelect(props: {
       </select>
     </label>
   );
+}
+
+function formatDateTime(value?: string): string {
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString();
 }
 
 function StatusBar(props: { message: string; error: string; loading: boolean }) {

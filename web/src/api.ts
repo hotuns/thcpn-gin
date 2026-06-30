@@ -1,4 +1,5 @@
 import type {
+  AuthSessionListResponse,
   DevRegisterResponse,
   ErrorEnvelope,
   InternalMemberRoleCode,
@@ -14,6 +15,7 @@ import type {
 } from "./types";
 
 const TOKEN_KEY = "thcpn_access_token";
+const REFRESH_TOKEN_KEY = "thcpn_refresh_token";
 
 export class ApiError extends Error {
   status: number;
@@ -33,12 +35,20 @@ export function getStoredToken(): string {
   return localStorage.getItem(TOKEN_KEY) ?? "";
 }
 
-export function storeToken(token: string): void {
+export function getStoredRefreshToken(): string {
+  return localStorage.getItem(REFRESH_TOKEN_KEY) ?? "";
+}
+
+export function storeToken(token: string, refreshToken?: string): void {
   localStorage.setItem(TOKEN_KEY, token);
+  if (refreshToken) {
+    localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+  }
 }
 
 export function clearStoredToken(): void {
   localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
 async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -113,6 +123,27 @@ export const api = {
 
   loginWithPassword(input: { identifier: string; password: string }): Promise<LoginResponse> {
     return post<LoginResponse>("/api/v1/auth/password/login", input);
+  },
+
+  refreshAuth(refreshToken: string): Promise<LoginResponse> {
+    return post<LoginResponse>("/api/v1/auth/refresh", { refresh_token: refreshToken });
+  },
+
+  logout(refreshToken?: string): Promise<void> {
+    return apiFetch<void>("/api/v1/auth/logout", {
+      method: "POST",
+      body: refreshToken ? JSON.stringify({ refresh_token: refreshToken }) : undefined
+    });
+  },
+
+  listAuthSessions(): Promise<AuthSessionListResponse> {
+    return apiFetch<AuthSessionListResponse>("/api/v1/auth/sessions");
+  },
+
+  revokeAuthSession(sessionId: string): Promise<void> {
+    return apiFetch<void>(`/api/v1/auth/sessions/${sessionId}`, {
+      method: "DELETE"
+    });
   },
 
   devRegister(input: { name: string; phone: string; email: string }): Promise<DevRegisterResponse> {

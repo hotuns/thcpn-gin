@@ -63,8 +63,10 @@ export interface Actor {
 
 export interface LoginResponse {
   access_token: string;
+  refresh_token: string;
   token_type: "Bearer";
   expires_in: number;
+  refresh_expires_in: number;
   user: UserProfile;
   created?: boolean;
 }
@@ -144,6 +146,19 @@ export interface WorkspaceMember {
 
 export interface WorkspaceMemberListResponse {
   items: WorkspaceMember[];
+}
+
+export interface AuthSession {
+  id: string;
+  user_agent?: string;
+  client_ip?: string;
+  expires_at: string;
+  last_used_at?: string;
+  created_at: string;
+}
+
+export interface AuthSessionListResponse {
+  items: AuthSession[];
 }
 
 export interface DevRegisterResponse {

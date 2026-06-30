@@ -85,6 +85,7 @@
   - `POST /api/v1/auth/logout` 会撤销当前 access token；请求体带 `refresh_token` 时同时撤销对应 refresh session。
   - `GET /api/v1/auth/sessions` 列出当前用户活跃 refresh sessions；`DELETE /api/v1/auth/sessions/:session_id` 撤销指定会话。
   - 平台库新增 `auth_refresh_sessions` 和 `auth_access_token_blacklist`，refresh session 保存 token hash、过期时间、user agent 和 client ip。
+- Web 开发控制台已保存 refresh token，可刷新 access token、调用服务端 logout，并提供活跃会话列表和撤销入口。
 - 账号密码登录失败会累计失败次数，默认 5 次后锁定 15 分钟。
 - 短信验证码默认 5 分钟有效、60 秒冷却、单手机号每日 10 次、最多 5 次校验尝试。
 - 阿里云短信 sender 已接入，但本地默认使用 `sms.provider=log`，避免测试消耗短信费用。
@@ -323,11 +324,12 @@
 - 已通过真实 HTTP 验证 audit log 写入和 `GET /api/v1/audit-logs?workspace_id=...` 查询。
 - 已通过自动化测试验证 `/metrics` 暴露 Prometheus 指标并记录 `/healthz` 请求。
 - 已通过自动化测试验证 bearer token 可查黑名单并拒绝已撤销 token，refresh token 生成和 hash 稳定且不存明文，并验证 auth session 响应模型映射。
+- 已通过 `npm --prefix web run build` 验证前端会话管理界面、refresh/logout 客户端类型和 API 封装可编译。
 - 此前已通过真实 HTTP 验证开发注册、workspace 列表、创建 organization workspace、添加成员、列成员、更新成员角色、普通成员访问成员管理被拒绝、删除成员。
 
 ### 尚未实现
 
-- 设备会话管理前端界面、MFA、邮箱验证码/邮箱验证。
+- MFA、邮箱验证码/邮箱验证。
 - Export Worker 的更完整对象存储集成。
 - Project / Site / Device / DataStream / Dataset 当前完成资产、元信息、查询定义、PostgreSQL / MySQL / ClickHouse / HTTP API telemetry 读取和 media 记录查询；Project / Site / DataStream 变更审计可后续按风险扩展。
 - 尚未实现模块的敏感操作审计仍待对应模块落地时接入，例如设备校准、固件升级和设备转移。
