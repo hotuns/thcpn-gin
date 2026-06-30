@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
 	mysql "github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel/attribute"
@@ -79,6 +80,15 @@ var mysqlDialect = sqlDialect{
 	nullText:    "CAST(NULL AS CHAR)",
 }
 
+var clickHouseDialect = sqlDialect{
+	name:        "clickhouse",
+	quote:       quoteMySQLIdentifier,
+	placeholder: func(int) string { return "?" },
+	castFloat:   func(expr string) string { return "CAST(" + expr + " AS Float64)" },
+	castText:    func(expr string) string { return "CAST(" + expr + " AS String)" },
+	nullText:    "CAST(NULL AS Nullable(String))",
+}
+
 type queryPlan struct {
 	Query string
 	Args  []any
@@ -107,6 +117,8 @@ func (r *Runtime) QueryTelemetry(ctx context.Context, source DataSource, req Tel
 		return r.queryPostgresTelemetry(ctx, source, req)
 	case "mysql":
 		return r.queryMySQLTelemetry(ctx, source, req)
+	case "clickhouse":
+		return r.queryClickHouseTelemetry(ctx, source, req)
 	case "http_api":
 		return r.queryHTTPAPITelemetry(ctx, source, req)
 	default:
@@ -137,6 +149,8 @@ func (r *Runtime) QueryMedia(ctx context.Context, source DataSource, req MediaQu
 		return r.queryPostgresMedia(ctx, source, req)
 	case "mysql":
 		return r.queryMySQLMedia(ctx, source, req)
+	case "clickhouse":
+		return r.queryClickHouseMedia(ctx, source, req)
 	case "http_api":
 		return r.queryHTTPAPIMedia(ctx, source, req)
 	default:
@@ -195,6 +209,42 @@ func (r *Runtime) queryMySQLTelemetry(ctx context.Context, source DataSource, re
 		return TelemetryResult{}, err
 	}
 	db, err := r.openMySQL(ctx, source)
+	if err != nil {
+		return TelemetryResult{}, err
+	}
+	defer db.Close()
+
+	rows, err := db.QueryContext(ctx, plan.Query, plan.Args...)
+	if err != nil {
+		return TelemetryResult{}, apperr.Wrap(apperr.KindDataSource, "query telemetry data source", err)
+	}
+	defer rows.Close()
+
+	points := make([]TelemetryPoint, 0)
+	for rows.Next() {
+		var point TelemetryPoint
+		if err := rows.Scan(&point.Timestamp, &point.Value); err != nil {
+			return TelemetryResult{}, apperr.Wrap(apperr.KindDataSource, "scan telemetry point", err)
+		}
+		point.Quality = "valid"
+		points = append(points, point)
+	}
+	if err := rows.Err(); err != nil {
+		return TelemetryResult{}, apperr.Wrap(apperr.KindDataSource, "read telemetry points", err)
+	}
+
+	return TelemetryResult{Points: points}, nil
+}
+
+func (r *Runtime) queryClickHouseTelemetry(ctx context.Context, source DataSource, req TelemetryQuery) (TelemetryResult, error) {
+	if err := validateTelemetryQuery(req); err != nil {
+		return TelemetryResult{}, err
+	}
+	plan, err := buildTelemetryQueryPlan(req, clickHouseDialect)
+	if err != nil {
+		return TelemetryResult{}, err
+	}
+	db, err := r.openClickHouse(ctx, source)
 	if err != nil {
 		return TelemetryResult{}, err
 	}
@@ -328,6 +378,57 @@ func (r *Runtime) queryMySQLMedia(ctx context.Context, source DataSource, req Me
 		return MediaResult{}, apperr.Wrap(apperr.KindDataSource, "read media records", err)
 	}
 	return MediaResult{Items: items, Total: total}, nil
+}
+
+func (r *Runtime) queryClickHouseMedia(ctx context.Context, source DataSource, req MediaQuery) (MediaResult, error) {
+	if err := validateMediaQuery(req); err != nil {
+		return MediaResult{}, err
+	}
+	cfg, err := parseMediaBindingConfig(req.Binding.QueryConfigJSON)
+	if err != nil {
+		return MediaResult{}, err
+	}
+	countPlan, err := buildMediaCountQueryPlan(req, clickHouseDialect)
+	if err != nil {
+		return MediaResult{}, err
+	}
+	rowsPlan, err := buildMediaRowsQueryPlan(req, cfg, clickHouseDialect)
+	if err != nil {
+		return MediaResult{}, err
+	}
+
+	db, err := r.openClickHouse(ctx, source)
+	if err != nil {
+		return MediaResult{}, err
+	}
+	defer db.Close()
+
+	var total uint64
+	if err := db.QueryRowContext(ctx, countPlan.Query, countPlan.Args...).Scan(&total); err != nil {
+		return MediaResult{}, apperr.Wrap(apperr.KindDataSource, "count media data source", err)
+	}
+
+	rows, err := db.QueryContext(ctx, rowsPlan.Query, rowsPlan.Args...)
+	if err != nil {
+		return MediaResult{}, apperr.Wrap(apperr.KindDataSource, "query media data source", err)
+	}
+	defer rows.Close()
+
+	items := make([]MediaRecord, 0)
+	for rows.Next() {
+		var item MediaRecord
+		if err := rows.Scan(&item.ID, &item.CapturedAt, &item.ObjectKey, &item.ThumbnailObjectKey, &item.MediaType); err != nil {
+			return MediaResult{}, apperr.Wrap(apperr.KindDataSource, "scan media record", err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return MediaResult{}, apperr.Wrap(apperr.KindDataSource, "read media records", err)
+	}
+	if total > uint64(maxInt()) {
+		return MediaResult{}, apperr.New(apperr.KindDataSource, "media count exceeds supported range")
+	}
+	return MediaResult{Items: items, Total: int(total)}, nil
 }
 
 func parseMediaBindingConfig(value json.RawMessage) (mediaBindingConfig, error) {
@@ -543,6 +644,23 @@ func (r *Runtime) openMySQL(ctx context.Context, source DataSource) (*sql.DB, er
 	return db, nil
 }
 
+func (r *Runtime) openClickHouse(ctx context.Context, source DataSource) (*sql.DB, error) {
+	dsn, err := r.resolver.Resolve(ctx, source.DsnSecretRef)
+	if err != nil {
+		return nil, err
+	}
+	opts, err := clickHouseOptionsFromDSN(dsn)
+	if err != nil {
+		return nil, err
+	}
+	db := clickhouse.OpenDB(opts)
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return nil, apperr.Wrap(apperr.KindDataSource, "connect data source", err)
+	}
+	return db, nil
+}
+
 func mysqlDSNWithParseTime(dsn string) (string, error) {
 	cfg, err := mysql.ParseDSN(dsn)
 	if err != nil {
@@ -550,6 +668,14 @@ func mysqlDSNWithParseTime(dsn string) (string, error) {
 	}
 	cfg.ParseTime = true
 	return cfg.FormatDSN(), nil
+}
+
+func clickHouseOptionsFromDSN(dsn string) (*clickhouse.Options, error) {
+	opts, err := clickhouse.ParseDSN(strings.TrimSpace(dsn))
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindDataSource, "parse clickhouse data source dsn", err)
+	}
+	return opts, nil
 }
 
 func quotedTableName(binding DataStreamBinding) (string, error) {
@@ -573,7 +699,7 @@ func quotedTableNameFor(binding DataStreamBinding, dialect sqlDialect) (string, 
 }
 
 func tableQualifier(binding DataStreamBinding, dialect sqlDialect) string {
-	if dialect.name == "mysql" {
+	if dialect.name == "mysql" || dialect.name == "clickhouse" {
 		if binding.DatabaseName != nil && strings.TrimSpace(*binding.DatabaseName) != "" {
 			return strings.TrimSpace(*binding.DatabaseName)
 		}
@@ -589,7 +715,7 @@ func tableQualifier(binding DataStreamBinding, dialect sqlDialect) string {
 }
 
 func tableQualifierField(dialect sqlDialect) string {
-	if dialect.name == "mysql" {
+	if dialect.name == "mysql" || dialect.name == "clickhouse" {
 		return "database_name"
 	}
 	return "schema_name"
@@ -613,4 +739,8 @@ func quoteIdentifier(value string) string {
 
 func quoteMySQLIdentifier(value string) string {
 	return "`" + strings.ReplaceAll(value, "`", "``") + "`"
+}
+
+func maxInt() int {
+	return int(^uint(0) >> 1)
 }

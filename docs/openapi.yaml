@@ -1474,7 +1474,7 @@ paths:
         - DataSources
       operationId: createDataSource
       summary: Create data source metadata
-      description: Requires `workspace.manage` permission. `dsn_secret_ref` must point to a secret outside the platform database. Runtime query adapters currently support PostgreSQL, MySQL and HTTP API sources for telemetry and media indexes.
+      description: Requires `workspace.manage` permission. `dsn_secret_ref` must point to a secret outside the platform database. Runtime query adapters currently support PostgreSQL, MySQL, ClickHouse and HTTP API sources for telemetry and media indexes.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -2693,7 +2693,7 @@ components:
         - archived
     DataSourceType:
       type: string
-      description: Metadata accepts the planned adapter types. Runtime query adapters currently support `postgres`, `mysql` and `http_api`.
+      description: Metadata accepts the planned adapter types. Runtime query adapters currently support `postgres`, `mysql`, `clickhouse` and `http_api`.
       enum:
         - postgres
         - mysql

@@ -161,20 +161,21 @@
   - `PATCH /api/v1/data-stream-bindings/:binding_id`
 - DataSource 只保存 `dsn_secret_ref`，不保存明文 DSN。
 - DataStreamBinding 保存已审核的库/表/字段映射；用户侧 Telemetry/Media 查询后续不得直接传入 `table_name`、`field_name` 或 `raw_sql`。
-- 已实现 PostgreSQL / MySQL / HTTP API Telemetry 运行时适配器：
+- 已实现 PostgreSQL / MySQL / ClickHouse / HTTP API Telemetry 运行时适配器：
   - `dsn_secret_ref` 当前支持 `env:NAME`，运行时从环境变量读取 DSN。
-  - PostgreSQL / MySQL 支持 `payload_type = columns`；HTTP API 支持 `payload_type = columns` / `json`，返回统一 JSON `points`。
+  - PostgreSQL / MySQL / ClickHouse 支持 `payload_type = columns`；HTTP API 支持 `payload_type = columns` / `json`，返回统一 JSON `points`。
   - 查询 SQL 只使用 DataStreamBinding 中已校验的表名/字段名，设备 key、时间范围和 limit 均使用参数绑定。
   - MySQL 使用 `go-sql-driver/mysql`，运行时会规范化 DSN 并启用 `parseTime=true`。
+  - ClickHouse 使用 `clickhouse-go/v2`，优先使用 DataStreamBinding 的 `database_name` 限定表名，未配置时可使用 `schema_name` 作为库名别名。
   - HTTP API 使用 DataSource secret 作为 base URL，`query_config` 可配置 `method`、相对 `path`、`headers` 和参数名；默认 GET，POST 时发送 JSON body。
 - 已实现 Telemetry Query 接口：
   - `GET /api/v1/devices/:device_id/telemetry?start_time=...&end_time=...&limit=...`
   - `GET /api/v1/data-streams/:data_stream_id/telemetry?start_time=...&end_time=...&limit=...`
   - 需要 `telemetry.view_history` 权限；时间范围和点数受 `query_limits` 限制。
-- 已实现 PostgreSQL / MySQL / HTTP API Media Query 运行时适配器：
+- 已实现 PostgreSQL / MySQL / ClickHouse / HTTP API Media Query 运行时适配器：
   - 只支持 `payload_type = media` 的 image/video/audio 查询。
   - `query_config` 可配置 `id_field`、`object_key_field`、`thumbnail_key_field`、`media_type_field` 和 `media_type`。
-  - MySQL 优先使用 DataStreamBinding 的 `database_name` 限定表名，未配置时可使用 `schema_name` 作为库名别名。
+  - MySQL / ClickHouse 优先使用 DataStreamBinding 的 `database_name` 限定表名，未配置时可使用 `schema_name` 作为库名别名。
   - HTTP API 返回统一 JSON `items` / `total`，路径必须为相对路径，避免 binding 配置绕过 DataSource base URL。
   - 预览、缩略图和下载 URL 使用 HMAC + 过期时间签名，不返回永久公开 URL。
 - 已实现 Media Query / Download 接口：
@@ -230,10 +231,10 @@
   - `media_zip`，资源为 `device`、`data_stream` 或媒体 data-stream alias，需要 `media.download`。
 - API 当前创建 `pending` 任务、记录文件过期时间、把 ExportJob 投递到 Asynq `exports` 队列，并为成功任务生成临时对象下载 URL。
 - Worker 默认消费 Asynq `export:process` 任务；处理时按 job id claim `pending` 任务、过期旧任务、生成并上传导出文件，然后把任务更新为 `success` 或 `failed`：
-  - `telemetry_csv`：支持 `device` / `data_stream` 资源，使用任务 `request_config_json.start_time`、`end_time`、`limit` 查询已绑定 PostgreSQL / MySQL telemetry 数据源并生成 CSV。
+  - `telemetry_csv`：支持 `device` / `data_stream` 资源，使用任务 `request_config_json.start_time`、`end_time`、`limit` 查询已绑定 PostgreSQL / MySQL / ClickHouse / HTTP API telemetry 数据源并生成 CSV。
   - `telemetry_excel`：支持 `device` / `data_stream` 资源，使用同一 telemetry 查询链路生成最小有效 XLSX 工作簿。
   - `dataset_zip`：支持 Dataset 元信息 ZIP，包含 `dataset.json`、`sources.csv`，并为 telemetry 类型的 device / data_stream source 生成 CSV。
-  - `media_zip`：支持 `device` / `data_stream` / 媒体 data-stream alias 资源，使用任务 `request_config_json.start_time`、`end_time`、`limit`、`media_type` 查询已绑定 PostgreSQL / MySQL media 数据源，读取 object store 原始媒体文件并生成带 `manifest.csv` 的 ZIP。
+  - `media_zip`：支持 `device` / `data_stream` / 媒体 data-stream alias 资源，使用任务 `request_config_json.start_time`、`end_time`、`limit`、`media_type` 查询已绑定 PostgreSQL / MySQL / ClickHouse / HTTP API media 数据源，读取 object store 原始媒体文件并生成带 `manifest.csv` 的 ZIP。
 - 对象存储当前支持本地文件后端（`object_store.provider=file`）和 MinIO/S3 SigV4 PUT/GET；下载 URL 在配置访问密钥时使用 S3 预签名 GET，否则回退为平台 HMAC 临时 URL。
 - 导出任务创建和下载准备会写 audit log；按 workspace 查询全量导出任务需要 `audit.view`，默认列表只返回当前用户创建的任务。
 
@@ -305,7 +306,7 @@
 - 已通过真实 HTTP 验证 DataSource 创建/列表，以及 DataStreamBinding 创建/列表。
 - 已通过真实 HTTP 验证 PostgreSQL Telemetry Query：创建外部表样例、配置 `env:PLATFORM_DATABASE_DSN` DataSource、绑定 DataStream 后返回 2 个时序点。
 - 已通过真实 HTTP 验证 PostgreSQL Media Query：创建媒体表样例、绑定 image DataStream 后返回 2 条媒体记录，`/media/download` 返回临时对象 URL，并确认 `media.download` audit log 写入。
-- 已通过自动化测试验证 HTTP API DataSource telemetry GET、media POST、统一 JSON 响应解析和相对路径约束。
+- 已通过自动化测试验证 ClickHouse DataSource telemetry/media 查询计划、DSN 解析，以及 HTTP API DataSource telemetry GET、media POST、统一 JSON 响应解析和相对路径约束。
 - 已通过真实 HTTP 验证 Dataset ExportJob：`POST /api/v1/datasets/:dataset_id/export` 创建 `pending` 任务，`GET /api/v1/export-jobs?mine=true` 可查到任务，pending 下载返回 409；手动标记 success 后 `/export-jobs/:id/download` 返回临时对象 URL，并确认 `dataset.export` audit log 写入。
 - 已通过真实 API + Worker 验证 Telemetry CSV 导出：创建设备、DataStream、DataSource、DataStreamBinding 和外部样例表后，`POST /api/v1/export-jobs` 创建 `telemetry_csv` 任务，`WORKER_RUN_ONCE=true go run ./cmd/worker` 将任务处理为 `success`，本地对象存储生成 CSV，`/export-jobs/:id/download` 返回 200。
 - 已通过真实 API + Worker 验证 Media ZIP 导出：创建 image DataStream、media DataStreamBinding、样例 media 表和本地对象文件后，`POST /api/v1/export-jobs` 创建 `media_zip` 任务，Worker 将任务处理为 `success`，本地对象存储生成 ZIP，ZIP 内包含媒体文件和 `manifest.csv`，`/export-jobs/:id/download` 返回 200。
@@ -321,9 +322,8 @@
 
 - Refresh token、退出登录、session 黑名单、设备会话管理、MFA、邮箱验证码/邮箱验证。
 - Export Worker 的更完整对象存储集成。
-- Project / Site / Device / DataStream / Dataset 当前完成资产、元信息、查询定义、PostgreSQL / MySQL telemetry 读取和 PostgreSQL / MySQL media 记录查询；Project / Site / DataStream 变更审计可后续按风险扩展。
+- Project / Site / Device / DataStream / Dataset 当前完成资产、元信息、查询定义、PostgreSQL / MySQL / ClickHouse / HTTP API telemetry 读取和 media 记录查询；Project / Site / DataStream 变更审计可后续按风险扩展。
 - 尚未实现模块的敏感操作审计仍待对应模块落地时接入，例如设备校准、固件升级和设备转移。
-- ClickHouse DataSource 运行时适配器。
 - 更完整对象存储集成。
 
 ## 重要目录

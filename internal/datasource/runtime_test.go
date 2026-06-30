@@ -58,6 +58,18 @@ func TestBuildTelemetryQueryPlanDialects(t *testing.T) {
 	if len(mysqlPlan.Args) != 4 || mysqlPlan.Args[0] != "SN-001" || mysqlPlan.Args[3] != 100 {
 		t.Fatalf("unexpected mysql args: %#v", mysqlPlan.Args)
 	}
+
+	clickHousePlan, err := buildTelemetryQueryPlan(req, clickHouseDialect)
+	if err != nil {
+		t.Fatalf("build clickhouse plan: %v", err)
+	}
+	expectedClickHouse := "SELECT `captured_at`, CAST(`temperature` AS Float64) FROM `device_db`.`device_data` WHERE `sn` = ? AND `captured_at` >= ? AND `captured_at` <= ? ORDER BY `captured_at` ASC LIMIT ?"
+	if clickHousePlan.Query != expectedClickHouse {
+		t.Fatalf("unexpected clickhouse query:\n%s", clickHousePlan.Query)
+	}
+	if len(clickHousePlan.Args) != 4 || clickHousePlan.Args[0] != "SN-001" || clickHousePlan.Args[3] != 100 {
+		t.Fatalf("unexpected clickhouse args: %#v", clickHousePlan.Args)
+	}
 }
 
 func TestBuildMediaRowsQueryPlanMySQLDefaultMediaType(t *testing.T) {
@@ -140,6 +152,47 @@ func TestBuildMediaRowsQueryPlanPostgresMappedFields(t *testing.T) {
 	}
 }
 
+func TestBuildMediaRowsQueryPlanClickHouseDefaultMediaType(t *testing.T) {
+	databaseName := "device_db"
+	start := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	req := MediaQuery{
+		Binding: DataStreamBinding{
+			DatabaseName:   &databaseName,
+			TableName:      "media_index",
+			DeviceKeyField: "sn",
+			DeviceKeyValue: "SN-001",
+			TimeField:      "captured_at",
+			ValueField:     "object_key",
+			PayloadType:    "media",
+		},
+		Start:    start,
+		End:      end,
+		Page:     2,
+		PageSize: 25,
+	}
+	cfg := mediaBindingConfig{
+		IDField:        "media_id",
+		ObjectKeyField: "object_key",
+		MediaType:      "image",
+	}
+
+	plan, err := buildMediaRowsQueryPlan(req, cfg, clickHouseDialect)
+	if err != nil {
+		t.Fatalf("build clickhouse media plan: %v", err)
+	}
+	expected := "SELECT CAST(`media_id` AS String), `captured_at`, CAST(`object_key` AS String), CAST(NULL AS Nullable(String)), CAST(? AS String) FROM `device_db`.`media_index` WHERE `sn` = ? AND `captured_at` >= ? AND `captured_at` <= ? ORDER BY `captured_at` DESC LIMIT ? OFFSET ?"
+	if plan.Query != expected {
+		t.Fatalf("unexpected clickhouse media query:\n%s", plan.Query)
+	}
+	if len(plan.Args) != 6 {
+		t.Fatalf("unexpected args: %#v", plan.Args)
+	}
+	if plan.Args[0] != "image" || plan.Args[1] != "SN-001" || plan.Args[4] != 25 || plan.Args[5] != 25 {
+		t.Fatalf("unexpected clickhouse media args: %#v", plan.Args)
+	}
+}
+
 func TestMySQLDSNWithParseTime(t *testing.T) {
 	dsn, err := mysqlDSNWithParseTime("user:pass@tcp(127.0.0.1:3306)/device_data?charset=utf8mb4")
 	if err != nil {
@@ -154,6 +207,19 @@ func TestMySQLDSNWithParseTime(t *testing.T) {
 	}
 	if cfg.DBName != "device_data" {
 		t.Fatalf("unexpected db name: %q", cfg.DBName)
+	}
+}
+
+func TestClickHouseOptionsFromDSN(t *testing.T) {
+	opts, err := clickHouseOptionsFromDSN("clickhouse://reader:secret@127.0.0.1:9000/device_data?dial_timeout=2s")
+	if err != nil {
+		t.Fatalf("parse clickhouse dsn: %v", err)
+	}
+	if len(opts.Addr) != 1 || opts.Addr[0] != "127.0.0.1:9000" {
+		t.Fatalf("unexpected addr: %#v", opts.Addr)
+	}
+	if opts.Auth.Database != "device_data" || opts.Auth.Username != "reader" || opts.Auth.Password != "secret" {
+		t.Fatalf("unexpected auth: %#v", opts.Auth)
 	}
 }
 
