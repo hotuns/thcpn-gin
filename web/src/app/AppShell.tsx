@@ -5,7 +5,6 @@ import {
   Activity,
   Boxes,
   ChevronDown,
-  Database,
   FileArchive,
   Fingerprint,
   FolderKanban,
@@ -42,7 +41,6 @@ const navGroups = [
   {
     label: "数据",
     items: [
-      { to: "/data-sources", label: "数据源", icon: Database },
       { to: "/datasets", label: "数据集", icon: SquareStack },
       { to: "/export-jobs", label: "导出", icon: FileArchive }
     ]

@@ -34,9 +34,9 @@ tags:
   - name: DataStreams
     description: Device data stream metadata APIs
   - name: DataSources
-    description: Device data source connection metadata APIs
+    description: Internal device source instance metadata APIs
   - name: DataStreamBindings
-    description: Data stream source binding metadata APIs
+    description: Data stream adapter binding metadata APIs
   - name: Telemetry
     description: Time-series telemetry query APIs
   - name: Media
@@ -1935,7 +1935,7 @@ paths:
         - DataSources
       operationId: listDataSources
       summary: List data sources in a workspace
-      description: Requires `workspace.manage` permission. Returned values contain secret references, not raw DSNs.
+      description: Requires `workspace.manage` permission. Data sources are internal device source instances; returned values contain secret references, not raw DSNs.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1965,7 +1965,7 @@ paths:
         - DataSources
       operationId: createDataSource
       summary: Create data source metadata
-      description: Requires `workspace.manage` permission. `dsn_secret_ref` must point to a secret outside the platform database. Runtime query adapters currently support PostgreSQL, MySQL, ClickHouse and HTTP API sources for telemetry and media indexes.
+      description: Requires `workspace.manage` permission. This is an internal device source instance configuration API. `dsn_secret_ref` must point to a secret outside the platform database.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -2000,7 +2000,7 @@ paths:
         - DataSources
       operationId: getDataSource
       summary: Get data source metadata
-      description: Requires `workspace.manage` permission in the owning workspace.
+      description: Requires `workspace.manage` permission in the owning workspace. DataSource represents a physical/internal device source instance.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -2026,7 +2026,7 @@ paths:
         - DataSources
       operationId: updateDataSource
       summary: Update data source metadata
-      description: Requires `workspace.manage` permission in the owning workspace.
+      description: Requires `workspace.manage` permission in the owning workspace. DataSource represents a physical/internal device source instance.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -2091,7 +2091,7 @@ paths:
         - DataStreamBindings
       operationId: createDataStreamBinding
       summary: Create data stream binding metadata
-      description: Requires `device.configure` permission on the data stream. Table and field identifiers are administrator-managed metadata and are not accepted by telemetry query APIs.
+      description: Requires `device.configure` permission on the data stream. Runtime dispatch uses `adapter_code`; generic adapters use administrator-managed table/field metadata, while special adapters use `adapter_config`.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -3284,7 +3284,7 @@ components:
         - archived
     DataSourceType:
       type: string
-      description: Metadata accepts the planned adapter types. Runtime query adapters currently support `postgres`, `mysql`, `clickhouse` and `http_api`.
+      description: Physical connection type for an internal device source instance. Runtime business dispatch is selected by `data_stream_bindings.adapter_code`.
       enum:
         - postgres
         - mysql
@@ -3303,6 +3303,14 @@ components:
         - columns
         - json
         - media
+    DataStreamBindingAdapterCode:
+      type: string
+      description: Adapter selected for this data stream binding. Generic adapters use table/field mapping; special adapters use `adapter_config`.
+      enum:
+        - generic_columns
+        - generic_media
+        - http_api
+        - thcpn_legacy_mysql
     DataStreamBindingStatus:
       type: string
       enum:
@@ -4484,6 +4492,7 @@ components:
           type: boolean
     DataSource:
       type: object
+      description: Internal device source instance. It stores physical connection metadata and secret references; data stream read strategy is selected by `DataStreamBinding.adapter_code`.
       required:
         - id
         - workspace_id
@@ -4556,13 +4565,9 @@ components:
         - id
         - data_stream_id
         - data_source_id
-        - table_name
-        - device_key_field
-        - device_key_value
-        - time_field
-        - value_field
+        - adapter_code
         - payload_type
-        - query_config
+        - adapter_config
         - status
         - created_by
         - created_at
@@ -4574,6 +4579,8 @@ components:
           $ref: "#/components/schemas/UUID"
         data_source_id:
           $ref: "#/components/schemas/UUID"
+        adapter_code:
+          $ref: "#/components/schemas/DataStreamBindingAdapterCode"
         database_name:
           type: string
         schema_name:
@@ -4590,10 +4597,10 @@ components:
           type: string
         payload_type:
           $ref: "#/components/schemas/DataStreamBindingPayloadType"
-        query_config:
+        adapter_config:
           type: object
           additionalProperties: true
-          description: Optional adapter-specific mapping. For media payloads, supported keys include `id_field`, `object_key_field`, `thumbnail_key_field`, `media_type_field` and `media_type`. For `http_api` sources, supported keys include `method`, `path`, `headers`, `device_key_param`, `start_time_param`, `end_time_param`, `limit_param`, `page_param`, `page_size_param` and `media_type_param`.
+          description: Adapter-specific mapping. For `generic_media`, supported keys include `id_field`, `object_key_field`, `thumbnail_key_field`, `media_type_field` and `media_type`. For `http_api`, supported keys include `method`, `path`, `headers`, `device_key_param`, `start_time_param`, `end_time_param`, `limit_param`, `page_param`, `page_size_param` and `media_type_param`. `thcpn_legacy_mysql` currently stores placeholder JSON object config only.
         status:
           $ref: "#/components/schemas/DataStreamBindingStatus"
         created_by:
@@ -4616,17 +4623,15 @@ components:
       required:
         - data_stream_id
         - data_source_id
-        - table_name
-        - device_key_field
-        - device_key_value
-        - time_field
-        - value_field
+        - adapter_code
         - payload_type
       properties:
         data_stream_id:
           $ref: "#/components/schemas/UUID"
         data_source_id:
           $ref: "#/components/schemas/UUID"
+        adapter_code:
+          $ref: "#/components/schemas/DataStreamBindingAdapterCode"
         database_name:
           type: string
         schema_name:
@@ -4647,15 +4652,17 @@ components:
           pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
         payload_type:
           $ref: "#/components/schemas/DataStreamBindingPayloadType"
-        query_config:
+        adapter_config:
           type: object
           additionalProperties: true
-          description: Optional adapter-specific mapping. For media payloads, supported keys include `id_field`, `object_key_field`, `thumbnail_key_field`, `media_type_field` and `media_type`. For `http_api` sources, supported keys include `method`, `path`, `headers`, `device_key_param`, `start_time_param`, `end_time_param`, `limit_param`, `page_param`, `page_size_param` and `media_type_param`.
+          description: Adapter-specific mapping. `generic_columns` may use `{}`. `generic_media` requires `object_key_field`. `http_api` accepts HTTP request mapping keys. `thcpn_legacy_mysql` accepts a JSON object but is not implemented yet.
     UpdateDataStreamBindingRequest:
       type: object
       properties:
         data_source_id:
           $ref: "#/components/schemas/UUID"
+        adapter_code:
+          $ref: "#/components/schemas/DataStreamBindingAdapterCode"
         database_name:
           type: string
         schema_name:
@@ -4676,10 +4683,10 @@ components:
           pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
         payload_type:
           $ref: "#/components/schemas/DataStreamBindingPayloadType"
-        query_config:
+        adapter_config:
           type: object
           additionalProperties: true
-          description: Optional adapter-specific mapping. For media payloads, supported keys include `id_field`, `object_key_field`, `thumbnail_key_field`, `media_type_field` and `media_type`.
+          description: Adapter-specific mapping. `generic_media` requires `object_key_field`; `thcpn_legacy_mysql` currently accepts only placeholder JSON object config.
         status:
           $ref: "#/components/schemas/DataStreamBindingStatus"
     DatasetSource:

@@ -35,7 +35,7 @@ func (r *Runtime) queryHTTPAPITelemetry(ctx context.Context, source DataSource, 
 	if err := validateHTTPTelemetryQuery(req); err != nil {
 		return TelemetryResult{}, err
 	}
-	cfg, err := parseHTTPAPIConfig(req.Binding.QueryConfigJSON)
+	cfg, err := parseHTTPAPIConfig(req.Binding.AdapterConfigJSON)
 	if err != nil {
 		return TelemetryResult{}, err
 	}
@@ -64,7 +64,7 @@ func (r *Runtime) queryHTTPAPIMedia(ctx context.Context, source DataSource, req 
 	if err := validateMediaQuery(req); err != nil {
 		return MediaResult{}, err
 	}
-	cfg, err := parseHTTPAPIConfig(req.Binding.QueryConfigJSON)
+	cfg, err := parseHTTPAPIConfig(req.Binding.AdapterConfigJSON)
 	if err != nil {
 		return MediaResult{}, err
 	}
@@ -96,7 +96,7 @@ func parseHTTPAPIConfig(raw json.RawMessage) (httpAPIConfig, error) {
 	cfg := httpAPIConfig{Method: http.MethodGet}
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &cfg); err != nil {
-			return httpAPIConfig{}, apperr.New(apperr.KindInvalidArgument, "invalid http_api query_config")
+			return httpAPIConfig{}, apperr.New(apperr.KindInvalidArgument, "invalid http_api adapter_config")
 		}
 	}
 	cfg.Method = strings.ToUpper(strings.TrimSpace(cfg.Method))
@@ -175,28 +175,29 @@ func (r *Runtime) doHTTPAPIRequest(ctx context.Context, baseURL string, cfg http
 }
 
 func httpAPITelemetryParams(cfg httpAPIConfig, req TelemetryQuery) map[string]string {
-	return map[string]string{
-		paramName(cfg.DeviceKeyParam, req.Binding.DeviceKeyField): req.Binding.DeviceKeyValue,
-		paramName(cfg.StartTimeParam, "start_time"):               req.Start.UTC().Format(time.RFC3339Nano),
-		paramName(cfg.EndTimeParam, "end_time"):                   req.End.UTC().Format(time.RFC3339Nano),
-		paramName(cfg.LimitParam, "limit"):                        strconv.Itoa(req.Limit),
-		"table_name":                                              req.Binding.TableName,
-		"time_field":                                              req.Binding.TimeField,
-		"value_field":                                             req.Binding.ValueField,
+	params := map[string]string{
+		paramName(cfg.StartTimeParam, "start_time"): req.Start.UTC().Format(time.RFC3339Nano),
+		paramName(cfg.EndTimeParam, "end_time"):     req.End.UTC().Format(time.RFC3339Nano),
+		paramName(cfg.LimitParam, "limit"):          strconv.Itoa(req.Limit),
 	}
+	addHTTPAPIParam(params, paramName(cfg.DeviceKeyParam, bindingStringOrDefault(req.Binding.DeviceKeyField, "device_key")), bindingStringOrEmpty(req.Binding.DeviceKeyValue))
+	addHTTPAPIParam(params, "table_name", bindingStringOrEmpty(req.Binding.TableName))
+	addHTTPAPIParam(params, "time_field", bindingStringOrEmpty(req.Binding.TimeField))
+	addHTTPAPIParam(params, "value_field", bindingStringOrEmpty(req.Binding.ValueField))
+	return params
 }
 
 func httpAPIMediaParams(cfg httpAPIConfig, req MediaQuery) map[string]string {
 	params := map[string]string{
-		paramName(cfg.DeviceKeyParam, req.Binding.DeviceKeyField): req.Binding.DeviceKeyValue,
-		paramName(cfg.StartTimeParam, "start_time"):               req.Start.UTC().Format(time.RFC3339Nano),
-		paramName(cfg.EndTimeParam, "end_time"):                   req.End.UTC().Format(time.RFC3339Nano),
-		paramName(cfg.PageParam, "page"):                          strconv.Itoa(req.Page),
-		paramName(cfg.PageSizeParam, "page_size"):                 strconv.Itoa(req.PageSize),
-		"table_name":  req.Binding.TableName,
-		"time_field":  req.Binding.TimeField,
-		"value_field": req.Binding.ValueField,
+		paramName(cfg.StartTimeParam, "start_time"): req.Start.UTC().Format(time.RFC3339Nano),
+		paramName(cfg.EndTimeParam, "end_time"):     req.End.UTC().Format(time.RFC3339Nano),
+		paramName(cfg.PageParam, "page"):            strconv.Itoa(req.Page),
+		paramName(cfg.PageSizeParam, "page_size"):   strconv.Itoa(req.PageSize),
 	}
+	addHTTPAPIParam(params, paramName(cfg.DeviceKeyParam, bindingStringOrDefault(req.Binding.DeviceKeyField, "device_key")), bindingStringOrEmpty(req.Binding.DeviceKeyValue))
+	addHTTPAPIParam(params, "table_name", bindingStringOrEmpty(req.Binding.TableName))
+	addHTTPAPIParam(params, "time_field", bindingStringOrEmpty(req.Binding.TimeField))
+	addHTTPAPIParam(params, "value_field", bindingStringOrEmpty(req.Binding.ValueField))
 	if strings.TrimSpace(req.MediaType) != "" {
 		params[paramName(cfg.MediaTypeParam, "media_type")] = strings.TrimSpace(req.MediaType)
 	}
@@ -268,4 +269,20 @@ func paramName(value string, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func addHTTPAPIParam(params map[string]string, key string, value string) {
+	key = strings.TrimSpace(key)
+	value = strings.TrimSpace(value)
+	if key != "" && value != "" {
+		params[key] = value
+	}
+}
+
+func bindingStringOrDefault(value *string, fallback string) string {
+	result := bindingStringOrEmpty(value)
+	if result == "" {
+		return fallback
+	}
+	return result
 }

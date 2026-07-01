@@ -20,6 +20,13 @@ import (
 
 var identifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
+const (
+	AdapterGenericColumns = "generic_columns"
+	AdapterGenericMedia   = "generic_media"
+	AdapterHTTPAPI        = "http_api"
+	AdapterTHCPNLegacy    = "thcpn_legacy_mysql"
+)
+
 type Service struct {
 	queries *sqlc.Queries
 }
@@ -83,22 +90,23 @@ type DataSource struct {
 }
 
 type DataStreamBinding struct {
-	ID              uuid.UUID       `json:"id"`
-	DataStreamID    uuid.UUID       `json:"data_stream_id"`
-	DataSourceID    uuid.UUID       `json:"data_source_id"`
-	DatabaseName    *string         `json:"database_name,omitempty"`
-	SchemaName      *string         `json:"schema_name,omitempty"`
-	TableName       string          `json:"table_name"`
-	DeviceKeyField  string          `json:"device_key_field"`
-	DeviceKeyValue  string          `json:"device_key_value"`
-	TimeField       string          `json:"time_field"`
-	ValueField      string          `json:"value_field"`
-	PayloadType     string          `json:"payload_type"`
-	QueryConfigJSON json.RawMessage `json:"query_config"`
-	Status          string          `json:"status"`
-	CreatedBy       uuid.UUID       `json:"created_by"`
-	CreatedAt       time.Time       `json:"created_at"`
-	UpdatedAt       time.Time       `json:"updated_at"`
+	ID                uuid.UUID       `json:"id"`
+	DataStreamID      uuid.UUID       `json:"data_stream_id"`
+	DataSourceID      uuid.UUID       `json:"data_source_id"`
+	AdapterCode       string          `json:"adapter_code"`
+	DatabaseName      *string         `json:"database_name,omitempty"`
+	SchemaName        *string         `json:"schema_name,omitempty"`
+	TableName         *string         `json:"table_name,omitempty"`
+	DeviceKeyField    *string         `json:"device_key_field,omitempty"`
+	DeviceKeyValue    *string         `json:"device_key_value,omitempty"`
+	TimeField         *string         `json:"time_field,omitempty"`
+	ValueField        *string         `json:"value_field,omitempty"`
+	PayloadType       string          `json:"payload_type"`
+	AdapterConfigJSON json.RawMessage `json:"adapter_config"`
+	Status            string          `json:"status"`
+	CreatedBy         uuid.UUID       `json:"created_by"`
+	CreatedAt         time.Time       `json:"created_at"`
+	UpdatedAt         time.Time       `json:"updated_at"`
 }
 
 type CreateDataSourceInput struct {
@@ -118,33 +126,35 @@ type UpdateDataSourceInput struct {
 }
 
 type CreateDataStreamBindingInput struct {
-	DataStreamID    uuid.UUID
-	DataSourceID    uuid.UUID
-	DatabaseName    string
-	SchemaName      string
-	TableName       string
-	DeviceKeyField  string
-	DeviceKeyValue  string
-	TimeField       string
-	ValueField      string
-	PayloadType     string
-	QueryConfigJSON json.RawMessage
-	ActorUserID     uuid.UUID
+	DataStreamID      uuid.UUID
+	DataSourceID      uuid.UUID
+	AdapterCode       string
+	DatabaseName      string
+	SchemaName        string
+	TableName         string
+	DeviceKeyField    string
+	DeviceKeyValue    string
+	TimeField         string
+	ValueField        string
+	PayloadType       string
+	AdapterConfigJSON json.RawMessage
+	ActorUserID       uuid.UUID
 }
 
 type UpdateDataStreamBindingInput struct {
-	BindingID       uuid.UUID
-	DataSourceID    *uuid.UUID
-	DatabaseName    *string
-	SchemaName      *string
-	TableName       *string
-	DeviceKeyField  *string
-	DeviceKeyValue  *string
-	TimeField       *string
-	ValueField      *string
-	PayloadType     *string
-	QueryConfigJSON *json.RawMessage
-	Status          *string
+	BindingID         uuid.UUID
+	DataSourceID      *uuid.UUID
+	AdapterCode       *string
+	DatabaseName      *string
+	SchemaName        *string
+	TableName         *string
+	DeviceKeyField    *string
+	DeviceKeyValue    *string
+	TimeField         *string
+	ValueField        *string
+	PayloadType       *string
+	AdapterConfigJSON *json.RawMessage
+	Status            *string
 }
 
 func NewService(db *pgxpool.Pool) *Service {
@@ -282,6 +292,9 @@ func (s *Service) CreateDataStreamBinding(ctx context.Context, input CreateDataS
 	if stream.WorkspaceID != source.WorkspaceID {
 		return DataStreamBinding{}, apperr.New(apperr.KindInvalidArgument, "data source does not belong to data stream workspace")
 	}
+	if err := validateAdapterSourceCompatibility(input.AdapterCode, source.Type); err != nil {
+		return DataStreamBinding{}, err
+	}
 
 	params, err := normalizeBinding(input, "active")
 	if err != nil {
@@ -289,23 +302,24 @@ func (s *Service) CreateDataStreamBinding(ctx context.Context, input CreateDataS
 	}
 
 	created, err := s.queries.CreateDataStreamBinding(ctx, sqlc.CreateDataStreamBindingParams{
-		DataStreamID:    input.DataStreamID,
-		DataSourceID:    input.DataSourceID,
-		DatabaseName:    params.DatabaseName,
-		SchemaName:      params.SchemaName,
-		TableName:       params.TableName,
-		DeviceKeyField:  params.DeviceKeyField,
-		DeviceKeyValue:  params.DeviceKeyValue,
-		TimeField:       params.TimeField,
-		ValueField:      params.ValueField,
-		PayloadType:     params.PayloadType,
-		QueryConfigJson: params.QueryConfigJSON,
-		CreatedBy:       input.ActorUserID,
+		DataStreamID:      input.DataStreamID,
+		DataSourceID:      input.DataSourceID,
+		AdapterCode:       params.AdapterCode,
+		DatabaseName:      params.DatabaseName,
+		SchemaName:        params.SchemaName,
+		TableName:         params.TableName,
+		DeviceKeyField:    params.DeviceKeyField,
+		DeviceKeyValue:    params.DeviceKeyValue,
+		TimeField:         params.TimeField,
+		ValueField:        params.ValueField,
+		PayloadType:       params.PayloadType,
+		AdapterConfigJson: params.AdapterConfigJSON,
+		CreatedBy:         input.ActorUserID,
 	})
 	if err != nil {
 		return DataStreamBinding{}, mapWriteError(err, "create data stream binding")
 	}
-	return bindingFromSQL(created), nil
+	return bindingFromCreateRow(created), nil
 }
 
 func (s *Service) GetDataStreamBinding(ctx context.Context, bindingID uuid.UUID) (DataStreamBinding, error) {
@@ -316,7 +330,7 @@ func (s *Service) GetDataStreamBinding(ctx context.Context, bindingID uuid.UUID)
 	if err != nil {
 		return DataStreamBinding{}, mapNotFoundOrInternal(err, "data stream binding not found")
 	}
-	return bindingFromSQL(row), nil
+	return bindingFromGetRow(row), nil
 }
 
 func (s *Service) GetActiveDataStreamBinding(ctx context.Context, dataStreamID uuid.UUID) (DataStreamBinding, error) {
@@ -327,7 +341,7 @@ func (s *Service) GetActiveDataStreamBinding(ctx context.Context, dataStreamID u
 	if err != nil {
 		return DataStreamBinding{}, mapNotFoundOrInternal(err, "active data stream binding not found")
 	}
-	return bindingFromSQL(row), nil
+	return bindingFromActiveRow(row), nil
 }
 
 func (s *Service) ListDataStreamBindings(ctx context.Context, dataStreamID uuid.UUID) ([]DataStreamBinding, error) {
@@ -340,7 +354,7 @@ func (s *Service) ListDataStreamBindings(ctx context.Context, dataStreamID uuid.
 	}
 	items := make([]DataStreamBinding, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, bindingFromSQL(row))
+		items = append(items, bindingFromListRow(row))
 	}
 	return items, nil
 }
@@ -371,18 +385,22 @@ func (s *Service) UpdateDataStreamBinding(ctx context.Context, input UpdateDataS
 	}
 
 	sourceInput := CreateDataStreamBindingInput{
-		DataStreamID:    current.DataStreamID,
-		DataSourceID:    dataSourceID,
-		DatabaseName:    derefString(current.DatabaseName),
-		SchemaName:      derefString(current.SchemaName),
-		TableName:       current.TableName,
-		DeviceKeyField:  current.DeviceKeyField,
-		DeviceKeyValue:  current.DeviceKeyValue,
-		TimeField:       current.TimeField,
-		ValueField:      current.ValueField,
-		PayloadType:     current.PayloadType,
-		QueryConfigJSON: json.RawMessage(current.QueryConfigJson),
-		ActorUserID:     current.CreatedBy,
+		DataStreamID:      current.DataStreamID,
+		DataSourceID:      dataSourceID,
+		AdapterCode:       current.AdapterCode,
+		DatabaseName:      derefString(current.DatabaseName),
+		SchemaName:        derefString(current.SchemaName),
+		TableName:         derefString(current.TableName),
+		DeviceKeyField:    derefString(current.DeviceKeyField),
+		DeviceKeyValue:    derefString(current.DeviceKeyValue),
+		TimeField:         derefString(current.TimeField),
+		ValueField:        derefString(current.ValueField),
+		PayloadType:       current.PayloadType,
+		AdapterConfigJSON: json.RawMessage(current.AdapterConfigJson),
+		ActorUserID:       current.CreatedBy,
+	}
+	if input.AdapterCode != nil {
+		sourceInput.AdapterCode = *input.AdapterCode
 	}
 	if input.DatabaseName != nil {
 		sourceInput.DatabaseName = *input.DatabaseName
@@ -408,8 +426,8 @@ func (s *Service) UpdateDataStreamBinding(ctx context.Context, input UpdateDataS
 	if input.PayloadType != nil {
 		sourceInput.PayloadType = *input.PayloadType
 	}
-	if input.QueryConfigJSON != nil {
-		sourceInput.QueryConfigJSON = *input.QueryConfigJSON
+	if input.AdapterConfigJSON != nil {
+		sourceInput.AdapterConfigJSON = *input.AdapterConfigJSON
 	}
 
 	status := current.Status
@@ -419,6 +437,9 @@ func (s *Service) UpdateDataStreamBinding(ctx context.Context, input UpdateDataS
 			return DataStreamBinding{}, apperr.New(apperr.KindInvalidArgument, "invalid data stream binding status")
 		}
 	}
+	if err := validateAdapterSourceCompatibility(sourceInput.AdapterCode, source.Type); err != nil {
+		return DataStreamBinding{}, err
+	}
 
 	params, err := normalizeBinding(sourceInput, status)
 	if err != nil {
@@ -426,23 +447,24 @@ func (s *Service) UpdateDataStreamBinding(ctx context.Context, input UpdateDataS
 	}
 
 	updated, err := s.queries.UpdateDataStreamBinding(ctx, sqlc.UpdateDataStreamBindingParams{
-		ID:              input.BindingID,
-		DataSourceID:    dataSourceID,
-		DatabaseName:    params.DatabaseName,
-		SchemaName:      params.SchemaName,
-		TableName:       params.TableName,
-		DeviceKeyField:  params.DeviceKeyField,
-		DeviceKeyValue:  params.DeviceKeyValue,
-		TimeField:       params.TimeField,
-		ValueField:      params.ValueField,
-		PayloadType:     params.PayloadType,
-		QueryConfigJson: params.QueryConfigJSON,
-		Status:          params.Status,
+		ID:                input.BindingID,
+		DataSourceID:      dataSourceID,
+		AdapterCode:       params.AdapterCode,
+		DatabaseName:      params.DatabaseName,
+		SchemaName:        params.SchemaName,
+		TableName:         params.TableName,
+		DeviceKeyField:    params.DeviceKeyField,
+		DeviceKeyValue:    params.DeviceKeyValue,
+		TimeField:         params.TimeField,
+		ValueField:        params.ValueField,
+		PayloadType:       params.PayloadType,
+		AdapterConfigJson: params.AdapterConfigJSON,
+		Status:            params.Status,
 	})
 	if err != nil {
 		return DataStreamBinding{}, mapWriteError(err, "update data stream binding")
 	}
-	return bindingFromSQL(updated), nil
+	return bindingFromUpdateRow(updated), nil
 }
 
 func (s *Service) resolveBindingParents(ctx context.Context, dataStreamID uuid.UUID, dataSourceID uuid.UUID) (sqlc.DataStream, sqlc.DataSource, error) {
@@ -458,49 +480,40 @@ func (s *Service) resolveBindingParents(ctx context.Context, dataStreamID uuid.U
 }
 
 type normalizedBinding struct {
-	DatabaseName    *string
-	SchemaName      *string
-	TableName       string
-	DeviceKeyField  string
-	DeviceKeyValue  string
-	TimeField       string
-	ValueField      string
-	PayloadType     string
-	QueryConfigJSON []byte
-	Status          string
+	AdapterCode       string
+	DatabaseName      *string
+	SchemaName        *string
+	TableName         *string
+	DeviceKeyField    *string
+	DeviceKeyValue    *string
+	TimeField         *string
+	ValueField        *string
+	PayloadType       string
+	AdapterConfigJSON []byte
+	Status            string
 }
 
 func normalizeBinding(input CreateDataStreamBindingInput, status string) (normalizedBinding, error) {
-	tableName, err := requiredIdentifier(input.TableName, "table_name")
-	if err != nil {
-		return normalizedBinding{}, err
-	}
-	deviceKeyField, err := requiredIdentifier(input.DeviceKeyField, "device_key_field")
-	if err != nil {
-		return normalizedBinding{}, err
-	}
-	timeField, err := requiredIdentifier(input.TimeField, "time_field")
-	if err != nil {
-		return normalizedBinding{}, err
-	}
-	valueField, err := requiredIdentifier(input.ValueField, "value_field")
-	if err != nil {
-		return normalizedBinding{}, err
-	}
-	deviceKeyValue := strings.TrimSpace(input.DeviceKeyValue)
-	if deviceKeyValue == "" {
-		return normalizedBinding{}, apperr.New(apperr.KindInvalidArgument, "device_key_value is required")
+	adapterCode := strings.TrimSpace(input.AdapterCode)
+	if !isValidAdapterCode(adapterCode) {
+		return normalizedBinding{}, apperr.New(apperr.KindInvalidArgument, "invalid adapter_code")
 	}
 	payloadType := strings.TrimSpace(input.PayloadType)
 	if !isValidPayloadType(payloadType) {
 		return normalizedBinding{}, apperr.New(apperr.KindInvalidArgument, "invalid payload_type")
 	}
+	if err := validateAdapterPayload(adapterCode, payloadType); err != nil {
+		return normalizedBinding{}, err
+	}
 	status = strings.TrimSpace(status)
 	if !isValidStatus(status) {
 		return normalizedBinding{}, apperr.New(apperr.KindInvalidArgument, "invalid data stream binding status")
 	}
-	queryConfig, err := normalizeQueryConfig(input.QueryConfigJSON)
+	adapterConfig, err := normalizeAdapterConfig(input.AdapterConfigJSON)
 	if err != nil {
+		return normalizedBinding{}, err
+	}
+	if err := validateAdapterConfig(adapterCode, adapterConfig); err != nil {
 		return normalizedBinding{}, err
 	}
 	databaseName, err := optionalIdentifier(input.DatabaseName, "database_name")
@@ -511,18 +524,99 @@ func normalizeBinding(input CreateDataStreamBindingInput, status string) (normal
 	if err != nil {
 		return normalizedBinding{}, err
 	}
+	tableName, deviceKeyField, deviceKeyValue, timeField, valueField, err := normalizeBindingMapping(input, adapterCode)
+	if err != nil {
+		return normalizedBinding{}, err
+	}
 	return normalizedBinding{
-		DatabaseName:    databaseName,
-		SchemaName:      schemaName,
-		TableName:       tableName,
-		DeviceKeyField:  deviceKeyField,
-		DeviceKeyValue:  deviceKeyValue,
-		TimeField:       timeField,
-		ValueField:      valueField,
-		PayloadType:     payloadType,
-		QueryConfigJSON: queryConfig,
-		Status:          status,
+		AdapterCode:       adapterCode,
+		DatabaseName:      databaseName,
+		SchemaName:        schemaName,
+		TableName:         tableName,
+		DeviceKeyField:    deviceKeyField,
+		DeviceKeyValue:    deviceKeyValue,
+		TimeField:         timeField,
+		ValueField:        valueField,
+		PayloadType:       payloadType,
+		AdapterConfigJSON: adapterConfig,
+		Status:            status,
 	}, nil
+}
+
+func normalizeBindingMapping(input CreateDataStreamBindingInput, adapterCode string) (*string, *string, *string, *string, *string, error) {
+	switch adapterCode {
+	case AdapterHTTPAPI, AdapterTHCPNLegacy:
+		tableName, err := optionalIdentifier(input.TableName, "table_name")
+		if err != nil {
+			return nil, nil, nil, nil, nil, err
+		}
+		deviceKeyField, err := optionalIdentifier(input.DeviceKeyField, "device_key_field")
+		if err != nil {
+			return nil, nil, nil, nil, nil, err
+		}
+		timeField, err := optionalIdentifier(input.TimeField, "time_field")
+		if err != nil {
+			return nil, nil, nil, nil, nil, err
+		}
+		valueField, err := optionalIdentifier(input.ValueField, "value_field")
+		if err != nil {
+			return nil, nil, nil, nil, nil, err
+		}
+		return tableName, deviceKeyField, optionalString(input.DeviceKeyValue), timeField, valueField, nil
+	case AdapterGenericColumns:
+		tableName, deviceKeyField, deviceKeyValue, timeField, valueField, err := normalizeRequiredTableDeviceTimeMapping(input)
+		if err != nil {
+			return nil, nil, nil, nil, nil, err
+		}
+		if valueField == nil {
+			return nil, nil, nil, nil, nil, apperr.New(apperr.KindInvalidArgument, "value_field is required")
+		}
+		return tableName, deviceKeyField, deviceKeyValue, timeField, valueField, nil
+	case AdapterGenericMedia:
+		tableName, deviceKeyField, deviceKeyValue, timeField, _, err := normalizeRequiredTableDeviceTimeMapping(input)
+		if err != nil {
+			return nil, nil, nil, nil, nil, err
+		}
+		valueField, err := optionalIdentifier(input.ValueField, "value_field")
+		if err != nil {
+			return nil, nil, nil, nil, nil, err
+		}
+		return tableName, deviceKeyField, deviceKeyValue, timeField, valueField, nil
+	default:
+		return nil, nil, nil, nil, nil, apperr.New(apperr.KindInvalidArgument, "invalid adapter_code")
+	}
+}
+
+func normalizeRequiredTableDeviceTimeMapping(input CreateDataStreamBindingInput) (*string, *string, *string, *string, *string, error) {
+	tableName, err := requiredIdentifierPtr(input.TableName, "table_name")
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
+	}
+	deviceKeyField, err := requiredIdentifierPtr(input.DeviceKeyField, "device_key_field")
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
+	}
+	timeField, err := requiredIdentifierPtr(input.TimeField, "time_field")
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
+	}
+	valueField, err := optionalIdentifier(input.ValueField, "value_field")
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
+	}
+	deviceKeyValue := optionalString(input.DeviceKeyValue)
+	if deviceKeyValue == nil {
+		return nil, nil, nil, nil, nil, apperr.New(apperr.KindInvalidArgument, "device_key_value is required")
+	}
+	return tableName, deviceKeyField, deviceKeyValue, timeField, valueField, nil
+}
+
+func requiredIdentifierPtr(value string, field string) (*string, error) {
+	identifier, err := requiredIdentifier(value, field)
+	if err != nil {
+		return nil, err
+	}
+	return &identifier, nil
 }
 
 func requiredIdentifier(value string, field string) (string, error) {
@@ -547,21 +641,113 @@ func optionalIdentifier(value string, field string) (*string, error) {
 	return &trimmed, nil
 }
 
-func normalizeQueryConfig(value json.RawMessage) ([]byte, error) {
+func optionalString(value string) *string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
+}
+
+func normalizeAdapterConfig(value json.RawMessage) ([]byte, error) {
 	if len(value) == 0 {
 		return []byte("{}"), nil
 	}
 	if !json.Valid(value) {
-		return nil, apperr.New(apperr.KindInvalidArgument, "query_config must be valid JSON")
+		return nil, apperr.New(apperr.KindInvalidArgument, "adapter_config must be valid JSON")
 	}
 	var object map[string]any
 	if err := json.Unmarshal(value, &object); err != nil {
-		return nil, apperr.New(apperr.KindInvalidArgument, "query_config must be a JSON object")
+		return nil, apperr.New(apperr.KindInvalidArgument, "adapter_config must be a JSON object")
 	}
 	if object == nil {
-		return nil, apperr.New(apperr.KindInvalidArgument, "query_config must be a JSON object")
+		return nil, apperr.New(apperr.KindInvalidArgument, "adapter_config must be a JSON object")
 	}
 	return append([]byte(nil), value...), nil
+}
+
+func normalizeQueryConfig(value json.RawMessage) ([]byte, error) {
+	return normalizeAdapterConfig(value)
+}
+
+func validateAdapterConfig(adapterCode string, raw []byte) error {
+	if adapterCode != AdapterGenericMedia {
+		return nil
+	}
+	cfg, err := parseMediaBindingConfig(raw)
+	if err != nil {
+		return err
+	}
+	if _, err := requiredIdentifier(cfg.ObjectKeyField, "adapter_config.object_key_field"); err != nil {
+		return err
+	}
+	if _, err := optionalIdentifier(cfg.IDField, "adapter_config.id_field"); err != nil {
+		return err
+	}
+	if _, err := optionalIdentifier(cfg.ThumbnailKeyField, "adapter_config.thumbnail_key_field"); err != nil {
+		return err
+	}
+	if _, err := optionalIdentifier(cfg.MediaTypeField, "adapter_config.media_type_field"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func isValidAdapterCode(value string) bool {
+	switch value {
+	case AdapterGenericColumns, AdapterGenericMedia, AdapterHTTPAPI, AdapterTHCPNLegacy:
+		return true
+	default:
+		return false
+	}
+}
+
+func validateAdapterPayload(adapterCode string, payloadType string) error {
+	switch adapterCode {
+	case AdapterGenericColumns:
+		if payloadType != "columns" {
+			return apperr.New(apperr.KindInvalidArgument, "generic_columns requires columns payload_type")
+		}
+	case AdapterGenericMedia:
+		if payloadType != "media" {
+			return apperr.New(apperr.KindInvalidArgument, "generic_media requires media payload_type")
+		}
+	case AdapterHTTPAPI:
+		if !isValidPayloadType(payloadType) {
+			return apperr.New(apperr.KindInvalidArgument, "invalid payload_type")
+		}
+	case AdapterTHCPNLegacy:
+		if !isValidPayloadType(payloadType) {
+			return apperr.New(apperr.KindInvalidArgument, "invalid payload_type")
+		}
+	}
+	return nil
+}
+
+func validateAdapterSourceCompatibility(adapterCode string, sourceType string) error {
+	adapterCode = strings.TrimSpace(adapterCode)
+	sourceType = strings.TrimSpace(sourceType)
+	switch adapterCode {
+	case AdapterGenericColumns, AdapterGenericMedia:
+		switch sourceType {
+		case "postgres", "mysql", "clickhouse":
+			return nil
+		default:
+			return apperr.New(apperr.KindInvalidArgument, adapterCode+" requires postgres, mysql, or clickhouse data source type")
+		}
+	case AdapterHTTPAPI:
+		if sourceType != "http_api" {
+			return apperr.New(apperr.KindInvalidArgument, "http_api adapter requires http_api data source type")
+		}
+		return nil
+	case AdapterTHCPNLegacy:
+		if sourceType != "mysql" {
+			return apperr.New(apperr.KindInvalidArgument, "thcpn_legacy_mysql adapter requires mysql data source type")
+		}
+		return nil
+	default:
+		return apperr.New(apperr.KindInvalidArgument, "invalid adapter_code")
+	}
 }
 
 func isValidDataSourceType(value string) bool {
@@ -605,24 +791,113 @@ func dataSourceFromSQL(model sqlc.DataSource) DataSource {
 	}
 }
 
-func bindingFromSQL(model sqlc.DataStreamBinding) DataStreamBinding {
+func bindingFromCreateRow(model sqlc.CreateDataStreamBindingRow) DataStreamBinding {
 	return DataStreamBinding{
-		ID:              model.ID,
-		DataStreamID:    model.DataStreamID,
-		DataSourceID:    model.DataSourceID,
-		DatabaseName:    model.DatabaseName,
-		SchemaName:      model.SchemaName,
-		TableName:       model.TableName,
-		DeviceKeyField:  model.DeviceKeyField,
-		DeviceKeyValue:  model.DeviceKeyValue,
-		TimeField:       model.TimeField,
-		ValueField:      model.ValueField,
-		PayloadType:     model.PayloadType,
-		QueryConfigJSON: json.RawMessage(model.QueryConfigJson),
-		Status:          model.Status,
-		CreatedBy:       model.CreatedBy,
-		CreatedAt:       pgTime(model.CreatedAt),
-		UpdatedAt:       pgTime(model.UpdatedAt),
+		ID:                model.ID,
+		DataStreamID:      model.DataStreamID,
+		DataSourceID:      model.DataSourceID,
+		AdapterCode:       model.AdapterCode,
+		DatabaseName:      model.DatabaseName,
+		SchemaName:        model.SchemaName,
+		TableName:         model.TableName,
+		DeviceKeyField:    model.DeviceKeyField,
+		DeviceKeyValue:    model.DeviceKeyValue,
+		TimeField:         model.TimeField,
+		ValueField:        model.ValueField,
+		PayloadType:       model.PayloadType,
+		AdapterConfigJSON: json.RawMessage(model.AdapterConfigJson),
+		Status:            model.Status,
+		CreatedBy:         model.CreatedBy,
+		CreatedAt:         pgTime(model.CreatedAt),
+		UpdatedAt:         pgTime(model.UpdatedAt),
+	}
+}
+
+func bindingFromGetRow(model sqlc.GetDataStreamBindingRow) DataStreamBinding {
+	return DataStreamBinding{
+		ID:                model.ID,
+		DataStreamID:      model.DataStreamID,
+		DataSourceID:      model.DataSourceID,
+		AdapterCode:       model.AdapterCode,
+		DatabaseName:      model.DatabaseName,
+		SchemaName:        model.SchemaName,
+		TableName:         model.TableName,
+		DeviceKeyField:    model.DeviceKeyField,
+		DeviceKeyValue:    model.DeviceKeyValue,
+		TimeField:         model.TimeField,
+		ValueField:        model.ValueField,
+		PayloadType:       model.PayloadType,
+		AdapterConfigJSON: json.RawMessage(model.AdapterConfigJson),
+		Status:            model.Status,
+		CreatedBy:         model.CreatedBy,
+		CreatedAt:         pgTime(model.CreatedAt),
+		UpdatedAt:         pgTime(model.UpdatedAt),
+	}
+}
+
+func bindingFromActiveRow(model sqlc.GetActiveDataStreamBindingRow) DataStreamBinding {
+	return DataStreamBinding{
+		ID:                model.ID,
+		DataStreamID:      model.DataStreamID,
+		DataSourceID:      model.DataSourceID,
+		AdapterCode:       model.AdapterCode,
+		DatabaseName:      model.DatabaseName,
+		SchemaName:        model.SchemaName,
+		TableName:         model.TableName,
+		DeviceKeyField:    model.DeviceKeyField,
+		DeviceKeyValue:    model.DeviceKeyValue,
+		TimeField:         model.TimeField,
+		ValueField:        model.ValueField,
+		PayloadType:       model.PayloadType,
+		AdapterConfigJSON: json.RawMessage(model.AdapterConfigJson),
+		Status:            model.Status,
+		CreatedBy:         model.CreatedBy,
+		CreatedAt:         pgTime(model.CreatedAt),
+		UpdatedAt:         pgTime(model.UpdatedAt),
+	}
+}
+
+func bindingFromListRow(model sqlc.ListDataStreamBindingsByDataStreamRow) DataStreamBinding {
+	return DataStreamBinding{
+		ID:                model.ID,
+		DataStreamID:      model.DataStreamID,
+		DataSourceID:      model.DataSourceID,
+		AdapterCode:       model.AdapterCode,
+		DatabaseName:      model.DatabaseName,
+		SchemaName:        model.SchemaName,
+		TableName:         model.TableName,
+		DeviceKeyField:    model.DeviceKeyField,
+		DeviceKeyValue:    model.DeviceKeyValue,
+		TimeField:         model.TimeField,
+		ValueField:        model.ValueField,
+		PayloadType:       model.PayloadType,
+		AdapterConfigJSON: json.RawMessage(model.AdapterConfigJson),
+		Status:            model.Status,
+		CreatedBy:         model.CreatedBy,
+		CreatedAt:         pgTime(model.CreatedAt),
+		UpdatedAt:         pgTime(model.UpdatedAt),
+	}
+}
+
+func bindingFromUpdateRow(model sqlc.UpdateDataStreamBindingRow) DataStreamBinding {
+	return DataStreamBinding{
+		ID:                model.ID,
+		DataStreamID:      model.DataStreamID,
+		DataSourceID:      model.DataSourceID,
+		AdapterCode:       model.AdapterCode,
+		DatabaseName:      model.DatabaseName,
+		SchemaName:        model.SchemaName,
+		TableName:         model.TableName,
+		DeviceKeyField:    model.DeviceKeyField,
+		DeviceKeyValue:    model.DeviceKeyValue,
+		TimeField:         model.TimeField,
+		ValueField:        model.ValueField,
+		PayloadType:       model.PayloadType,
+		AdapterConfigJSON: json.RawMessage(model.AdapterConfigJson),
+		Status:            model.Status,
+		CreatedBy:         model.CreatedBy,
+		CreatedAt:         pgTime(model.CreatedAt),
+		UpdatedAt:         pgTime(model.UpdatedAt),
 	}
 }
 

@@ -38,31 +38,35 @@ type updateDataSourceRequest struct {
 }
 
 type createBindingRequest struct {
-	DataStreamID    string          `json:"data_stream_id"`
-	DataSourceID    string          `json:"data_source_id"`
-	DatabaseName    string          `json:"database_name"`
-	SchemaName      string          `json:"schema_name"`
-	TableName       string          `json:"table_name"`
-	DeviceKeyField  string          `json:"device_key_field"`
-	DeviceKeyValue  string          `json:"device_key_value"`
-	TimeField       string          `json:"time_field"`
-	ValueField      string          `json:"value_field"`
-	PayloadType     string          `json:"payload_type"`
-	QueryConfigJSON json.RawMessage `json:"query_config"`
+	DataStreamID      string          `json:"data_stream_id"`
+	DataSourceID      string          `json:"data_source_id"`
+	AdapterCode       string          `json:"adapter_code"`
+	DatabaseName      string          `json:"database_name"`
+	SchemaName        string          `json:"schema_name"`
+	TableName         string          `json:"table_name"`
+	DeviceKeyField    string          `json:"device_key_field"`
+	DeviceKeyValue    string          `json:"device_key_value"`
+	TimeField         string          `json:"time_field"`
+	ValueField        string          `json:"value_field"`
+	PayloadType       string          `json:"payload_type"`
+	AdapterConfigJSON json.RawMessage `json:"adapter_config"`
+	QueryConfigJSON   json.RawMessage `json:"query_config"`
 }
 
 type updateBindingRequest struct {
-	DataSourceID    *string          `json:"data_source_id"`
-	DatabaseName    *string          `json:"database_name"`
-	SchemaName      *string          `json:"schema_name"`
-	TableName       *string          `json:"table_name"`
-	DeviceKeyField  *string          `json:"device_key_field"`
-	DeviceKeyValue  *string          `json:"device_key_value"`
-	TimeField       *string          `json:"time_field"`
-	ValueField      *string          `json:"value_field"`
-	PayloadType     *string          `json:"payload_type"`
-	QueryConfigJSON *json.RawMessage `json:"query_config"`
-	Status          *string          `json:"status"`
+	DataSourceID      *string          `json:"data_source_id"`
+	AdapterCode       *string          `json:"adapter_code"`
+	DatabaseName      *string          `json:"database_name"`
+	SchemaName        *string          `json:"schema_name"`
+	TableName         *string          `json:"table_name"`
+	DeviceKeyField    *string          `json:"device_key_field"`
+	DeviceKeyValue    *string          `json:"device_key_value"`
+	TimeField         *string          `json:"time_field"`
+	ValueField        *string          `json:"value_field"`
+	PayloadType       *string          `json:"payload_type"`
+	AdapterConfigJSON *json.RawMessage `json:"adapter_config"`
+	QueryConfigJSON   *json.RawMessage `json:"query_config"`
+	Status            *string          `json:"status"`
 }
 
 func NewHandler(service *Service, checker *permission.Checker) *Handler {
@@ -214,18 +218,19 @@ func (h *Handler) CreateBinding(c *gin.Context) {
 	}
 
 	result, err := h.service.CreateDataStreamBinding(c.Request.Context(), CreateDataStreamBindingInput{
-		DataStreamID:    dataStreamID,
-		DataSourceID:    dataSourceID,
-		DatabaseName:    req.DatabaseName,
-		SchemaName:      req.SchemaName,
-		TableName:       req.TableName,
-		DeviceKeyField:  req.DeviceKeyField,
-		DeviceKeyValue:  req.DeviceKeyValue,
-		TimeField:       req.TimeField,
-		ValueField:      req.ValueField,
-		PayloadType:     req.PayloadType,
-		QueryConfigJSON: req.QueryConfigJSON,
-		ActorUserID:     actor.UserID,
+		DataStreamID:      dataStreamID,
+		DataSourceID:      dataSourceID,
+		AdapterCode:       req.AdapterCode,
+		DatabaseName:      req.DatabaseName,
+		SchemaName:        req.SchemaName,
+		TableName:         req.TableName,
+		DeviceKeyField:    req.DeviceKeyField,
+		DeviceKeyValue:    req.DeviceKeyValue,
+		TimeField:         req.TimeField,
+		ValueField:        req.ValueField,
+		PayloadType:       req.PayloadType,
+		AdapterConfigJSON: createBindingAdapterConfig(req),
+		ActorUserID:       actor.UserID,
 	})
 	if err != nil {
 		httpx.WriteAppError(c, err)
@@ -277,24 +282,39 @@ func (h *Handler) UpdateBinding(c *gin.Context) {
 		return
 	}
 	result, err := h.service.UpdateDataStreamBinding(c.Request.Context(), UpdateDataStreamBindingInput{
-		BindingID:       bindingID,
-		DataSourceID:    dataSourceID,
-		DatabaseName:    req.DatabaseName,
-		SchemaName:      req.SchemaName,
-		TableName:       req.TableName,
-		DeviceKeyField:  req.DeviceKeyField,
-		DeviceKeyValue:  req.DeviceKeyValue,
-		TimeField:       req.TimeField,
-		ValueField:      req.ValueField,
-		PayloadType:     req.PayloadType,
-		QueryConfigJSON: req.QueryConfigJSON,
-		Status:          req.Status,
+		BindingID:         bindingID,
+		DataSourceID:      dataSourceID,
+		AdapterCode:       req.AdapterCode,
+		DatabaseName:      req.DatabaseName,
+		SchemaName:        req.SchemaName,
+		TableName:         req.TableName,
+		DeviceKeyField:    req.DeviceKeyField,
+		DeviceKeyValue:    req.DeviceKeyValue,
+		TimeField:         req.TimeField,
+		ValueField:        req.ValueField,
+		PayloadType:       req.PayloadType,
+		AdapterConfigJSON: updateBindingAdapterConfig(req),
+		Status:            req.Status,
 	})
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+func createBindingAdapterConfig(req createBindingRequest) json.RawMessage {
+	if len(req.AdapterConfigJSON) > 0 {
+		return req.AdapterConfigJSON
+	}
+	return req.QueryConfigJSON
+}
+
+func updateBindingAdapterConfig(req updateBindingRequest) *json.RawMessage {
+	if req.AdapterConfigJSON != nil {
+		return req.AdapterConfigJSON
+	}
+	return req.QueryConfigJSON
 }
 
 func (h *Handler) authorize(c *gin.Context, resourceType string, resourceID uuid.UUID, action string) bool {

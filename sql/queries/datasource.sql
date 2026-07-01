@@ -28,6 +28,7 @@ RETURNING id, workspace_id, name, type, dsn_secret_ref, status, created_by, crea
 INSERT INTO data_stream_bindings (
     data_stream_id,
     data_source_id,
+    adapter_code,
     database_name,
     schema_name,
     table_name,
@@ -36,25 +37,25 @@ INSERT INTO data_stream_bindings (
     time_field,
     value_field,
     payload_type,
-    query_config_json,
+    adapter_config_json,
     created_by
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-RETURNING id, data_stream_id, data_source_id, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, query_config_json, status, created_by, created_at, updated_at;
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+RETURNING id, data_stream_id, data_source_id, adapter_code, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at;
 
 -- name: GetDataStreamBinding :one
-SELECT id, data_stream_id, data_source_id, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, query_config_json, status, created_by, created_at, updated_at
+SELECT id, data_stream_id, data_source_id, adapter_code, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at
 FROM data_stream_bindings
 WHERE id = $1;
 
 -- name: ListDataStreamBindingsByDataStream :many
-SELECT id, data_stream_id, data_source_id, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, query_config_json, status, created_by, created_at, updated_at
+SELECT id, data_stream_id, data_source_id, adapter_code, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at
 FROM data_stream_bindings
 WHERE data_stream_id = $1
 ORDER BY created_at DESC, id DESC;
 
 -- name: GetActiveDataStreamBinding :one
-SELECT id, data_stream_id, data_source_id, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, query_config_json, status, created_by, created_at, updated_at
+SELECT id, data_stream_id, data_source_id, adapter_code, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at
 FROM data_stream_bindings
 WHERE data_stream_id = $1
   AND status = 'active'
@@ -64,16 +65,17 @@ LIMIT 1;
 -- name: UpdateDataStreamBinding :one
 UPDATE data_stream_bindings
 SET data_source_id = $2,
-    database_name = $3,
-    schema_name = $4,
-    table_name = $5,
-    device_key_field = $6,
-    device_key_value = $7,
-    time_field = $8,
-    value_field = $9,
-    payload_type = $10,
-    query_config_json = $11,
-    status = $12,
+    adapter_code = $3,
+    database_name = $4,
+    schema_name = $5,
+    table_name = $6,
+    device_key_field = $7,
+    device_key_value = $8,
+    time_field = $9,
+    value_field = $10,
+    payload_type = $11,
+    adapter_config_json = $12,
+    status = $13,
     updated_at = now()
 WHERE id = $1
-RETURNING id, data_stream_id, data_source_id, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, query_config_json, status, created_by, created_at, updated_at;
+RETURNING id, data_stream_id, data_source_id, adapter_code, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at;

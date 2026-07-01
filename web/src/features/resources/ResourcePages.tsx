@@ -22,6 +22,7 @@ import {
   type DataSourceType,
   type DataStream,
   type DataStreamBinding,
+  type DataStreamBindingAdapterCode,
   type DataStreamBindingPayloadType,
   type DataStreamType,
   type Dataset,
@@ -48,6 +49,7 @@ import {
   Page,
   Section,
   SelectField,
+  TextArea,
   TextInput,
   statusTone,
   useToast
@@ -115,6 +117,12 @@ const payloadTypeOptions: Array<{ label: string; value: DataStreamBindingPayload
   { label: "列", value: "columns" },
   { label: "JSON", value: "json" },
   { label: "媒体", value: "media" }
+];
+const adapterOptions: Array<{ label: string; value: DataStreamBindingAdapterCode }> = [
+  { label: "Generic Columns", value: "generic_columns" },
+  { label: "Generic Media", value: "generic_media" },
+  { label: "HTTP API", value: "http_api" },
+  { label: "THCPN Legacy MySQL", value: "thcpn_legacy_mysql" }
 ];
 
 export function ProjectsPage() {
@@ -371,12 +379,16 @@ export function DataStreamsPage() {
   const [form, setForm] = useState({ device_id: "", code: "", name: "", type: "telemetry" as DataStreamType, unit: "" });
   const [bindingForm, setBindingForm] = useState({
     data_source_id: "",
+    adapter_code: "generic_columns" as DataStreamBindingAdapterCode,
+    database_name: "",
+    schema_name: "",
     table_name: "",
     device_key_field: "device_id",
     device_key_value: "",
     time_field: "ts",
     value_field: "value",
-    payload_type: "columns" as DataStreamBindingPayloadType
+    payload_type: "columns" as DataStreamBindingPayloadType,
+    adapter_config: "{}"
   });
   const devices = useQuery({
     queryKey: ["devices", selectedWorkspaceId],
@@ -418,23 +430,30 @@ export function DataStreamsPage() {
       bindingsApi.create({
         data_stream_id: selectedStreamId,
         data_source_id: bindingForm.data_source_id,
-        table_name: bindingForm.table_name.trim(),
-        device_key_field: bindingForm.device_key_field.trim(),
-        device_key_value: bindingForm.device_key_value.trim(),
-        time_field: bindingForm.time_field.trim(),
-        value_field: bindingForm.value_field.trim(),
+        adapter_code: bindingForm.adapter_code,
+        database_name: optional(bindingForm.database_name),
+        schema_name: optional(bindingForm.schema_name),
+        table_name: optional(bindingForm.table_name),
+        device_key_field: optional(bindingForm.device_key_field),
+        device_key_value: optional(bindingForm.device_key_value),
+        time_field: optional(bindingForm.time_field),
+        value_field: optional(bindingForm.value_field),
         payload_type: bindingForm.payload_type,
-        query_config: {}
+        adapter_config: parseJSONRecord(bindingForm.adapter_config)
       }),
     onSuccess: () => {
       setBindingForm({
         data_source_id: "",
+        adapter_code: "generic_columns",
+        database_name: "",
+        schema_name: "",
         table_name: "",
         device_key_field: "device_id",
         device_key_value: "",
         time_field: "ts",
         value_field: "value",
-        payload_type: "columns"
+        payload_type: "columns",
+        adapter_config: "{}"
       });
       void queryClient.invalidateQueries({ queryKey: ["data-stream-bindings", selectedStreamId] });
       pushToast("绑定已创建");
@@ -442,6 +461,17 @@ export function DataStreamsPage() {
   });
   const deviceOptions = useMemo(() => toOptions(devices.data?.items ?? [], "选择设备", (item) => `${item.name} · ${item.serial_no}`), [devices.data?.items]);
   const sourceOptions = useMemo(() => toOptions(dataSources.data?.items ?? [], "选择数据源"), [dataSources.data?.items]);
+  const bindingRequiresMapping = bindingForm.adapter_code === "generic_columns" || bindingForm.adapter_code === "generic_media";
+  const bindingRequiresValueField = bindingForm.adapter_code === "generic_columns";
+  const updateBindingAdapter = (adapterCode: DataStreamBindingAdapterCode) => {
+    setBindingForm({
+      ...bindingForm,
+      adapter_code: adapterCode,
+      payload_type: defaultPayloadForAdapter(adapterCode),
+      value_field: adapterCode === "generic_media" ? "" : bindingForm.value_field || "value",
+      adapter_config: defaultAdapterConfigForAdapter(adapterCode)
+    });
+  };
 
   return (
     <Page description="数据流定义设备的遥测、媒体、事件或日志输出。" title="数据流">
@@ -489,12 +519,28 @@ export function DataStreamsPage() {
         {selectedStreamId ? (
           <form className="form-grid" onSubmit={(event) => submit(event, () => createBinding.mutate())}>
             <SelectField label="数据源" onChange={(event) => setBindingForm({ ...bindingForm, data_source_id: event.target.value })} options={sourceOptions} required value={bindingForm.data_source_id} />
-            <TextInput label="表名" onChange={(event) => setBindingForm({ ...bindingForm, table_name: event.target.value })} required value={bindingForm.table_name} />
-            <TextInput label="设备字段" onChange={(event) => setBindingForm({ ...bindingForm, device_key_field: event.target.value })} required value={bindingForm.device_key_field} />
-            <TextInput label="设备值" onChange={(event) => setBindingForm({ ...bindingForm, device_key_value: event.target.value })} required value={bindingForm.device_key_value} />
-            <TextInput label="时间字段" onChange={(event) => setBindingForm({ ...bindingForm, time_field: event.target.value })} required value={bindingForm.time_field} />
-            <TextInput label="值字段" onChange={(event) => setBindingForm({ ...bindingForm, value_field: event.target.value })} required value={bindingForm.value_field} />
-            <SelectField label="Payload" onChange={(event) => setBindingForm({ ...bindingForm, payload_type: event.target.value as DataStreamBindingPayloadType })} options={payloadTypeOptions} value={bindingForm.payload_type} />
+            <SelectField
+              label="Adapter"
+              onChange={(event) => updateBindingAdapter(event.target.value as DataStreamBindingAdapterCode)}
+              options={adapterOptions}
+              required
+              value={bindingForm.adapter_code}
+            />
+            <TextInput label="数据库" onChange={(event) => setBindingForm({ ...bindingForm, database_name: event.target.value })} value={bindingForm.database_name} />
+            <TextInput label="Schema" onChange={(event) => setBindingForm({ ...bindingForm, schema_name: event.target.value })} value={bindingForm.schema_name} />
+            <TextInput label="表名" onChange={(event) => setBindingForm({ ...bindingForm, table_name: event.target.value })} required={bindingRequiresMapping} value={bindingForm.table_name} />
+            <TextInput label="设备字段" onChange={(event) => setBindingForm({ ...bindingForm, device_key_field: event.target.value })} required={bindingRequiresMapping} value={bindingForm.device_key_field} />
+            <TextInput label="设备值" onChange={(event) => setBindingForm({ ...bindingForm, device_key_value: event.target.value })} required={bindingRequiresMapping} value={bindingForm.device_key_value} />
+            <TextInput label="时间字段" onChange={(event) => setBindingForm({ ...bindingForm, time_field: event.target.value })} required={bindingRequiresMapping} value={bindingForm.time_field} />
+            <TextInput label="值字段" onChange={(event) => setBindingForm({ ...bindingForm, value_field: event.target.value })} required={bindingRequiresValueField} value={bindingForm.value_field} />
+            <SelectField
+              label="Payload"
+              disabled={bindingForm.adapter_code === "generic_columns" || bindingForm.adapter_code === "generic_media"}
+              onChange={(event) => setBindingForm({ ...bindingForm, payload_type: event.target.value as DataStreamBindingPayloadType })}
+              options={payloadTypeOptions}
+              value={bindingForm.payload_type}
+            />
+            <TextArea label="Adapter 配置 JSON" onChange={(event) => setBindingForm({ ...bindingForm, adapter_config: event.target.value })} required value={bindingForm.adapter_config} />
             <FormSubmitButton disabled={createBinding.isPending} />
           </form>
         ) : null}
@@ -504,7 +550,8 @@ export function DataStreamsPage() {
           <DataTable<DataStreamBinding>
             columns={[
               { key: "source", header: "数据源 ID", render: (item) => <CopyableId value={item.data_source_id} /> },
-              { key: "table", header: "表", render: (item) => item.table_name },
+              { key: "adapter", header: "Adapter", render: (item) => item.adapter_code },
+              { key: "table", header: "表", render: (item) => labelOrDash(item.table_name) },
               { key: "payload", header: "Payload", render: (item) => item.payload_type },
               { key: "status", header: "状态", render: (item) => <Badge tone={statusTone(item.status)}>{item.status}</Badge> },
               { key: "id", header: "ID", render: (item) => <CopyableId value={item.id} /> }
@@ -1131,6 +1178,32 @@ function submit(event: FormEvent<HTMLFormElement>, action: () => void) {
 
 function optional(value: string): string | undefined {
   return value.trim() || undefined;
+}
+
+function defaultPayloadForAdapter(adapterCode: DataStreamBindingAdapterCode): DataStreamBindingPayloadType {
+  if (adapterCode === "generic_media") {
+    return "media";
+  }
+  return "columns";
+}
+
+function defaultAdapterConfigForAdapter(adapterCode: DataStreamBindingAdapterCode): string {
+  if (adapterCode === "generic_media") {
+    return JSON.stringify({ object_key_field: "object_key" }, null, 2);
+  }
+  return "{}";
+}
+
+function parseJSONRecord(value: string): Record<string, unknown> {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return {};
+  }
+  const parsed = JSON.parse(trimmed) as unknown;
+  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+    throw new Error("Adapter 配置必须是 JSON object");
+  }
+  return parsed as Record<string, unknown>;
 }
 
 function toIso(value: string): string {

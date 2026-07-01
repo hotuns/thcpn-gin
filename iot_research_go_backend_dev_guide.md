@@ -27,6 +27,7 @@
 - 支持单独分享资源给某个人。
 - 支持售后临时授权。
 - 从多个设备数据源读取时序数据、图片记录和视频记录。
+- 平台维护设备列表和外部设备源映射，普通用户只绑定设备。
 - 支持数据集创建、查询、导出和分享。
 - 对敏感操作进行审计。
 
@@ -46,7 +47,7 @@
    处理数据导出、数据集归档、批量媒体打包、过期授权清理等异步任务。
 
 3. Data Source Adapter
-   从不同设备数据库读取数据，并转换成平台统一格式。
+   根据平台设备映射从不同设备数据库读取数据，并转换成平台统一格式。
 ```
 
 ### 2.2 架构图
@@ -59,6 +60,7 @@ Web / Admin / OpenAPI Client
           |
           |-- Auth / User / Workspace
           |-- Project / Site / Device
+          |-- Device Source Mapping
           |-- Permission / AccessGrant
           |-- Dataset / Export
           |-- Telemetry Query
@@ -84,6 +86,9 @@ Web / Admin / OpenAPI Client
 
 ```text
 平台业务库和设备数据源库分离。
+平台维护设备列表和外部设备源映射。
+设备源 adapter 在代码中注册，设备源实例由部署配置维护。
+Workspace Owner / Admin 只管理自己空间内的资源，不管理 DSN、库表字段映射或 raw SQL。
 权限判断只在平台层完成。
 设备数据源库不承担用户权限判断。
 业务模块不直接拼接不同设备库 SQL。
@@ -176,6 +181,8 @@ worker
 设备资产管理
 权限判断
 分享和授权管理
+设备源映射读取
+设备配置快照查询
 数据流查询
 图片/视频记录查询
 数据集管理
@@ -309,7 +316,9 @@ Workspace
 站点
 设备资产
 数据流元信息
-设备数据源配置
+设备源配置引用
+外部设备映射
+设备配置快照
 数据集
 分享和临时授权
 导出任务
@@ -334,7 +343,8 @@ sites
 devices
 device_capabilities
 data_streams
-data_sources
+device_source_refs
+device_config_snapshots
 data_stream_bindings
 datasets
 dataset_sources
@@ -348,56 +358,73 @@ audit_logs
 
 ## 7. 多设备数据源读取
 
-### 7.1 DataSource
+### 7.1 DeviceSourceConfig
 
-由于设备数据已经落在不同数据库中，平台需要保存数据源配置。
+由于设备数据已经落在不同数据库中，平台需要知道每类设备源如何连接和读取。第一版预计只有三到四类设备数据来源，因此不建议建设完整的设备数据源管理后台。
+
+推荐做法：
 
 ```text
-data_sources
-- id
-- name
-- type: postgres / mysql / clickhouse / http_api / file
-- dsn_secret_ref
-- status
-- created_at
-- updated_at
+adapter registry 写在代码里。
+设备源实例写在部署配置、环境变量、seed 或内部脚本里。
+平台库只保存设备映射、配置快照、DataStream 和绑定关系。
+普通 Workspace 用户只绑定设备，不管理设备源。
+```
+
+配置示例：
+
+```text
+device_sources:
+  thcpn_legacy:
+    adapter_code: thcpn_legacy_mysql
+    dsn_secret_ref: env:THCPN_LEGACY_MYSQL_DSN
+    table_index: device_data_index
+    table_prefix: device_data_
+    status: active
 ```
 
 说明：
 
 ```text
+source_code 是平台内部稳定标识，例如 thcpn_legacy。
+adapter_code 对应代码中注册的 adapter。
 dsn_secret_ref 不直接保存明文数据库密码。
 真实连接串应放在环境变量、配置中心、Secret Manager 或加密配置中。
+source_code 不属于任何 workspace；客户权限边界来自绑定后的 Device / DataStream / Dataset。
 ```
+
+当前代码实现仍保留 `data_sources` 表和 `/api/v1/data-sources` 作为内部设备源实例配置载体，`data_sources.type` 表示物理连接类型，例如 `postgres`、`mysql`、`clickhouse` 或 `http_api`。运行时业务分发不再按 `data_sources.type` 决定，而是按 `data_stream_bindings.adapter_code` 决定。如果后续设备源数量、部署环境或运维协作复杂度上升，再把 `device_sources` 升级为正式系统表和管理后台。
 
 ### 7.2 DataStreamBinding
 
-平台需要知道某个数据流从哪个库、哪张表、哪个字段读取。
+平台需要知道某个数据流从哪个设备源、哪个外部设备、哪段配置和哪个受控字段读取。
+
+`DataStreamBinding` 是平台内部读取映射。它可以由同步任务、seed 或内部脚本从外部设备配置表生成。普通用户不能在前端提交 `table_name`、`field_name`、`raw_sql` 或任意 JSONPath。
 
 ```text
 data_stream_bindings
 - id
 - data_stream_id
 - data_source_id
-- database_name
-- schema_name
-- table_name
-- device_key_field
-- device_key_value
-- time_field
-- value_field
+- adapter_code: generic_columns / generic_media / http_api / thcpn_legacy_mysql
+- table_name nullable
+- device_key_field nullable
+- device_key_value nullable
+- time_field nullable
+- value_field nullable
 - payload_type: columns / json / media
-- query_config_json
+- adapter_config_json
 - status
 - created_at
 - updated_at
 ```
 
-示例：
+通用列式数据源可以继续使用受控配置：
 
 ```text
 data_stream: soil_moisture_10cm
-data_source: old_soil_mysql
+data_source_id: <internal source instance>
+adapter_code: generic_columns
 table_name: device_data_2026
 device_key_field: sn
 device_key_value: THCPN001
@@ -405,6 +432,92 @@ time_field: collect_time
 value_field: soil_moisture_10
 payload_type: columns
 ```
+
+媒体索引类标准表使用 `generic_media`，媒体字段从 `adapter_config_json` 读取：
+
+```text
+data_stream: camera_1_image
+data_source_id: <internal source instance>
+adapter_code: generic_media
+table_name: media_index
+device_key_field: sn
+device_key_value: THCPN001
+time_field: captured_at
+payload_type: media
+adapter_config_json: {"object_key_field":"object_key","id_field":"media_id","media_type":"image"}
+```
+
+THCPN 旧 MySQL 设备库应使用专门 adapter，而不是把分表和 JSON 解析规则暴露给普通用户。当前代码只实现 `thcpn_legacy_mysql` 的 adapter code、校验和 runtime 未实现占位，暂不读取旧库；下面只是后续 `adapter_config_json` 可能包含的受控字段示例：
+
+```json
+{
+  "source_device_id": 101,
+  "source_config_ids": [1302],
+  "row_type": "data",
+  "json_key": "stemp",
+  "json_value_path": "$.stemp.value",
+  "table_index": "device_data_index",
+  "table_prefix": "device_data_",
+  "time_field": "ts",
+  "deleted_field": "deleted_at"
+}
+```
+
+媒体流使用同样原则：
+
+```json
+{
+  "source_device_id": 101,
+  "source_config_ids": [1302],
+  "row_type": "image",
+  "json_key": "key1",
+  "json_object_key_path": "$.key1.value",
+  "media_type": "image",
+  "table_index": "device_data_index",
+  "table_prefix": "device_data_",
+  "time_field": "ts",
+  "deleted_field": "deleted_at"
+}
+```
+
+### 7.2.1 DeviceSourceRef 和配置快照
+
+平台设备和外部设备库记录之间需要独立映射：
+
+```text
+device_source_refs
+- id
+- device_id
+- source_code
+- external_device_id
+- external_sn
+- external_iccid
+- external_uuid
+- status
+- synced_at
+- created_at
+- updated_at
+```
+
+对于 THCPN 旧库，设备数据行通过 `device_config_id` 指向当时的设备配置。平台应同步设备配置快照，用于解释历史 `data` JSON key：
+
+```text
+device_config_snapshots
+- id
+- device_id
+- source_code
+- external_config_id
+- external_device_id
+- version
+- data_json
+- image_json
+- control_json
+- source_updated_at
+- synced_at
+- created_at
+```
+
+历史数据解释必须优先使用数据行对应的 `device_config_id` 或配置快照，而不是设备当前最新配置。
 
 ### 7.3 Data Source Adapter
 
@@ -430,6 +543,7 @@ type DataSource interface {
 ```text
 PostgresDataSource
 MySQLDataSource
+ThcpnLegacyMySQLDataSource
 ClickHouseDataSource
 HTTPDataSource, optional
 ```
@@ -580,6 +694,24 @@ subject_type = workspace
 subject_type = service_account
 ```
 
+### 8.5 设备源运维边界
+
+设备源配置、外部设备映射同步和 DataStreamBinding 生成属于平台内部运维能力，不纳入客户 Workspace 权限模型。
+
+第一版建议通过部署配置、seed、CLI 或内部脚本维护这些内容。如果后续暴露 HTTP 管理接口，再单独设计内部运维身份和权限，不要复用 `workspace_members` 或客户 `access_grants`。
+
+内部运维动作示例：
+
+```text
+ops.device_source.configure
+ops.device_registry.sync
+ops.stream_binding.generate
+ops.datasource_health.view
+ops.break_glass_access
+```
+
+`ops.break_glass_access` 必须强制填写原因、资源范围、时间范围，并写入 audit log；它不能绕过导出、下载和客户授权审计。
+
 ---
 
 ## 9. 数据查询模块
@@ -594,11 +726,13 @@ subject_type = service_account
 1. API 接收查询请求。
 2. 根据 device_id / data_stream_id 查平台业务库。
 3. 判断用户是否有 telemetry.view_history 或 telemetry.view_realtime。
-4. 查询 data_stream_binding。
-5. 获取 data_source。
+4. 查询平台已生成的 data_stream_binding。
+5. 根据 source_code 获取设备源配置。
 6. 调用 Data Source Adapter。
 7. 返回统一格式。
 ```
+
+用户请求只表达业务资源和时间范围，不暴露或接受 source_code、库表名、字段名、JSONPath 或 raw SQL。
 
 请求参数必须包含：
 
@@ -648,7 +782,7 @@ limit 或 interval
 ```text
 1. API 接收图片/视频列表请求。
 2. 鉴权 media.archive_view 或 media.live_view。
-3. 根据 data_stream_binding 查询媒体记录所在数据源。
+3. 根据平台已生成的 data_stream_binding 查询媒体记录所在设备源。
 4. 返回媒体元信息和短期预览 URL。
 5. 下载原图/视频时再次鉴权 media.download。
 6. 写 audit_log。
@@ -728,7 +862,7 @@ dataset_sources
 1. 用户请求 dataset.view。
 2. 鉴权。
 3. 读取 dataset_sources。
-4. 按 data_stream_binding 查询设备数据源。
+4. 按平台已生成的 data_stream_binding 查询设备源。
 5. 返回统一数据结构。
 ```
 
@@ -819,6 +953,9 @@ ZIP
 授权售后
 售后访问设备
 删除数据或媒体
+修改设备源部署配置
+修改外部设备映射或 DataStreamBinding
+内部排障访问客户设备数据
 ```
 
 ### 12.2 审计表
@@ -865,6 +1002,7 @@ audit_logs
 /api/v1/projects
 /api/v1/sites
 /api/v1/devices
+/api/v1/devices/bind
 /api/v1/devices/{device_id}/telemetry
 /api/v1/devices/{device_id}/media/images
 /api/v1/datasets
@@ -872,6 +1010,8 @@ audit_logs
 /api/v1/access-grants
 /api/v1/audit-logs
 ```
+
+第一版不建议提供正式的客户侧设备源管理 API 或后台页面。当前实现保留 `/api/v1/data-sources` 和 `/api/v1/data-stream-bindings` 作为内部配置载体，但普通 Workspace 控制台不应暴露 DataSource 创建、DSN、库表字段映射或 raw SQL 配置入口。设备源配置、外部设备映射和 DataStreamBinding 可以先通过部署配置、seed、CLI 或内部脚本维护。
 
 ### 13.2 错误响应
 
@@ -1034,6 +1174,8 @@ API 请求
 权限判断
 Scope 覆盖关系
 AccessGrant 过期和撤销
+设备源运维动作和 Workspace 权限隔离
+普通用户不能管理设备源配置 / DataStreamBinding
 数据查询参数校验
 导出任务状态流转
 ```
@@ -1059,6 +1201,9 @@ MinIO, 如需要测试对象存储
 Shared Viewer 不能下载媒体
 Shared Downloader 可以导出指定 Dataset
 大范围查询会被拒绝并提示走导出
+Workspace Owner / Admin 不能配置设备源、库表字段或 raw SQL
+设备源 adapter registry 能按 source_code 选择正确 adapter
+设备绑定只接受 SN / 二维码 / 授权码，不接受 DSN、表名、字段名或 raw SQL
 ```
 
 ### 16.3 CI 检查
@@ -1125,7 +1270,29 @@ Permission Checker
 支持基础角色权限判断
 ```
 
-### 阶段三：项目、站点、设备资产
+### 阶段三：设备源适配和设备映射
+
+目标：
+
+```text
+AdapterRegistry
+DeviceSourceConfig
+DeviceSourceRef
+DeviceConfigSnapshot
+DataStreamBinding
+```
+
+交付：
+
+```text
+代码中注册三到四类设备源 adapter
+设备源实例通过部署配置、环境变量或 seed 维护
+系统可以同步或录入平台设备和外部设备映射
+系统可以从设备配置快照发现 DataStream
+普通 Workspace 用户不能创建或修改设备源配置 / DataStreamBinding
+```
+
+### 阶段四：项目、站点、设备资产
 
 目标：
 
@@ -1142,10 +1309,10 @@ DeviceCapability
 ```text
 可管理项目、站点、设备
 设备可绑定到 workspace / project / site
-设备可配置 data_stream
+设备绑定后可查看平台已生成的数据流
 ```
 
-### 阶段四：AccessGrant 和分享
+### 阶段五：AccessGrant 和分享
 
 目标：
 
@@ -1166,15 +1333,16 @@ Service Engineer
 支持撤销分享
 ```
 
-### 阶段五：多数据源读取
+### 阶段六：多数据源读取
 
 目标：
 
 ```text
-DataSource
+DeviceSourceConfig
 DataStreamBinding
 PostgresDataSource
 MySQLDataSource
+ThcpnLegacyMySQLDataSource
 Telemetry Query
 Media Query
 ```
@@ -1185,9 +1353,10 @@ Media Query
 可以从至少一种现有设备数据库读取数据
 查询返回统一格式
 支持时间范围和分页限制
+用户查询不接受 source_code、库表字段或 raw SQL
 ```
 
-### 阶段六：Dataset 和 Export
+### 阶段七：Dataset 和 Export
 
 目标：
 
@@ -1208,7 +1377,7 @@ Object Storage
 可以打包媒体文件
 ```
 
-### 阶段七：审计和可观测性
+### 阶段八：审计和可观测性
 
 目标：
 
@@ -1245,6 +1414,7 @@ Owner 可以邀请和管理成员。
 
 ```text
 Owner 可以管理 workspace 下所有资源。
+Owner / Admin 不能管理设备源连接、外部设备映射或 DataStreamBinding。
 Project Manager 只能管理授权 project。
 Site Operator 只能维护授权 site 下设备。
 Researcher 可以查看授权范围内数据。
@@ -1260,6 +1430,7 @@ Service Engineer 只能在授权时间内维护指定设备。
 平台可以从至少一种现有设备数据库读取数据。
 查询接口支持时间范围限制。
 大范围查询不能直接同步返回。
+用户查询和设备绑定流程不接受 DSN、库表字段、JSONPath 或 raw SQL。
 ```
 
 ### 18.4 数据集和导出
@@ -1280,6 +1451,8 @@ Service Engineer 只能在授权时间内维护指定设备。
 售后授权有审计。
 设备校准和固件升级有审计。
 分享和撤销分享有审计。
+设备源配置、外部设备映射和 DataStreamBinding 修改有审计。
+内部排障访问客户设备数据有审计。
 ```
 
 ---
@@ -1296,6 +1469,8 @@ Service Engineer 只能在授权时间内维护指定设备。
 实时流处理平台
 字段级数据脱敏
 完整科研数据版本发布系统
+允许客户 Workspace 管理设备数据库连接、密钥、库表字段映射或 raw SQL
+为了三到四类固定设备源，第一版建设复杂的设备数据源管理后台
 ```
 
 这些能力可以在第一版稳定后，根据真实客户需求逐步扩展。
@@ -1309,6 +1484,8 @@ Service Engineer 只能在授权时间内维护指定设备。
 ```text
 Go 模块化单体
 + PostgreSQL 平台业务库
++ 代码内置 Adapter Registry
++ 设备源部署配置和外部设备映射
 + 多设备数据库 Data Source Adapter
 + Role + Scope + AccessGrant 权限模型
 + Dataset 数据资产模型
@@ -1321,6 +1498,7 @@ Go 模块化单体
 
 ```text
 平台业务数据和设备采集数据的边界。
+设备源运维配置和客户 Workspace 资源管理的边界。
 用户组织权限和外部分享权限的边界。
 设备资产和科研数据集的边界。
 同步查询和异步导出的边界。

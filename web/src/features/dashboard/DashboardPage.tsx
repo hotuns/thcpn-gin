@@ -1,8 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Database, FileArchive, FolderKanban, HardDrive, History, RadioTower, SquareStack } from "lucide-react";
+import { Activity, FileArchive, FolderKanban, HardDrive, History, RadioTower, SquareStack } from "lucide-react";
 import {
   auditApi,
-  dataSourcesApi,
   datasetsApi,
   devicesApi,
   exportJobsApi,
@@ -31,11 +30,6 @@ export function DashboardPage() {
     queryFn: () => devicesApi.list({ workspace_id: selectedWorkspaceId }),
     enabled
   });
-  const dataSources = useQuery({
-    queryKey: ["data-sources", selectedWorkspaceId],
-    queryFn: () => dataSourcesApi.list(selectedWorkspaceId),
-    enabled
-  });
   const datasets = useQuery({
     queryKey: ["datasets", selectedWorkspaceId],
     queryFn: () => datasetsApi.list({ workspace_id: selectedWorkspaceId }),
@@ -56,7 +50,6 @@ export function DashboardPage() {
     { label: "项目", icon: FolderKanban, value: projects.data?.items.length, query: projects },
     { label: "站点", icon: RadioTower, value: sites.data?.items.length, query: sites },
     { label: "设备", icon: HardDrive, value: devices.data?.items.length, query: devices },
-    { label: "数据源", icon: Database, value: dataSources.data?.items.length, query: dataSources },
     { label: "数据集", icon: SquareStack, value: datasets.data?.items.length, query: datasets },
     { label: "导出任务", icon: FileArchive, value: exports.data?.items.length, query: exports }
   ];
@@ -93,7 +86,6 @@ export function DashboardPage() {
               void projects.refetch();
               void sites.refetch();
               void devices.refetch();
-              void dataSources.refetch();
               void datasets.refetch();
               void exports.refetch();
               void audits.refetch();

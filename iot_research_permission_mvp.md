@@ -16,6 +16,8 @@
 ```text
 用户不直接拥有全部设备权限。
 设备和数据归属于 Workspace。
+THCPN 平台维护设备列表和外部设备源映射。
+普通 Workspace 用户只绑定设备，不管理设备数据库连接、库表字段或 raw SQL。
 用户通过角色和资源范围获得权限。
 外部分享和临时授权通过 AccessGrant 实现。
 所有敏感操作必须审计。
@@ -189,6 +191,20 @@ CO2 监测设备 004
 
 AccessGrant 是实现“单独分享给某个人”的核心机制。
 
+### 3.9 Device Source Mapping
+
+`Device Source Mapping` 表示平台设备和外部设备数据库记录之间的映射关系。
+
+第一版预计只有三到四类设备数据来源，因此不需要把设备数据源做成客户侧可管理资源，也不需要一开始建设完整运维管理后台。推荐采用更轻量的方式：
+
+- 设备源类型和 adapter 在代码里注册。
+- 设备源实例通过部署配置或环境变量维护。
+- 平台库维护设备列表、外部设备 ID / SN / ICCID 映射。
+- 平台库保存外部 `device_config` 快照，用于解释历史数据。
+- DataStream 从配置快照解析生成，用户只看到业务数据流。
+
+用户绑定的是平台设备，不是外部数据库。查询数据时，平台根据设备映射和 adapter 自动去对应设备库读取数据，并转换成统一格式。
+
 ---
 
 ## 4. MVP 功能边界
@@ -202,14 +218,17 @@ AccessGrant 是实现“单独分享给某个人”的核心机制。
 5. Project 下可以创建 Site / Station。
 6. Device 绑定到 Workspace，可选归属 Project / Site。
 7. Device 下可以产生多个 DataStream。
-8. 支持创建 Dataset，把一段时间、某些设备或数据流的数据归档成数据集。
-9. 权限采用 `role + scope` 模型。
-10. Scope 支持 `workspace / project / site / device / dataset`。
-11. 支持 AccessGrant，把指定资源分享给某个用户。
-12. 支持 Invitation，把指定资源分享给尚未注册的手机号或邮箱。
-13. 图片和视频权限必须与普通时序数据权限分开。
-14. 售后权限必须是显式授权，可设置过期时间，并写审计日志。
-15. 数据导出、媒体下载、设备校准、固件升级、设备转移必须写审计日志。
+8. 平台维护设备列表、外部设备映射和设备配置快照。
+9. 设备源 adapter 在代码中注册，设备源连接信息由部署配置维护。
+10. 绑定设备后，系统展示该设备已审核的数据流、图片流和视频流。
+11. 支持创建 Dataset，把一段时间、某些设备或数据流的数据归档成数据集。
+12. 权限采用 `role + scope` 模型。
+13. Scope 支持 `workspace / project / site / device / dataset`。
+14. 支持 AccessGrant，把指定资源分享给某个用户。
+15. 支持 Invitation，把指定资源分享给尚未注册的手机号或邮箱。
+16. 图片和视频权限必须与普通时序数据权限分开。
+17. 售后权限必须是显式授权，可设置过期时间，并写审计日志。
+18. 数据导出、媒体下载、设备校准、固件升级、设备转移必须写审计日志。
 
 ---
 
@@ -310,6 +329,8 @@ Service Engineer
 | Shared Downloader | 外部协作者、算法人员 | dataset / project | 外部查看并下载 |
 | Service Engineer | 厂商售后、服务商工程师 | device / site | 临时维护和诊断，默认不允许导出科研数据 |
 
+设备源配置和外部设备映射不放入上面的 Workspace 角色矩阵。Workspace Owner / Admin 可以管理自己空间内的项目、站点、设备绑定、成员和数据集，但不能管理设备数据库连接、原始库表字段映射、适配器密钥或跨 Workspace 的外部设备注册表。
+
 ### 6.3 内部成员与外部分享的区别
 
 `workspace_member` 表示组织内部成员。
@@ -400,7 +421,23 @@ audit.view              查看审计日志
 service_access.grant    授权售后访问
 ```
 
-### 7.8 高风险权限
+### 7.8 内部运维动作
+
+设备源和外部设备映射属于平台内部运维能力，不作为客户 Workspace 权限点。第一版可以通过配置、seed、CLI 或内部脚本维护，不需要正式前端 CRUD。
+
+如果后续暴露 HTTP 管理接口，必须使用独立的内部运维身份和审计，不得通过 `workspace_members` 或普通 `access_grants` 授予客户用户。
+
+```text
+ops.device_source.configure      配置设备源实例和密钥引用
+ops.device_registry.sync         同步可绑定设备列表和外部设备映射
+ops.stream_binding.generate      从设备配置快照生成 DataStream / binding
+ops.datasource_health.view       查看设备源健康状态
+ops.break_glass_access           受审计的紧急排障访问
+```
+
+`ops.break_glass_access` 只用于受控排障场景，必须记录访问原因、时间范围、资源范围和 request_id。它不能作为日常查询、下载或导出的替代权限。
+
+### 7.9 高风险权限
 
 以下权限属于高风险权限，必须写审计日志：
 
@@ -418,6 +455,10 @@ dataset.delete
 share.create
 share.revoke
 service_access.grant
+ops.device_source.configure
+ops.device_registry.sync
+ops.stream_binding.generate
+ops.break_glass_access
 ```
 
 后续版本可对这些操作增加二次确认、审批或 MFA。
@@ -728,7 +769,75 @@ firmware_update
 edge_storage
 ```
 
-### 11.11 data_streams
+### 11.11 device_source_configs
+
+`device_source_configs` 表示设备源实例配置。第一版可以不做数据库 CRUD 表，而是通过部署配置、环境变量、seed 或内部脚本维护。
+
+推荐配置形态：
+
+```text
+device_source_configs
+- source_code: thcpn_legacy / vendor_a / vendor_b
+- adapter_code: thcpn_legacy_mysql / generic_columns / generic_media / http_api
+- dsn_secret_ref: env:THCPN_LEGACY_MYSQL_DSN
+- table_index: device_data_index
+- table_prefix: device_data_
+- status: active / disabled
+```
+
+说明：
+
+- `adapter_code` 对应代码中注册的 adapter。
+- `dsn_secret_ref` 不保存明文连接串，真实 DSN 放在环境变量、Secret Manager 或部署配置中。
+- 普通 Workspace 用户不创建、不编辑、不查看设备源配置。
+- 只有当设备源数量、部署环境和运维协作复杂到需要产品化时，再升级为正式系统管理表和后台页面。
+
+当前代码实现保留 `data_sources` 表/API 作为内部设备源实例配置载体；`data_sources.type` 表示物理连接类型，业务读取策略由 `data_stream_bindings.adapter_code` 决定，不再按 `data_sources.type` 直接分发。
+
+### 11.12 device_source_refs
+
+`device_source_refs` 保存平台设备和外部设备数据源中的真实设备记录之间的映射。
+
+```text
+device_source_refs
+- id
+- device_id
+- source_code
+- external_device_id
+- external_sn
+- external_iccid
+- external_uuid
+- status
+- synced_at
+- created_at
+- updated_at
+```
+
+这张表解决“用户绑定平台设备”和“平台到旧设备库读取数据”之间的关系。用户只接触平台设备 ID、SN 或二维码，不接触外部库表、外部字段和 DSN。
+
+### 11.13 device_config_snapshots
+
+`device_config_snapshots` 保存从外部设备配置表同步而来的配置快照，用于解释历史数据中 `data` JSON key 的含义。
+
+```text
+device_config_snapshots
+- id
+- device_id
+- source_code
+- external_config_id
+- external_device_id
+- version
+- data_json
+- image_json
+- control_json
+- source_updated_at
+- synced_at
+- created_at
+```
+
+历史设备数据应优先按数据行中的配置版本或配置 ID 解释，不能简单使用设备当前最新配置解释历史数据。
+
+### 11.14 data_streams
 
 ```text
 data_streams
@@ -739,12 +848,40 @@ data_streams
 - name
 - type: telemetry / image / video / audio / event / log
 - unit
+- source: system_discovered / manual_alias
+- source_ref_id nullable
 - status
 - created_at
 - updated_at
 ```
 
-### 11.12 datasets
+`data_streams` 对客户 Workspace 可见，但默认由系统从设备配置快照同步生成。Workspace 用户可以在授权范围内查看、归档、分享和导出数据流，不应直接配置数据流背后的库表字段。
+
+### 11.15 data_stream_bindings
+
+`data_stream_bindings` 是系统生成的数据读取映射。第一版可由同步任务、seed 或内部脚本维护，不作为客户侧配置入口。
+
+```text
+data_stream_bindings
+- id
+- data_stream_id
+- data_source_id
+- adapter_code: generic_columns / generic_media / http_api / thcpn_legacy_mysql
+- table_name nullable
+- device_key_field nullable
+- device_key_value nullable
+- time_field nullable
+- value_field nullable
+- payload_type: columns / json / media
+- adapter_config_json
+- status
+- created_at
+- updated_at
+```
+
+标准数据源使用 `generic_columns` / `generic_media` adapter 和 `data_stream_bindings` 中的受控表字段映射。特殊数据源使用专用 adapter 和 `adapter_config_json`。对于 THCPN 旧 MySQL 设备库，`adapter_config_json` 后续可以包含受控字段，例如分表索引表、表前缀、外部设备 ID、设备配置 ID、JSON key、JSON path、数据类型和时间字段。它不能保存用户提交的 raw SQL。当前 `thcpn_legacy_mysql` 只是 adapter code、校验和 runtime 未实现占位，不读取真实旧库。
+
+### 11.16 datasets
 
 ```text
 datasets
@@ -762,7 +899,7 @@ datasets
 - updated_at
 ```
 
-### 11.13 dataset_sources
+### 11.17 dataset_sources
 
 ```text
 dataset_sources
@@ -772,7 +909,7 @@ dataset_sources
 - source_id
 ```
 
-### 11.14 access_grants
+### 11.18 access_grants
 
 ```text
 access_grants
@@ -799,7 +936,7 @@ access_grants
 - 售后授权也使用 access_grants，通常 scope 是 `device`，并设置 `expires_at`。
 - 第一版可以先支持 `subject_type = user`，后续再扩展到 `workspace`。
 
-### 11.15 invitations
+### 11.19 invitations
 
 ```text
 invitations
@@ -817,7 +954,7 @@ invitations
 - updated_at
 ```
 
-### 11.16 audit_logs
+### 11.20 audit_logs
 
 ```text
 audit_logs
@@ -863,12 +1000,14 @@ audit_logs
 
 ```text
 1. 用户扫码或输入设备 SN。
-2. 后端校验设备是否存在、是否可绑定。
+2. 后端在平台设备列表中校验设备是否存在、是否可绑定。
 3. 用户选择绑定到哪个 workspace。
 4. 可选选择 project 和 site。
 5. 系统写入 devices.workspace_id / project_id / site_id。
-6. 记录 bound_by 和 activated_at。
-7. 写 audit_log。
+6. 系统基于已审核的 device_source_refs / device_config_snapshots 暴露该设备的数据流。
+7. 用户不能在绑定流程中输入 DSN、表名、字段名或 raw SQL。
+8. 记录 bound_by 和 activated_at。
+9. 写 audit_log。
 ```
 
 ### 12.4 创建设备数据集
@@ -995,6 +1134,9 @@ else:
 授权售后
 售后访问设备
 删除数据或媒体
+修改设备源部署配置
+修改外部设备映射或 DataStreamBinding
+内部排障访问客户设备数据
 ```
 
 审计日志至少记录：
@@ -1037,6 +1179,9 @@ created_at = 2026-06-30 10:30:22
 允许外部分享默认再次分享。
 允许售后默认访问全部客户数据。
 允许普通 Viewer 导出数据。
+允许 Workspace Owner / Admin 管理设备数据源连接、密钥、库表字段映射或 raw SQL。
+让普通用户在设备绑定、数据查询或数据集创建流程中输入设备库表名和字段名。
+为了三到四类固定设备源，第一版建设复杂的设备数据源管理后台。
 ```
 
 这些能力可以等客户需求明确后再扩展。
@@ -1067,7 +1212,25 @@ DataStream
 - 组织下能建项目和站点。
 - 设备能绑定到空间、项目和站点。
 
-### 第二阶段：权限和分享
+### 第二阶段：设备源适配和设备映射
+
+```text
+AdapterRegistry
+DeviceSourceConfig
+DeviceSourceRef
+DeviceConfigSnapshot
+DataStreamBinding
+```
+
+目标：
+
+- 代码中注册三到四类设备源 adapter。
+- 设备源实例通过部署配置、环境变量或 seed 维护。
+- 系统能同步或录入外部设备映射。
+- 系统能从设备配置快照生成 DataStream。
+- 普通用户只能绑定设备，不能管理数据源连接和字段映射。
+
+### 第三阶段：权限和分享
 
 ```text
 AccessGrant
@@ -1083,7 +1246,7 @@ RolePermission
 - 支持未注册用户邀请。
 - 支持售后临时授权。
 
-### 第三阶段：数据集和审计
+### 第四阶段：数据集和审计
 
 ```text
 Dataset
@@ -1097,7 +1260,7 @@ AuditLog
 - 支持数据集查看、导出和分享。
 - 对敏感操作进行审计。
 
-### 第四阶段：媒体和高风险操作控制
+### 第五阶段：媒体和高风险操作控制
 
 ```text
 media 权限
@@ -1197,6 +1360,7 @@ Site / Station 作为部署点管理单元。
 Device 作为设备资产单元。
 DataStream 作为设备数据通道。
 Dataset 作为可归档、可导出、可分享的数据资产。
+Device Source Mapping 作为平台设备和外部设备库之间的读取边界。
 Role + Scope 作为核心权限模型。
 AccessGrant 作为单人分享、外部协作和售后授权机制。
 AuditLog 作为敏感操作追溯机制。

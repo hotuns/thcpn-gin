@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,13 +22,14 @@ func TestBuildTelemetryQueryPlanDialects(t *testing.T) {
 	end := start.Add(time.Hour)
 	req := TelemetryQuery{
 		Binding: DataStreamBinding{
+			AdapterCode:    AdapterGenericColumns,
 			DatabaseName:   &databaseName,
 			SchemaName:     &schemaName,
-			TableName:      "device_data",
-			DeviceKeyField: "sn",
-			DeviceKeyValue: "SN-001",
-			TimeField:      "captured_at",
-			ValueField:     "temperature",
+			TableName:      testStringPtr("device_data"),
+			DeviceKeyField: testStringPtr("sn"),
+			DeviceKeyValue: testStringPtr("SN-001"),
+			TimeField:      testStringPtr("captured_at"),
+			ValueField:     testStringPtr("temperature"),
 			PayloadType:    "columns",
 		},
 		Start: start,
@@ -78,12 +80,13 @@ func TestBuildMediaRowsQueryPlanMySQLDefaultMediaType(t *testing.T) {
 	end := start.Add(24 * time.Hour)
 	req := MediaQuery{
 		Binding: DataStreamBinding{
+			AdapterCode:    AdapterGenericMedia,
 			DatabaseName:   &databaseName,
-			TableName:      "media_index",
-			DeviceKeyField: "sn",
-			DeviceKeyValue: "SN-001",
-			TimeField:      "captured_at",
-			ValueField:     "object_key",
+			TableName:      testStringPtr("media_index"),
+			DeviceKeyField: testStringPtr("sn"),
+			DeviceKeyValue: testStringPtr("SN-001"),
+			TimeField:      testStringPtr("captured_at"),
+			ValueField:     testStringPtr("object_key"),
 			PayloadType:    "media",
 		},
 		Start:    start,
@@ -119,12 +122,13 @@ func TestBuildMediaRowsQueryPlanPostgresMappedFields(t *testing.T) {
 	end := start.Add(24 * time.Hour)
 	req := MediaQuery{
 		Binding: DataStreamBinding{
+			AdapterCode:    AdapterGenericMedia,
 			SchemaName:     &schemaName,
-			TableName:      "media_index",
-			DeviceKeyField: "sn",
-			DeviceKeyValue: "SN-001",
-			TimeField:      "captured_at",
-			ValueField:     "object_key",
+			TableName:      testStringPtr("media_index"),
+			DeviceKeyField: testStringPtr("sn"),
+			DeviceKeyValue: testStringPtr("SN-001"),
+			TimeField:      testStringPtr("captured_at"),
+			ValueField:     testStringPtr("object_key"),
 			PayloadType:    "media",
 		},
 		Start:    start,
@@ -158,12 +162,13 @@ func TestBuildMediaRowsQueryPlanClickHouseDefaultMediaType(t *testing.T) {
 	end := start.Add(24 * time.Hour)
 	req := MediaQuery{
 		Binding: DataStreamBinding{
+			AdapterCode:    AdapterGenericMedia,
 			DatabaseName:   &databaseName,
-			TableName:      "media_index",
-			DeviceKeyField: "sn",
-			DeviceKeyValue: "SN-001",
-			TimeField:      "captured_at",
-			ValueField:     "object_key",
+			TableName:      testStringPtr("media_index"),
+			DeviceKeyField: testStringPtr("sn"),
+			DeviceKeyValue: testStringPtr("SN-001"),
+			TimeField:      testStringPtr("captured_at"),
+			ValueField:     testStringPtr("object_key"),
 			PayloadType:    "media",
 		},
 		Start:    start,
@@ -256,17 +261,18 @@ func TestHTTPAPITelemetryQueryGET(t *testing.T) {
 		Status:       "active",
 	}, TelemetryQuery{
 		Binding: DataStreamBinding{
-			ID:              uuid.New(),
-			DataStreamID:    uuid.New(),
-			DataSourceID:    uuid.New(),
-			TableName:       "device_data",
-			DeviceKeyField:  "serial_no",
-			DeviceKeyValue:  "SN-001",
-			TimeField:       "collected_at",
-			ValueField:      "soil_moisture",
-			PayloadType:     "json",
-			QueryConfigJSON: json.RawMessage(`{"path":"/v1/telemetry"}`),
-			Status:          "active",
+			ID:                uuid.New(),
+			DataStreamID:      uuid.New(),
+			DataSourceID:      uuid.New(),
+			AdapterCode:       AdapterHTTPAPI,
+			TableName:         testStringPtr("device_data"),
+			DeviceKeyField:    testStringPtr("serial_no"),
+			DeviceKeyValue:    testStringPtr("SN-001"),
+			TimeField:         testStringPtr("collected_at"),
+			ValueField:        testStringPtr("soil_moisture"),
+			PayloadType:       "json",
+			AdapterConfigJSON: json.RawMessage(`{"path":"/v1/telemetry"}`),
+			Status:            "active",
 		},
 		Start: start,
 		End:   end,
@@ -313,17 +319,18 @@ func TestHTTPAPIMediaQueryPOST(t *testing.T) {
 		Status:       "active",
 	}, MediaQuery{
 		Binding: DataStreamBinding{
-			ID:              uuid.New(),
-			DataStreamID:    uuid.New(),
-			DataSourceID:    uuid.New(),
-			TableName:       "media_index",
-			DeviceKeyField:  "sn",
-			DeviceKeyValue:  "CAM-001",
-			TimeField:       "captured_at",
-			ValueField:      "object_key",
-			PayloadType:     "media",
-			QueryConfigJSON: json.RawMessage(`{"method":"POST","path":"media/search"}`),
-			Status:          "active",
+			ID:                uuid.New(),
+			DataStreamID:      uuid.New(),
+			DataSourceID:      uuid.New(),
+			AdapterCode:       AdapterHTTPAPI,
+			TableName:         testStringPtr("media_index"),
+			DeviceKeyField:    testStringPtr("sn"),
+			DeviceKeyValue:    testStringPtr("CAM-001"),
+			TimeField:         testStringPtr("captured_at"),
+			ValueField:        testStringPtr("object_key"),
+			PayloadType:       "media",
+			AdapterConfigJSON: json.RawMessage(`{"method":"POST","path":"media/search"}`),
+			Status:            "active",
 		},
 		Start:     start,
 		End:       end,
@@ -349,8 +356,53 @@ func TestHTTPAPIPathRejectsAbsoluteURL(t *testing.T) {
 	}
 }
 
+func TestTHCPNLegacyAdapterNotImplemented(t *testing.T) {
+	runtime := NewRuntime(staticResolver("unused"))
+	source := DataSource{
+		ID:           uuid.New(),
+		Type:         "mysql",
+		DsnSecretRef: "secret:mysql",
+		Status:       "active",
+	}
+	binding := DataStreamBinding{
+		ID:                uuid.New(),
+		DataStreamID:      uuid.New(),
+		DataSourceID:      uuid.New(),
+		AdapterCode:       AdapterTHCPNLegacy,
+		PayloadType:       "columns",
+		AdapterConfigJSON: json.RawMessage(`{}`),
+		Status:            "active",
+	}
+
+	_, telemetryErr := runtime.QueryTelemetry(context.Background(), source, TelemetryQuery{
+		Binding: binding,
+		Start:   time.Now().Add(-time.Hour),
+		End:     time.Now(),
+		Limit:   10,
+	})
+	if apperr.KindOf(telemetryErr) != apperr.KindDataSource || !strings.Contains(telemetryErr.Error(), "thcpn_legacy_mysql adapter is not implemented") {
+		t.Fatalf("expected thcpn legacy telemetry placeholder error, got %v", telemetryErr)
+	}
+
+	binding.PayloadType = "media"
+	_, mediaErr := runtime.QueryMedia(context.Background(), source, MediaQuery{
+		Binding:  binding,
+		Start:    time.Now().Add(-time.Hour),
+		End:      time.Now(),
+		Page:     1,
+		PageSize: 10,
+	})
+	if apperr.KindOf(mediaErr) != apperr.KindDataSource || !strings.Contains(mediaErr.Error(), "thcpn_legacy_mysql adapter is not implemented") {
+		t.Fatalf("expected thcpn legacy media placeholder error, got %v", mediaErr)
+	}
+}
+
 type staticResolver string
 
 func (s staticResolver) Resolve(context.Context, string) (string, error) {
 	return string(s), nil
+}
+
+func testStringPtr(value string) *string {
+	return &value
 }

@@ -99,6 +99,7 @@ func (r *Runtime) QueryTelemetry(ctx context.Context, source DataSource, req Tel
 	ctx, span := tracing.Start(ctx, "datasource.telemetry",
 		attribute.String("datasource.type", source.Type),
 		attribute.String("datasource.id", source.ID.String()),
+		attribute.String("datasource.adapter_code", req.Binding.AdapterCode),
 		attribute.String("data_stream.id", req.Binding.DataStreamID.String()),
 		attribute.String("payload_type", req.Binding.PayloadType),
 	)
@@ -112,6 +113,21 @@ func (r *Runtime) QueryTelemetry(ctx context.Context, source DataSource, req Tel
 	if req.Binding.Status != "active" {
 		return TelemetryResult{}, apperr.New(apperr.KindDataSource, "data stream binding is not active")
 	}
+	switch req.Binding.AdapterCode {
+	case AdapterGenericColumns:
+		return r.queryGenericColumnsTelemetry(ctx, source, req)
+	case AdapterHTTPAPI:
+		return r.queryHTTPAPITelemetry(ctx, source, req)
+	case AdapterTHCPNLegacy:
+		return r.queryThcpnLegacyMySQLTelemetry(ctx, source, req)
+	case AdapterGenericMedia:
+		return TelemetryResult{}, apperr.New(apperr.KindDataSource, "generic_media adapter does not support telemetry queries")
+	default:
+		return TelemetryResult{}, apperr.New(apperr.KindDataSource, "unsupported telemetry adapter_code")
+	}
+}
+
+func (r *Runtime) queryGenericColumnsTelemetry(ctx context.Context, source DataSource, req TelemetryQuery) (TelemetryResult, error) {
 	switch source.Type {
 	case "postgres":
 		return r.queryPostgresTelemetry(ctx, source, req)
@@ -119,10 +135,8 @@ func (r *Runtime) QueryTelemetry(ctx context.Context, source DataSource, req Tel
 		return r.queryMySQLTelemetry(ctx, source, req)
 	case "clickhouse":
 		return r.queryClickHouseTelemetry(ctx, source, req)
-	case "http_api":
-		return r.queryHTTPAPITelemetry(ctx, source, req)
 	default:
-		return TelemetryResult{}, apperr.New(apperr.KindDataSource, "unsupported telemetry data source type")
+		return TelemetryResult{}, apperr.New(apperr.KindDataSource, "unsupported generic_columns data source type")
 	}
 }
 
@@ -131,6 +145,7 @@ func (r *Runtime) QueryMedia(ctx context.Context, source DataSource, req MediaQu
 	ctx, span := tracing.Start(ctx, "datasource.media",
 		attribute.String("datasource.type", source.Type),
 		attribute.String("datasource.id", source.ID.String()),
+		attribute.String("datasource.adapter_code", req.Binding.AdapterCode),
 		attribute.String("data_stream.id", req.Binding.DataStreamID.String()),
 		attribute.String("payload_type", req.Binding.PayloadType),
 	)
@@ -144,6 +159,21 @@ func (r *Runtime) QueryMedia(ctx context.Context, source DataSource, req MediaQu
 	if req.Binding.Status != "active" {
 		return MediaResult{}, apperr.New(apperr.KindDataSource, "data stream binding is not active")
 	}
+	switch req.Binding.AdapterCode {
+	case AdapterGenericMedia:
+		return r.queryGenericMedia(ctx, source, req)
+	case AdapterHTTPAPI:
+		return r.queryHTTPAPIMedia(ctx, source, req)
+	case AdapterTHCPNLegacy:
+		return r.queryThcpnLegacyMySQLMedia(ctx, source, req)
+	case AdapterGenericColumns:
+		return MediaResult{}, apperr.New(apperr.KindDataSource, "generic_columns adapter does not support media queries")
+	default:
+		return MediaResult{}, apperr.New(apperr.KindDataSource, "unsupported media adapter_code")
+	}
+}
+
+func (r *Runtime) queryGenericMedia(ctx context.Context, source DataSource, req MediaQuery) (MediaResult, error) {
 	switch source.Type {
 	case "postgres":
 		return r.queryPostgresMedia(ctx, source, req)
@@ -151,11 +181,23 @@ func (r *Runtime) QueryMedia(ctx context.Context, source DataSource, req MediaQu
 		return r.queryMySQLMedia(ctx, source, req)
 	case "clickhouse":
 		return r.queryClickHouseMedia(ctx, source, req)
-	case "http_api":
-		return r.queryHTTPAPIMedia(ctx, source, req)
 	default:
-		return MediaResult{}, apperr.New(apperr.KindDataSource, "unsupported media data source type")
+		return MediaResult{}, apperr.New(apperr.KindDataSource, "unsupported generic_media data source type")
 	}
+}
+
+func (r *Runtime) queryThcpnLegacyMySQLTelemetry(ctx context.Context, source DataSource, req TelemetryQuery) (TelemetryResult, error) {
+	_ = ctx
+	_ = source
+	_ = req
+	return TelemetryResult{}, apperr.New(apperr.KindDataSource, "thcpn_legacy_mysql adapter is not implemented")
+}
+
+func (r *Runtime) queryThcpnLegacyMySQLMedia(ctx context.Context, source DataSource, req MediaQuery) (MediaResult, error) {
+	_ = ctx
+	_ = source
+	_ = req
+	return MediaResult{}, apperr.New(apperr.KindDataSource, "thcpn_legacy_mysql adapter is not implemented")
 }
 
 func (r *Runtime) queryPostgresTelemetry(ctx context.Context, source DataSource, req TelemetryQuery) (TelemetryResult, error) {
@@ -284,7 +326,7 @@ func (r *Runtime) queryPostgresMedia(ctx context.Context, source DataSource, req
 	if err := validateMediaQuery(req); err != nil {
 		return MediaResult{}, err
 	}
-	cfg, err := parseMediaBindingConfig(req.Binding.QueryConfigJSON)
+	cfg, err := parseMediaBindingConfig(req.Binding.AdapterConfigJSON)
 	if err != nil {
 		return MediaResult{}, err
 	}
@@ -336,7 +378,7 @@ func (r *Runtime) queryMySQLMedia(ctx context.Context, source DataSource, req Me
 	if err := validateMediaQuery(req); err != nil {
 		return MediaResult{}, err
 	}
-	cfg, err := parseMediaBindingConfig(req.Binding.QueryConfigJSON)
+	cfg, err := parseMediaBindingConfig(req.Binding.AdapterConfigJSON)
 	if err != nil {
 		return MediaResult{}, err
 	}
@@ -384,7 +426,7 @@ func (r *Runtime) queryClickHouseMedia(ctx context.Context, source DataSource, r
 	if err := validateMediaQuery(req); err != nil {
 		return MediaResult{}, err
 	}
-	cfg, err := parseMediaBindingConfig(req.Binding.QueryConfigJSON)
+	cfg, err := parseMediaBindingConfig(req.Binding.AdapterConfigJSON)
 	if err != nil {
 		return MediaResult{}, err
 	}
@@ -437,7 +479,7 @@ func parseMediaBindingConfig(value json.RawMessage) (mediaBindingConfig, error) 
 	}
 	var cfg mediaBindingConfig
 	if err := json.Unmarshal(value, &cfg); err != nil {
-		return mediaBindingConfig{}, apperr.New(apperr.KindInvalidArgument, "invalid media query_config")
+		return mediaBindingConfig{}, apperr.New(apperr.KindInvalidArgument, "invalid media adapter_config")
 	}
 	return cfg, nil
 }
@@ -470,15 +512,19 @@ func buildTelemetryQueryPlan(req TelemetryQuery, dialect sqlDialect) (queryPlan,
 	if err != nil {
 		return queryPlan{}, err
 	}
-	timeField, err := quotedRequiredIdentifierFor(req.Binding.TimeField, "time_field", dialect)
+	timeField, err := quotedRequiredBindingIdentifierFor(req.Binding.TimeField, "time_field", dialect)
 	if err != nil {
 		return queryPlan{}, err
 	}
-	valueField, err := quotedRequiredIdentifierFor(req.Binding.ValueField, "value_field", dialect)
+	valueField, err := quotedRequiredBindingIdentifierFor(req.Binding.ValueField, "value_field", dialect)
 	if err != nil {
 		return queryPlan{}, err
 	}
-	deviceKeyField, err := quotedRequiredIdentifierFor(req.Binding.DeviceKeyField, "device_key_field", dialect)
+	deviceKeyField, err := quotedRequiredBindingIdentifierFor(req.Binding.DeviceKeyField, "device_key_field", dialect)
+	if err != nil {
+		return queryPlan{}, err
+	}
+	deviceKeyValue, err := requiredBindingString(req.Binding.DeviceKeyValue, "device_key_value")
 	if err != nil {
 		return queryPlan{}, err
 	}
@@ -499,7 +545,7 @@ func buildTelemetryQueryPlan(req TelemetryQuery, dialect sqlDialect) (queryPlan,
 	)
 	return queryPlan{
 		Query: query,
-		Args:  []any{req.Binding.DeviceKeyValue, req.Start, req.End, req.Limit},
+		Args:  []any{deviceKeyValue, req.Start, req.End, req.Limit},
 	}, nil
 }
 
@@ -508,11 +554,15 @@ func buildMediaCountQueryPlan(req MediaQuery, dialect sqlDialect) (queryPlan, er
 	if err != nil {
 		return queryPlan{}, err
 	}
-	timeField, err := quotedRequiredIdentifierFor(req.Binding.TimeField, "time_field", dialect)
+	timeField, err := quotedRequiredBindingIdentifierFor(req.Binding.TimeField, "time_field", dialect)
 	if err != nil {
 		return queryPlan{}, err
 	}
-	deviceKeyField, err := quotedRequiredIdentifierFor(req.Binding.DeviceKeyField, "device_key_field", dialect)
+	deviceKeyField, err := quotedRequiredBindingIdentifierFor(req.Binding.DeviceKeyField, "device_key_field", dialect)
+	if err != nil {
+		return queryPlan{}, err
+	}
+	deviceKeyValue, err := requiredBindingString(req.Binding.DeviceKeyValue, "device_key_value")
 	if err != nil {
 		return queryPlan{}, err
 	}
@@ -529,7 +579,7 @@ func buildMediaCountQueryPlan(req MediaQuery, dialect sqlDialect) (queryPlan, er
 	)
 	return queryPlan{
 		Query: query,
-		Args:  []any{req.Binding.DeviceKeyValue, req.Start, req.End},
+		Args:  []any{deviceKeyValue, req.Start, req.End},
 	}, nil
 }
 
@@ -538,17 +588,17 @@ func buildMediaRowsQueryPlan(req MediaQuery, cfg mediaBindingConfig, dialect sql
 	if err != nil {
 		return queryPlan{}, err
 	}
-	timeField, err := quotedRequiredIdentifierFor(req.Binding.TimeField, "time_field", dialect)
+	timeField, err := quotedRequiredBindingIdentifierFor(req.Binding.TimeField, "time_field", dialect)
 	if err != nil {
 		return queryPlan{}, err
 	}
-	deviceKeyField, err := quotedRequiredIdentifierFor(req.Binding.DeviceKeyField, "device_key_field", dialect)
+	deviceKeyField, err := quotedRequiredBindingIdentifierFor(req.Binding.DeviceKeyField, "device_key_field", dialect)
 	if err != nil {
 		return queryPlan{}, err
 	}
 	objectKeyFieldName := strings.TrimSpace(cfg.ObjectKeyField)
 	if objectKeyFieldName == "" {
-		objectKeyFieldName = req.Binding.ValueField
+		objectKeyFieldName = bindingStringOrEmpty(req.Binding.ValueField)
 	}
 	objectKeyField, err := quotedRequiredIdentifierFor(objectKeyFieldName, "object_key_field", dialect)
 	if err != nil {
@@ -585,12 +635,16 @@ func buildMediaRowsQueryPlan(req MediaQuery, cfg mediaBindingConfig, dialect sql
 	}
 
 	offset := (req.Page - 1) * req.PageSize
+	deviceKeyValue, err := requiredBindingString(req.Binding.DeviceKeyValue, "device_key_value")
+	if err != nil {
+		return queryPlan{}, err
+	}
 	deviceKeyPlaceholder := dialect.placeholder(len(args) + 1)
 	startPlaceholder := dialect.placeholder(len(args) + 2)
 	endPlaceholder := dialect.placeholder(len(args) + 3)
 	limitPlaceholder := dialect.placeholder(len(args) + 4)
 	offsetPlaceholder := dialect.placeholder(len(args) + 5)
-	args = append(args, req.Binding.DeviceKeyValue, req.Start, req.End, req.PageSize, offset)
+	args = append(args, deviceKeyValue, req.Start, req.End, req.PageSize, offset)
 
 	query := fmt.Sprintf(
 		`SELECT %s, %s, %s, %s, %s FROM %s WHERE %s = %s AND %s >= %s AND %s <= %s ORDER BY %s DESC LIMIT %s OFFSET %s`,
@@ -683,7 +737,7 @@ func quotedTableName(binding DataStreamBinding) (string, error) {
 }
 
 func quotedTableNameFor(binding DataStreamBinding, dialect sqlDialect) (string, error) {
-	tableName, err := quotedRequiredIdentifierFor(binding.TableName, "table_name", dialect)
+	tableName, err := quotedRequiredBindingIdentifierFor(binding.TableName, "table_name", dialect)
 	if err != nil {
 		return "", err
 	}
@@ -731,6 +785,32 @@ func quotedRequiredIdentifierFor(value string, field string, dialect sqlDialect)
 		return "", err
 	}
 	return dialect.quote(identifier), nil
+}
+
+func quotedRequiredBindingIdentifierFor(value *string, field string, dialect sqlDialect) (string, error) {
+	raw, err := requiredBindingString(value, field)
+	if err != nil {
+		return "", err
+	}
+	return quotedRequiredIdentifierFor(raw, field, dialect)
+}
+
+func requiredBindingString(value *string, field string) (string, error) {
+	if value == nil {
+		return "", apperr.New(apperr.KindInvalidArgument, field+" is required")
+	}
+	trimmed := strings.TrimSpace(*value)
+	if trimmed == "" {
+		return "", apperr.New(apperr.KindInvalidArgument, field+" is required")
+	}
+	return trimmed, nil
+}
+
+func bindingStringOrEmpty(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
 }
 
 func quoteIdentifier(value string) string {

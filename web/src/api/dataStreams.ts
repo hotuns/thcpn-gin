@@ -1,6 +1,7 @@
 import { get, post } from "./client";
 import type {
   DataStream,
+  DataStreamBindingAdapterCode,
   DataStreamBinding,
   DataStreamBindingListResponse,
   DataStreamBindingPayloadType,
@@ -32,15 +33,16 @@ export const bindingsApi = {
   create(input: {
     data_stream_id: string;
     data_source_id: string;
+    adapter_code: DataStreamBindingAdapterCode;
     database_name?: string;
     schema_name?: string;
-    table_name: string;
-    device_key_field: string;
-    device_key_value: string;
-    time_field: string;
-    value_field: string;
+    table_name?: string;
+    device_key_field?: string;
+    device_key_value?: string;
+    time_field?: string;
+    value_field?: string;
     payload_type: DataStreamBindingPayloadType;
-    query_config?: Record<string, unknown>;
+    adapter_config?: Record<string, unknown>;
   }): Promise<DataStreamBinding> {
     return post<DataStreamBinding>("/api/v1/data-stream-bindings", input);
   }

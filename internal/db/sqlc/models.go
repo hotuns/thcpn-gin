@@ -97,22 +97,23 @@ type DataStream struct {
 }
 
 type DataStreamBinding struct {
-	ID              uuid.UUID          `json:"id"`
-	DataStreamID    uuid.UUID          `json:"data_stream_id"`
-	DataSourceID    uuid.UUID          `json:"data_source_id"`
-	DatabaseName    *string            `json:"database_name"`
-	SchemaName      *string            `json:"schema_name"`
-	TableName       string             `json:"table_name"`
-	DeviceKeyField  string             `json:"device_key_field"`
-	DeviceKeyValue  string             `json:"device_key_value"`
-	TimeField       string             `json:"time_field"`
-	ValueField      string             `json:"value_field"`
-	PayloadType     string             `json:"payload_type"`
-	QueryConfigJson []byte             `json:"query_config_json"`
-	Status          string             `json:"status"`
-	CreatedBy       uuid.UUID          `json:"created_by"`
-	CreatedAt       pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	ID                uuid.UUID          `json:"id"`
+	DataStreamID      uuid.UUID          `json:"data_stream_id"`
+	DataSourceID      uuid.UUID          `json:"data_source_id"`
+	DatabaseName      *string            `json:"database_name"`
+	SchemaName        *string            `json:"schema_name"`
+	TableName         *string            `json:"table_name"`
+	DeviceKeyField    *string            `json:"device_key_field"`
+	DeviceKeyValue    *string            `json:"device_key_value"`
+	TimeField         *string            `json:"time_field"`
+	ValueField        *string            `json:"value_field"`
+	PayloadType       string             `json:"payload_type"`
+	AdapterConfigJson []byte             `json:"adapter_config_json"`
+	Status            string             `json:"status"`
+	CreatedBy         uuid.UUID          `json:"created_by"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	AdapterCode       string             `json:"adapter_code"`
 }
 
 type Dataset struct {

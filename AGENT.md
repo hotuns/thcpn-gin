@@ -13,6 +13,7 @@
 - 本项目是科研物联网数据管理平台后端，不负责 MQTT 接入、设备上报解析或实时采集写入。
 - 当前阶段是 Go 模块化单体，包含 `api` 和 `worker` 两个进程。
 - 平台业务库是 PostgreSQL，设备采集数据源库与平台业务库必须分离。
+- 平台维护设备列表和外部设备源映射；设备源 adapter 在代码中注册，设备源实例由部署配置维护；普通 Workspace 用户只绑定设备，不管理 DSN、库表字段映射或 raw SQL。
 - Redis 用于后续 Asynq、缓存和异步任务基础设施。
 - 第一版权限主线是 `Role + Scope + AccessGrant + AuditLog`。
 
@@ -175,6 +176,10 @@
 - 已新增设备数据源元信息 migration `000008_data_sources`：
   - `data_sources`
   - `data_stream_bindings`
+- 已新增 adapter_code 重构 migration `000015_adapter_code_bindings`：
+  - `data_stream_bindings.adapter_code`
+  - `query_config_json` 已重命名为 `adapter_config_json`
+  - 通用库表字段允许为空，由 adapter 规则决定是否必填
 - 已实现 DataSource 元信息接口：
   - `GET /api/v1/data-sources?workspace_id=...`
   - `POST /api/v1/data-sources`
@@ -186,21 +191,22 @@
   - `GET /api/v1/data-stream-bindings/:binding_id`
   - `PATCH /api/v1/data-stream-bindings/:binding_id`
 - DataSource 只保存 `dsn_secret_ref`，不保存明文 DSN。
-- DataStreamBinding 保存已审核的库/表/字段映射；用户侧 Telemetry/Media 查询后续不得直接传入 `table_name`、`field_name` 或 `raw_sql`。
-- 已实现 PostgreSQL / MySQL / ClickHouse / HTTP API Telemetry 运行时适配器：
+- DataStreamBinding 保存已审核的 adapter 选择和库/表/字段映射；标准数据源使用 `generic_columns` / `generic_media`，特殊数据源使用专用 adapter 和 `adapter_config_json`。用户侧 Telemetry/Media 查询后续不得直接传入 `table_name`、`field_name` 或 `raw_sql`。
+- 已实现按 `data_stream_bindings.adapter_code` 分发的 PostgreSQL / MySQL / ClickHouse / HTTP API Telemetry 运行时适配器：
   - `dsn_secret_ref` 当前支持 `env:NAME`，运行时从环境变量读取 DSN。
-  - PostgreSQL / MySQL / ClickHouse 支持 `payload_type = columns`；HTTP API 支持 `payload_type = columns` / `json`，返回统一 JSON `points`。
+  - `generic_columns` 通过 PostgreSQL / MySQL / ClickHouse 查询 `payload_type = columns`；`http_api` 支持 `payload_type = columns` / `json`，返回统一 JSON `points`。
   - 查询 SQL 只使用 DataStreamBinding 中已校验的表名/字段名，设备 key、时间范围和 limit 均使用参数绑定。
   - MySQL 使用 `go-sql-driver/mysql`，运行时会规范化 DSN 并启用 `parseTime=true`。
   - ClickHouse 使用 `clickhouse-go/v2`，优先使用 DataStreamBinding 的 `database_name` 限定表名，未配置时可使用 `schema_name` 作为库名别名。
-  - HTTP API 使用 DataSource secret 作为 base URL，`query_config` 可配置 `method`、相对 `path`、`headers` 和参数名；默认 GET，POST 时发送 JSON body。
+  - HTTP API 使用 DataSource secret 作为 base URL，`adapter_config` 可配置 `method`、相对 `path`、`headers` 和参数名；默认 GET，POST 时发送 JSON body。
+  - `thcpn_legacy_mysql` 当前只注册 adapter code 和 runtime 分发，占位函数返回 `DATA_SOURCE_ERROR: thcpn_legacy_mysql adapter is not implemented`，暂不读取旧库。
 - 已实现 Telemetry Query 接口：
   - `GET /api/v1/devices/:device_id/telemetry?start_time=...&end_time=...&limit=...`
   - `GET /api/v1/data-streams/:data_stream_id/telemetry?start_time=...&end_time=...&limit=...`
   - 需要 `telemetry.view_history` 权限；时间范围和点数受 `query_limits` 限制。
-- 已实现 PostgreSQL / MySQL / ClickHouse / HTTP API Media Query 运行时适配器：
+- 已实现按 `adapter_code` 分发的 PostgreSQL / MySQL / ClickHouse / HTTP API Media Query 运行时适配器：
   - 只支持 `payload_type = media` 的 image/video/audio 查询。
-  - `query_config` 可配置 `id_field`、`object_key_field`、`thumbnail_key_field`、`media_type_field` 和 `media_type`。
+  - `generic_media` 使用 `adapter_config` 配置 `id_field`、`object_key_field`、`thumbnail_key_field`、`media_type_field` 和 `media_type`。
   - MySQL / ClickHouse 优先使用 DataStreamBinding 的 `database_name` 限定表名，未配置时可使用 `schema_name` 作为库名别名。
   - HTTP API 返回统一 JSON `items` / `total`，路径必须为相对路径，避免 binding 配置绕过 DataSource base URL。
   - 预览、缩略图和下载 URL 使用 HMAC + 过期时间签名，不返回永久公开 URL。
@@ -217,13 +223,15 @@
   - Site: `site.view` / `site.manage`
   - Device: `device.view` / `device.bind` / `device.configure`
   - DataStream: `device.view` / `device.configure`
-  - DataSource: `workspace.manage`
-  - DataStreamBinding: `device.configure`
+  - DataSource: `workspace.manage`（当前实现遗留；后续应重构为设备源部署配置，不作为客户 Workspace 权限）
+  - DataStreamBinding: `device.configure`（当前实现遗留；后续应由同步任务、seed 或内部脚本生成）
   - Telemetry Query: `telemetry.view_history`
   - Media Query: `media.archive_view`
   - Media Download: `media.download`
   - Media Delete: `media.delete`
 - 设备绑定会记录 `bound_by`、`activated_at` 并写入 audit log。
+
+设计方向已调整：DataSource / DataStreamBinding 不应继续作为普通 Workspace 管理资源。当前实现保留 `/api/v1/data-sources` 和 `/api/v1/data-stream-bindings` 作为内部配置载体，运行时按 `data_stream_bindings.adapter_code` 分发；普通前端导航已隐藏“数据源”。后续不必优先建设完整设备数据源管理后台，应优先采用代码内置 adapter registry、部署配置维护设备源实例、平台库维护 `device_source_refs` / `device_config_snapshots` / 已生成的数据流绑定。Workspace Owner / Admin 只绑定设备、管理项目/站点/数据集和授权访问。
 
 ### Dataset
 
@@ -485,6 +493,10 @@ make build-web
 - 业务模块不得直接拼接或访问设备数据源 SQL。
 - 所有设备数据查询必须通过 `internal/datasource` 的适配层。
 - 用户请求不能直接传入 `table_name`、`field_name`、`raw_sql`。
+- 普通 Workspace 用户、Workspace Owner 和 Workspace Admin 不应创建或编辑设备源连接密钥、外部设备映射或 DataStreamBinding。
+- 设备绑定流程只接受平台设备标识、SN、二维码或授权码；source_code、库表字段、JSONPath 和适配器配置应来自代码注册、部署配置、seed、同步任务或内部脚本。
+- 对接 THCPN 旧设备库时，应优先设计 `thcpn_legacy_mysql` 适配器、`device_source_refs` 和 `device_config_snapshots`，而不是把旧库分表和 JSON 解析规则暴露给客户前端。
+- `thcpn_legacy_mysql` 当前只是 adapter code、类型校验和 runtime 未实现占位；不要在业务文档或前端中宣称已经能读取旧库分表、`device_config` 或图片路径。
 - 设备数据查询必须有时间范围、分页或点数上限。
 - 大范围查询应走异步导出任务，不应在 API 请求中同步返回。
 - 媒体预览/下载 URL 不应是永久公开 URL。
@@ -526,6 +538,9 @@ make build-web
 - 授权售后
 - 售后访问设备
 - 删除数据或媒体
+- 修改设备源部署配置
+- 修改外部设备映射、设备配置快照或 DataStreamBinding
+- 内部排障访问客户设备数据
 
 敏感操作失败也应按操作风险写审计。
 
