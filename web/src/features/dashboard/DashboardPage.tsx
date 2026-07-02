@@ -1,16 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { Activity, FileArchive, FolderKanban, HardDrive, History, RadioTower, SquareStack } from "lucide-react";
+import { Alert, Button, Result, Space, Spin, Tag } from "antd";
 import {
   auditApi,
   datasetsApi,
   devicesApi,
   exportJobsApi,
+  formatApiError,
   projectsApi,
   sitesApi
 } from "../../api";
-import { Badge, Button, ErrorState, LoadingState, Page, Section, statusTone } from "../../components";
+import { Page, Section } from "../../components";
 import { useWorkspace } from "../../app/WorkspaceProvider";
 import { compactNumber, formatDateTime } from "../../app/format";
+import { statusColor } from "../../app/ui";
 
 export function DashboardPage() {
   const { selectedWorkspaceId, selectedWorkspace } = useWorkspace();
@@ -61,7 +64,14 @@ export function DashboardPage() {
       description={selectedWorkspace ? `当前工作区：${selectedWorkspace.workspace.name}` : "请选择一个工作区。"}
       title="总览"
     >
-      {firstError ? <ErrorState error={firstError} /> : null}
+      {firstError ? (
+        <Result
+          className="state state-error"
+          status="warning"
+          subTitle={<Alert message={formatApiError(firstError)} showIcon type="error" />}
+          title="请求未完成"
+        />
+      ) : null}
 
       <div className="metric-grid">
         {cards.map((card) => {
@@ -97,7 +107,12 @@ export function DashboardPage() {
         description="最近的审计记录帮助确认账号和资源操作是否按预期发生。"
         title="最近活动"
       >
-        {audits.isLoading ? <LoadingState /> : null}
+        {audits.isLoading ? (
+          <Space className="state state-inline">
+            <Spin size="small" />
+            <span>正在加载</span>
+          </Space>
+        ) : null}
         {audits.data && audits.data.items.length > 0 ? (
           <div className="activity-list">
             {audits.data.items.map((item) => (
@@ -109,7 +124,7 @@ export function DashboardPage() {
                     {item.resource_type} · {formatDateTime(item.created_at)}
                   </span>
                 </div>
-                <Badge tone={statusTone(item.result)}>{item.result}</Badge>
+                <Tag color={statusColor(item.result)}>{item.result}</Tag>
               </div>
             ))}
           </div>

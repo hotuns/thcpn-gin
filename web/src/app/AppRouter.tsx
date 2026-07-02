@@ -1,10 +1,13 @@
 import { Navigate, Route, Routes } from "react-router-dom";
+import { AdminShell } from "./AdminShell";
 import { AppShell } from "./AppShell";
-import { ProtectedRoute, PublicOnlyRoute } from "./RouteGuards";
+import { AdminRouteGuard, ProtectedRoute, PublicOnlyRoute, RootRedirect } from "./RouteGuards";
 import { DashboardPage } from "../features/dashboard/DashboardPage";
 import { LoginPage, RegisterPage } from "../features/auth/AuthPages";
+import { AdminDataSourcesPage, AdminOverviewPage } from "../features/admin/AdminPages";
 import { MembersPage } from "../features/members/MembersPage";
 import { SecurityPage } from "../features/security/SecurityPage";
+import { DeviceDataPage } from "../features/telemetry/DeviceDataPage";
 import { WorkspacesPage } from "../features/workspaces/WorkspacesPage";
 import {
   AccessGrantsPage,
@@ -27,6 +30,13 @@ export function AppRouter() {
         <Route element={<RegisterPage />} path="/register" />
       </Route>
 
+      <Route element={<AdminRouteGuard />} path="/admin">
+        <Route element={<AdminShell />}>
+          <Route element={<AdminOverviewPage />} index />
+          <Route element={<AdminDataSourcesPage />} path="data-sources" />
+        </Route>
+      </Route>
+
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>
           <Route element={<Navigate replace to="/dashboard" />} index />
@@ -38,6 +48,7 @@ export function AppRouter() {
           <Route element={<SitesPage />} path="/sites" />
           <Route element={<DevicesPage />} path="/devices" />
           <Route element={<DataStreamsPage />} path="/data-streams" />
+          <Route element={<DeviceDataPage />} path="/device-data" />
           <Route element={<DataSourcesPage />} path="/data-sources" />
           <Route element={<DatasetsPage />} path="/datasets" />
           <Route element={<ExportJobsPage />} path="/export-jobs" />
@@ -47,8 +58,8 @@ export function AppRouter() {
         </Route>
       </Route>
 
-      <Route element={<Navigate replace to="/dashboard" />} path="/" />
-      <Route element={<Navigate replace to="/dashboard" />} path="*" />
+      <Route element={<RootRedirect />} path="/" />
+      <Route element={<Navigate replace to="/" />} path="*" />
     </Routes>
   );
 }

@@ -1,59 +1,53 @@
 import { useMemo, useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Activity,
-  Boxes,
-  ChevronDown,
-  FileArchive,
-  Fingerprint,
-  FolderKanban,
-  Gauge,
-  HardDrive,
-  History,
-  KeyRound,
-  Layers3,
-  LogOut,
-  Menu,
-  RadioTower,
-  ShieldCheck,
-  SquareStack,
-  Users,
-  X
-} from "lucide-react";
+  CheckOutlined,
+  DashboardOutlined,
+  DatabaseOutlined,
+  DeploymentUnitOutlined,
+  DownOutlined,
+  ExportOutlined,
+  FolderOpenOutlined,
+  HddOutlined,
+  LineChartOutlined,
+  LogoutOutlined,
+  MenuOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  SafetyCertificateOutlined,
+  SettingOutlined
+} from "@ant-design/icons";
+import { Alert, App as AntApp, Button, Drawer, Dropdown, Layout, Menu, Result, Space, Spin, Tag, Tooltip, Typography } from "antd";
+import type { MenuProps } from "antd";
 import { authApi, formatApiError, statusApi } from "../api";
-import { Badge, Button, ErrorState, LoadingState, statusTone, useToast } from "../components";
 import { useAuth } from "./AuthProvider";
 import { useWorkspace } from "./WorkspaceProvider";
-import { formatDateTime } from "./format";
+
+const { Content, Sider } = Layout;
 
 const navGroups = [
   {
     label: "运行",
     items: [
-      { to: "/dashboard", label: "总览", icon: Gauge },
-      { to: "/projects", label: "项目", icon: FolderKanban },
-      { to: "/sites", label: "站点", icon: RadioTower },
-      { to: "/devices", label: "设备", icon: HardDrive },
-      { to: "/data-streams", label: "数据流", icon: Activity }
+      { to: "/dashboard", label: "总览", icon: <DashboardOutlined /> },
+      { to: "/projects", label: "项目", icon: <FolderOpenOutlined /> },
+      { to: "/sites", label: "站点", icon: <DeploymentUnitOutlined /> },
+      { to: "/devices", label: "设备", icon: <HddOutlined /> }
     ]
   },
   {
     label: "数据",
     items: [
-      { to: "/datasets", label: "数据集", icon: SquareStack },
-      { to: "/export-jobs", label: "导出", icon: FileArchive }
+      { to: "/device-data", label: "设备数据", icon: <LineChartOutlined /> },
+      { to: "/datasets", label: "数据集", icon: <DatabaseOutlined /> },
+      { to: "/export-jobs", label: "导出", icon: <ExportOutlined /> }
     ]
   },
   {
-    label: "治理",
+    label: "账号",
     items: [
-      { to: "/workspaces", label: "工作区", icon: Boxes },
-      { to: "/members", label: "成员", icon: Users },
-      { to: "/access-grants", label: "授权", icon: KeyRound },
-      { to: "/invitations", label: "邀请", icon: Fingerprint },
-      { to: "/audit-logs", label: "审计", icon: History },
-      { to: "/security", label: "安全", icon: ShieldCheck }
+      { to: "/security", label: "安全", icon: <SafetyCertificateOutlined /> }
     ]
   }
 ];
@@ -61,7 +55,8 @@ const navGroups = [
 export function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { logout } = useAuth();
-  const { pushToast } = useToast();
+  const { message } = AntApp.useApp();
+  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const workspaces = useWorkspace();
@@ -81,11 +76,11 @@ export function AppShell() {
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSuccess: () => {
-      pushToast("已退出登录", "info");
+      void message.info("已退出登录");
       navigate("/login", { replace: true });
     },
     onError: (error) => {
-      pushToast(formatApiError(error), "info");
+      void message.info(formatApiError(error));
       navigate("/login", { replace: true });
     }
   });
@@ -98,120 +93,237 @@ export function AppShell() {
     return user.name || user.email || user.phone || user.id;
   }, [meQuery.data?.user]);
 
-  return (
-    <div className="console-shell">
-      {mobileOpen ? <button className="nav-backdrop" aria-label="关闭导航" onClick={() => setMobileOpen(false)} /> : null}
-      <aside className={`side-nav${mobileOpen ? " is-open" : ""}`}>
-        <div className="brand">
-          <span className="brand-mark">TH</span>
-          <div>
-            <strong>THCPN</strong>
-            <span>Research Console</span>
-          </div>
-          <Button
-            aria-label="关闭导航"
-            className="mobile-close"
-            icon={<X size={18} />}
-            onClick={() => setMobileOpen(false)}
-            variant="ghost"
-          />
-        </div>
-        <nav>
-          {navGroups.map((group) => (
-            <div className="nav-group" key={group.label}>
-              <span className="nav-group-label">{group.label}</span>
-              {group.items.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <NavLink
-                    className={({ isActive }) => `nav-link${isActive ? " is-active" : ""}`}
-                    key={item.to}
-                    onClick={() => setMobileOpen(false)}
-                    to={item.to}
-                  >
-                    <Icon size={17} />
-                    <span>{item.label}</span>
-                  </NavLink>
-                );
-              })}
-            </div>
-          ))}
-        </nav>
-      </aside>
+  const menuItems = useMemo<MenuProps["items"]>(
+    () =>
+      navGroups.map((group) => ({
+        children: group.items.map((item) => ({
+          icon: item.icon,
+          key: item.to,
+          label: item.label
+        })),
+        key: group.label,
+        label: group.label,
+        type: "group"
+      })),
+    []
+  );
 
-      <div className="main-area">
-        <header className="topbar">
-          <Button aria-label="打开导航" className="mobile-menu" icon={<Menu size={19} />} onClick={() => setMobileOpen(true)} />
-          <div className="workspace-context">
-            <span className="context-kicker">工作区上下文</span>
-            <div className="workspace-selector">
-              <select
-                aria-label="选择工作区"
-                disabled={workspaces.isLoading || workspaces.workspaces.length === 0}
-                onChange={(event) => workspaces.setSelectedWorkspaceId(event.target.value)}
-                value={workspaces.selectedWorkspaceId}
-              >
-                {workspaces.workspaces.length === 0 ? <option value="">无可用工作区</option> : null}
-                {workspaces.workspaces.map((item) => (
-                  <option key={item.workspace.id} value={item.workspace.id}>
-                    {item.workspace.name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={16} />
-            </div>
-            <div className="context-meta">
-              <Badge tone={statusTone(workspaces.selectedWorkspace?.workspace.status)}>
-                {workspaces.selectedWorkspace?.workspace.status || "unknown"}
-              </Badge>
-              <span>{selectedRole || "未分配角色"}</span>
-              <span>API {serviceStatus}</span>
-              <span>{healthQuery.data?.checkedAt ? formatDateTime(healthQuery.data.checkedAt) : "未检查"}</span>
-            </div>
+  const selectedMenuKey = useMemo(() => {
+    const allItems = navGroups.flatMap((group) => group.items);
+    return allItems.find((item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`))?.to || "/dashboard";
+  }, [location.pathname]);
+
+  const workspaceMenuItems = useMemo<MenuProps["items"]>(
+    () => [
+      ...workspaces.workspaces.map((item) => ({
+        icon: item.workspace.id === workspaces.selectedWorkspaceId ? <CheckOutlined /> : undefined,
+        key: `workspace:${item.workspace.id}`,
+        label: (
+          <div className="workspace-menu-item">
+            <span className="workspace-menu-main">
+              <Typography.Text strong ellipsis title={item.workspace.name}>
+                {item.workspace.name}
+              </Typography.Text>
+              <Typography.Text type="secondary">{item.membership.role.name || item.membership.role.code}</Typography.Text>
+            </span>
+            <Tag color={item.workspace.status === "active" ? "success" : "warning"}>{item.workspace.status}</Tag>
           </div>
-          <div className="topbar-user">
-            <div>
-              <span>{userLabel}</span>
-              <small>{meQuery.data?.user.email || meQuery.data?.user.phone || "当前账号"}</small>
-            </div>
+        )
+      })),
+      ...(workspaces.workspaces.length > 0
+        ? []
+        : [
+            {
+              disabled: true,
+              key: "workspace-empty",
+              label: "无可用工作区"
+            }
+          ]),
+      { type: "divider" as const },
+      {
+        key: "workspace-actions",
+        label: (
+          <Space className="workspace-menu-actions" size={8}>
             <Button
-              disabled={logoutMutation.isPending}
-              icon={<LogOut size={16} />}
-              onClick={() => logoutMutation.mutate()}
-              variant="ghost"
+              icon={<PlusOutlined />}
+              onClick={(event) => {
+                event.stopPropagation();
+                navigate("/workspaces?create=1");
+                setMobileOpen(false);
+              }}
+              size="small"
+              type="primary"
             >
-              退出
+              新建工作区
             </Button>
-          </div>
-        </header>
+            <Button
+              icon={<SettingOutlined />}
+              onClick={(event) => {
+                event.stopPropagation();
+                navigate("/workspaces");
+                setMobileOpen(false);
+              }}
+              size="small"
+            >
+              管理工作区
+            </Button>
+          </Space>
+        )
+      }
+    ],
+    [navigate, workspaces.selectedWorkspaceId, workspaces.workspaces]
+  );
 
-        {workspaces.error ? (
-          <main className="content-area">
-            <ErrorState error={workspaces.error} onRetry={workspaces.refetch} />
-          </main>
-        ) : workspaces.isLoading ? (
-          <main className="content-area">
-            <LoadingState label="正在加载工作区" />
-          </main>
-        ) : (
-          <main className="content-area">
-            <Outlet />
-          </main>
-        )}
+  const workspaceLabel = workspaces.selectedWorkspace?.workspace.name || "选择工作区";
 
-        <button
-          className="health-strip"
-          onClick={() => {
-            void healthQuery.refetch();
-            void queryClient.invalidateQueries({ queryKey: ["me"] });
+  const sidebar = (
+    <div className="side-nav-content">
+      <div className="workspace-switcher-wrap">
+        <Dropdown
+          menu={{
+            items: workspaceMenuItems,
+            selectedKeys: workspaces.selectedWorkspaceId ? [`workspace:${workspaces.selectedWorkspaceId}`] : [],
+            onClick: ({ key }) => {
+              const keyText = String(key);
+              if (!keyText.startsWith("workspace:")) {
+                return;
+              }
+              workspaces.setSelectedWorkspaceId(keyText.replace("workspace:", ""));
+              setMobileOpen(false);
+            }
           }}
-          type="button"
+          placement="bottomLeft"
+          trigger={["click"]}
         >
-          <span className={`health-dot ${serviceStatus === "ok" ? "is-ok" : ""}`} />
-          <span>healthz {healthQuery.data?.healthz.status || "-"}</span>
-          <span>readyz {healthQuery.data?.readyz.status || "-"}</span>
-        </button>
+          <Button className="workspace-switcher" disabled={workspaces.isLoading} type="text">
+            <span className="workspace-switcher-copy">
+              <Typography.Text className="context-kicker" type="secondary">
+                工作区
+              </Typography.Text>
+              <Typography.Text strong ellipsis title={workspaceLabel}>
+                {workspaceLabel}
+              </Typography.Text>
+              <Space className="context-meta" size={[6, 4]} wrap>
+                <Tag color={workspaces.selectedWorkspace?.workspace.status === "active" ? "success" : "warning"}>
+                  {workspaces.selectedWorkspace?.workspace.status || "unknown"}
+                </Tag>
+                <Typography.Text type="secondary">{selectedRole || "未分配角色"}</Typography.Text>
+              </Space>
+            </span>
+            <DownOutlined />
+          </Button>
+        </Dropdown>
+      </div>
+      <Menu
+        className="main-menu"
+        items={menuItems}
+        mode="inline"
+        onClick={({ key }) => {
+          navigate(String(key));
+          setMobileOpen(false);
+        }}
+        selectedKeys={[selectedMenuKey]}
+      />
+      <div className="side-controls">
+        <div className="side-account">
+          <div className="side-account-copy">
+            <Typography.Text strong ellipsis title={userLabel}>
+              {userLabel}
+            </Typography.Text>
+            <Typography.Text type="secondary" ellipsis title={meQuery.data?.user.email || meQuery.data?.user.phone || "当前账号"}>
+              {meQuery.data?.user.email || meQuery.data?.user.phone || "当前账号"}
+            </Typography.Text>
+          </div>
+          <Dropdown
+            menu={{
+              items: [
+                ...(meQuery.data?.user.is_system_admin
+                  ? [
+                      {
+                        icon: <SettingOutlined />,
+                        key: "admin",
+                        label: "进入系统后台",
+                        onClick: () => navigate("/admin")
+                      }
+                    ]
+                  : []),
+                {
+                  danger: true,
+                  icon: <LogoutOutlined />,
+                  key: "logout",
+                  label: "退出登录",
+                  onClick: () => logoutMutation.mutate()
+                }
+              ]
+            }}
+            trigger={["click"]}
+          >
+            <Button icon={<LogoutOutlined />} loading={logoutMutation.isPending} size="small">
+              账号
+            </Button>
+          </Dropdown>
+        </div>
+        <Tooltip title="刷新服务状态和当前账号">
+          <Button
+            className="side-health"
+            htmlType="button"
+            onClick={() => {
+              void healthQuery.refetch();
+              void queryClient.invalidateQueries({ queryKey: ["me"] });
+            }}
+            type="text"
+          >
+            <span className={`health-dot ${serviceStatus === "ok" ? "is-ok" : ""}`} />
+            <span>healthz {healthQuery.data?.healthz.status || "-"}</span>
+            <span>readyz {healthQuery.data?.readyz.status || "-"}</span>
+            <ReloadOutlined />
+          </Button>
+        </Tooltip>
       </div>
     </div>
+  );
+
+  return (
+    <Layout className="console-layout">
+      <Sider className="app-sider" width={264}>
+        {sidebar}
+      </Sider>
+      <Drawer
+        className="mobile-nav-drawer"
+        onClose={() => setMobileOpen(false)}
+        open={mobileOpen}
+        placement="left"
+        size={292}
+      >
+        {sidebar}
+      </Drawer>
+
+      <Layout className="main-area">
+        <Button aria-label="打开导航" className="mobile-menu" icon={<MenuOutlined />} onClick={() => setMobileOpen(true)} />
+
+        {workspaces.error ? (
+          <Content className="content-area">
+            <Result
+              className="state state-error"
+              extra={<Button onClick={workspaces.refetch}>重试</Button>}
+              status="warning"
+              subTitle={<Alert message={formatApiError(workspaces.error)} showIcon type="error" />}
+              title="请求未完成"
+            />
+          </Content>
+        ) : workspaces.isLoading ? (
+          <Content className="content-area">
+            <Space className="state state-inline">
+              <Spin size="small" />
+              <span>正在加载工作区</span>
+            </Space>
+          </Content>
+        ) : (
+          <Content className="content-area">
+            <Outlet />
+          </Content>
+        )}
+      </Layout>
+    </Layout>
   );
 }

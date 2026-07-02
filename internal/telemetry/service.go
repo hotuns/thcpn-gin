@@ -49,12 +49,19 @@ type Series struct {
 	Name         string    `json:"name"`
 	Unit         *string   `json:"unit,omitempty"`
 	Points       []Point   `json:"points"`
+	Warnings     []Warning `json:"warnings,omitempty"`
 }
 
 type Point struct {
 	Timestamp time.Time `json:"ts"`
 	Value     float64   `json:"value"`
 	Quality   string    `json:"quality"`
+}
+
+type Warning struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Count   int    `json:"count,omitempty"`
 }
 
 func NewService(db *pgxpool.Pool, dataSources *datasource.Service, runtime TelemetryRuntime, limits config.QueryLimitsConfig) *Service {
@@ -179,6 +186,7 @@ func (s *Service) querySeries(ctx context.Context, stream sqlc.DataStream, start
 		Name:         stream.Name,
 		Unit:         stream.Unit,
 		Points:       pointsFromDatasource(points.Points),
+		Warnings:     warningsFromDatasource(points.Warnings),
 	}, nil
 }
 
@@ -189,6 +197,18 @@ func pointsFromDatasource(points []datasource.TelemetryPoint) []Point {
 			Timestamp: point.Timestamp,
 			Value:     point.Value,
 			Quality:   point.Quality,
+		})
+	}
+	return items
+}
+
+func warningsFromDatasource(warnings []datasource.QueryWarning) []Warning {
+	items := make([]Warning, 0, len(warnings))
+	for _, warning := range warnings {
+		items = append(items, Warning{
+			Code:    warning.Code,
+			Message: warning.Message,
+			Count:   warning.Count,
 		})
 	}
 	return items

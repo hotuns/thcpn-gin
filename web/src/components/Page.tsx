@@ -1,3 +1,4 @@
+import { Card, Space, Typography } from "antd";
 import type { ReactNode } from "react";
 
 interface PageProps {
@@ -12,8 +13,8 @@ export function Page({ title, description, actions, children }: PageProps) {
     <section className="page">
       <header className="page-header">
         <div>
-          <h1>{title}</h1>
-          {description ? <p>{description}</p> : null}
+          <Typography.Title level={2}>{title}</Typography.Title>
+          {description ? <Typography.Paragraph type="secondary">{description}</Typography.Paragraph> : null}
         </div>
         {actions ? <div className="page-actions">{actions}</div> : null}
       </header>
@@ -24,15 +25,17 @@ export function Page({ title, description, actions, children }: PageProps) {
 
 export function Section({ title, description, children, actions }: PageProps) {
   return (
-    <section className="section">
-      <header className="section-header">
-        <div>
-          <h2>{title}</h2>
-          {description ? <p>{description}</p> : null}
-        </div>
-        {actions ? <div className="section-actions">{actions}</div> : null}
-      </header>
+    <Card
+      className="section"
+      title={
+        <Space orientation="vertical" size={0}>
+          <Typography.Text strong>{title}</Typography.Text>
+          {description ? <Typography.Text type="secondary">{description}</Typography.Text> : null}
+        </Space>
+      }
+      extra={actions}
+    >
       {children}
-    </section>
+    </Card>
   );
 }

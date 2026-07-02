@@ -14,3 +14,9 @@ export const projectsApi = {
     return patch<Project>(`/api/v1/projects/${projectId}`, input);
   }
 };
+
+export const adminProjectsApi = {
+  list(workspaceId: string): Promise<ProjectListResponse> {
+    return get<ProjectListResponse>("/api/v1/admin/projects", { workspace_id: workspaceId });
+  }
+};

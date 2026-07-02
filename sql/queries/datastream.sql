@@ -3,6 +3,21 @@ INSERT INTO data_streams (workspace_id, device_id, code, name, type, unit, creat
 VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING id, workspace_id, device_id, code, name, type, unit, status, created_by, created_at, updated_at;
 
+-- name: UpsertDataStreamFromSync :one
+INSERT INTO data_streams (workspace_id, device_id, code, name, type, unit, status, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, 'active', $7)
+ON CONFLICT (device_id, code)
+DO UPDATE SET
+    name = EXCLUDED.name,
+    type = EXCLUDED.type,
+    unit = EXCLUDED.unit,
+    status = CASE
+        WHEN data_streams.status = 'archived' THEN data_streams.status
+        ELSE 'active'
+    END,
+    updated_at = now()
+RETURNING id, workspace_id, device_id, code, name, type, unit, status, created_by, created_at, updated_at;
+
 -- name: GetDataStream :one
 SELECT id, workspace_id, device_id, code, name, type, unit, status, created_by, created_at, updated_at
 FROM data_streams

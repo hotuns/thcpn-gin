@@ -2,10 +2,10 @@ package datasource
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -356,11 +356,11 @@ func TestHTTPAPIPathRejectsAbsoluteURL(t *testing.T) {
 	}
 }
 
-func TestTHCPNLegacyAdapterNotImplemented(t *testing.T) {
+func TestTHCPNLegacyAdapterValidation(t *testing.T) {
 	runtime := NewRuntime(staticResolver("unused"))
 	source := DataSource{
 		ID:           uuid.New(),
-		Type:         "mysql",
+		Type:         "postgres",
 		DsnSecretRef: "secret:mysql",
 		Status:       "active",
 	}
@@ -380,10 +380,11 @@ func TestTHCPNLegacyAdapterNotImplemented(t *testing.T) {
 		End:     time.Now(),
 		Limit:   10,
 	})
-	if apperr.KindOf(telemetryErr) != apperr.KindDataSource || !strings.Contains(telemetryErr.Error(), "thcpn_legacy_mysql adapter is not implemented") {
-		t.Fatalf("expected thcpn legacy telemetry placeholder error, got %v", telemetryErr)
+	if apperr.KindOf(telemetryErr) != apperr.KindDataSource {
+		t.Fatalf("expected thcpn legacy mysql source type error, got %v", telemetryErr)
 	}
 
+	source.Type = "mysql"
 	binding.PayloadType = "media"
 	_, mediaErr := runtime.QueryMedia(context.Background(), source, MediaQuery{
 		Binding:  binding,
@@ -392,8 +393,92 @@ func TestTHCPNLegacyAdapterNotImplemented(t *testing.T) {
 		Page:     1,
 		PageSize: 10,
 	})
-	if apperr.KindOf(mediaErr) != apperr.KindDataSource || !strings.Contains(mediaErr.Error(), "thcpn_legacy_mysql adapter is not implemented") {
-		t.Fatalf("expected thcpn legacy media placeholder error, got %v", mediaErr)
+	if apperr.KindOf(mediaErr) != apperr.KindInvalidArgument {
+		t.Fatalf("expected thcpn legacy adapter_config validation error, got %v", mediaErr)
+	}
+}
+
+func TestTHCPNLegacyConfigParsingAndPaths(t *testing.T) {
+	cfg, err := parseTHCPNLegacyTelemetryConfig(json.RawMessage(`{"external_device_id":1206,"json_key":"pm2.5"}`))
+	if err != nil {
+		t.Fatalf("parse thcpn telemetry config: %v", err)
+	}
+	if cfg.ExternalDeviceID != 1206 || cfg.RowType != "data" {
+		t.Fatalf("unexpected config: %#v", cfg)
+	}
+	if cfg.ValuePath != `$."pm2.5".value` {
+		t.Fatalf("unexpected JSON path: %s", cfg.ValuePath)
+	}
+	if cfg.TableIndex != defaultTHCPNTableIndexField || cfg.TimeField != defaultTHCPNTimeField {
+		t.Fatalf("expected default table/time fields, got %#v", cfg)
+	}
+
+	if err := validateTHCPNShardTableName("device_data_154"); err != nil {
+		t.Fatalf("expected valid shard table: %v", err)
+	}
+	if err := validateTHCPNShardTableName("device_data_154;drop"); apperr.KindOf(err) != apperr.KindDataSource {
+		t.Fatalf("expected invalid shard table, got %v", err)
+	}
+}
+
+func TestParseTHCPNTelemetryValueSkipsConfigMismatches(t *testing.T) {
+	tests := []struct {
+		name  string
+		raw   sql.NullString
+		ok    bool
+		value float64
+	}{
+		{name: "number", raw: sql.NullString{String: "26.38", Valid: true}, ok: true, value: 26.38},
+		{name: "missing json path", raw: sql.NullString{}, ok: false},
+		{name: "empty value", raw: sql.NullString{String: " ", Valid: true}, ok: false},
+		{name: "json null", raw: sql.NullString{String: "null", Valid: true}, ok: false},
+		{name: "object shape mismatch", raw: sql.NullString{String: `{"value":26.38}`, Valid: true}, ok: false},
+		{name: "non numeric value", raw: sql.NullString{String: "bad", Valid: true}, ok: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			value, ok := parseTHCPNTelemetryValue(tt.raw)
+			if ok != tt.ok {
+				t.Fatalf("expected ok=%v, got %v", tt.ok, ok)
+			}
+			if ok && value != tt.value {
+				t.Fatalf("expected value %v, got %v", tt.value, value)
+			}
+		})
+	}
+}
+
+func TestBuildTHCPNStreamSpecs(t *testing.T) {
+	dataJSON := json.RawMessage(`[
+		{"desc":"nh122","params":{"contents":[
+			{"key":"temp","info":{"name":"Air temperature","unit":"C"}},
+			{"key":"pm2.5","info":{"name":"PM2.5","unit":"ug/m3"}}
+		]}},
+		{"desc":"duplicate","params":{"contents":[
+			{"key":"temp","info":{"name":"Backup temperature","unit":"C"}}
+		]}}
+	]`)
+	imageJSON := json.RawMessage(`[{"key":"key1","dest":"Visible"}]`)
+
+	specs, err := buildTHCPNStreamSpecs(1206, dataJSON, imageJSON)
+	if err != nil {
+		t.Fatalf("build stream specs: %v", err)
+	}
+	if len(specs) != 4 {
+		t.Fatalf("unexpected spec count: %d", len(specs))
+	}
+	if specs[0].Code != "temp" || specs[0].Type != "telemetry" || specs[0].PayloadType != "columns" {
+		t.Fatalf("unexpected first telemetry spec: %#v", specs[0])
+	}
+	if specs[1].Code != "pm2.5" || specs[1].Unit != "ug/m3" {
+		t.Fatalf("unexpected pm spec: %#v", specs[1])
+	}
+	if specs[2].Code != "temp_2" {
+		t.Fatalf("expected duplicate key suffix, got %#v", specs[2])
+	}
+	if specs[3].Code != "key1" || specs[3].Type != "image" || specs[3].PayloadType != "media" {
+		t.Fatalf("unexpected image spec: %#v", specs[3])
 	}
 }
 

@@ -164,3 +164,56 @@ func (q *Queries) UpdateDataStream(ctx context.Context, arg UpdateDataStreamPara
 	)
 	return i, err
 }
+
+const upsertDataStreamFromSync = `-- name: UpsertDataStreamFromSync :one
+INSERT INTO data_streams (workspace_id, device_id, code, name, type, unit, status, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, 'active', $7)
+ON CONFLICT (device_id, code)
+DO UPDATE SET
+    name = EXCLUDED.name,
+    type = EXCLUDED.type,
+    unit = EXCLUDED.unit,
+    status = CASE
+        WHEN data_streams.status = 'archived' THEN data_streams.status
+        ELSE 'active'
+    END,
+    updated_at = now()
+RETURNING id, workspace_id, device_id, code, name, type, unit, status, created_by, created_at, updated_at
+`
+
+type UpsertDataStreamFromSyncParams struct {
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	DeviceID    uuid.UUID `json:"device_id"`
+	Code        string    `json:"code"`
+	Name        string    `json:"name"`
+	Type        string    `json:"type"`
+	Unit        *string   `json:"unit"`
+	CreatedBy   uuid.UUID `json:"created_by"`
+}
+
+func (q *Queries) UpsertDataStreamFromSync(ctx context.Context, arg UpsertDataStreamFromSyncParams) (DataStream, error) {
+	row := q.db.QueryRow(ctx, upsertDataStreamFromSync,
+		arg.WorkspaceID,
+		arg.DeviceID,
+		arg.Code,
+		arg.Name,
+		arg.Type,
+		arg.Unit,
+		arg.CreatedBy,
+	)
+	var i DataStream
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.DeviceID,
+		&i.Code,
+		&i.Name,
+		&i.Type,
+		&i.Unit,
+		&i.Status,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}

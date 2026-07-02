@@ -152,6 +152,18 @@ func (s *Service) ListForUser(ctx context.Context, userID uuid.UUID) ([]Workspac
 	return items, nil
 }
 
+func (s *Service) ListAll(ctx context.Context) ([]Workspace, error) {
+	rows, err := s.queries.ListWorkspaces(ctx)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindInternal, "list all workspaces", err)
+	}
+	items := make([]Workspace, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, workspaceFromSQL(row))
+	}
+	return items, nil
+}
+
 func isValidOrganizationType(value string) bool {
 	switch value {
 	case "lab", "institution", "company", "government", "service_provider", "other":

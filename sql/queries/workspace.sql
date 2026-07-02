@@ -46,3 +46,8 @@ WHERE wm.user_id = $1
   AND wm.status = 'active'
   AND w.status = 'active'
 ORDER BY w.created_at ASC;
+
+-- name: ListWorkspaces :many
+SELECT id, type, organization_type, name, owner_user_id, status, created_at, updated_at
+FROM workspaces
+ORDER BY created_at DESC, id DESC;

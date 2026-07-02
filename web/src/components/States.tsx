@@ -1,37 +1,28 @@
-import { AlertTriangle, Inbox, LoaderCircle } from "lucide-react";
+import { Alert, Button, Empty, Result, Spin, Space } from "antd";
 import { formatApiError } from "../api";
-import { Button } from "./Button";
 
 export function LoadingState({ label = "正在加载" }: { label?: string }) {
   return (
-    <div className="state state-inline">
-      <LoaderCircle className="spin" size={18} />
+    <Space className="state state-inline">
+      <Spin size="small" />
       <span>{label}</span>
-    </div>
+    </Space>
   );
 }
 
 export function EmptyState({ title, detail }: { title: string; detail?: string }) {
-  return (
-    <div className="state">
-      <Inbox size={28} />
-      <strong>{title}</strong>
-      {detail ? <p>{detail}</p> : null}
-    </div>
-  );
+  return <Empty className="state" description={detail || title} image={Empty.PRESENTED_IMAGE_SIMPLE} />;
 }
 
 export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
+  const description = formatApiError(error);
   return (
-    <div className="state state-error">
-      <AlertTriangle size={24} />
-      <strong>请求未完成</strong>
-      <p>{formatApiError(error)}</p>
-      {onRetry ? (
-        <Button onClick={onRetry} variant="secondary">
-          重试
-        </Button>
-      ) : null}
-    </div>
+    <Result
+      className="state state-error"
+      extra={onRetry ? <Button onClick={onRetry}>重试</Button> : null}
+      status="warning"
+      subTitle={<Alert message={description} showIcon type="error" />}
+      title="请求未完成"
+    />
   );
 }

@@ -47,6 +47,17 @@ func (h *Handler) List(c *gin.Context) {
 	})
 }
 
+func (h *Handler) AdminList(c *gin.Context) {
+	items, err := h.service.ListAll(c.Request.Context())
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"items": items,
+	})
+}
+
 func (h *Handler) Create(c *gin.Context) {
 	actor, ok := auth.ActorFromContext(c)
 	if !ok {

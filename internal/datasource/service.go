@@ -25,9 +25,13 @@ const (
 	AdapterGenericMedia   = "generic_media"
 	AdapterHTTPAPI        = "http_api"
 	AdapterTHCPNLegacy    = "thcpn_legacy_mysql"
+
+	DataSourceScopeWorkspace = "workspace"
+	DataSourceScopeSystem    = "system"
 )
 
 type Service struct {
+	db      *pgxpool.Pool
 	queries *sqlc.Queries
 }
 
@@ -46,13 +50,20 @@ type TelemetryQuery struct {
 }
 
 type TelemetryResult struct {
-	Points []TelemetryPoint `json:"points"`
+	Points   []TelemetryPoint `json:"points"`
+	Warnings []QueryWarning   `json:"warnings,omitempty"`
 }
 
 type TelemetryPoint struct {
 	Timestamp time.Time `json:"ts"`
 	Value     float64   `json:"value"`
 	Quality   string    `json:"quality"`
+}
+
+type QueryWarning struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Count   int    `json:"count,omitempty"`
 }
 
 type MediaQuery struct {
@@ -78,15 +89,16 @@ type MediaRecord struct {
 }
 
 type DataSource struct {
-	ID           uuid.UUID `json:"id"`
-	WorkspaceID  uuid.UUID `json:"workspace_id"`
-	Name         string    `json:"name"`
-	Type         string    `json:"type"`
-	DsnSecretRef string    `json:"dsn_secret_ref"`
-	Status       string    `json:"status"`
-	CreatedBy    uuid.UUID `json:"created_by"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID           uuid.UUID  `json:"id"`
+	Scope        string     `json:"scope"`
+	WorkspaceID  *uuid.UUID `json:"workspace_id,omitempty"`
+	Name         string     `json:"name"`
+	Type         string     `json:"type"`
+	DsnSecretRef string     `json:"dsn_secret_ref"`
+	Status       string     `json:"status"`
+	CreatedBy    uuid.UUID  `json:"created_by"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 type DataStreamBinding struct {
@@ -110,6 +122,7 @@ type DataStreamBinding struct {
 }
 
 type CreateDataSourceInput struct {
+	Scope        string
 	WorkspaceID  uuid.UUID
 	Name         string
 	Type         string
@@ -158,15 +171,16 @@ type UpdateDataStreamBindingInput struct {
 }
 
 func NewService(db *pgxpool.Pool) *Service {
-	return &Service{queries: sqlc.New(db)}
+	return &Service{db: db, queries: sqlc.New(db)}
 }
 
 func (s *Service) CreateDataSource(ctx context.Context, input CreateDataSourceInput) (DataSource, error) {
 	name := strings.TrimSpace(input.Name)
 	sourceType := strings.TrimSpace(input.Type)
 	dsnSecretRef := strings.TrimSpace(input.DsnSecretRef)
-	if input.WorkspaceID == uuid.Nil {
-		return DataSource{}, apperr.New(apperr.KindInvalidArgument, "workspace id is required")
+	scope, workspaceID, err := normalizeDataSourceScope(input.Scope, input.WorkspaceID)
+	if err != nil {
+		return DataSource{}, err
 	}
 	if input.ActorUserID == uuid.Nil {
 		return DataSource{}, apperr.New(apperr.KindInvalidArgument, "actor user id is required")
@@ -182,7 +196,8 @@ func (s *Service) CreateDataSource(ctx context.Context, input CreateDataSourceIn
 	}
 
 	created, err := s.queries.CreateDataSource(ctx, sqlc.CreateDataSourceParams{
-		WorkspaceID:  input.WorkspaceID,
+		Scope:        scope,
+		WorkspaceID:  workspaceID,
 		Name:         name,
 		Type:         sourceType,
 		DsnSecretRef: dsnSecretRef,
@@ -209,9 +224,21 @@ func (s *Service) ListDataSources(ctx context.Context, workspaceID uuid.UUID) ([
 	if workspaceID == uuid.Nil {
 		return nil, apperr.New(apperr.KindInvalidArgument, "workspace id is required")
 	}
-	rows, err := s.queries.ListDataSourcesByWorkspace(ctx, workspaceID)
+	rows, err := s.queries.ListDataSourcesByWorkspace(ctx, &workspaceID)
 	if err != nil {
 		return nil, apperr.Wrap(apperr.KindInternal, "list data sources", err)
+	}
+	items := make([]DataSource, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, dataSourceFromSQL(row))
+	}
+	return items, nil
+}
+
+func (s *Service) ListSystemDataSources(ctx context.Context) ([]DataSource, error) {
+	rows, err := s.queries.ListSystemDataSources(ctx)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindInternal, "list system data sources", err)
 	}
 	items := make([]DataSource, 0, len(rows))
 	for _, row := range rows {
@@ -289,8 +316,8 @@ func (s *Service) CreateDataStreamBinding(ctx context.Context, input CreateDataS
 	if err != nil {
 		return DataStreamBinding{}, err
 	}
-	if stream.WorkspaceID != source.WorkspaceID {
-		return DataStreamBinding{}, apperr.New(apperr.KindInvalidArgument, "data source does not belong to data stream workspace")
+	if err := validateBindingSourceScope(stream.WorkspaceID, source); err != nil {
+		return DataStreamBinding{}, err
 	}
 	if err := validateAdapterSourceCompatibility(input.AdapterCode, source.Type); err != nil {
 		return DataStreamBinding{}, err
@@ -380,8 +407,8 @@ func (s *Service) UpdateDataStreamBinding(ctx context.Context, input UpdateDataS
 	if err != nil {
 		return DataStreamBinding{}, err
 	}
-	if stream.WorkspaceID != source.WorkspaceID {
-		return DataStreamBinding{}, apperr.New(apperr.KindInvalidArgument, "data source does not belong to data stream workspace")
+	if err := validateBindingSourceScope(stream.WorkspaceID, source); err != nil {
+		return DataStreamBinding{}, err
 	}
 
 	sourceInput := CreateDataStreamBindingInput{
@@ -780,6 +807,7 @@ func isValidStatus(value string) bool {
 func dataSourceFromSQL(model sqlc.DataSource) DataSource {
 	return DataSource{
 		ID:           model.ID,
+		Scope:        model.Scope,
 		WorkspaceID:  model.WorkspaceID,
 		Name:         model.Name,
 		Type:         model.Type,
@@ -788,6 +816,41 @@ func dataSourceFromSQL(model sqlc.DataSource) DataSource {
 		CreatedBy:    model.CreatedBy,
 		CreatedAt:    pgTime(model.CreatedAt),
 		UpdatedAt:    pgTime(model.UpdatedAt),
+	}
+}
+
+func normalizeDataSourceScope(scope string, workspaceID uuid.UUID) (string, *uuid.UUID, error) {
+	scope = strings.TrimSpace(scope)
+	if scope == "" {
+		scope = DataSourceScopeWorkspace
+	}
+	switch scope {
+	case DataSourceScopeWorkspace:
+		if workspaceID == uuid.Nil {
+			return "", nil, apperr.New(apperr.KindInvalidArgument, "workspace id is required")
+		}
+		return scope, &workspaceID, nil
+	case DataSourceScopeSystem:
+		if workspaceID != uuid.Nil {
+			return "", nil, apperr.New(apperr.KindInvalidArgument, "system data source must not set workspace_id")
+		}
+		return scope, nil, nil
+	default:
+		return "", nil, apperr.New(apperr.KindInvalidArgument, "invalid data source scope")
+	}
+}
+
+func validateBindingSourceScope(streamWorkspaceID uuid.UUID, source sqlc.DataSource) error {
+	switch source.Scope {
+	case DataSourceScopeWorkspace:
+		if source.WorkspaceID == nil || *source.WorkspaceID != streamWorkspaceID {
+			return apperr.New(apperr.KindInvalidArgument, "data source does not belong to data stream workspace")
+		}
+		return nil
+	case DataSourceScopeSystem:
+		return nil
+	default:
+		return apperr.New(apperr.KindInvalidArgument, "invalid data source scope")
 	}
 }
 

@@ -1,21 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, MailCheck, RefreshCcw, ShieldOff, Smartphone, Trash2 } from "lucide-react";
+import { Alert, App as AntApp, Button, Form, Input, Result, Space, Spin, Table, Tag } from "antd";
+import type { TableColumnsType } from "antd";
 import { authApi, formatApiError, type AuthSession } from "../../api";
 import { useAuth } from "../../app/AuthProvider";
 import { formatDateTime } from "../../app/format";
-import {
-  Badge,
-  Button,
-  CopyableId,
-  DataTable,
-  ErrorState,
-  LoadingState,
-  Page,
-  Section,
-  TextInput,
-  useToast
-} from "../../components";
+import { Page, Section } from "../../components";
+import { copyableId, tableScrollX } from "../../app/ui";
 
 export function SecurityPage() {
   const [emailForm, setEmailForm] = useState({ email: "", code: "" });
@@ -23,7 +15,7 @@ export function SecurityPage() {
   const [totpSecret, setTotpSecret] = useState<{ secret: string; otpauth_uri: string } | null>(null);
   const { refreshAccessToken, refreshToken } = useAuth();
   const queryClient = useQueryClient();
-  const { pushToast } = useToast();
+  const { message } = AntApp.useApp();
 
   const me = useQuery({ queryKey: ["me"], queryFn: authApi.me });
   const mfa = useQuery({ queryKey: ["mfa"], queryFn: authApi.mfaStatus });
@@ -37,14 +29,14 @@ export function SecurityPage() {
 
   const sendEmail = useMutation({
     mutationFn: authApi.sendEmailVerification,
-    onSuccess: (result) => pushToast(`邮箱验证码已发送，有效期 ${result.expires_in} 秒`, "info")
+    onSuccess: (result) => void message.info(`邮箱验证码已发送，有效期 ${result.expires_in} 秒`)
   });
 
   const verifyEmail = useMutation({
     mutationFn: authApi.verifyEmail,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["me"] });
-      pushToast("邮箱已验证");
+      void message.success("邮箱已验证");
     }
   });
 
@@ -52,7 +44,7 @@ export function SecurityPage() {
     mutationFn: authApi.setupTOTP,
     onSuccess: (result) => {
       setTotpSecret(result);
-      pushToast("TOTP secret 已生成", "info");
+      void message.info("TOTP secret 已生成");
     }
   });
 
@@ -62,7 +54,7 @@ export function SecurityPage() {
       setTotpSecret(null);
       setMfaCode("");
       void queryClient.invalidateQueries({ queryKey: ["mfa"] });
-      pushToast("TOTP 已启用");
+      void message.success("TOTP 已启用");
     }
   });
 
@@ -71,7 +63,7 @@ export function SecurityPage() {
     onSuccess: () => {
       setMfaCode("");
       void queryClient.invalidateQueries({ queryKey: ["mfa"] });
-      pushToast("TOTP 已禁用");
+      void message.success("TOTP 已禁用");
     }
   });
 
@@ -79,7 +71,7 @@ export function SecurityPage() {
     mutationFn: refreshAccessToken,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["auth-sessions"] });
-      pushToast("access token 已刷新");
+      void message.success("access token 已刷新");
     }
   });
 
@@ -87,7 +79,7 @@ export function SecurityPage() {
     mutationFn: (session: AuthSession) => authApi.revokeSession(session.id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["auth-sessions"] });
-      pushToast("会话已撤销");
+      void message.success("会话已撤销");
     }
   });
 
@@ -100,6 +92,30 @@ export function SecurityPage() {
     event.preventDefault();
     verifyEmail.mutate({ email: emailForm.email.trim(), code: emailForm.code.trim() });
   }
+
+  const sessionColumns: TableColumnsType<AuthSession> = [
+    { key: "client", title: "客户端", width: 220, render: (_, session) => session.user_agent || "-" },
+    { key: "ip", title: "IP", width: 150, render: (_, session) => session.client_ip || "-" },
+    { key: "last", title: "最近使用", width: 180, render: (_, session) => formatDateTime(session.last_used_at) },
+    { key: "created", title: "创建时间", width: 180, render: (_, session) => formatDateTime(session.created_at) },
+    { key: "expires", title: "过期时间", width: 180, render: (_, session) => formatDateTime(session.expires_at) },
+    { key: "id", title: "ID", width: 240, render: (_, session) => copyableId(session.id) },
+    {
+      key: "action",
+      title: "操作",
+      width: 130,
+      render: (_, session) => (
+        <Button
+          danger
+          disabled={revokeSession.isPending}
+          icon={<Trash2 size={15} />}
+          onClick={() => revokeSession.mutate(session)}
+        >
+          撤销
+        </Button>
+      )
+    }
+  ];
 
   return (
     <Page description="管理账号验证、多因素认证和当前 refresh session。" title="安全">
@@ -124,27 +140,31 @@ export function SecurityPage() {
       <Section description="用于接收邀请和账号通知。" title="邮箱验证">
         <div className="dual-form-grid">
           <form className="form-stack" onSubmit={handleSendEmail}>
-            <TextInput
-              label="邮箱"
-              onChange={(event) => setEmailForm({ ...emailForm, email: event.target.value })}
-              required
-              type="email"
-              value={emailForm.email}
-            />
-            <Button disabled={sendEmail.isPending} icon={<MailCheck size={16} />} type="submit">
+            <Form.Item className="field" label="邮箱" required>
+              <Input
+                className="control"
+                onChange={(event) => setEmailForm({ ...emailForm, email: event.target.value })}
+                required
+                type="email"
+                value={emailForm.email}
+              />
+            </Form.Item>
+            <Button disabled={sendEmail.isPending} htmlType="submit" icon={<MailCheck size={16} />}>
               发送验证码
             </Button>
           </form>
           <form className="form-stack" onSubmit={handleVerifyEmail}>
-            <TextInput
-              inputMode="numeric"
-              label="验证码"
-              maxLength={6}
-              onChange={(event) => setEmailForm({ ...emailForm, code: event.target.value })}
-              required
-              value={emailForm.code}
-            />
-            <Button disabled={verifyEmail.isPending} icon={<MailCheck size={16} />} type="submit" variant="primary">
+            <Form.Item className="field" label="验证码" required>
+              <Input
+                className="control"
+                inputMode="numeric"
+                maxLength={6}
+                onChange={(event) => setEmailForm({ ...emailForm, code: event.target.value })}
+                required
+                value={emailForm.code}
+              />
+            </Form.Item>
+            <Button disabled={verifyEmail.isPending} htmlType="submit" icon={<MailCheck size={16} />} type="primary">
               验证邮箱
             </Button>
           </form>
@@ -155,19 +175,32 @@ export function SecurityPage() {
       </Section>
 
       <Section description="认证器 App 扫描 otpauth URI 后，提交 6 位验证码启用。" title="多因素认证">
-        {mfa.isLoading ? <LoadingState /> : null}
-        {mfa.error ? <ErrorState error={mfa.error} onRetry={() => void mfa.refetch()} /> : null}
+        {mfa.isLoading ? (
+          <Space className="state state-inline">
+            <Spin size="small" />
+            <span>正在加载</span>
+          </Space>
+        ) : null}
+        {mfa.error ? (
+          <Result
+            className="state state-error"
+            extra={<Button onClick={() => void mfa.refetch()}>重试</Button>}
+            status="warning"
+            subTitle={<Alert message={formatApiError(mfa.error)} showIcon type="error" />}
+            title="请求未完成"
+          />
+        ) : null}
         <div className="security-actions">
-          <Badge tone={mfa.data?.totp_enabled ? "success" : "warning"}>
+          <Tag color={mfa.data?.totp_enabled ? "success" : "warning"}>
             {mfa.data?.totp_enabled ? "TOTP enabled" : "TOTP disabled"}
-          </Badge>
+          </Tag>
           <Button disabled={setupTotp.isPending} icon={<Smartphone size={16} />} onClick={() => setupTotp.mutate()}>
             生成 Secret
           </Button>
         </div>
         {totpSecret ? (
           <div className="secret-box">
-            <CopyableId value={totpSecret.secret} />
+            {copyableId(totpSecret.secret)}
             <p className="mono">{totpSecret.otpauth_uri}</p>
           </div>
         ) : null}
@@ -176,15 +209,17 @@ export function SecurityPage() {
             event.preventDefault();
             enableTotp.mutate(mfaCode.trim());
           }}>
-            <TextInput
-              inputMode="numeric"
-              label="TOTP 验证码"
-              maxLength={6}
-              onChange={(event) => setMfaCode(event.target.value)}
-              required
-              value={mfaCode}
-            />
-            <Button disabled={enableTotp.isPending} icon={<KeyRound size={16} />} type="submit" variant="primary">
+            <Form.Item className="field" label="TOTP 验证码" required>
+              <Input
+                className="control"
+                inputMode="numeric"
+                maxLength={6}
+                onChange={(event) => setMfaCode(event.target.value)}
+                required
+                value={mfaCode}
+              />
+            </Form.Item>
+            <Button disabled={enableTotp.isPending} htmlType="submit" icon={<KeyRound size={16} />} type="primary">
               启用
             </Button>
           </form>
@@ -192,19 +227,21 @@ export function SecurityPage() {
             event.preventDefault();
             disableTotp.mutate(mfaCode.trim());
           }}>
-            <TextInput
-              inputMode="numeric"
-              label="TOTP 验证码"
-              maxLength={6}
-              onChange={(event) => setMfaCode(event.target.value)}
-              required
-              value={mfaCode}
-            />
+            <Form.Item className="field" label="TOTP 验证码" required>
+              <Input
+                className="control"
+                inputMode="numeric"
+                maxLength={6}
+                onChange={(event) => setMfaCode(event.target.value)}
+                required
+                value={mfaCode}
+              />
+            </Form.Item>
             <Button
+              danger
               disabled={disableTotp.isPending || !mfa.data?.totp_enabled}
+              htmlType="submit"
               icon={<ShieldOff size={16} />}
-              type="submit"
-              variant="danger"
             >
               禁用
             </Button>
@@ -227,35 +264,32 @@ export function SecurityPage() {
         }
         title="活跃会话"
       >
-        {sessions.isLoading ? <LoadingState /> : null}
-        {sessions.error ? <ErrorState error={sessions.error} onRetry={() => void sessions.refetch()} /> : null}
+        {sessions.isLoading ? (
+          <Space className="state state-inline">
+            <Spin size="small" />
+            <span>正在加载</span>
+          </Space>
+        ) : null}
+        {sessions.error ? (
+          <Result
+            className="state state-error"
+            extra={<Button onClick={() => void sessions.refetch()}>重试</Button>}
+            status="warning"
+            subTitle={<Alert message={formatApiError(sessions.error)} showIcon type="error" />}
+            title="请求未完成"
+          />
+        ) : null}
         {sessions.data ? (
-          <DataTable<AuthSession>
-            columns={[
-              { key: "client", header: "客户端", render: (session) => session.user_agent || "-" },
-              { key: "ip", header: "IP", render: (session) => session.client_ip || "-" },
-              { key: "last", header: "最近使用", render: (session) => formatDateTime(session.last_used_at) },
-              { key: "created", header: "创建时间", render: (session) => formatDateTime(session.created_at) },
-              { key: "expires", header: "过期时间", render: (session) => formatDateTime(session.expires_at) },
-              { key: "id", header: "ID", render: (session) => <CopyableId value={session.id} /> },
-              {
-                key: "action",
-                header: "操作",
-                render: (session) => (
-                  <Button
-                    disabled={revokeSession.isPending}
-                    icon={<Trash2 size={15} />}
-                    onClick={() => revokeSession.mutate(session)}
-                    variant="danger"
-                  >
-                    撤销
-                  </Button>
-                )
-              }
-            ]}
-            empty="暂无活跃会话"
-            getRowKey={(session) => session.id}
-            items={sessions.data.items}
+          <Table<AuthSession>
+            className="data-table"
+            columns={sessionColumns}
+            dataSource={sessions.data.items}
+            locale={{ emptyText: "暂无活跃会话" }}
+            pagination={false}
+            rowKey={(session) => session.id}
+            scroll={{ x: tableScrollX(sessionColumns) }}
+            size="middle"
+            tableLayout="fixed"
           />
         ) : null}
       </Section>

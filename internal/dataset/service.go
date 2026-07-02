@@ -85,12 +85,19 @@ type TelemetrySeries struct {
 	Name         string           `json:"name"`
 	Unit         *string          `json:"unit,omitempty"`
 	Points       []TelemetryPoint `json:"points"`
+	Warnings     []Warning        `json:"warnings,omitempty"`
 }
 
 type TelemetryPoint struct {
 	Timestamp time.Time `json:"ts"`
 	Value     float64   `json:"value"`
 	Quality   string    `json:"quality"`
+}
+
+type Warning struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Count   int    `json:"count,omitempty"`
 }
 
 type SourceInput struct {
@@ -510,6 +517,7 @@ func (s *Service) queryTelemetrySeries(ctx context.Context, sourceType string, s
 		Name:         stream.Name,
 		Unit:         stream.Unit,
 		Points:       telemetryPointsFromDatasource(result.Points),
+		Warnings:     warningsFromDatasource(result.Warnings),
 	}, nil
 }
 
@@ -748,6 +756,18 @@ func telemetryPointsFromDatasource(points []datasource.TelemetryPoint) []Telemet
 			Timestamp: point.Timestamp,
 			Value:     point.Value,
 			Quality:   point.Quality,
+		})
+	}
+	return items
+}
+
+func warningsFromDatasource(warnings []datasource.QueryWarning) []Warning {
+	items := make([]Warning, 0, len(warnings))
+	for _, warning := range warnings {
+		items = append(items, Warning{
+			Code:    warning.Code,
+			Message: warning.Message,
+			Count:   warning.Count,
 		})
 	}
 	return items

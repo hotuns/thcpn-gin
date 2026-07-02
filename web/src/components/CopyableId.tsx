@@ -1,28 +1,13 @@
-import { Copy } from "lucide-react";
-import { Button } from "./Button";
-import { useToast } from "./Toast";
+import { Typography } from "antd";
 
 export function CopyableId({ value }: { value?: string }) {
-  const { pushToast } = useToast();
-
   if (!value) {
     return <span className="muted">-</span>;
   }
 
   return (
-    <span className="copyable-id">
-      <span className="mono" title={value}>
-        {value}
-      </span>
-      <Button
-        aria-label="复制 ID"
-        icon={<Copy size={14} />}
-        onClick={() => {
-          void navigator.clipboard.writeText(value);
-          pushToast("已复制");
-        }}
-        variant="ghost"
-      />
-    </span>
+    <Typography.Text className="copyable-id mono" copyable={{ text: value, tooltips: ["复制 ID", "已复制"] }} ellipsis title={value}>
+      {value}
+    </Typography.Text>
   );
 }

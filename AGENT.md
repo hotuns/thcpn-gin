@@ -13,7 +13,7 @@
 - 本项目是科研物联网数据管理平台后端，不负责 MQTT 接入、设备上报解析或实时采集写入。
 - 当前阶段是 Go 模块化单体，包含 `api` 和 `worker` 两个进程。
 - 平台业务库是 PostgreSQL，设备采集数据源库与平台业务库必须分离。
-- 平台维护设备列表和外部设备源映射；设备源 adapter 在代码中注册，设备源实例由部署配置维护；普通 Workspace 用户只绑定设备，不管理 DSN、库表字段映射或 raw SQL。
+- 平台维护设备列表和外部设备源映射；设备源 adapter 在代码中注册，当前 THCPN 设备源实例以 system scoped `data_sources` 由系统管理员后台维护；普通 Workspace 用户不管理 DSN、库表字段映射、adapter 配置或 raw SQL。
 - Redis 用于后续 Asynq、缓存和异步任务基础设施。
 - 第一版权限主线是 `Role + Scope + AccessGrant + AuditLog`。
 
@@ -56,6 +56,7 @@
   - `000001_init`：启用 `pgcrypto`，创建 `app_metadata`。
   - `000002_accounts_permissions`：创建账户、Workspace、成员、角色、权限和角色权限表。
   - `000003_auth_credentials`：为 `users` 增加验证/登录时间字段，创建 `user_credentials` 密码凭证表。
+  - `000017_system_admin_data_sources`：为 `users` 增加 `is_system_admin`，为 `data_sources` 增加 `scope` 并支持 system scoped 数据源。
 - 已 seed 系统权限基础数据：
   - 10 个系统角色：`owner`、`admin`、`project_manager`、`site_operator`、`data_manager`、`researcher`、`viewer`、`shared_viewer`、`shared_downloader`、`service_engineer`。
   - 34 个权限点。
@@ -88,6 +89,7 @@
 - API 认证 middleware 优先读取 `Authorization: Bearer <token>`。
 - 仍保留开发期 `X-User-ID` fallback，由 `auth.dev_user_header_enabled` / `AUTH_DEV_USER_HEADER_ENABLED` 控制；默认开发开启，生产应关闭。
 - 已实现当前用户接口：`GET /api/v1/me`。
+- `users.is_system_admin` 用于区分系统后台权限；`/api/v1/me` 和登录响应会返回 `is_system_admin`。系统管理员权限独立于 workspace Owner/Admin。
 - 已实现 refresh token / logout / access token blacklist：
   - 登录和注册会返回 `refresh_token` 与 `refresh_expires_in`。
   - `POST /api/v1/auth/refresh` 使用 refresh token 换取新 access token，并轮换 refresh session。
@@ -180,11 +182,21 @@
   - `data_stream_bindings.adapter_code`
   - `query_config_json` 已重命名为 `adapter_config_json`
   - 通用库表字段允许为空，由 adapter 规则决定是否必填
+- 已新增 THCPN 只读接入 migration `000016_thcpn_read_only_assets`：
+  - `device_source_refs`
+  - `device_config_snapshots`
+  - 第一阶段只保存平台设备到旧库 `devices.id` 的映射和最新 `device_config` 快照，不做配置写入。
 - 已实现 DataSource 元信息接口：
   - `GET /api/v1/data-sources?workspace_id=...`
   - `POST /api/v1/data-sources`
   - `GET /api/v1/data-sources/:data_source_id`
   - `PATCH /api/v1/data-sources/:data_source_id`
+- 已实现系统管理员 DataSource / THCPN 标准站只读同步入口：
+  - `GET /api/v1/admin/data-sources`
+  - `POST /api/v1/admin/data-sources`
+  - `PATCH /api/v1/admin/data-sources/:data_source_id`
+  - `POST /api/v1/admin/data-sources/:data_source_id/thcpn-standard-station/devices`
+  - 同步请求必须指定 `target_workspace_id`；接口读取旧库 `devices` 和最新 `device_config`，upsert 平台 Device、DeviceSourceRef、DeviceConfigSnapshot、DataStream 和 DataStreamBinding。
 - 已实现 DataStreamBinding 元信息接口：
   - `GET /api/v1/data-stream-bindings?data_stream_id=...`
   - `POST /api/v1/data-stream-bindings`
@@ -199,7 +211,7 @@
   - MySQL 使用 `go-sql-driver/mysql`，运行时会规范化 DSN 并启用 `parseTime=true`。
   - ClickHouse 使用 `clickhouse-go/v2`，优先使用 DataStreamBinding 的 `database_name` 限定表名，未配置时可使用 `schema_name` 作为库名别名。
   - HTTP API 使用 DataSource secret 作为 base URL，`adapter_config` 可配置 `method`、相对 `path`、`headers` 和参数名；默认 GET，POST 时发送 JSON body。
-  - `thcpn_legacy_mysql` 当前只注册 adapter code 和 runtime 分发，占位函数返回 `DATA_SOURCE_ERROR: thcpn_legacy_mysql adapter is not implemented`，暂不读取旧库。
+  - `thcpn_legacy_mysql` 第一阶段已支持只读 telemetry：按 `device_data_index` 命中 `device_data_*` 分表，按 `external_device_id`、时间范围、`type='data'` 和受控 JSON key 读取 `$.<key>.value`。
 - 已实现 Telemetry Query 接口：
   - `GET /api/v1/devices/:device_id/telemetry?start_time=...&end_time=...&limit=...`
   - `GET /api/v1/data-streams/:data_stream_id/telemetry?start_time=...&end_time=...&limit=...`
@@ -209,6 +221,7 @@
   - `generic_media` 使用 `adapter_config` 配置 `id_field`、`object_key_field`、`thumbnail_key_field`、`media_type_field` 和 `media_type`。
   - MySQL / ClickHouse 优先使用 DataStreamBinding 的 `database_name` 限定表名，未配置时可使用 `schema_name` 作为库名别名。
   - HTTP API 返回统一 JSON `items` / `total`，路径必须为相对路径，避免 binding 配置绕过 DataSource base URL。
+  - `thcpn_legacy_mysql` 第一阶段已支持只读 image media：按 `device_data_index` 命中 `device_data_*` 分表，按 `external_device_id`、时间范围、`type='image'` 和受控 image key 读取对象 key。
   - 预览、缩略图和下载 URL 使用 HMAC + 过期时间签名，不返回永久公开 URL。
 - 已实现 Media Query / Download 接口：
   - `GET /api/v1/devices/:device_id/media?start_time=...&end_time=...&media_type=...&page=...&page_size=...`
@@ -223,7 +236,7 @@
   - Site: `site.view` / `site.manage`
   - Device: `device.view` / `device.bind` / `device.configure`
   - DataStream: `device.view` / `device.configure`
-  - DataSource: `workspace.manage`（当前实现遗留；后续应重构为设备源部署配置，不作为客户 Workspace 权限）
+  - DataSource: 普通 `/api/v1/data-sources` 仍按 `workspace.manage` 保留兼容；正式 THCPN 设备源管理使用 `/api/v1/admin/data-sources`，要求 `users.is_system_admin = true`
   - DataStreamBinding: `device.configure`（当前实现遗留；后续应由同步任务、seed 或内部脚本生成）
   - Telemetry Query: `telemetry.view_history`
   - Media Query: `media.archive_view`
@@ -231,7 +244,7 @@
   - Media Delete: `media.delete`
 - 设备绑定会记录 `bound_by`、`activated_at` 并写入 audit log。
 
-设计方向已调整：DataSource / DataStreamBinding 不应继续作为普通 Workspace 管理资源。当前实现保留 `/api/v1/data-sources` 和 `/api/v1/data-stream-bindings` 作为内部配置载体，运行时按 `data_stream_bindings.adapter_code` 分发；普通前端导航已隐藏“数据源”。后续不必优先建设完整设备数据源管理后台，应优先采用代码内置 adapter registry、部署配置维护设备源实例、平台库维护 `device_source_refs` / `device_config_snapshots` / 已生成的数据流绑定。Workspace Owner / Admin 只绑定设备、管理项目/站点/数据集和授权访问。
+设计方向已调整：DataSource / DataStreamBinding 不应继续作为普通 Workspace 管理资源。当前实现保留 `/api/v1/data-sources` 和 `/api/v1/data-stream-bindings` 作为内部兼容配置载体，运行时按 `data_stream_bindings.adapter_code` 分发；普通前端导航已隐藏“数据源”和内部绑定入口。系统级 THCPN 数据源通过 `/api/v1/admin/data-sources` 和前端 `/admin/data-sources` 维护，只允许 `users.is_system_admin = true` 的系统管理员访问。系统管理员同步 THCPN 设备时选择 `target_workspace_id`，平台设备归属于该工作区；当前阶段不实现普通用户自助把设备绑定到自己工作区的流程。
 
 ### Dataset
 
@@ -494,9 +507,9 @@ make build-web
 - 所有设备数据查询必须通过 `internal/datasource` 的适配层。
 - 用户请求不能直接传入 `table_name`、`field_name`、`raw_sql`。
 - 普通 Workspace 用户、Workspace Owner 和 Workspace Admin 不应创建或编辑设备源连接密钥、外部设备映射或 DataStreamBinding。
-- 设备绑定流程只接受平台设备标识、SN、二维码或授权码；source_code、库表字段、JSONPath 和适配器配置应来自代码注册、部署配置、seed、同步任务或内部脚本。
+- 当前阶段设备归属由系统管理员 THCPN 同步时指定 `target_workspace_id`；未来如提供用户自助绑定，只能接受平台设备标识、SN、二维码或授权码，source_code、库表字段、JSONPath 和适配器配置仍应来自代码注册、系统后台、同步任务或内部脚本。
 - 对接 THCPN 旧设备库时，应优先设计 `thcpn_legacy_mysql` 适配器、`device_source_refs` 和 `device_config_snapshots`，而不是把旧库分表和 JSON 解析规则暴露给客户前端。
-- `thcpn_legacy_mysql` 当前只是 adapter code、类型校验和 runtime 未实现占位；不要在业务文档或前端中宣称已经能读取旧库分表、`device_config` 或图片路径。
+- `thcpn_legacy_mysql` 当前只实现第一阶段只读：同步 `devices` / 最新 `device_config`，生成 DataStream/DataStreamBinding，并读取 `device_data_index` / `device_data_*` 中的 telemetry/image 数据。尚未实现 `gate_node` 组网站拓扑同步、配置写入、新增 `device_config`、历史配置精确解释、旧库数据同步到分析库或设备命令能力。
 - 设备数据查询必须有时间范围、分页或点数上限。
 - 大范围查询应走异步导出任务，不应在 API 请求中同步返回。
 - 媒体预览/下载 URL 不应是永久公开 URL。

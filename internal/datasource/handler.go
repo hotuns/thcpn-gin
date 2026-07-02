@@ -69,6 +69,16 @@ type updateBindingRequest struct {
 	Status            *string          `json:"status"`
 }
 
+type syncTHCPNStandardStationRequest struct {
+	TargetWorkspaceID string `json:"target_workspace_id"`
+	ExternalDeviceID  int64  `json:"external_device_id"`
+	ProjectID         string `json:"project_id"`
+	SiteID            string `json:"site_id"`
+	ProductID         string `json:"product_id"`
+	SerialNo          string `json:"serial_no"`
+	Name              string `json:"name"`
+}
+
 func NewHandler(service *Service, checker *permission.Checker) *Handler {
 	return &Handler{service: service, checker: checker}
 }
@@ -111,6 +121,7 @@ func (h *Handler) CreateDataSource(c *gin.Context) {
 	}
 
 	result, err := h.service.CreateDataSource(c.Request.Context(), CreateDataSourceInput{
+		Scope:        DataSourceScopeWorkspace,
 		WorkspaceID:  workspaceID,
 		Name:         req.Name,
 		Type:         req.Type,
@@ -135,7 +146,7 @@ func (h *Handler) GetDataSource(c *gin.Context) {
 		httpx.WriteAppError(c, err)
 		return
 	}
-	if !h.authorize(c, "workspace", result.WorkspaceID, dataSourceManageAction) {
+	if result.WorkspaceID == nil || !h.authorize(c, "workspace", *result.WorkspaceID, dataSourceManageAction) {
 		return
 	}
 	c.JSON(http.StatusOK, result)
@@ -152,7 +163,7 @@ func (h *Handler) UpdateDataSource(c *gin.Context) {
 		httpx.WriteAppError(c, err)
 		return
 	}
-	if !h.authorize(c, "workspace", current.WorkspaceID, dataSourceManageAction) {
+	if current.WorkspaceID == nil || !h.authorize(c, "workspace", *current.WorkspaceID, dataSourceManageAction) {
 		return
 	}
 
@@ -168,6 +179,183 @@ func (h *Handler) UpdateDataSource(c *gin.Context) {
 		Type:         req.Type,
 		DsnSecretRef: req.DsnSecretRef,
 		Status:       req.Status,
+	})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) SyncTHCPNStandardStation(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	dataSourceID, ok := parseUUIDParam(c, "data_source_id")
+	if !ok {
+		return
+	}
+
+	source, err := h.service.GetDataSource(c.Request.Context(), dataSourceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if source.WorkspaceID == nil || !h.authorize(c, "workspace", *source.WorkspaceID, dataSourceManageAction) {
+		return
+	}
+
+	var req syncTHCPNStandardStationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	projectID, ok := parseOptionalUUIDValue(req.ProjectID, "project_id", c)
+	if !ok {
+		return
+	}
+	siteID, ok := parseOptionalUUIDValue(req.SiteID, "site_id", c)
+	if !ok {
+		return
+	}
+
+	result, err := h.service.SyncTHCPNStandardStation(c.Request.Context(), SyncTHCPNStandardStationInput{
+		DataSourceID:     dataSourceID,
+		ProjectID:        projectID,
+		SiteID:           siteID,
+		ExternalDeviceID: req.ExternalDeviceID,
+		ProductID:        req.ProductID,
+		SerialNo:         req.SerialNo,
+		Name:             req.Name,
+		ActorUserID:      actor.UserID,
+	})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminListDataSources(c *gin.Context) {
+	items, err := h.service.ListSystemDataSources(c.Request.Context())
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+func (h *Handler) AdminCreateDataSource(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+
+	var req createDataSourceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+
+	result, err := h.service.CreateDataSource(c.Request.Context(), CreateDataSourceInput{
+		Scope:        DataSourceScopeSystem,
+		Name:         req.Name,
+		Type:         req.Type,
+		DsnSecretRef: req.DsnSecretRef,
+		ActorUserID:  actor.UserID,
+	})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, result)
+}
+
+func (h *Handler) AdminUpdateDataSource(c *gin.Context) {
+	dataSourceID, ok := parseUUIDParam(c, "data_source_id")
+	if !ok {
+		return
+	}
+
+	current, err := h.service.GetDataSource(c.Request.Context(), dataSourceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if current.Scope != DataSourceScopeSystem {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "data source is not system scoped"))
+		return
+	}
+
+	var req updateDataSourceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+
+	result, err := h.service.UpdateDataSource(c.Request.Context(), UpdateDataSourceInput{
+		DataSourceID: dataSourceID,
+		Name:         req.Name,
+		Type:         req.Type,
+		DsnSecretRef: req.DsnSecretRef,
+		Status:       req.Status,
+	})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminSyncTHCPNStandardStation(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	dataSourceID, ok := parseUUIDParam(c, "data_source_id")
+	if !ok {
+		return
+	}
+
+	source, err := h.service.GetDataSource(c.Request.Context(), dataSourceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if source.Scope != DataSourceScopeSystem {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "data source is not system scoped"))
+		return
+	}
+
+	var req syncTHCPNStandardStationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	targetWorkspaceID, ok := parseUUIDValue(req.TargetWorkspaceID, "target_workspace_id", c)
+	if !ok {
+		return
+	}
+	projectID, ok := parseOptionalUUIDValue(req.ProjectID, "project_id", c)
+	if !ok {
+		return
+	}
+	siteID, ok := parseOptionalUUIDValue(req.SiteID, "site_id", c)
+	if !ok {
+		return
+	}
+
+	result, err := h.service.SyncTHCPNStandardStation(c.Request.Context(), SyncTHCPNStandardStationInput{
+		DataSourceID:      dataSourceID,
+		TargetWorkspaceID: targetWorkspaceID,
+		ProjectID:         projectID,
+		SiteID:            siteID,
+		ExternalDeviceID:  req.ExternalDeviceID,
+		ProductID:         req.ProductID,
+		SerialNo:          req.SerialNo,
+		Name:              req.Name,
+		ActorUserID:       actor.UserID,
 	})
 	if err != nil {
 		httpx.WriteAppError(c, err)
@@ -364,13 +552,20 @@ func parseUUIDValue(value string, name string, c *gin.Context) (uuid.UUID, bool)
 	return id, true
 }
 
-func parseOptionalUUIDPointer(value *string, name string, c *gin.Context) (*uuid.UUID, bool) {
-	if value == nil {
+func parseOptionalUUIDValue(value string, name string, c *gin.Context) (*uuid.UUID, bool) {
+	if value == "" {
 		return nil, true
 	}
-	id, ok := parseUUIDValue(*value, name, c)
+	id, ok := parseUUIDValue(value, name, c)
 	if !ok {
 		return nil, false
 	}
 	return &id, true
+}
+
+func parseOptionalUUIDPointer(value *string, name string, c *gin.Context) (*uuid.UUID, bool) {
+	if value == nil {
+		return nil, true
+	}
+	return parseOptionalUUIDValue(*value, name, c)
 }

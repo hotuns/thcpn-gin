@@ -13,21 +13,23 @@ import (
 )
 
 const createDataSource = `-- name: CreateDataSource :one
-INSERT INTO data_sources (workspace_id, name, type, dsn_secret_ref, created_by)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, workspace_id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at
+INSERT INTO data_sources (scope, workspace_id, name, type, dsn_secret_ref, created_by)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, workspace_id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at, scope
 `
 
 type CreateDataSourceParams struct {
-	WorkspaceID  uuid.UUID `json:"workspace_id"`
-	Name         string    `json:"name"`
-	Type         string    `json:"type"`
-	DsnSecretRef string    `json:"dsn_secret_ref"`
-	CreatedBy    uuid.UUID `json:"created_by"`
+	Scope        string     `json:"scope"`
+	WorkspaceID  *uuid.UUID `json:"workspace_id"`
+	Name         string     `json:"name"`
+	Type         string     `json:"type"`
+	DsnSecretRef string     `json:"dsn_secret_ref"`
+	CreatedBy    uuid.UUID  `json:"created_by"`
 }
 
 func (q *Queries) CreateDataSource(ctx context.Context, arg CreateDataSourceParams) (DataSource, error) {
 	row := q.db.QueryRow(ctx, createDataSource,
+		arg.Scope,
 		arg.WorkspaceID,
 		arg.Name,
 		arg.Type,
@@ -45,6 +47,7 @@ func (q *Queries) CreateDataSource(ctx context.Context, arg CreateDataSourcePara
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Scope,
 	)
 	return i, err
 }
@@ -199,7 +202,7 @@ func (q *Queries) GetActiveDataStreamBinding(ctx context.Context, dataStreamID u
 }
 
 const getDataSource = `-- name: GetDataSource :one
-SELECT id, workspace_id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at
+SELECT id, workspace_id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at, scope
 FROM data_sources
 WHERE id = $1
 `
@@ -217,6 +220,7 @@ func (q *Queries) GetDataSource(ctx context.Context, id uuid.UUID) (DataSource, 
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Scope,
 	)
 	return i, err
 }
@@ -273,13 +277,14 @@ func (q *Queries) GetDataStreamBinding(ctx context.Context, id uuid.UUID) (GetDa
 }
 
 const listDataSourcesByWorkspace = `-- name: ListDataSourcesByWorkspace :many
-SELECT id, workspace_id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at
+SELECT id, workspace_id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at, scope
 FROM data_sources
-WHERE workspace_id = $1
+WHERE scope = 'workspace'
+  AND workspace_id = $1
 ORDER BY created_at DESC, id DESC
 `
 
-func (q *Queries) ListDataSourcesByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]DataSource, error) {
+func (q *Queries) ListDataSourcesByWorkspace(ctx context.Context, workspaceID *uuid.UUID) ([]DataSource, error) {
 	rows, err := q.db.Query(ctx, listDataSourcesByWorkspace, workspaceID)
 	if err != nil {
 		return nil, err
@@ -298,6 +303,7 @@ func (q *Queries) ListDataSourcesByWorkspace(ctx context.Context, workspaceID uu
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Scope,
 		); err != nil {
 			return nil, err
 		}
@@ -374,6 +380,44 @@ func (q *Queries) ListDataStreamBindingsByDataStream(ctx context.Context, dataSt
 	return items, nil
 }
 
+const listSystemDataSources = `-- name: ListSystemDataSources :many
+SELECT id, workspace_id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at, scope
+FROM data_sources
+WHERE scope = 'system'
+ORDER BY created_at DESC, id DESC
+`
+
+func (q *Queries) ListSystemDataSources(ctx context.Context) ([]DataSource, error) {
+	rows, err := q.db.Query(ctx, listSystemDataSources)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DataSource{}
+	for rows.Next() {
+		var i DataSource
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Name,
+			&i.Type,
+			&i.DsnSecretRef,
+			&i.Status,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Scope,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateDataSource = `-- name: UpdateDataSource :one
 UPDATE data_sources
 SET name = $2,
@@ -382,7 +426,7 @@ SET name = $2,
     status = $5,
     updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at
+RETURNING id, workspace_id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at, scope
 `
 
 type UpdateDataSourceParams struct {
@@ -412,6 +456,7 @@ func (q *Queries) UpdateDataSource(ctx context.Context, arg UpdateDataSourcePara
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Scope,
 	)
 	return i, err
 }

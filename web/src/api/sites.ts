@@ -18,3 +18,9 @@ export const sitesApi = {
     return post<Site>("/api/v1/sites", input);
   }
 };
+
+export const adminSitesApi = {
+  list(params: { workspace_id: string; project_id?: string }): Promise<SiteListResponse> {
+    return get<SiteListResponse>("/api/v1/admin/sites", params);
+  }
+};

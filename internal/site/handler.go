@@ -81,6 +81,33 @@ func (h *Handler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
+func (h *Handler) AdminList(c *gin.Context) {
+	workspaceID, ok := parseUUIDValue(c.Query("workspace_id"), "workspace_id", c)
+	if !ok {
+		return
+	}
+
+	projectID := uuid.Nil
+	if c.Query("project_id") != "" {
+		parsed, ok := parseUUIDValue(c.Query("project_id"), "project_id", c)
+		if !ok {
+			return
+		}
+		projectID = parsed
+	}
+
+	items, err := h.service.List(c.Request.Context(), ListInput{
+		WorkspaceID: workspaceID,
+		ProjectID:   projectID,
+	})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
 func (h *Handler) Create(c *gin.Context) {
 	actor, ok := actorFromContext(c)
 	if !ok {

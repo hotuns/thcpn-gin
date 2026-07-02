@@ -72,7 +72,7 @@ type AuthRefreshSession struct {
 
 type DataSource struct {
 	ID           uuid.UUID          `json:"id"`
-	WorkspaceID  uuid.UUID          `json:"workspace_id"`
+	WorkspaceID  *uuid.UUID         `json:"workspace_id"`
 	Name         string             `json:"name"`
 	Type         string             `json:"type"`
 	DsnSecretRef string             `json:"dsn_secret_ref"`
@@ -80,6 +80,7 @@ type DataSource struct {
 	CreatedBy    uuid.UUID          `json:"created_by"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	Scope        string             `json:"scope"`
 }
 
 type DataStream struct {
@@ -161,6 +162,23 @@ type DeviceCapability struct {
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }
 
+type DeviceConfigSnapshot struct {
+	ID               uuid.UUID          `json:"id"`
+	DeviceID         uuid.UUID          `json:"device_id"`
+	DataSourceID     uuid.UUID          `json:"data_source_id"`
+	AdapterCode      string             `json:"adapter_code"`
+	ExternalDeviceID int64              `json:"external_device_id"`
+	ExternalConfigID int64              `json:"external_config_id"`
+	Version          *string            `json:"version"`
+	DataJson         []byte             `json:"data_json"`
+	ImageJson        []byte             `json:"image_json"`
+	ControlJson      []byte             `json:"control_json"`
+	SourceCreatedAt  pgtype.Timestamptz `json:"source_created_at"`
+	SourceUpdatedAt  pgtype.Timestamptz `json:"source_updated_at"`
+	SyncedAt         pgtype.Timestamptz `json:"synced_at"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+}
+
 type DeviceOperation struct {
 	ID            uuid.UUID          `json:"id"`
 	WorkspaceID   uuid.UUID          `json:"workspace_id"`
@@ -171,6 +189,22 @@ type DeviceOperation struct {
 	RequestedBy   uuid.UUID          `json:"requested_by"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+type DeviceSourceRef struct {
+	ID                 uuid.UUID          `json:"id"`
+	WorkspaceID        uuid.UUID          `json:"workspace_id"`
+	DeviceID           uuid.UUID          `json:"device_id"`
+	DataSourceID       uuid.UUID          `json:"data_source_id"`
+	AdapterCode        string             `json:"adapter_code"`
+	ExternalDeviceID   int64              `json:"external_device_id"`
+	ExternalSn         *string            `json:"external_sn"`
+	ExternalUuid       *string            `json:"external_uuid"`
+	ExternalDeviceType *string            `json:"external_device_type"`
+	Status             string             `json:"status"`
+	SyncedAt           pgtype.Timestamptz `json:"synced_at"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
 }
 
 type ExportJob struct {
@@ -266,6 +300,7 @@ type User struct {
 	PhoneVerifiedAt pgtype.Timestamptz `json:"phone_verified_at"`
 	EmailVerifiedAt pgtype.Timestamptz `json:"email_verified_at"`
 	LastLoginAt     pgtype.Timestamptz `json:"last_login_at"`
+	IsSystemAdmin   bool               `json:"is_system_admin"`
 }
 
 type UserCredential struct {

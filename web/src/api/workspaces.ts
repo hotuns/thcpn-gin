@@ -1,5 +1,5 @@
 import { get, post } from "./client";
-import type { OrganizationType, WorkspaceListResponse, WorkspaceWithMembership } from "./types";
+import type { OrganizationType, WorkspaceAdminListResponse, WorkspaceListResponse, WorkspaceWithMembership } from "./types";
 
 export const workspacesApi = {
   list(): Promise<WorkspaceListResponse> {
@@ -8,5 +8,11 @@ export const workspacesApi = {
 
   create(input: { name: string; organization_type: OrganizationType }): Promise<WorkspaceWithMembership> {
     return post<WorkspaceWithMembership>("/api/v1/workspaces", input);
+  }
+};
+
+export const adminWorkspacesApi = {
+  list(): Promise<WorkspaceAdminListResponse> {
+    return get<WorkspaceAdminListResponse>("/api/v1/admin/workspaces");
   }
 };

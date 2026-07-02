@@ -41,6 +41,7 @@ type UserProfile struct {
 	Phone           *string    `json:"phone,omitempty"`
 	Email           *string    `json:"email,omitempty"`
 	Status          string     `json:"status"`
+	IsSystemAdmin   bool       `json:"is_system_admin"`
 	PhoneVerifiedAt *time.Time `json:"phone_verified_at,omitempty"`
 	EmailVerifiedAt *time.Time `json:"email_verified_at,omitempty"`
 	LastLoginAt     *time.Time `json:"last_login_at,omitempty"`
@@ -741,6 +742,7 @@ func userProfileFromSQL(model sqlc.User) UserProfile {
 		Phone:           model.Phone,
 		Email:           model.Email,
 		Status:          model.Status,
+		IsSystemAdmin:   model.IsSystemAdmin,
 		PhoneVerifiedAt: pgTimePtr(model.PhoneVerifiedAt),
 		EmailVerifiedAt: pgTimePtr(model.EmailVerifiedAt),
 		LastLoginAt:     pgTimePtr(model.LastLoginAt),

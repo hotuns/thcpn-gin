@@ -7,7 +7,7 @@ info:
 
     当前文档覆盖已实现的阶段功能：健康检查、短信验证码登录/注册、邮箱验证码验证、密码注册/登录、TOTP MFA、refresh token、logout、会话管理、
     JWT 认证、Workspace 列表/创建、Workspace 成员管理、Project、Site、Device、DataStream、DataSource、DataStreamBinding、Telemetry Query、Media Query、Dataset 元信息与遥测查询管理和 ExportJob 导出任务、
-    AccessGrant 外部分享/售后临时授权、Invitation 和 AuditLog。
+    AccessGrant 外部分享/售后临时授权、Invitation、AuditLog，以及系统管理员后台 DataSource / THCPN 标准站同步接口。
 
     正式业务接口优先使用 `Authorization: Bearer <token>`。
     开发环境可通过配置启用 `X-User-ID` fallback；生产环境应关闭该能力。
@@ -23,6 +23,8 @@ tags:
     description: Registration, login, token issuing and current user APIs
   - name: Workspaces
     description: Workspace management APIs
+  - name: Admin
+    description: System administrator APIs for platform-level device source operations
   - name: Members
     description: Workspace member management APIs
   - name: Projects
@@ -480,6 +482,7 @@ paths:
                       phone: "13800000000"
                       email: zhangsan@example.com
                       status: active
+                      is_system_admin: false
                       last_login_at: "2026-06-30T14:12:44+08:00"
                     created: true
         "400":
@@ -778,6 +781,228 @@ paths:
           $ref: "#/components/responses/InvalidArgument"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/workspaces:
+    get:
+      tags:
+        - Admin
+      operationId: adminListWorkspaces
+      summary: List all workspaces for system admin
+      description: Requires `users.is_system_admin = true`. This endpoint does not depend on workspace membership.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: All workspaces visible to system administrators.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAdminListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/projects:
+    get:
+      tags:
+        - Admin
+      operationId: adminListProjects
+      summary: List projects in a workspace for system admin
+      description: Requires `users.is_system_admin = true`. Used by the admin THCPN device sync form.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - name: workspace_id
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUID"
+      responses:
+        "200":
+          description: Projects in the target workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/sites:
+    get:
+      tags:
+        - Admin
+      operationId: adminListSites
+      summary: List sites in a workspace or project for system admin
+      description: Requires `users.is_system_admin = true`. Used by the admin THCPN device sync form.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - name: workspace_id
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUID"
+        - name: project_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/UUID"
+      responses:
+        "200":
+          description: Sites in the target workspace or project.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/data-sources:
+    get:
+      tags:
+        - Admin
+      operationId: adminListDataSources
+      summary: List system data sources
+      description: Requires `users.is_system_admin = true`. Returns system-scoped device source instances such as THCPN MySQL.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: System data sources.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataSourceListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      tags:
+        - Admin
+      operationId: adminCreateDataSource
+      summary: Create system data source
+      description: Requires `users.is_system_admin = true`. Creates `scope = system` data source metadata with no workspace owner.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCreateDataSourceRequest"
+      responses:
+        "201":
+          description: System data source created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataSource"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/data-sources/{data_source_id}:
+    parameters:
+      - $ref: "#/components/parameters/DataSourceID"
+    patch:
+      tags:
+        - Admin
+      operationId: adminUpdateDataSource
+      summary: Update system data source
+      description: Requires `users.is_system_admin = true`. The target data source must be system-scoped.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDataSourceRequest"
+      responses:
+        "200":
+          description: System data source updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataSource"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/data-sources/{data_source_id}/thcpn-standard-station/devices:
+    parameters:
+      - $ref: "#/components/parameters/DataSourceID"
+    post:
+      tags:
+        - Admin
+      operationId: adminSyncTHCPNStandardStationDevice
+      summary: Sync a THCPN standard station device into a target workspace
+      description: >
+        Requires `users.is_system_admin = true`. Uses a system-scoped THCPN MySQL DataSource to read the external
+        device and latest config, then creates or updates platform Device, DeviceSourceRef, DeviceConfigSnapshot,
+        DataStreams and DataStreamBindings in `target_workspace_id`.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncTHCPNStandardStationRequest"
+      responses:
+        "200":
+          description: THCPN standard station device synchronized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/THCPNStandardStationSyncResult"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
         "500":
@@ -2055,6 +2280,45 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/data-sources/{data_source_id}/thcpn-standard-station/devices:
+    parameters:
+      - $ref: "#/components/parameters/DataSourceID"
+    post:
+      tags:
+        - DataSources
+      operationId: syncTHCPNStandardStationDevice
+      summary: Sync a THCPN standard station device
+      description: >
+        Internal read-only onboarding endpoint. Requires `workspace.manage` permission on the data source workspace.
+        It reads the external THCPN MySQL `devices` and latest `device_config`, then upserts the platform Device,
+        DeviceSourceRef, DeviceConfigSnapshot, DataStreams and `thcpn_legacy_mysql` DataStreamBindings. It does not
+        modify the external THCPN device database.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncTHCPNStandardStationRequest"
+      responses:
+        "200":
+          description: THCPN standard station device synchronized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/THCPNStandardStationSyncResult"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
   /api/v1/data-stream-bindings:
     get:
       tags:
@@ -3291,6 +3555,12 @@ components:
         - clickhouse
         - http_api
         - file
+    DataSourceScope:
+      type: string
+      description: Workspace sources belong to a workspace; system sources are managed only by system administrators.
+      enum:
+        - workspace
+        - system
     DataSourceStatus:
       type: string
       enum:
@@ -3643,6 +3913,7 @@ components:
         - id
         - name
         - status
+        - is_system_admin
       properties:
         id:
           $ref: "#/components/schemas/UUID"
@@ -3654,6 +3925,9 @@ components:
           $ref: "#/components/schemas/Email"
         status:
           $ref: "#/components/schemas/UserStatus"
+        is_system_admin:
+          type: boolean
+          description: Whether the user can access `/api/v1/admin/*` APIs and the `/admin` frontend.
         phone_verified_at:
           $ref: "#/components/schemas/Timestamp"
         email_verified_at:
@@ -3666,6 +3940,7 @@ components:
         - id
         - name
         - status
+        - is_system_admin
       properties:
         id:
           $ref: "#/components/schemas/UUID"
@@ -3677,6 +3952,8 @@ components:
           $ref: "#/components/schemas/Email"
         status:
           $ref: "#/components/schemas/UserStatus"
+        is_system_admin:
+          type: boolean
         phone_verified_at:
           $ref: "#/components/schemas/Timestamp"
         email_verified_at:
@@ -3722,6 +3999,7 @@ components:
         - id
         - name
         - status
+        - is_system_admin
         - created_at
         - updated_at
       properties:
@@ -3735,6 +4013,8 @@ components:
           $ref: "#/components/schemas/Email"
         status:
           $ref: "#/components/schemas/UserStatus"
+        is_system_admin:
+          type: boolean
         created_at:
           $ref: "#/components/schemas/Timestamp"
         updated_at:
@@ -3820,6 +4100,15 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkspaceWithMembership"
+    WorkspaceAdminListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Workspace"
     CreateWorkspaceRequest:
       type: object
       required:
@@ -4351,6 +4640,21 @@ components:
         quality:
           type: string
           example: valid
+    QueryWarning:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          example: thcpn_config_mismatch
+        message:
+          type: string
+          example: 部分历史数据与当前设备配置不匹配，已跳过 18 条记录
+        count:
+          type: integer
+          description: Number of records related to this warning when available.
     TelemetrySeries:
       type: object
       required:
@@ -4371,6 +4675,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TelemetryPoint"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/QueryWarning"
     TelemetryQueryResponse:
       type: object
       required:
@@ -4492,10 +4800,10 @@ components:
           type: boolean
     DataSource:
       type: object
-      description: Internal device source instance. It stores physical connection metadata and secret references; data stream read strategy is selected by `DataStreamBinding.adapter_code`.
+      description: Internal device source instance. Workspace-scoped sources belong to one workspace; system-scoped sources are managed through admin APIs. Data stream read strategy is selected by `DataStreamBinding.adapter_code`.
       required:
         - id
-        - workspace_id
+        - scope
         - name
         - type
         - dsn_secret_ref
@@ -4506,8 +4814,11 @@ components:
       properties:
         id:
           $ref: "#/components/schemas/UUID"
+        scope:
+          $ref: "#/components/schemas/DataSourceScope"
         workspace_id:
           $ref: "#/components/schemas/UUID"
+          description: Present for `scope = workspace`; omitted for `scope = system`.
         name:
           type: string
         type:
@@ -4548,6 +4859,19 @@ components:
           $ref: "#/components/schemas/DataSourceType"
         dsn_secret_ref:
           type: string
+    AdminCreateDataSourceRequest:
+      type: object
+      required:
+        - name
+        - type
+        - dsn_secret_ref
+      properties:
+        name:
+          type: string
+        type:
+          $ref: "#/components/schemas/DataSourceType"
+        dsn_secret_ref:
+          type: string
     UpdateDataSourceRequest:
       type: object
       properties:
@@ -4559,6 +4883,242 @@ components:
           type: string
         status:
           $ref: "#/components/schemas/DataSourceStatus"
+    SyncTHCPNStandardStationRequest:
+      type: object
+      required:
+        - target_workspace_id
+        - external_device_id
+      properties:
+        target_workspace_id:
+          $ref: "#/components/schemas/UUID"
+          description: Workspace that should own the synchronized platform device. Required by the admin sync endpoint.
+        external_device_id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: External THCPN `devices.id`.
+        project_id:
+          $ref: "#/components/schemas/UUID"
+        site_id:
+          $ref: "#/components/schemas/UUID"
+        product_id:
+          type: string
+          description: Optional platform product identifier. Defaults to `thcpn_standard_station`.
+        serial_no:
+          type: string
+          description: Optional platform serial number override. Defaults to external `sn`, `uuid`, then `thcpn-{id}`.
+        name:
+          type: string
+          description: Optional platform device name override. Defaults to external `devices.name`.
+    SyncedDevice:
+      type: object
+      required:
+        - id
+        - workspace_id
+        - serial_no
+        - name
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        workspace_id:
+          $ref: "#/components/schemas/UUID"
+        project_id:
+          $ref: "#/components/schemas/UUID"
+        site_id:
+          $ref: "#/components/schemas/UUID"
+        product_id:
+          type: string
+        serial_no:
+          type: string
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/DeviceStatus"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    SyncedDataStream:
+      type: object
+      required:
+        - id
+        - workspace_id
+        - device_id
+        - code
+        - name
+        - type
+        - status
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        workspace_id:
+          $ref: "#/components/schemas/UUID"
+        device_id:
+          $ref: "#/components/schemas/UUID"
+        code:
+          type: string
+        name:
+          type: string
+        type:
+          $ref: "#/components/schemas/DataStreamType"
+        unit:
+          type: string
+        status:
+          $ref: "#/components/schemas/DataStreamStatus"
+    DeviceSourceRef:
+      type: object
+      required:
+        - id
+        - workspace_id
+        - device_id
+        - data_source_id
+        - adapter_code
+        - external_device_id
+        - status
+        - synced_at
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        workspace_id:
+          $ref: "#/components/schemas/UUID"
+        device_id:
+          $ref: "#/components/schemas/UUID"
+        data_source_id:
+          $ref: "#/components/schemas/UUID"
+        adapter_code:
+          $ref: "#/components/schemas/DataStreamBindingAdapterCode"
+        external_device_id:
+          type: integer
+          format: int64
+        external_sn:
+          type: string
+        external_uuid:
+          type: string
+        external_device_type:
+          type: string
+        status:
+          $ref: "#/components/schemas/DataStreamBindingStatus"
+        synced_at:
+          $ref: "#/components/schemas/Timestamp"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    DeviceConfigSnapshot:
+      type: object
+      required:
+        - id
+        - device_id
+        - data_source_id
+        - adapter_code
+        - external_device_id
+        - external_config_id
+        - data_json
+        - image_json
+        - control_json
+        - synced_at
+        - created_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        device_id:
+          $ref: "#/components/schemas/UUID"
+        data_source_id:
+          $ref: "#/components/schemas/UUID"
+        adapter_code:
+          $ref: "#/components/schemas/DataStreamBindingAdapterCode"
+        external_device_id:
+          type: integer
+          format: int64
+        external_config_id:
+          type: integer
+          format: int64
+        version:
+          type: string
+        data_json:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        image_json:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        control_json:
+          type: object
+          additionalProperties: true
+        source_created_at:
+          $ref: "#/components/schemas/Timestamp"
+        source_updated_at:
+          $ref: "#/components/schemas/Timestamp"
+        synced_at:
+          $ref: "#/components/schemas/Timestamp"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+    THCPNExternalDeviceMetadata:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        iccid:
+          type: string
+        version:
+          type: string
+        status:
+          type: string
+        device_type:
+          type: string
+        active:
+          type: integer
+          format: int64
+        sn:
+          type: string
+        uuid:
+          type: string
+        current_device_version:
+          type: string
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    THCPNStandardStationSyncResult:
+      type: object
+      required:
+        - device
+        - source_ref
+        - config_snapshot
+        - data_streams
+        - bindings
+        - external_device
+      properties:
+        device:
+          $ref: "#/components/schemas/SyncedDevice"
+        source_ref:
+          $ref: "#/components/schemas/DeviceSourceRef"
+        config_snapshot:
+          $ref: "#/components/schemas/DeviceConfigSnapshot"
+        data_streams:
+          type: array
+          items:
+            $ref: "#/components/schemas/SyncedDataStream"
+        bindings:
+          type: array
+          items:
+            $ref: "#/components/schemas/DataStreamBinding"
+        external_device:
+          $ref: "#/components/schemas/THCPNExternalDeviceMetadata"
     DataStreamBinding:
       type: object
       required:
@@ -4600,7 +5160,7 @@ components:
         adapter_config:
           type: object
           additionalProperties: true
-          description: Adapter-specific mapping. For `generic_media`, supported keys include `id_field`, `object_key_field`, `thumbnail_key_field`, `media_type_field` and `media_type`. For `http_api`, supported keys include `method`, `path`, `headers`, `device_key_param`, `start_time_param`, `end_time_param`, `limit_param`, `page_param`, `page_size_param` and `media_type_param`. `thcpn_legacy_mysql` currently stores placeholder JSON object config only.
+          description: Adapter-specific mapping. For `generic_media`, supported keys include `id_field`, `object_key_field`, `thumbnail_key_field`, `media_type_field` and `media_type`. For `http_api`, supported keys include `method`, `path`, `headers`, `device_key_param`, `start_time_param`, `end_time_param`, `limit_param`, `page_param`, `page_size_param` and `media_type_param`. For `thcpn_legacy_mysql`, supported keys include `external_device_id`, `row_type`, `json_key`/`image_key`, `value_path`/`object_key_path` and shard index field names.
         status:
           $ref: "#/components/schemas/DataStreamBindingStatus"
         created_by:
@@ -4655,7 +5215,7 @@ components:
         adapter_config:
           type: object
           additionalProperties: true
-          description: Adapter-specific mapping. `generic_columns` may use `{}`. `generic_media` requires `object_key_field`. `http_api` accepts HTTP request mapping keys. `thcpn_legacy_mysql` accepts a JSON object but is not implemented yet.
+          description: Adapter-specific mapping. `generic_columns` may use `{}`. `generic_media` requires `object_key_field`. `http_api` accepts HTTP request mapping keys. `thcpn_legacy_mysql` requires `external_device_id` and `json_key` for telemetry or `image_key` for media.
     UpdateDataStreamBindingRequest:
       type: object
       properties:
@@ -4686,7 +5246,7 @@ components:
         adapter_config:
           type: object
           additionalProperties: true
-          description: Adapter-specific mapping. `generic_media` requires `object_key_field`; `thcpn_legacy_mysql` currently accepts only placeholder JSON object config.
+          description: Adapter-specific mapping. `generic_media` requires `object_key_field`; `thcpn_legacy_mysql` requires `external_device_id` and a telemetry/media JSON key.
         status:
           $ref: "#/components/schemas/DataStreamBindingStatus"
     DatasetSource:
@@ -4799,6 +5359,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TelemetryPoint"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/QueryWarning"
     DatasetTelemetryQueryResponse:
       type: object
       required:

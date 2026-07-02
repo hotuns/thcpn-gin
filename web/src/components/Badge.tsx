@@ -1,9 +1,10 @@
+import { Tag } from "antd";
 import type { ReactNode } from "react";
 
 type BadgeTone = "neutral" | "success" | "warning" | "danger" | "info";
 
 export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: BadgeTone }) {
-  return <span className={`badge badge-${tone}`}>{children}</span>;
+  return <Tag color={tagColor(tone)}>{children}</Tag>;
 }
 
 export function statusTone(status?: string): BadgeTone {
@@ -28,5 +29,20 @@ export function statusTone(status?: string): BadgeTone {
       return "danger";
     default:
       return "neutral";
+  }
+}
+
+function tagColor(tone: BadgeTone): string | undefined {
+  switch (tone) {
+    case "success":
+      return "success";
+    case "warning":
+      return "warning";
+    case "danger":
+      return "error";
+    case "info":
+      return "processing";
+    default:
+      return "default";
   }
 }

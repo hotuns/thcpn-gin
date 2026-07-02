@@ -30,6 +30,7 @@ type User struct {
 	Phone           *string    `json:"phone,omitempty"`
 	Email           *string    `json:"email,omitempty"`
 	Status          string     `json:"status"`
+	IsSystemAdmin   bool       `json:"is_system_admin"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 	PhoneVerifiedAt *time.Time `json:"phone_verified_at,omitempty"`
@@ -168,6 +169,7 @@ func (s *Service) LookupActor(ctx context.Context, id uuid.UUID) (auth.Actor, er
 		Phone:           model.Phone,
 		Email:           model.Email,
 		Status:          model.Status,
+		IsSystemAdmin:   model.IsSystemAdmin,
 		PhoneVerifiedAt: model.PhoneVerifiedAt,
 		EmailVerifiedAt: model.EmailVerifiedAt,
 	}, nil
@@ -195,6 +197,7 @@ func userFromSQL(model sqlc.User) User {
 		Phone:           model.Phone,
 		Email:           model.Email,
 		Status:          model.Status,
+		IsSystemAdmin:   model.IsSystemAdmin,
 		CreatedAt:       pgTime(model.CreatedAt),
 		UpdatedAt:       pgTime(model.UpdatedAt),
 		PhoneVerifiedAt: pgTimePtr(model.PhoneVerifiedAt),

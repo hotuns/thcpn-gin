@@ -27,7 +27,7 @@
 - 支持单独分享资源给某个人。
 - 支持售后临时授权。
 - 从多个设备数据源读取时序数据、图片记录和视频记录。
-- 平台维护设备列表和外部设备源映射，普通用户只绑定设备。
+- 平台维护设备列表和外部设备源映射；当前设备由系统管理员同步并分配到 Workspace，普通用户只管理已归属设备和数据。
 - 支持数据集创建、查询、导出和分享。
 - 对敏感操作进行审计。
 
@@ -360,15 +360,15 @@ audit_logs
 
 ### 7.1 DeviceSourceConfig
 
-由于设备数据已经落在不同数据库中，平台需要知道每类设备源如何连接和读取。第一版预计只有三到四类设备数据来源，因此不建议建设完整的设备数据源管理后台。
+由于设备数据已经落在不同数据库中，平台需要知道每类设备源如何连接和读取。第一版预计只有三到四类设备数据来源，因此不建设客户侧设备数据源管理；THCPN 接入仅提供系统管理员后台维护 system scoped DataSource。
 
 推荐做法：
 
 ```text
 adapter registry 写在代码里。
-设备源实例写在部署配置、环境变量、seed 或内部脚本里。
+THCPN 设备源实例由系统管理员后台维护为 system scoped DataSource；其他特殊源可先写在部署配置、环境变量、seed 或内部脚本里。
 平台库只保存设备映射、配置快照、DataStream 和绑定关系。
-普通 Workspace 用户只绑定设备，不管理设备源。
+普通 Workspace 用户只管理已归属设备，不管理设备源。
 ```
 
 配置示例：
@@ -393,7 +393,7 @@ dsn_secret_ref 不直接保存明文数据库密码。
 source_code 不属于任何 workspace；客户权限边界来自绑定后的 Device / DataStream / Dataset。
 ```
 
-当前代码实现仍保留 `data_sources` 表和 `/api/v1/data-sources` 作为内部设备源实例配置载体，`data_sources.type` 表示物理连接类型，例如 `postgres`、`mysql`、`clickhouse` 或 `http_api`。运行时业务分发不再按 `data_sources.type` 决定，而是按 `data_stream_bindings.adapter_code` 决定。如果后续设备源数量、部署环境或运维协作复杂度上升，再把 `device_sources` 升级为正式系统表和管理后台。
+当前代码实现保留 `data_sources` 表和 `/api/v1/data-sources` 作为内部设备源实例配置载体，`data_sources.type` 表示物理连接类型，例如 `postgres`、`mysql`、`clickhouse` 或 `http_api`。`data_sources.scope` 区分 `workspace` 与 `system`：THCPN 设备源走 system scoped DataSource，由 `users.is_system_admin = true` 的系统管理员通过 `/api/v1/admin/data-sources` 和前端 `/admin/data-sources` 维护；普通 Workspace 控制台不暴露 DSN、库表字段或 adapter 配置。运行时业务分发不再按 `data_sources.type` 决定，而是按 `data_stream_bindings.adapter_code` 决定。
 
 ### 7.2 DataStreamBinding
 
@@ -447,19 +447,20 @@ payload_type: media
 adapter_config_json: {"object_key_field":"object_key","id_field":"media_id","media_type":"image"}
 ```
 
-THCPN 旧 MySQL 设备库应使用专门 adapter，而不是把分表和 JSON 解析规则暴露给普通用户。当前代码只实现 `thcpn_legacy_mysql` 的 adapter code、校验和 runtime 未实现占位，暂不读取旧库；下面只是后续 `adapter_config_json` 可能包含的受控字段示例：
+THCPN 旧 MySQL 设备库应使用专门 adapter，而不是把分表和 JSON 解析规则暴露给普通用户。当前代码第一阶段已实现 `thcpn_legacy_mysql` 只读 adapter：同步入口读取旧库 `devices` 和最新 `device_config`，生成平台 Device、DeviceSourceRef、DeviceConfigSnapshot、DataStream 和 DataStreamBinding；查询入口按 `device_data_index` 定位 `device_data_*` 分表并读取 telemetry/image JSON key。下面是 `adapter_config_json` 使用的受控字段示例：
 
 ```json
 {
-  "source_device_id": 101,
-  "source_config_ids": [1302],
+  "external_device_id": 101,
   "row_type": "data",
   "json_key": "stemp",
-  "json_value_path": "$.stemp.value",
+  "value_path": "$.\"stemp\".value",
   "table_index": "device_data_index",
-  "table_prefix": "device_data_",
+  "table_name_field": "tb_name",
+  "index_start_field": "start_at",
+  "index_end_field": "end_at",
   "time_field": "ts",
-  "deleted_field": "deleted_at"
+  "deleted_at_field": "deleted_at"
 }
 ```
 
@@ -467,16 +468,17 @@ THCPN 旧 MySQL 设备库应使用专门 adapter，而不是把分表和 JSON �
 
 ```json
 {
-  "source_device_id": 101,
-  "source_config_ids": [1302],
+  "external_device_id": 101,
   "row_type": "image",
-  "json_key": "key1",
-  "json_object_key_path": "$.key1.value",
+  "image_key": "key1",
+  "object_key_path": "$.\"key1\".value",
   "media_type": "image",
   "table_index": "device_data_index",
-  "table_prefix": "device_data_",
+  "table_name_field": "tb_name",
+  "index_start_field": "start_at",
+  "index_end_field": "end_at",
   "time_field": "ts",
-  "deleted_field": "deleted_at"
+  "deleted_at_field": "deleted_at"
 }
 ```
 
@@ -487,12 +489,14 @@ THCPN 旧 MySQL 设备库应使用专门 adapter，而不是把分表和 JSON �
 ```text
 device_source_refs
 - id
+- workspace_id
 - device_id
-- source_code
+- data_source_id
+- adapter_code
 - external_device_id
 - external_sn
-- external_iccid
 - external_uuid
+- external_device_type
 - status
 - synced_at
 - created_at
@@ -505,13 +509,15 @@ device_source_refs
 device_config_snapshots
 - id
 - device_id
-- source_code
+- data_source_id
+- adapter_code
 - external_config_id
 - external_device_id
 - version
 - data_json
 - image_json
 - control_json
+- source_created_at
 - source_updated_at
 - synced_at
 - created_at
@@ -1011,7 +1017,7 @@ audit_logs
 /api/v1/audit-logs
 ```
 
-第一版不建议提供正式的客户侧设备源管理 API 或后台页面。当前实现保留 `/api/v1/data-sources` 和 `/api/v1/data-stream-bindings` 作为内部配置载体，但普通 Workspace 控制台不应暴露 DataSource 创建、DSN、库表字段映射或 raw SQL 配置入口。设备源配置、外部设备映射和 DataStreamBinding 可以先通过部署配置、seed、CLI 或内部脚本维护。
+第一版不提供客户侧设备源管理 API 或页面。当前实现保留 `/api/v1/data-sources` 和 `/api/v1/data-stream-bindings` 作为内部兼容配置载体，但普通 Workspace 控制台不暴露 DataSource 创建、DSN、库表字段映射或 raw SQL 配置入口。系统级 THCPN 数据源管理迁入 `/api/v1/admin/data-sources` 与 `/admin/data-sources`，由系统管理员同步设备到指定 `target_workspace_id`，同步过程生成外部设备映射、配置快照和 DataStreamBinding。
 
 ### 13.2 错误响应
 

@@ -186,20 +186,6 @@ func (r *Runtime) queryGenericMedia(ctx context.Context, source DataSource, req 
 	}
 }
 
-func (r *Runtime) queryThcpnLegacyMySQLTelemetry(ctx context.Context, source DataSource, req TelemetryQuery) (TelemetryResult, error) {
-	_ = ctx
-	_ = source
-	_ = req
-	return TelemetryResult{}, apperr.New(apperr.KindDataSource, "thcpn_legacy_mysql adapter is not implemented")
-}
-
-func (r *Runtime) queryThcpnLegacyMySQLMedia(ctx context.Context, source DataSource, req MediaQuery) (MediaResult, error) {
-	_ = ctx
-	_ = source
-	_ = req
-	return MediaResult{}, apperr.New(apperr.KindDataSource, "thcpn_legacy_mysql adapter is not implemented")
-}
-
 func (r *Runtime) queryPostgresTelemetry(ctx context.Context, source DataSource, req TelemetryQuery) (TelemetryResult, error) {
 	if err := validateTelemetryQuery(req); err != nil {
 		return TelemetryResult{}, err

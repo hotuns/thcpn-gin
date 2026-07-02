@@ -144,6 +144,41 @@ func (q *Queries) GetWorkspaceMember(ctx context.Context, arg GetWorkspaceMember
 	return i, err
 }
 
+const listWorkspaces = `-- name: ListWorkspaces :many
+SELECT id, type, organization_type, name, owner_user_id, status, created_at, updated_at
+FROM workspaces
+ORDER BY created_at DESC, id DESC
+`
+
+func (q *Queries) ListWorkspaces(ctx context.Context) ([]Workspace, error) {
+	rows, err := q.db.Query(ctx, listWorkspaces)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Workspace{}
+	for rows.Next() {
+		var i Workspace
+		if err := rows.Scan(
+			&i.ID,
+			&i.Type,
+			&i.OrganizationType,
+			&i.Name,
+			&i.OwnerUserID,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWorkspacesForUser = `-- name: ListWorkspacesForUser :many
 SELECT
     w.id,

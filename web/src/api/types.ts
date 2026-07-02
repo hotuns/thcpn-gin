@@ -43,6 +43,7 @@ export interface UserProfile {
   phone?: string;
   email?: string;
   status: UserStatus;
+  is_system_admin: boolean;
   phone_verified_at?: Timestamp;
   email_verified_at?: Timestamp;
   last_login_at?: Timestamp;
@@ -54,6 +55,7 @@ export interface Actor {
   phone?: string;
   email?: string;
   status: UserStatus;
+  is_system_admin: boolean;
   phone_verified_at?: Timestamp;
   email_verified_at?: Timestamp;
 }
@@ -100,6 +102,7 @@ export interface User {
   phone?: string;
   email?: string;
   status: UserStatus;
+  is_system_admin?: boolean;
   created_at: Timestamp;
   updated_at: Timestamp;
   phone_verified_at?: Timestamp;
@@ -138,6 +141,10 @@ export interface WorkspaceWithMembership {
 
 export interface WorkspaceListResponse {
   items: WorkspaceWithMembership[];
+}
+
+export interface WorkspaceAdminListResponse {
+  items: Workspace[];
 }
 
 export interface UserSummary {
@@ -204,11 +211,13 @@ export type DeviceCapabilityCode =
   | "edge_storage";
 export type DataStreamType = "telemetry" | "image" | "video" | "audio" | "event" | "log";
 export type DataStreamStatus = "active" | "disabled" | "archived";
+export type DataSourceScope = "workspace" | "system";
 export type DataSourceType = "postgres" | "mysql" | "clickhouse" | "http_api" | "file";
 export type DataSourceStatus = "active" | "disabled" | "archived";
 export type DataStreamBindingPayloadType = "columns" | "json" | "media";
 export type DataStreamBindingAdapterCode = "generic_columns" | "generic_media" | "http_api" | "thcpn_legacy_mysql";
 export type DataStreamBindingStatus = "active" | "disabled" | "archived";
+export type MediaType = "image" | "video" | "audio";
 export type DatasetDataType = "telemetry" | "image" | "video" | "audio" | "event" | "log" | "mixed";
 export type DatasetStatus = "draft" | "locked" | "archived" | "published";
 export type DatasetSourceType = "device" | "data_stream" | "file";
@@ -302,9 +311,60 @@ export interface DataStreamListResponse {
   items: DataStream[];
 }
 
+export interface QueryWarning {
+  code: string;
+  message: string;
+  count?: number;
+}
+
+export interface TelemetryPoint {
+  ts: Timestamp;
+  value: number;
+  quality: string;
+}
+
+export interface TelemetrySeries {
+  data_stream_id: UUID;
+  code: string;
+  name: string;
+  unit?: string;
+  points: TelemetryPoint[];
+  warnings?: QueryWarning[];
+}
+
+export interface TelemetryQueryResponse {
+  device_id: UUID;
+  start_time: Timestamp;
+  end_time: Timestamp;
+  limit: number;
+  series: TelemetrySeries[];
+}
+
+export interface MediaItem {
+  id: string;
+  device_id: UUID;
+  data_stream_id: UUID;
+  captured_at: Timestamp;
+  media_type: MediaType;
+  thumbnail_url?: string;
+  preview_url: string;
+  download_allowed: boolean;
+  download_url?: string;
+  delete_allowed: boolean;
+  delete_url?: string;
+}
+
+export interface MediaListResponse {
+  items: MediaItem[];
+  page: number;
+  page_size: number;
+  total: number;
+}
+
 export interface DataSource {
   id: UUID;
-  workspace_id: UUID;
+  scope: DataSourceScope;
+  workspace_id?: UUID;
   name: string;
   type: DataSourceType;
   dsn_secret_ref: string;
@@ -316,6 +376,97 @@ export interface DataSource {
 
 export interface DataSourceListResponse {
   items: DataSource[];
+}
+
+export interface SyncedDevice {
+  id: UUID;
+  workspace_id: UUID;
+  project_id?: UUID;
+  site_id?: UUID;
+  product_id?: string;
+  serial_no: string;
+  name: string;
+  status: DeviceStatus;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+}
+
+export interface SyncedDataStream {
+  id: UUID;
+  workspace_id: UUID;
+  device_id: UUID;
+  code: string;
+  name: string;
+  type: DataStreamType;
+  unit?: string;
+  status: DataStreamStatus;
+}
+
+export interface DeviceSourceRef {
+  id: UUID;
+  workspace_id: UUID;
+  device_id: UUID;
+  data_source_id: UUID;
+  adapter_code: DataStreamBindingAdapterCode;
+  external_device_id: number;
+  external_sn?: string;
+  external_uuid?: string;
+  external_device_type?: string;
+  status: DataStreamBindingStatus;
+  synced_at: Timestamp;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+}
+
+export interface DeviceConfigSnapshot {
+  id: UUID;
+  device_id: UUID;
+  data_source_id: UUID;
+  adapter_code: DataStreamBindingAdapterCode;
+  external_device_id: number;
+  external_config_id: number;
+  version?: string;
+  data_json: Record<string, unknown>[];
+  image_json: Record<string, unknown>[];
+  control_json: Record<string, unknown>;
+  source_created_at?: Timestamp;
+  source_updated_at?: Timestamp;
+  synced_at: Timestamp;
+  created_at: Timestamp;
+}
+
+export interface THCPNExternalDeviceMetadata {
+  id: number;
+  name: string;
+  iccid?: string;
+  version?: string;
+  status?: string;
+  device_type?: string;
+  active?: number;
+  sn?: string;
+  uuid?: string;
+  current_device_version?: string;
+  created_at?: Timestamp;
+  updated_at?: Timestamp;
+}
+
+export interface SyncTHCPNStandardStationRequest {
+  target_workspace_id: UUID;
+  external_device_id: number;
+  project_id?: UUID;
+  site_id?: UUID;
+  product_id?: string;
+  serial_no?: string;
+  name?: string;
+}
+
+export interface THCPNStandardStationSyncResult {
+  device: SyncedDevice;
+  source_ref: DeviceSourceRef;
+  config_snapshot: DeviceConfigSnapshot;
+  data_streams: SyncedDataStream[];
+  bindings: DataStreamBinding[];
+  external_device: THCPNExternalDeviceMetadata;
 }
 
 export interface DataStreamBinding {

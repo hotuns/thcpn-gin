@@ -28,6 +28,7 @@ type Actor struct {
 	Phone           *string    `json:"phone,omitempty"`
 	Email           *string    `json:"email,omitempty"`
 	Status          string     `json:"status"`
+	IsSystemAdmin   bool       `json:"is_system_admin"`
 	PhoneVerifiedAt *time.Time `json:"phone_verified_at,omitempty"`
 	EmailVerifiedAt *time.Time `json:"email_verified_at,omitempty"`
 }
@@ -140,4 +141,21 @@ func ActorFromContext(c *gin.Context) (Actor, bool) {
 
 	actor, ok := value.(Actor)
 	return actor, ok
+}
+
+func RequireSystemAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		actor, ok := ActorFromContext(c)
+		if !ok {
+			httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "missing authenticated user"))
+			c.Abort()
+			return
+		}
+		if !actor.IsSystemAdmin {
+			httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "system administrator required"))
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
 }

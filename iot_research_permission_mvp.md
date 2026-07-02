@@ -17,7 +17,7 @@
 用户不直接拥有全部设备权限。
 设备和数据归属于 Workspace。
 THCPN 平台维护设备列表和外部设备源映射。
-普通 Workspace 用户只绑定设备，不管理设备数据库连接、库表字段或 raw SQL。
+当前设备由系统管理员同步并分配到 Workspace；普通 Workspace 用户只管理已归属设备，不管理设备数据库连接、库表字段或 raw SQL。
 用户通过角色和资源范围获得权限。
 外部分享和临时授权通过 AccessGrant 实现。
 所有敏感操作必须审计。
@@ -195,12 +195,12 @@ AccessGrant 是实现“单独分享给某个人”的核心机制。
 
 `Device Source Mapping` 表示平台设备和外部设备数据库记录之间的映射关系。
 
-第一版预计只有三到四类设备数据来源，因此不需要把设备数据源做成客户侧可管理资源，也不需要一开始建设完整运维管理后台。推荐采用更轻量的方式：
+第一版预计只有三到四类设备数据来源，因此不需要把设备数据源做成客户侧可管理资源。当前 THCPN 接入采用系统管理员后台维护 system scoped DataSource，普通 Workspace 用户不接触 DSN、库表字段或 adapter 配置：
 
 - 设备源类型和 adapter 在代码里注册。
-- 设备源实例通过部署配置或环境变量维护。
-- 平台库维护设备列表、外部设备 ID / SN / ICCID 映射。
-- 平台库保存外部 `device_config` 快照，用于解释历史数据。
+- THCPN 设备源实例通过 `/api/v1/admin/data-sources` 和 `/admin/data-sources` 维护；其他特殊源可继续通过部署配置或环境变量维护。
+- 系统管理员同步外部设备时指定 `target_workspace_id`，平台库维护设备列表、外部设备 ID / SN / ICCID 映射。
+- 平台库保存外部最新 `device_config` 快照，并用最新配置解释历史数据；无法匹配的数据给出提示并跳过。
 - DataStream 从配置快照解析生成，用户只看到业务数据流。
 
 用户绑定的是平台设备，不是外部数据库。查询数据时，平台根据设备映射和 adapter 自动去对应设备库读取数据，并转换成统一格式。
@@ -790,9 +790,9 @@ device_source_configs
 - `adapter_code` 对应代码中注册的 adapter。
 - `dsn_secret_ref` 不保存明文连接串，真实 DSN 放在环境变量、Secret Manager 或部署配置中。
 - 普通 Workspace 用户不创建、不编辑、不查看设备源配置。
-- 只有当设备源数量、部署环境和运维协作复杂到需要产品化时，再升级为正式系统管理表和后台页面。
+- THCPN 设备源当前已产品化为系统管理员后台能力：`users.is_system_admin = true` 的账号可通过 `/api/v1/admin/data-sources` 和前端 `/admin/data-sources` 维护 system scoped DataSource，并同步设备到指定 `target_workspace_id`。
 
-当前代码实现保留 `data_sources` 表/API 作为内部设备源实例配置载体；`data_sources.type` 表示物理连接类型，业务读取策略由 `data_stream_bindings.adapter_code` 决定，不再按 `data_sources.type` 直接分发。
+当前代码实现保留 `data_sources` 表/API 作为内部设备源实例配置载体；`data_sources.type` 表示物理连接类型，`data_sources.scope` 区分 `workspace` / `system`。业务读取策略由 `data_stream_bindings.adapter_code` 决定，不再按 `data_sources.type` 直接分发。普通工作区控制台不暴露数据源管理。
 
 ### 11.12 device_source_refs
 
@@ -801,12 +801,14 @@ device_source_configs
 ```text
 device_source_refs
 - id
+- workspace_id
 - device_id
-- source_code
+- data_source_id
+- adapter_code
 - external_device_id
 - external_sn
-- external_iccid
 - external_uuid
+- external_device_type
 - status
 - synced_at
 - created_at
@@ -823,19 +825,21 @@ device_source_refs
 device_config_snapshots
 - id
 - device_id
-- source_code
+- data_source_id
+- adapter_code
 - external_config_id
 - external_device_id
 - version
 - data_json
 - image_json
 - control_json
+- source_created_at
 - source_updated_at
 - synced_at
 - created_at
 ```
 
-历史设备数据应优先按数据行中的配置版本或配置 ID 解释，不能简单使用设备当前最新配置解释历史数据。
+THCPN 第一阶段永远使用外部设备库中的最新 `device_config` 解释历史数据。历史数据如果和最新配置不匹配，查询层返回 warning 并跳过无法解释的字段，不做历史配置回溯。
 
 ### 11.14 data_streams
 
@@ -879,7 +883,7 @@ data_stream_bindings
 - updated_at
 ```
 
-标准数据源使用 `generic_columns` / `generic_media` adapter 和 `data_stream_bindings` 中的受控表字段映射。特殊数据源使用专用 adapter 和 `adapter_config_json`。对于 THCPN 旧 MySQL 设备库，`adapter_config_json` 后续可以包含受控字段，例如分表索引表、表前缀、外部设备 ID、设备配置 ID、JSON key、JSON path、数据类型和时间字段。它不能保存用户提交的 raw SQL。当前 `thcpn_legacy_mysql` 只是 adapter code、校验和 runtime 未实现占位，不读取真实旧库。
+标准数据源使用 `generic_columns` / `generic_media` adapter 和 `data_stream_bindings` 中的受控表字段映射。特殊数据源使用专用 adapter 和 `adapter_config_json`。对于 THCPN 旧 MySQL 设备库，当前第一阶段使用 `thcpn_legacy_mysql` 只读 adapter：`adapter_config_json` 包含受控字段，例如外部设备 ID、`row_type`、JSON key、JSON path、分表索引表和时间字段。运行时先查 `device_data_index`，再查命中的 `device_data_*` 分表。它不能保存用户提交的 raw SQL，也不能由普通客户前端编辑。
 
 ### 11.16 datasets
 
@@ -1225,10 +1229,10 @@ DataStreamBinding
 目标：
 
 - 代码中注册三到四类设备源 adapter。
-- 设备源实例通过部署配置、环境变量或 seed 维护。
+- THCPN 设备源实例通过系统管理员后台维护为 system scoped DataSource；其他特殊源仍可先通过部署配置、环境变量或 seed 维护。
 - 系统能同步或录入外部设备映射。
 - 系统能从设备配置快照生成 DataStream。
-- 普通用户只能绑定设备，不能管理数据源连接和字段映射。
+- 当前阶段设备由系统管理员同步并分配到工作区；未来若提供普通用户自助绑定，也只能绑定平台设备标识，不能管理数据源连接和字段映射。
 
 ### 第三阶段：权限和分享
 

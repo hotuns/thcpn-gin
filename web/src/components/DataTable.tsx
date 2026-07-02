@@ -1,11 +1,13 @@
+import { Table } from "antd";
+import type { TableColumnsType } from "antd";
 import type { ReactNode } from "react";
-import { EmptyState } from "./States";
 
 export interface Column<T> {
   key: string;
   header: string;
   render: (item: T) => ReactNode;
   className?: string;
+  width?: number;
 }
 
 export function DataTable<T>({
@@ -19,34 +21,43 @@ export function DataTable<T>({
   getRowKey: (item: T) => string;
   items: T[];
 }) {
-  if (items.length === 0) {
-    return <EmptyState title={empty} detail="当前筛选范围没有可显示的数据。" />;
-  }
+  const tableWidth = columns.reduce((sum, column) => sum + (column.width ?? defaultColumnWidth(column.key)), 0);
+  const tableColumns: TableColumnsType<T> = columns.map((column) => ({
+    className: column.className,
+    ellipsis: true,
+    key: column.key,
+    render: (_, record) => column.render(record),
+    title: column.header,
+    width: column.width ?? defaultColumnWidth(column.key)
+  }));
 
   return (
-    <div className="table-scroll">
-      <table className="data-table">
-        <thead>
-          <tr>
-            {columns.map((column) => (
-              <th className={column.className} key={column.key}>
-                {column.header}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={getRowKey(item)}>
-              {columns.map((column) => (
-                <td className={column.className} key={column.key}>
-                  {column.render(item)}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <Table<T>
+      className="data-table"
+      columns={tableColumns}
+      dataSource={items}
+      locale={{ emptyText: empty }}
+      pagination={false}
+      rowKey={getRowKey}
+      scroll={{ x: tableWidth }}
+      size="middle"
+      tableLayout="fixed"
+    />
   );
+}
+
+function defaultColumnWidth(key: string): number {
+  if (key === "id" || key.endsWith("_id") || key === "request" || key === "resource") {
+    return 240;
+  }
+  if (key === "actions" || key === "action" || key === "status" || key === "result") {
+    return 130;
+  }
+  if (key === "created" || key === "updated" || key === "expires" || key === "time") {
+    return 180;
+  }
+  if (key === "name" || key === "subject" || key === "target") {
+    return 220;
+  }
+  return 170;
 }
