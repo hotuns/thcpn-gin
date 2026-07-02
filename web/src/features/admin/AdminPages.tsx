@@ -228,7 +228,6 @@ export function AdminDataSourcesPage() {
         </Space>
       )
     },
-    { dataIndex: "scope", key: "scope", title: "范围", width: 120, render: (value: string) => <Tag color="blue">{value}</Tag> },
     { dataIndex: "dsn_secret_ref", key: "secret", title: "Secret 引用", width: 260 },
     {
       dataIndex: "status",
@@ -318,7 +317,7 @@ export function AdminDataSourcesPage() {
           <Space orientation="vertical" size={0}>
             <Typography.Text strong>同步 THCPN 标准站</Typography.Text>
             <Typography.Text type="secondary">
-              读取外部设备和最新配置，在目标工作区创建或更新设备、数据流和绑定。
+              读取外部设备和最新配置，创建或更新系统级设备、数据流和绑定，并单一分配到目标工作区。
             </Typography.Text>
           </Space>
         }
@@ -437,7 +436,8 @@ function THCPNSyncResultView({ result }: { result: THCPNStandardStationSyncResul
       <Descriptions bordered column={{ xs: 1, md: 2 }} size="small" title="同步结果">
         <Descriptions.Item label="平台设备">{result.device.name}</Descriptions.Item>
         <Descriptions.Item label="平台设备 ID">{copyableId(result.device.id)}</Descriptions.Item>
-        <Descriptions.Item label="目标工作区">{copyableId(result.device.workspace_id)}</Descriptions.Item>
+        <Descriptions.Item label="分配工作区">{copyableId(result.device.workspace_id)}</Descriptions.Item>
+        <Descriptions.Item label="Assignment">{copyableId(result.device.assignment_id)}</Descriptions.Item>
         <Descriptions.Item label="序列号">{result.device.serial_no}</Descriptions.Item>
         <Descriptions.Item label="状态">
           <Tag color={statusColor(result.device.status)}>{result.device.status}</Tag>

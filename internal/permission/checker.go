@@ -14,6 +14,8 @@ import (
 )
 
 type Store interface {
+	GetActiveDeviceAssignment(ctx context.Context, deviceID uuid.UUID) (sqlc.DeviceAssignment, error)
+	GetActiveDeviceAssignmentByDataStream(ctx context.Context, id uuid.UUID) (sqlc.DeviceAssignment, error)
 	GetDataStream(ctx context.Context, id uuid.UUID) (sqlc.DataStream, error)
 	GetDataset(ctx context.Context, id uuid.UUID) (sqlc.Dataset, error)
 	GetDevice(ctx context.Context, id uuid.UUID) (sqlc.Device, error)
@@ -165,17 +167,21 @@ func (c *Checker) resolveResource(ctx context.Context, resource ResourceRef) (re
 		if err != nil {
 			return resourceScope{}, apperr.Wrap(apperr.KindNotFound, "device not found", err)
 		}
+		assignment, err := c.store.GetActiveDeviceAssignment(ctx, resource.ID)
+		if err != nil {
+			return resourceScope{}, apperr.Wrap(apperr.KindNotFound, "active device assignment not found", err)
+		}
 		scope := resourceScope{
-			WorkspaceID: device.WorkspaceID,
+			WorkspaceID: assignment.WorkspaceID,
 			ScopeType:   "device",
 			ScopeID:     device.ID,
 			DeviceID:    device.ID,
 		}
-		if device.ProjectID != nil {
-			scope.ProjectID = *device.ProjectID
+		if assignment.ProjectID != nil {
+			scope.ProjectID = *assignment.ProjectID
 		}
-		if device.SiteID != nil {
-			scope.SiteID = *device.SiteID
+		if assignment.SiteID != nil {
+			scope.SiteID = *assignment.SiteID
 		}
 		return scope, nil
 	case "data_stream":
@@ -183,21 +189,21 @@ func (c *Checker) resolveResource(ctx context.Context, resource ResourceRef) (re
 		if err != nil {
 			return resourceScope{}, apperr.Wrap(apperr.KindNotFound, "data stream not found", err)
 		}
-		device, err := c.store.GetDevice(ctx, stream.DeviceID)
+		assignment, err := c.store.GetActiveDeviceAssignmentByDataStream(ctx, resource.ID)
 		if err != nil {
-			return resourceScope{}, apperr.Wrap(apperr.KindNotFound, "device not found", err)
+			return resourceScope{}, apperr.Wrap(apperr.KindNotFound, "active device assignment not found", err)
 		}
 		scope := resourceScope{
-			WorkspaceID: stream.WorkspaceID,
+			WorkspaceID: assignment.WorkspaceID,
 			ScopeType:   "data_stream",
 			ScopeID:     stream.ID,
 			DeviceID:    stream.DeviceID,
 		}
-		if device.ProjectID != nil {
-			scope.ProjectID = *device.ProjectID
+		if assignment.ProjectID != nil {
+			scope.ProjectID = *assignment.ProjectID
 		}
-		if device.SiteID != nil {
-			scope.SiteID = *device.SiteID
+		if assignment.SiteID != nil {
+			scope.SiteID = *assignment.SiteID
 		}
 		return scope, nil
 	case "dataset":

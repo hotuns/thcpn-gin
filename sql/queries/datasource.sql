@@ -1,24 +1,16 @@
 -- name: CreateDataSource :one
-INSERT INTO data_sources (scope, workspace_id, name, type, dsn_secret_ref, created_by)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, workspace_id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at, scope;
+INSERT INTO data_sources (name, type, dsn_secret_ref, created_by)
+VALUES ($1, $2, $3, $4)
+RETURNING id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at;
 
 -- name: GetDataSource :one
-SELECT id, workspace_id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at, scope
+SELECT id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at
 FROM data_sources
 WHERE id = $1;
 
--- name: ListDataSourcesByWorkspace :many
-SELECT id, workspace_id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at, scope
+-- name: ListDataSources :many
+SELECT id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at
 FROM data_sources
-WHERE scope = 'workspace'
-  AND workspace_id = $1
-ORDER BY created_at DESC, id DESC;
-
--- name: ListSystemDataSources :many
-SELECT id, workspace_id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at, scope
-FROM data_sources
-WHERE scope = 'system'
 ORDER BY created_at DESC, id DESC;
 
 -- name: UpdateDataSource :one
@@ -29,7 +21,7 @@ SET name = $2,
     status = $5,
     updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at, scope;
+RETURNING id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at;
 
 -- name: CreateDataStreamBinding :one
 INSERT INTO data_stream_bindings (

@@ -12,7 +12,6 @@ import { WorkspacesPage } from "../features/workspaces/WorkspacesPage";
 import {
   AccessGrantsPage,
   AuditLogsPage,
-  DataSourcesPage,
   DataStreamsPage,
   DatasetsPage,
   DevicesPage,
@@ -49,7 +48,6 @@ export function AppRouter() {
           <Route element={<DevicesPage />} path="/devices" />
           <Route element={<DataStreamsPage />} path="/data-streams" />
           <Route element={<DeviceDataPage />} path="/device-data" />
-          <Route element={<DataSourcesPage />} path="/data-sources" />
           <Route element={<DatasetsPage />} path="/datasets" />
           <Route element={<ExportJobsPage />} path="/export-jobs" />
           <Route element={<AccessGrantsPage />} path="/access-grants" />

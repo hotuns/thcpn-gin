@@ -169,10 +169,14 @@ func (s *Service) ResolveMediaToken(ctx context.Context, token string) (MediaTar
 	if stream.DeviceID != claims.DeviceID {
 		return MediaTarget{}, apperr.New(apperr.KindInvalidArgument, "media token does not match data stream")
 	}
+	assignment, err := s.queries.GetActiveDeviceAssignmentByDataStream(ctx, stream.ID)
+	if err != nil {
+		return MediaTarget{}, mapNotFoundOrInternal(err, "active device assignment not found")
+	}
 	return MediaTarget{
 		DataStreamID: claims.DataStreamID,
 		DeviceID:     claims.DeviceID,
-		WorkspaceID:  stream.WorkspaceID,
+		WorkspaceID:  assignment.WorkspaceID,
 		MediaID:      claims.MediaID,
 		MediaType:    claims.MediaType,
 		ObjectKey:    claims.ObjectKey,

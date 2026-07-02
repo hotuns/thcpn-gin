@@ -1,70 +1,159 @@
 -- name: CreateDevice :one
 INSERT INTO devices (
-    workspace_id,
-    project_id,
-    site_id,
     product_id,
     serial_no,
     name,
     status,
-    activated_at,
-    bound_by
+    activated_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, 'active', now(), $7)
-RETURNING id, workspace_id, project_id, site_id, product_id, serial_no, name, status, activated_at, bound_by, created_at, updated_at;
+VALUES ($1, $2, $3, 'active', now())
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at;
 
 -- name: GetDevice :one
-SELECT id, workspace_id, project_id, site_id, product_id, serial_no, name, status, activated_at, bound_by, created_at, updated_at
+SELECT id, product_id, serial_no, name, status, activated_at, created_at, updated_at
 FROM devices
 WHERE id = $1;
 
--- name: ListDevicesByWorkspace :many
-SELECT id, workspace_id, project_id, site_id, product_id, serial_no, name, status, activated_at, bound_by, created_at, updated_at
-FROM devices
-WHERE workspace_id = $1
-ORDER BY created_at DESC, id DESC;
-
--- name: ListDevicesByProject :many
-SELECT id, workspace_id, project_id, site_id, product_id, serial_no, name, status, activated_at, bound_by, created_at, updated_at
-FROM devices
-WHERE project_id = $1
-ORDER BY created_at DESC, id DESC;
-
--- name: ListDevicesBySite :many
-SELECT id, workspace_id, project_id, site_id, product_id, serial_no, name, status, activated_at, bound_by, created_at, updated_at
-FROM devices
-WHERE site_id = $1
-ORDER BY created_at DESC, id DESC;
-
 -- name: UpdateDevice :one
 UPDATE devices
+SET product_id = $2,
+    serial_no = $3,
+    name = $4,
+    status = $5,
+    updated_at = now()
+WHERE id = $1
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at;
+
+-- name: CreateDeviceAssignment :one
+INSERT INTO device_assignments (
+    device_id,
+    workspace_id,
+    project_id,
+    site_id,
+    assigned_by
+)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, device_id, workspace_id, project_id, site_id, status, assigned_by, assigned_at, unassigned_at, created_at, updated_at;
+
+-- name: GetActiveDeviceAssignment :one
+SELECT id, device_id, workspace_id, project_id, site_id, status, assigned_by, assigned_at, unassigned_at, created_at, updated_at
+FROM device_assignments
+WHERE device_id = $1
+  AND status = 'active'
+ORDER BY assigned_at DESC, id DESC
+LIMIT 1;
+
+-- name: GetActiveDeviceAssignmentByDataStream :one
+SELECT da.id, da.device_id, da.workspace_id, da.project_id, da.site_id, da.status, da.assigned_by, da.assigned_at, da.unassigned_at, da.created_at, da.updated_at
+FROM device_assignments AS da
+JOIN data_streams AS ds ON ds.device_id = da.device_id
+WHERE ds.id = $1
+  AND da.status = 'active'
+ORDER BY da.assigned_at DESC, da.id DESC
+LIMIT 1;
+
+-- name: GetDeviceWithActiveAssignment :one
+SELECT
+    d.id,
+    d.product_id,
+    d.serial_no,
+    d.name,
+    d.status,
+    d.activated_at,
+    d.created_at,
+    d.updated_at,
+    da.id AS assignment_id,
+    da.workspace_id,
+    da.project_id,
+    da.site_id,
+    da.assigned_by,
+    da.assigned_at
+FROM devices AS d
+JOIN device_assignments AS da ON da.device_id = d.id AND da.status = 'active'
+WHERE d.id = $1;
+
+-- name: ListDevicesByWorkspace :many
+SELECT
+    d.id,
+    d.product_id,
+    d.serial_no,
+    d.name,
+    d.status,
+    d.activated_at,
+    d.created_at,
+    d.updated_at,
+    da.id AS assignment_id,
+    da.workspace_id,
+    da.project_id,
+    da.site_id,
+    da.assigned_by,
+    da.assigned_at
+FROM devices AS d
+JOIN device_assignments AS da ON da.device_id = d.id AND da.status = 'active'
+WHERE da.workspace_id = $1
+ORDER BY da.assigned_at DESC, d.created_at DESC, d.id DESC;
+
+-- name: ListDevicesByProject :many
+SELECT
+    d.id,
+    d.product_id,
+    d.serial_no,
+    d.name,
+    d.status,
+    d.activated_at,
+    d.created_at,
+    d.updated_at,
+    da.id AS assignment_id,
+    da.workspace_id,
+    da.project_id,
+    da.site_id,
+    da.assigned_by,
+    da.assigned_at
+FROM devices AS d
+JOIN device_assignments AS da ON da.device_id = d.id AND da.status = 'active'
+WHERE da.workspace_id = $1
+  AND da.project_id = $2
+ORDER BY da.assigned_at DESC, d.created_at DESC, d.id DESC;
+
+-- name: ListDevicesBySite :many
+SELECT
+    d.id,
+    d.product_id,
+    d.serial_no,
+    d.name,
+    d.status,
+    d.activated_at,
+    d.created_at,
+    d.updated_at,
+    da.id AS assignment_id,
+    da.workspace_id,
+    da.project_id,
+    da.site_id,
+    da.assigned_by,
+    da.assigned_at
+FROM devices AS d
+JOIN device_assignments AS da ON da.device_id = d.id AND da.status = 'active'
+WHERE da.workspace_id = $1
+  AND da.site_id = $2
+ORDER BY da.assigned_at DESC, d.created_at DESC, d.id DESC;
+
+-- name: UpdateDeviceAssignment :one
+UPDATE device_assignments
 SET project_id = $2,
     site_id = $3,
-    product_id = $4,
-    serial_no = $5,
-    name = $6,
-    status = $7,
     updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, project_id, site_id, product_id, serial_no, name, status, activated_at, bound_by, created_at, updated_at;
+  AND status = 'active'
+RETURNING id, device_id, workspace_id, project_id, site_id, status, assigned_by, assigned_at, unassigned_at, created_at, updated_at;
 
--- name: TransferDevice :one
-UPDATE devices
-SET workspace_id = $2,
-    project_id = $3,
-    site_id = $4,
+-- name: CloseActiveDeviceAssignment :one
+UPDATE device_assignments
+SET status = $2,
+    unassigned_at = now(),
     updated_at = now()
-WHERE id = $1
-RETURNING id, workspace_id, project_id, site_id, product_id, serial_no, name, status, activated_at, bound_by, created_at, updated_at;
-
--- name: UnbindDevice :one
-UPDATE devices
-SET project_id = NULL,
-    site_id = NULL,
-    status = 'retired',
-    updated_at = now()
-WHERE id = $1
-RETURNING id, workspace_id, project_id, site_id, product_id, serial_no, name, status, activated_at, bound_by, created_at, updated_at;
+WHERE device_id = $1
+  AND status = 'active'
+RETURNING id, device_id, workspace_id, project_id, site_id, status, assigned_by, assigned_at, unassigned_at, created_at, updated_at;
 
 -- name: ListDeviceCapabilities :many
 SELECT capability_code

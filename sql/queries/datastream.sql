@@ -1,11 +1,11 @@
 -- name: CreateDataStream :one
-INSERT INTO data_streams (workspace_id, device_id, code, name, type, unit, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, workspace_id, device_id, code, name, type, unit, status, created_by, created_at, updated_at;
+INSERT INTO data_streams (device_id, code, name, type, unit, created_by)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, device_id, code, name, type, unit, status, created_by, created_at, updated_at;
 
 -- name: UpsertDataStreamFromSync :one
-INSERT INTO data_streams (workspace_id, device_id, code, name, type, unit, status, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, 'active', $7)
+INSERT INTO data_streams (device_id, code, name, type, unit, status, created_by)
+VALUES ($1, $2, $3, $4, $5, 'active', $6)
 ON CONFLICT (device_id, code)
 DO UPDATE SET
     name = EXCLUDED.name,
@@ -16,15 +16,15 @@ DO UPDATE SET
         ELSE 'active'
     END,
     updated_at = now()
-RETURNING id, workspace_id, device_id, code, name, type, unit, status, created_by, created_at, updated_at;
+RETURNING id, device_id, code, name, type, unit, status, created_by, created_at, updated_at;
 
 -- name: GetDataStream :one
-SELECT id, workspace_id, device_id, code, name, type, unit, status, created_by, created_at, updated_at
+SELECT id, device_id, code, name, type, unit, status, created_by, created_at, updated_at
 FROM data_streams
 WHERE id = $1;
 
 -- name: ListDataStreamsByDevice :many
-SELECT id, workspace_id, device_id, code, name, type, unit, status, created_by, created_at, updated_at
+SELECT id, device_id, code, name, type, unit, status, created_by, created_at, updated_at
 FROM data_streams
 WHERE device_id = $1
 ORDER BY created_at DESC, id DESC;
@@ -38,4 +38,4 @@ SET code = $2,
     status = $6,
     updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, device_id, code, name, type, unit, status, created_by, created_at, updated_at;
+RETURNING id, device_id, code, name, type, unit, status, created_by, created_at, updated_at;

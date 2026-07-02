@@ -12,24 +12,22 @@ import (
 )
 
 const createDataStream = `-- name: CreateDataStream :one
-INSERT INTO data_streams (workspace_id, device_id, code, name, type, unit, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, workspace_id, device_id, code, name, type, unit, status, created_by, created_at, updated_at
+INSERT INTO data_streams (device_id, code, name, type, unit, created_by)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, device_id, code, name, type, unit, status, created_by, created_at, updated_at
 `
 
 type CreateDataStreamParams struct {
-	WorkspaceID uuid.UUID `json:"workspace_id"`
-	DeviceID    uuid.UUID `json:"device_id"`
-	Code        string    `json:"code"`
-	Name        string    `json:"name"`
-	Type        string    `json:"type"`
-	Unit        *string   `json:"unit"`
-	CreatedBy   uuid.UUID `json:"created_by"`
+	DeviceID  uuid.UUID `json:"device_id"`
+	Code      string    `json:"code"`
+	Name      string    `json:"name"`
+	Type      string    `json:"type"`
+	Unit      *string   `json:"unit"`
+	CreatedBy uuid.UUID `json:"created_by"`
 }
 
 func (q *Queries) CreateDataStream(ctx context.Context, arg CreateDataStreamParams) (DataStream, error) {
 	row := q.db.QueryRow(ctx, createDataStream,
-		arg.WorkspaceID,
 		arg.DeviceID,
 		arg.Code,
 		arg.Name,
@@ -40,7 +38,6 @@ func (q *Queries) CreateDataStream(ctx context.Context, arg CreateDataStreamPara
 	var i DataStream
 	err := row.Scan(
 		&i.ID,
-		&i.WorkspaceID,
 		&i.DeviceID,
 		&i.Code,
 		&i.Name,
@@ -55,7 +52,7 @@ func (q *Queries) CreateDataStream(ctx context.Context, arg CreateDataStreamPara
 }
 
 const getDataStream = `-- name: GetDataStream :one
-SELECT id, workspace_id, device_id, code, name, type, unit, status, created_by, created_at, updated_at
+SELECT id, device_id, code, name, type, unit, status, created_by, created_at, updated_at
 FROM data_streams
 WHERE id = $1
 `
@@ -65,7 +62,6 @@ func (q *Queries) GetDataStream(ctx context.Context, id uuid.UUID) (DataStream, 
 	var i DataStream
 	err := row.Scan(
 		&i.ID,
-		&i.WorkspaceID,
 		&i.DeviceID,
 		&i.Code,
 		&i.Name,
@@ -80,7 +76,7 @@ func (q *Queries) GetDataStream(ctx context.Context, id uuid.UUID) (DataStream, 
 }
 
 const listDataStreamsByDevice = `-- name: ListDataStreamsByDevice :many
-SELECT id, workspace_id, device_id, code, name, type, unit, status, created_by, created_at, updated_at
+SELECT id, device_id, code, name, type, unit, status, created_by, created_at, updated_at
 FROM data_streams
 WHERE device_id = $1
 ORDER BY created_at DESC, id DESC
@@ -97,7 +93,6 @@ func (q *Queries) ListDataStreamsByDevice(ctx context.Context, deviceID uuid.UUI
 		var i DataStream
 		if err := rows.Scan(
 			&i.ID,
-			&i.WorkspaceID,
 			&i.DeviceID,
 			&i.Code,
 			&i.Name,
@@ -127,7 +122,7 @@ SET code = $2,
     status = $6,
     updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, device_id, code, name, type, unit, status, created_by, created_at, updated_at
+RETURNING id, device_id, code, name, type, unit, status, created_by, created_at, updated_at
 `
 
 type UpdateDataStreamParams struct {
@@ -151,7 +146,6 @@ func (q *Queries) UpdateDataStream(ctx context.Context, arg UpdateDataStreamPara
 	var i DataStream
 	err := row.Scan(
 		&i.ID,
-		&i.WorkspaceID,
 		&i.DeviceID,
 		&i.Code,
 		&i.Name,
@@ -166,8 +160,8 @@ func (q *Queries) UpdateDataStream(ctx context.Context, arg UpdateDataStreamPara
 }
 
 const upsertDataStreamFromSync = `-- name: UpsertDataStreamFromSync :one
-INSERT INTO data_streams (workspace_id, device_id, code, name, type, unit, status, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, 'active', $7)
+INSERT INTO data_streams (device_id, code, name, type, unit, status, created_by)
+VALUES ($1, $2, $3, $4, $5, 'active', $6)
 ON CONFLICT (device_id, code)
 DO UPDATE SET
     name = EXCLUDED.name,
@@ -178,22 +172,20 @@ DO UPDATE SET
         ELSE 'active'
     END,
     updated_at = now()
-RETURNING id, workspace_id, device_id, code, name, type, unit, status, created_by, created_at, updated_at
+RETURNING id, device_id, code, name, type, unit, status, created_by, created_at, updated_at
 `
 
 type UpsertDataStreamFromSyncParams struct {
-	WorkspaceID uuid.UUID `json:"workspace_id"`
-	DeviceID    uuid.UUID `json:"device_id"`
-	Code        string    `json:"code"`
-	Name        string    `json:"name"`
-	Type        string    `json:"type"`
-	Unit        *string   `json:"unit"`
-	CreatedBy   uuid.UUID `json:"created_by"`
+	DeviceID  uuid.UUID `json:"device_id"`
+	Code      string    `json:"code"`
+	Name      string    `json:"name"`
+	Type      string    `json:"type"`
+	Unit      *string   `json:"unit"`
+	CreatedBy uuid.UUID `json:"created_by"`
 }
 
 func (q *Queries) UpsertDataStreamFromSync(ctx context.Context, arg UpsertDataStreamFromSyncParams) (DataStream, error) {
 	row := q.db.QueryRow(ctx, upsertDataStreamFromSync,
-		arg.WorkspaceID,
 		arg.DeviceID,
 		arg.Code,
 		arg.Name,
@@ -204,7 +196,6 @@ func (q *Queries) UpsertDataStreamFromSync(ctx context.Context, arg UpsertDataSt
 	var i DataStream
 	err := row.Scan(
 		&i.ID,
-		&i.WorkspaceID,
 		&i.DeviceID,
 		&i.Code,
 		&i.Name,

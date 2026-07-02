@@ -84,157 +84,23 @@ func NewHandler(service *Service, checker *permission.Checker) *Handler {
 }
 
 func (h *Handler) ListDataSources(c *gin.Context) {
-	workspaceID, ok := parseUUIDValue(c.Query("workspace_id"), "workspace_id", c)
-	if !ok {
-		return
-	}
-	if !h.authorize(c, "workspace", workspaceID, dataSourceManageAction) {
-		return
-	}
-
-	items, err := h.service.ListDataSources(c.Request.Context(), workspaceID)
-	if err != nil {
-		httpx.WriteAppError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"items": items})
+	httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "data sources are system managed"))
 }
 
 func (h *Handler) CreateDataSource(c *gin.Context) {
-	actor, ok := actorFromContext(c)
-	if !ok {
-		return
-	}
-
-	var req createDataSourceRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
-		return
-	}
-
-	workspaceID, ok := parseUUIDValue(req.WorkspaceID, "workspace_id", c)
-	if !ok {
-		return
-	}
-	if !h.authorize(c, "workspace", workspaceID, dataSourceManageAction) {
-		return
-	}
-
-	result, err := h.service.CreateDataSource(c.Request.Context(), CreateDataSourceInput{
-		Scope:        DataSourceScopeWorkspace,
-		WorkspaceID:  workspaceID,
-		Name:         req.Name,
-		Type:         req.Type,
-		DsnSecretRef: req.DsnSecretRef,
-		ActorUserID:  actor.UserID,
-	})
-	if err != nil {
-		httpx.WriteAppError(c, err)
-		return
-	}
-	c.JSON(http.StatusCreated, result)
+	httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "data sources are system managed"))
 }
 
 func (h *Handler) GetDataSource(c *gin.Context) {
-	dataSourceID, ok := parseUUIDParam(c, "data_source_id")
-	if !ok {
-		return
-	}
-
-	result, err := h.service.GetDataSource(c.Request.Context(), dataSourceID)
-	if err != nil {
-		httpx.WriteAppError(c, err)
-		return
-	}
-	if result.WorkspaceID == nil || !h.authorize(c, "workspace", *result.WorkspaceID, dataSourceManageAction) {
-		return
-	}
-	c.JSON(http.StatusOK, result)
+	httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "data sources are system managed"))
 }
 
 func (h *Handler) UpdateDataSource(c *gin.Context) {
-	dataSourceID, ok := parseUUIDParam(c, "data_source_id")
-	if !ok {
-		return
-	}
-
-	current, err := h.service.GetDataSource(c.Request.Context(), dataSourceID)
-	if err != nil {
-		httpx.WriteAppError(c, err)
-		return
-	}
-	if current.WorkspaceID == nil || !h.authorize(c, "workspace", *current.WorkspaceID, dataSourceManageAction) {
-		return
-	}
-
-	var req updateDataSourceRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
-		return
-	}
-
-	result, err := h.service.UpdateDataSource(c.Request.Context(), UpdateDataSourceInput{
-		DataSourceID: dataSourceID,
-		Name:         req.Name,
-		Type:         req.Type,
-		DsnSecretRef: req.DsnSecretRef,
-		Status:       req.Status,
-	})
-	if err != nil {
-		httpx.WriteAppError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, result)
+	httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "data sources are system managed"))
 }
 
 func (h *Handler) SyncTHCPNStandardStation(c *gin.Context) {
-	actor, ok := actorFromContext(c)
-	if !ok {
-		return
-	}
-	dataSourceID, ok := parseUUIDParam(c, "data_source_id")
-	if !ok {
-		return
-	}
-
-	source, err := h.service.GetDataSource(c.Request.Context(), dataSourceID)
-	if err != nil {
-		httpx.WriteAppError(c, err)
-		return
-	}
-	if source.WorkspaceID == nil || !h.authorize(c, "workspace", *source.WorkspaceID, dataSourceManageAction) {
-		return
-	}
-
-	var req syncTHCPNStandardStationRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
-		return
-	}
-	projectID, ok := parseOptionalUUIDValue(req.ProjectID, "project_id", c)
-	if !ok {
-		return
-	}
-	siteID, ok := parseOptionalUUIDValue(req.SiteID, "site_id", c)
-	if !ok {
-		return
-	}
-
-	result, err := h.service.SyncTHCPNStandardStation(c.Request.Context(), SyncTHCPNStandardStationInput{
-		DataSourceID:     dataSourceID,
-		ProjectID:        projectID,
-		SiteID:           siteID,
-		ExternalDeviceID: req.ExternalDeviceID,
-		ProductID:        req.ProductID,
-		SerialNo:         req.SerialNo,
-		Name:             req.Name,
-		ActorUserID:      actor.UserID,
-	})
-	if err != nil {
-		httpx.WriteAppError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, result)
+	httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "data sources are system managed"))
 }
 
 func (h *Handler) AdminListDataSources(c *gin.Context) {
@@ -259,7 +125,6 @@ func (h *Handler) AdminCreateDataSource(c *gin.Context) {
 	}
 
 	result, err := h.service.CreateDataSource(c.Request.Context(), CreateDataSourceInput{
-		Scope:        DataSourceScopeSystem,
 		Name:         req.Name,
 		Type:         req.Type,
 		DsnSecretRef: req.DsnSecretRef,
@@ -275,16 +140,6 @@ func (h *Handler) AdminCreateDataSource(c *gin.Context) {
 func (h *Handler) AdminUpdateDataSource(c *gin.Context) {
 	dataSourceID, ok := parseUUIDParam(c, "data_source_id")
 	if !ok {
-		return
-	}
-
-	current, err := h.service.GetDataSource(c.Request.Context(), dataSourceID)
-	if err != nil {
-		httpx.WriteAppError(c, err)
-		return
-	}
-	if current.Scope != DataSourceScopeSystem {
-		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "data source is not system scoped"))
 		return
 	}
 
@@ -315,16 +170,6 @@ func (h *Handler) AdminSyncTHCPNStandardStation(c *gin.Context) {
 	}
 	dataSourceID, ok := parseUUIDParam(c, "data_source_id")
 	if !ok {
-		return
-	}
-
-	source, err := h.service.GetDataSource(c.Request.Context(), dataSourceID)
-	if err != nil {
-		httpx.WriteAppError(c, err)
-		return
-	}
-	if source.Scope != DataSourceScopeSystem {
-		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "data source is not system scoped"))
 		return
 	}
 

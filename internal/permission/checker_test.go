@@ -22,6 +22,7 @@ type fakePermissionStore struct {
 	project          sqlc.Project
 	site             sqlc.Site
 	device           sqlc.Device
+	deviceAssignment sqlc.DeviceAssignment
 	dataStream       sqlc.DataStream
 }
 
@@ -65,6 +66,16 @@ func (f *fakePermissionStore) GetSite(_ context.Context, id uuid.UUID) (sqlc.Sit
 func (f *fakePermissionStore) GetDevice(_ context.Context, id uuid.UUID) (sqlc.Device, error) {
 	f.device.ID = id
 	return f.device, nil
+}
+
+func (f *fakePermissionStore) GetActiveDeviceAssignment(_ context.Context, deviceID uuid.UUID) (sqlc.DeviceAssignment, error) {
+	f.deviceAssignment.DeviceID = deviceID
+	return f.deviceAssignment, nil
+}
+
+func (f *fakePermissionStore) GetActiveDeviceAssignmentByDataStream(_ context.Context, id uuid.UUID) (sqlc.DeviceAssignment, error) {
+	f.deviceAssignment.DeviceID = f.dataStream.DeviceID
+	return f.deviceAssignment, nil
 }
 
 func (f *fakePermissionStore) GetDataStream(_ context.Context, id uuid.UUID) (sqlc.DataStream, error) {
@@ -196,7 +207,9 @@ func TestCheckerReturnsAccessGrantRoleCode(t *testing.T) {
 		grantAllowed:  true,
 		grantRoleCode: "service_engineer",
 		device: sqlc.Device{
-			ID:          deviceID,
+			ID: deviceID,
+		},
+		deviceAssignment: sqlc.DeviceAssignment{
 			WorkspaceID: workspaceID,
 		},
 	}

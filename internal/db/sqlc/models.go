@@ -72,7 +72,6 @@ type AuthRefreshSession struct {
 
 type DataSource struct {
 	ID           uuid.UUID          `json:"id"`
-	WorkspaceID  *uuid.UUID         `json:"workspace_id"`
 	Name         string             `json:"name"`
 	Type         string             `json:"type"`
 	DsnSecretRef string             `json:"dsn_secret_ref"`
@@ -80,21 +79,19 @@ type DataSource struct {
 	CreatedBy    uuid.UUID          `json:"created_by"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
-	Scope        string             `json:"scope"`
 }
 
 type DataStream struct {
-	ID          uuid.UUID          `json:"id"`
-	WorkspaceID uuid.UUID          `json:"workspace_id"`
-	DeviceID    uuid.UUID          `json:"device_id"`
-	Code        string             `json:"code"`
-	Name        string             `json:"name"`
-	Type        string             `json:"type"`
-	Unit        *string            `json:"unit"`
-	Status      string             `json:"status"`
-	CreatedBy   uuid.UUID          `json:"created_by"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	ID        uuid.UUID          `json:"id"`
+	DeviceID  uuid.UUID          `json:"device_id"`
+	Code      string             `json:"code"`
+	Name      string             `json:"name"`
+	Type      string             `json:"type"`
+	Unit      *string            `json:"unit"`
+	Status    string             `json:"status"`
+	CreatedBy uuid.UUID          `json:"created_by"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
 type DataStreamBinding struct {
@@ -142,17 +139,27 @@ type DatasetSource struct {
 
 type Device struct {
 	ID          uuid.UUID          `json:"id"`
-	WorkspaceID uuid.UUID          `json:"workspace_id"`
-	ProjectID   *uuid.UUID         `json:"project_id"`
-	SiteID      *uuid.UUID         `json:"site_id"`
 	ProductID   *string            `json:"product_id"`
 	SerialNo    string             `json:"serial_no"`
 	Name        string             `json:"name"`
 	Status      string             `json:"status"`
 	ActivatedAt pgtype.Timestamptz `json:"activated_at"`
-	BoundBy     *uuid.UUID         `json:"bound_by"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type DeviceAssignment struct {
+	ID           uuid.UUID          `json:"id"`
+	DeviceID     uuid.UUID          `json:"device_id"`
+	WorkspaceID  uuid.UUID          `json:"workspace_id"`
+	ProjectID    *uuid.UUID         `json:"project_id"`
+	SiteID       *uuid.UUID         `json:"site_id"`
+	Status       string             `json:"status"`
+	AssignedBy   *uuid.UUID         `json:"assigned_by"`
+	AssignedAt   pgtype.Timestamptz `json:"assigned_at"`
+	UnassignedAt pgtype.Timestamptz `json:"unassigned_at"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
 type DeviceCapability struct {
@@ -193,7 +200,6 @@ type DeviceOperation struct {
 
 type DeviceSourceRef struct {
 	ID                 uuid.UUID          `json:"id"`
-	WorkspaceID        uuid.UUID          `json:"workspace_id"`
 	DeviceID           uuid.UUID          `json:"device_id"`
 	DataSourceID       uuid.UUID          `json:"data_source_id"`
 	AdapterCode        string             `json:"adapter_code"`

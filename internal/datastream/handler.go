@@ -68,61 +68,7 @@ func (h *Handler) List(c *gin.Context) {
 }
 
 func (h *Handler) Create(c *gin.Context) {
-	actor, ok := actorFromContext(c)
-	if !ok {
-		return
-	}
-
-	var req createDataStreamRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
-		return
-	}
-
-	deviceID, ok := parseUUIDValue(req.DeviceID, "device_id", c)
-	if !ok {
-		return
-	}
-
-	if !h.authorize(c, "device", deviceID, dataStreamManageAction) {
-		return
-	}
-
-	result, err := h.service.Create(c.Request.Context(), CreateInput{
-		DeviceID:    deviceID,
-		Code:        req.Code,
-		Name:        req.Name,
-		Type:        req.Type,
-		Unit:        req.Unit,
-		ActorUserID: actor.UserID,
-	})
-	if err != nil {
-		if !h.record(c, audit.RecordInput{
-			ActorType:    audit.ActorUser,
-			ActorID:      audit.UserActorID(actor.UserID),
-			Action:       "data_stream.create",
-			ResourceType: "data_stream",
-			Result:       audit.ResultFailure,
-			Reason:       apperr.MessageOf(err),
-		}) {
-			return
-		}
-		httpx.WriteAppError(c, err)
-		return
-	}
-	if !h.record(c, audit.RecordInput{
-		WorkspaceID:  audit.WorkspaceID(result.WorkspaceID),
-		ActorType:    audit.ActorUser,
-		ActorID:      audit.UserActorID(actor.UserID),
-		Action:       "data_stream.create",
-		ResourceType: "data_stream",
-		ResourceID:   audit.ResourceID(result.ID),
-		Result:       audit.ResultSuccess,
-	}) {
-		return
-	}
-
-	c.JSON(http.StatusCreated, result)
+	httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "data streams are created by system sync"))
 }
 
 func (h *Handler) Get(c *gin.Context) {
@@ -144,58 +90,7 @@ func (h *Handler) Get(c *gin.Context) {
 }
 
 func (h *Handler) Update(c *gin.Context) {
-	dataStreamID, ok := parseUUIDParam(c, "data_stream_id")
-	if !ok {
-		return
-	}
-
-	if !h.authorize(c, "data_stream", dataStreamID, dataStreamManageAction) {
-		return
-	}
-	actor, _ := auth.ActorFromContext(c)
-
-	var req updateDataStreamRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
-		return
-	}
-
-	result, err := h.service.Update(c.Request.Context(), UpdateInput{
-		DataStreamID: dataStreamID,
-		Code:         req.Code,
-		Name:         req.Name,
-		Type:         req.Type,
-		Unit:         req.Unit,
-		Status:       req.Status,
-	})
-	if err != nil {
-		if !h.record(c, audit.RecordInput{
-			ActorType:    audit.ActorUser,
-			ActorID:      audit.UserActorID(actor.UserID),
-			Action:       "data_stream.update",
-			ResourceType: "data_stream",
-			ResourceID:   audit.ResourceID(dataStreamID),
-			Result:       audit.ResultFailure,
-			Reason:       apperr.MessageOf(err),
-		}) {
-			return
-		}
-		httpx.WriteAppError(c, err)
-		return
-	}
-	if !h.record(c, audit.RecordInput{
-		WorkspaceID:  audit.WorkspaceID(result.WorkspaceID),
-		ActorType:    audit.ActorUser,
-		ActorID:      audit.UserActorID(actor.UserID),
-		Action:       "data_stream.update",
-		ResourceType: "data_stream",
-		ResourceID:   audit.ResourceID(result.ID),
-		Result:       audit.ResultSuccess,
-	}) {
-		return
-	}
-
-	c.JSON(http.StatusOK, result)
+	httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "data streams are system managed"))
 }
 
 func (h *Handler) authorize(c *gin.Context, resourceType string, resourceID uuid.UUID, action string) bool {

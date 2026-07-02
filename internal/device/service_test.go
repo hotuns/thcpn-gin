@@ -193,7 +193,7 @@ func TestTransferRequiresProjectWhenSiteSet(t *testing.T) {
 func TestUnbindRequiresActor(t *testing.T) {
 	service := NewService(nil)
 
-	_, err := service.Unbind(context.Background(), UnbindInput{
+	err := service.Unbind(context.Background(), UnbindInput{
 		DeviceID: uuid.New(),
 	})
 	if apperr.KindOf(err) != apperr.KindInvalidArgument {
@@ -204,7 +204,7 @@ func TestUnbindRequiresActor(t *testing.T) {
 func TestUnbindRequiresDevice(t *testing.T) {
 	service := NewService(nil)
 
-	_, err := service.Unbind(context.Background(), UnbindInput{
+	err := service.Unbind(context.Background(), UnbindInput{
 		ActorUserID: uuid.New(),
 	})
 	if apperr.KindOf(err) != apperr.KindInvalidArgument {

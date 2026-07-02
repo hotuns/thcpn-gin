@@ -473,7 +473,11 @@ func (s *Service) resolveScope(ctx context.Context, scopeType string, scopeID uu
 		if err != nil {
 			return resolvedScope{}, mapNotFoundOrInternal(err, "device not found")
 		}
-		return resolvedScope{workspaceID: device.WorkspaceID, scopeType: "device", scopeID: device.ID}, nil
+		assignment, err := s.queries.GetActiveDeviceAssignment(ctx, scopeID)
+		if err != nil {
+			return resolvedScope{}, mapNotFoundOrInternal(err, "active device assignment not found")
+		}
+		return resolvedScope{workspaceID: assignment.WorkspaceID, scopeType: "device", scopeID: device.ID}, nil
 	case "dataset":
 		dataset, err := s.queries.GetDataset(ctx, scopeID)
 		if err != nil {

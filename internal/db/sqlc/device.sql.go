@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const addDeviceCapability = `-- name: AddDeviceCapability :one
@@ -35,54 +36,113 @@ func (q *Queries) AddDeviceCapability(ctx context.Context, arg AddDeviceCapabili
 	return i, err
 }
 
+const closeActiveDeviceAssignment = `-- name: CloseActiveDeviceAssignment :one
+UPDATE device_assignments
+SET status = $2,
+    unassigned_at = now(),
+    updated_at = now()
+WHERE device_id = $1
+  AND status = 'active'
+RETURNING id, device_id, workspace_id, project_id, site_id, status, assigned_by, assigned_at, unassigned_at, created_at, updated_at
+`
+
+type CloseActiveDeviceAssignmentParams struct {
+	DeviceID uuid.UUID `json:"device_id"`
+	Status   string    `json:"status"`
+}
+
+func (q *Queries) CloseActiveDeviceAssignment(ctx context.Context, arg CloseActiveDeviceAssignmentParams) (DeviceAssignment, error) {
+	row := q.db.QueryRow(ctx, closeActiveDeviceAssignment, arg.DeviceID, arg.Status)
+	var i DeviceAssignment
+	err := row.Scan(
+		&i.ID,
+		&i.DeviceID,
+		&i.WorkspaceID,
+		&i.ProjectID,
+		&i.SiteID,
+		&i.Status,
+		&i.AssignedBy,
+		&i.AssignedAt,
+		&i.UnassignedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createDevice = `-- name: CreateDevice :one
 INSERT INTO devices (
-    workspace_id,
-    project_id,
-    site_id,
     product_id,
     serial_no,
     name,
     status,
-    activated_at,
-    bound_by
+    activated_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, 'active', now(), $7)
-RETURNING id, workspace_id, project_id, site_id, product_id, serial_no, name, status, activated_at, bound_by, created_at, updated_at
+VALUES ($1, $2, $3, 'active', now())
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at
 `
 
 type CreateDeviceParams struct {
-	WorkspaceID uuid.UUID  `json:"workspace_id"`
-	ProjectID   *uuid.UUID `json:"project_id"`
-	SiteID      *uuid.UUID `json:"site_id"`
-	ProductID   *string    `json:"product_id"`
-	SerialNo    string     `json:"serial_no"`
-	Name        string     `json:"name"`
-	BoundBy     *uuid.UUID `json:"bound_by"`
+	ProductID *string `json:"product_id"`
+	SerialNo  string  `json:"serial_no"`
+	Name      string  `json:"name"`
 }
 
 func (q *Queries) CreateDevice(ctx context.Context, arg CreateDeviceParams) (Device, error) {
-	row := q.db.QueryRow(ctx, createDevice,
-		arg.WorkspaceID,
-		arg.ProjectID,
-		arg.SiteID,
-		arg.ProductID,
-		arg.SerialNo,
-		arg.Name,
-		arg.BoundBy,
-	)
+	row := q.db.QueryRow(ctx, createDevice, arg.ProductID, arg.SerialNo, arg.Name)
 	var i Device
 	err := row.Scan(
 		&i.ID,
-		&i.WorkspaceID,
-		&i.ProjectID,
-		&i.SiteID,
 		&i.ProductID,
 		&i.SerialNo,
 		&i.Name,
 		&i.Status,
 		&i.ActivatedAt,
-		&i.BoundBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createDeviceAssignment = `-- name: CreateDeviceAssignment :one
+INSERT INTO device_assignments (
+    device_id,
+    workspace_id,
+    project_id,
+    site_id,
+    assigned_by
+)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, device_id, workspace_id, project_id, site_id, status, assigned_by, assigned_at, unassigned_at, created_at, updated_at
+`
+
+type CreateDeviceAssignmentParams struct {
+	DeviceID    uuid.UUID  `json:"device_id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	ProjectID   *uuid.UUID `json:"project_id"`
+	SiteID      *uuid.UUID `json:"site_id"`
+	AssignedBy  *uuid.UUID `json:"assigned_by"`
+}
+
+func (q *Queries) CreateDeviceAssignment(ctx context.Context, arg CreateDeviceAssignmentParams) (DeviceAssignment, error) {
+	row := q.db.QueryRow(ctx, createDeviceAssignment,
+		arg.DeviceID,
+		arg.WorkspaceID,
+		arg.ProjectID,
+		arg.SiteID,
+		arg.AssignedBy,
+	)
+	var i DeviceAssignment
+	err := row.Scan(
+		&i.ID,
+		&i.DeviceID,
+		&i.WorkspaceID,
+		&i.ProjectID,
+		&i.SiteID,
+		&i.Status,
+		&i.AssignedBy,
+		&i.AssignedAt,
+		&i.UnassignedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -142,8 +202,65 @@ func (q *Queries) DeleteDeviceCapabilities(ctx context.Context, deviceID uuid.UU
 	return err
 }
 
+const getActiveDeviceAssignment = `-- name: GetActiveDeviceAssignment :one
+SELECT id, device_id, workspace_id, project_id, site_id, status, assigned_by, assigned_at, unassigned_at, created_at, updated_at
+FROM device_assignments
+WHERE device_id = $1
+  AND status = 'active'
+ORDER BY assigned_at DESC, id DESC
+LIMIT 1
+`
+
+func (q *Queries) GetActiveDeviceAssignment(ctx context.Context, deviceID uuid.UUID) (DeviceAssignment, error) {
+	row := q.db.QueryRow(ctx, getActiveDeviceAssignment, deviceID)
+	var i DeviceAssignment
+	err := row.Scan(
+		&i.ID,
+		&i.DeviceID,
+		&i.WorkspaceID,
+		&i.ProjectID,
+		&i.SiteID,
+		&i.Status,
+		&i.AssignedBy,
+		&i.AssignedAt,
+		&i.UnassignedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getActiveDeviceAssignmentByDataStream = `-- name: GetActiveDeviceAssignmentByDataStream :one
+SELECT da.id, da.device_id, da.workspace_id, da.project_id, da.site_id, da.status, da.assigned_by, da.assigned_at, da.unassigned_at, da.created_at, da.updated_at
+FROM device_assignments AS da
+JOIN data_streams AS ds ON ds.device_id = da.device_id
+WHERE ds.id = $1
+  AND da.status = 'active'
+ORDER BY da.assigned_at DESC, da.id DESC
+LIMIT 1
+`
+
+func (q *Queries) GetActiveDeviceAssignmentByDataStream(ctx context.Context, id uuid.UUID) (DeviceAssignment, error) {
+	row := q.db.QueryRow(ctx, getActiveDeviceAssignmentByDataStream, id)
+	var i DeviceAssignment
+	err := row.Scan(
+		&i.ID,
+		&i.DeviceID,
+		&i.WorkspaceID,
+		&i.ProjectID,
+		&i.SiteID,
+		&i.Status,
+		&i.AssignedBy,
+		&i.AssignedAt,
+		&i.UnassignedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getDevice = `-- name: GetDevice :one
-SELECT id, workspace_id, project_id, site_id, product_id, serial_no, name, status, activated_at, bound_by, created_at, updated_at
+SELECT id, product_id, serial_no, name, status, activated_at, created_at, updated_at
 FROM devices
 WHERE id = $1
 `
@@ -153,17 +270,73 @@ func (q *Queries) GetDevice(ctx context.Context, id uuid.UUID) (Device, error) {
 	var i Device
 	err := row.Scan(
 		&i.ID,
-		&i.WorkspaceID,
-		&i.ProjectID,
-		&i.SiteID,
 		&i.ProductID,
 		&i.SerialNo,
 		&i.Name,
 		&i.Status,
 		&i.ActivatedAt,
-		&i.BoundBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getDeviceWithActiveAssignment = `-- name: GetDeviceWithActiveAssignment :one
+SELECT
+    d.id,
+    d.product_id,
+    d.serial_no,
+    d.name,
+    d.status,
+    d.activated_at,
+    d.created_at,
+    d.updated_at,
+    da.id AS assignment_id,
+    da.workspace_id,
+    da.project_id,
+    da.site_id,
+    da.assigned_by,
+    da.assigned_at
+FROM devices AS d
+JOIN device_assignments AS da ON da.device_id = d.id AND da.status = 'active'
+WHERE d.id = $1
+`
+
+type GetDeviceWithActiveAssignmentRow struct {
+	ID           uuid.UUID          `json:"id"`
+	ProductID    *string            `json:"product_id"`
+	SerialNo     string             `json:"serial_no"`
+	Name         string             `json:"name"`
+	Status       string             `json:"status"`
+	ActivatedAt  pgtype.Timestamptz `json:"activated_at"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	AssignmentID uuid.UUID          `json:"assignment_id"`
+	WorkspaceID  uuid.UUID          `json:"workspace_id"`
+	ProjectID    *uuid.UUID         `json:"project_id"`
+	SiteID       *uuid.UUID         `json:"site_id"`
+	AssignedBy   *uuid.UUID         `json:"assigned_by"`
+	AssignedAt   pgtype.Timestamptz `json:"assigned_at"`
+}
+
+func (q *Queries) GetDeviceWithActiveAssignment(ctx context.Context, id uuid.UUID) (GetDeviceWithActiveAssignmentRow, error) {
+	row := q.db.QueryRow(ctx, getDeviceWithActiveAssignment, id)
+	var i GetDeviceWithActiveAssignmentRow
+	err := row.Scan(
+		&i.ID,
+		&i.ProductID,
+		&i.SerialNo,
+		&i.Name,
+		&i.Status,
+		&i.ActivatedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AssignmentID,
+		&i.WorkspaceID,
+		&i.ProjectID,
+		&i.SiteID,
+		&i.AssignedBy,
+		&i.AssignedAt,
 	)
 	return i, err
 }
@@ -233,34 +406,74 @@ func (q *Queries) ListDeviceOperationsByDevice(ctx context.Context, deviceID uui
 }
 
 const listDevicesByProject = `-- name: ListDevicesByProject :many
-SELECT id, workspace_id, project_id, site_id, product_id, serial_no, name, status, activated_at, bound_by, created_at, updated_at
-FROM devices
-WHERE project_id = $1
-ORDER BY created_at DESC, id DESC
+SELECT
+    d.id,
+    d.product_id,
+    d.serial_no,
+    d.name,
+    d.status,
+    d.activated_at,
+    d.created_at,
+    d.updated_at,
+    da.id AS assignment_id,
+    da.workspace_id,
+    da.project_id,
+    da.site_id,
+    da.assigned_by,
+    da.assigned_at
+FROM devices AS d
+JOIN device_assignments AS da ON da.device_id = d.id AND da.status = 'active'
+WHERE da.workspace_id = $1
+  AND da.project_id = $2
+ORDER BY da.assigned_at DESC, d.created_at DESC, d.id DESC
 `
 
-func (q *Queries) ListDevicesByProject(ctx context.Context, projectID *uuid.UUID) ([]Device, error) {
-	rows, err := q.db.Query(ctx, listDevicesByProject, projectID)
+type ListDevicesByProjectParams struct {
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	ProjectID   *uuid.UUID `json:"project_id"`
+}
+
+type ListDevicesByProjectRow struct {
+	ID           uuid.UUID          `json:"id"`
+	ProductID    *string            `json:"product_id"`
+	SerialNo     string             `json:"serial_no"`
+	Name         string             `json:"name"`
+	Status       string             `json:"status"`
+	ActivatedAt  pgtype.Timestamptz `json:"activated_at"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	AssignmentID uuid.UUID          `json:"assignment_id"`
+	WorkspaceID  uuid.UUID          `json:"workspace_id"`
+	ProjectID    *uuid.UUID         `json:"project_id"`
+	SiteID       *uuid.UUID         `json:"site_id"`
+	AssignedBy   *uuid.UUID         `json:"assigned_by"`
+	AssignedAt   pgtype.Timestamptz `json:"assigned_at"`
+}
+
+func (q *Queries) ListDevicesByProject(ctx context.Context, arg ListDevicesByProjectParams) ([]ListDevicesByProjectRow, error) {
+	rows, err := q.db.Query(ctx, listDevicesByProject, arg.WorkspaceID, arg.ProjectID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Device{}
+	items := []ListDevicesByProjectRow{}
 	for rows.Next() {
-		var i Device
+		var i ListDevicesByProjectRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.WorkspaceID,
-			&i.ProjectID,
-			&i.SiteID,
 			&i.ProductID,
 			&i.SerialNo,
 			&i.Name,
 			&i.Status,
 			&i.ActivatedAt,
-			&i.BoundBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AssignmentID,
+			&i.WorkspaceID,
+			&i.ProjectID,
+			&i.SiteID,
+			&i.AssignedBy,
+			&i.AssignedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -273,34 +486,74 @@ func (q *Queries) ListDevicesByProject(ctx context.Context, projectID *uuid.UUID
 }
 
 const listDevicesBySite = `-- name: ListDevicesBySite :many
-SELECT id, workspace_id, project_id, site_id, product_id, serial_no, name, status, activated_at, bound_by, created_at, updated_at
-FROM devices
-WHERE site_id = $1
-ORDER BY created_at DESC, id DESC
+SELECT
+    d.id,
+    d.product_id,
+    d.serial_no,
+    d.name,
+    d.status,
+    d.activated_at,
+    d.created_at,
+    d.updated_at,
+    da.id AS assignment_id,
+    da.workspace_id,
+    da.project_id,
+    da.site_id,
+    da.assigned_by,
+    da.assigned_at
+FROM devices AS d
+JOIN device_assignments AS da ON da.device_id = d.id AND da.status = 'active'
+WHERE da.workspace_id = $1
+  AND da.site_id = $2
+ORDER BY da.assigned_at DESC, d.created_at DESC, d.id DESC
 `
 
-func (q *Queries) ListDevicesBySite(ctx context.Context, siteID *uuid.UUID) ([]Device, error) {
-	rows, err := q.db.Query(ctx, listDevicesBySite, siteID)
+type ListDevicesBySiteParams struct {
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	SiteID      *uuid.UUID `json:"site_id"`
+}
+
+type ListDevicesBySiteRow struct {
+	ID           uuid.UUID          `json:"id"`
+	ProductID    *string            `json:"product_id"`
+	SerialNo     string             `json:"serial_no"`
+	Name         string             `json:"name"`
+	Status       string             `json:"status"`
+	ActivatedAt  pgtype.Timestamptz `json:"activated_at"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	AssignmentID uuid.UUID          `json:"assignment_id"`
+	WorkspaceID  uuid.UUID          `json:"workspace_id"`
+	ProjectID    *uuid.UUID         `json:"project_id"`
+	SiteID       *uuid.UUID         `json:"site_id"`
+	AssignedBy   *uuid.UUID         `json:"assigned_by"`
+	AssignedAt   pgtype.Timestamptz `json:"assigned_at"`
+}
+
+func (q *Queries) ListDevicesBySite(ctx context.Context, arg ListDevicesBySiteParams) ([]ListDevicesBySiteRow, error) {
+	rows, err := q.db.Query(ctx, listDevicesBySite, arg.WorkspaceID, arg.SiteID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Device{}
+	items := []ListDevicesBySiteRow{}
 	for rows.Next() {
-		var i Device
+		var i ListDevicesBySiteRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.WorkspaceID,
-			&i.ProjectID,
-			&i.SiteID,
 			&i.ProductID,
 			&i.SerialNo,
 			&i.Name,
 			&i.Status,
 			&i.ActivatedAt,
-			&i.BoundBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AssignmentID,
+			&i.WorkspaceID,
+			&i.ProjectID,
+			&i.SiteID,
+			&i.AssignedBy,
+			&i.AssignedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -313,34 +566,68 @@ func (q *Queries) ListDevicesBySite(ctx context.Context, siteID *uuid.UUID) ([]D
 }
 
 const listDevicesByWorkspace = `-- name: ListDevicesByWorkspace :many
-SELECT id, workspace_id, project_id, site_id, product_id, serial_no, name, status, activated_at, bound_by, created_at, updated_at
-FROM devices
-WHERE workspace_id = $1
-ORDER BY created_at DESC, id DESC
+SELECT
+    d.id,
+    d.product_id,
+    d.serial_no,
+    d.name,
+    d.status,
+    d.activated_at,
+    d.created_at,
+    d.updated_at,
+    da.id AS assignment_id,
+    da.workspace_id,
+    da.project_id,
+    da.site_id,
+    da.assigned_by,
+    da.assigned_at
+FROM devices AS d
+JOIN device_assignments AS da ON da.device_id = d.id AND da.status = 'active'
+WHERE da.workspace_id = $1
+ORDER BY da.assigned_at DESC, d.created_at DESC, d.id DESC
 `
 
-func (q *Queries) ListDevicesByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]Device, error) {
+type ListDevicesByWorkspaceRow struct {
+	ID           uuid.UUID          `json:"id"`
+	ProductID    *string            `json:"product_id"`
+	SerialNo     string             `json:"serial_no"`
+	Name         string             `json:"name"`
+	Status       string             `json:"status"`
+	ActivatedAt  pgtype.Timestamptz `json:"activated_at"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	AssignmentID uuid.UUID          `json:"assignment_id"`
+	WorkspaceID  uuid.UUID          `json:"workspace_id"`
+	ProjectID    *uuid.UUID         `json:"project_id"`
+	SiteID       *uuid.UUID         `json:"site_id"`
+	AssignedBy   *uuid.UUID         `json:"assigned_by"`
+	AssignedAt   pgtype.Timestamptz `json:"assigned_at"`
+}
+
+func (q *Queries) ListDevicesByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]ListDevicesByWorkspaceRow, error) {
 	rows, err := q.db.Query(ctx, listDevicesByWorkspace, workspaceID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Device{}
+	items := []ListDevicesByWorkspaceRow{}
 	for rows.Next() {
-		var i Device
+		var i ListDevicesByWorkspaceRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.WorkspaceID,
-			&i.ProjectID,
-			&i.SiteID,
 			&i.ProductID,
 			&i.SerialNo,
 			&i.Name,
 			&i.Status,
 			&i.ActivatedAt,
-			&i.BoundBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AssignmentID,
+			&i.WorkspaceID,
+			&i.ProjectID,
+			&i.SiteID,
+			&i.AssignedBy,
+			&i.AssignedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -352,106 +639,28 @@ func (q *Queries) ListDevicesByWorkspace(ctx context.Context, workspaceID uuid.U
 	return items, nil
 }
 
-const transferDevice = `-- name: TransferDevice :one
-UPDATE devices
-SET workspace_id = $2,
-    project_id = $3,
-    site_id = $4,
-    updated_at = now()
-WHERE id = $1
-RETURNING id, workspace_id, project_id, site_id, product_id, serial_no, name, status, activated_at, bound_by, created_at, updated_at
-`
-
-type TransferDeviceParams struct {
-	ID          uuid.UUID  `json:"id"`
-	WorkspaceID uuid.UUID  `json:"workspace_id"`
-	ProjectID   *uuid.UUID `json:"project_id"`
-	SiteID      *uuid.UUID `json:"site_id"`
-}
-
-func (q *Queries) TransferDevice(ctx context.Context, arg TransferDeviceParams) (Device, error) {
-	row := q.db.QueryRow(ctx, transferDevice,
-		arg.ID,
-		arg.WorkspaceID,
-		arg.ProjectID,
-		arg.SiteID,
-	)
-	var i Device
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.ProjectID,
-		&i.SiteID,
-		&i.ProductID,
-		&i.SerialNo,
-		&i.Name,
-		&i.Status,
-		&i.ActivatedAt,
-		&i.BoundBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const unbindDevice = `-- name: UnbindDevice :one
-UPDATE devices
-SET project_id = NULL,
-    site_id = NULL,
-    status = 'retired',
-    updated_at = now()
-WHERE id = $1
-RETURNING id, workspace_id, project_id, site_id, product_id, serial_no, name, status, activated_at, bound_by, created_at, updated_at
-`
-
-func (q *Queries) UnbindDevice(ctx context.Context, id uuid.UUID) (Device, error) {
-	row := q.db.QueryRow(ctx, unbindDevice, id)
-	var i Device
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.ProjectID,
-		&i.SiteID,
-		&i.ProductID,
-		&i.SerialNo,
-		&i.Name,
-		&i.Status,
-		&i.ActivatedAt,
-		&i.BoundBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const updateDevice = `-- name: UpdateDevice :one
 UPDATE devices
-SET project_id = $2,
-    site_id = $3,
-    product_id = $4,
-    serial_no = $5,
-    name = $6,
-    status = $7,
+SET product_id = $2,
+    serial_no = $3,
+    name = $4,
+    status = $5,
     updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, project_id, site_id, product_id, serial_no, name, status, activated_at, bound_by, created_at, updated_at
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at
 `
 
 type UpdateDeviceParams struct {
-	ID        uuid.UUID  `json:"id"`
-	ProjectID *uuid.UUID `json:"project_id"`
-	SiteID    *uuid.UUID `json:"site_id"`
-	ProductID *string    `json:"product_id"`
-	SerialNo  string     `json:"serial_no"`
-	Name      string     `json:"name"`
-	Status    string     `json:"status"`
+	ID        uuid.UUID `json:"id"`
+	ProductID *string   `json:"product_id"`
+	SerialNo  string    `json:"serial_no"`
+	Name      string    `json:"name"`
+	Status    string    `json:"status"`
 }
 
 func (q *Queries) UpdateDevice(ctx context.Context, arg UpdateDeviceParams) (Device, error) {
 	row := q.db.QueryRow(ctx, updateDevice,
 		arg.ID,
-		arg.ProjectID,
-		arg.SiteID,
 		arg.ProductID,
 		arg.SerialNo,
 		arg.Name,
@@ -460,15 +669,46 @@ func (q *Queries) UpdateDevice(ctx context.Context, arg UpdateDeviceParams) (Dev
 	var i Device
 	err := row.Scan(
 		&i.ID,
-		&i.WorkspaceID,
-		&i.ProjectID,
-		&i.SiteID,
 		&i.ProductID,
 		&i.SerialNo,
 		&i.Name,
 		&i.Status,
 		&i.ActivatedAt,
-		&i.BoundBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateDeviceAssignment = `-- name: UpdateDeviceAssignment :one
+UPDATE device_assignments
+SET project_id = $2,
+    site_id = $3,
+    updated_at = now()
+WHERE id = $1
+  AND status = 'active'
+RETURNING id, device_id, workspace_id, project_id, site_id, status, assigned_by, assigned_at, unassigned_at, created_at, updated_at
+`
+
+type UpdateDeviceAssignmentParams struct {
+	ID        uuid.UUID  `json:"id"`
+	ProjectID *uuid.UUID `json:"project_id"`
+	SiteID    *uuid.UUID `json:"site_id"`
+}
+
+func (q *Queries) UpdateDeviceAssignment(ctx context.Context, arg UpdateDeviceAssignmentParams) (DeviceAssignment, error) {
+	row := q.db.QueryRow(ctx, updateDeviceAssignment, arg.ID, arg.ProjectID, arg.SiteID)
+	var i DeviceAssignment
+	err := row.Scan(
+		&i.ID,
+		&i.DeviceID,
+		&i.WorkspaceID,
+		&i.ProjectID,
+		&i.SiteID,
+		&i.Status,
+		&i.AssignedBy,
+		&i.AssignedAt,
+		&i.UnassignedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

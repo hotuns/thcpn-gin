@@ -27,7 +27,7 @@
 - 支持单独分享资源给某个人。
 - 支持售后临时授权。
 - 从多个设备数据源读取时序数据、图片记录和视频记录。
-- 平台维护设备列表和外部设备源映射；当前设备由系统管理员同步并分配到 Workspace，普通用户只管理已归属设备和数据。
+- 平台系统级维护 DataSource、adapter、设备列表和外部设备源映射；当前设备由系统管理员同步并单一分配到 Workspace，普通用户只管理已分配设备和数据。
 - 支持数据集创建、查询、导出和分享。
 - 对敏感操作进行审计。
 
@@ -86,9 +86,10 @@ Web / Admin / OpenAPI Client
 
 ```text
 平台业务库和设备数据源库分离。
-平台维护设备列表和外部设备源映射。
-设备源 adapter 在代码中注册，设备源实例由部署配置维护。
-Workspace Owner / Admin 只管理自己空间内的资源，不管理 DSN、库表字段映射或 raw SQL。
+平台系统级维护设备列表和外部设备源映射。
+设备源 adapter 在代码中注册，是系统级读取/配置能力，不属于 Workspace。
+DataSource 是系统级设备源实例，由系统管理员、部署配置或内部脚本维护。
+Workspace Owner / Admin 只管理自己空间内已分配设备和业务资源，不管理 DataSource、adapter、DSN、库表字段映射、JSONPath 或 raw SQL。
 权限判断只在平台层完成。
 设备数据源库不承担用户权限判断。
 业务模块不直接拼接不同设备库 SQL。
@@ -360,15 +361,16 @@ audit_logs
 
 ### 7.1 DeviceSourceConfig
 
-由于设备数据已经落在不同数据库中，平台需要知道每类设备源如何连接和读取。第一版预计只有三到四类设备数据来源，因此不建设客户侧设备数据源管理；THCPN 接入仅提供系统管理员后台维护 system scoped DataSource。
+由于设备数据已经落在不同数据库中，平台需要知道每类设备源如何连接和读取。DataSource 是系统级设备源实例，adapter 是系统级读取/配置能力，二者都不属于 Workspace。第一版预计只有三到四类设备数据来源，因此不建设客户侧设备数据源管理；THCPN 接入仅提供系统管理员后台维护系统级 DataSource。
 
 推荐做法：
 
 ```text
-adapter registry 写在代码里。
-THCPN 设备源实例由系统管理员后台维护为 system scoped DataSource；其他特殊源可先写在部署配置、环境变量、seed 或内部脚本里。
-平台库只保存设备映射、配置快照、DataStream 和绑定关系。
-普通 Workspace 用户只管理已归属设备，不管理设备源。
+adapter registry 写在代码里，是系统级能力。
+THCPN 设备源实例由系统管理员后台维护为系统级 DataSource；其他特殊源可先写在部署配置、环境变量、seed 或内部脚本里。
+平台库保存系统级设备、设备映射、配置快照、DataStream 和绑定关系。
+系统管理员把系统级设备单一分配给 Workspace。
+普通 Workspace 用户只消费已分配设备的数据，不查看、不创建、不修改设备源或 adapter。
 ```
 
 配置示例：
@@ -390,10 +392,10 @@ source_code 是平台内部稳定标识，例如 thcpn_legacy。
 adapter_code 对应代码中注册的 adapter。
 dsn_secret_ref 不直接保存明文数据库密码。
 真实连接串应放在环境变量、配置中心、Secret Manager 或加密配置中。
-source_code 不属于任何 workspace；客户权限边界来自绑定后的 Device / DataStream / Dataset。
+source_code、DataSource 和 adapter 不属于任何 workspace；客户权限边界来自分配后的 Device / DataStream / Dataset。
 ```
 
-当前代码实现保留 `data_sources` 表和 `/api/v1/data-sources` 作为内部设备源实例配置载体，`data_sources.type` 表示物理连接类型，例如 `postgres`、`mysql`、`clickhouse` 或 `http_api`。`data_sources.scope` 区分 `workspace` 与 `system`：THCPN 设备源走 system scoped DataSource，由 `users.is_system_admin = true` 的系统管理员通过 `/api/v1/admin/data-sources` 和前端 `/admin/data-sources` 维护；普通 Workspace 控制台不暴露 DSN、库表字段或 adapter 配置。运行时业务分发不再按 `data_sources.type` 决定，而是按 `data_stream_bindings.adapter_code` 决定。
+当前代码实现保留 `data_sources` 表作为系统级设备源实例配置载体，`data_sources.type` 表示物理连接类型，例如 `postgres`、`mysql`、`clickhouse` 或 `http_api`，不再保存工作区归属字段。THCPN 设备源由 `users.is_system_admin = true` 的系统管理员通过 `/api/v1/admin/data-sources` 和前端 `/admin/data-sources` 维护；普通 Workspace 控制台不暴露 DataSource、DSN、库表字段或 adapter 配置。运行时业务分发不再按 `data_sources.type` 决定，而是按 `data_stream_bindings.adapter_code` 决定。
 
 ### 7.2 DataStreamBinding
 
@@ -447,7 +449,7 @@ payload_type: media
 adapter_config_json: {"object_key_field":"object_key","id_field":"media_id","media_type":"image"}
 ```
 
-THCPN 旧 MySQL 设备库应使用专门 adapter，而不是把分表和 JSON 解析规则暴露给普通用户。当前代码第一阶段已实现 `thcpn_legacy_mysql` 只读 adapter：同步入口读取旧库 `devices` 和最新 `device_config`，生成平台 Device、DeviceSourceRef、DeviceConfigSnapshot、DataStream 和 DataStreamBinding；查询入口按 `device_data_index` 定位 `device_data_*` 分表并读取 telemetry/image JSON key。下面是 `adapter_config_json` 使用的受控字段示例：
+THCPN 旧 MySQL 设备库应使用专门 adapter，而不是把分表和 JSON 解析规则暴露给普通用户。当前代码第一阶段已实现 `thcpn_legacy_mysql` 只读 adapter：同步入口读取旧库 `devices` 和最新 `device_config`，生成系统级平台 Device，并将 Device 单一分配给目标 Workspace，同时生成 DeviceSourceRef、DeviceConfigSnapshot、DataStream 和 DataStreamBinding；查询入口按 `device_data_index` 定位 `device_data_*` 分表并读取 telemetry/image JSON key。下面是 `adapter_config_json` 使用的受控字段示例：
 
 ```json
 {
@@ -944,7 +946,7 @@ ZIP
 创建组织空间
 邀请成员
 修改成员角色
-设备绑定
+设备分配
 设备解绑
 设备转移
 修改设备配置
@@ -1008,16 +1010,20 @@ audit_logs
 /api/v1/projects
 /api/v1/sites
 /api/v1/devices
-/api/v1/devices/bind
+/api/v1/devices/{device_id}/transfer
+/api/v1/devices/{device_id}/unbind
 /api/v1/devices/{device_id}/telemetry
 /api/v1/devices/{device_id}/media/images
+/api/v1/data-streams
 /api/v1/datasets
 /api/v1/datasets/{dataset_id}/export
 /api/v1/access-grants
 /api/v1/audit-logs
+/api/v1/admin/data-sources
+/api/v1/admin/data-sources/{data_source_id}/thcpn-standard-station/devices
 ```
 
-第一版不提供客户侧设备源管理 API 或页面。当前实现保留 `/api/v1/data-sources` 和 `/api/v1/data-stream-bindings` 作为内部兼容配置载体，但普通 Workspace 控制台不暴露 DataSource 创建、DSN、库表字段映射或 raw SQL 配置入口。系统级 THCPN 数据源管理迁入 `/api/v1/admin/data-sources` 与 `/admin/data-sources`，由系统管理员同步设备到指定 `target_workspace_id`，同步过程生成外部设备映射、配置快照和 DataStreamBinding。
+第一版不提供客户侧设备源管理 API 或页面。普通 `/api/v1/data-sources` 和 `/api/v1/data-stream-bindings` 不再注册为客户侧路由；普通 Workspace 控制台不暴露 DataSource 创建、查看、DSN、库表字段映射或 raw SQL 配置入口。系统级 THCPN 数据源管理迁入 `/api/v1/admin/data-sources` 与 `/admin/data-sources`，由系统管理员同步系统级设备到指定 `target_workspace_id`，同步过程单一分配设备并生成外部设备映射、配置快照和 DataStreamBinding。
 
 ### 13.2 错误响应
 
@@ -1208,8 +1214,10 @@ Shared Viewer 不能下载媒体
 Shared Downloader 可以导出指定 Dataset
 大范围查询会被拒绝并提示走导出
 Workspace Owner / Admin 不能配置设备源、库表字段或 raw SQL
+Workspace Owner / Admin 不能创建、查看或修改 DataSource / adapter
+设备必须先由系统同步并分配到 Workspace 后才进入普通业务权限模型
 设备源 adapter registry 能按 source_code 选择正确 adapter
-设备绑定只接受 SN / 二维码 / 授权码，不接受 DSN、表名、字段名或 raw SQL
+设备分配和普通查询流程不接受 DSN、表名、字段名、JSONPath 或 raw SQL
 ```
 
 ### 16.3 CI 检查
@@ -1291,11 +1299,11 @@ DataStreamBinding
 交付：
 
 ```text
-代码中注册三到四类设备源 adapter
-设备源实例通过部署配置、环境变量或 seed 维护
-系统可以同步或录入平台设备和外部设备映射
+代码中注册三到四类系统级设备源 adapter
+系统级 DataSource 由系统管理员后台、部署配置、环境变量或 seed 维护
+系统可以同步或录入平台设备和外部设备映射，并将设备单一分配到 Workspace
 系统可以从设备配置快照发现 DataStream
-普通 Workspace 用户不能创建或修改设备源配置 / DataStreamBinding
+普通 Workspace 用户不能创建、查看或修改 DataSource / adapter / DataStreamBinding
 ```
 
 ### 阶段四：项目、站点、设备资产
@@ -1314,8 +1322,8 @@ DeviceCapability
 
 ```text
 可管理项目、站点、设备
-设备可绑定到 workspace / project / site
-设备绑定后可查看平台已生成的数据流
+系统级设备可分配到 workspace，并可选挂到 project / site
+设备分配后可查看平台已生成的数据流
 ```
 
 ### 阶段五：AccessGrant 和分享
@@ -1420,7 +1428,7 @@ Owner 可以邀请和管理成员。
 
 ```text
 Owner 可以管理 workspace 下所有资源。
-Owner / Admin 不能管理设备源连接、外部设备映射或 DataStreamBinding。
+Owner / Admin 不能管理 DataSource、adapter、设备源连接、外部设备映射或 DataStreamBinding。
 Project Manager 只能管理授权 project。
 Site Operator 只能维护授权 site 下设备。
 Researcher 可以查看授权范围内数据。
@@ -1436,7 +1444,7 @@ Service Engineer 只能在授权时间内维护指定设备。
 平台可以从至少一种现有设备数据库读取数据。
 查询接口支持时间范围限制。
 大范围查询不能直接同步返回。
-用户查询和设备绑定流程不接受 DSN、库表字段、JSONPath 或 raw SQL。
+用户查询和设备分配后的普通业务流程不接受 DSN、库表字段、JSONPath 或 raw SQL。
 ```
 
 ### 18.4 数据集和导出
@@ -1475,7 +1483,7 @@ Service Engineer 只能在授权时间内维护指定设备。
 实时流处理平台
 字段级数据脱敏
 完整科研数据版本发布系统
-允许客户 Workspace 管理设备数据库连接、密钥、库表字段映射或 raw SQL
+允许客户 Workspace 管理 DataSource、adapter、设备数据库连接、密钥、库表字段映射或 raw SQL
 为了三到四类固定设备源，第一版建设复杂的设备数据源管理后台
 ```
 

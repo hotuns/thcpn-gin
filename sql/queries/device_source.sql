@@ -1,6 +1,5 @@
 -- name: UpsertDeviceSourceRef :one
 INSERT INTO device_source_refs (
-    workspace_id,
     device_id,
     data_source_id,
     adapter_code,
@@ -11,10 +10,9 @@ INSERT INTO device_source_refs (
     status,
     synced_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', now())
+VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', now())
 ON CONFLICT (data_source_id, adapter_code, external_device_id)
 DO UPDATE SET
-    workspace_id = EXCLUDED.workspace_id,
     device_id = EXCLUDED.device_id,
     external_sn = EXCLUDED.external_sn,
     external_uuid = EXCLUDED.external_uuid,
@@ -22,28 +20,22 @@ DO UPDATE SET
     status = 'active',
     synced_at = now(),
     updated_at = now()
-RETURNING id, workspace_id, device_id, data_source_id, adapter_code, external_device_id, external_sn, external_uuid, external_device_type, status, synced_at, created_at, updated_at;
+RETURNING id, device_id, data_source_id, adapter_code, external_device_id, external_sn, external_uuid, external_device_type, status, synced_at, created_at, updated_at;
 
 -- name: GetDeviceSourceRefByExternal :one
-SELECT id, workspace_id, device_id, data_source_id, adapter_code, external_device_id, external_sn, external_uuid, external_device_type, status, synced_at, created_at, updated_at
+SELECT id, device_id, data_source_id, adapter_code, external_device_id, external_sn, external_uuid, external_device_type, status, synced_at, created_at, updated_at
 FROM device_source_refs
 WHERE data_source_id = $1
   AND adapter_code = $2
   AND external_device_id = $3;
 
 -- name: GetDeviceSourceRefByDevice :one
-SELECT id, workspace_id, device_id, data_source_id, adapter_code, external_device_id, external_sn, external_uuid, external_device_type, status, synced_at, created_at, updated_at
+SELECT id, device_id, data_source_id, adapter_code, external_device_id, external_sn, external_uuid, external_device_type, status, synced_at, created_at, updated_at
 FROM device_source_refs
 WHERE device_id = $1
   AND status = 'active'
 ORDER BY synced_at DESC, id DESC
 LIMIT 1;
-
--- name: ListDeviceSourceRefsByWorkspace :many
-SELECT id, workspace_id, device_id, data_source_id, adapter_code, external_device_id, external_sn, external_uuid, external_device_type, status, synced_at, created_at, updated_at
-FROM device_source_refs
-WHERE workspace_id = $1
-ORDER BY synced_at DESC, id DESC;
 
 -- name: UpsertDeviceConfigSnapshot :one
 INSERT INTO device_config_snapshots (

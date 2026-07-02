@@ -11,7 +11,7 @@
 1. 平台库 device_source_refs / device_config_snapshots。
 2. thcpn_legacy_mysql telemetry/image 只读查询。
 3. 按 device_data_index 定位 device_data_* 分表。
-4. 标准站同步入口读取 devices + 最新 device_config，并生成平台 Device / DataStream / Binding。
+4. 标准站同步入口读取 devices + 最新 device_config，生成系统级平台 Device，并单一分配到目标 Workspace，同时生成 DataStream / Binding。
 
 未实现：
 1. gate_node 组网站拓扑同步。
@@ -27,6 +27,8 @@
 ## 1. 核心结论
 
 标准站和组网站不应该按每台设备分别适配，也不应该为组网站单独写一套完全不同的数据读取 adapter。
+
+DataSource 是系统级设备源实例，由系统管理员维护。adapter 是系统级读取/配置能力，由平台代码注册，不属于任何 Workspace。THCPN Device 是系统级设备资产，系统管理员从外部设备库同步后，将该 Device 单一分配给某个 Workspace；Workspace 用户只使用已分配设备和数据流，不管理 DataSource、adapter、DSN、库表字段、JSONPath 或 raw SQL。
 
 当前已知的 THCPN 设备数据结构可以归纳为一个设备家族：
 
@@ -303,7 +305,7 @@ node_id 是节点设备的 old devices.id。
 
 ### 4.1 DataSource
 
-继续表示内部设备源实例：
+继续表示系统级内部设备源实例：
 
 ```text
 data_sources
@@ -314,11 +316,11 @@ data_sources
 - status
 ```
 
-普通 Workspace 用户不管理 DataSource。
+普通 Workspace 用户不查看、不创建、不编辑 DataSource，也不管理 adapter、DSN、库表字段、JSONPath 或 raw SQL。Workspace 只消费已分配设备产生的 DataStream。
 
 ### 4.2 DeviceSourceRef
 
-平台设备和旧库设备之间需要映射。
+系统级平台设备和旧库设备之间需要映射。
 
 建议表：
 
@@ -344,6 +346,8 @@ device_source_refs
 ```text
 平台 device.id -> THCPN old devices.id
 ```
+
+`workspace_id` 表示该系统级 Device 当前单一分配到的 Workspace，也是后续 Device / DataStream / Dataset 的权限边界。它不表示 Workspace 拥有 DataSource 或 adapter。
 
 ### 4.3 DeviceConfigSnapshot
 
@@ -1066,7 +1070,7 @@ raw JSON 修改应只给系统管理员或服务工程师，并且必须审计�
 POST /api/v1/admin/data-sources/:data_source_id/thcpn-standard-station/devices
 ```
 
-该接口只允许系统管理员调用。请求体必须包含 `target_workspace_id` 和 `external_device_id`，并可选 `project_id`、`site_id`、`product_id`、`serial_no`、`name`。接口读取系统级 THCPN MySQL DataSource 中的旧库 `devices` 和最新 `device_config`，把平台设备归属到 `target_workspace_id`，并 upsert 设备映射、配置快照、DataStream 和 DataStreamBinding。运行时查询通过 `thcpn_legacy_mysql` adapter 读取旧库分表。
+该接口只允许系统管理员调用。请求体必须包含 `target_workspace_id` 和 `external_device_id`，并可选 `project_id`、`site_id`、`product_id`、`serial_no`、`name`。接口读取系统级 THCPN MySQL DataSource 中的旧库 `devices` 和最新 `device_config`，同步系统级平台 Device，并将该 Device 单一分配给 `target_workspace_id`，同时 upsert 设备映射、配置快照、DataStream 和 DataStreamBinding。运行时查询通过系统级 `thcpn_legacy_mysql` adapter 读取旧库分表。
 
 实现目标：
 

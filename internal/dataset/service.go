@@ -543,10 +543,14 @@ func (s *Service) validateSources(ctx context.Context, workspaceID uuid.UUID, pr
 			if err != nil {
 				return mapNotFoundOrInternal(err, "device source not found")
 			}
-			if device.WorkspaceID != workspaceID {
+			assignment, err := s.queries.GetActiveDeviceAssignment(ctx, device.ID)
+			if err != nil {
+				return mapNotFoundOrInternal(err, "active device assignment not found")
+			}
+			if assignment.WorkspaceID != workspaceID {
 				return apperr.New(apperr.KindInvalidArgument, "device source does not belong to workspace")
 			}
-			if projectID != nil && (device.ProjectID == nil || *device.ProjectID != *projectID) {
+			if projectID != nil && (assignment.ProjectID == nil || *assignment.ProjectID != *projectID) {
 				return apperr.New(apperr.KindInvalidArgument, "device source does not belong to dataset project")
 			}
 		case "data_stream":
@@ -554,15 +558,15 @@ func (s *Service) validateSources(ctx context.Context, workspaceID uuid.UUID, pr
 			if err != nil {
 				return mapNotFoundOrInternal(err, "data stream source not found")
 			}
-			if stream.WorkspaceID != workspaceID {
+			assignment, err := s.queries.GetActiveDeviceAssignmentByDataStream(ctx, stream.ID)
+			if err != nil {
+				return mapNotFoundOrInternal(err, "active device assignment not found")
+			}
+			if assignment.WorkspaceID != workspaceID {
 				return apperr.New(apperr.KindInvalidArgument, "data stream source does not belong to workspace")
 			}
 			if projectID != nil {
-				device, err := s.queries.GetDevice(ctx, stream.DeviceID)
-				if err != nil {
-					return mapNotFoundOrInternal(err, "device source not found")
-				}
-				if device.ProjectID == nil || *device.ProjectID != *projectID {
+				if assignment.ProjectID == nil || *assignment.ProjectID != *projectID {
 					return apperr.New(apperr.KindInvalidArgument, "data stream source does not belong to dataset project")
 				}
 			}

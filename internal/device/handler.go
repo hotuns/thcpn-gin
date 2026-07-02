@@ -473,7 +473,13 @@ func (h *Handler) Unbind(c *gin.Context) {
 	}
 	actor, _ := auth.ActorFromContext(c)
 
-	result, err := h.service.Unbind(c.Request.Context(), UnbindInput{
+	current, err := h.service.Get(c.Request.Context(), deviceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+
+	err = h.service.Unbind(c.Request.Context(), UnbindInput{
 		DeviceID:    deviceID,
 		ActorUserID: actor.UserID,
 	})
@@ -493,18 +499,18 @@ func (h *Handler) Unbind(c *gin.Context) {
 		return
 	}
 	if !h.record(c, audit.RecordInput{
-		WorkspaceID:  audit.WorkspaceID(result.WorkspaceID),
+		WorkspaceID:  audit.WorkspaceID(current.WorkspaceID),
 		ActorType:    audit.ActorUser,
 		ActorID:      audit.UserActorID(actor.UserID),
 		Action:       "device.unbind",
 		ResourceType: "device",
-		ResourceID:   audit.ResourceID(result.ID),
+		ResourceID:   audit.ResourceID(current.ID),
 		Result:       audit.ResultSuccess,
 	}) {
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.Status(http.StatusNoContent)
 }
 
 func (h *Handler) authorize(c *gin.Context, resourceType string, resourceID uuid.UUID, action string) bool {

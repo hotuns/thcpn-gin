@@ -881,7 +881,7 @@ paths:
         - Admin
       operationId: adminListDataSources
       summary: List system data sources
-      description: Requires `users.is_system_admin = true`. Returns system-scoped device source instances such as THCPN MySQL.
+      description: Requires `users.is_system_admin = true`. Returns system-level device source instances such as THCPN MySQL.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -903,7 +903,7 @@ paths:
         - Admin
       operationId: adminCreateDataSource
       summary: Create system data source
-      description: Requires `users.is_system_admin = true`. Creates `scope = system` data source metadata with no workspace owner.
+      description: Requires `users.is_system_admin = true`. Creates system-level data source metadata with no workspace owner.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -938,7 +938,7 @@ paths:
         - Admin
       operationId: adminUpdateDataSource
       summary: Update system data source
-      description: Requires `users.is_system_admin = true`. The target data source must be system-scoped.
+      description: Requires `users.is_system_admin = true`. The target data source is system-level.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1455,38 +1455,6 @@ paths:
           $ref: "#/components/responses/PermissionDenied"
         "500":
           $ref: "#/components/responses/Internal"
-    post:
-      tags:
-        - Devices
-      operationId: createDevice
-      summary: Bind or create a device asset
-      description: Requires `device.bind` permission in the target workspace.
-      security:
-        - bearerAuth: []
-        - devUserHeader: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateDeviceRequest"
-      responses:
-        "201":
-          description: Device asset created.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Device"
-        "400":
-          $ref: "#/components/responses/InvalidArgument"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/PermissionDenied"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/Internal"
   /api/v1/devices/{device_id}:
     parameters:
       - $ref: "#/components/parameters/DeviceID"
@@ -1665,17 +1633,13 @@ paths:
         - Devices
       operationId: unbindDevice
       summary: Unbind a device
-      description: Requires `device.unbind` on the device. The device is retained for historical references, removed from project/site assignment, and marked `retired`. Success and failure are written to AuditLog with action `device.unbind`.
+      description: Requires `device.unbind` on the device. The system Device is retained, and the active Workspace assignment is closed with status `removed`. Success and failure are written to AuditLog with action `device.unbind`.
       security:
         - bearerAuth: []
         - devUserHeader: []
       responses:
-        "200":
-          description: Device unbound and retired.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Device"
+        "204":
+          description: Device assignment removed. No response body is returned.
         "400":
           $ref: "#/components/responses/InvalidArgument"
         "401":
@@ -1949,40 +1913,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/Internal"
-    post:
-      tags:
-        - DataStreams
-      operationId: createDataStream
-      summary: Create data stream metadata
-      description: Requires `device.configure` permission in the owning workspace.
-      security:
-        - bearerAuth: []
-        - devUserHeader: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateDataStreamRequest"
-      responses:
-        "201":
-          description: Data stream created.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DataStream"
-        "400":
-          $ref: "#/components/responses/InvalidArgument"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/PermissionDenied"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/Internal"
   /api/v1/data-streams/{data_stream_id}/telemetry:
     parameters:
       - $ref: "#/components/parameters/DataStreamID"
@@ -2118,333 +2048,6 @@ paths:
           $ref: "#/components/responses/PermissionDenied"
         "404":
           $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/Internal"
-    patch:
-      tags:
-        - DataStreams
-      operationId: updateDataStream
-      summary: Update data stream metadata
-      description: Requires `device.configure` permission in the owning workspace.
-      security:
-        - bearerAuth: []
-        - devUserHeader: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateDataStreamRequest"
-      responses:
-        "200":
-          description: Data stream updated.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DataStream"
-        "400":
-          $ref: "#/components/responses/InvalidArgument"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/PermissionDenied"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/Internal"
-  /api/v1/data-sources:
-    get:
-      tags:
-        - DataSources
-      operationId: listDataSources
-      summary: List data sources in a workspace
-      description: Requires `workspace.manage` permission. Data sources are internal device source instances; returned values contain secret references, not raw DSNs.
-      security:
-        - bearerAuth: []
-        - devUserHeader: []
-      parameters:
-        - name: workspace_id
-          in: query
-          required: true
-          schema:
-            $ref: "#/components/schemas/UUID"
-      responses:
-        "200":
-          description: Data sources configured for the workspace.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DataSourceListResponse"
-        "400":
-          $ref: "#/components/responses/InvalidArgument"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/PermissionDenied"
-        "500":
-          $ref: "#/components/responses/Internal"
-    post:
-      tags:
-        - DataSources
-      operationId: createDataSource
-      summary: Create data source metadata
-      description: Requires `workspace.manage` permission. This is an internal device source instance configuration API. `dsn_secret_ref` must point to a secret outside the platform database.
-      security:
-        - bearerAuth: []
-        - devUserHeader: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateDataSourceRequest"
-      responses:
-        "201":
-          description: Data source created.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DataSource"
-        "400":
-          $ref: "#/components/responses/InvalidArgument"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/PermissionDenied"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/Internal"
-  /api/v1/data-sources/{data_source_id}:
-    parameters:
-      - $ref: "#/components/parameters/DataSourceID"
-    get:
-      tags:
-        - DataSources
-      operationId: getDataSource
-      summary: Get data source metadata
-      description: Requires `workspace.manage` permission in the owning workspace. DataSource represents a physical/internal device source instance.
-      security:
-        - bearerAuth: []
-        - devUserHeader: []
-      responses:
-        "200":
-          description: Data source detail.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DataSource"
-        "400":
-          $ref: "#/components/responses/InvalidArgument"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/PermissionDenied"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/Internal"
-    patch:
-      tags:
-        - DataSources
-      operationId: updateDataSource
-      summary: Update data source metadata
-      description: Requires `workspace.manage` permission in the owning workspace. DataSource represents a physical/internal device source instance.
-      security:
-        - bearerAuth: []
-        - devUserHeader: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateDataSourceRequest"
-      responses:
-        "200":
-          description: Data source updated.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DataSource"
-        "400":
-          $ref: "#/components/responses/InvalidArgument"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/PermissionDenied"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/Internal"
-  /api/v1/data-sources/{data_source_id}/thcpn-standard-station/devices:
-    parameters:
-      - $ref: "#/components/parameters/DataSourceID"
-    post:
-      tags:
-        - DataSources
-      operationId: syncTHCPNStandardStationDevice
-      summary: Sync a THCPN standard station device
-      description: >
-        Internal read-only onboarding endpoint. Requires `workspace.manage` permission on the data source workspace.
-        It reads the external THCPN MySQL `devices` and latest `device_config`, then upserts the platform Device,
-        DeviceSourceRef, DeviceConfigSnapshot, DataStreams and `thcpn_legacy_mysql` DataStreamBindings. It does not
-        modify the external THCPN device database.
-      security:
-        - bearerAuth: []
-        - devUserHeader: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SyncTHCPNStandardStationRequest"
-      responses:
-        "200":
-          description: THCPN standard station device synchronized.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/THCPNStandardStationSyncResult"
-        "400":
-          $ref: "#/components/responses/InvalidArgument"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/PermissionDenied"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/Internal"
-  /api/v1/data-stream-bindings:
-    get:
-      tags:
-        - DataStreamBindings
-      operationId: listDataStreamBindings
-      summary: List bindings for a data stream
-      description: Requires `device.configure` permission on the data stream.
-      security:
-        - bearerAuth: []
-        - devUserHeader: []
-      parameters:
-        - name: data_stream_id
-          in: query
-          required: true
-          schema:
-            $ref: "#/components/schemas/UUID"
-      responses:
-        "200":
-          description: Bindings configured for the data stream.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DataStreamBindingListResponse"
-        "400":
-          $ref: "#/components/responses/InvalidArgument"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/PermissionDenied"
-        "500":
-          $ref: "#/components/responses/Internal"
-    post:
-      tags:
-        - DataStreamBindings
-      operationId: createDataStreamBinding
-      summary: Create data stream binding metadata
-      description: Requires `device.configure` permission on the data stream. Runtime dispatch uses `adapter_code`; generic adapters use administrator-managed table/field metadata, while special adapters use `adapter_config`.
-      security:
-        - bearerAuth: []
-        - devUserHeader: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateDataStreamBindingRequest"
-      responses:
-        "201":
-          description: Data stream binding created.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DataStreamBinding"
-        "400":
-          $ref: "#/components/responses/InvalidArgument"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/PermissionDenied"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/Internal"
-  /api/v1/data-stream-bindings/{binding_id}:
-    parameters:
-      - $ref: "#/components/parameters/DataStreamBindingID"
-    get:
-      tags:
-        - DataStreamBindings
-      operationId: getDataStreamBinding
-      summary: Get data stream binding metadata
-      description: Requires `device.configure` permission on the data stream.
-      security:
-        - bearerAuth: []
-        - devUserHeader: []
-      responses:
-        "200":
-          description: Data stream binding detail.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DataStreamBinding"
-        "400":
-          $ref: "#/components/responses/InvalidArgument"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/PermissionDenied"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/Internal"
-    patch:
-      tags:
-        - DataStreamBindings
-      operationId: updateDataStreamBinding
-      summary: Update data stream binding metadata
-      description: Requires `device.configure` permission on the data stream.
-      security:
-        - bearerAuth: []
-        - devUserHeader: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateDataStreamBindingRequest"
-      responses:
-        "200":
-          description: Data stream binding updated.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DataStreamBinding"
-        "400":
-          $ref: "#/components/responses/InvalidArgument"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/PermissionDenied"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/Internal"
   /api/v1/datasets:
@@ -3555,12 +3158,6 @@ components:
         - clickhouse
         - http_api
         - file
-    DataSourceScope:
-      type: string
-      description: Workspace sources belong to a workspace; system sources are managed only by system administrators.
-      enum:
-        - workspace
-        - system
     DataSourceStatus:
       type: string
       enum:
@@ -4383,8 +3980,10 @@ components:
           $ref: "#/components/schemas/SiteStatus"
     Device:
       type: object
+      description: Assigned device view. The Device itself is a system-level asset; assignment fields describe its current Workspace boundary.
       required:
         - id
+        - assignment_id
         - workspace_id
         - serial_no
         - name
@@ -4394,6 +3993,8 @@ components:
         - updated_at
       properties:
         id:
+          $ref: "#/components/schemas/UUID"
+        assignment_id:
           $ref: "#/components/schemas/UUID"
         workspace_id:
           $ref: "#/components/schemas/UUID"
@@ -4411,8 +4012,10 @@ components:
           $ref: "#/components/schemas/DeviceStatus"
         activated_at:
           $ref: "#/components/schemas/Timestamp"
-        bound_by:
+        assigned_by:
           $ref: "#/components/schemas/UUID"
+        assigned_at:
+          $ref: "#/components/schemas/Timestamp"
         capabilities:
           type: array
           items:
@@ -4430,48 +4033,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Device"
-    CreateDeviceRequest:
-      type: object
-      required:
-        - workspace_id
-        - serial_no
-        - name
-      properties:
-        workspace_id:
-          $ref: "#/components/schemas/UUID"
-        project_id:
-          $ref: "#/components/schemas/UUID"
-        site_id:
-          $ref: "#/components/schemas/UUID"
-        product_id:
-          type: string
-        serial_no:
-          type: string
-        name:
-          type: string
-        capabilities:
-          type: array
-          items:
-            $ref: "#/components/schemas/DeviceCapabilityCode"
     UpdateDeviceRequest:
       type: object
+      description: Workspace users can only adjust the active assignment's project/site placement. System device identity and capabilities are managed by system sync/admin flows.
       properties:
         project_id:
           $ref: "#/components/schemas/UUID"
         site_id:
           $ref: "#/components/schemas/UUID"
-        product_id:
-          type: string
-        serial_no:
-          type: string
-        name:
-          type: string
-        status:
-          $ref: "#/components/schemas/DeviceStatus"
-        capabilities:
-          type: array
-          items:
-            $ref: "#/components/schemas/DeviceCapabilityCode"
     DeviceOperation:
       type: object
       required:
@@ -4551,9 +4120,9 @@ components:
           description: Must be true to confirm historical datasets remain in their original workspace/project.
     DataStream:
       type: object
+      description: System-level device data channel generated by system sync. Workspace permission is resolved through the parent device active assignment.
       required:
         - id
-        - workspace_id
         - device_id
         - code
         - name
@@ -4564,8 +4133,6 @@ components:
         - updated_at
       properties:
         id:
-          $ref: "#/components/schemas/UUID"
-        workspace_id:
           $ref: "#/components/schemas/UUID"
         device_id:
           $ref: "#/components/schemas/UUID"
@@ -4594,216 +4161,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/DataStream"
-    CreateDataStreamRequest:
-      type: object
-      required:
-        - device_id
-        - code
-        - name
-        - type
-      properties:
-        device_id:
-          $ref: "#/components/schemas/UUID"
-        code:
-          type: string
-        name:
-          type: string
-        type:
-          $ref: "#/components/schemas/DataStreamType"
-        unit:
-          type: string
-    UpdateDataStreamRequest:
-      type: object
-      properties:
-        code:
-          type: string
-        name:
-          type: string
-        type:
-          $ref: "#/components/schemas/DataStreamType"
-        unit:
-          type: string
-        status:
-          $ref: "#/components/schemas/DataStreamStatus"
-    TelemetryPoint:
-      type: object
-      required:
-        - ts
-        - value
-        - quality
-      properties:
-        ts:
-          $ref: "#/components/schemas/Timestamp"
-        value:
-          type: number
-          format: double
-        quality:
-          type: string
-          example: valid
-    QueryWarning:
-      type: object
-      required:
-        - code
-        - message
-      properties:
-        code:
-          type: string
-          example: thcpn_config_mismatch
-        message:
-          type: string
-          example: 部分历史数据与当前设备配置不匹配，已跳过 18 条记录
-        count:
-          type: integer
-          description: Number of records related to this warning when available.
-    TelemetrySeries:
-      type: object
-      required:
-        - data_stream_id
-        - code
-        - name
-        - points
-      properties:
-        data_stream_id:
-          $ref: "#/components/schemas/UUID"
-        code:
-          type: string
-        name:
-          type: string
-        unit:
-          type: string
-        points:
-          type: array
-          items:
-            $ref: "#/components/schemas/TelemetryPoint"
-        warnings:
-          type: array
-          items:
-            $ref: "#/components/schemas/QueryWarning"
-    TelemetryQueryResponse:
-      type: object
-      required:
-        - device_id
-        - start_time
-        - end_time
-        - limit
-        - series
-      properties:
-        device_id:
-          $ref: "#/components/schemas/UUID"
-        start_time:
-          $ref: "#/components/schemas/Timestamp"
-        end_time:
-          $ref: "#/components/schemas/Timestamp"
-        limit:
-          type: integer
-        series:
-          type: array
-          items:
-            $ref: "#/components/schemas/TelemetrySeries"
-    MediaItem:
-      type: object
-      required:
-        - id
-        - device_id
-        - data_stream_id
-        - captured_at
-        - media_type
-        - preview_url
-        - download_allowed
-        - delete_allowed
-      properties:
-        id:
-          type: string
-        device_id:
-          $ref: "#/components/schemas/UUID"
-        data_stream_id:
-          $ref: "#/components/schemas/UUID"
-        captured_at:
-          $ref: "#/components/schemas/Timestamp"
-        media_type:
-          $ref: "#/components/schemas/MediaType"
-        thumbnail_url:
-          type: string
-          description: Temporary signed thumbnail URL. Falls back to preview URL when no thumbnail object is configured.
-        preview_url:
-          type: string
-          description: Temporary signed preview URL.
-        download_allowed:
-          type: boolean
-        download_url:
-          type: string
-          description: Authenticated API URL for preparing a temporary download URL. Present only when `download_allowed` is true.
-        delete_allowed:
-          type: boolean
-        delete_url:
-          type: string
-          description: Authenticated API URL for deleting the object-store object. Present only when `delete_allowed` is true.
-    MediaListResponse:
-      type: object
-      required:
-        - items
-        - page
-        - page_size
-        - total
-      properties:
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/MediaItem"
-        page:
-          type: integer
-        page_size:
-          type: integer
-        total:
-          type: integer
-    MediaDownloadResponse:
-      type: object
-      required:
-        - data_stream_id
-        - device_id
-        - media_id
-        - media_type
-        - url
-        - expires_at
-      properties:
-        data_stream_id:
-          $ref: "#/components/schemas/UUID"
-        device_id:
-          $ref: "#/components/schemas/UUID"
-        media_id:
-          type: string
-        media_type:
-          $ref: "#/components/schemas/MediaType"
-        url:
-          type: string
-          description: Temporary signed object URL.
-        expires_at:
-          $ref: "#/components/schemas/Timestamp"
-    MediaDeleteResponse:
-      type: object
-      required:
-        - data_stream_id
-        - device_id
-        - media_id
-        - media_type
-        - deleted
-      properties:
-        data_stream_id:
-          $ref: "#/components/schemas/UUID"
-        device_id:
-          $ref: "#/components/schemas/UUID"
-        media_id:
-          type: string
-        media_type:
-          $ref: "#/components/schemas/MediaType"
-        deleted:
-          type: boolean
     DataSource:
       type: object
-      description: Internal device source instance. Workspace-scoped sources belong to one workspace; system-scoped sources are managed through admin APIs. Data stream read strategy is selected by `DataStreamBinding.adapter_code`.
+      description: System-level device source instance managed through admin APIs. Workspace users cannot view or modify DataSource, DSN, adapter, table fields or raw SQL.
       required:
         - id
-        - scope
         - name
         - type
         - dsn_secret_ref
@@ -4814,11 +4176,6 @@ components:
       properties:
         id:
           $ref: "#/components/schemas/UUID"
-        scope:
-          $ref: "#/components/schemas/DataSourceScope"
-        workspace_id:
-          $ref: "#/components/schemas/UUID"
-          description: Present for `scope = workspace`; omitted for `scope = system`.
         name:
           type: string
         type:
@@ -4843,22 +4200,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/DataSource"
-    CreateDataSourceRequest:
-      type: object
-      required:
-        - workspace_id
-        - name
-        - type
-        - dsn_secret_ref
-      properties:
-        workspace_id:
-          $ref: "#/components/schemas/UUID"
-        name:
-          type: string
-        type:
-          $ref: "#/components/schemas/DataSourceType"
-        dsn_secret_ref:
-          type: string
     AdminCreateDataSourceRequest:
       type: object
       required:
@@ -4914,6 +4255,7 @@ components:
       type: object
       required:
         - id
+        - assignment_id
         - workspace_id
         - serial_no
         - name
@@ -4922,6 +4264,8 @@ components:
         - updated_at
       properties:
         id:
+          $ref: "#/components/schemas/UUID"
+        assignment_id:
           $ref: "#/components/schemas/UUID"
         workspace_id:
           $ref: "#/components/schemas/UUID"
@@ -4937,6 +4281,10 @@ components:
           type: string
         status:
           $ref: "#/components/schemas/DeviceStatus"
+        assigned_by:
+          $ref: "#/components/schemas/UUID"
+        assigned_at:
+          $ref: "#/components/schemas/Timestamp"
         created_at:
           $ref: "#/components/schemas/Timestamp"
         updated_at:
@@ -4945,7 +4293,6 @@ components:
       type: object
       required:
         - id
-        - workspace_id
         - device_id
         - code
         - name
@@ -4953,8 +4300,6 @@ components:
         - status
       properties:
         id:
-          $ref: "#/components/schemas/UUID"
-        workspace_id:
           $ref: "#/components/schemas/UUID"
         device_id:
           $ref: "#/components/schemas/UUID"
@@ -4972,7 +4317,6 @@ components:
       type: object
       required:
         - id
-        - workspace_id
         - device_id
         - data_source_id
         - adapter_code
@@ -4983,8 +4327,6 @@ components:
         - updated_at
       properties:
         id:
-          $ref: "#/components/schemas/UUID"
-        workspace_id:
           $ref: "#/components/schemas/UUID"
         device_id:
           $ref: "#/components/schemas/UUID"
@@ -5178,77 +4520,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/DataStreamBinding"
-    CreateDataStreamBindingRequest:
-      type: object
-      required:
-        - data_stream_id
-        - data_source_id
-        - adapter_code
-        - payload_type
-      properties:
-        data_stream_id:
-          $ref: "#/components/schemas/UUID"
-        data_source_id:
-          $ref: "#/components/schemas/UUID"
-        adapter_code:
-          $ref: "#/components/schemas/DataStreamBindingAdapterCode"
-        database_name:
-          type: string
-        schema_name:
-          type: string
-        table_name:
-          type: string
-          pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
-        device_key_field:
-          type: string
-          pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
-        device_key_value:
-          type: string
-        time_field:
-          type: string
-          pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
-        value_field:
-          type: string
-          pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
-        payload_type:
-          $ref: "#/components/schemas/DataStreamBindingPayloadType"
-        adapter_config:
-          type: object
-          additionalProperties: true
-          description: Adapter-specific mapping. `generic_columns` may use `{}`. `generic_media` requires `object_key_field`. `http_api` accepts HTTP request mapping keys. `thcpn_legacy_mysql` requires `external_device_id` and `json_key` for telemetry or `image_key` for media.
-    UpdateDataStreamBindingRequest:
-      type: object
-      properties:
-        data_source_id:
-          $ref: "#/components/schemas/UUID"
-        adapter_code:
-          $ref: "#/components/schemas/DataStreamBindingAdapterCode"
-        database_name:
-          type: string
-        schema_name:
-          type: string
-        table_name:
-          type: string
-          pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
-        device_key_field:
-          type: string
-          pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
-        device_key_value:
-          type: string
-        time_field:
-          type: string
-          pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
-        value_field:
-          type: string
-          pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
-        payload_type:
-          $ref: "#/components/schemas/DataStreamBindingPayloadType"
-        adapter_config:
-          type: object
-          additionalProperties: true
-          description: Adapter-specific mapping. `generic_media` requires `object_key_field`; `thcpn_legacy_mysql` requires `external_device_id` and a telemetry/media JSON key.
-        status:
-          $ref: "#/components/schemas/DataStreamBindingStatus"
     DatasetSource:
       type: object
       required:

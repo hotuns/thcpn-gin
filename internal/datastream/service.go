@@ -21,17 +21,16 @@ type Service struct {
 }
 
 type DataStream struct {
-	ID          uuid.UUID `json:"id"`
-	WorkspaceID uuid.UUID `json:"workspace_id"`
-	DeviceID    uuid.UUID `json:"device_id"`
-	Code        string    `json:"code"`
-	Name        string    `json:"name"`
-	Type        string    `json:"type"`
-	Unit        *string   `json:"unit,omitempty"`
-	Status      string    `json:"status"`
-	CreatedBy   uuid.UUID `json:"created_by"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID        uuid.UUID `json:"id"`
+	DeviceID  uuid.UUID `json:"device_id"`
+	Code      string    `json:"code"`
+	Name      string    `json:"name"`
+	Type      string    `json:"type"`
+	Unit      *string   `json:"unit,omitempty"`
+	Status    string    `json:"status"`
+	CreatedBy uuid.UUID `json:"created_by"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type CreateInput struct {
@@ -61,11 +60,11 @@ func (s *Service) WorkspaceForDevice(ctx context.Context, deviceID uuid.UUID) (u
 		return uuid.Nil, apperr.New(apperr.KindInvalidArgument, "device id is required")
 	}
 
-	device, err := s.queries.GetDevice(ctx, deviceID)
+	assignment, err := s.queries.GetActiveDeviceAssignment(ctx, deviceID)
 	if err != nil {
-		return uuid.Nil, mapNotFoundOrInternal(err, "device not found")
+		return uuid.Nil, mapNotFoundOrInternal(err, "active device assignment not found")
 	}
-	return device.WorkspaceID, nil
+	return assignment.WorkspaceID, nil
 }
 
 func (s *Service) Create(ctx context.Context, input CreateInput) (DataStream, error) {
@@ -88,13 +87,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (DataStream, er
 		return DataStream{}, apperr.New(apperr.KindInvalidArgument, "invalid data stream type")
 	}
 
-	device, err := s.queries.GetDevice(ctx, input.DeviceID)
-	if err != nil {
-		return DataStream{}, mapNotFoundOrInternal(err, "device not found")
-	}
-
 	created, err := s.queries.CreateDataStream(ctx, sqlc.CreateDataStreamParams{
-		WorkspaceID: device.WorkspaceID,
 		DeviceID:    input.DeviceID,
 		Code:        code,
 		Name:        name,
@@ -221,17 +214,16 @@ func isValidDataStreamStatus(value string) bool {
 
 func fromSQL(model sqlc.DataStream) DataStream {
 	return DataStream{
-		ID:          model.ID,
-		WorkspaceID: model.WorkspaceID,
-		DeviceID:    model.DeviceID,
-		Code:        model.Code,
-		Name:        model.Name,
-		Type:        model.Type,
-		Unit:        model.Unit,
-		Status:      model.Status,
-		CreatedBy:   model.CreatedBy,
-		CreatedAt:   pgTime(model.CreatedAt),
-		UpdatedAt:   pgTime(model.UpdatedAt),
+		ID:        model.ID,
+		DeviceID:  model.DeviceID,
+		Code:      model.Code,
+		Name:      model.Name,
+		Type:      model.Type,
+		Unit:      model.Unit,
+		Status:    model.Status,
+		CreatedBy: model.CreatedBy,
+		CreatedAt: pgTime(model.CreatedAt),
+		UpdatedAt: pgTime(model.UpdatedAt),
 	}
 }
 

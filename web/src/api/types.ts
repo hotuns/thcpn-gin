@@ -211,7 +211,6 @@ export type DeviceCapabilityCode =
   | "edge_storage";
 export type DataStreamType = "telemetry" | "image" | "video" | "audio" | "event" | "log";
 export type DataStreamStatus = "active" | "disabled" | "archived";
-export type DataSourceScope = "workspace" | "system";
 export type DataSourceType = "postgres" | "mysql" | "clickhouse" | "http_api" | "file";
 export type DataSourceStatus = "active" | "disabled" | "archived";
 export type DataStreamBindingPayloadType = "columns" | "json" | "media";
@@ -275,6 +274,7 @@ export interface SiteListResponse {
 
 export interface Device {
   id: UUID;
+  assignment_id: UUID;
   workspace_id: UUID;
   project_id?: UUID;
   site_id?: UUID;
@@ -283,7 +283,8 @@ export interface Device {
   name: string;
   status: DeviceStatus;
   activated_at?: Timestamp;
-  bound_by?: UUID;
+  assigned_by?: UUID;
+  assigned_at?: Timestamp;
   capabilities: DeviceCapabilityCode[];
   created_at: Timestamp;
   updated_at: Timestamp;
@@ -295,7 +296,6 @@ export interface DeviceListResponse {
 
 export interface DataStream {
   id: UUID;
-  workspace_id: UUID;
   device_id: UUID;
   code: string;
   name: string;
@@ -363,8 +363,6 @@ export interface MediaListResponse {
 
 export interface DataSource {
   id: UUID;
-  scope: DataSourceScope;
-  workspace_id?: UUID;
   name: string;
   type: DataSourceType;
   dsn_secret_ref: string;
@@ -380,6 +378,7 @@ export interface DataSourceListResponse {
 
 export interface SyncedDevice {
   id: UUID;
+  assignment_id: UUID;
   workspace_id: UUID;
   project_id?: UUID;
   site_id?: UUID;
@@ -387,13 +386,14 @@ export interface SyncedDevice {
   serial_no: string;
   name: string;
   status: DeviceStatus;
+  assigned_by?: UUID;
+  assigned_at?: Timestamp;
   created_at: Timestamp;
   updated_at: Timestamp;
 }
 
 export interface SyncedDataStream {
   id: UUID;
-  workspace_id: UUID;
   device_id: UUID;
   code: string;
   name: string;
@@ -404,7 +404,6 @@ export interface SyncedDataStream {
 
 export interface DeviceSourceRef {
   id: UUID;
-  workspace_id: UUID;
   device_id: UUID;
   data_source_id: UUID;
   adapter_code: DataStreamBindingAdapterCode;

@@ -49,7 +49,7 @@ func (q *Queries) GetDeviceConfigSnapshotByExternalConfig(ctx context.Context, a
 }
 
 const getDeviceSourceRefByDevice = `-- name: GetDeviceSourceRefByDevice :one
-SELECT id, workspace_id, device_id, data_source_id, adapter_code, external_device_id, external_sn, external_uuid, external_device_type, status, synced_at, created_at, updated_at
+SELECT id, device_id, data_source_id, adapter_code, external_device_id, external_sn, external_uuid, external_device_type, status, synced_at, created_at, updated_at
 FROM device_source_refs
 WHERE device_id = $1
   AND status = 'active'
@@ -62,7 +62,6 @@ func (q *Queries) GetDeviceSourceRefByDevice(ctx context.Context, deviceID uuid.
 	var i DeviceSourceRef
 	err := row.Scan(
 		&i.ID,
-		&i.WorkspaceID,
 		&i.DeviceID,
 		&i.DataSourceID,
 		&i.AdapterCode,
@@ -79,7 +78,7 @@ func (q *Queries) GetDeviceSourceRefByDevice(ctx context.Context, deviceID uuid.
 }
 
 const getDeviceSourceRefByExternal = `-- name: GetDeviceSourceRefByExternal :one
-SELECT id, workspace_id, device_id, data_source_id, adapter_code, external_device_id, external_sn, external_uuid, external_device_type, status, synced_at, created_at, updated_at
+SELECT id, device_id, data_source_id, adapter_code, external_device_id, external_sn, external_uuid, external_device_type, status, synced_at, created_at, updated_at
 FROM device_source_refs
 WHERE data_source_id = $1
   AND adapter_code = $2
@@ -97,7 +96,6 @@ func (q *Queries) GetDeviceSourceRefByExternal(ctx context.Context, arg GetDevic
 	var i DeviceSourceRef
 	err := row.Scan(
 		&i.ID,
-		&i.WorkspaceID,
 		&i.DeviceID,
 		&i.DataSourceID,
 		&i.AdapterCode,
@@ -144,47 +142,6 @@ func (q *Queries) ListDeviceConfigSnapshotsByDevice(ctx context.Context, deviceI
 			&i.SourceUpdatedAt,
 			&i.SyncedAt,
 			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listDeviceSourceRefsByWorkspace = `-- name: ListDeviceSourceRefsByWorkspace :many
-SELECT id, workspace_id, device_id, data_source_id, adapter_code, external_device_id, external_sn, external_uuid, external_device_type, status, synced_at, created_at, updated_at
-FROM device_source_refs
-WHERE workspace_id = $1
-ORDER BY synced_at DESC, id DESC
-`
-
-func (q *Queries) ListDeviceSourceRefsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]DeviceSourceRef, error) {
-	rows, err := q.db.Query(ctx, listDeviceSourceRefsByWorkspace, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []DeviceSourceRef{}
-	for rows.Next() {
-		var i DeviceSourceRef
-		if err := rows.Scan(
-			&i.ID,
-			&i.WorkspaceID,
-			&i.DeviceID,
-			&i.DataSourceID,
-			&i.AdapterCode,
-			&i.ExternalDeviceID,
-			&i.ExternalSn,
-			&i.ExternalUuid,
-			&i.ExternalDeviceType,
-			&i.Status,
-			&i.SyncedAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -276,7 +233,6 @@ func (q *Queries) UpsertDeviceConfigSnapshot(ctx context.Context, arg UpsertDevi
 
 const upsertDeviceSourceRef = `-- name: UpsertDeviceSourceRef :one
 INSERT INTO device_source_refs (
-    workspace_id,
     device_id,
     data_source_id,
     adapter_code,
@@ -287,10 +243,9 @@ INSERT INTO device_source_refs (
     status,
     synced_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', now())
+VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', now())
 ON CONFLICT (data_source_id, adapter_code, external_device_id)
 DO UPDATE SET
-    workspace_id = EXCLUDED.workspace_id,
     device_id = EXCLUDED.device_id,
     external_sn = EXCLUDED.external_sn,
     external_uuid = EXCLUDED.external_uuid,
@@ -298,11 +253,10 @@ DO UPDATE SET
     status = 'active',
     synced_at = now(),
     updated_at = now()
-RETURNING id, workspace_id, device_id, data_source_id, adapter_code, external_device_id, external_sn, external_uuid, external_device_type, status, synced_at, created_at, updated_at
+RETURNING id, device_id, data_source_id, adapter_code, external_device_id, external_sn, external_uuid, external_device_type, status, synced_at, created_at, updated_at
 `
 
 type UpsertDeviceSourceRefParams struct {
-	WorkspaceID        uuid.UUID `json:"workspace_id"`
 	DeviceID           uuid.UUID `json:"device_id"`
 	DataSourceID       uuid.UUID `json:"data_source_id"`
 	AdapterCode        string    `json:"adapter_code"`
@@ -314,7 +268,6 @@ type UpsertDeviceSourceRefParams struct {
 
 func (q *Queries) UpsertDeviceSourceRef(ctx context.Context, arg UpsertDeviceSourceRefParams) (DeviceSourceRef, error) {
 	row := q.db.QueryRow(ctx, upsertDeviceSourceRef,
-		arg.WorkspaceID,
 		arg.DeviceID,
 		arg.DataSourceID,
 		arg.AdapterCode,
@@ -326,7 +279,6 @@ func (q *Queries) UpsertDeviceSourceRef(ctx context.Context, arg UpsertDeviceSou
 	var i DeviceSourceRef
 	err := row.Scan(
 		&i.ID,
-		&i.WorkspaceID,
 		&i.DeviceID,
 		&i.DataSourceID,
 		&i.AdapterCode,

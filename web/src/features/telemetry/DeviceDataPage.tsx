@@ -371,7 +371,7 @@ export function DeviceDataPage() {
         </div>
 
         {!devices.isLoading && devices.data?.items.length === 0 ? (
-          <Alert className="query-alert" message="当前工作区没有设备。先在设备页创建设备，或由系统管理员在后台同步 THCPN 标准站。" showIcon type="info" />
+          <Alert className="query-alert" message="当前工作区没有已分配设备。请系统管理员在后台同步设备并分配到当前工作区。" showIcon type="info" />
         ) : null}
         {streams.error ? <Alert className="query-alert" message={formatApiError(streams.error)} showIcon type="error" /> : null}
         {query.error ? <Alert className="query-alert" message={formatApiError(query.error)} showIcon type="error" /> : null}

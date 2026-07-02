@@ -25,6 +25,7 @@ type Service struct {
 
 type Device struct {
 	ID           uuid.UUID  `json:"id"`
+	AssignmentID uuid.UUID  `json:"assignment_id"`
 	WorkspaceID  uuid.UUID  `json:"workspace_id"`
 	ProjectID    *uuid.UUID `json:"project_id,omitempty"`
 	SiteID       *uuid.UUID `json:"site_id,omitempty"`
@@ -33,7 +34,8 @@ type Device struct {
 	Name         string     `json:"name"`
 	Status       string     `json:"status"`
 	ActivatedAt  *time.Time `json:"activated_at,omitempty"`
-	BoundBy      *uuid.UUID `json:"bound_by,omitempty"`
+	AssignedBy   *uuid.UUID `json:"assigned_by,omitempty"`
+	AssignedAt   *time.Time `json:"assigned_at,omitempty"`
 	Capabilities []string   `json:"capabilities"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
@@ -153,16 +155,22 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Device, error)
 
 	q := s.queries.WithTx(tx)
 	created, err := q.CreateDevice(ctx, sqlc.CreateDeviceParams{
-		WorkspaceID: input.WorkspaceID,
-		ProjectID:   input.ProjectID,
-		SiteID:      input.SiteID,
-		ProductID:   nullableTrimmedString(input.ProductID),
-		SerialNo:    serialNo,
-		Name:        name,
-		BoundBy:     &input.ActorUserID,
+		ProductID: nullableTrimmedString(input.ProductID),
+		SerialNo:  serialNo,
+		Name:      name,
 	})
 	if err != nil {
 		return Device{}, mapWriteError(err, "create device")
+	}
+	assignment, err := q.CreateDeviceAssignment(ctx, sqlc.CreateDeviceAssignmentParams{
+		DeviceID:    created.ID,
+		WorkspaceID: input.WorkspaceID,
+		ProjectID:   input.ProjectID,
+		SiteID:      input.SiteID,
+		AssignedBy:  &input.ActorUserID,
+	})
+	if err != nil {
+		return Device{}, mapWriteError(err, "assign device")
 	}
 
 	if err := replaceCapabilities(ctx, q, created.ID, capabilities); err != nil {
@@ -174,7 +182,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Device, error)
 	}
 	committed = true
 
-	return fromSQL(created, capabilities), nil
+	return fromSQLWithAssignment(created, assignment, capabilities), nil
 }
 
 func (s *Service) Get(ctx context.Context, deviceID uuid.UUID) (Device, error) {
@@ -182,7 +190,7 @@ func (s *Service) Get(ctx context.Context, deviceID uuid.UUID) (Device, error) {
 		return Device{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
 	}
 
-	row, err := s.queries.GetDevice(ctx, deviceID)
+	row, err := s.queries.GetDeviceWithActiveAssignment(ctx, deviceID)
 	if err != nil {
 		return Device{}, mapNotFoundOrInternal(err, "device not found")
 	}
@@ -191,7 +199,7 @@ func (s *Service) Get(ctx context.Context, deviceID uuid.UUID) (Device, error) {
 		return Device{}, apperr.Wrap(apperr.KindInternal, "list device capabilities", err)
 	}
 
-	return fromSQL(row, capabilities), nil
+	return fromAssignedSQL(row, capabilities), nil
 }
 
 func (s *Service) List(ctx context.Context, input ListInput) ([]Device, error) {
@@ -202,32 +210,51 @@ func (s *Service) List(ctx context.Context, input ListInput) ([]Device, error) {
 		return nil, apperr.New(apperr.KindInvalidArgument, "project_id is required when site_id is set")
 	}
 
-	var (
-		rows []sqlc.Device
-		err  error
-	)
+	var err error
+	items := make([]Device, 0)
 	switch {
 	case input.SiteID != nil:
-		rows, err = s.queries.ListDevicesBySite(ctx, input.SiteID)
+		rows, err := s.queries.ListDevicesBySite(ctx, sqlc.ListDevicesBySiteParams{
+			WorkspaceID: input.WorkspaceID,
+			SiteID:      input.SiteID,
+		})
+		if err == nil {
+			for _, row := range rows {
+				capabilities, err := s.queries.ListDeviceCapabilities(ctx, row.ID)
+				if err != nil {
+					return nil, apperr.Wrap(apperr.KindInternal, "list device capabilities", err)
+				}
+				items = append(items, fromSiteRow(row, capabilities))
+			}
+		}
 	case input.ProjectID != nil:
-		rows, err = s.queries.ListDevicesByProject(ctx, input.ProjectID)
+		rows, err := s.queries.ListDevicesByProject(ctx, sqlc.ListDevicesByProjectParams{
+			WorkspaceID: input.WorkspaceID,
+			ProjectID:   input.ProjectID,
+		})
+		if err == nil {
+			for _, row := range rows {
+				capabilities, err := s.queries.ListDeviceCapabilities(ctx, row.ID)
+				if err != nil {
+					return nil, apperr.Wrap(apperr.KindInternal, "list device capabilities", err)
+				}
+				items = append(items, fromProjectRow(row, capabilities))
+			}
+		}
 	default:
-		rows, err = s.queries.ListDevicesByWorkspace(ctx, input.WorkspaceID)
+		rows, err := s.queries.ListDevicesByWorkspace(ctx, input.WorkspaceID)
+		if err == nil {
+			for _, row := range rows {
+				capabilities, err := s.queries.ListDeviceCapabilities(ctx, row.ID)
+				if err != nil {
+					return nil, apperr.Wrap(apperr.KindInternal, "list device capabilities", err)
+				}
+				items = append(items, fromWorkspaceRow(row, capabilities))
+			}
+		}
 	}
 	if err != nil {
 		return nil, apperr.Wrap(apperr.KindInternal, "list devices", err)
-	}
-
-	items := make([]Device, 0, len(rows))
-	for _, row := range rows {
-		if row.WorkspaceID != input.WorkspaceID {
-			continue
-		}
-		capabilities, err := s.queries.ListDeviceCapabilities(ctx, row.ID)
-		if err != nil {
-			return nil, apperr.Wrap(apperr.KindInternal, "list device capabilities", err)
-		}
-		items = append(items, fromSQL(row, capabilities))
 	}
 	return items, nil
 }
@@ -237,7 +264,7 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (Device, error)
 		return Device{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
 	}
 
-	current, err := s.queries.GetDevice(ctx, input.DeviceID)
+	current, err := s.queries.GetDeviceWithActiveAssignment(ctx, input.DeviceID)
 	if err != nil {
 		return Device{}, mapNotFoundOrInternal(err, "device not found")
 	}
@@ -253,84 +280,28 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (Device, error)
 	if siteID != nil && projectID == nil {
 		return Device{}, apperr.New(apperr.KindInvalidArgument, "project_id is required when site_id is set")
 	}
-
-	productID := current.ProductID
-	if input.ProductID != nil {
-		productID = nullableTrimmedString(*input.ProductID)
-	}
-
-	serialNo := current.SerialNo
-	if input.SerialNo != nil {
-		serialNo = strings.TrimSpace(*input.SerialNo)
-		if serialNo == "" {
-			return Device{}, apperr.New(apperr.KindInvalidArgument, "serial_no is required")
-		}
-	}
-
-	name := current.Name
-	if input.Name != nil {
-		name = strings.TrimSpace(*input.Name)
-		if name == "" {
-			return Device{}, apperr.New(apperr.KindInvalidArgument, "device name is required")
-		}
-	}
-
-	status := current.Status
-	if input.Status != nil {
-		status = strings.TrimSpace(*input.Status)
-		if !isValidDeviceStatus(status) {
-			return Device{}, apperr.New(apperr.KindInvalidArgument, "invalid device status")
-		}
+	if input.ProductID != nil || input.SerialNo != nil || input.Name != nil || input.Status != nil || input.Capabilities != nil {
+		return Device{}, apperr.New(apperr.KindInvalidArgument, "only project_id and site_id can be updated by workspace users")
 	}
 
 	capabilities, err := s.queries.ListDeviceCapabilities(ctx, input.DeviceID)
 	if err != nil {
 		return Device{}, apperr.Wrap(apperr.KindInternal, "list device capabilities", err)
 	}
-	if input.Capabilities != nil {
-		capabilities, err = normalizeCapabilities(*input.Capabilities)
-		if err != nil {
-			return Device{}, err
-		}
-	}
 
-	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return Device{}, apperr.Wrap(apperr.KindInternal, "begin update device transaction", err)
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback(ctx)
-		}
-	}()
-
-	q := s.queries.WithTx(tx)
-	updated, err := q.UpdateDevice(ctx, sqlc.UpdateDeviceParams{
-		ID:        input.DeviceID,
+	assignment, err := s.queries.UpdateDeviceAssignment(ctx, sqlc.UpdateDeviceAssignmentParams{
+		ID:        current.AssignmentID,
 		ProjectID: projectID,
 		SiteID:    siteID,
-		ProductID: productID,
-		SerialNo:  serialNo,
-		Name:      name,
-		Status:    status,
 	})
 	if err != nil {
 		return Device{}, mapWriteError(err, "update device")
 	}
-
-	if input.Capabilities != nil {
-		if err := replaceCapabilities(ctx, q, input.DeviceID, capabilities); err != nil {
-			return Device{}, err
-		}
+	device, err := s.queries.GetDevice(ctx, input.DeviceID)
+	if err != nil {
+		return Device{}, mapNotFoundOrInternal(err, "device not found")
 	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return Device{}, apperr.Wrap(apperr.KindInternal, "commit update device transaction", err)
-	}
-	committed = true
-
-	return fromSQL(updated, capabilities), nil
+	return fromSQLWithAssignment(device, assignment, capabilities), nil
 }
 
 func (s *Service) RequestCalibration(ctx context.Context, input CalibrationInput) (DeviceOperation, error) {
@@ -381,7 +352,7 @@ func (s *Service) Transfer(ctx context.Context, input TransferInput) (Device, er
 		return Device{}, apperr.New(apperr.KindInvalidArgument, "historical dataset transfer is not supported")
 	}
 
-	current, err := s.queries.GetDevice(ctx, input.DeviceID)
+	current, err := s.queries.GetActiveDeviceAssignment(ctx, input.DeviceID)
 	if err != nil {
 		return Device{}, mapNotFoundOrInternal(err, "device not found")
 	}
@@ -392,39 +363,65 @@ func (s *Service) Transfer(ctx context.Context, input TransferInput) (Device, er
 		return Device{}, err
 	}
 
-	updated, err := s.queries.TransferDevice(ctx, sqlc.TransferDeviceParams{
-		ID:          input.DeviceID,
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Device{}, apperr.Wrap(apperr.KindInternal, "begin transfer device transaction", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+
+	q := s.queries.WithTx(tx)
+	if _, err := q.CloseActiveDeviceAssignment(ctx, sqlc.CloseActiveDeviceAssignmentParams{
+		DeviceID: input.DeviceID,
+		Status:   "transferred",
+	}); err != nil {
+		return Device{}, mapWriteError(err, "close active device assignment")
+	}
+	assignment, err := q.CreateDeviceAssignment(ctx, sqlc.CreateDeviceAssignmentParams{
+		DeviceID:    input.DeviceID,
 		WorkspaceID: input.TargetWorkspaceID,
 		ProjectID:   input.ProjectID,
 		SiteID:      input.SiteID,
+		AssignedBy:  &input.ActorUserID,
 	})
 	if err != nil {
 		return Device{}, mapWriteError(err, "transfer device")
 	}
-	capabilities, err := s.queries.ListDeviceCapabilities(ctx, input.DeviceID)
-	if err != nil {
-		return Device{}, apperr.Wrap(apperr.KindInternal, "list device capabilities", err)
-	}
-	return fromSQL(updated, capabilities), nil
-}
-
-func (s *Service) Unbind(ctx context.Context, input UnbindInput) (Device, error) {
-	if input.DeviceID == uuid.Nil {
-		return Device{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
-	}
-	if input.ActorUserID == uuid.Nil {
-		return Device{}, apperr.New(apperr.KindInvalidArgument, "actor user id is required")
-	}
-
-	updated, err := s.queries.UnbindDevice(ctx, input.DeviceID)
+	device, err := q.GetDevice(ctx, input.DeviceID)
 	if err != nil {
 		return Device{}, mapNotFoundOrInternal(err, "device not found")
 	}
-	capabilities, err := s.queries.ListDeviceCapabilities(ctx, input.DeviceID)
+	capabilities, err := q.ListDeviceCapabilities(ctx, input.DeviceID)
 	if err != nil {
 		return Device{}, apperr.Wrap(apperr.KindInternal, "list device capabilities", err)
 	}
-	return fromSQL(updated, capabilities), nil
+	if err := tx.Commit(ctx); err != nil {
+		return Device{}, apperr.Wrap(apperr.KindInternal, "commit transfer device transaction", err)
+	}
+	committed = true
+	return fromSQLWithAssignment(device, assignment, capabilities), nil
+}
+
+func (s *Service) Unbind(ctx context.Context, input UnbindInput) error {
+	if input.DeviceID == uuid.Nil {
+		return apperr.New(apperr.KindInvalidArgument, "device id is required")
+	}
+	if input.ActorUserID == uuid.Nil {
+		return apperr.New(apperr.KindInvalidArgument, "actor user id is required")
+	}
+
+	_, err := s.queries.CloseActiveDeviceAssignment(ctx, sqlc.CloseActiveDeviceAssignmentParams{
+		DeviceID: input.DeviceID,
+		Status:   "removed",
+	})
+	if err != nil {
+		return mapNotFoundOrInternal(err, "active device assignment not found")
+	}
+	return nil
 }
 
 func (s *Service) validateTransferTarget(ctx context.Context, workspaceID uuid.UUID, projectID *uuid.UUID, siteID *uuid.UUID) error {
@@ -477,9 +474,9 @@ func (s *Service) createOperation(ctx context.Context, input createOperationInpu
 		input.RequestJSON = []byte("{}")
 	}
 
-	device, err := s.queries.GetDevice(ctx, input.DeviceID)
+	assignment, err := s.queries.GetActiveDeviceAssignment(ctx, input.DeviceID)
 	if err != nil {
-		return DeviceOperation{}, mapNotFoundOrInternal(err, "device not found")
+		return DeviceOperation{}, mapNotFoundOrInternal(err, "active device assignment not found")
 	}
 	capabilities, err := s.queries.ListDeviceCapabilities(ctx, input.DeviceID)
 	if err != nil {
@@ -490,7 +487,7 @@ func (s *Service) createOperation(ctx context.Context, input createOperationInpu
 	}
 
 	created, err := s.queries.CreateDeviceOperation(ctx, sqlc.CreateDeviceOperationParams{
-		WorkspaceID:   device.WorkspaceID,
+		WorkspaceID:   assignment.WorkspaceID,
 		DeviceID:      input.DeviceID,
 		OperationType: input.OperationType,
 		RequestJson:   input.RequestJSON,
@@ -657,6 +654,32 @@ func operationFromSQL(model sqlc.DeviceOperation) DeviceOperation {
 func fromSQL(model sqlc.Device, capabilities []string) Device {
 	return Device{
 		ID:           model.ID,
+		ProductID:    model.ProductID,
+		SerialNo:     model.SerialNo,
+		Name:         model.Name,
+		Status:       model.Status,
+		ActivatedAt:  pgTimePtr(model.ActivatedAt),
+		Capabilities: capabilities,
+		CreatedAt:    pgTime(model.CreatedAt),
+		UpdatedAt:    pgTime(model.UpdatedAt),
+	}
+}
+
+func fromSQLWithAssignment(model sqlc.Device, assignment sqlc.DeviceAssignment, capabilities []string) Device {
+	device := fromSQL(model, capabilities)
+	device.AssignmentID = assignment.ID
+	device.WorkspaceID = assignment.WorkspaceID
+	device.ProjectID = assignment.ProjectID
+	device.SiteID = assignment.SiteID
+	device.AssignedBy = assignment.AssignedBy
+	device.AssignedAt = pgTimePtr(assignment.AssignedAt)
+	return device
+}
+
+func fromAssignedSQL(model sqlc.GetDeviceWithActiveAssignmentRow, capabilities []string) Device {
+	return Device{
+		ID:           model.ID,
+		AssignmentID: model.AssignmentID,
 		WorkspaceID:  model.WorkspaceID,
 		ProjectID:    model.ProjectID,
 		SiteID:       model.SiteID,
@@ -665,7 +688,68 @@ func fromSQL(model sqlc.Device, capabilities []string) Device {
 		Name:         model.Name,
 		Status:       model.Status,
 		ActivatedAt:  pgTimePtr(model.ActivatedAt),
-		BoundBy:      model.BoundBy,
+		AssignedBy:   model.AssignedBy,
+		AssignedAt:   pgTimePtr(model.AssignedAt),
+		Capabilities: capabilities,
+		CreatedAt:    pgTime(model.CreatedAt),
+		UpdatedAt:    pgTime(model.UpdatedAt),
+	}
+}
+
+func fromWorkspaceRow(model sqlc.ListDevicesByWorkspaceRow, capabilities []string) Device {
+	return Device{
+		ID:           model.ID,
+		AssignmentID: model.AssignmentID,
+		WorkspaceID:  model.WorkspaceID,
+		ProjectID:    model.ProjectID,
+		SiteID:       model.SiteID,
+		ProductID:    model.ProductID,
+		SerialNo:     model.SerialNo,
+		Name:         model.Name,
+		Status:       model.Status,
+		ActivatedAt:  pgTimePtr(model.ActivatedAt),
+		AssignedBy:   model.AssignedBy,
+		AssignedAt:   pgTimePtr(model.AssignedAt),
+		Capabilities: capabilities,
+		CreatedAt:    pgTime(model.CreatedAt),
+		UpdatedAt:    pgTime(model.UpdatedAt),
+	}
+}
+
+func fromProjectRow(model sqlc.ListDevicesByProjectRow, capabilities []string) Device {
+	return Device{
+		ID:           model.ID,
+		AssignmentID: model.AssignmentID,
+		WorkspaceID:  model.WorkspaceID,
+		ProjectID:    model.ProjectID,
+		SiteID:       model.SiteID,
+		ProductID:    model.ProductID,
+		SerialNo:     model.SerialNo,
+		Name:         model.Name,
+		Status:       model.Status,
+		ActivatedAt:  pgTimePtr(model.ActivatedAt),
+		AssignedBy:   model.AssignedBy,
+		AssignedAt:   pgTimePtr(model.AssignedAt),
+		Capabilities: capabilities,
+		CreatedAt:    pgTime(model.CreatedAt),
+		UpdatedAt:    pgTime(model.UpdatedAt),
+	}
+}
+
+func fromSiteRow(model sqlc.ListDevicesBySiteRow, capabilities []string) Device {
+	return Device{
+		ID:           model.ID,
+		AssignmentID: model.AssignmentID,
+		WorkspaceID:  model.WorkspaceID,
+		ProjectID:    model.ProjectID,
+		SiteID:       model.SiteID,
+		ProductID:    model.ProductID,
+		SerialNo:     model.SerialNo,
+		Name:         model.Name,
+		Status:       model.Status,
+		ActivatedAt:  pgTimePtr(model.ActivatedAt),
+		AssignedBy:   model.AssignedBy,
+		AssignedAt:   pgTimePtr(model.AssignedAt),
 		Capabilities: capabilities,
 		CreatedAt:    pgTime(model.CreatedAt),
 		UpdatedAt:    pgTime(model.UpdatedAt),

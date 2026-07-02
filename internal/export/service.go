@@ -116,19 +116,31 @@ func (s *Service) Resolve(ctx context.Context, resourceType string, resourceID u
 		if err != nil {
 			return ResolvedResource{}, mapNotFoundOrInternal(err, "device not found")
 		}
-		resolved.WorkspaceID = device.WorkspaceID
+		assignment, err := s.queries.GetActiveDeviceAssignment(ctx, device.ID)
+		if err != nil {
+			return ResolvedResource{}, mapNotFoundOrInternal(err, "active device assignment not found")
+		}
+		resolved.WorkspaceID = assignment.WorkspaceID
 	case "data_stream":
 		stream, err := s.queries.GetDataStream(ctx, resourceID)
 		if err != nil {
 			return ResolvedResource{}, mapNotFoundOrInternal(err, "data stream not found")
 		}
-		resolved.WorkspaceID = stream.WorkspaceID
+		assignment, err := s.queries.GetActiveDeviceAssignmentByDataStream(ctx, stream.ID)
+		if err != nil {
+			return ResolvedResource{}, mapNotFoundOrInternal(err, "active device assignment not found")
+		}
+		resolved.WorkspaceID = assignment.WorkspaceID
 	case "media":
 		stream, err := s.queries.GetDataStream(ctx, resourceID)
 		if err != nil {
 			return ResolvedResource{}, mapNotFoundOrInternal(err, "data stream not found")
 		}
-		resolved.WorkspaceID = stream.WorkspaceID
+		assignment, err := s.queries.GetActiveDeviceAssignmentByDataStream(ctx, stream.ID)
+		if err != nil {
+			return ResolvedResource{}, mapNotFoundOrInternal(err, "active device assignment not found")
+		}
+		resolved.WorkspaceID = assignment.WorkspaceID
 		resolved.PermissionResourceID = stream.ID
 	case "dataset":
 		dataset, err := s.queries.GetDataset(ctx, resourceID)

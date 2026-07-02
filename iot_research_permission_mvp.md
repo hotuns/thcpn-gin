@@ -15,9 +15,10 @@
 
 ```text
 用户不直接拥有全部设备权限。
-设备和数据归属于 Workspace。
-THCPN 平台维护设备列表和外部设备源映射。
-当前设备由系统管理员同步并分配到 Workspace；普通 Workspace 用户只管理已归属设备，不管理设备数据库连接、库表字段或 raw SQL。
+设备源、adapter 和设备资产由 THCPN 平台系统级维护。
+系统管理员从设备库同步 Device，并将 Device 单一分配给某个 Workspace。
+Device 分配给 Workspace 后，Workspace 才拥有项目、站点、数据流、数据集和权限边界。
+普通 Workspace 用户只管理已分配到本 Workspace 的设备和数据，不管理设备数据库连接、库表字段、JSONPath、adapter 或 raw SQL。
 用户通过角色和资源范围获得权限。
 外部分享和临时授权通过 AccessGrant 实现。
 所有敏感操作必须审计。
@@ -40,7 +41,7 @@ THCPN 平台维护设备列表和外部设备源映射。
 
 - 账号和组织空间。
 - 项目和站点管理。
-- 设备绑定和归属。
+- 系统级设备分配到 Workspace，并可选挂到 Project / Site。
 - 数据流和数据集。
 - 角色权限。
 - 单人分享。
@@ -80,7 +81,9 @@ THCPN 平台维护设备列表和外部设备源映射。
 
 ### 3.2 Workspace
 
-`Workspace` 是权限隔离和资源归属的基本单位。
+`Workspace` 是客户侧权限隔离和业务资源管理的基本单位。
+
+Workspace 不拥有 DataSource、adapter 或系统级设备注册表。系统级 Device 分配到 Workspace 后，该 Workspace 才能管理该设备对应的项目、站点、数据流、数据集、分享、导出和审计。
 
 第一版建议支持两类：
 
@@ -132,9 +135,11 @@ other                 其他
 
 ### 3.5 Device
 
-`Device` 表示真实物联网设备。
+`Device` 表示平台系统级维护的真实物联网设备资产。
 
-设备必须归属于一个 Workspace，可选归属于某个 Project 和 Site。
+设备由系统管理员或系统同步流程从外部设备库同步到平台，再通过 `device_assignments` 单一分配给某个 Workspace。`device_assignments.workspace_id` 表示设备当前分配目标和权限边界；可选 `project_id` / `site_id` 表示该 Workspace 内的业务挂载位置。
+
+第一版不支持一个设备同时分配给多个 Workspace。跨 Workspace 使用设备应通过设备转移或 AccessGrant 分享完成。
 
 示例：
 
@@ -195,15 +200,16 @@ AccessGrant 是实现“单独分享给某个人”的核心机制。
 
 `Device Source Mapping` 表示平台设备和外部设备数据库记录之间的映射关系。
 
-第一版预计只有三到四类设备数据来源，因此不需要把设备数据源做成客户侧可管理资源。当前 THCPN 接入采用系统管理员后台维护 system scoped DataSource，普通 Workspace 用户不接触 DSN、库表字段或 adapter 配置：
+第一版预计只有三到四类设备数据来源，因此不需要把设备数据源做成客户侧可管理资源。当前 THCPN 接入采用系统管理员后台维护系统级 DataSource，普通 Workspace 用户不接触 DSN、库表字段或 adapter 配置：
 
-- 设备源类型和 adapter 在代码里注册。
+- DataSource 是系统级设备源实例，由系统管理员维护。
+- adapter 是系统级读取/配置能力，由平台代码注册，不属于任何 Workspace。
 - THCPN 设备源实例通过 `/api/v1/admin/data-sources` 和 `/admin/data-sources` 维护；其他特殊源可继续通过部署配置或环境变量维护。
-- 系统管理员同步外部设备时指定 `target_workspace_id`，平台库维护设备列表、外部设备 ID / SN / ICCID 映射。
+- 系统管理员同步外部设备时指定 `target_workspace_id`，平台库维护系统级设备列表、外部设备 ID / SN / ICCID 映射，并将设备单一分配给目标 Workspace。
 - 平台库保存外部最新 `device_config` 快照，并用最新配置解释历史数据；无法匹配的数据给出提示并跳过。
 - DataStream 从配置快照解析生成，用户只看到业务数据流。
 
-用户绑定的是平台设备，不是外部数据库。查询数据时，平台根据设备映射和 adapter 自动去对应设备库读取数据，并转换成统一格式。
+Workspace 用户使用的是已分配到本 Workspace 的平台设备，不是外部数据库。查询数据时，平台根据设备映射和 adapter 自动去对应设备库读取数据，并转换成统一格式。
 
 ---
 
@@ -216,11 +222,11 @@ AccessGrant 是实现“单独分享给某个人”的核心机制。
 3. `organization workspace` 支持科研院所、实验室、公司、政府单位、服务商等类型。
 4. Workspace 下可以创建 Project。
 5. Project 下可以创建 Site / Station。
-6. Device 绑定到 Workspace，可选归属 Project / Site。
+6. 系统级 Device 单一分配到 Workspace，可选挂到 Project / Site。
 7. Device 下可以产生多个 DataStream。
 8. 平台维护设备列表、外部设备映射和设备配置快照。
-9. 设备源 adapter 在代码中注册，设备源连接信息由部署配置维护。
-10. 绑定设备后，系统展示该设备已审核的数据流、图片流和视频流。
+9. 设备源 adapter 在代码中注册，DataSource 由系统管理员或部署配置维护。
+10. 设备分配到 Workspace 后，系统展示该设备已审核的数据流、图片流和视频流。
 11. 支持创建 Dataset，把一段时间、某些设备或数据流的数据归档成数据集。
 12. 权限采用 `role + scope` 模型。
 13. Scope 支持 `workspace / project / site / device / dataset`。
@@ -329,7 +335,7 @@ Service Engineer
 | Shared Downloader | 外部协作者、算法人员 | dataset / project | 外部查看并下载 |
 | Service Engineer | 厂商售后、服务商工程师 | device / site | 临时维护和诊断，默认不允许导出科研数据 |
 
-设备源配置和外部设备映射不放入上面的 Workspace 角色矩阵。Workspace Owner / Admin 可以管理自己空间内的项目、站点、设备绑定、成员和数据集，但不能管理设备数据库连接、原始库表字段映射、适配器密钥或跨 Workspace 的外部设备注册表。
+设备源配置、adapter、外部设备映射和系统级设备注册表不放入上面的 Workspace 角色矩阵。Workspace Owner / Admin 可以管理自己空间内的项目、站点、已分配设备、成员和数据集，但不能管理设备数据库连接、原始库表字段映射、适配器密钥、系统级设备注册表或跨 Workspace 的设备分配规则。
 
 ### 6.3 内部成员与外部分享的区别
 
@@ -371,7 +377,7 @@ site.manage            管理站点
 
 ```text
 device.view            查看设备
-device.bind            绑定设备
+device.bind            将已分配设备挂到 Workspace / Project / Site
 device.configure       修改设备配置
 device.calibrate       设备校准
 device.maintain        设备诊断和维护
@@ -423,13 +429,13 @@ service_access.grant    授权售后访问
 
 ### 7.8 内部运维动作
 
-设备源和外部设备映射属于平台内部运维能力，不作为客户 Workspace 权限点。第一版可以通过配置、seed、CLI 或内部脚本维护，不需要正式前端 CRUD。
+设备源、adapter、系统级设备注册表和外部设备映射属于平台内部运维能力，不作为客户 Workspace 权限点。第一版可以通过系统管理员后台、配置、seed、CLI 或内部脚本维护，不需要客户侧前端 CRUD。
 
 如果后续暴露 HTTP 管理接口，必须使用独立的内部运维身份和审计，不得通过 `workspace_members` 或普通 `access_grants` 授予客户用户。
 
 ```text
 ops.device_source.configure      配置设备源实例和密钥引用
-ops.device_registry.sync         同步可绑定设备列表和外部设备映射
+ops.device_registry.sync         同步系统级设备列表和外部设备映射
 ops.stream_binding.generate      从设备配置快照生成 DataStream / binding
 ops.datasource_health.view       查看设备源健康状态
 ops.break_glass_access           受审计的紧急排障访问
@@ -733,15 +739,28 @@ sites
 ```text
 devices
 - id
-- workspace_id
-- project_id nullable
-- site_id nullable
 - product_id
 - serial_no
 - name
 - status
 - activated_at
-- bound_by
+- created_at
+- updated_at
+```
+
+### 11.9.1 device_assignments
+
+```text
+device_assignments
+- id
+- device_id
+- workspace_id
+- project_id nullable
+- site_id nullable
+- status
+- assigned_by
+- assigned_at
+- unassigned_at nullable
 - created_at
 - updated_at
 ```
@@ -771,7 +790,7 @@ edge_storage
 
 ### 11.11 device_source_configs
 
-`device_source_configs` 表示设备源实例配置。第一版可以不做数据库 CRUD 表，而是通过部署配置、环境变量、seed 或内部脚本维护。
+`device_source_configs` 表示系统级设备源实例配置。第一版可以不做客户侧数据库 CRUD 表，而是通过系统管理员后台、部署配置、环境变量、seed 或内部脚本维护。
 
 推荐配置形态：
 
@@ -790,13 +809,13 @@ device_source_configs
 - `adapter_code` 对应代码中注册的 adapter。
 - `dsn_secret_ref` 不保存明文连接串，真实 DSN 放在环境变量、Secret Manager 或部署配置中。
 - 普通 Workspace 用户不创建、不编辑、不查看设备源配置。
-- THCPN 设备源当前已产品化为系统管理员后台能力：`users.is_system_admin = true` 的账号可通过 `/api/v1/admin/data-sources` 和前端 `/admin/data-sources` 维护 system scoped DataSource，并同步设备到指定 `target_workspace_id`。
+- THCPN 设备源当前已产品化为系统管理员后台能力：`users.is_system_admin = true` 的账号可通过 `/api/v1/admin/data-sources` 和前端 `/admin/data-sources` 维护系统级 DataSource，并同步系统级设备到指定 `target_workspace_id`。
 
-当前代码实现保留 `data_sources` 表/API 作为内部设备源实例配置载体；`data_sources.type` 表示物理连接类型，`data_sources.scope` 区分 `workspace` / `system`。业务读取策略由 `data_stream_bindings.adapter_code` 决定，不再按 `data_sources.type` 直接分发。普通工作区控制台不暴露数据源管理。
+当前代码实现保留 `data_sources` 表作为系统级设备源实例配置载体；`data_sources.type` 表示物理连接类型，不再保存工作区归属字段。普通工作区控制台不暴露数据源管理；业务读取策略由 `data_stream_bindings.adapter_code` 决定，不再按 `data_sources.type` 直接分发。
 
 ### 11.12 device_source_refs
 
-`device_source_refs` 保存平台设备和外部设备数据源中的真实设备记录之间的映射。
+`device_source_refs` 保存系统级平台设备和外部设备数据源中的真实设备记录之间的映射。
 
 ```text
 device_source_refs
@@ -815,7 +834,7 @@ device_source_refs
 - updated_at
 ```
 
-这张表解决“用户绑定平台设备”和“平台到旧设备库读取数据”之间的关系。用户只接触平台设备 ID、SN 或二维码，不接触外部库表、外部字段和 DSN。
+这张表解决“系统级平台设备分配给 Workspace”和“平台到旧设备库读取数据”之间的关系。`workspace_id` 表示当前分配目标和权限边界，不表示 Workspace 拥有 DataSource 或 adapter。用户只接触已分配设备的 ID、SN 或二维码，不接触外部库表、外部字段和 DSN。
 
 ### 11.13 device_config_snapshots
 
@@ -1000,17 +1019,17 @@ audit_logs
 5. 创建者成为 Owner。
 ```
 
-### 12.3 设备绑定
+### 12.3 设备分配
 
 ```text
-1. 用户扫码或输入设备 SN。
-2. 后端在平台设备列表中校验设备是否存在、是否可绑定。
-3. 用户选择绑定到哪个 workspace。
-4. 可选选择 project 和 site。
-5. 系统写入 devices.workspace_id / project_id / site_id。
+1. 系统管理员从系统级设备列表选择已同步设备，或从外部设备库按 external_device_id 同步设备。
+2. 系统校验设备存在、未被分配到其他 Workspace，或本次操作是受审计的设备转移。
+3. 系统管理员选择目标 workspace。
+4. 可选选择 project 和 site，作为目标 Workspace 内的业务挂载位置。
+5. 系统写入或更新 `device_assignments`，其中 `workspace_id` 表示当前分配目标和权限边界，`project_id` / `site_id` 表示 Workspace 内的业务挂载位置。
 6. 系统基于已审核的 device_source_refs / device_config_snapshots 暴露该设备的数据流。
-7. 用户不能在绑定流程中输入 DSN、表名、字段名或 raw SQL。
-8. 记录 bound_by 和 activated_at。
+7. 普通 Workspace 用户不能在设备分配、数据查询或数据集创建流程中输入 DSN、表名、字段名、JSONPath 或 raw SQL。
+8. 记录分配操作人、`assigned_by`、`assigned_at`，并在设备首次启用时记录 `activated_at`。
 9. 写 audit_log。
 ```
 
@@ -1051,12 +1070,12 @@ audit_logs
 
 ### 12.7 设备转移
 
-设备转移属于敏感操作，不建议直接修改 `workspace_id`。
+设备转移属于敏感操作，不建议普通业务流程直接修改 `workspace_id`。
 
 第一版可以先简化为：
 
 ```text
-1. Owner/Admin 发起设备转移。
+1. Owner/Admin 发起设备转移申请，或系统管理员执行设备转移。
 2. 选择目标 workspace。
 3. 系统要求确认历史数据是否随设备转移。
 4. 默认只转移设备，不自动转移历史 dataset。
@@ -1123,7 +1142,7 @@ else:
 创建组织空间
 邀请成员
 修改成员角色
-创建设备绑定
+创建设备分配
 解绑设备
 转移设备
 修改设备配置
@@ -1184,7 +1203,8 @@ created_at = 2026-06-30 10:30:22
 允许售后默认访问全部客户数据。
 允许普通 Viewer 导出数据。
 允许 Workspace Owner / Admin 管理设备数据源连接、密钥、库表字段映射或 raw SQL。
-让普通用户在设备绑定、数据查询或数据集创建流程中输入设备库表名和字段名。
+允许 Workspace Owner / Admin 管理系统级设备注册表、DataSource、adapter 或跨 Workspace 设备分配规则。
+让普通用户在设备分配、数据查询或数据集创建流程中输入设备库表名、字段名、JSONPath 或 raw SQL。
 为了三到四类固定设备源，第一版建设复杂的设备数据源管理后台。
 ```
 
@@ -1214,7 +1234,7 @@ DataStream
 - 用户有个人空间。
 - 用户能创建组织空间。
 - 组织下能建项目和站点。
-- 设备能绑定到空间、项目和站点。
+- 系统级设备能分配到空间，并可选挂到项目和站点。
 
 ### 第二阶段：设备源适配和设备映射
 
@@ -1229,10 +1249,10 @@ DataStreamBinding
 目标：
 
 - 代码中注册三到四类设备源 adapter。
-- THCPN 设备源实例通过系统管理员后台维护为 system scoped DataSource；其他特殊源仍可先通过部署配置、环境变量或 seed 维护。
+- THCPN 设备源实例通过系统管理员后台维护为系统级 DataSource；其他特殊源仍可先通过部署配置、环境变量或 seed 维护。
 - 系统能同步或录入外部设备映射。
 - 系统能从设备配置快照生成 DataStream。
-- 当前阶段设备由系统管理员同步并分配到工作区；未来若提供普通用户自助绑定，也只能绑定平台设备标识，不能管理数据源连接和字段映射。
+- 当前阶段设备由系统管理员同步并单一分配到工作区；未来若提供普通用户自助申请，也只能申请使用平台设备标识，不能管理系统级设备注册、数据源连接和字段映射。
 
 ### 第三阶段：权限和分享
 
