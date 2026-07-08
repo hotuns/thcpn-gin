@@ -1,22 +1,23 @@
 # THCPN Adapter 设计说明
 
-本文总结 THCPN 设备数据库接入标准站和组网站的 adapter 设计。当前不涉及具体代码实现，目标是明确边界、数据读取流程、配置修改流程、性能约束和后续落地顺序。
+本文总结 THCPN 设备数据库接入标准站和组网站的 adapter 设计，并记录当前已落地的只读同步边界、数据读取流程、配置修改边界、性能约束和后续落地顺序。
 
 当前实现状态：
 
 ```text
-第一阶段只读接入已经开始落地。
+第一阶段只读接入和第二阶段组网站拓扑已经落地。
 
 已实现：
 1. 平台库 device_source_refs / device_config_snapshots。
 2. thcpn_legacy_mysql telemetry/image 只读查询。
 3. 按 device_data_index 定位 device_data_* 分表。
 4. 标准站同步入口读取 devices + 最新 device_config，生成系统级平台 Device 资产，同时生成 DataStream / Binding；设备分配在系统设备资产后台单独完成。
+5. 组网站同步入口读取 gate_node，同步网关和节点为独立系统级 Device，并保存 device_relations(parent = gateway, child = node)。
+6. 系统管理员可在后台手动设置 gateway-node 拓扑；普通 Workspace 用户只看到已分配且有权限的网关、节点和数据流。
 
 未实现：
-1. gate_node 组网站拓扑同步。
-2. 配置修改和新增 device_config。
-3. 旧库数据同步到分析库。
+1. 配置修改和新增 device_config。
+2. 旧库数据同步到分析库。
 
 当前明确不做：
 1. 按历史 device_config_id 精确切换配置解释。
@@ -469,7 +470,6 @@ data_stream_bindings
 ```text
 device_relations
 - id
-- workspace_id
 - parent_device_id
 - child_device_id
 - relation_type: gateway_node
@@ -482,7 +482,9 @@ device_relations
 - updated_at
 ```
 
-这样网关和节点都仍然是平台 Device，关系由 `device_relations` 表达。
+`device_relations` 是系统级拓扑关系，不保存 `workspace_id`。Workspace 可见性仍通过 active `device_assignments` 判断：管理员能查看完整系统拓扑，普通用户只能看到父设备和子设备都在当前可访问 Workspace 范围内的 active 关系。
+
+这样网关和节点都仍然是平台 Device，关系由 `device_relations` 表达。第一版 `relation_type` 只使用 `gateway_node`，状态只使用 `active` 和 `removed`。
 
 不要把节点数据流都挂到网关设备下面。正确模型是：
 
@@ -906,15 +908,16 @@ gate_node
 
 ### 8.2 用户绑定组网站
 
-推荐第一版：
+当前第一版：
 
 ```text
-用户绑定网关。
-系统自动同步该网关下的节点。
+系统管理员同步网关。
+系统自动同步该网关下的节点设备和拓扑关系。
+是否把节点一起分配给目标 Workspace 由 assign_nodes 显式控制，默认不级联分配。
 节点也作为平台 Device 存在。
 ```
 
-这样权限、数据流、导出和配置修改都更清晰。
+这样权限、数据流和导出都更清晰。配置修改仍未开放，不能通过组网站拓扑写回旧库。
 
 可选增强：
 
@@ -1090,14 +1093,14 @@ POST /api/v1/admin/data-sources/:data_source_id/thcpn-standard-station/devices
 
 ### 第二阶段：组网站拓扑
 
-实现目标：
+当前状态：
 
 ```text
-1. 读取 gate_node。
-2. 同步网关和节点设备。
-3. 保存 device_relations。
-4. 绑定网关时自动同步节点。
-5. 前端以树形展示组网站。
+1. 已读取 gate_node。
+2. 已同步网关和节点设备。
+3. 已保存 device_relations。
+4. 已支持 assign_nodes=true 时显式级联分配节点，默认只同步资产和关系。
+5. 已支持后台树形/手动拓扑管理和普通用户有权限范围内的节点展示。
 ```
 
 数据读取仍然走标准站数据 adapter。

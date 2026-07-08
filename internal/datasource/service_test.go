@@ -1,8 +1,11 @@
 package datasource
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
+
+	"github.com/google/uuid"
 
 	"thcpn-gin/internal/apperr"
 )
@@ -114,5 +117,120 @@ func TestNormalizeBindingAdapterCodeRules(t *testing.T) {
 	genericMedia.PayloadType = "columns"
 	if _, err := normalizeBinding(genericMedia, "active"); apperr.KindOf(err) != apperr.KindInvalidArgument {
 		t.Fatalf("expected generic_media columns payload to fail, got %v", err)
+	}
+}
+
+func TestValidateTHCPNDeviceSyncInput(t *testing.T) {
+	actorID := uuid.New()
+	workspaceID := uuid.New()
+	projectID := uuid.New()
+	siteID := uuid.New()
+
+	tests := []struct {
+		name  string
+		input thcpnDeviceSyncInput
+		want  apperr.Kind
+	}{
+		{
+			name: "valid unassigned system asset sync",
+			input: thcpnDeviceSyncInput{
+				ExternalDeviceID: 101,
+				ActorUserID:      actorID,
+			},
+		},
+		{
+			name: "valid assigned sync",
+			input: thcpnDeviceSyncInput{
+				TargetWorkspaceID: workspaceID,
+				ProjectID:         &projectID,
+				SiteID:            &siteID,
+				ExternalDeviceID:  101,
+				ActorUserID:       actorID,
+			},
+		},
+		{
+			name: "requires actor",
+			input: thcpnDeviceSyncInput{
+				ExternalDeviceID: 101,
+			},
+			want: apperr.KindInvalidArgument,
+		},
+		{
+			name: "requires external device",
+			input: thcpnDeviceSyncInput{
+				ActorUserID: actorID,
+			},
+			want: apperr.KindInvalidArgument,
+		},
+		{
+			name: "requires workspace when project provided",
+			input: thcpnDeviceSyncInput{
+				ProjectID:        &projectID,
+				ExternalDeviceID: 101,
+				ActorUserID:      actorID,
+			},
+			want: apperr.KindInvalidArgument,
+		},
+		{
+			name: "requires project when site provided",
+			input: thcpnDeviceSyncInput{
+				TargetWorkspaceID: workspaceID,
+				SiteID:            &siteID,
+				ExternalDeviceID:  101,
+				ActorUserID:       actorID,
+			},
+			want: apperr.KindInvalidArgument,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateTHCPNDeviceSyncInput(tt.input)
+			if tt.want == "" {
+				if err != nil {
+					t.Fatalf("expected valid input, got %v", err)
+				}
+				return
+			}
+			if apperr.KindOf(err) != tt.want {
+				t.Fatalf("expected %s, got %v", tt.want, err)
+			}
+		})
+	}
+}
+
+func TestValidateTHCPNGatewaySyncInputRequiresTargetWhenAssigningNodes(t *testing.T) {
+	_, err := validateTHCPNGatewaySyncInput(SyncTHCPNGatewayInput{
+		ExternalGatewayID: 9001,
+		AssignNodes:       true,
+		ActorUserID:       uuid.New(),
+	})
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected invalid argument, got %v", err)
+	}
+}
+
+func TestSyncTHCPNGatewayValidatesInputBeforeDatabase(t *testing.T) {
+	service := NewService(nil)
+
+	_, err := service.SyncTHCPNGateway(context.Background(), SyncTHCPNGatewayInput{
+		ExternalGatewayID: 9001,
+		AssignNodes:       true,
+		ActorUserID:       uuid.New(),
+	})
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected invalid argument before database access, got %v", err)
+	}
+}
+
+func TestSyncTHCPNGatewayRequiresDatabaseForValidInput(t *testing.T) {
+	service := NewService(nil)
+
+	_, err := service.SyncTHCPNGateway(context.Background(), SyncTHCPNGatewayInput{
+		ExternalGatewayID: 9001,
+		ActorUserID:       uuid.New(),
+	})
+	if apperr.KindOf(err) != apperr.KindInternal {
+		t.Fatalf("expected internal error for missing database, got %v", err)
 	}
 }

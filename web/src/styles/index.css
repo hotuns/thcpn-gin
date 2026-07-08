@@ -901,6 +901,14 @@ a:hover {
   grid-template-columns: minmax(240px, 1.1fr) minmax(280px, 1.4fr) minmax(140px, 0.6fr);
   gap: 14px;
   align-items: end;
+  min-width: 0;
+}
+
+.device-query-layout > .field,
+.device-query-layout .control {
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
 }
 
 .query-panel .ant-card-body {
@@ -1355,6 +1363,12 @@ a:hover {
   }
 }
 
+@media (max-width: 900px) {
+  .device-query-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 860px) {
   .auth-screen {
     grid-template-columns: 1fr;
@@ -1401,6 +1415,7 @@ a:hover {
   .form-grid,
   .filter-grid,
   .dual-form-grid,
+  .device-query-layout,
   .metric-grid,
   .dataset-form-grid.two-columns,
   .dataset-preview-toolbar {

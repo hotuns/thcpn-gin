@@ -246,24 +246,12 @@ func (s *Service) SyncTHCPNStandardStation(ctx context.Context, input SyncTHCPNS
 }
 
 func (s *Service) SyncTHCPNGateway(ctx context.Context, input SyncTHCPNGatewayInput) (THCPNGatewaySyncResult, error) {
-	if s.db == nil {
-		return THCPNGatewaySyncResult{}, apperr.New(apperr.KindInternal, "database is not configured")
-	}
-	gatewayInput := thcpnDeviceSyncInput{
-		TargetWorkspaceID: input.TargetWorkspaceID,
-		ProjectID:         input.ProjectID,
-		SiteID:            input.SiteID,
-		ExternalDeviceID:  input.ExternalGatewayID,
-		ProductID:         input.ProductID,
-		SerialNo:          input.SerialNo,
-		Name:              input.Name,
-		ActorUserID:       input.ActorUserID,
-	}
-	if err := validateTHCPNDeviceSyncInput(gatewayInput); err != nil {
+	gatewayInput, err := validateTHCPNGatewaySyncInput(input)
+	if err != nil {
 		return THCPNGatewaySyncResult{}, err
 	}
-	if input.AssignNodes && input.TargetWorkspaceID == uuid.Nil {
-		return THCPNGatewaySyncResult{}, apperr.New(apperr.KindInvalidArgument, "target_workspace_id is required when assign_nodes is true")
+	if s.db == nil {
+		return THCPNGatewaySyncResult{}, apperr.New(apperr.KindInternal, "database is not configured")
 	}
 	source, err := s.loadTHCPNSyncDataSource(ctx, input.DataSourceID)
 	if err != nil {
@@ -400,6 +388,26 @@ func validateTHCPNDeviceSyncInput(input thcpnDeviceSyncInput) error {
 		return apperr.New(apperr.KindInvalidArgument, "project_id is required when site_id is set")
 	}
 	return nil
+}
+
+func validateTHCPNGatewaySyncInput(input SyncTHCPNGatewayInput) (thcpnDeviceSyncInput, error) {
+	gatewayInput := thcpnDeviceSyncInput{
+		TargetWorkspaceID: input.TargetWorkspaceID,
+		ProjectID:         input.ProjectID,
+		SiteID:            input.SiteID,
+		ExternalDeviceID:  input.ExternalGatewayID,
+		ProductID:         input.ProductID,
+		SerialNo:          input.SerialNo,
+		Name:              input.Name,
+		ActorUserID:       input.ActorUserID,
+	}
+	if err := validateTHCPNDeviceSyncInput(gatewayInput); err != nil {
+		return thcpnDeviceSyncInput{}, err
+	}
+	if input.AssignNodes && input.TargetWorkspaceID == uuid.Nil {
+		return thcpnDeviceSyncInput{}, apperr.New(apperr.KindInvalidArgument, "target_workspace_id is required when assign_nodes is true")
+	}
+	return gatewayInput, nil
 }
 
 func (s *Service) syncTHCPNDevice(ctx context.Context, q *sqlc.Queries, source sqlc.DataSource, deviceDB *sql.DB, input thcpnDeviceSyncInput) (THCPNStandardStationSyncResult, error) {

@@ -319,9 +319,6 @@ export function AdminDataSourcesPage() {
       <div className="page-header">
         <div>
           <Typography.Title level={2}>THCPN 数据源</Typography.Title>
-          <Typography.Text type="secondary">
-            系统管理员维护 THCPN MySQL 设备源，把外部标准站同步为系统设备资产。
-          </Typography.Text>
         </div>
         <Button icon={<ReloadOutlined />} onClick={() => void dataSources.refetch()}>
           刷新
@@ -368,16 +365,7 @@ export function AdminDataSourcesPage() {
         />
       </Card>
 
-      <Card
-        title={
-          <Space orientation="vertical" size={0}>
-            <Typography.Text strong>同步 THCPN 标准站</Typography.Text>
-            <Typography.Text type="secondary">
-              读取外部设备和最新配置，创建或更新系统级设备、数据流和绑定；工作区分配在管理员导航的设备资产页面完成。
-            </Typography.Text>
-          </Space>
-        }
-      >
+      <Card title={<Typography.Text strong>同步 THCPN 标准站</Typography.Text>}>
         {!dataSources.isLoading && activeMySQLSources.length === 0 ? (
           <Alert message="没有 active 的系统级 MySQL 数据源，先创建并启用 THCPN 数据源。" showIcon type="warning" />
         ) : null}
@@ -419,16 +407,7 @@ export function AdminDataSourcesPage() {
         {syncResult ? <THCPNSyncResultView result={syncResult} /> : null}
       </Card>
 
-      <Card
-        title={
-          <Space orientation="vertical" size={0}>
-            <Typography.Text strong>同步 THCPN 组网站网关</Typography.Text>
-            <Typography.Text type="secondary">
-              读取 gate_node 拓扑，同步网关和节点设备；节点分配需要显式开启级联。
-            </Typography.Text>
-          </Space>
-        }
-      >
+      <Card title={<Typography.Text strong>同步 THCPN 组网站网关</Typography.Text>}>
         {!dataSources.isLoading && activeMySQLSources.length === 0 ? (
           <Alert message="没有 active 的系统级 MySQL 数据源，先创建并启用 THCPN 数据源。" showIcon type="warning" />
         ) : null}
@@ -771,25 +750,13 @@ export function AdminDeviceAssetsPage() {
       <div className="page-header">
         <div>
           <Typography.Title level={2}>设备资产</Typography.Title>
-          <Typography.Text type="secondary">
-            管理系统级设备资产和工作区分配；未分配设备只存在于系统资产库。
-          </Typography.Text>
         </div>
         <Button icon={<ReloadOutlined />} onClick={() => void devices.refetch()}>
           刷新
         </Button>
       </div>
 
-      <Card
-        title={
-          <Space orientation="vertical" size={0}>
-            <Typography.Text strong>系统设备资产 / 设备分配</Typography.Text>
-            <Typography.Text type="secondary">
-              分配到工作区后，设备才进入普通设备、数据流和数据查询权限模型。
-            </Typography.Text>
-          </Space>
-        }
-      >
+      <Card title={<Typography.Text strong>系统设备资产 / 设备分配</Typography.Text>}>
         {workspaces.error ? <Alert message={formatApiError(workspaces.error)} showIcon type="error" /> : null}
         {devices.error ? <Alert message={formatApiError(devices.error)} showIcon type="error" /> : null}
         <Tabs

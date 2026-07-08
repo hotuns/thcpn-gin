@@ -1252,6 +1252,7 @@ DataStreamBinding
 - THCPN 设备源实例通过系统管理员后台维护为系统级 DataSource；其他特殊源仍可先通过部署配置、环境变量或 seed 维护。
 - 系统能同步或录入外部设备映射。
 - 系统能从设备配置快照生成 DataStream。
+- 系统能同步或由管理员设置 THCPN gateway-node 拓扑；拓扑关系是系统级 `device_relations`，Workspace 权限只通过 active `device_assignments` 解析。
 - 当前阶段设备由系统管理员同步并单一分配到工作区；未来若提供普通用户自助申请，也只能申请使用平台设备标识，不能管理系统级设备注册、数据源连接和字段映射。
 
 ### 第三阶段：权限和分享

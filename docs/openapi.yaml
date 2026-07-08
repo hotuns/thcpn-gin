@@ -6,8 +6,8 @@ info:
     THCPN 科研物联网数据管理平台后端 API。
 
     当前文档覆盖已实现的阶段功能：健康检查、短信验证码登录/注册、邮箱验证码验证、密码注册/登录、TOTP MFA、refresh token、logout、会话管理、
-    JWT 认证、Workspace 列表/创建、Workspace 成员管理、Project、Site、Device、DataStream、DataSource、DataStreamBinding、Telemetry Query、Media Query、Dataset 元信息与遥测查询管理和 ExportJob 导出任务、
-    AccessGrant 外部分享/售后临时授权、Invitation、AuditLog，以及系统管理员后台 DataSource / THCPN 标准站同步接口。
+    JWT 认证、Workspace 列表/创建、Workspace 成员管理、Project、Site、Device、DeviceRelation、DataStream、DataSource、DataStreamBinding、Telemetry Query、Media Query、Dataset 元信息与遥测查询管理和 ExportJob 导出任务、
+    AccessGrant 外部分享/售后临时授权、Invitation、AuditLog，以及系统管理员后台 DataSource / THCPN 标准站和组网站拓扑同步接口。
 
     正式业务接口优先使用 `Authorization: Bearer <token>`。
     开发环境可通过配置启用 `X-User-ID` fallback；生产环境应关闭该能力。
