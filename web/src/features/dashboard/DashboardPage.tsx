@@ -60,10 +60,7 @@ export function DashboardPage() {
   const firstError = cards.find((card) => card.query.error)?.query.error || audits.error;
 
   return (
-    <Page
-      description={selectedWorkspace ? `当前工作区：${selectedWorkspace.workspace.name}` : "请选择一个工作区。"}
-      title="总览"
-    >
+    <Page title={selectedWorkspace ? `总览 · ${selectedWorkspace.workspace.name}` : "总览"}>
       {firstError ? (
         <Result
           className="state state-error"
@@ -82,7 +79,6 @@ export function DashboardPage() {
                 <Icon size={16} /> {card.label}
               </span>
               <strong>{card.query.isLoading ? "-" : compactNumber(card.value ?? 0)}</strong>
-              <small>{card.query.isFetching ? "同步中" : "已同步"}</small>
             </div>
           );
         })}
@@ -104,7 +100,6 @@ export function DashboardPage() {
             刷新全部
           </Button>
         }
-        description="最近的审计记录帮助确认账号和资源操作是否按预期发生。"
         title="最近活动"
       >
         {audits.isLoading ? (

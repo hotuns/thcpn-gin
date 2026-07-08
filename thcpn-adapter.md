@@ -11,7 +11,7 @@
 1. 平台库 device_source_refs / device_config_snapshots。
 2. thcpn_legacy_mysql telemetry/image 只读查询。
 3. 按 device_data_index 定位 device_data_* 分表。
-4. 标准站同步入口读取 devices + 最新 device_config，生成系统级平台 Device，并单一分配到目标 Workspace，同时生成 DataStream / Binding。
+4. 标准站同步入口读取 devices + 最新 device_config，生成系统级平台 Device 资产，同时生成 DataStream / Binding；设备分配在系统设备资产后台单独完成。
 
 未实现：
 1. gate_node 组网站拓扑同步。
@@ -1070,7 +1070,7 @@ raw JSON 修改应只给系统管理员或服务工程师，并且必须审计�
 POST /api/v1/admin/data-sources/:data_source_id/thcpn-standard-station/devices
 ```
 
-该接口只允许系统管理员调用。请求体必须包含 `target_workspace_id` 和 `external_device_id`，并可选 `project_id`、`site_id`、`product_id`、`serial_no`、`name`。接口读取系统级 THCPN MySQL DataSource 中的旧库 `devices` 和最新 `device_config`，同步系统级平台 Device，并将该 Device 单一分配给 `target_workspace_id`，同时 upsert 设备映射、配置快照、DataStream 和 DataStreamBinding。运行时查询通过系统级 `thcpn_legacy_mysql` adapter 读取旧库分表。
+该接口只允许系统管理员调用。请求体必须包含 `external_device_id`，并可选 `product_id`、`serial_no`、`name`。接口读取系统级 THCPN MySQL DataSource 中的旧库 `devices` 和最新 `device_config`，同步系统级平台 Device 资产，同时 upsert 设备映射、配置快照、DataStream 和 DataStreamBinding。若请求体额外提供 `target_workspace_id`、`project_id`、`site_id`，可兼容同步后立即分配；后台推荐流程是先同步系统设备资产，再通过系统设备资产 / 设备分配入口创建或调整 active `device_assignments`。运行时查询通过系统级 `thcpn_legacy_mysql` adapter 读取旧库分表。
 
 实现目标：
 

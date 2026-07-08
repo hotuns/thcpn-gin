@@ -137,7 +137,7 @@ other                 其他
 
 `Device` 表示平台系统级维护的真实物联网设备资产。
 
-设备由系统管理员或系统同步流程从外部设备库同步到平台，再通过 `device_assignments` 单一分配给某个 Workspace。`device_assignments.workspace_id` 表示设备当前分配目标和权限边界；可选 `project_id` / `site_id` 表示该 Workspace 内的业务挂载位置。
+设备由系统管理员或系统同步流程从外部设备库同步到平台，先进入系统设备资产库；随后系统管理员通过 `device_assignments` 单一分配给某个 Workspace。`device_assignments.workspace_id` 表示设备当前分配目标和权限边界；可选 `project_id` / `site_id` 表示该 Workspace 内的业务挂载位置。
 
 第一版不支持一个设备同时分配给多个 Workspace。跨 Workspace 使用设备应通过设备转移或 AccessGrant 分享完成。
 
@@ -205,7 +205,7 @@ AccessGrant 是实现“单独分享给某个人”的核心机制。
 - DataSource 是系统级设备源实例，由系统管理员维护。
 - adapter 是系统级读取/配置能力，由平台代码注册，不属于任何 Workspace。
 - THCPN 设备源实例通过 `/api/v1/admin/data-sources` 和 `/admin/data-sources` 维护；其他特殊源可继续通过部署配置或环境变量维护。
-- 系统管理员同步外部设备时指定 `target_workspace_id`，平台库维护系统级设备列表、外部设备 ID / SN / ICCID 映射，并将设备单一分配给目标 Workspace。
+- 系统管理员同步外部设备时先写入系统级设备资产、外部设备 ID / SN / ICCID 映射、配置快照和数据流；设备分配在系统设备资产 / 设备分配入口单独完成。
 - 平台库保存外部最新 `device_config` 快照，并用最新配置解释历史数据；无法匹配的数据给出提示并跳过。
 - DataStream 从配置快照解析生成，用户只看到业务数据流。
 
@@ -809,7 +809,7 @@ device_source_configs
 - `adapter_code` 对应代码中注册的 adapter。
 - `dsn_secret_ref` 不保存明文连接串，真实 DSN 放在环境变量、Secret Manager 或部署配置中。
 - 普通 Workspace 用户不创建、不编辑、不查看设备源配置。
-- THCPN 设备源当前已产品化为系统管理员后台能力：`users.is_system_admin = true` 的账号可通过 `/api/v1/admin/data-sources` 和前端 `/admin/data-sources` 维护系统级 DataSource，并同步系统级设备到指定 `target_workspace_id`。
+- THCPN 设备源当前已产品化为系统管理员后台能力：`users.is_system_admin = true` 的账号可通过 `/api/v1/admin/data-sources` 和前端 `/admin/data-sources` 维护系统级 DataSource，把外部设备同步为系统设备资产，再通过系统设备资产 / 设备分配入口分配给 Workspace。
 
 当前代码实现保留 `data_sources` 表作为系统级设备源实例配置载体；`data_sources.type` 表示物理连接类型，不再保存工作区归属字段。普通工作区控制台不暴露数据源管理；业务读取策略由 `data_stream_bindings.adapter_code` 决定，不再按 `data_sources.type` 直接分发。
 

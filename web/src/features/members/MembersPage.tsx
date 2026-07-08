@@ -1,13 +1,14 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
-import { Alert, App as AntApp, Button, Form, Input, Result, Select, Space, Spin, Table, Tag } from "antd";
+import { Alert, App as AntApp, Button, Form, Input, Modal, Popconfirm, Result, Select, Space, Spin, Table, Tag, Typography } from "antd";
 import type { TableColumnsType } from "antd";
 import { formatApiError, membersApi, type InternalMemberRoleCode, type WorkspaceMember } from "../../api";
 import { Page, Section } from "../../components";
 import { useWorkspace } from "../../app/WorkspaceProvider";
 import { formatDateTime } from "../../app/format";
 import { copyableId, statusColor, tableScrollX } from "../../app/ui";
+import { internalRoleOptions, roleLabel } from "../settings/roleMeta";
 
 type SelectorKind = "email" | "phone" | "user_id";
 
@@ -17,20 +18,10 @@ const selectorOptions: Array<{ label: string; value: SelectorKind }> = [
   { label: "用户 ID", value: "user_id" }
 ];
 
-const roleOptions: Array<{ label: string; value: InternalMemberRoleCode }> = [
-  { label: "Owner", value: "owner" },
-  { label: "Admin", value: "admin" },
-  { label: "项目经理", value: "project_manager" },
-  { label: "站点操作员", value: "site_operator" },
-  { label: "数据管理员", value: "data_manager" },
-  { label: "研究员", value: "researcher" },
-  { label: "只读", value: "viewer" }
-];
-
 export function MembersPage() {
   const { selectedWorkspaceId, selectedWorkspace } = useWorkspace();
   const [form, setForm] = useState({ selector: "email" as SelectorKind, value: "", role_code: "viewer" as InternalMemberRoleCode });
-  const [roleDrafts, setRoleDrafts] = useState<Record<string, InternalMemberRoleCode>>({});
+  const [roleDialog, setRoleDialog] = useState<{ member: WorkspaceMember; roleCode: InternalMemberRoleCode } | null>(null);
   const queryClient = useQueryClient();
   const { message } = AntApp.useApp();
 
@@ -56,9 +47,10 @@ export function MembersPage() {
   });
 
   const updateRole = useMutation({
-    mutationFn: (member: WorkspaceMember) =>
-      membersApi.updateRole(selectedWorkspaceId, member.id, roleDrafts[member.id] || (member.role.code as InternalMemberRoleCode)),
+    mutationFn: (input: { member: WorkspaceMember; roleCode: InternalMemberRoleCode }) =>
+      membersApi.updateRole(selectedWorkspaceId, input.member.id, input.roleCode),
     onSuccess: () => {
+      setRoleDialog(null);
       invalidate();
       void message.success("角色已更新");
     }
@@ -98,15 +90,8 @@ export function MembersPage() {
     {
       key: "role",
       title: "角色",
-      width: 180,
-      render: (_, member) => (
-        <Select
-          onChange={(value) => setRoleDrafts({ ...roleDrafts, [member.id]: value })}
-          options={roleOptions}
-          style={{ minWidth: 160 }}
-          value={roleDrafts[member.id] || member.role.code}
-        />
-      )
+      width: 260,
+      render: (_, member) => <RoleSummary code={member.role.code} />
     },
     {
       key: "joined",
@@ -126,17 +111,20 @@ export function MembersPage() {
       width: 220,
       render: (_, member) => (
         <div className="row-actions">
-          <Button disabled={updateRole.isPending} onClick={() => updateRole.mutate(member)}>
-            保存角色
+          <Button disabled={updateRole.isPending} onClick={() => setRoleDialog({ member, roleCode: member.role.code as InternalMemberRoleCode })}>
+            调整角色
           </Button>
-          <Button
-            danger
-            disabled={removeMember.isPending}
-            icon={<Trash2 size={15} />}
-            onClick={() => removeMember.mutate(member.id)}
+          <Popconfirm
+            cancelText="取消"
+            okButtonProps={{ danger: true, loading: removeMember.isPending }}
+            okText="移除"
+            onConfirm={() => removeMember.mutate(member.id)}
+            title={`移除 ${member.user.name || member.user.email || member.user.id}`}
           >
-            移除
-          </Button>
+            <Button danger disabled={removeMember.isPending} icon={<Trash2 size={15} />}>
+              移除
+            </Button>
+          </Popconfirm>
         </div>
       )
     }
@@ -147,7 +135,7 @@ export function MembersPage() {
       description={selectedWorkspace ? `当前工作区：${selectedWorkspace.workspace.name}` : "请选择工作区后管理成员。"}
       title="成员"
     >
-      <Section title="添加成员">
+      <Section description="长期参与组织管理和协作的人加入工作区成员；外部协作者、售后临时访问请使用资源授权。" title="添加成员">
         <form className="form-grid" onSubmit={handleAdd}>
           <Form.Item className="field" label="匹配方式">
             <Select className="control" onChange={(value) => setForm({ ...form, selector: value })} options={selectorOptions} value={form.selector} />
@@ -156,7 +144,13 @@ export function MembersPage() {
             <Input className="control" onChange={(event) => setForm({ ...form, value: event.target.value })} required value={form.value} />
           </Form.Item>
           <Form.Item className="field" label="角色">
-            <Select className="control" onChange={(value) => setForm({ ...form, role_code: value })} options={roleOptions} value={form.role_code} />
+            <Select
+              className="control"
+              onChange={(value) => setForm({ ...form, role_code: value })}
+              optionRender={(option) => <RoleOption code={option.value as InternalMemberRoleCode} />}
+              options={internalRoleOptions}
+              value={form.role_code}
+            />
           </Form.Item>
           <div className="form-actions align-end">
             <Button disabled={addMember.isPending || !selectedWorkspaceId} htmlType="submit" icon={<Plus size={16} />} type="primary">
@@ -196,6 +190,55 @@ export function MembersPage() {
           />
         ) : null}
       </Section>
+
+      <Modal
+        confirmLoading={updateRole.isPending}
+        okText="保存角色"
+        onCancel={() => setRoleDialog(null)}
+        onOk={() => roleDialog ? updateRole.mutate(roleDialog) : undefined}
+        open={Boolean(roleDialog)}
+        title="调整成员角色"
+      >
+        {roleDialog ? (
+          <div className="role-change-dialog">
+            <div className="role-change-current">
+              <Typography.Text type="secondary">成员</Typography.Text>
+              <Typography.Text strong>{roleDialog.member.user.name}</Typography.Text>
+              <Typography.Text type="secondary">{roleDialog.member.user.email || roleDialog.member.user.phone || roleDialog.member.user.id}</Typography.Text>
+            </div>
+            <Form layout="vertical">
+              <Form.Item label="当前角色">
+                <RoleSummary code={roleDialog.member.role.code} />
+              </Form.Item>
+              <Form.Item label="新角色">
+                <Select
+                  onChange={(value) => setRoleDialog({ ...roleDialog, roleCode: value })}
+                  optionRender={(option) => <RoleOption code={option.value as InternalMemberRoleCode} />}
+                  options={internalRoleOptions}
+                  value={roleDialog.roleCode}
+                />
+              </Form.Item>
+              {updateRole.error ? <Alert message={formatApiError(updateRole.error)} showIcon type="error" /> : null}
+            </Form>
+          </div>
+        ) : null}
+      </Modal>
     </Page>
+  );
+}
+
+function RoleSummary({ code }: { code: string }) {
+  return (
+    <div className="role-summary">
+      <strong>{roleLabel(code)}</strong>
+    </div>
+  );
+}
+
+function RoleOption({ code }: { code: InternalMemberRoleCode }) {
+  return (
+    <div className="role-option">
+      <strong>{roleLabel(code)}</strong>
+    </div>
   );
 }

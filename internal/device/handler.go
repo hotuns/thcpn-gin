@@ -72,6 +72,17 @@ type transferDeviceRequest struct {
 	ConfirmDatasetPolicy       bool   `json:"confirm_dataset_policy"`
 }
 
+type assignDeviceRequest struct {
+	TargetWorkspaceID string `json:"target_workspace_id"`
+	ProjectID         string `json:"project_id"`
+	SiteID            string `json:"site_id"`
+	AssignChildren    bool   `json:"assign_children"`
+}
+
+type addDeviceChildRequest struct {
+	ChildDeviceID string `json:"child_device_id"`
+}
+
 func NewHandler(service *Service, checker *permission.Checker, auditServices ...*audit.Service) *Handler {
 	var auditService *audit.Service
 	if len(auditServices) > 0 {
@@ -109,6 +120,200 @@ func (h *Handler) List(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+func (h *Handler) AdminListSystemAssets(c *gin.Context) {
+	items, err := h.service.ListSystemAssets(c.Request.Context())
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+func (h *Handler) AdminChildren(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	items, err := h.service.ListAdminChildren(c.Request.Context(), deviceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+func (h *Handler) AdminAddChild(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	parentDeviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	var req addDeviceChildRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	childDeviceID, ok := parseUUIDValue(req.ChildDeviceID, "child_device_id", c)
+	if !ok {
+		return
+	}
+	relation, err := h.service.AddChild(c.Request.Context(), AddChildInput{
+		ParentDeviceID: parentDeviceID,
+		ChildDeviceID:  childDeviceID,
+		ActorUserID:    actor.UserID,
+	})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "device_relation.admin_set",
+			ResourceType: "device",
+			ResourceID:   audit.ResourceID(parentDeviceID),
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "device_relation.admin_set",
+		ResourceType: "device",
+		ResourceID:   audit.ResourceID(parentDeviceID),
+		Result:       audit.ResultSuccess,
+	}) {
+		return
+	}
+	c.JSON(http.StatusOK, relation)
+}
+
+func (h *Handler) AdminRemoveChild(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	parentDeviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	childDeviceID, ok := parseUUIDParam(c, "child_device_id")
+	if !ok {
+		return
+	}
+	relation, err := h.service.RemoveChild(c.Request.Context(), RemoveChildInput{
+		ParentDeviceID: parentDeviceID,
+		ChildDeviceID:  childDeviceID,
+		ActorUserID:    actor.UserID,
+	})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "device_relation.admin_remove",
+			ResourceType: "device",
+			ResourceID:   audit.ResourceID(parentDeviceID),
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "device_relation.admin_remove",
+		ResourceType: "device",
+		ResourceID:   audit.ResourceID(relation.ParentDeviceID),
+		Result:       audit.ResultSuccess,
+	}) {
+		return
+	}
+	c.JSON(http.StatusOK, relation)
+}
+
+func (h *Handler) AdminAssign(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+
+	var req assignDeviceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	targetWorkspaceID, ok := parseUUIDValue(req.TargetWorkspaceID, "target_workspace_id", c)
+	if !ok {
+		return
+	}
+	projectID, ok := parseOptionalUUIDValue(req.ProjectID, "project_id", c)
+	if !ok {
+		return
+	}
+	siteID, ok := parseOptionalUUIDValue(req.SiteID, "site_id", c)
+	if !ok {
+		return
+	}
+
+	result, err := h.service.Assign(c.Request.Context(), AssignInput{
+		DeviceID:          deviceID,
+		TargetWorkspaceID: targetWorkspaceID,
+		ProjectID:         projectID,
+		SiteID:            siteID,
+		AssignChildren:    req.AssignChildren,
+		ActorUserID:       actor.UserID,
+	})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if req.AssignChildren {
+		if !h.record(c, audit.RecordInput{
+			WorkspaceID:  audit.WorkspaceID(workspaceIDValue(result.WorkspaceID)),
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "device.assignment.cascade_gateway_nodes",
+			ResourceType: "device",
+			ResourceID:   audit.ResourceID(result.ID),
+			Result:       audit.ResultSuccess,
+		}) {
+			return
+		}
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminUnassign(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	if err := h.service.Unbind(c.Request.Context(), UnbindInput{
+		DeviceID:    deviceID,
+		ActorUserID: actor.UserID,
+	}); err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 func (h *Handler) Create(c *gin.Context) {
@@ -166,7 +371,7 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 	if !h.record(c, audit.RecordInput{
-		WorkspaceID:  audit.WorkspaceID(result.WorkspaceID),
+		WorkspaceID:  audit.WorkspaceID(workspaceIDValue(result.WorkspaceID)),
 		ActorType:    audit.ActorUser,
 		ActorID:      audit.UserActorID(actor.UserID),
 		Action:       "device.bind",
@@ -199,7 +404,7 @@ func (h *Handler) Get(c *gin.Context) {
 	if isServiceEngineerAccess(decision) {
 		actor, _ := auth.ActorFromContext(c)
 		if !h.record(c, audit.RecordInput{
-			WorkspaceID:  audit.WorkspaceID(result.WorkspaceID),
+			WorkspaceID:  audit.WorkspaceID(workspaceIDValue(result.WorkspaceID)),
 			ActorType:    audit.ActorUser,
 			ActorID:      audit.UserActorID(actor.UserID),
 			Action:       serviceAccessUseAction,
@@ -211,6 +416,40 @@ func (h *Handler) Get(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) Children(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	if !h.authorize(c, "device", deviceID, deviceViewAction) {
+		return
+	}
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	items, err := h.service.ListVisibleChildren(c.Request.Context(), deviceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	visible := make([]DeviceChild, 0, len(items))
+	for _, item := range items {
+		decision, err := h.checker.Can(c.Request.Context(), permission.Actor{UserID: actor.UserID}, deviceViewAction, permission.ResourceRef{
+			Type: "device",
+			ID:   item.Device.ID,
+		})
+		if err != nil {
+			httpx.WriteAppError(c, err)
+			return
+		}
+		if decision.Allowed {
+			visible = append(visible, item)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": visible})
 }
 
 func (h *Handler) Update(c *gin.Context) {
@@ -265,7 +504,7 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 	if !h.record(c, audit.RecordInput{
-		WorkspaceID:  audit.WorkspaceID(result.WorkspaceID),
+		WorkspaceID:  audit.WorkspaceID(workspaceIDValue(result.WorkspaceID)),
 		ActorType:    audit.ActorUser,
 		ActorID:      audit.UserActorID(actor.UserID),
 		Action:       "device.configure",
@@ -434,7 +673,7 @@ func (h *Handler) Transfer(c *gin.Context) {
 	})
 	if err != nil {
 		if !h.record(c, audit.RecordInput{
-			WorkspaceID:  audit.WorkspaceID(current.WorkspaceID),
+			WorkspaceID:  audit.WorkspaceID(workspaceIDValue(current.WorkspaceID)),
 			ActorType:    audit.ActorUser,
 			ActorID:      audit.UserActorID(actor.UserID),
 			Action:       "device.transfer",
@@ -449,7 +688,7 @@ func (h *Handler) Transfer(c *gin.Context) {
 		return
 	}
 	if !h.record(c, audit.RecordInput{
-		WorkspaceID:  audit.WorkspaceID(current.WorkspaceID),
+		WorkspaceID:  audit.WorkspaceID(workspaceIDValue(current.WorkspaceID)),
 		ActorType:    audit.ActorUser,
 		ActorID:      audit.UserActorID(actor.UserID),
 		Action:       "device.transfer",
@@ -499,7 +738,7 @@ func (h *Handler) Unbind(c *gin.Context) {
 		return
 	}
 	if !h.record(c, audit.RecordInput{
-		WorkspaceID:  audit.WorkspaceID(current.WorkspaceID),
+		WorkspaceID:  audit.WorkspaceID(workspaceIDValue(current.WorkspaceID)),
 		ActorType:    audit.ActorUser,
 		ActorID:      audit.UserActorID(actor.UserID),
 		Action:       "device.unbind",
@@ -545,6 +784,13 @@ func (h *Handler) authorizeDecision(c *gin.Context, resourceType string, resourc
 
 func isServiceEngineerAccess(decision permission.Decision) bool {
 	return decision.Source == "access_grant" && decision.GrantRoleCode == "service_engineer"
+}
+
+func workspaceIDValue(value *uuid.UUID) uuid.UUID {
+	if value == nil {
+		return uuid.Nil
+	}
+	return *value
 }
 
 func actorFromContext(c *gin.Context) (auth.Actor, bool) {

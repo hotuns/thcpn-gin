@@ -20,15 +20,28 @@ import (
 const defaultTHCPNProductID = "thcpn_standard_station"
 
 type SyncTHCPNStandardStationInput struct {
-	DataSourceID     uuid.UUID
+	DataSourceID      uuid.UUID
 	TargetWorkspaceID uuid.UUID
-	ProjectID        *uuid.UUID
-	SiteID           *uuid.UUID
-	ExternalDeviceID int64
-	ProductID        string
-	SerialNo         string
-	Name             string
-	ActorUserID      uuid.UUID
+	ProjectID         *uuid.UUID
+	SiteID            *uuid.UUID
+	ExternalDeviceID  int64
+	ProductID         string
+	SerialNo          string
+	Name              string
+	ActorUserID       uuid.UUID
+}
+
+type SyncTHCPNGatewayInput struct {
+	DataSourceID      uuid.UUID
+	TargetWorkspaceID uuid.UUID
+	ProjectID         *uuid.UUID
+	SiteID            *uuid.UUID
+	ExternalGatewayID int64
+	AssignNodes       bool
+	ProductID         string
+	SerialNo          string
+	Name              string
+	ActorUserID       uuid.UUID
 }
 
 type THCPNStandardStationSyncResult struct {
@@ -40,10 +53,18 @@ type THCPNStandardStationSyncResult struct {
 	ExternalDevice THCPNExternalDeviceMetadata `json:"external_device"`
 }
 
+type THCPNGatewaySyncResult struct {
+	Gateway          THCPNStandardStationSyncResult   `json:"gateway"`
+	Nodes            []THCPNStandardStationSyncResult `json:"nodes"`
+	Relations        []DeviceRelation                 `json:"relations"`
+	RemovedRelations []DeviceRelation                 `json:"removed_relations,omitempty"`
+	Warnings         []QueryWarning                   `json:"warnings,omitempty"`
+}
+
 type SyncedDevice struct {
 	ID           uuid.UUID  `json:"id"`
-	AssignmentID uuid.UUID  `json:"assignment_id"`
-	WorkspaceID  uuid.UUID  `json:"workspace_id"`
+	AssignmentID *uuid.UUID `json:"assignment_id,omitempty"`
+	WorkspaceID  *uuid.UUID `json:"workspace_id,omitempty"`
 	ProjectID    *uuid.UUID `json:"project_id,omitempty"`
 	SiteID       *uuid.UUID `json:"site_id,omitempty"`
 	ProductID    *string    `json:"product_id,omitempty"`
@@ -54,6 +75,20 @@ type SyncedDevice struct {
 	AssignedAt   *time.Time `json:"assigned_at,omitempty"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+type DeviceRelation struct {
+	ID                     uuid.UUID `json:"id"`
+	ParentDeviceID         uuid.UUID `json:"parent_device_id"`
+	ChildDeviceID          uuid.UUID `json:"child_device_id"`
+	RelationType           string    `json:"relation_type"`
+	DataSourceID           uuid.UUID `json:"data_source_id"`
+	ExternalParentDeviceID int64     `json:"external_parent_device_id"`
+	ExternalChildDeviceID  int64     `json:"external_child_device_id"`
+	Status                 string    `json:"status"`
+	SyncedAt               time.Time `json:"synced_at"`
+	CreatedAt              time.Time `json:"created_at"`
+	UpdatedAt              time.Time `json:"updated_at"`
 }
 
 type SyncedDataStream struct {
@@ -140,38 +175,42 @@ type thcpnStreamSpec struct {
 	AdapterConfig json.RawMessage
 }
 
+type thcpnDeviceSyncInput struct {
+	TargetWorkspaceID uuid.UUID
+	ProjectID         *uuid.UUID
+	SiteID            *uuid.UUID
+	ExternalDeviceID  int64
+	ProductID         string
+	SerialNo          string
+	Name              string
+	ActorUserID       uuid.UUID
+}
+
 func (s *Service) SyncTHCPNStandardStation(ctx context.Context, input SyncTHCPNStandardStationInput) (THCPNStandardStationSyncResult, error) {
 	if s.db == nil {
 		return THCPNStandardStationSyncResult{}, apperr.New(apperr.KindInternal, "database is not configured")
 	}
-	if input.DataSourceID == uuid.Nil {
-		return THCPNStandardStationSyncResult{}, apperr.New(apperr.KindInvalidArgument, "data_source_id is required")
+	deviceInput := thcpnDeviceSyncInput{
+		TargetWorkspaceID: input.TargetWorkspaceID,
+		ProjectID:         input.ProjectID,
+		SiteID:            input.SiteID,
+		ExternalDeviceID:  input.ExternalDeviceID,
+		ProductID:         input.ProductID,
+		SerialNo:          input.SerialNo,
+		Name:              input.Name,
+		ActorUserID:       input.ActorUserID,
 	}
-	if input.ActorUserID == uuid.Nil {
-		return THCPNStandardStationSyncResult{}, apperr.New(apperr.KindInvalidArgument, "actor user id is required")
-	}
-	if input.ExternalDeviceID <= 0 {
-		return THCPNStandardStationSyncResult{}, apperr.New(apperr.KindInvalidArgument, "external_device_id is required")
-	}
-	if input.SiteID != nil && input.ProjectID == nil {
-		return THCPNStandardStationSyncResult{}, apperr.New(apperr.KindInvalidArgument, "project_id is required when site_id is set")
-	}
-
-	source, err := s.queries.GetDataSource(ctx, input.DataSourceID)
-	if err != nil {
-		return THCPNStandardStationSyncResult{}, mapNotFoundOrInternal(err, "data source not found")
-	}
-	if source.Type != "mysql" {
-		return THCPNStandardStationSyncResult{}, apperr.New(apperr.KindInvalidArgument, "thcpn standard station sync requires mysql data source")
-	}
-	if source.Status != "active" {
-		return THCPNStandardStationSyncResult{}, apperr.New(apperr.KindInvalidArgument, "data source is not active")
-	}
-	if input.TargetWorkspaceID == uuid.Nil {
-		return THCPNStandardStationSyncResult{}, apperr.New(apperr.KindInvalidArgument, "target_workspace_id is required")
-	}
-	if err := validateTHCPNSyncTarget(ctx, s.queries, input.TargetWorkspaceID, input.ProjectID, input.SiteID); err != nil {
+	if err := validateTHCPNDeviceSyncInput(deviceInput); err != nil {
 		return THCPNStandardStationSyncResult{}, err
+	}
+	source, err := s.loadTHCPNSyncDataSource(ctx, input.DataSourceID)
+	if err != nil {
+		return THCPNStandardStationSyncResult{}, err
+	}
+	if input.TargetWorkspaceID != uuid.Nil {
+		if err := validateTHCPNSyncTarget(ctx, s.queries, input.TargetWorkspaceID, input.ProjectID, input.SiteID); err != nil {
+			return THCPNStandardStationSyncResult{}, err
+		}
 	}
 
 	runtime := NewRuntime(nil)
@@ -180,19 +219,6 @@ func (s *Service) SyncTHCPNStandardStation(ctx context.Context, input SyncTHCPNS
 		return THCPNStandardStationSyncResult{}, err
 	}
 	defer deviceDB.Close()
-
-	externalDevice, err := readTHCPNExternalDevice(ctx, deviceDB, input.ExternalDeviceID)
-	if err != nil {
-		return THCPNStandardStationSyncResult{}, err
-	}
-	externalConfig, err := readLatestTHCPNDeviceConfig(ctx, deviceDB, input.ExternalDeviceID)
-	if err != nil {
-		return THCPNStandardStationSyncResult{}, err
-	}
-	streamSpecs, err := buildTHCPNStreamSpecs(input.ExternalDeviceID, externalConfig.Data, externalConfig.Image)
-	if err != nil {
-		return THCPNStandardStationSyncResult{}, err
-	}
 
 	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -205,6 +231,190 @@ func (s *Service) SyncTHCPNStandardStation(ctx context.Context, input SyncTHCPNS
 		}
 	}()
 	q := s.queries.WithTx(tx)
+
+	result, err := s.syncTHCPNDevice(ctx, q, source, deviceDB, deviceInput)
+	if err != nil {
+		return THCPNStandardStationSyncResult{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return THCPNStandardStationSyncResult{}, apperr.Wrap(apperr.KindInternal, "commit thcpn sync transaction", err)
+	}
+	committed = true
+
+	return result, nil
+}
+
+func (s *Service) SyncTHCPNGateway(ctx context.Context, input SyncTHCPNGatewayInput) (THCPNGatewaySyncResult, error) {
+	if s.db == nil {
+		return THCPNGatewaySyncResult{}, apperr.New(apperr.KindInternal, "database is not configured")
+	}
+	gatewayInput := thcpnDeviceSyncInput{
+		TargetWorkspaceID: input.TargetWorkspaceID,
+		ProjectID:         input.ProjectID,
+		SiteID:            input.SiteID,
+		ExternalDeviceID:  input.ExternalGatewayID,
+		ProductID:         input.ProductID,
+		SerialNo:          input.SerialNo,
+		Name:              input.Name,
+		ActorUserID:       input.ActorUserID,
+	}
+	if err := validateTHCPNDeviceSyncInput(gatewayInput); err != nil {
+		return THCPNGatewaySyncResult{}, err
+	}
+	if input.AssignNodes && input.TargetWorkspaceID == uuid.Nil {
+		return THCPNGatewaySyncResult{}, apperr.New(apperr.KindInvalidArgument, "target_workspace_id is required when assign_nodes is true")
+	}
+	source, err := s.loadTHCPNSyncDataSource(ctx, input.DataSourceID)
+	if err != nil {
+		return THCPNGatewaySyncResult{}, err
+	}
+	if input.TargetWorkspaceID != uuid.Nil {
+		if err := validateTHCPNSyncTarget(ctx, s.queries, input.TargetWorkspaceID, input.ProjectID, input.SiteID); err != nil {
+			return THCPNGatewaySyncResult{}, err
+		}
+	}
+
+	runtime := NewRuntime(nil)
+	deviceDB, err := runtime.openMySQL(ctx, dataSourceFromSQL(source))
+	if err != nil {
+		return THCPNGatewaySyncResult{}, err
+	}
+	defer deviceDB.Close()
+
+	gateNodes, err := readTHCPNGateNodes(ctx, deviceDB, input.ExternalGatewayID)
+	if err != nil {
+		return THCPNGatewaySyncResult{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return THCPNGatewaySyncResult{}, apperr.Wrap(apperr.KindInternal, "begin thcpn gateway sync transaction", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+	q := s.queries.WithTx(tx)
+
+	gateway, err := s.syncTHCPNDevice(ctx, q, source, deviceDB, gatewayInput)
+	if err != nil {
+		return THCPNGatewaySyncResult{}, err
+	}
+	nodes := make([]THCPNStandardStationSyncResult, 0, len(gateNodes))
+	relations := make([]DeviceRelation, 0, len(gateNodes))
+	activeChildIDs := make([]int64, 0, len(gateNodes))
+	for _, nodeID := range gateNodes {
+		nodeInput := thcpnDeviceSyncInput{
+			ExternalDeviceID: nodeID,
+			ActorUserID:      input.ActorUserID,
+		}
+		if input.AssignNodes {
+			nodeInput.TargetWorkspaceID = input.TargetWorkspaceID
+			nodeInput.ProjectID = input.ProjectID
+			nodeInput.SiteID = input.SiteID
+		}
+		node, err := s.syncTHCPNDevice(ctx, q, source, deviceDB, nodeInput)
+		if err != nil {
+			return THCPNGatewaySyncResult{}, err
+		}
+		relation, err := q.UpsertDeviceRelation(ctx, sqlc.UpsertDeviceRelationParams{
+			ParentDeviceID:         gateway.Device.ID,
+			ChildDeviceID:          node.Device.ID,
+			RelationType:           "gateway_node",
+			DataSourceID:           source.ID,
+			ExternalParentDeviceID: input.ExternalGatewayID,
+			ExternalChildDeviceID:  nodeID,
+		})
+		if err != nil {
+			return THCPNGatewaySyncResult{}, mapWriteError(err, "upsert device relation")
+		}
+		activeChildIDs = append(activeChildIDs, nodeID)
+		nodes = append(nodes, node)
+		relations = append(relations, deviceRelationFromUpsertRow(relation))
+	}
+	removed, err := q.MarkMissingDeviceRelationsRemoved(ctx, sqlc.MarkMissingDeviceRelationsRemovedParams{
+		DataSourceID:           source.ID,
+		ExternalParentDeviceID: input.ExternalGatewayID,
+		ActiveChildIds:         activeChildIDs,
+	})
+	if err != nil {
+		return THCPNGatewaySyncResult{}, mapWriteError(err, "mark missing device relations removed")
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return THCPNGatewaySyncResult{}, apperr.Wrap(apperr.KindInternal, "commit thcpn gateway sync transaction", err)
+	}
+	committed = true
+
+	removedRelations := make([]DeviceRelation, 0, len(removed))
+	for _, relation := range removed {
+		removedRelations = append(removedRelations, deviceRelationFromSQL(relation))
+	}
+	result := THCPNGatewaySyncResult{
+		Gateway:          gateway,
+		Nodes:            nodes,
+		Relations:        relations,
+		RemovedRelations: removedRelations,
+	}
+	if len(nodes) == 0 {
+		result.Warnings = append(result.Warnings, QueryWarning{
+			Code:    "thcpn_gateway_without_nodes",
+			Message: "未在 gate_node 中发现该网关的 active 节点",
+		})
+	}
+	return result, nil
+}
+
+func (s *Service) loadTHCPNSyncDataSource(ctx context.Context, dataSourceID uuid.UUID) (sqlc.DataSource, error) {
+	if dataSourceID == uuid.Nil {
+		return sqlc.DataSource{}, apperr.New(apperr.KindInvalidArgument, "data_source_id is required")
+	}
+	source, err := s.queries.GetDataSource(ctx, dataSourceID)
+	if err != nil {
+		return sqlc.DataSource{}, mapNotFoundOrInternal(err, "data source not found")
+	}
+	if source.Type != "mysql" {
+		return sqlc.DataSource{}, apperr.New(apperr.KindInvalidArgument, "thcpn standard station sync requires mysql data source")
+	}
+	if source.Status != "active" {
+		return sqlc.DataSource{}, apperr.New(apperr.KindInvalidArgument, "data source is not active")
+	}
+	return source, nil
+}
+
+func validateTHCPNDeviceSyncInput(input thcpnDeviceSyncInput) error {
+	if input.ActorUserID == uuid.Nil {
+		return apperr.New(apperr.KindInvalidArgument, "actor user id is required")
+	}
+	if input.ExternalDeviceID <= 0 {
+		return apperr.New(apperr.KindInvalidArgument, "external_device_id is required")
+	}
+	if input.TargetWorkspaceID == uuid.Nil {
+		if input.ProjectID != nil || input.SiteID != nil {
+			return apperr.New(apperr.KindInvalidArgument, "target_workspace_id is required when project_id or site_id is set")
+		}
+		return nil
+	}
+	if input.SiteID != nil && input.ProjectID == nil {
+		return apperr.New(apperr.KindInvalidArgument, "project_id is required when site_id is set")
+	}
+	return nil
+}
+
+func (s *Service) syncTHCPNDevice(ctx context.Context, q *sqlc.Queries, source sqlc.DataSource, deviceDB *sql.DB, input thcpnDeviceSyncInput) (THCPNStandardStationSyncResult, error) {
+	externalDevice, err := readTHCPNExternalDevice(ctx, deviceDB, input.ExternalDeviceID)
+	if err != nil {
+		return THCPNStandardStationSyncResult{}, err
+	}
+	externalConfig, err := readLatestTHCPNDeviceConfig(ctx, deviceDB, input.ExternalDeviceID)
+	if err != nil {
+		return THCPNStandardStationSyncResult{}, err
+	}
+	streamSpecs, err := buildTHCPNStreamSpecs(input.ExternalDeviceID, externalConfig.Data, externalConfig.Image)
+	if err != nil {
+		return THCPNStandardStationSyncResult{}, err
+	}
 
 	deviceRow, assignmentRow, err := s.upsertTHCPNPlatformDevice(ctx, q, source, input, externalDevice)
 	if err != nil {
@@ -270,11 +480,6 @@ func (s *Service) SyncTHCPNStandardStation(ctx context.Context, input SyncTHCPNS
 		bindings = append(bindings, binding)
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return THCPNStandardStationSyncResult{}, apperr.Wrap(apperr.KindInternal, "commit thcpn sync transaction", err)
-	}
-	committed = true
-
 	return THCPNStandardStationSyncResult{
 		Device:         syncedDeviceFromSQL(deviceRow, assignmentRow),
 		SourceRef:      deviceSourceRefFromSQL(refRow),
@@ -316,7 +521,7 @@ func validateTHCPNSyncTarget(ctx context.Context, q *sqlc.Queries, workspaceID u
 	return nil
 }
 
-func (s *Service) upsertTHCPNPlatformDevice(ctx context.Context, q *sqlc.Queries, source sqlc.DataSource, input SyncTHCPNStandardStationInput, external thcpnExternalDevice) (sqlc.Device, sqlc.DeviceAssignment, error) {
+func (s *Service) upsertTHCPNPlatformDevice(ctx context.Context, q *sqlc.Queries, source sqlc.DataSource, input thcpnDeviceSyncInput, external thcpnExternalDevice) (sqlc.Device, *sqlc.DeviceAssignment, error) {
 	productID := strings.TrimSpace(input.ProductID)
 	if productID == "" {
 		productID = defaultTHCPNProductID
@@ -347,25 +552,7 @@ func (s *Service) upsertTHCPNPlatformDevice(ctx context.Context, q *sqlc.Queries
 	if err == nil {
 		current, err := q.GetDevice(ctx, existingRef.DeviceID)
 		if err != nil {
-			return sqlc.Device{}, sqlc.DeviceAssignment{}, mapNotFoundOrInternal(err, "mapped device not found")
-		}
-		assignment, err := q.GetActiveDeviceAssignment(ctx, current.ID)
-		if err != nil {
-			return sqlc.Device{}, sqlc.DeviceAssignment{}, mapNotFoundOrInternal(err, "mapped device has no active assignment")
-		}
-		if assignment.WorkspaceID != input.TargetWorkspaceID {
-			return sqlc.Device{}, sqlc.DeviceAssignment{}, apperr.New(apperr.KindConflict, "external device is already assigned to another workspace")
-		}
-		projectID := assignment.ProjectID
-		siteID := assignment.SiteID
-		if input.ProjectID != nil {
-			projectID = input.ProjectID
-			if input.SiteID == nil {
-				siteID = nil
-			}
-		}
-		if input.SiteID != nil {
-			siteID = input.SiteID
+			return sqlc.Device{}, nil, mapNotFoundOrInternal(err, "mapped device not found")
 		}
 		device, err := q.UpdateDevice(ctx, sqlc.UpdateDeviceParams{
 			ID:        current.ID,
@@ -375,20 +562,16 @@ func (s *Service) upsertTHCPNPlatformDevice(ctx context.Context, q *sqlc.Queries
 			Status:    current.Status,
 		})
 		if err != nil {
-			return sqlc.Device{}, sqlc.DeviceAssignment{}, mapWriteError(err, "update synced device")
+			return sqlc.Device{}, nil, mapWriteError(err, "update synced device")
 		}
-		assignment, err = q.UpdateDeviceAssignment(ctx, sqlc.UpdateDeviceAssignmentParams{
-			ID:        assignment.ID,
-			ProjectID: projectID,
-			SiteID:    siteID,
-		})
+		assignment, err := syncAssignmentIfRequested(ctx, q, device.ID, input)
 		if err != nil {
-			return sqlc.Device{}, sqlc.DeviceAssignment{}, mapWriteError(err, "update synced device assignment")
+			return sqlc.Device{}, nil, err
 		}
 		return device, assignment, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return sqlc.Device{}, sqlc.DeviceAssignment{}, apperr.Wrap(apperr.KindInternal, "lookup device source ref", err)
+		return sqlc.Device{}, nil, apperr.Wrap(apperr.KindInternal, "lookup device source ref", err)
 	}
 
 	device, err := q.CreateDevice(ctx, sqlc.CreateDeviceParams{
@@ -397,19 +580,100 @@ func (s *Service) upsertTHCPNPlatformDevice(ctx context.Context, q *sqlc.Queries
 		Name:      name,
 	})
 	if err != nil {
-		return sqlc.Device{}, sqlc.DeviceAssignment{}, mapWriteError(err, "create synced device")
+		return sqlc.Device{}, nil, mapWriteError(err, "create synced device")
+	}
+	assignment, err := syncAssignmentIfRequested(ctx, q, device.ID, input)
+	if err != nil {
+		return sqlc.Device{}, nil, err
+	}
+	return device, assignment, nil
+}
+
+func syncAssignmentIfRequested(ctx context.Context, q *sqlc.Queries, deviceID uuid.UUID, input thcpnDeviceSyncInput) (*sqlc.DeviceAssignment, error) {
+	current, err := q.GetActiveDeviceAssignment(ctx, deviceID)
+	if input.TargetWorkspaceID == uuid.Nil {
+		if err == nil {
+			return &current, nil
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, mapNotFoundOrInternal(err, "active device assignment not found")
+	}
+	if err == nil {
+		if current.WorkspaceID != input.TargetWorkspaceID {
+			return nil, apperr.New(apperr.KindConflict, "external device is already assigned to another workspace")
+		}
+		projectID := current.ProjectID
+		siteID := current.SiteID
+		if input.ProjectID != nil {
+			projectID = input.ProjectID
+			if input.SiteID == nil {
+				siteID = nil
+			}
+		}
+		if input.SiteID != nil {
+			siteID = input.SiteID
+		}
+		assignment, err := q.UpdateDeviceAssignment(ctx, sqlc.UpdateDeviceAssignmentParams{
+			ID:        current.ID,
+			ProjectID: projectID,
+			SiteID:    siteID,
+		})
+		if err != nil {
+			return nil, mapWriteError(err, "update synced device assignment")
+		}
+		return &assignment, nil
+	}
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, mapNotFoundOrInternal(err, "active device assignment not found")
 	}
 	assignment, err := q.CreateDeviceAssignment(ctx, sqlc.CreateDeviceAssignmentParams{
-		DeviceID:    device.ID,
+		DeviceID:    deviceID,
 		WorkspaceID: input.TargetWorkspaceID,
 		ProjectID:   input.ProjectID,
 		SiteID:      input.SiteID,
 		AssignedBy:  &input.ActorUserID,
 	})
 	if err != nil {
-		return sqlc.Device{}, sqlc.DeviceAssignment{}, mapWriteError(err, "assign synced device")
+		return nil, mapWriteError(err, "assign synced device")
 	}
-	return device, assignment, nil
+	return &assignment, nil
+}
+
+func readTHCPNGateNodes(ctx context.Context, db *sql.DB, externalGatewayID int64) ([]int64, error) {
+	const query = `
+SELECT node_id
+FROM gate_node
+WHERE gate_id = ?
+  AND deleted_at IS NULL
+ORDER BY node_id ASC`
+	rows, err := db.QueryContext(ctx, query, externalGatewayID)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindDataSource, "read thcpn gate nodes", err)
+	}
+	defer rows.Close()
+
+	nodeIDs := make([]int64, 0)
+	seen := map[int64]struct{}{}
+	for rows.Next() {
+		var nodeID int64
+		if err := rows.Scan(&nodeID); err != nil {
+			return nil, apperr.Wrap(apperr.KindDataSource, "scan thcpn gate node", err)
+		}
+		if nodeID <= 0 {
+			continue
+		}
+		if _, ok := seen[nodeID]; ok {
+			continue
+		}
+		seen[nodeID] = struct{}{}
+		nodeIDs = append(nodeIDs, nodeID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, apperr.Wrap(apperr.KindDataSource, "read thcpn gate nodes", err)
+	}
+	return nodeIDs, nil
 }
 
 func readTHCPNExternalDevice(ctx context.Context, db *sql.DB, externalDeviceID int64) (thcpnExternalDevice, error) {
@@ -827,22 +1091,25 @@ func pgTimePtr(value pgtype.Timestamptz) *time.Time {
 	return &value.Time
 }
 
-func syncedDeviceFromSQL(model sqlc.Device, assignment sqlc.DeviceAssignment) SyncedDevice {
-	return SyncedDevice{
-		ID:           model.ID,
-		AssignmentID: assignment.ID,
-		WorkspaceID:  assignment.WorkspaceID,
-		ProjectID:    assignment.ProjectID,
-		SiteID:       assignment.SiteID,
-		ProductID:    model.ProductID,
-		SerialNo:     model.SerialNo,
-		Name:         model.Name,
-		Status:       model.Status,
-		AssignedBy:   assignment.AssignedBy,
-		AssignedAt:   pgTimePtr(assignment.AssignedAt),
-		CreatedAt:    pgTime(model.CreatedAt),
-		UpdatedAt:    pgTime(model.UpdatedAt),
+func syncedDeviceFromSQL(model sqlc.Device, assignment *sqlc.DeviceAssignment) SyncedDevice {
+	device := SyncedDevice{
+		ID:        model.ID,
+		ProductID: model.ProductID,
+		SerialNo:  model.SerialNo,
+		Name:      model.Name,
+		Status:    model.Status,
+		CreatedAt: pgTime(model.CreatedAt),
+		UpdatedAt: pgTime(model.UpdatedAt),
 	}
+	if assignment != nil {
+		device.AssignmentID = &assignment.ID
+		device.WorkspaceID = &assignment.WorkspaceID
+		device.ProjectID = assignment.ProjectID
+		device.SiteID = assignment.SiteID
+		device.AssignedBy = assignment.AssignedBy
+		device.AssignedAt = pgTimePtr(assignment.AssignedAt)
+	}
+	return device
 }
 
 func syncedDataStreamFromSQL(model sqlc.DataStream) SyncedDataStream {
@@ -890,5 +1157,37 @@ func deviceConfigSnapshotFromSQL(model sqlc.DeviceConfigSnapshot) DeviceConfigSn
 		SourceUpdatedAt:  pgTimePtr(model.SourceUpdatedAt),
 		SyncedAt:         pgTime(model.SyncedAt),
 		CreatedAt:        pgTime(model.CreatedAt),
+	}
+}
+
+func deviceRelationFromSQL(model sqlc.DeviceRelation) DeviceRelation {
+	return DeviceRelation{
+		ID:                     model.ID,
+		ParentDeviceID:         model.ParentDeviceID,
+		ChildDeviceID:          model.ChildDeviceID,
+		RelationType:           model.RelationType,
+		DataSourceID:           model.DataSourceID,
+		ExternalParentDeviceID: model.ExternalParentDeviceID,
+		ExternalChildDeviceID:  model.ExternalChildDeviceID,
+		Status:                 model.Status,
+		SyncedAt:               pgTime(model.SyncedAt),
+		CreatedAt:              pgTime(model.CreatedAt),
+		UpdatedAt:              pgTime(model.UpdatedAt),
+	}
+}
+
+func deviceRelationFromUpsertRow(model sqlc.UpsertDeviceRelationRow) DeviceRelation {
+	return DeviceRelation{
+		ID:                     model.ID,
+		ParentDeviceID:         model.ParentDeviceID,
+		ChildDeviceID:          model.ChildDeviceID,
+		RelationType:           model.RelationType,
+		DataSourceID:           model.DataSourceID,
+		ExternalParentDeviceID: model.ExternalParentDeviceID,
+		ExternalChildDeviceID:  model.ExternalChildDeviceID,
+		Status:                 model.Status,
+		SyncedAt:               pgTime(model.SyncedAt),
+		CreatedAt:              pgTime(model.CreatedAt),
+		UpdatedAt:              pgTime(model.UpdatedAt),
 	}
 }

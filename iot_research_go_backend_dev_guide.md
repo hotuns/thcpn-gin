@@ -1021,9 +1021,11 @@ audit_logs
 /api/v1/audit-logs
 /api/v1/admin/data-sources
 /api/v1/admin/data-sources/{data_source_id}/thcpn-standard-station/devices
+/api/v1/admin/devices
+/api/v1/admin/devices/{device_id}/assignment
 ```
 
-第一版不提供客户侧设备源管理 API 或页面。普通 `/api/v1/data-sources` 和 `/api/v1/data-stream-bindings` 不再注册为客户侧路由；普通 Workspace 控制台不暴露 DataSource 创建、查看、DSN、库表字段映射或 raw SQL 配置入口。系统级 THCPN 数据源管理迁入 `/api/v1/admin/data-sources` 与 `/admin/data-sources`，由系统管理员同步系统级设备到指定 `target_workspace_id`，同步过程单一分配设备并生成外部设备映射、配置快照和 DataStreamBinding。
+第一版不提供客户侧设备源管理 API 或页面。普通 `/api/v1/data-sources` 和 `/api/v1/data-stream-bindings` 不再注册为客户侧路由；普通 Workspace 控制台不暴露 DataSource 创建、查看、DSN、库表字段映射或 raw SQL 配置入口。系统级 THCPN 数据源管理迁入 `/api/v1/admin/data-sources` 与 `/admin/data-sources`，由系统管理员同步系统级设备资产并生成外部设备映射、配置快照和 DataStreamBinding；设备是否分配给 Workspace 由 `/api/v1/admin/devices/{device_id}/assignment` 和后台系统设备资产 / 设备分配入口单独管理。
 
 ### 13.2 错误响应
 

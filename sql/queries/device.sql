@@ -72,6 +72,50 @@ FROM devices AS d
 JOIN device_assignments AS da ON da.device_id = d.id AND da.status = 'active'
 WHERE d.id = $1;
 
+-- name: ListSystemDeviceAssets :many
+SELECT
+    d.id,
+    d.product_id,
+    d.serial_no,
+    d.name,
+    d.status,
+    d.activated_at,
+    d.created_at,
+    d.updated_at,
+    da.id AS assignment_id,
+    da.workspace_id,
+    da.project_id,
+    da.site_id,
+    da.assigned_by,
+    da.assigned_at,
+    CASE
+        WHEN EXISTS (
+            SELECT 1
+            FROM device_relations AS child_rel
+            WHERE child_rel.parent_device_id = d.id
+              AND child_rel.relation_type = 'gateway_node'
+              AND child_rel.status = 'active'
+        ) THEN 'gateway'
+        WHEN EXISTS (
+            SELECT 1
+            FROM device_relations AS parent_rel
+            WHERE parent_rel.child_device_id = d.id
+              AND parent_rel.relation_type = 'gateway_node'
+              AND parent_rel.status = 'active'
+        ) THEN 'gateway_node'
+        ELSE 'standalone'
+    END AS topology_role,
+    (
+        SELECT count(*)::bigint
+        FROM device_relations AS child_rel
+        WHERE child_rel.parent_device_id = d.id
+          AND child_rel.relation_type = 'gateway_node'
+          AND child_rel.status = 'active'
+    ) AS child_count
+FROM devices AS d
+LEFT JOIN device_assignments AS da ON da.device_id = d.id AND da.status = 'active'
+ORDER BY d.created_at DESC, d.id DESC;
+
 -- name: ListDevicesByWorkspace :many
 SELECT
     d.id,
@@ -87,7 +131,34 @@ SELECT
     da.project_id,
     da.site_id,
     da.assigned_by,
-    da.assigned_at
+    da.assigned_at,
+    CASE
+        WHEN EXISTS (
+            SELECT 1
+            FROM device_relations AS child_rel
+            WHERE child_rel.parent_device_id = d.id
+              AND child_rel.relation_type = 'gateway_node'
+              AND child_rel.status = 'active'
+        ) THEN 'gateway'
+        WHEN EXISTS (
+            SELECT 1
+            FROM device_relations AS parent_rel
+            WHERE parent_rel.child_device_id = d.id
+              AND parent_rel.relation_type = 'gateway_node'
+              AND parent_rel.status = 'active'
+        ) THEN 'gateway_node'
+        ELSE 'standalone'
+    END AS topology_role,
+    (
+        SELECT count(*)::bigint
+        FROM device_relations AS child_rel
+        JOIN device_assignments AS child_da ON child_da.device_id = child_rel.child_device_id
+            AND child_da.status = 'active'
+            AND child_da.workspace_id = da.workspace_id
+        WHERE child_rel.parent_device_id = d.id
+          AND child_rel.relation_type = 'gateway_node'
+          AND child_rel.status = 'active'
+    ) AS child_count
 FROM devices AS d
 JOIN device_assignments AS da ON da.device_id = d.id AND da.status = 'active'
 WHERE da.workspace_id = $1
@@ -108,7 +179,35 @@ SELECT
     da.project_id,
     da.site_id,
     da.assigned_by,
-    da.assigned_at
+    da.assigned_at,
+    CASE
+        WHEN EXISTS (
+            SELECT 1
+            FROM device_relations AS child_rel
+            WHERE child_rel.parent_device_id = d.id
+              AND child_rel.relation_type = 'gateway_node'
+              AND child_rel.status = 'active'
+        ) THEN 'gateway'
+        WHEN EXISTS (
+            SELECT 1
+            FROM device_relations AS parent_rel
+            WHERE parent_rel.child_device_id = d.id
+              AND parent_rel.relation_type = 'gateway_node'
+              AND parent_rel.status = 'active'
+        ) THEN 'gateway_node'
+        ELSE 'standalone'
+    END AS topology_role,
+    (
+        SELECT count(*)::bigint
+        FROM device_relations AS child_rel
+        JOIN device_assignments AS child_da ON child_da.device_id = child_rel.child_device_id
+            AND child_da.status = 'active'
+            AND child_da.workspace_id = da.workspace_id
+            AND child_da.project_id = da.project_id
+        WHERE child_rel.parent_device_id = d.id
+          AND child_rel.relation_type = 'gateway_node'
+          AND child_rel.status = 'active'
+    ) AS child_count
 FROM devices AS d
 JOIN device_assignments AS da ON da.device_id = d.id AND da.status = 'active'
 WHERE da.workspace_id = $1
@@ -130,7 +229,35 @@ SELECT
     da.project_id,
     da.site_id,
     da.assigned_by,
-    da.assigned_at
+    da.assigned_at,
+    CASE
+        WHEN EXISTS (
+            SELECT 1
+            FROM device_relations AS child_rel
+            WHERE child_rel.parent_device_id = d.id
+              AND child_rel.relation_type = 'gateway_node'
+              AND child_rel.status = 'active'
+        ) THEN 'gateway'
+        WHEN EXISTS (
+            SELECT 1
+            FROM device_relations AS parent_rel
+            WHERE parent_rel.child_device_id = d.id
+              AND parent_rel.relation_type = 'gateway_node'
+              AND parent_rel.status = 'active'
+        ) THEN 'gateway_node'
+        ELSE 'standalone'
+    END AS topology_role,
+    (
+        SELECT count(*)::bigint
+        FROM device_relations AS child_rel
+        JOIN device_assignments AS child_da ON child_da.device_id = child_rel.child_device_id
+            AND child_da.status = 'active'
+            AND child_da.workspace_id = da.workspace_id
+            AND child_da.site_id = da.site_id
+        WHERE child_rel.parent_device_id = d.id
+          AND child_rel.relation_type = 'gateway_node'
+          AND child_rel.status = 'active'
+    ) AS child_count
 FROM devices AS d
 JOIN device_assignments AS da ON da.device_id = d.id AND da.status = 'active'
 WHERE da.workspace_id = $1

@@ -4,7 +4,9 @@ import type {
   DataSourceListResponse,
   DataSourceStatus,
   DataSourceType,
+  SyncTHCPNGatewayRequest,
   SyncTHCPNStandardStationRequest,
+  THCPNGatewaySyncResult,
   THCPNStandardStationSyncResult
 } from "./types";
 
@@ -39,6 +41,16 @@ export const adminDataSourcesApi = {
   ): Promise<THCPNStandardStationSyncResult> {
     return post<THCPNStandardStationSyncResult>(
       `/api/v1/admin/data-sources/${dataSourceId}/thcpn-standard-station/devices`,
+      input
+    );
+  },
+
+  syncTHCPNGateway(
+    dataSourceId: string,
+    input: SyncTHCPNGatewayRequest
+  ): Promise<THCPNGatewaySyncResult> {
+    return post<THCPNGatewaySyncResult>(
+      `/api/v1/admin/data-sources/${dataSourceId}/thcpn-standard-station/gateways`,
       input
     );
   }

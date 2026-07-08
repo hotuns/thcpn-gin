@@ -216,6 +216,9 @@ export type DataSourceStatus = "active" | "disabled" | "archived";
 export type DataStreamBindingPayloadType = "columns" | "json" | "media";
 export type DataStreamBindingAdapterCode = "generic_columns" | "generic_media" | "http_api" | "thcpn_legacy_mysql";
 export type DataStreamBindingStatus = "active" | "disabled" | "archived";
+export type DeviceRelationStatus = "active" | "removed";
+export type DeviceRelationType = "gateway_node";
+export type DeviceTopologyRole = "standalone" | "gateway" | "gateway_node";
 export type MediaType = "image" | "video" | "audio";
 export type DatasetDataType = "telemetry" | "image" | "video" | "audio" | "event" | "log" | "mixed";
 export type DatasetStatus = "draft" | "locked" | "archived" | "published";
@@ -274,8 +277,8 @@ export interface SiteListResponse {
 
 export interface Device {
   id: UUID;
-  assignment_id: UUID;
-  workspace_id: UUID;
+  assignment_id?: UUID;
+  workspace_id?: UUID;
   project_id?: UUID;
   site_id?: UUID;
   product_id?: string;
@@ -286,12 +289,37 @@ export interface Device {
   assigned_by?: UUID;
   assigned_at?: Timestamp;
   capabilities: DeviceCapabilityCode[];
+  topology_role: DeviceTopologyRole;
+  child_count: number;
   created_at: Timestamp;
   updated_at: Timestamp;
 }
 
 export interface DeviceListResponse {
   items: Device[];
+}
+
+export interface DeviceRelation {
+  id: UUID;
+  parent_device_id: UUID;
+  child_device_id: UUID;
+  relation_type: DeviceRelationType;
+  data_source_id: UUID;
+  external_parent_device_id: number;
+  external_child_device_id: number;
+  status: DeviceRelationStatus;
+  synced_at: Timestamp;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+}
+
+export interface DeviceChild {
+  relation: DeviceRelation;
+  device: Device;
+}
+
+export interface DeviceChildrenResponse {
+  items: DeviceChild[];
 }
 
 export interface DataStream {
@@ -378,8 +406,8 @@ export interface DataSourceListResponse {
 
 export interface SyncedDevice {
   id: UUID;
-  assignment_id: UUID;
-  workspace_id: UUID;
+  assignment_id?: UUID;
+  workspace_id?: UUID;
   project_id?: UUID;
   site_id?: UUID;
   product_id?: string;
@@ -450,10 +478,21 @@ export interface THCPNExternalDeviceMetadata {
 }
 
 export interface SyncTHCPNStandardStationRequest {
-  target_workspace_id: UUID;
+  target_workspace_id?: UUID;
   external_device_id: number;
   project_id?: UUID;
   site_id?: UUID;
+  product_id?: string;
+  serial_no?: string;
+  name?: string;
+}
+
+export interface SyncTHCPNGatewayRequest {
+  target_workspace_id?: UUID;
+  external_gateway_id: number;
+  project_id?: UUID;
+  site_id?: UUID;
+  assign_nodes?: boolean;
   product_id?: string;
   serial_no?: string;
   name?: string;
@@ -466,6 +505,14 @@ export interface THCPNStandardStationSyncResult {
   data_streams: SyncedDataStream[];
   bindings: DataStreamBinding[];
   external_device: THCPNExternalDeviceMetadata;
+}
+
+export interface THCPNGatewaySyncResult {
+  gateway: THCPNStandardStationSyncResult;
+  nodes: THCPNStandardStationSyncResult[];
+  relations: DeviceRelation[];
+  removed_relations?: DeviceRelation[];
+  warnings?: QueryWarning[];
 }
 
 export interface DataStreamBinding {
@@ -523,6 +570,27 @@ export interface Dataset {
 
 export interface DatasetListResponse {
   items: Dataset[];
+}
+
+export interface DatasetTelemetrySeries {
+  source_type: DatasetSourceType;
+  source_id: UUID;
+  data_stream_id: UUID;
+  device_id: UUID;
+  code: string;
+  name: string;
+  unit?: string;
+  points: TelemetryPoint[];
+  warnings?: QueryWarning[];
+}
+
+export interface DatasetTelemetryQueryResponse {
+  dataset_id: UUID;
+  workspace_id: UUID;
+  start_time: Timestamp;
+  end_time: Timestamp;
+  limit: number;
+  series: DatasetTelemetrySeries[];
 }
 
 export interface ExportJob {

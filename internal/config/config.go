@@ -88,13 +88,14 @@ type AliyunSMSConfig struct {
 }
 
 type ObjectStoreConfig struct {
-	Provider     string `yaml:"provider"`
-	Endpoint     string `yaml:"endpoint"`
-	Bucket       string `yaml:"bucket"`
-	Region       string `yaml:"region"`
-	LocalPath    string `yaml:"local_path"`
-	AccessKeyEnv string `yaml:"access_key_env"`
-	SecretKeyEnv string `yaml:"secret_key_env"`
+	Provider        string `yaml:"provider"`
+	Endpoint        string `yaml:"endpoint"`
+	Bucket          string `yaml:"bucket"`
+	Region          string `yaml:"region"`
+	LocalPath       string `yaml:"local_path"`
+	PublicURLPrefix string `yaml:"public_url_prefix"`
+	AccessKeyEnv    string `yaml:"access_key_env"`
+	SecretKeyEnv    string `yaml:"secret_key_env"`
 }
 
 type QueryLimitsConfig struct {
@@ -170,13 +171,14 @@ func Default() Config {
 			MaxVerifyAttempts: 5,
 		},
 		ObjectStore: ObjectStoreConfig{
-			Provider:     "minio",
-			Endpoint:     "127.0.0.1:9000",
-			Bucket:       "iot-platform",
-			Region:       "us-east-1",
-			LocalPath:    "var/objectstore",
-			AccessKeyEnv: "OBJECT_STORE_ACCESS_KEY",
-			SecretKeyEnv: "OBJECT_STORE_SECRET_KEY",
+			Provider:        "minio",
+			Endpoint:        "127.0.0.1:9000",
+			Bucket:          "iot-platform",
+			Region:          "us-east-1",
+			LocalPath:       "var/objectstore",
+			PublicURLPrefix: "https://iot-datas.oss-cn-beijing.aliyuncs.com",
+			AccessKeyEnv:    "OBJECT_STORE_ACCESS_KEY",
+			SecretKeyEnv:    "OBJECT_STORE_SECRET_KEY",
 		},
 		QueryLimits: QueryLimitsConfig{
 			MaxHistoryDays:   31,
@@ -471,6 +473,9 @@ func applyEnv(cfg *Config) {
 	}
 	if value := strings.TrimSpace(os.Getenv("OBJECT_STORE_LOCAL_PATH")); value != "" {
 		cfg.ObjectStore.LocalPath = value
+	}
+	if value := strings.TrimSpace(os.Getenv("OBJECT_STORE_PUBLIC_URL_PREFIX")); value != "" {
+		cfg.ObjectStore.PublicURLPrefix = value
 	}
 	if value := strings.TrimSpace(os.Getenv("EXPORT_FILE_TTL_HOURS")); value != "" {
 		if hours, err := strconv.Atoi(value); err == nil {

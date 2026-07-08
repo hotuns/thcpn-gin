@@ -55,8 +55,9 @@ func TestIsMediaStreamType(t *testing.T) {
 
 func TestItemsFromDatasourceIncludesDeleteURLWhenAllowed(t *testing.T) {
 	signer := objectstore.NewSigner(config.ObjectStoreConfig{
-		Provider: "file",
-		Bucket:   "iot-platform",
+		Provider:        "file",
+		Bucket:          "iot-platform",
+		PublicURLPrefix: "https://iot-datas.oss-cn-beijing.aliyuncs.com",
 	}, "test-secret")
 	service := &Service{signer: signer}
 	stream := sqlc.DataStream{
@@ -64,17 +65,25 @@ func TestItemsFromDatasourceIncludesDeleteURLWhenAllowed(t *testing.T) {
 		DeviceID: uuid.New(),
 		Type:     "image",
 	}
+	thumbnailKey := "thumbs/img-1.jpg"
 
 	items, err := service.itemsFromDatasource(stream, []datasource.MediaRecord{{
-		ID:        "img-1",
-		ObjectKey: "raw/img-1.jpg",
-		MediaType: "image",
+		ID:                 "img-1",
+		ObjectKey:          "raw/img-1.jpg",
+		ThumbnailObjectKey: &thumbnailKey,
+		MediaType:          "image",
 	}}, false, true)
 	if err != nil {
 		t.Fatalf("items from datasource: %v", err)
 	}
 	if len(items) != 1 {
 		t.Fatalf("expected one item, got %d", len(items))
+	}
+	if items[0].PreviewURL != "https://iot-datas.oss-cn-beijing.aliyuncs.com/raw/img-1.jpg" {
+		t.Fatalf("unexpected preview URL: %q", items[0].PreviewURL)
+	}
+	if items[0].ThumbnailURL != "https://iot-datas.oss-cn-beijing.aliyuncs.com/thumbs/img-1.jpg" {
+		t.Fatalf("unexpected thumbnail URL: %q", items[0].ThumbnailURL)
 	}
 	if !items[0].DeleteAllowed || items[0].DeleteURL == nil || !strings.HasPrefix(*items[0].DeleteURL, "/api/v1/media?token=") {
 		t.Fatalf("expected delete URL when delete is allowed, got %#v", items[0])

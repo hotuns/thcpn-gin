@@ -118,22 +118,19 @@ export function SecurityPage() {
   ];
 
   return (
-    <Page description="管理账号验证、多因素认证和当前 refresh session。" title="安全">
+    <Page description="管理个人账号验证、多因素认证和当前 refresh session；工作区权限在成员权限和资源授权中配置。" title="账号安全">
       <div className="metric-grid">
         <div className="metric-card">
           <span>邮箱状态</span>
           <strong>{me.data?.user.email_verified_at ? "已验证" : "未验证"}</strong>
-          <small>{formatDateTime(me.data?.user.email_verified_at)}</small>
         </div>
         <div className="metric-card">
           <span>TOTP</span>
           <strong>{mfa.data?.totp_enabled ? "已启用" : "未启用"}</strong>
-          <small>{formatDateTime(mfa.data?.totp_enabled_at)}</small>
         </div>
         <div className="metric-card">
           <span>Refresh Token</span>
           <strong>{refreshToken ? "已保存" : "无"}</strong>
-          <small>本机浏览器会话</small>
         </div>
       </div>
 

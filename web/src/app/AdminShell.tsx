@@ -5,6 +5,7 @@ import {
   AppstoreOutlined,
   ControlOutlined,
   DashboardOutlined,
+  HddOutlined,
   LogoutOutlined,
   MenuOutlined,
   ReloadOutlined,
@@ -19,7 +20,8 @@ const { Content, Sider } = Layout;
 
 const adminNavItems = [
   { to: "/admin", label: "后台总览", icon: <DashboardOutlined /> },
-  { to: "/admin/data-sources", label: "THCPN 数据源", icon: <ControlOutlined /> }
+  { to: "/admin/data-sources", label: "THCPN 数据源", icon: <ControlOutlined /> },
+  { to: "/admin/devices", label: "设备资产", icon: <HddOutlined /> }
 ];
 
 export function AdminShell() {

@@ -63,11 +63,18 @@ func (s *Signer) SignObjectURL(objectKey string, ttl time.Duration) (SignedURL, 
 	if ttl <= 0 {
 		return SignedURL{}, apperr.New(apperr.KindInvalidArgument, "url ttl must be greater than 0")
 	}
+
+	expiresAt := s.now().Add(ttl).UTC()
+	if isAbsoluteHTTPURL(objectKey) {
+		return SignedURL{URL: objectKey, ExpiresAt: expiresAt}, nil
+	}
+	if publicURLPrefix := normalizedPublicURLPrefix(s.cfg.PublicURLPrefix); publicURLPrefix != "" {
+		return SignedURL{URL: joinPublicObjectURL(publicURLPrefix, objectKey), ExpiresAt: expiresAt}, nil
+	}
 	if err := s.validate(); err != nil {
 		return SignedURL{}, err
 	}
 
-	expiresAt := s.now().Add(ttl).UTC()
 	if (normalizedProvider(s.cfg.Provider) == "minio" || normalizedProvider(s.cfg.Provider) == "s3") && s.accessKey != "" && strings.TrimSpace(os.Getenv(strings.TrimSpace(s.cfg.SecretKeyEnv))) != "" {
 		u, err := presignGetObjectURL(s.cfg.Endpoint, s.cfg.Bucket, objectKey, s.accessKey, strings.TrimSpace(os.Getenv(strings.TrimSpace(s.cfg.SecretKeyEnv))), s.cfg.Region, s.now(), ttl)
 		if err != nil {
@@ -199,6 +206,29 @@ func normalizedEndpoint(endpoint string) string {
 		return endpoint
 	}
 	return "http://" + endpoint
+}
+
+func normalizedPublicURLPrefix(prefix string) string {
+	return strings.TrimRight(strings.TrimSpace(prefix), "/=")
+}
+
+func isAbsoluteHTTPURL(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	return strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://")
+}
+
+func joinPublicObjectURL(prefix string, objectKey string) string {
+	parts := make([]string, 0)
+	for _, part := range strings.Split(strings.Trim(objectKey, "/"), "/") {
+		if part == "" {
+			continue
+		}
+		parts = append(parts, url.PathEscape(part))
+	}
+	if len(parts) == 0 {
+		return prefix
+	}
+	return prefix + "/" + strings.Join(parts, "/")
 }
 
 func joinURLPath(bucket string, objectKey string) string {

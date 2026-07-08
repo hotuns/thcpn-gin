@@ -420,7 +420,35 @@ SELECT
     da.project_id,
     da.site_id,
     da.assigned_by,
-    da.assigned_at
+    da.assigned_at,
+    CASE
+        WHEN EXISTS (
+            SELECT 1
+            FROM device_relations AS child_rel
+            WHERE child_rel.parent_device_id = d.id
+              AND child_rel.relation_type = 'gateway_node'
+              AND child_rel.status = 'active'
+        ) THEN 'gateway'
+        WHEN EXISTS (
+            SELECT 1
+            FROM device_relations AS parent_rel
+            WHERE parent_rel.child_device_id = d.id
+              AND parent_rel.relation_type = 'gateway_node'
+              AND parent_rel.status = 'active'
+        ) THEN 'gateway_node'
+        ELSE 'standalone'
+    END AS topology_role,
+    (
+        SELECT count(*)::bigint
+        FROM device_relations AS child_rel
+        JOIN device_assignments AS child_da ON child_da.device_id = child_rel.child_device_id
+            AND child_da.status = 'active'
+            AND child_da.workspace_id = da.workspace_id
+            AND child_da.project_id = da.project_id
+        WHERE child_rel.parent_device_id = d.id
+          AND child_rel.relation_type = 'gateway_node'
+          AND child_rel.status = 'active'
+    ) AS child_count
 FROM devices AS d
 JOIN device_assignments AS da ON da.device_id = d.id AND da.status = 'active'
 WHERE da.workspace_id = $1
@@ -448,6 +476,8 @@ type ListDevicesByProjectRow struct {
 	SiteID       *uuid.UUID         `json:"site_id"`
 	AssignedBy   *uuid.UUID         `json:"assigned_by"`
 	AssignedAt   pgtype.Timestamptz `json:"assigned_at"`
+	TopologyRole string             `json:"topology_role"`
+	ChildCount   int64              `json:"child_count"`
 }
 
 func (q *Queries) ListDevicesByProject(ctx context.Context, arg ListDevicesByProjectParams) ([]ListDevicesByProjectRow, error) {
@@ -474,6 +504,8 @@ func (q *Queries) ListDevicesByProject(ctx context.Context, arg ListDevicesByPro
 			&i.SiteID,
 			&i.AssignedBy,
 			&i.AssignedAt,
+			&i.TopologyRole,
+			&i.ChildCount,
 		); err != nil {
 			return nil, err
 		}
@@ -500,7 +532,35 @@ SELECT
     da.project_id,
     da.site_id,
     da.assigned_by,
-    da.assigned_at
+    da.assigned_at,
+    CASE
+        WHEN EXISTS (
+            SELECT 1
+            FROM device_relations AS child_rel
+            WHERE child_rel.parent_device_id = d.id
+              AND child_rel.relation_type = 'gateway_node'
+              AND child_rel.status = 'active'
+        ) THEN 'gateway'
+        WHEN EXISTS (
+            SELECT 1
+            FROM device_relations AS parent_rel
+            WHERE parent_rel.child_device_id = d.id
+              AND parent_rel.relation_type = 'gateway_node'
+              AND parent_rel.status = 'active'
+        ) THEN 'gateway_node'
+        ELSE 'standalone'
+    END AS topology_role,
+    (
+        SELECT count(*)::bigint
+        FROM device_relations AS child_rel
+        JOIN device_assignments AS child_da ON child_da.device_id = child_rel.child_device_id
+            AND child_da.status = 'active'
+            AND child_da.workspace_id = da.workspace_id
+            AND child_da.site_id = da.site_id
+        WHERE child_rel.parent_device_id = d.id
+          AND child_rel.relation_type = 'gateway_node'
+          AND child_rel.status = 'active'
+    ) AS child_count
 FROM devices AS d
 JOIN device_assignments AS da ON da.device_id = d.id AND da.status = 'active'
 WHERE da.workspace_id = $1
@@ -528,6 +588,8 @@ type ListDevicesBySiteRow struct {
 	SiteID       *uuid.UUID         `json:"site_id"`
 	AssignedBy   *uuid.UUID         `json:"assigned_by"`
 	AssignedAt   pgtype.Timestamptz `json:"assigned_at"`
+	TopologyRole string             `json:"topology_role"`
+	ChildCount   int64              `json:"child_count"`
 }
 
 func (q *Queries) ListDevicesBySite(ctx context.Context, arg ListDevicesBySiteParams) ([]ListDevicesBySiteRow, error) {
@@ -554,6 +616,8 @@ func (q *Queries) ListDevicesBySite(ctx context.Context, arg ListDevicesBySitePa
 			&i.SiteID,
 			&i.AssignedBy,
 			&i.AssignedAt,
+			&i.TopologyRole,
+			&i.ChildCount,
 		); err != nil {
 			return nil, err
 		}
@@ -580,7 +644,34 @@ SELECT
     da.project_id,
     da.site_id,
     da.assigned_by,
-    da.assigned_at
+    da.assigned_at,
+    CASE
+        WHEN EXISTS (
+            SELECT 1
+            FROM device_relations AS child_rel
+            WHERE child_rel.parent_device_id = d.id
+              AND child_rel.relation_type = 'gateway_node'
+              AND child_rel.status = 'active'
+        ) THEN 'gateway'
+        WHEN EXISTS (
+            SELECT 1
+            FROM device_relations AS parent_rel
+            WHERE parent_rel.child_device_id = d.id
+              AND parent_rel.relation_type = 'gateway_node'
+              AND parent_rel.status = 'active'
+        ) THEN 'gateway_node'
+        ELSE 'standalone'
+    END AS topology_role,
+    (
+        SELECT count(*)::bigint
+        FROM device_relations AS child_rel
+        JOIN device_assignments AS child_da ON child_da.device_id = child_rel.child_device_id
+            AND child_da.status = 'active'
+            AND child_da.workspace_id = da.workspace_id
+        WHERE child_rel.parent_device_id = d.id
+          AND child_rel.relation_type = 'gateway_node'
+          AND child_rel.status = 'active'
+    ) AS child_count
 FROM devices AS d
 JOIN device_assignments AS da ON da.device_id = d.id AND da.status = 'active'
 WHERE da.workspace_id = $1
@@ -602,6 +693,8 @@ type ListDevicesByWorkspaceRow struct {
 	SiteID       *uuid.UUID         `json:"site_id"`
 	AssignedBy   *uuid.UUID         `json:"assigned_by"`
 	AssignedAt   pgtype.Timestamptz `json:"assigned_at"`
+	TopologyRole string             `json:"topology_role"`
+	ChildCount   int64              `json:"child_count"`
 }
 
 func (q *Queries) ListDevicesByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]ListDevicesByWorkspaceRow, error) {
@@ -628,6 +721,109 @@ func (q *Queries) ListDevicesByWorkspace(ctx context.Context, workspaceID uuid.U
 			&i.SiteID,
 			&i.AssignedBy,
 			&i.AssignedAt,
+			&i.TopologyRole,
+			&i.ChildCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSystemDeviceAssets = `-- name: ListSystemDeviceAssets :many
+SELECT
+    d.id,
+    d.product_id,
+    d.serial_no,
+    d.name,
+    d.status,
+    d.activated_at,
+    d.created_at,
+    d.updated_at,
+    da.id AS assignment_id,
+    da.workspace_id,
+    da.project_id,
+    da.site_id,
+    da.assigned_by,
+    da.assigned_at,
+    CASE
+        WHEN EXISTS (
+            SELECT 1
+            FROM device_relations AS child_rel
+            WHERE child_rel.parent_device_id = d.id
+              AND child_rel.relation_type = 'gateway_node'
+              AND child_rel.status = 'active'
+        ) THEN 'gateway'
+        WHEN EXISTS (
+            SELECT 1
+            FROM device_relations AS parent_rel
+            WHERE parent_rel.child_device_id = d.id
+              AND parent_rel.relation_type = 'gateway_node'
+              AND parent_rel.status = 'active'
+        ) THEN 'gateway_node'
+        ELSE 'standalone'
+    END AS topology_role,
+    (
+        SELECT count(*)::bigint
+        FROM device_relations AS child_rel
+        WHERE child_rel.parent_device_id = d.id
+          AND child_rel.relation_type = 'gateway_node'
+          AND child_rel.status = 'active'
+    ) AS child_count
+FROM devices AS d
+LEFT JOIN device_assignments AS da ON da.device_id = d.id AND da.status = 'active'
+ORDER BY d.created_at DESC, d.id DESC
+`
+
+type ListSystemDeviceAssetsRow struct {
+	ID           uuid.UUID          `json:"id"`
+	ProductID    *string            `json:"product_id"`
+	SerialNo     string             `json:"serial_no"`
+	Name         string             `json:"name"`
+	Status       string             `json:"status"`
+	ActivatedAt  pgtype.Timestamptz `json:"activated_at"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	AssignmentID *uuid.UUID         `json:"assignment_id"`
+	WorkspaceID  *uuid.UUID         `json:"workspace_id"`
+	ProjectID    *uuid.UUID         `json:"project_id"`
+	SiteID       *uuid.UUID         `json:"site_id"`
+	AssignedBy   *uuid.UUID         `json:"assigned_by"`
+	AssignedAt   pgtype.Timestamptz `json:"assigned_at"`
+	TopologyRole string             `json:"topology_role"`
+	ChildCount   int64              `json:"child_count"`
+}
+
+func (q *Queries) ListSystemDeviceAssets(ctx context.Context) ([]ListSystemDeviceAssetsRow, error) {
+	rows, err := q.db.Query(ctx, listSystemDeviceAssets)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSystemDeviceAssetsRow{}
+	for rows.Next() {
+		var i ListSystemDeviceAssetsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProductID,
+			&i.SerialNo,
+			&i.Name,
+			&i.Status,
+			&i.ActivatedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AssignmentID,
+			&i.WorkspaceID,
+			&i.ProjectID,
+			&i.SiteID,
+			&i.AssignedBy,
+			&i.AssignedAt,
+			&i.TopologyRole,
+			&i.ChildCount,
 		); err != nil {
 			return nil, err
 		}

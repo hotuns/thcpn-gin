@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/audit"
 	"thcpn-gin/internal/auth"
 	"thcpn-gin/internal/httpx"
 	"thcpn-gin/internal/permission"
@@ -21,6 +22,7 @@ const (
 type Handler struct {
 	service *Service
 	checker *permission.Checker
+	audit   *audit.Service
 }
 
 type createDataSourceRequest struct {
@@ -79,8 +81,23 @@ type syncTHCPNStandardStationRequest struct {
 	Name              string `json:"name"`
 }
 
-func NewHandler(service *Service, checker *permission.Checker) *Handler {
-	return &Handler{service: service, checker: checker}
+type syncTHCPNGatewayRequest struct {
+	TargetWorkspaceID string `json:"target_workspace_id"`
+	ExternalGatewayID int64  `json:"external_gateway_id"`
+	ProjectID         string `json:"project_id"`
+	SiteID            string `json:"site_id"`
+	AssignNodes       bool   `json:"assign_nodes"`
+	ProductID         string `json:"product_id"`
+	SerialNo          string `json:"serial_no"`
+	Name              string `json:"name"`
+}
+
+func NewHandler(service *Service, checker *permission.Checker, auditServices ...*audit.Service) *Handler {
+	var auditService *audit.Service
+	if len(auditServices) > 0 {
+		auditService = auditServices[0]
+	}
+	return &Handler{service: service, checker: checker, audit: auditService}
 }
 
 func (h *Handler) ListDataSources(c *gin.Context) {
@@ -178,7 +195,7 @@ func (h *Handler) AdminSyncTHCPNStandardStation(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
-	targetWorkspaceID, ok := parseUUIDValue(req.TargetWorkspaceID, "target_workspace_id", c)
+	targetWorkspaceID, ok := parseOptionalUUIDValue(req.TargetWorkspaceID, "target_workspace_id", c)
 	if !ok {
 		return
 	}
@@ -193,7 +210,7 @@ func (h *Handler) AdminSyncTHCPNStandardStation(c *gin.Context) {
 
 	result, err := h.service.SyncTHCPNStandardStation(c.Request.Context(), SyncTHCPNStandardStationInput{
 		DataSourceID:      dataSourceID,
-		TargetWorkspaceID: targetWorkspaceID,
+		TargetWorkspaceID: uuidValue(targetWorkspaceID),
 		ProjectID:         projectID,
 		SiteID:            siteID,
 		ExternalDeviceID:  req.ExternalDeviceID,
@@ -205,6 +222,100 @@ func (h *Handler) AdminSyncTHCPNStandardStation(c *gin.Context) {
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminSyncTHCPNGateway(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	dataSourceID, ok := parseUUIDParam(c, "data_source_id")
+	if !ok {
+		return
+	}
+
+	var req syncTHCPNGatewayRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	targetWorkspaceID, ok := parseOptionalUUIDValue(req.TargetWorkspaceID, "target_workspace_id", c)
+	if !ok {
+		return
+	}
+	projectID, ok := parseOptionalUUIDValue(req.ProjectID, "project_id", c)
+	if !ok {
+		return
+	}
+	siteID, ok := parseOptionalUUIDValue(req.SiteID, "site_id", c)
+	if !ok {
+		return
+	}
+
+	result, err := h.service.SyncTHCPNGateway(c.Request.Context(), SyncTHCPNGatewayInput{
+		DataSourceID:      dataSourceID,
+		TargetWorkspaceID: uuidValue(targetWorkspaceID),
+		ProjectID:         projectID,
+		SiteID:            siteID,
+		ExternalGatewayID: req.ExternalGatewayID,
+		AssignNodes:       req.AssignNodes,
+		ProductID:         req.ProductID,
+		SerialNo:          req.SerialNo,
+		Name:              req.Name,
+		ActorUserID:       actor.UserID,
+	})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			WorkspaceID:  audit.WorkspaceID(uuidValue(targetWorkspaceID)),
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "thcpn.gateway_topology.sync",
+			ResourceType: "data_source",
+			ResourceID:   audit.ResourceID(dataSourceID),
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		WorkspaceID:  audit.WorkspaceID(uuidValue(result.Gateway.Device.WorkspaceID)),
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "thcpn.gateway_topology.sync",
+		ResourceType: "device",
+		ResourceID:   audit.ResourceID(result.Gateway.Device.ID),
+		Result:       audit.ResultSuccess,
+	}) {
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		WorkspaceID:  audit.WorkspaceID(uuidValue(result.Gateway.Device.WorkspaceID)),
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "device_relation.sync",
+		ResourceType: "device",
+		ResourceID:   audit.ResourceID(result.Gateway.Device.ID),
+		Result:       audit.ResultSuccess,
+	}) {
+		return
+	}
+	if req.AssignNodes {
+		if !h.record(c, audit.RecordInput{
+			WorkspaceID:  audit.WorkspaceID(uuidValue(result.Gateway.Device.WorkspaceID)),
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "device.assignment.cascade_gateway_nodes",
+			ResourceType: "device",
+			ResourceID:   audit.ResourceID(result.Gateway.Device.ID),
+			Result:       audit.ResultSuccess,
+		}) {
+			return
+		}
 	}
 	c.JSON(http.StatusOK, result)
 }
@@ -413,4 +524,22 @@ func parseOptionalUUIDPointer(value *string, name string, c *gin.Context) (*uuid
 		return nil, true
 	}
 	return parseOptionalUUIDValue(*value, name, c)
+}
+
+func uuidValue(value *uuid.UUID) uuid.UUID {
+	if value == nil {
+		return uuid.Nil
+	}
+	return *value
+}
+
+func (h *Handler) record(c *gin.Context, input audit.RecordInput) bool {
+	if h.audit == nil {
+		return true
+	}
+	if _, err := h.audit.Record(c.Request.Context(), audit.FromRequest(c, input)); err != nil {
+		httpx.WriteAppError(c, err)
+		return false
+	}
+	return true
 }

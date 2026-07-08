@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import dayjs, { type Dayjs } from "dayjs";
 import { LineChart } from "echarts/charts";
 import { DataZoomComponent, GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
@@ -11,12 +12,15 @@ import {
   App as AntApp,
   Button,
   Card,
+  Checkbox,
   DatePicker,
   Descriptions,
   Empty,
   Form,
   Image,
+  Input,
   InputNumber,
+  Modal,
   Select,
   Space,
   Table,
@@ -28,11 +32,15 @@ import type { TableColumnsType } from "antd";
 import { SearchOutlined, SyncOutlined } from "@ant-design/icons";
 import {
   dataStreamsApi,
+  datasetsApi,
   devicesApi,
   formatApiError,
   mediaApi,
+  projectsApi,
   telemetryApi,
   type DataStream,
+  type DatasetDataType,
+  type DatasetSourceInput,
   type Device,
   type MediaItem,
   type MediaListResponse,
@@ -44,7 +52,6 @@ import { useWorkspace } from "../../app/WorkspaceProvider";
 import { formatDateTime } from "../../app/format";
 import { tableScrollX } from "../../app/ui";
 
-const ALL_STREAMS = "__all__";
 const IMAGE_PAGE_SIZE_LIMIT = 100;
 const RESULT_TAB_DATA = "data";
 const RESULT_TAB_IMAGES = "images";
@@ -53,20 +60,17 @@ use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomCompon
 
 interface QueryFormState {
   deviceId: string;
-  dataStreamId: string;
+  selectedStreamIds: string[];
   range: [Dayjs, Dayjs] | null;
   limit: number;
 }
 
 interface DeviceDataQueryInput {
   deviceId: string;
-  dataStreamId: string;
-  streamType: "all" | "telemetry" | "image";
+  streamIds: string[];
   startTime: string;
   endTime: string;
   limit: number;
-  includeTelemetry: boolean;
-  includeImages: boolean;
 }
 
 interface DeviceDataQueryResult {
@@ -85,15 +89,40 @@ interface TelemetryRow {
   quality: string;
 }
 
+interface SaveDatasetFormState {
+  open: boolean;
+  name: string;
+  projectId: string;
+  dataType: DatasetDataType;
+  range: [Dayjs, Dayjs] | null;
+  sources: DatasetSourceInput[];
+  sourceLabel: string;
+  description: string;
+}
+
 export function DeviceDataPage() {
-  const { selectedWorkspaceId, selectedWorkspace } = useWorkspace();
+  const { selectedWorkspaceId } = useWorkspace();
   const { message } = AntApp.useApp();
+  const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const streamAutoSelectedDeviceRef = useRef("");
+  const requestedDeviceId = searchParams.get("device_id") || searchParams.get("deviceId") || "";
   const [activeResultTab, setActiveResultTab] = useState(RESULT_TAB_DATA);
   const [form, setForm] = useState<QueryFormState>({
     deviceId: "",
-    dataStreamId: ALL_STREAMS,
+    selectedStreamIds: [],
     range: [dayjs().subtract(24, "hour"), dayjs()],
     limit: 500
+  });
+  const [saveDatasetForm, setSaveDatasetForm] = useState<SaveDatasetFormState>({
+    open: false,
+    name: "",
+    projectId: "",
+    dataType: "mixed",
+    range: null,
+    sources: [],
+    sourceLabel: "",
+    description: ""
   });
 
   const devices = useQuery({
@@ -101,11 +130,21 @@ export function DeviceDataPage() {
     queryFn: () => devicesApi.list({ workspace_id: selectedWorkspaceId }),
     enabled: Boolean(selectedWorkspaceId)
   });
+  const projects = useQuery({
+    queryKey: ["projects", selectedWorkspaceId],
+    queryFn: () => projectsApi.list(selectedWorkspaceId),
+    enabled: Boolean(selectedWorkspaceId)
+  });
 
   const selectedDevice = useMemo(
     () => devices.data?.items.find((device) => device.id === form.deviceId),
     [devices.data?.items, form.deviceId]
   );
+  const selectedGatewayChildren = useQuery({
+    queryKey: ["device-children", selectedDevice?.id],
+    queryFn: () => devicesApi.children(selectedDevice?.id ?? ""),
+    enabled: selectedDevice?.topology_role === "gateway"
+  });
 
   const streams = useQuery({
     queryKey: ["data-streams", form.deviceId],
@@ -120,13 +159,20 @@ export function DeviceDataPage() {
   const telemetryStreams = useMemo(() => visibleStreams.filter((stream) => stream.type === "telemetry"), [visibleStreams]);
   const imageStreams = useMemo(() => visibleStreams.filter((stream) => stream.type === "image"), [visibleStreams]);
   const selectedStream = useMemo(
-    () => visibleStreams.find((stream) => stream.id === form.dataStreamId),
-    [form.dataStreamId, visibleStreams]
+    () => visibleStreams.find((stream) => form.selectedStreamIds.length === 1 && stream.id === form.selectedStreamIds[0]),
+    [form.selectedStreamIds, visibleStreams]
+  );
+  const selectedStreams = useMemo(
+    () => visibleStreams.filter((stream) => form.selectedStreamIds.includes(stream.id)),
+    [form.selectedStreamIds, visibleStreams]
   );
   const streamsByID = useMemo(() => new Map(visibleStreams.map((stream) => [stream.id, stream])), [visibleStreams]);
 
   const query = useMutation({
     mutationFn: async (input: DeviceDataQueryInput): Promise<DeviceDataQueryResult> => {
+      const selected = visibleStreams.filter((stream) => input.streamIds.includes(stream.id));
+      const selectedTelemetryStreams = selected.filter((stream) => stream.type === "telemetry");
+      const selectedImageStreams = selected.filter((stream) => stream.type === "image");
       const telemetryParams = {
         start_time: input.startTime,
         end_time: input.endTime,
@@ -139,17 +185,31 @@ export function DeviceDataPage() {
         page_size: Math.min(input.limit, IMAGE_PAGE_SIZE_LIMIT)
       };
 
-      if (input.streamType === "telemetry") {
-        return { telemetry: await telemetryApi.queryDataStream(input.dataStreamId, telemetryParams) };
-      }
-      if (input.streamType === "image") {
-        return { media: await mediaApi.listDataStream(input.dataStreamId, mediaParams) };
-      }
-
-      const [telemetry, media] = await Promise.all([
-        input.includeTelemetry ? telemetryApi.queryDevice(input.deviceId, telemetryParams) : Promise.resolve(undefined),
-        input.includeImages ? mediaApi.listDeviceImages(input.deviceId, mediaParams) : Promise.resolve(undefined)
+      const [telemetryResponses, mediaResponses] = await Promise.all([
+        Promise.all(selectedTelemetryStreams.map((stream) => telemetryApi.queryDataStream(stream.id, telemetryParams))),
+        Promise.all(selectedImageStreams.map((stream) => mediaApi.listDataStream(stream.id, mediaParams)))
       ]);
+
+      const telemetry =
+        telemetryResponses.length > 0
+          ? {
+              device_id: input.deviceId,
+              start_time: input.startTime,
+              end_time: input.endTime,
+              limit: input.limit,
+              series: telemetryResponses.flatMap((result) => result.series)
+            }
+          : undefined;
+      const mediaItems = mediaResponses.flatMap((result) => result.items).sort((left, right) => dayjs(right.captured_at).valueOf() - dayjs(left.captured_at).valueOf());
+      const media =
+        mediaResponses.length > 0
+          ? {
+              items: mediaItems.slice(0, Math.min(input.limit, IMAGE_PAGE_SIZE_LIMIT)),
+              page: 1,
+              page_size: Math.min(input.limit, IMAGE_PAGE_SIZE_LIMIT),
+              total: mediaResponses.reduce((sum, result) => sum + result.total, 0)
+            }
+          : undefined;
       return { telemetry, media };
     }
   });
@@ -160,19 +220,42 @@ export function DeviceDataPage() {
   const warnings = useMemo(() => collectWarnings(telemetryResult), [telemetryResult]);
   const mediaItems = mediaResult?.items ?? [];
   const deviceOptions = useMemo(
-    () => (devices.data?.items ?? []).map((device) => ({ label: `${device.name} · ${device.serial_no}`, value: device.id })),
+    () =>
+      (devices.data?.items ?? []).map((device) => ({
+        label: `${deviceTopologyText(device)} · ${device.name} · ${device.serial_no}`,
+        value: device.id
+      })),
     [devices.data?.items]
   );
-  const streamOptions = useMemo(
-    () => [
-      { label: `全部数据 · 遥测 ${telemetryStreams.length} · 图片 ${imageStreams.length}`, value: ALL_STREAMS },
-      ...visibleStreams.map((stream) => ({
-        label: `${streamTypeLabel(stream.type)} · ${stream.name} · ${stream.code}${stream.unit ? ` · ${stream.unit}` : ""}`,
-        value: stream.id
-      }))
-    ],
-    [imageStreams.length, telemetryStreams.length, visibleStreams]
+  const requestedDeviceMissing = Boolean(
+    requestedDeviceId && !devices.isLoading && devices.data && !devices.data.items.some((device) => device.id === requestedDeviceId)
   );
+  const selectedTelemetryStreams = useMemo(() => selectedStreams.filter((stream) => stream.type === "telemetry"), [selectedStreams]);
+  const selectedImageStreams = useMemo(() => selectedStreams.filter((stream) => stream.type === "image"), [selectedStreams]);
+  const projectOptions = useMemo(
+    () => [
+      { label: "不绑定项目", value: "" },
+      ...(projects.data?.items ?? []).map((project) => ({ label: project.name, value: project.id }))
+    ],
+    [projects.data?.items]
+  );
+
+  useEffect(() => {
+    if (!requestedDeviceId || devices.isLoading) {
+      return;
+    }
+    const matchedDevice = devices.data?.items.find((device) => device.id === requestedDeviceId);
+    if (!matchedDevice || form.deviceId === requestedDeviceId) {
+      return;
+    }
+    streamAutoSelectedDeviceRef.current = "";
+    setForm((current) => ({
+      ...current,
+      deviceId: requestedDeviceId,
+      selectedStreamIds: []
+    }));
+    query.reset();
+  }, [devices.data?.items, devices.isLoading, form.deviceId, requestedDeviceId]);
 
   useEffect(() => {
     if (!query.data) {
@@ -186,6 +269,53 @@ export function DeviceDataPage() {
       setActiveResultTab(RESULT_TAB_IMAGES);
     }
   }, [query.data]);
+
+  useEffect(() => {
+    if (!form.deviceId) {
+      streamAutoSelectedDeviceRef.current = "";
+      return;
+    }
+    if (streams.isLoading) {
+      return;
+    }
+    if (visibleStreams.length === 0) {
+      if (form.selectedStreamIds.length > 0) {
+        setForm((current) => ({ ...current, selectedStreamIds: [] }));
+      }
+      return;
+    }
+    const visibleIDs = new Set(visibleStreams.map((stream) => stream.id));
+    const currentVisibleIDs = form.selectedStreamIds.filter((streamId) => visibleIDs.has(streamId));
+    if (streamAutoSelectedDeviceRef.current !== form.deviceId && currentVisibleIDs.length === 0) {
+      streamAutoSelectedDeviceRef.current = form.deviceId;
+      setForm((current) => ({ ...current, selectedStreamIds: visibleStreams.map((stream) => stream.id) }));
+    } else if (currentVisibleIDs.length !== form.selectedStreamIds.length) {
+      setForm((current) => ({ ...current, selectedStreamIds: currentVisibleIDs }));
+    }
+  }, [form.deviceId, form.selectedStreamIds, streams.isLoading, visibleStreams]);
+
+  const createDataset = useMutation({
+    mutationFn: (values: SaveDatasetFormState) => {
+      if (!values.range) {
+        throw new Error("missing dataset range");
+      }
+      return datasetsApi.create({
+        workspace_id: selectedWorkspaceId,
+        project_id: optionalTrim(values.projectId),
+        name: values.name.trim(),
+        description: optionalTrim(values.description),
+        data_type: values.dataType,
+        time_start: values.range[0].toISOString(),
+        time_end: values.range[1].toISOString(),
+        sources: values.sources
+      });
+    },
+    onSuccess: () => {
+      setSaveDatasetForm(emptySaveDatasetForm());
+      void queryClient.invalidateQueries({ queryKey: ["datasets", selectedWorkspaceId] });
+      void message.success("数据集已创建");
+    }
+  });
 
   const columns: TableColumnsType<TelemetryRow> = [
     {
@@ -236,17 +366,38 @@ export function DeviceDataPage() {
   ];
 
   function handleDeviceChange(deviceId: string) {
+    streamAutoSelectedDeviceRef.current = "";
+    const nextParams = new URLSearchParams(searchParams);
+    if (deviceId) {
+      nextParams.set("device_id", deviceId);
+      nextParams.delete("deviceId");
+    } else {
+      nextParams.delete("device_id");
+      nextParams.delete("deviceId");
+    }
+    setSearchParams(nextParams, { replace: true });
     setForm((current) => ({
       ...current,
       deviceId,
-      dataStreamId: ALL_STREAMS
+      selectedStreamIds: []
     }));
     query.reset();
   }
 
-  function handleDataStreamChange(dataStreamId: string) {
-    setForm((current) => ({ ...current, dataStreamId }));
-    query.reset();
+  function selectStreamGroup(streamsToSelect: DataStream[]) {
+    setForm((current) => {
+      const selectedIDs = new Set(current.selectedStreamIds);
+      streamsToSelect.forEach((stream) => selectedIDs.add(stream.id));
+      return { ...current, selectedStreamIds: Array.from(selectedIDs) };
+    });
+  }
+
+  function clearStreamGroup(streamsToClear: DataStream[]) {
+    const streamIDs = new Set(streamsToClear.map((stream) => stream.id));
+    setForm((current) => ({
+      ...current,
+      selectedStreamIds: current.selectedStreamIds.filter((streamId) => !streamIDs.has(streamId))
+    }));
   }
 
   function handleQuery() {
@@ -262,23 +413,84 @@ export function DeviceDataPage() {
       void message.warning("结束时间必须晚于开始时间");
       return;
     }
-
-    const streamType = resolveQueryStreamType(form.dataStreamId, selectedStream);
-    if (!streamType) {
-      void message.warning("当前只支持查询遥测数据和图片数据");
+    if (form.selectedStreamIds.length === 0) {
+      void message.warning("请选择至少一条数据流");
       return;
     }
 
     query.mutate({
       deviceId: form.deviceId,
-      dataStreamId: form.dataStreamId,
-      streamType,
+      streamIds: form.selectedStreamIds,
       startTime: form.range[0].toISOString(),
       endTime: form.range[1].toISOString(),
-      limit: form.limit,
-      includeTelemetry: telemetryStreams.length > 0,
-      includeImages: imageStreams.length > 0
+      limit: form.limit
     });
+  }
+
+  function openSaveDatasetModal() {
+    if (!form.deviceId || !selectedDevice) {
+      void message.warning("请选择设备");
+      return;
+    }
+    if (!form.range) {
+      void message.warning("请选择时间范围");
+      return;
+    }
+    if (form.range[1].isBefore(form.range[0])) {
+      void message.warning("结束时间必须晚于开始时间");
+      return;
+    }
+
+    if (form.selectedStreamIds.length === 0) {
+      void message.warning("请选择至少一条数据流");
+      return;
+    }
+    const sources = selectedStreams.map((stream) => ({ source_type: "data_stream" as const, source_id: stream.id }));
+    const dataType = inferDatasetType(selectedTelemetryStreams.length > 0, selectedImageStreams.length > 0);
+    if (selectedStreams.length > 1) {
+      setSaveDatasetForm({
+        open: true,
+        name: `${selectedDevice.name} ${form.range[0].format("YYYY-MM-DD HH:mm")} 数据集`,
+        projectId: selectedDevice.project_id || "",
+        dataType,
+        range: form.range,
+        sources,
+        sourceLabel: `${selectedDevice.name} · 已选 ${selectedStreams.length} 条数据流`,
+        description: ""
+      });
+      return;
+    }
+
+    if (!selectedStream) {
+      void message.warning("当前数据流不能保存为数据集");
+      return;
+    }
+    setSaveDatasetForm({
+      open: true,
+      name: `${selectedStream.name} ${form.range[0].format("YYYY-MM-DD HH:mm")} 数据集`,
+      projectId: selectedDevice.project_id || "",
+      dataType: selectedStream.type,
+      range: form.range,
+      sources,
+      sourceLabel: `${selectedDevice.name} · ${selectedStream.name} · ${selectedStream.code}`,
+      description: ""
+    });
+  }
+
+  function submitSaveDataset() {
+    if (!saveDatasetForm.name.trim()) {
+      void message.warning("请输入数据集名称");
+      return;
+    }
+    if (!saveDatasetForm.range) {
+      void message.warning("请选择时间范围");
+      return;
+    }
+    if (saveDatasetForm.sources.length === 0) {
+      void message.warning("缺少数据来源");
+      return;
+    }
+    createDataset.mutate(saveDatasetForm);
   }
 
   return (
@@ -286,9 +498,6 @@ export function DeviceDataPage() {
       <header className="page-header">
         <div>
           <Typography.Title level={2}>设备数据查询</Typography.Title>
-          <Typography.Paragraph type="secondary">
-            按设备、数据流和时间范围读取遥测趋势和图片记录。遥测以 ECharts 展示，图片支持点击预览。
-          </Typography.Paragraph>
         </div>
         <Button
           icon={<SyncOutlined />}
@@ -304,7 +513,7 @@ export function DeviceDataPage() {
       </header>
 
       <Card className="section query-panel" title="查询条件">
-        <div className="form-grid">
+        <div className="device-query-layout">
           <Form.Item className="field" label="设备" required>
             <Select
               className="control"
@@ -316,19 +525,6 @@ export function DeviceDataPage() {
               showSearch
               optionFilterProp="label"
               value={form.deviceId || undefined}
-            />
-          </Form.Item>
-          <Form.Item className="field" label="数据流">
-            <Select
-              className="control"
-              disabled={!form.deviceId || streams.isLoading}
-              loading={streams.isLoading}
-              onChange={handleDataStreamChange}
-              options={streamOptions}
-              placeholder="选择数据流"
-              showSearch
-              optionFilterProp="label"
-              value={form.dataStreamId}
             />
           </Form.Item>
           <Form.Item className="field device-data-range" label="时间范围" required>
@@ -355,9 +551,112 @@ export function DeviceDataPage() {
           </Form.Item>
         </div>
 
+        {selectedDevice?.topology_role === "gateway" ? (
+          <div className="gateway-node-shortcuts">
+            <div className="gateway-node-shortcuts-head">
+              <Typography.Text strong>组网站节点</Typography.Text>
+              <Tag color="purple">组网站</Tag>
+            </div>
+            {selectedGatewayChildren.error ? (
+              <Alert message={formatApiError(selectedGatewayChildren.error)} showIcon type="error" />
+            ) : selectedGatewayChildren.data && selectedGatewayChildren.data.items.length === 0 ? (
+              <Empty description="当前账号没有可查看的节点，或节点尚未分配到当前工作区" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            ) : (
+              <div className="gateway-node-shortcut-grid">
+                {(selectedGatewayChildren.data?.items ?? []).map((child) => (
+                  <Button key={child.device.id} onClick={() => handleDeviceChange(child.device.id)}>
+                    <span>{child.device.name}</span>
+                  </Button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        <div className="stream-check-panel">
+          <div className="stream-check-header">
+            <Space align="center" size={8}>
+              <Typography.Text strong>数据流</Typography.Text>
+              <Tag>{form.deviceId ? `${form.selectedStreamIds.length}/${visibleStreams.length}` : "0/0"}</Tag>
+            </Space>
+            <Space size={8}>
+              <Button disabled={visibleStreams.length === 0} onClick={() => setForm((current) => ({ ...current, selectedStreamIds: visibleStreams.map((stream) => stream.id) }))} size="small">
+                全选
+              </Button>
+              <Button disabled={visibleStreams.length === 0} onClick={() => setForm((current) => ({ ...current, selectedStreamIds: [] }))} size="small">
+                清空
+              </Button>
+            </Space>
+          </div>
+          {form.deviceId ? (
+            visibleStreams.length > 0 ? (
+              <Checkbox.Group
+                className="stream-checkbox-sections"
+                onChange={(values) => setForm((current) => ({ ...current, selectedStreamIds: values.map(String) }))}
+                value={form.selectedStreamIds}
+              >
+                {telemetryStreams.length > 0 ? (
+                  <div className="stream-checkbox-section">
+                    <div className="stream-checkbox-section-header">
+                      <div className="stream-checkbox-section-title">
+                        <Typography.Text strong>遥测数据流</Typography.Text>
+                        <Tag>{selectedTelemetryStreams.length}/{telemetryStreams.length}</Tag>
+                      </div>
+                      <Space size={6}>
+                        <Button onClick={() => selectStreamGroup(telemetryStreams)} size="small" type="text">
+                          全选
+                        </Button>
+                        <Button onClick={() => clearStreamGroup(telemetryStreams)} size="small" type="text">
+                          清空
+                        </Button>
+                      </Space>
+                    </div>
+                    <div className="stream-checkbox-grid">
+                      {telemetryStreams.map((stream) => (
+                        <Checkbox className="stream-checkbox-item" key={stream.id} value={stream.id}>
+                          <span>{stream.name}</span>
+                        </Checkbox>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {imageStreams.length > 0 ? (
+                  <div className="stream-checkbox-section">
+                    <div className="stream-checkbox-section-header">
+                      <div className="stream-checkbox-section-title">
+                        <Typography.Text strong>图片数据流</Typography.Text>
+                        <Tag>{selectedImageStreams.length}/{imageStreams.length}</Tag>
+                      </div>
+                      <Space size={6}>
+                        <Button onClick={() => selectStreamGroup(imageStreams)} size="small" type="text">
+                          全选
+                        </Button>
+                        <Button onClick={() => clearStreamGroup(imageStreams)} size="small" type="text">
+                          清空
+                        </Button>
+                      </Space>
+                    </div>
+                    <div className="stream-checkbox-grid">
+                      {imageStreams.map((stream) => (
+                        <Checkbox className="stream-checkbox-item" key={stream.id} value={stream.id}>
+                          <span>{stream.name}</span>
+                        </Checkbox>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </Checkbox.Group>
+            ) : (
+              <Empty description={streams.isLoading ? "正在加载数据流" : "当前设备没有可查询的数据流"} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            )
+          ) : (
+            <Empty description="选择设备后显示可查询的数据流" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          )}
+        </div>
+
         <div className="query-actions">
           <Button
-            disabled={!form.deviceId || !form.range || streams.isLoading}
+            disabled={!form.deviceId || !form.range || streams.isLoading || form.selectedStreamIds.length === 0}
             icon={<SearchOutlined />}
             loading={query.isPending}
             onClick={handleQuery}
@@ -365,14 +664,12 @@ export function DeviceDataPage() {
           >
             查询数据
           </Button>
-          <Typography.Text type="secondary">
-            {selectedWorkspace ? selectedWorkspace.workspace.name : "未选择工作区"}
-          </Typography.Text>
         </div>
 
         {!devices.isLoading && devices.data?.items.length === 0 ? (
           <Alert className="query-alert" message="当前工作区没有已分配设备。请系统管理员在后台同步设备并分配到当前工作区。" showIcon type="info" />
         ) : null}
+        {requestedDeviceMissing ? <Alert className="query-alert" message="链接中的设备不在当前工作区，或当前账号没有查看权限。" showIcon type="warning" /> : null}
         {streams.error ? <Alert className="query-alert" message={formatApiError(streams.error)} showIcon type="error" /> : null}
         {query.error ? <Alert className="query-alert" message={formatApiError(query.error)} showIcon type="error" /> : null}
       </Card>
@@ -380,7 +677,7 @@ export function DeviceDataPage() {
       <Card className="section" title="查询上下文">
         <Descriptions bordered column={{ lg: 4, md: 2, sm: 1, xs: 1 }} size="small">
           <Descriptions.Item label="设备">{describeDevice(selectedDevice)}</Descriptions.Item>
-          <Descriptions.Item label="数据流">{describeStreamScope(form.dataStreamId, selectedStream, telemetryStreams.length, imageStreams.length)}</Descriptions.Item>
+          <Descriptions.Item label="数据流">{describeSelectedStreams(selectedStreams, telemetryStreams.length, imageStreams.length)}</Descriptions.Item>
           <Descriptions.Item label="时间范围">{describeRange(form.range)}</Descriptions.Item>
           <Descriptions.Item label="结果">{describeQueryResult(query.data, rows.length, mediaItems.length, form.limit)}</Descriptions.Item>
         </Descriptions>
@@ -388,11 +685,13 @@ export function DeviceDataPage() {
 
       <Card
         className="section"
+        extra={
+          <Button disabled={!form.deviceId || !form.range || streams.isLoading || form.selectedStreamIds.length === 0} onClick={openSaveDatasetModal}>
+            保存为数据集
+          </Button>
+        }
         title={
-          <Space orientation="vertical" size={0}>
-            <Typography.Text strong>查询结果</Typography.Text>
-            <Typography.Text type="secondary">{describeResultSummary(query.data, rows.length, mediaItems.length)}</Typography.Text>
-          </Space>
+          <Typography.Text strong>查询结果</Typography.Text>
         }
       >
         {warnings.length > 0 ? (
@@ -432,7 +731,7 @@ export function DeviceDataPage() {
                   columns={columns}
                   dataSource={rows}
                   loading={query.isPending}
-                  locale={{ emptyText: "这个时间范围内没有可显示的数据点" }}
+                  locale={{ emptyText: "这个时间范围内没有可显示的遥测记录" }}
                   pagination={{ pageSize: 50, showSizeChanger: true }}
                   rowKey={(row) => row.key}
                   scroll={{ x: tableScrollX(columns) }}
@@ -449,8 +748,97 @@ export function DeviceDataPage() {
           onChange={setActiveResultTab}
         />
       </Card>
+
+      <Modal
+        confirmLoading={createDataset.isPending}
+        okText="创建数据集"
+        onCancel={() => setSaveDatasetForm(emptySaveDatasetForm())}
+        onOk={submitSaveDataset}
+        open={saveDatasetForm.open}
+        title="保存为数据集"
+      >
+        <Form layout="vertical">
+          <Form.Item label="数据集名称" required>
+            <Input
+              onChange={(event) => setSaveDatasetForm((current) => ({ ...current, name: event.target.value }))}
+              value={saveDatasetForm.name}
+            />
+          </Form.Item>
+          <Form.Item label="项目">
+            <Select
+              loading={projects.isLoading}
+              onChange={(value) => setSaveDatasetForm((current) => ({ ...current, projectId: value }))}
+              options={projectOptions}
+              value={saveDatasetForm.projectId}
+            />
+          </Form.Item>
+          <Form.Item label="数据类型" required>
+            <Select
+              onChange={(value: DatasetDataType) => setSaveDatasetForm((current) => ({ ...current, dataType: value }))}
+              options={[
+                { label: "遥测", value: "telemetry" },
+                { label: "图片", value: "image" },
+                { label: "混合", value: "mixed" }
+              ]}
+              value={saveDatasetForm.dataType}
+            />
+          </Form.Item>
+          <Form.Item label="时间范围" required>
+            <DatePicker.RangePicker
+              className="control"
+              onChange={(value) =>
+                setSaveDatasetForm((current) => ({
+                  ...current,
+                  range: value && value[0] && value[1] ? [value[0], value[1]] : null
+                }))
+              }
+              showTime
+              value={saveDatasetForm.range}
+            />
+          </Form.Item>
+          <Form.Item label="数据来源">
+            <Typography.Text>{saveDatasetForm.sourceLabel || "-"}</Typography.Text>
+          </Form.Item>
+          <Form.Item label="描述">
+            <Input.TextArea
+              autoSize={{ minRows: 3, maxRows: 5 }}
+              onChange={(event) => setSaveDatasetForm((current) => ({ ...current, description: event.target.value }))}
+              placeholder="记录实验批次、用途或交付说明"
+              value={saveDatasetForm.description}
+            />
+          </Form.Item>
+          {createDataset.error ? <Alert message={formatApiError(createDataset.error)} showIcon type="error" /> : null}
+        </Form>
+      </Modal>
     </section>
   );
+}
+
+function emptySaveDatasetForm(): SaveDatasetFormState {
+  return {
+    open: false,
+    name: "",
+    projectId: "",
+    dataType: "mixed",
+    range: null,
+    sources: [],
+    sourceLabel: "",
+    description: ""
+  };
+}
+
+function inferDatasetType(hasTelemetry: boolean, hasImages: boolean): DatasetDataType {
+  if (hasTelemetry && hasImages) {
+    return "mixed";
+  }
+  if (hasImages) {
+    return "image";
+  }
+  return "telemetry";
+}
+
+function optionalTrim(value?: string): string | undefined {
+  return value?.trim() || undefined;
 }
 
 function ImagePreviewCategories({ items, streamsByID }: { items: MediaItem[]; streamsByID: Map<string, DataStream> }) {
@@ -500,7 +888,7 @@ function TelemetryCharts({ result }: { result: TelemetryQueryResponse }) {
             </div>
             <Space className="telemetry-series-meta" size={[6, 6]} wrap>
               {series.unit ? <Tag color="processing">{series.unit}</Tag> : null}
-              <Tag>{series.points.length} 点</Tag>
+              <Tag>{series.points.length} 条记录</Tag>
             </Space>
           </div>
           <TelemetrySeriesChart series={series} />
@@ -535,7 +923,7 @@ function TelemetrySeriesChart({ series }: { series: TelemetrySeries }) {
   }, [hasPoints, series]);
 
   if (!hasPoints) {
-    return <Empty className="telemetry-chart-empty" description="这个时间范围内没有可绘制的数据点" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+    return <Empty className="telemetry-chart-empty" description="这个时间范围内没有可绘制的遥测记录" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
   }
 
   return <div aria-label={`${series.name}趋势图`} className="telemetry-chart" ref={chartRef} />;
@@ -671,31 +1059,34 @@ function collectWarnings(result?: TelemetryQueryResponse): QueryWarning[] {
   return warnings;
 }
 
-function resolveQueryStreamType(dataStreamId: string, selectedStream?: DataStream): DeviceDataQueryInput["streamType"] | undefined {
-  if (dataStreamId === ALL_STREAMS) {
-    return "all";
-  }
-  if (selectedStream?.type === "telemetry" || selectedStream?.type === "image") {
-    return selectedStream.type;
-  }
-  return undefined;
-}
-
 function describeDevice(device?: Device): string {
   if (!device) {
     return "-";
   }
-  return `${device.name} · ${device.serial_no}`;
+  return `${deviceTopologyText(device)} · ${device.name} · ${device.serial_no}`;
 }
 
-function describeStreamScope(dataStreamId: string, selectedStream: DataStream | undefined, telemetryCount: number, imageCount: number): string {
-  if (dataStreamId === ALL_STREAMS) {
-    return `全部数据 (遥测 ${telemetryCount}，图片 ${imageCount})`;
+function deviceTopologyText(device: Device): string {
+  if (device.topology_role === "gateway") {
+    return `组网站 (${device.child_count ?? 0} 节点)`;
   }
-  if (!selectedStream) {
-    return "-";
+  if (device.topology_role === "gateway_node") {
+    return "节点";
   }
-  return `${streamTypeLabel(selectedStream.type)} · ${selectedStream.name} · ${selectedStream.code}`;
+  return "普通设备";
+}
+
+function describeSelectedStreams(selectedStreams: DataStream[], telemetryCount: number, imageCount: number): string {
+  if (selectedStreams.length === 0) {
+    return `未选择 (可选遥测 ${telemetryCount}，图片 ${imageCount})`;
+  }
+  if (selectedStreams.length === 1) {
+    const [stream] = selectedStreams;
+    return `${streamTypeLabel(stream.type)} · ${stream.name} · ${stream.code}`;
+  }
+  const telemetrySelected = selectedStreams.filter((stream) => stream.type === "telemetry").length;
+  const imageSelected = selectedStreams.filter((stream) => stream.type === "image").length;
+  return `已选 ${selectedStreams.length} 条 (遥测 ${telemetrySelected}，图片 ${imageSelected})`;
 }
 
 function describeRange(range: [Dayjs, Dayjs] | null): string {
@@ -705,19 +1096,19 @@ function describeRange(range: [Dayjs, Dayjs] | null): string {
   return `${range[0].format("YYYY-MM-DD HH:mm:ss")} - ${range[1].format("YYYY-MM-DD HH:mm:ss")}`;
 }
 
-function describeQueryResult(result: DeviceDataQueryResult | undefined, pointCount: number, imageCount: number, limit: number): string {
+function describeQueryResult(result: DeviceDataQueryResult | undefined, telemetryRecordCount: number, imageCount: number, limit: number): string {
   if (!result) {
     return `上限 ${limit}`;
   }
-  return `${pointCount} 个点，${imageCount} 张图片`;
+  return `${telemetryRecordCount} 条遥测记录，${imageCount} 张图片`;
 }
 
-function describeResultSummary(result: DeviceDataQueryResult | undefined, pointCount: number, imageCount: number): string {
+function describeResultSummary(result: DeviceDataQueryResult | undefined, telemetryRecordCount: number, imageCount: number): string {
   if (!result) {
     return "提交查询后显示趋势图和图片";
   }
   const seriesCount = result.telemetry?.series.length ?? 0;
-  return `${seriesCount} 个遥测序列，${pointCount} 个数据点，${imageCount} 张图片`;
+  return `${seriesCount} 个遥测序列，${telemetryRecordCount} 条遥测记录，${imageCount} 张图片`;
 }
 
 function formatTelemetryValue(value: number): string {

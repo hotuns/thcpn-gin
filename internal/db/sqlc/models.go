@@ -198,6 +198,20 @@ type DeviceOperation struct {
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 }
 
+type DeviceRelation struct {
+	ID                     uuid.UUID          `json:"id"`
+	ParentDeviceID         uuid.UUID          `json:"parent_device_id"`
+	ChildDeviceID          uuid.UUID          `json:"child_device_id"`
+	RelationType           string             `json:"relation_type"`
+	DataSourceID           uuid.UUID          `json:"data_source_id"`
+	ExternalParentDeviceID int64              `json:"external_parent_device_id"`
+	ExternalChildDeviceID  int64              `json:"external_child_device_id"`
+	Status                 string             `json:"status"`
+	SyncedAt               pgtype.Timestamptz `json:"synced_at"`
+	CreatedAt              pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt              pgtype.Timestamptz `json:"updated_at"`
+}
+
 type DeviceSourceRef struct {
 	ID                 uuid.UUID          `json:"id"`
 	DeviceID           uuid.UUID          `json:"device_id"`

@@ -5,17 +5,14 @@ import {
   CheckOutlined,
   DashboardOutlined,
   DatabaseOutlined,
-  DeploymentUnitOutlined,
   DownOutlined,
   ExportOutlined,
-  FolderOpenOutlined,
   HddOutlined,
   LineChartOutlined,
   LogoutOutlined,
   MenuOutlined,
   PlusOutlined,
   ReloadOutlined,
-  SafetyCertificateOutlined,
   SettingOutlined
 } from "@ant-design/icons";
 import { Alert, App as AntApp, Button, Drawer, Dropdown, Layout, Menu, Result, Space, Spin, Tag, Tooltip, Typography } from "antd";
@@ -31,8 +28,6 @@ const navGroups = [
     label: "运行",
     items: [
       { to: "/dashboard", label: "总览", icon: <DashboardOutlined /> },
-      { to: "/projects", label: "项目", icon: <FolderOpenOutlined /> },
-      { to: "/sites", label: "站点", icon: <DeploymentUnitOutlined /> },
       { to: "/devices", label: "设备", icon: <HddOutlined /> }
     ]
   },
@@ -45,9 +40,9 @@ const navGroups = [
     ]
   },
   {
-    label: "账号",
+    label: "管理",
     items: [
-      { to: "/security", label: "安全", icon: <SafetyCertificateOutlined /> }
+      { to: "/settings", label: "设置", icon: <SettingOutlined /> }
     ]
   }
 ];

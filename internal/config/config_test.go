@@ -7,6 +7,9 @@ func TestDefaultConfigIsValid(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("default config should be valid: %v", err)
 	}
+	if cfg.ObjectStore.PublicURLPrefix != "https://iot-datas.oss-cn-beijing.aliyuncs.com" {
+		t.Fatalf("expected default object store public URL prefix, got %q", cfg.ObjectStore.PublicURLPrefix)
+	}
 }
 
 func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
@@ -28,6 +31,7 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("EMAIL_MAX_VERIFY_ATTEMPTS", "4")
 	t.Setenv("OBJECT_STORE_PROVIDER", "file")
 	t.Setenv("OBJECT_STORE_LOCAL_PATH", "/tmp/thcpn-objectstore")
+	t.Setenv("OBJECT_STORE_PUBLIC_URL_PREFIX", "https://example-bucket.oss-cn-beijing.aliyuncs.com")
 	t.Setenv("EXPORT_MAX_ROWS", "250000")
 	t.Setenv("TRACING_ENABLED", "true")
 	t.Setenv("TRACING_SERVICE_NAME", "thcpn-test")
@@ -93,6 +97,9 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.ObjectStore.LocalPath != "/tmp/thcpn-objectstore" {
 		t.Fatalf("expected object store local path override, got %q", cfg.ObjectStore.LocalPath)
+	}
+	if cfg.ObjectStore.PublicURLPrefix != "https://example-bucket.oss-cn-beijing.aliyuncs.com" {
+		t.Fatalf("expected object store public URL prefix override, got %q", cfg.ObjectStore.PublicURLPrefix)
 	}
 	if cfg.Export.MaxRows != 250000 {
 		t.Fatalf("expected export max rows override, got %d", cfg.Export.MaxRows)

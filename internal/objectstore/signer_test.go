@@ -74,6 +74,50 @@ func TestSignObjectURL(t *testing.T) {
 	}
 }
 
+func TestSignObjectURLUsesPublicPrefix(t *testing.T) {
+	for _, input := range []string{
+		"https://iot-datas.oss-cn-beijing.aliyuncs.com",
+		"https://iot-datas.oss-cn-beijing.aliyuncs.com/",
+		"https://iot-datas.oss-cn-beijing.aliyuncs.com=",
+	} {
+		t.Run(input, func(t *testing.T) {
+			signer := NewSigner(config.ObjectStoreConfig{
+				Bucket:          "iot-platform",
+				PublicURLPrefix: input,
+			}, "")
+			signer.now = func() time.Time {
+				return time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC)
+			}
+
+			signed, err := signer.SignObjectURL("raw/img-1.jpg", 15*time.Minute)
+			if err != nil {
+				t.Fatalf("sign url: %v", err)
+			}
+			if signed.URL != "https://iot-datas.oss-cn-beijing.aliyuncs.com/raw/img-1.jpg" {
+				t.Fatalf("unexpected public URL: %q", signed.URL)
+			}
+			if signed.ExpiresAt.IsZero() {
+				t.Fatal("expected expires_at")
+			}
+		})
+	}
+}
+
+func TestSignObjectURLReturnsAbsoluteHTTPURL(t *testing.T) {
+	signer := NewSigner(config.ObjectStoreConfig{
+		Bucket:          "iot-platform",
+		PublicURLPrefix: "https://iot-datas.oss-cn-beijing.aliyuncs.com",
+	}, "")
+
+	signed, err := signer.SignObjectURL("https://cdn.example.com/raw/img-1.jpg", 15*time.Minute)
+	if err != nil {
+		t.Fatalf("sign url: %v", err)
+	}
+	if signed.URL != "https://cdn.example.com/raw/img-1.jpg" {
+		t.Fatalf("expected absolute URL to pass through, got %q", signed.URL)
+	}
+}
+
 func TestFileStorePut(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(config.ObjectStoreConfig{

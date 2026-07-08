@@ -974,11 +974,12 @@ paths:
       tags:
         - Admin
       operationId: adminSyncTHCPNStandardStationDevice
-      summary: Sync a THCPN standard station device into a target workspace
+      summary: Sync a THCPN standard station device into the system asset registry
       description: >
-        Requires `users.is_system_admin = true`. Uses a system-scoped THCPN MySQL DataSource to read the external
+        Requires `users.is_system_admin = true`. Uses a system-level THCPN MySQL DataSource to read the external
         device and latest config, then creates or updates platform Device, DeviceSourceRef, DeviceConfigSnapshot,
-        DataStreams and DataStreamBindings in `target_workspace_id`.
+        DataStreams and DataStreamBindings. `target_workspace_id` is optional; when omitted, the Device remains
+        an unassigned system asset until an admin assigns it through the system device asset APIs.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1005,6 +1006,219 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/data-sources/{data_source_id}/thcpn-standard-station/gateways:
+    parameters:
+      - $ref: "#/components/parameters/DataSourceID"
+    post:
+      tags:
+        - Admin
+      operationId: adminSyncTHCPNGateway
+      summary: Sync a THCPN gateway topology into the system asset registry
+      description: >
+        Requires `users.is_system_admin = true`. Reads `gate_node` for the external gateway, synchronizes
+        the gateway and node devices as independent platform Devices, and stores gateway-node relations.
+        Node assignment is explicit and only runs when `assign_nodes` is true.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncTHCPNGatewayRequest"
+      responses:
+        "200":
+          description: THCPN gateway topology synchronized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/THCPNGatewaySyncResult"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/devices:
+    get:
+      tags:
+        - Admin
+      operationId: adminListSystemDeviceAssets
+      summary: List system device assets
+      description: Requires `users.is_system_admin = true`. Includes both unassigned devices and devices with an active Workspace assignment.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: System device assets.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/devices/{device_id}/children:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags:
+        - Admin
+      operationId: adminListDeviceChildren
+      summary: List gateway child devices for a system device asset
+      description: Requires `users.is_system_admin = true`. Returns active gateway-node relations, including unassigned child devices.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Gateway child devices.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceChildrenResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      tags:
+        - Admin
+      operationId: adminAddDeviceChild
+      summary: Add a gateway child relation
+      description: Requires `users.is_system_admin = true`. The parent and child must be synced system devices from the same data source; the child must not already belong to another gateway.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddDeviceChildRequest"
+      responses:
+        "200":
+          description: Gateway-node relation created or reactivated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceRelation"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/devices/{device_id}/children/{child_device_id}:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+      - name: child_device_id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUID"
+    delete:
+      tags:
+        - Admin
+      operationId: adminRemoveDeviceChild
+      summary: Remove a gateway child relation
+      description: Requires `users.is_system_admin = true`. Marks the active gateway-node relation as removed.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Gateway-node relation marked removed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceRelation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/devices/{device_id}/assignment:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    post:
+      tags:
+        - Admin
+      operationId: adminAssignSystemDevice
+      summary: Assign or transfer a system device asset
+      description: Requires `users.is_system_admin = true`. Creates an active assignment for an unassigned device, updates placement within the same Workspace, or transfers the active assignment to another Workspace.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignDeviceRequest"
+      responses:
+        "200":
+          description: Device assignment updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+    delete:
+      tags:
+        - Admin
+      operationId: adminRemoveSystemDeviceAssignment
+      summary: Remove the active assignment from a system device asset
+      description: Requires `users.is_system_admin = true`. The system Device remains in the asset registry.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "204":
+          description: Active assignment removed.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/Internal"
   /api/v1/workspaces/{workspace_id}/members:
@@ -1518,6 +1732,35 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/devices/{device_id}/children:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags:
+        - Devices
+      operationId: listDeviceChildren
+      summary: List visible child devices for a gateway
+      description: Requires `device.view` on the parent and returns only child devices that are actively assigned in the same Workspace and visible to the caller.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Visible child devices.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceChildrenResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
   /api/v1/devices/{device_id}/calibrations:
     parameters:
       - $ref: "#/components/parameters/DeviceID"
@@ -1712,7 +1955,8 @@ paths:
       summary: List archived media for a device
       description: |
         Requires `media.archive_view` on the device. Media metadata is read through active DataStreamBinding records;
-        preview and thumbnail URLs are temporary signed URLs. Download links are included only when the caller also has `media.download`.
+        preview and thumbnail URLs use `object_store.public_url_prefix` when configured, otherwise temporary signed URLs.
+        Download links are included only when the caller also has `media.download`.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -3109,6 +3353,12 @@ components:
         - active
         - disabled
         - retired
+    DeviceTopologyRole:
+      type: string
+      enum:
+        - standalone
+        - gateway
+        - gateway_node
     DeviceCapabilityCode:
       type: string
       enum:
@@ -3980,15 +4230,15 @@ components:
           $ref: "#/components/schemas/SiteStatus"
     Device:
       type: object
-      description: Assigned device view. The Device itself is a system-level asset; assignment fields describe its current Workspace boundary.
+      description: System-level device asset view. Assignment fields are present only when the device has an active Workspace assignment.
       required:
         - id
-        - assignment_id
-        - workspace_id
         - serial_no
         - name
         - status
         - capabilities
+        - topology_role
+        - child_count
         - created_at
         - updated_at
       properties:
@@ -4020,6 +4270,12 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/DeviceCapabilityCode"
+        topology_role:
+          $ref: "#/components/schemas/DeviceTopologyRole"
+        child_count:
+          type: integer
+          format: int64
+          description: Active gateway-node child count. Only gateway devices have a value greater than zero.
         created_at:
           $ref: "#/components/schemas/Timestamp"
         updated_at:
@@ -4033,6 +4289,76 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Device"
+    DeviceRelation:
+      type: object
+      required:
+        - id
+        - parent_device_id
+        - child_device_id
+        - relation_type
+        - data_source_id
+        - external_parent_device_id
+        - external_child_device_id
+        - status
+        - synced_at
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        parent_device_id:
+          $ref: "#/components/schemas/UUID"
+        child_device_id:
+          $ref: "#/components/schemas/UUID"
+        relation_type:
+          type: string
+          enum:
+            - gateway_node
+        data_source_id:
+          $ref: "#/components/schemas/UUID"
+        external_parent_device_id:
+          type: integer
+          format: int64
+        external_child_device_id:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum:
+            - active
+            - removed
+        synced_at:
+          $ref: "#/components/schemas/Timestamp"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    DeviceChild:
+      type: object
+      required:
+        - relation
+        - device
+      properties:
+        relation:
+          $ref: "#/components/schemas/DeviceRelation"
+        device:
+          $ref: "#/components/schemas/Device"
+    DeviceChildrenResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceChild"
+    AddDeviceChildRequest:
+      type: object
+      required:
+        - child_device_id
+      properties:
+        child_device_id:
+          $ref: "#/components/schemas/UUID"
     UpdateDeviceRequest:
       type: object
       description: Workspace users can only adjust the active assignment's project/site placement. System device identity and capabilities are managed by system sync/admin flows.
@@ -4118,6 +4444,21 @@ components:
         confirm_dataset_policy:
           type: boolean
           description: Must be true to confirm historical datasets remain in their original workspace/project.
+    AssignDeviceRequest:
+      type: object
+      required:
+        - target_workspace_id
+      properties:
+        target_workspace_id:
+          $ref: "#/components/schemas/UUID"
+        project_id:
+          $ref: "#/components/schemas/UUID"
+        site_id:
+          $ref: "#/components/schemas/UUID"
+        assign_children:
+          type: boolean
+          default: false
+          description: When true, gateway child nodes are explicitly assigned to the same Workspace, Project and Site.
     DataStream:
       type: object
       description: System-level device data channel generated by system sync. Workspace permission is resolved through the parent device active assignment.
@@ -4227,12 +4568,11 @@ components:
     SyncTHCPNStandardStationRequest:
       type: object
       required:
-        - target_workspace_id
         - external_device_id
       properties:
         target_workspace_id:
           $ref: "#/components/schemas/UUID"
-          description: Workspace that should own the synchronized platform device. Required by the admin sync endpoint.
+          description: Optional Workspace assignment target. Omit it to sync the device as an unassigned system asset.
         external_device_id:
           type: integer
           format: int64
@@ -4251,12 +4591,40 @@ components:
         name:
           type: string
           description: Optional platform device name override. Defaults to external `devices.name`.
+    SyncTHCPNGatewayRequest:
+      type: object
+      required:
+        - external_gateway_id
+      properties:
+        target_workspace_id:
+          $ref: "#/components/schemas/UUID"
+          description: Optional Workspace assignment target. Omit it to sync the gateway and nodes as unassigned system assets.
+        external_gateway_id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: External THCPN gateway `devices.id`.
+        project_id:
+          $ref: "#/components/schemas/UUID"
+        site_id:
+          $ref: "#/components/schemas/UUID"
+        assign_nodes:
+          type: boolean
+          default: false
+          description: When true, node devices are assigned to the same target Workspace, Project and Site.
+        product_id:
+          type: string
+          description: Optional platform product identifier for the gateway. Defaults to `thcpn_standard_station`.
+        serial_no:
+          type: string
+          description: Optional platform serial number override for the gateway.
+        name:
+          type: string
+          description: Optional platform device name override for the gateway.
     SyncedDevice:
       type: object
       required:
         - id
-        - assignment_id
-        - workspace_id
         - serial_no
         - name
         - status
@@ -4461,6 +4829,31 @@ components:
             $ref: "#/components/schemas/DataStreamBinding"
         external_device:
           $ref: "#/components/schemas/THCPNExternalDeviceMetadata"
+    THCPNGatewaySyncResult:
+      type: object
+      required:
+        - gateway
+        - nodes
+        - relations
+      properties:
+        gateway:
+          $ref: "#/components/schemas/THCPNStandardStationSyncResult"
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/THCPNStandardStationSyncResult"
+        relations:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceRelation"
+        removed_relations:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceRelation"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/QueryWarning"
     DataStreamBinding:
       type: object
       required:
@@ -4601,6 +4994,175 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Dataset"
+    TelemetryPoint:
+      type: object
+      required:
+        - ts
+        - value
+        - quality
+      properties:
+        ts:
+          $ref: "#/components/schemas/Timestamp"
+        value:
+          type: number
+          format: double
+        quality:
+          type: string
+    QueryWarning:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        count:
+          type: integer
+          format: int32
+    TelemetrySeries:
+      type: object
+      required:
+        - data_stream_id
+        - code
+        - name
+        - points
+      properties:
+        data_stream_id:
+          $ref: "#/components/schemas/UUID"
+        code:
+          type: string
+        name:
+          type: string
+        unit:
+          type: string
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/TelemetryPoint"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/QueryWarning"
+    TelemetryQueryResponse:
+      type: object
+      required:
+        - device_id
+        - start_time
+        - end_time
+        - limit
+        - series
+      properties:
+        device_id:
+          $ref: "#/components/schemas/UUID"
+        start_time:
+          $ref: "#/components/schemas/Timestamp"
+        end_time:
+          $ref: "#/components/schemas/Timestamp"
+        limit:
+          type: integer
+          format: int32
+        series:
+          type: array
+          items:
+            $ref: "#/components/schemas/TelemetrySeries"
+    MediaItem:
+      type: object
+      required:
+        - id
+        - device_id
+        - data_stream_id
+        - captured_at
+        - media_type
+        - preview_url
+        - download_allowed
+        - delete_allowed
+      properties:
+        id:
+          type: string
+        device_id:
+          $ref: "#/components/schemas/UUID"
+        data_stream_id:
+          $ref: "#/components/schemas/UUID"
+        captured_at:
+          $ref: "#/components/schemas/Timestamp"
+        media_type:
+          $ref: "#/components/schemas/MediaType"
+        thumbnail_url:
+          type: string
+        preview_url:
+          type: string
+        download_allowed:
+          type: boolean
+        download_url:
+          type: string
+        delete_allowed:
+          type: boolean
+        delete_url:
+          type: string
+    MediaListResponse:
+      type: object
+      required:
+        - items
+        - page
+        - page_size
+        - total
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MediaItem"
+        page:
+          type: integer
+          format: int32
+        page_size:
+          type: integer
+          format: int32
+        total:
+          type: integer
+          format: int32
+    MediaDownloadResponse:
+      type: object
+      required:
+        - data_stream_id
+        - device_id
+        - media_id
+        - media_type
+        - url
+        - expires_at
+      properties:
+        data_stream_id:
+          $ref: "#/components/schemas/UUID"
+        device_id:
+          $ref: "#/components/schemas/UUID"
+        media_id:
+          type: string
+        media_type:
+          $ref: "#/components/schemas/MediaType"
+        url:
+          type: string
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+    MediaDeleteResponse:
+      type: object
+      required:
+        - data_stream_id
+        - device_id
+        - media_id
+        - media_type
+        - deleted
+      properties:
+        data_stream_id:
+          $ref: "#/components/schemas/UUID"
+        device_id:
+          $ref: "#/components/schemas/UUID"
+        media_id:
+          type: string
+        media_type:
+          $ref: "#/components/schemas/MediaType"
+        deleted:
+          type: boolean
     DatasetTelemetrySeries:
       type: object
       required:

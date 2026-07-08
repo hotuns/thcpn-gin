@@ -1,19 +1,33 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Plus, RefreshCcw, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import dayjs, { type Dayjs } from "dayjs";
+import { LineChart as EChartsLineChart } from "echarts/charts";
+import { DataZoomComponent, GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
+import { init, use } from "echarts/core";
+import type { EChartsOption } from "echarts";
+import { CanvasRenderer } from "echarts/renderers";
+import { ChartLine, Download, Eye, FileArchive, Plus, RefreshCcw, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import {
   Alert,
   App as AntApp,
   Button as AntButton,
   Checkbox,
+  DatePicker,
+  Descriptions,
+  Drawer,
+  Empty,
   Form,
-  Input,
+  InputNumber,
+  Modal,
   Result,
   Select,
   Space,
   Spin,
   Table,
-  Tag
+  Tabs,
+  Tag,
+  Typography
 } from "antd";
 import type { TableColumnsType } from "antd";
 import {
@@ -34,8 +48,11 @@ import {
   type DataStream,
   type Dataset,
   type DatasetDataType,
-  type DatasetSourceType,
+  type DatasetSourceInput,
+  type DatasetTelemetryQueryResponse,
+  type DatasetTelemetrySeries,
   type Device,
+  type DeviceChild,
   type ExportJob,
   type ExportResourceType,
   type ExportType,
@@ -45,6 +62,7 @@ import {
 } from "../../api";
 import { useWorkspace } from "../../app/WorkspaceProvider";
 import { formatDateTime, labelOrDash } from "../../app/format";
+import { accessRoleMeta, accessRoleOptions, roleLabel } from "../settings/roleMeta";
 import {
   Badge,
   Button,
@@ -60,6 +78,11 @@ import {
 } from "../../components";
 import { copyableId, statusColor, tableScrollX } from "../../app/ui";
 
+use([EChartsLineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer]);
+
+const DATASET_PREVIEW_LIMIT = 500;
+type DeviceTopologyFilter = "all" | "gateway" | "gateway_node" | "standalone";
+
 const datasetTypeOptions: Array<{ label: string; value: DatasetDataType }> = [
   { label: "遥测", value: "telemetry" },
   { label: "图片", value: "image" },
@@ -68,11 +91,6 @@ const datasetTypeOptions: Array<{ label: string; value: DatasetDataType }> = [
   { label: "事件", value: "event" },
   { label: "日志", value: "log" },
   { label: "混合", value: "mixed" }
-];
-const sourceTypeOptions: Array<{ label: string; value: DatasetSourceType }> = [
-  { label: "设备", value: "device" },
-  { label: "数据流", value: "data_stream" },
-  { label: "文件", value: "file" }
 ];
 const exportResourceTypeOptions: Array<{ label: string; value: ExportResourceType }> = [
   { label: "设备", value: "device" },
@@ -85,16 +103,6 @@ const exportTypeOptions: Array<{ label: string; value: ExportType }> = [
   { label: "遥测 Excel", value: "telemetry_excel" },
   { label: "媒体 ZIP", value: "media_zip" },
   { label: "数据集 ZIP", value: "dataset_zip" }
-];
-const accessRoleOptions: Array<{ label: string; value: AccessGrantRoleCode }> = [
-  { label: "项目经理", value: "project_manager" },
-  { label: "站点操作员", value: "site_operator" },
-  { label: "数据管理员", value: "data_manager" },
-  { label: "研究员", value: "researcher" },
-  { label: "只读", value: "viewer" },
-  { label: "共享只读", value: "shared_viewer" },
-  { label: "共享下载", value: "shared_downloader" },
-  { label: "服务工程师", value: "service_engineer" }
 ];
 const scopeTypeOptions: Array<{ label: string; value: AccessGrantScopeType }> = [
   { label: "工作区", value: "workspace" },
@@ -244,7 +252,9 @@ export function DevicesPage() {
   const { selectedWorkspaceId } = useWorkspace();
   const queryClient = useQueryClient();
   const { message } = AntApp.useApp();
+  const navigate = useNavigate();
   const [filters, setFilters] = useState({ project_id: "", site_id: "" });
+  const [topologyFilter, setTopologyFilter] = useState<DeviceTopologyFilter>("all");
   const projects = useQuery({
     queryKey: ["projects", selectedWorkspaceId],
     queryFn: () => projectsApi.list(selectedWorkspaceId),
@@ -274,20 +284,58 @@ export function DevicesPage() {
   });
   const projectOptions = useMemo(() => toOptions(projects.data?.items ?? [], "全部项目"), [projects.data?.items]);
   const siteOptions = useMemo(() => toOptions(sites.data?.items ?? [], "全部站点"), [sites.data?.items]);
+  const allDevices = query.data?.items ?? [];
+  const topologyCounts = useMemo(
+    () => ({
+      all: allDevices.length,
+      gateway: allDevices.filter((item) => item.topology_role === "gateway").length,
+      gateway_node: allDevices.filter((item) => item.topology_role === "gateway_node").length,
+      standalone: allDevices.filter((item) => item.topology_role === "standalone").length
+    }),
+    [allDevices]
+  );
   const deviceColumns: TableColumnsType<Device> = [
-    { key: "name", title: "设备", width: 220, render: (_, item) => <NameCell name={item.name} detail={item.serial_no} /> },
+    {
+      key: "name",
+      title: "设备",
+      width: 260,
+      render: (_, item) => (
+        <Space orientation="vertical" size={0}>
+          <Typography.Text strong>{item.name}</Typography.Text>
+          <Typography.Text type="secondary" ellipsis title={item.serial_no}>
+            {item.serial_no}
+          </Typography.Text>
+        </Space>
+      )
+    },
+    { key: "topology", title: "类型", width: 150, render: (_, item) => deviceTopologyTag(item) },
     { key: "status", title: "状态", width: 130, render: (_, item) => <Tag color={statusColor(item.status)}>{item.status}</Tag> },
-    { key: "capabilities", title: "能力", width: 170, render: (_, item) => item.capabilities.join(", ") || "-" },
+    {
+      key: "capabilities",
+      title: "能力",
+      width: 190,
+      render: (_, item) => (
+        <Space size={[4, 4]} wrap>
+          {item.capabilities.length > 0 ? item.capabilities.map((capability) => <Tag key={capability}>{capability}</Tag>) : "-"}
+        </Space>
+      )
+    },
     { key: "site", title: "站点 ID", width: 240, render: (_, item) => copyableId(item.site_id) },
     { key: "id", title: "ID", width: 240, render: (_, item) => copyableId(item.id) },
     {
       key: "actions",
       title: "操作",
-      width: 130,
+      fixed: "right",
+      width: 250,
       render: (_, item) => (
-        <AntButton danger disabled={unbind.isPending} icon={<Trash2 size={15} />} onClick={() => unbind.mutate(item.id)}>
-          解绑
-        </AntButton>
+        <Space size={8} wrap>
+          <AntButton icon={<ChartLine size={15} />} onClick={() => navigate(`/device-data?device_id=${encodeURIComponent(item.id)}`)} type="primary">
+            {item.topology_role === "gateway" ? "网关数据" : item.topology_role === "gateway_node" ? "节点数据" : "查看数据"}
+          </AntButton>
+          <AntButton danger disabled={unbind.isPending} icon={<Trash2 size={15} />} onClick={() => unbind.mutate(item.id)}>
+            解绑
+          </AntButton>
+        </Space>
       )
     }
   ];
@@ -308,21 +356,143 @@ export function DevicesPage() {
       query={query}
       title="设备"
     >
-      {(items: Device[]) => (
-        <Table<Device>
-          className="data-table"
-          columns={deviceColumns}
-          dataSource={items}
-          locale={{ emptyText: "暂无设备" }}
-          pagination={false}
-          rowKey={(item) => item.id}
-          scroll={{ x: tableScrollX(deviceColumns) }}
-          size="middle"
-          tableLayout="fixed"
-        />
-      )}
+      {(items: Device[]) => {
+        const filteredItems = topologyFilter === "all" ? items : items.filter((item) => item.topology_role === topologyFilter);
+        return (
+          <div className="device-asset-workspace">
+            <div className="device-topology-summary">
+              <DeviceTopologySummary label="全部设备" value={topologyCounts.all} />
+              <DeviceTopologySummary label="组网站" value={topologyCounts.gateway} tone="gateway" />
+              <DeviceTopologySummary label="节点" value={topologyCounts.gateway_node} tone="node" />
+              <DeviceTopologySummary label="普通设备" value={topologyCounts.standalone} tone="standalone" />
+            </div>
+            <Tabs
+              activeKey={topologyFilter}
+              items={[
+                { key: "all", label: `全部 (${topologyCounts.all})` },
+                { key: "gateway", label: `组网站 (${topologyCounts.gateway})` },
+                { key: "gateway_node", label: `节点 (${topologyCounts.gateway_node})` },
+                { key: "standalone", label: `普通设备 (${topologyCounts.standalone})` }
+              ]}
+              onChange={(key) => setTopologyFilter(key as DeviceTopologyFilter)}
+            />
+            <Table<Device>
+              className="data-table"
+              columns={deviceColumns}
+              dataSource={filteredItems}
+              expandable={{
+                expandedRowRender: (item) => <WorkspaceDeviceChildrenTable deviceId={item.id} />,
+                rowExpandable: (item) => item.topology_role === "gateway" && (item.child_count ?? 0) > 0
+              }}
+              locale={{ emptyText: "暂无设备" }}
+              pagination={false}
+              rowKey={(item) => item.id}
+              scroll={{ x: tableScrollX(deviceColumns) }}
+              size="middle"
+              tableLayout="fixed"
+            />
+          </div>
+        );
+      }}
     </ResourcePageFrame>
   );
+}
+
+function DeviceTopologySummary({
+  label,
+  tone = "all",
+  value
+}: {
+  label: string;
+  tone?: "all" | "gateway" | "node" | "standalone";
+  value: number;
+}) {
+  return (
+    <div className={`device-topology-summary-item is-${tone}`}>
+      <Typography.Text type="secondary">{label}</Typography.Text>
+      <Typography.Title level={3}>{value}</Typography.Title>
+    </div>
+  );
+}
+
+function WorkspaceDeviceChildrenTable({ deviceId }: { deviceId: string }) {
+  const navigate = useNavigate();
+  const children = useQuery({
+    queryKey: ["device-children", deviceId],
+    queryFn: () => devicesApi.children(deviceId)
+  });
+  const columns: TableColumnsType<DeviceChild> = [
+    {
+      key: "device",
+      title: "节点设备",
+      width: 260,
+      render: (_, item) => (
+        <Space orientation="vertical" size={0}>
+          <Typography.Text strong>{item.device.name}</Typography.Text>
+          <Typography.Text type="secondary" ellipsis title={item.device.serial_no}>
+            {item.device.serial_no}
+          </Typography.Text>
+        </Space>
+      )
+    },
+    {
+      key: "status",
+      title: "状态",
+      width: 120,
+      render: (_, item) => <Tag color={statusColor(item.device.status)}>{item.device.status}</Tag>
+    },
+    {
+      key: "assignment",
+      title: "站点 ID",
+      width: 220,
+      render: (_, item) => copyableId(item.device.site_id)
+    },
+    {
+      key: "id",
+      title: "设备 ID",
+      width: 240,
+      render: (_, item) => copyableId(item.device.id)
+    },
+    {
+      key: "actions",
+      title: "操作",
+      fixed: "right",
+      width: 140,
+      render: (_, item) => (
+        <AntButton icon={<ChartLine size={15} />} onClick={() => navigate(`/device-data?device_id=${encodeURIComponent(item.device.id)}`)} type="primary">
+          节点数据
+        </AntButton>
+      )
+    }
+  ];
+
+  if (children.error) {
+    return <Alert message={formatApiError(children.error)} showIcon type="error" />;
+  }
+  return (
+    <Table<DeviceChild>
+      className="data-table nested-device-table"
+      columns={columns}
+      dataSource={children.data?.items ?? []}
+      loading={children.isLoading}
+      locale={{ emptyText: "当前账号没有可查看的节点，或节点尚未分配到当前工作区" }}
+      pagination={false}
+      rowKey={(item) => item.relation.id}
+      scroll={{ x: tableScrollX(columns) }}
+      size="small"
+      tableLayout="fixed"
+    />
+  );
+}
+
+function deviceTopologyTag(device: Device) {
+  if (device.topology_role === "gateway") {
+    return <Tag color="purple">组网站 · {device.child_count ?? 0} 节点</Tag>;
+  }
+  if (device.topology_role === "gateway_node") {
+    return <Tag color="cyan">节点</Tag>;
+  }
+  return <Tag>普通设备</Tag>;
 }
 
 export function DataStreamsPage() {
@@ -373,26 +543,85 @@ export function DatasetsPage() {
   const { selectedWorkspaceId } = useWorkspace();
   const queryClient = useQueryClient();
   const { message } = AntApp.useApp();
-  const [form, setForm] = useState({
-    project_id: "",
-    name: "",
-    description: "",
-    data_type: "telemetry" as DatasetDataType,
-    time_start: "",
-    time_end: "",
-    source_type: "device" as DatasetSourceType,
-    source_id: ""
-  });
+  type SourceMode = "device" | "data_stream";
+  const [previewDataset, setPreviewDataset] = useState<Dataset | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [form, setForm] = useState(emptyDatasetForm);
   const projects = useQuery({
     queryKey: ["projects", selectedWorkspaceId],
     queryFn: () => projectsApi.list(selectedWorkspaceId),
     enabled: Boolean(selectedWorkspaceId)
+  });
+  const devices = useQuery({
+    queryKey: ["devices", selectedWorkspaceId],
+    queryFn: () => devicesApi.list({ workspace_id: selectedWorkspaceId }),
+    enabled: Boolean(selectedWorkspaceId)
+  });
+  const streamQueries = useQueries({
+    queries: form.stream_device_ids.map((deviceId) => ({
+      enabled: Boolean(deviceId),
+      queryFn: () => dataStreamsApi.list(deviceId),
+      queryKey: ["data-streams", deviceId]
+    }))
   });
   const query = useQuery({
     queryKey: ["datasets", selectedWorkspaceId],
     queryFn: () => datasetsApi.list({ workspace_id: selectedWorkspaceId }),
     enabled: Boolean(selectedWorkspaceId)
   });
+  const devicesByID = useMemo(() => new Map((devices.data?.items ?? []).map((device) => [device.id, device])), [devices.data?.items]);
+  const deviceOptions = useMemo(
+    () =>
+      (devices.data?.items ?? []).map((device) => ({
+        label: `${device.name} · ${device.serial_no}`,
+        value: device.id
+      })),
+    [devices.data?.items]
+  );
+  const activeDataStreams = useMemo(
+    () =>
+      streamQueries.flatMap((streamQuery) =>
+        (streamQuery.data?.items ?? []).filter((stream) => stream.status === "active" && (stream.type === "telemetry" || stream.type === "image"))
+      ),
+    [streamQueries]
+  );
+  const dataStreamOptions = useMemo(
+    () =>
+      activeDataStreams.map((stream) => ({
+        label: `${devicesByID.get(stream.device_id)?.name || "设备"} · ${stream.name} · ${stream.code}`,
+        value: stream.id
+      })),
+    [activeDataStreams, devicesByID]
+  );
+
+  useEffect(() => {
+    if (form.source_mode === "device" && form.data_type !== "mixed") {
+      setForm((current) => ({ ...current, data_type: "mixed" }));
+    }
+  }, [form.source_mode, form.data_type]);
+
+  useEffect(() => {
+    if (form.source_mode !== "data_stream" || form.data_stream_ids.length === 0) {
+      return;
+    }
+    const selectedTypes = new Set(activeDataStreams.filter((stream) => form.data_stream_ids.includes(stream.id)).map((stream) => stream.type));
+    if (selectedTypes.size === 1) {
+      const [onlyType] = Array.from(selectedTypes);
+      if ((onlyType === "telemetry" || onlyType === "image") && form.data_type !== onlyType) {
+        setForm((current) => ({ ...current, data_type: onlyType }));
+      }
+    } else if (selectedTypes.size > 1 && form.data_type !== "mixed") {
+      setForm((current) => ({ ...current, data_type: "mixed" }));
+    }
+  }, [activeDataStreams, form.data_stream_ids, form.data_type, form.source_mode]);
+
+  const selectedSources = useMemo<DatasetSourceInput[]>(
+    () =>
+      form.source_mode === "device"
+        ? form.source_device_ids.map((sourceId) => ({ source_type: "device", source_id: sourceId }))
+        : form.data_stream_ids.map((sourceId) => ({ source_type: "data_stream", source_id: sourceId })),
+    [form.data_stream_ids, form.source_device_ids, form.source_mode]
+  );
   const create = useMutation({
     mutationFn: () =>
       datasetsApi.create({
@@ -403,10 +632,11 @@ export function DatasetsPage() {
         data_type: form.data_type,
         time_start: toIso(form.time_start),
         time_end: toIso(form.time_end),
-        sources: [{ source_type: form.source_type, source_id: form.source_id.trim() }]
+        sources: selectedSources
       }),
     onSuccess: () => {
-      setForm({ project_id: "", name: "", description: "", data_type: "telemetry", time_start: "", time_end: "", source_type: "device", source_id: "" });
+      setCreateOpen(false);
+      setForm(emptyDatasetForm());
       void queryClient.invalidateQueries({ queryKey: ["datasets", selectedWorkspaceId] });
       void message.success("数据集已创建");
     }
@@ -418,53 +648,219 @@ export function DatasetsPage() {
       void message.success("数据集已删除");
     }
   });
+  const exportDataset = useMutation({
+    mutationFn: (datasetId: string) => datasetsApi.exportDataset(datasetId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["export-jobs", selectedWorkspaceId] });
+      void message.success("导出任务已创建");
+    }
+  });
   const projectOptions = useMemo(() => toOptions(projects.data?.items ?? [], "不绑定项目"), [projects.data?.items]);
+  const streamLoading = streamQueries.some((streamQuery) => streamQuery.isLoading);
+  const streamError = streamQueries.find((streamQuery) => streamQuery.error)?.error;
+
+  function handleCreateDataset() {
+    if (selectedSources.length === 0) {
+      void message.warning(form.source_mode === "device" ? "请选择至少一台设备" : "请选择至少一条数据流");
+      return;
+    }
+    create.mutate();
+  }
+
+  function closeCreateModal() {
+    if (create.isPending) {
+      return;
+    }
+    setCreateOpen(false);
+  }
 
   return (
-    <ResourcePageFrame
-      createError={create.error}
-      description="数据集保存查询边界和源定义，大范围数据通过导出任务处理。"
-      form={
-        <form className="form-grid" onSubmit={(event) => submit(event, () => create.mutate())}>
-          <TextInput label="名称" onChange={(event) => setForm({ ...form, name: event.target.value })} required value={form.name} />
-          <SelectField label="项目" onChange={(event) => setForm({ ...form, project_id: event.target.value })} options={projectOptions} value={form.project_id} />
-          <SelectField label="数据类型" onChange={(event) => setForm({ ...form, data_type: event.target.value as DatasetDataType })} options={datasetTypeOptions} value={form.data_type} />
-          <TextInput label="开始时间" onChange={(event) => setForm({ ...form, time_start: event.target.value })} required type="datetime-local" value={form.time_start} />
-          <TextInput label="结束时间" onChange={(event) => setForm({ ...form, time_end: event.target.value })} required type="datetime-local" value={form.time_end} />
-          <SelectField label="源类型" onChange={(event) => setForm({ ...form, source_type: event.target.value as DatasetSourceType })} options={sourceTypeOptions} value={form.source_type} />
-          <TextInput label="源 ID" onChange={(event) => setForm({ ...form, source_id: event.target.value })} required value={form.source_id} />
-          <TextInput label="描述" onChange={(event) => setForm({ ...form, description: event.target.value })} value={form.description} />
+    <>
+      <ResourcePageFrame
+        actions={
+          <AntButton icon={<Plus size={16} />} onClick={() => setCreateOpen(true)} type="primary">
+            创建数据集
+          </AntButton>
+        }
+        description="数据集保存查询边界和源定义，大范围数据通过导出任务处理。"
+        query={query}
+        title="数据集"
+      >
+        {(items: Dataset[]) => (
+          <DataTable<Dataset>
+            columns={[
+              { key: "name", header: "数据集", render: (item) => <NameCell name={item.name} detail={item.description || datasetTypeLabel(item.data_type)} /> },
+              { key: "status", header: "状态", render: (item) => <Badge tone={statusTone(item.status)}>{item.status}</Badge> },
+              { key: "range", header: "时间范围", render: (item) => `${formatDateTime(item.time_start)} - ${formatDateTime(item.time_end)}` },
+              { key: "sources", header: "源", render: (item) => <DatasetSourcesCell dataset={item} /> },
+              { key: "id", header: "ID", render: (item) => <CopyableId value={item.id} /> },
+              {
+                key: "actions",
+                header: "操作",
+                width: 280,
+                render: (item) => (
+                  <div className="row-actions">
+                    <Button icon={<Eye size={15} />} onClick={() => setPreviewDataset(item)} variant="primary">
+                      查看数据
+                    </Button>
+                    <Button disabled={exportDataset.isPending} icon={<FileArchive size={15} />} onClick={() => exportDataset.mutate(item.id)}>
+                      导出 ZIP
+                    </Button>
+                    <Button disabled={remove.isPending} icon={<Trash2 size={15} />} onClick={() => remove.mutate(item.id)} variant="danger">
+                      删除
+                    </Button>
+                  </div>
+                )
+              }
+            ]}
+            empty="暂无数据集"
+            getRowKey={(item) => item.id}
+            items={items}
+          />
+        )}
+      </ResourcePageFrame>
+      <Modal
+        destroyOnHidden
+        footer={null}
+        onCancel={closeCreateModal}
+        open={createOpen}
+        title="创建数据集"
+        width={880}
+      >
+        <form className="dataset-create-form" onSubmit={(event) => submit(event, handleCreateDataset)}>
+          <div className="dataset-form-section">
+            <div className="dataset-form-section-title">
+              <strong>基本信息</strong>
+            </div>
+            <div className="form-grid dataset-form-grid">
+              <TextInput label="名称" onChange={(event) => setForm({ ...form, name: event.target.value })} required value={form.name} />
+              <SelectField label="项目" onChange={(event) => setForm({ ...form, project_id: event.target.value })} options={projectOptions} value={form.project_id} />
+              <SelectField label="数据类型" onChange={(event) => setForm({ ...form, data_type: event.target.value as DatasetDataType })} options={datasetTypeOptions} value={form.data_type} />
+            </div>
+          </div>
+
+          <div className="dataset-form-section">
+            <div className="dataset-form-section-title">
+              <strong>时间范围</strong>
+            </div>
+            <div className="form-grid dataset-form-grid two-columns">
+              <TextInput label="开始时间" onChange={(event) => setForm({ ...form, time_start: event.target.value })} required type="datetime-local" value={form.time_start} />
+              <TextInput label="结束时间" onChange={(event) => setForm({ ...form, time_end: event.target.value })} required type="datetime-local" value={form.time_end} />
+            </div>
+          </div>
+
+          <div className="dataset-form-section">
+            <div className="dataset-form-section-title">
+              <strong>数据来源</strong>
+            </div>
+            <div className="dataset-source-builder">
+              <Form.Item className="field dataset-source-mode" label="数据来源方式" required>
+                <Select
+                  className="control"
+                  onChange={(value: SourceMode) =>
+                    setForm({
+                      ...form,
+                      data_type: value === "device" ? "mixed" : form.data_type,
+                      source_mode: value,
+                      source_device_ids: value === "device" ? form.source_device_ids : [],
+                      stream_device_ids: value === "data_stream" ? form.stream_device_ids : [],
+                      data_stream_ids: value === "data_stream" ? form.data_stream_ids : []
+                    })
+                  }
+                  options={[
+                    { label: "按设备", value: "device" },
+                    { label: "按数据流", value: "data_stream" }
+                  ]}
+                  value={form.source_mode}
+                />
+              </Form.Item>
+              {form.source_mode === "device" ? (
+                <Form.Item className="field dataset-source-picker" label="选择设备" required>
+                  <Select
+                    className="control"
+                    loading={devices.isLoading}
+                    mode="multiple"
+                    onChange={(values: string[]) => setForm({ ...form, source_device_ids: values })}
+                    optionFilterProp="label"
+                    options={deviceOptions}
+                    placeholder="选择一台或多台设备"
+                    showSearch
+                    value={form.source_device_ids}
+                  />
+                </Form.Item>
+              ) : (
+                <>
+                  <Form.Item className="field dataset-source-picker" label="选择设备" required>
+                    <Select
+                      className="control"
+                      loading={devices.isLoading}
+                      mode="multiple"
+                      onChange={(values: string[]) =>
+                        setForm({
+                          ...form,
+                          stream_device_ids: values,
+                          data_stream_ids: form.data_stream_ids.filter((streamId) => activeDataStreams.some((stream) => values.includes(stream.device_id) && stream.id === streamId))
+                        })
+                      }
+                      optionFilterProp="label"
+                      options={deviceOptions}
+                      placeholder="先选择包含目标数据流的设备"
+                      showSearch
+                      value={form.stream_device_ids}
+                    />
+                  </Form.Item>
+                  <Form.Item className="field dataset-source-picker" label="选择数据流" required>
+                    <Select
+                      className="control"
+                      disabled={form.stream_device_ids.length === 0}
+                      loading={streamLoading}
+                      mode="multiple"
+                      onChange={(values: string[]) => setForm({ ...form, data_stream_ids: values })}
+                      optionFilterProp="label"
+                      options={dataStreamOptions}
+                      placeholder="选择具体设备下的空气温度、图片等数据流"
+                      showSearch
+                      value={form.data_stream_ids}
+                    />
+                  </Form.Item>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="dataset-form-section">
+            <div className="dataset-form-section-title">
+              <strong>说明</strong>
+            </div>
+            <TextInput label="描述" onChange={(event) => setForm({ ...form, description: event.target.value })} value={form.description} />
+          </div>
           <FormSubmitButton disabled={create.isPending} />
+          {create.error || devices.error || streamError ? <p className="form-error">{formatApiError(create.error || devices.error || streamError)}</p> : null}
         </form>
-      }
-      query={query}
-      title="数据集"
-    >
-      {(items: Dataset[]) => (
-        <DataTable<Dataset>
-          columns={[
-            { key: "name", header: "数据集", render: (item) => <NameCell name={item.name} detail={item.description || item.data_type} /> },
-            { key: "status", header: "状态", render: (item) => <Badge tone={statusTone(item.status)}>{item.status}</Badge> },
-            { key: "range", header: "时间范围", render: (item) => `${formatDateTime(item.time_start)} - ${formatDateTime(item.time_end)}` },
-            { key: "sources", header: "源", render: (item) => item.sources.length },
-            { key: "id", header: "ID", render: (item) => <CopyableId value={item.id} /> },
-            {
-              key: "actions",
-              header: "操作",
-              render: (item) => (
-                <Button disabled={remove.isPending} icon={<Trash2 size={15} />} onClick={() => remove.mutate(item.id)} variant="danger">
-                  删除
-                </Button>
-              )
-            }
-          ]}
-          empty="暂无数据集"
-          getRowKey={(item) => item.id}
-          items={items}
-        />
-      )}
-    </ResourcePageFrame>
+      </Modal>
+      <DatasetDataDrawer
+        dataset={previewDataset}
+        exportPending={exportDataset.isPending}
+        onClose={() => setPreviewDataset(null)}
+        onExport={(dataset) => exportDataset.mutate(dataset.id)}
+      />
+    </>
   );
+
+  function emptyDatasetForm() {
+    return {
+      project_id: "",
+      name: "",
+      description: "",
+      data_type: "mixed" as DatasetDataType,
+      time_start: "",
+      time_end: "",
+      source_mode: "device" as SourceMode,
+      source_device_ids: [] as string[],
+      stream_device_ids: [] as string[],
+      data_stream_ids: [] as string[]
+    };
+  }
 }
 
 export function ExportJobsPage() {
@@ -477,25 +873,91 @@ export function ExportJobsPage() {
     export_type: "dataset_zip" as ExportType,
     start_time: "",
     end_time: "",
-    limit: "5000"
+    limit: "5000",
+    stream_device_id: ""
   });
   const query = useQuery({
     queryKey: ["export-jobs", selectedWorkspaceId],
     queryFn: () => exportJobsApi.list({ workspace_id: selectedWorkspaceId, limit: 100 }),
     enabled: Boolean(selectedWorkspaceId)
   });
+  const datasets = useQuery({
+    queryKey: ["datasets", selectedWorkspaceId],
+    queryFn: () => datasetsApi.list({ workspace_id: selectedWorkspaceId }),
+    enabled: Boolean(selectedWorkspaceId)
+  });
+  const devices = useQuery({
+    queryKey: ["devices", selectedWorkspaceId],
+    queryFn: () => devicesApi.list({ workspace_id: selectedWorkspaceId }),
+    enabled: Boolean(selectedWorkspaceId)
+  });
+  const exportStreams = useQuery({
+    queryKey: ["data-streams", form.stream_device_id],
+    queryFn: () => dataStreamsApi.list(form.stream_device_id),
+    enabled: Boolean(selectedWorkspaceId && form.stream_device_id && (form.resource_type === "data_stream" || form.resource_type === "media"))
+  });
+  const datasetOptions = useMemo(
+    () => (datasets.data?.items ?? []).map((dataset) => ({ label: `${dataset.name} · ${datasetTypeLabel(dataset.data_type)}`, value: dataset.id })),
+    [datasets.data?.items]
+  );
+  const deviceOptions = useMemo(
+    () => (devices.data?.items ?? []).map((device) => ({ label: `${device.name} · ${device.serial_no}`, value: device.id })),
+    [devices.data?.items]
+  );
+  const exportableStreams = useMemo(
+    () =>
+      (exportStreams.data?.items ?? []).filter((stream) =>
+        form.resource_type === "media" ? isMediaStreamType(stream.type) : stream.type === "telemetry" || isMediaStreamType(stream.type)
+      ),
+    [exportStreams.data?.items, form.resource_type]
+  );
+  const selectedExportStream = useMemo(
+    () => exportableStreams.find((stream) => stream.id === form.resource_id),
+    [exportableStreams, form.resource_id]
+  );
+  const dataStreamOptions = useMemo(
+    () =>
+      exportableStreams.map((stream) => ({
+        label: `${streamTypeLabel(stream.type)} · ${stream.name} · ${stream.code}`,
+        value: stream.id
+      })),
+    [exportableStreams]
+  );
+  const allowedExportTypeOptions = useMemo(
+    () => buildExportTypeOptions(form.resource_type, selectedExportStream),
+    [form.resource_type, selectedExportStream]
+  );
+  const requiresTimeRange = exportTypeRequiresTime(form.export_type);
+
+  useEffect(() => {
+    if (allowedExportTypeOptions.length === 0) {
+      return;
+    }
+    if (!allowedExportTypeOptions.some((option) => option.value === form.export_type)) {
+      setForm((current) => ({ ...current, export_type: allowedExportTypeOptions[0].value }));
+    }
+  }, [allowedExportTypeOptions, form.export_type]);
+
   const create = useMutation({
     mutationFn: () =>
       exportJobsApi.create({
         resource_type: form.resource_type,
         resource_id: form.resource_id.trim(),
         export_type: form.export_type,
-        start_time: optionalIso(form.start_time),
-        end_time: optionalIso(form.end_time),
-        limit: Number(form.limit) || undefined
+        start_time: requiresTimeRange ? optionalIso(form.start_time) : undefined,
+        end_time: requiresTimeRange ? optionalIso(form.end_time) : undefined,
+        limit: requiresTimeRange ? Number(form.limit) || undefined : undefined
       }),
     onSuccess: () => {
-      setForm({ resource_type: "dataset", resource_id: "", export_type: "dataset_zip", start_time: "", end_time: "", limit: "5000" });
+      setForm((current) => ({
+        ...current,
+        resource_id: "",
+        export_type: defaultExportType(current.resource_type),
+        start_time: "",
+        end_time: "",
+        limit: "5000",
+        stream_device_id: ""
+      }));
       void queryClient.invalidateQueries({ queryKey: ["export-jobs", selectedWorkspaceId] });
       void message.success("导出任务已创建");
     }
@@ -508,18 +970,114 @@ export function ExportJobsPage() {
     }
   });
 
+  function handleResourceTypeChange(resourceType: ExportResourceType) {
+    setForm({
+      resource_type: resourceType,
+      resource_id: "",
+      export_type: defaultExportType(resourceType),
+      start_time: "",
+      end_time: "",
+      limit: "5000",
+      stream_device_id: ""
+    });
+  }
+
+  function handleCreateExport() {
+    if (!form.resource_id.trim()) {
+      void message.warning("请选择导出资源");
+      return;
+    }
+    if (requiresTimeRange && (!form.start_time || !form.end_time)) {
+      void message.warning("请选择导出时间范围");
+      return;
+    }
+    create.mutate();
+  }
+
   return (
     <ResourcePageFrame
-      createError={create.error || download.error}
+      createError={create.error || download.error || datasets.error || devices.error || exportStreams.error}
       description="导出任务异步生成文件，成功后可准备临时下载地址。"
       form={
-        <form className="form-grid" onSubmit={(event) => submit(event, () => create.mutate())}>
-          <SelectField label="资源类型" onChange={(event) => setForm({ ...form, resource_type: event.target.value as ExportResourceType })} options={exportResourceTypeOptions} value={form.resource_type} />
-          <TextInput label="资源 ID" onChange={(event) => setForm({ ...form, resource_id: event.target.value })} required value={form.resource_id} />
-          <SelectField label="导出类型" onChange={(event) => setForm({ ...form, export_type: event.target.value as ExportType })} options={exportTypeOptions} value={form.export_type} />
-          <TextInput label="开始时间" onChange={(event) => setForm({ ...form, start_time: event.target.value })} type="datetime-local" value={form.start_time} />
-          <TextInput label="结束时间" onChange={(event) => setForm({ ...form, end_time: event.target.value })} type="datetime-local" value={form.end_time} />
-          <TextInput label="行数上限" min={1} onChange={(event) => setForm({ ...form, limit: event.target.value })} type="number" value={form.limit} />
+        <form className="export-create-form" onSubmit={(event) => submit(event, handleCreateExport)}>
+          <div className="form-grid export-form-grid">
+            <Form.Item className="field" label="资源类型" required>
+              <Select className="control" onChange={handleResourceTypeChange} options={exportResourceTypeOptions} value={form.resource_type} />
+            </Form.Item>
+            {form.resource_type === "dataset" ? (
+              <Form.Item className="field" label="数据集" required>
+                <Select
+                  className="control"
+                  loading={datasets.isLoading}
+                  onChange={(value) => setForm({ ...form, resource_id: value })}
+                  optionFilterProp="label"
+                  options={datasetOptions}
+                  placeholder="选择数据集"
+                  showSearch
+                  value={form.resource_id || undefined}
+                />
+              </Form.Item>
+            ) : null}
+            {form.resource_type === "device" ? (
+              <Form.Item className="field" label="设备" required>
+                <Select
+                  className="control"
+                  loading={devices.isLoading}
+                  onChange={(value) => setForm({ ...form, resource_id: value })}
+                  optionFilterProp="label"
+                  options={deviceOptions}
+                  placeholder="选择设备"
+                  showSearch
+                  value={form.resource_id || undefined}
+                />
+              </Form.Item>
+            ) : null}
+            {form.resource_type === "data_stream" || form.resource_type === "media" ? (
+              <>
+                <Form.Item className="field" label="设备" required>
+                  <Select
+                    className="control"
+                    loading={devices.isLoading}
+                    onChange={(value) => setForm({ ...form, resource_id: "", stream_device_id: value })}
+                    optionFilterProp="label"
+                    options={deviceOptions}
+                    placeholder="先选择设备"
+                    showSearch
+                    value={form.stream_device_id || undefined}
+                  />
+                </Form.Item>
+                <Form.Item className="field" label={form.resource_type === "media" ? "媒体数据流" : "数据流"} required>
+                  <Select
+                    className="control"
+                    disabled={!form.stream_device_id}
+                    loading={exportStreams.isLoading}
+                    onChange={(value) => setForm({ ...form, resource_id: value })}
+                    optionFilterProp="label"
+                    options={dataStreamOptions}
+                    placeholder={form.resource_type === "media" ? "选择图片、视频或音频流" : "选择遥测或媒体数据流"}
+                    showSearch
+                    value={form.resource_id || undefined}
+                  />
+                </Form.Item>
+              </>
+            ) : null}
+            <Form.Item className="field" label="导出类型" required>
+              <Select
+                className="control"
+                disabled={allowedExportTypeOptions.length === 0}
+                onChange={(value: ExportType) => setForm({ ...form, export_type: value })}
+                options={allowedExportTypeOptions}
+                value={form.export_type}
+              />
+            </Form.Item>
+            {requiresTimeRange ? (
+              <>
+                <TextInput label="开始时间" onChange={(event) => setForm({ ...form, start_time: event.target.value })} required type="datetime-local" value={form.start_time} />
+                <TextInput label="结束时间" onChange={(event) => setForm({ ...form, end_time: event.target.value })} required type="datetime-local" value={form.end_time} />
+                <TextInput label="行数上限" min={1} onChange={(event) => setForm({ ...form, limit: event.target.value })} type="number" value={form.limit} />
+              </>
+            ) : null}
+          </div>
           <FormSubmitButton disabled={create.isPending} />
         </form>
       }
@@ -567,12 +1125,50 @@ export function AccessGrantsPage() {
     allow_reshare: false,
     allow_api_access: false
   });
+  const projects = useQuery({
+    queryKey: ["projects", selectedWorkspaceId],
+    queryFn: () => projectsApi.list(selectedWorkspaceId),
+    enabled: Boolean(selectedWorkspaceId)
+  });
+  const sites = useQuery({
+    queryKey: ["sites", selectedWorkspaceId, "all"],
+    queryFn: () => sitesApi.list({ workspace_id: selectedWorkspaceId }),
+    enabled: Boolean(selectedWorkspaceId)
+  });
+  const devices = useQuery({
+    queryKey: ["devices", selectedWorkspaceId],
+    queryFn: () => devicesApi.list({ workspace_id: selectedWorkspaceId }),
+    enabled: Boolean(selectedWorkspaceId)
+  });
+  const datasets = useQuery({
+    queryKey: ["datasets", selectedWorkspaceId],
+    queryFn: () => datasetsApi.list({ workspace_id: selectedWorkspaceId }),
+    enabled: Boolean(selectedWorkspaceId)
+  });
   const query = useQuery({
     queryKey: ["access-grants", selectedWorkspaceId],
     queryFn: () => accessGrantsApi.list(selectedWorkspaceId),
     enabled: Boolean(selectedWorkspaceId)
   });
   const mine = useQuery({ queryKey: ["access-grants", "mine"], queryFn: accessGrantsApi.listMine });
+  const allowedScopeOptions = useMemo(
+    () => scopeTypeOptions.filter((option) => accessRoleMeta[form.role_code].allowedScopes.includes(option.value)),
+    [form.role_code]
+  );
+  const scopeOptions = useMemo(
+    () => buildScopeResourceOptions(form.scope_type, selectedWorkspaceId, projects.data?.items ?? [], sites.data?.items ?? [], devices.data?.items ?? [], datasets.data?.items ?? []),
+    [datasets.data?.items, devices.data?.items, form.scope_type, projects.data?.items, selectedWorkspaceId, sites.data?.items]
+  );
+  const scopeLabels = useMemo(
+    () => buildScopeLabelMap(selectedWorkspaceId, projects.data?.items ?? [], sites.data?.items ?? [], devices.data?.items ?? [], datasets.data?.items ?? []),
+    [datasets.data?.items, devices.data?.items, projects.data?.items, selectedWorkspaceId, sites.data?.items]
+  );
+
+  useEffect(() => {
+    if (form.scope_type === "workspace" && selectedWorkspaceId && form.scope_id !== selectedWorkspaceId) {
+      setForm((current) => ({ ...current, scope_id: selectedWorkspaceId }));
+    }
+  }, [form.scope_id, form.scope_type, selectedWorkspaceId]);
   const create = useMutation({
     mutationFn: () =>
       accessGrantsApi.create({
@@ -598,10 +1194,43 @@ export function AccessGrantsPage() {
     }
   });
 
+  function handleRoleChange(roleCode: AccessGrantRoleCode) {
+    const allowedScopes = accessRoleMeta[roleCode].allowedScopes;
+    const scopeType = allowedScopes.includes(form.scope_type) ? form.scope_type : allowedScopes[0];
+    setForm({
+      ...form,
+      role_code: roleCode,
+      scope_type: scopeType,
+      scope_id: scopeType === "workspace" ? selectedWorkspaceId : ""
+    });
+  }
+
+  function handleScopeTypeChange(scopeType: AccessGrantScopeType) {
+    setForm({ ...form, scope_type: scopeType, scope_id: scopeType === "workspace" ? selectedWorkspaceId : "" });
+  }
+
+  function handleCreateGrant() {
+    if (form.role_code === "service_engineer") {
+      if (form.scope_type !== "device" && form.scope_type !== "site") {
+        void message.warning("服务工程师只能授权到设备或站点");
+        return;
+      }
+      if (!form.expires_at) {
+        void message.warning("服务工程师授权必须设置过期时间");
+        return;
+      }
+    }
+    if (!form.scope_id.trim()) {
+      void message.warning("请选择或填写授权范围");
+      return;
+    }
+    create.mutate();
+  }
+
   return (
-    <Page description="对注册用户授予受限资源访问权限。" title="授权">
-      <Section title="创建授权">
-        <form className="form-grid" onSubmit={(event) => submit(event, () => create.mutate())}>
+    <Page description="资源授权用于外部协作者、临时售后或单个资源分享；长期内部人员请加入工作区成员。" title="资源授权">
+      <Section title="创建资源授权">
+        <form className="form-grid" onSubmit={(event) => submit(event, handleCreateGrant)}>
           <SelectField
             label="对象类型"
             onChange={(event) => setSubjectKind(event.target.value as "email" | "phone" | "subject_user_id")}
@@ -613,10 +1242,33 @@ export function AccessGrantsPage() {
             value={subjectKind}
           />
           <TextInput label="对象" onChange={(event) => setForm({ ...form, subject: event.target.value })} required value={form.subject} />
-          <SelectField label="角色" onChange={(event) => setForm({ ...form, role_code: event.target.value as AccessGrantRoleCode })} options={accessRoleOptions} value={form.role_code} />
-          <SelectField label="范围类型" onChange={(event) => setForm({ ...form, scope_type: event.target.value as AccessGrantScopeType })} options={scopeTypeOptions} value={form.scope_type} />
-          <TextInput label="范围 ID" onChange={(event) => setForm({ ...form, scope_id: event.target.value })} required value={form.scope_id} />
-          <TextInput label="过期时间" onChange={(event) => setForm({ ...form, expires_at: event.target.value })} type="datetime-local" value={form.expires_at} />
+          <Form.Item className="field" label="角色">
+            <Select
+              className="control"
+              onChange={handleRoleChange}
+              optionRender={(option) => <RoleOption code={option.value as AccessGrantRoleCode} />}
+              options={accessRoleOptions}
+              value={form.role_code}
+            />
+          </Form.Item>
+          <Form.Item className="field" label="范围类型">
+            <Select className="control" onChange={handleScopeTypeChange} options={allowedScopeOptions} value={form.scope_type} />
+          </Form.Item>
+          <Form.Item className="field" label="选择范围" required>
+            <Select
+              className="control"
+              disabled={form.scope_type === "workspace"}
+              loading={projects.isLoading || sites.isLoading || devices.isLoading || datasets.isLoading}
+              onChange={(value) => setForm({ ...form, scope_id: value })}
+              optionFilterProp="label"
+              options={scopeOptions}
+              placeholder="从资源列表选择"
+              showSearch
+              value={form.scope_id || undefined}
+            />
+          </Form.Item>
+          <TextInput label="或粘贴范围 ID" onChange={(event) => setForm({ ...form, scope_id: event.target.value })} required value={form.scope_id} />
+          <TextInput label={form.role_code === "service_engineer" ? "过期时间 (必填)" : "过期时间"} onChange={(event) => setForm({ ...form, expires_at: event.target.value })} required={form.role_code === "service_engineer"} type="datetime-local" value={form.expires_at} />
           <Checkbox
             checked={form.allow_reshare}
             className="check-field"
@@ -636,10 +1288,10 @@ export function AccessGrantsPage() {
         {create.error || revoke.error ? <p className="form-error">{formatApiError(create.error || revoke.error)}</p> : null}
       </Section>
       <Section title="工作区授权">
-        <GrantTable query={query} revoke={(id) => revoke.mutate(id)} />
+        <GrantTable query={query} revoke={(id) => revoke.mutate(id)} scopeLabels={scopeLabels} />
       </Section>
       <Section title="授予我的资源">
-        <GrantTable query={mine} revoke={null} />
+        <GrantTable query={mine} revoke={null} scopeLabels={scopeLabels} />
       </Section>
     </Page>
   );
@@ -657,12 +1309,51 @@ export function InvitationsPage() {
     scope_id: "",
     expires_at: ""
   });
+  const projects = useQuery({
+    queryKey: ["projects", selectedWorkspaceId],
+    queryFn: () => projectsApi.list(selectedWorkspaceId),
+    enabled: Boolean(selectedWorkspaceId)
+  });
+  const sites = useQuery({
+    queryKey: ["sites", selectedWorkspaceId, "all"],
+    queryFn: () => sitesApi.list({ workspace_id: selectedWorkspaceId }),
+    enabled: Boolean(selectedWorkspaceId)
+  });
+  const devices = useQuery({
+    queryKey: ["devices", selectedWorkspaceId],
+    queryFn: () => devicesApi.list({ workspace_id: selectedWorkspaceId }),
+    enabled: Boolean(selectedWorkspaceId)
+  });
+  const datasets = useQuery({
+    queryKey: ["datasets", selectedWorkspaceId],
+    queryFn: () => datasetsApi.list({ workspace_id: selectedWorkspaceId }),
+    enabled: Boolean(selectedWorkspaceId)
+  });
   const query = useQuery({
     queryKey: ["invitations", selectedWorkspaceId],
     queryFn: () => invitationsApi.list(selectedWorkspaceId),
     enabled: Boolean(selectedWorkspaceId)
   });
   const mine = useQuery({ queryKey: ["invitations", "mine"], queryFn: invitationsApi.listMine });
+  const allowedScopeOptions = useMemo(
+    () => scopeTypeOptions.filter((option) => accessRoleMeta[form.role_code].allowedScopes.includes(option.value)),
+    [form.role_code]
+  );
+  const scopeOptions = useMemo(
+    () => buildScopeResourceOptions(form.scope_type, selectedWorkspaceId, projects.data?.items ?? [], sites.data?.items ?? [], devices.data?.items ?? [], datasets.data?.items ?? []),
+    [datasets.data?.items, devices.data?.items, form.scope_type, projects.data?.items, selectedWorkspaceId, sites.data?.items]
+  );
+  const scopeLabels = useMemo(
+    () => buildScopeLabelMap(selectedWorkspaceId, projects.data?.items ?? [], sites.data?.items ?? [], devices.data?.items ?? [], datasets.data?.items ?? []),
+    [datasets.data?.items, devices.data?.items, projects.data?.items, selectedWorkspaceId, sites.data?.items]
+  );
+
+  useEffect(() => {
+    if (form.scope_type === "workspace" && selectedWorkspaceId && form.scope_id !== selectedWorkspaceId) {
+      setForm((current) => ({ ...current, scope_id: selectedWorkspaceId }));
+    }
+  }, [form.scope_id, form.scope_type, selectedWorkspaceId]);
+
   const create = useMutation({
     mutationFn: () =>
       invitationsApi.create({
@@ -694,10 +1385,43 @@ export function InvitationsPage() {
     }
   });
 
+  function handleRoleChange(roleCode: AccessGrantRoleCode) {
+    const allowedScopes = accessRoleMeta[roleCode].allowedScopes;
+    const scopeType = allowedScopes.includes(form.scope_type) ? form.scope_type : allowedScopes[0];
+    setForm({
+      ...form,
+      role_code: roleCode,
+      scope_type: scopeType,
+      scope_id: scopeType === "workspace" ? selectedWorkspaceId : ""
+    });
+  }
+
+  function handleScopeTypeChange(scopeType: AccessGrantScopeType) {
+    setForm({ ...form, scope_type: scopeType, scope_id: scopeType === "workspace" ? selectedWorkspaceId : "" });
+  }
+
+  function handleCreateInvitation() {
+    if (form.role_code === "service_engineer") {
+      if (form.scope_type !== "device" && form.scope_type !== "site") {
+        void message.warning("服务工程师只能邀请到设备或站点范围");
+        return;
+      }
+      if (!form.expires_at) {
+        void message.warning("服务工程师邀请必须设置过期时间");
+        return;
+      }
+    }
+    if (!form.scope_id.trim()) {
+      void message.warning("请选择或填写邀请范围");
+      return;
+    }
+    create.mutate();
+  }
+
   return (
-    <Page description="向未注册邮箱或手机号发出资源邀请。" title="邀请">
-      <Section title="创建邀请">
-        <form className="form-grid" onSubmit={(event) => submit(event, () => create.mutate())}>
+    <Page description="邀请用于把资源分享给尚未加入平台或未注册的邮箱/手机号。" title="邀请">
+      <Section title="创建资源邀请">
+        <form className="form-grid" onSubmit={(event) => submit(event, handleCreateInvitation)}>
           <SelectField
             label="邀请方式"
             onChange={(event) => setTargetKind(event.target.value as "email" | "phone")}
@@ -708,10 +1432,33 @@ export function InvitationsPage() {
             value={targetKind}
           />
           <TextInput label="邀请对象" onChange={(event) => setForm({ ...form, target: event.target.value })} required value={form.target} />
-          <SelectField label="角色" onChange={(event) => setForm({ ...form, role_code: event.target.value as AccessGrantRoleCode })} options={accessRoleOptions} value={form.role_code} />
-          <SelectField label="范围类型" onChange={(event) => setForm({ ...form, scope_type: event.target.value as AccessGrantScopeType })} options={scopeTypeOptions} value={form.scope_type} />
-          <TextInput label="范围 ID" onChange={(event) => setForm({ ...form, scope_id: event.target.value })} required value={form.scope_id} />
-          <TextInput label="过期时间" onChange={(event) => setForm({ ...form, expires_at: event.target.value })} type="datetime-local" value={form.expires_at} />
+          <Form.Item className="field" label="角色">
+            <Select
+              className="control"
+              onChange={handleRoleChange}
+              optionRender={(option) => <RoleOption code={option.value as AccessGrantRoleCode} />}
+              options={accessRoleOptions}
+              value={form.role_code}
+            />
+          </Form.Item>
+          <Form.Item className="field" label="范围类型">
+            <Select className="control" onChange={handleScopeTypeChange} options={allowedScopeOptions} value={form.scope_type} />
+          </Form.Item>
+          <Form.Item className="field" label="选择范围" required>
+            <Select
+              className="control"
+              disabled={form.scope_type === "workspace"}
+              loading={projects.isLoading || sites.isLoading || devices.isLoading || datasets.isLoading}
+              onChange={(value) => setForm({ ...form, scope_id: value })}
+              optionFilterProp="label"
+              options={scopeOptions}
+              placeholder="从资源列表选择"
+              showSearch
+              value={form.scope_id || undefined}
+            />
+          </Form.Item>
+          <TextInput label="或粘贴范围 ID" onChange={(event) => setForm({ ...form, scope_id: event.target.value })} required value={form.scope_id} />
+          <TextInput label={form.role_code === "service_engineer" ? "过期时间 (必填)" : "过期时间"} onChange={(event) => setForm({ ...form, expires_at: event.target.value })} required={form.role_code === "service_engineer"} type="datetime-local" value={form.expires_at} />
           <FormSubmitButton disabled={create.isPending} />
         </form>
         {create.error || accept.error || revoke.error ? (
@@ -719,10 +1466,10 @@ export function InvitationsPage() {
         ) : null}
       </Section>
       <Section title="工作区邀请">
-        <InvitationTable accept={null} query={query} revoke={(id) => revoke.mutate(id)} />
+        <InvitationTable accept={null} query={query} revoke={(id) => revoke.mutate(id)} scopeLabels={scopeLabels} />
       </Section>
       <Section title="我的待处理邀请">
-        <InvitationTable accept={(id) => accept.mutate(id)} query={mine} revoke={null} />
+        <InvitationTable accept={(id) => accept.mutate(id)} query={mine} revoke={null} scopeLabels={scopeLabels} />
       </Section>
     </Page>
   );
@@ -771,7 +1518,389 @@ export function AuditLogsPage() {
   );
 }
 
+interface DatasetTelemetryQueryInput {
+  datasetId: string;
+  startTime: string;
+  endTime: string;
+  limit: number;
+}
+
+interface DatasetTelemetryRow {
+  key: string;
+  sourceType: string;
+  sourceID: string;
+  dataStreamID: string;
+  deviceID: string;
+  streamName: string;
+  streamCode: string;
+  timestamp: string;
+  value: number;
+  unit?: string;
+  quality: string;
+}
+
+function DatasetDataDrawer({
+  dataset,
+  exportPending,
+  onClose,
+  onExport
+}: {
+  dataset: Dataset | null;
+  exportPending: boolean;
+  onClose: () => void;
+  onExport: (dataset: Dataset) => void;
+}) {
+  const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null);
+  const [limit, setLimit] = useState(DATASET_PREVIEW_LIMIT);
+  const canPreviewTelemetry = Boolean(dataset && canViewDatasetTelemetry(dataset));
+  const telemetry = useMutation({
+    mutationFn: (input: DatasetTelemetryQueryInput) =>
+      datasetsApi.queryTelemetry(input.datasetId, {
+        start_time: input.startTime,
+        end_time: input.endTime,
+        limit: input.limit
+      })
+  });
+  const rows = useMemo(() => flattenDatasetTelemetryRows(telemetry.data), [telemetry.data]);
+  const warnings = useMemo(() => collectDatasetWarnings(telemetry.data), [telemetry.data]);
+  const columns = useMemo<TableColumnsType<DatasetTelemetryRow>>(
+    () => [
+      {
+        key: "stream",
+        title: "数据流",
+        width: 220,
+        render: (_, row) => <NameCell name={row.streamName} detail={row.streamCode} />
+      },
+      {
+        key: "source",
+        title: "来源",
+        width: 150,
+        render: (_, row) => <Tag>{sourceTypeLabel(row.sourceType)}</Tag>
+      },
+      {
+        key: "device",
+        title: "设备 ID",
+        width: 240,
+        render: (_, row) => <CopyableId value={row.deviceID} />
+      },
+      {
+        key: "time",
+        title: "时间",
+        width: 200,
+        render: (_, row) => <Typography.Text className="mono">{formatDateTime(row.timestamp)}</Typography.Text>
+      },
+      {
+        key: "value",
+        title: "值",
+        width: 140,
+        render: (_, row) => <Typography.Text strong>{formatTelemetryValue(row.value)}</Typography.Text>
+      },
+      {
+        key: "unit",
+        title: "单位",
+        width: 100,
+        render: (_, row) => row.unit || "-"
+      },
+      {
+        key: "quality",
+        title: "质量",
+        width: 120,
+        render: (_, row) => <Tag color={row.quality === "valid" ? "success" : "warning"}>{row.quality}</Tag>
+      },
+      {
+        key: "data_stream_id",
+        title: "DataStream ID",
+        width: 240,
+        render: (_, row) => <CopyableId value={row.dataStreamID} />
+      }
+    ],
+    []
+  );
+
+  useEffect(() => {
+    if (!dataset) {
+      setRange(null);
+      setLimit(DATASET_PREVIEW_LIMIT);
+      telemetry.reset();
+      return;
+    }
+    const nextRange: [Dayjs, Dayjs] = [dayjs(dataset.time_start), dayjs(dataset.time_end)];
+    setRange(nextRange);
+    setLimit(DATASET_PREVIEW_LIMIT);
+    telemetry.reset();
+    if (canViewDatasetTelemetry(dataset)) {
+      telemetry.mutate({
+        datasetId: dataset.id,
+        startTime: nextRange[0].toISOString(),
+        endTime: nextRange[1].toISOString(),
+        limit: DATASET_PREVIEW_LIMIT
+      });
+    }
+  }, [dataset?.id]);
+
+  function handleQuery() {
+    if (!dataset || !range) {
+      return;
+    }
+    telemetry.mutate({
+      datasetId: dataset.id,
+      startTime: range[0].toISOString(),
+      endTime: range[1].toISOString(),
+      limit
+    });
+  }
+
+  return (
+    <Drawer
+      className="dataset-preview-drawer"
+      extra={
+        dataset ? (
+          <Space size={8} wrap>
+            <AntButton icon={<FileArchive size={15} />} loading={exportPending} onClick={() => onExport(dataset)}>
+              导出 ZIP
+            </AntButton>
+            <AntButton disabled={!canPreviewTelemetry || !range} icon={<ChartLine size={15} />} loading={telemetry.isPending} onClick={handleQuery} type="primary">
+              查询
+            </AntButton>
+          </Space>
+        ) : null
+      }
+      onClose={onClose}
+      open={Boolean(dataset)}
+      title={dataset ? <NameCell name={dataset.name} detail={dataset.description || datasetTypeLabel(dataset.data_type)} /> : "数据集数据"}
+      width={1040}
+    >
+      {dataset ? (
+        <div className="dataset-preview-body">
+          <Descriptions bordered column={{ lg: 3, md: 2, sm: 1, xs: 1 }} size="small">
+            <Descriptions.Item label="状态">
+              <Badge tone={statusTone(dataset.status)}>{dataset.status}</Badge>
+            </Descriptions.Item>
+            <Descriptions.Item label="数据类型">{datasetTypeLabel(dataset.data_type)}</Descriptions.Item>
+            <Descriptions.Item label="来源">{describeDatasetSources(dataset)}</Descriptions.Item>
+            <Descriptions.Item label="时间范围" span={2}>
+              {formatDateTime(dataset.time_start)} - {formatDateTime(dataset.time_end)}
+            </Descriptions.Item>
+            <Descriptions.Item label="数据集 ID">
+              <CopyableId value={dataset.id} />
+            </Descriptions.Item>
+          </Descriptions>
+
+          <div className="dataset-preview-sources">
+            {dataset.sources.slice(0, 6).map((source) => (
+              <div className="dataset-preview-source" key={source.id}>
+                <span>{sourceTypeLabel(source.source_type)}</span>
+                <CopyableId value={source.source_id} />
+              </div>
+            ))}
+            {dataset.sources.length > 6 ? <span className="dataset-preview-more">+{dataset.sources.length - 6}</span> : null}
+          </div>
+
+          {canPreviewTelemetry ? (
+            <>
+              <div className="dataset-preview-toolbar">
+                <Form.Item className="field dataset-preview-range" label="时间范围" required>
+                  <DatePicker.RangePicker
+                    className="control"
+                    onChange={(value) => setRange(value && value[0] && value[1] ? [value[0], value[1]] : null)}
+                    showTime
+                    value={range}
+                  />
+                </Form.Item>
+                <Form.Item className="field dataset-preview-limit" label="结果上限">
+                  <InputNumber className="control" max={5000} min={1} onChange={(value) => setLimit(Number(value || DATASET_PREVIEW_LIMIT))} value={limit} />
+                </Form.Item>
+              </div>
+
+              {telemetry.error ? <Alert message={formatApiError(telemetry.error)} showIcon type="error" /> : null}
+              {warnings.length > 0 ? (
+                <div className="warning-stack">
+                  {warnings.map((warning) => (
+                    <Alert key={`${warning.code}-${warning.message}`} message={warning.message} showIcon type="warning" />
+                  ))}
+                </div>
+              ) : null}
+
+              <Tabs
+                className="result-tabs"
+                items={[
+                  {
+                    children: telemetry.data ? (
+                      <DatasetTelemetryCharts result={telemetry.data} />
+                    ) : (
+                      <Empty description="提交查询后显示数据图表" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    ),
+                    key: "charts",
+                    label: `图表 (${telemetry.data?.series.length ?? 0})`
+                  },
+                  {
+                    children: telemetry.data ? (
+                      <Table<DatasetTelemetryRow>
+                        className="data-table telemetry-result-table"
+                        columns={columns}
+                        dataSource={rows}
+                        loading={telemetry.isPending}
+                        locale={{ emptyText: "这个时间范围内没有可显示的遥测记录" }}
+                        pagination={{ pageSize: 50, showSizeChanger: true }}
+                        rowKey={(row) => row.key}
+                        scroll={{ x: tableScrollX(columns) }}
+                        size="middle"
+                        tableLayout="fixed"
+                      />
+                    ) : (
+                      <Empty description="提交查询后显示明细表" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    ),
+                    key: "detail",
+                    label: `明细 (${rows.length})`
+                  }
+                ]}
+              />
+            </>
+          ) : (
+            <Alert
+              message="当前仅支持遥测数据在线查看"
+              description="图片、视频、音频、事件和日志数据集请使用导出 ZIP 获取完整数据。"
+              showIcon
+              type="info"
+            />
+          )}
+        </div>
+      ) : null}
+    </Drawer>
+  );
+}
+
+function DatasetTelemetryCharts({ result }: { result: DatasetTelemetryQueryResponse }) {
+  if (result.series.length === 0) {
+    return <Empty description="这个时间范围内没有可绘制的数据流" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+  }
+
+  return (
+    <div className="telemetry-chart-list">
+      {result.series.map((series) => (
+        <div className="telemetry-series-panel" key={`${series.source_type}-${series.source_id}-${series.data_stream_id}`}>
+          <div className="telemetry-series-header">
+            <div className="telemetry-series-title">
+              <Typography.Text strong>{series.name}</Typography.Text>
+              <Typography.Text className="mono" type="secondary">
+                {series.code}
+              </Typography.Text>
+            </div>
+            <Space className="telemetry-series-meta" size={[6, 6]} wrap>
+              <Tag>{sourceTypeLabel(series.source_type)}</Tag>
+              {series.unit ? <Tag color="processing">{series.unit}</Tag> : null}
+              <Tag>{series.points.length} 条记录</Tag>
+            </Space>
+          </div>
+          <DatasetTelemetrySeriesChart series={series} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DatasetTelemetrySeriesChart({ series }: { series: DatasetTelemetrySeries }) {
+  const chartRef = useRef<HTMLDivElement>(null);
+  const hasPoints = series.points.length > 0;
+
+  useEffect(() => {
+    if (!chartRef.current || !hasPoints) {
+      return undefined;
+    }
+
+    const chart = init(chartRef.current, undefined, { renderer: "canvas" });
+    chart.setOption(buildDatasetTelemetryChartOption(series), true);
+
+    const resize = () => chart.resize();
+    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(resize);
+    observer?.observe(chartRef.current);
+    window.addEventListener("resize", resize);
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", resize);
+      chart.dispose();
+    };
+  }, [hasPoints, series]);
+
+  if (!hasPoints) {
+    return <Empty className="telemetry-chart-empty" description="这个时间范围内没有可绘制的遥测记录" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+  }
+
+  return <div aria-label={`${series.name}趋势图`} className="telemetry-chart" ref={chartRef} />;
+}
+
+function RoleCell({ code }: { code: string }) {
+  return (
+    <div className="role-summary compact">
+      <strong>{roleLabel(code)}</strong>
+    </div>
+  );
+}
+
+function RoleOption({ code }: { code: AccessGrantRoleCode }) {
+  return (
+    <div className="role-option">
+      <strong>{roleLabel(code)}</strong>
+    </div>
+  );
+}
+
+function ScopeCell({ scopeID, scopeLabels, scopeType }: { scopeID: string; scopeLabels: Map<string, string>; scopeType: AccessGrantScopeType }) {
+  return (
+    <div className="scope-cell">
+      <strong>{scopeLabels.get(scopeKey(scopeType, scopeID)) || `${scopeTypeLabel(scopeType)} · 未命名资源`}</strong>
+      <CopyableId value={scopeID} />
+    </div>
+  );
+}
+
+function buildScopeResourceOptions(
+  scopeType: AccessGrantScopeType,
+  workspaceID: string,
+  projects: Project[],
+  sites: Site[],
+  devices: Device[],
+  datasets: Dataset[]
+) {
+  switch (scopeType) {
+    case "workspace":
+      return [{ label: `工作区 · ${workspaceID}`, value: workspaceID }];
+    case "project":
+      return projects.map((project) => ({ label: `项目 · ${project.name}`, value: project.id }));
+    case "site":
+      return sites.map((site) => ({ label: `站点 · ${site.name}`, value: site.id }));
+    case "device":
+      return devices.map((device) => ({ label: `设备 · ${device.name} · ${device.serial_no}`, value: device.id }));
+    case "dataset":
+      return datasets.map((dataset) => ({ label: `数据集 · ${dataset.name}`, value: dataset.id }));
+    default:
+      return [];
+  }
+}
+
+function buildScopeLabelMap(workspaceID: string, projects: Project[], sites: Site[], devices: Device[], datasets: Dataset[]) {
+  const labels = new Map<string, string>();
+  if (workspaceID) {
+    labels.set(scopeKey("workspace", workspaceID), `工作区 · ${workspaceID}`);
+  }
+  projects.forEach((project) => labels.set(scopeKey("project", project.id), `项目 · ${project.name}`));
+  sites.forEach((site) => labels.set(scopeKey("site", site.id), `站点 · ${site.name}`));
+  devices.forEach((device) => labels.set(scopeKey("device", device.id), `设备 · ${device.name}`));
+  datasets.forEach((dataset) => labels.set(scopeKey("dataset", dataset.id), `数据集 · ${dataset.name}`));
+  return labels;
+}
+
+function scopeKey(scopeType: AccessGrantScopeType, scopeID: string) {
+  return `${scopeType}:${scopeID}`;
+}
+
+function scopeTypeLabel(scopeType: AccessGrantScopeType) {
+  return scopeTypeOptions.find((option) => option.value === scopeType)?.label || scopeType;
+}
+
 function ResourcePageFrame<T>({
+  actions,
   children,
   createError,
   description,
@@ -780,6 +1909,7 @@ function ResourcePageFrame<T>({
   query,
   title
 }: {
+  actions?: ReactNode;
   children: (items: T[]) => ReactNode;
   createError?: unknown;
   description: string;
@@ -794,7 +1924,18 @@ function ResourcePageFrame<T>({
   title: string;
 }) {
   return (
-    <Page actions={<AntButton icon={<RefreshCcw size={16} />} onClick={() => void query.refetch()}>刷新</AntButton>} description={description} title={title}>
+    <Page
+      actions={
+        <Space size={8} wrap>
+          {actions}
+          <AntButton icon={<RefreshCcw size={16} />} onClick={() => void query.refetch()}>
+            刷新
+          </AntButton>
+        </Space>
+      }
+      description={description}
+      title={title}
+    >
       {filters ? (
         <Section title="筛选">
           <div className="filter-grid">{filters}</div>
@@ -825,10 +1966,12 @@ function ResourcePageFrame<T>({
 
 function GrantTable({
   query,
-  revoke
+  revoke,
+  scopeLabels
 }: {
   query: { data?: { items: AccessGrant[] }; error: unknown; isLoading: boolean; refetch: () => unknown };
   revoke: ((id: string) => void) | null;
+  scopeLabels: Map<string, string>;
 }) {
   if (query.isLoading) {
     return <LoadingState />;
@@ -843,8 +1986,8 @@ function GrantTable({
     <DataTable<AccessGrant>
       columns={[
         { key: "subject", header: "对象", render: (item) => <NameCell name={item.subject.name || item.subject.email || item.subject.phone || item.subject.id} detail={item.subject.type} /> },
-        { key: "role", header: "角色", render: (item) => item.role.name || item.role.code },
-        { key: "scope", header: "范围", render: (item) => `${item.scope_type} · ${item.scope_id}` },
+        { key: "role", header: "角色", render: (item) => <RoleCell code={item.role.code} /> },
+        { key: "scope", header: "范围", render: (item) => <ScopeCell scopeID={item.scope_id} scopeLabels={scopeLabels} scopeType={item.scope_type} /> },
         { key: "status", header: "状态", render: (item) => <Badge tone={statusTone(item.status)}>{item.status}</Badge> },
         { key: "expires", header: "过期时间", render: (item) => formatDateTime(item.expires_at) },
         { key: "id", header: "ID", render: (item) => <CopyableId value={item.id} /> },
@@ -871,11 +2014,13 @@ function GrantTable({
 function InvitationTable({
   accept,
   query,
-  revoke
+  revoke,
+  scopeLabels
 }: {
   accept: ((id: string) => void) | null;
   query: { data?: { items: Invitation[] }; error: unknown; isLoading: boolean; refetch: () => unknown };
   revoke: ((id: string) => void) | null;
+  scopeLabels: Map<string, string>;
 }) {
   if (query.isLoading) {
     return <LoadingState />;
@@ -890,8 +2035,8 @@ function InvitationTable({
     <DataTable<Invitation>
       columns={[
         { key: "target", header: "对象", render: (item) => item.invitee_email || item.invitee_phone || "-" },
-        { key: "role", header: "角色", render: (item) => item.role.name || item.role.code },
-        { key: "scope", header: "范围", render: (item) => `${item.scope_type} · ${item.scope_id}` },
+        { key: "role", header: "角色", render: (item) => <RoleCell code={item.role.code} /> },
+        { key: "scope", header: "范围", render: (item) => <ScopeCell scopeID={item.scope_id} scopeLabels={scopeLabels} scopeType={item.scope_type} /> },
         { key: "status", header: "状态", render: (item) => <Badge tone={statusTone(item.status)}>{item.status}</Badge> },
         { key: "expires", header: "过期时间", render: (item) => formatDateTime(item.expires_at) },
         { key: "id", header: "ID", render: (item) => <CopyableId value={item.id} /> },
@@ -924,6 +2069,198 @@ function NameCell({ detail, name }: { detail?: string; name: string }) {
       {detail ? <span>{detail}</span> : null}
     </div>
   );
+}
+
+function DatasetSourcesCell({ dataset }: { dataset: Dataset }) {
+  const deviceCount = dataset.sources.filter((source) => source.source_type === "device").length;
+  const streamCount = dataset.sources.filter((source) => source.source_type === "data_stream").length;
+  const fileCount = dataset.sources.filter((source) => source.source_type === "file").length;
+  const parts = [
+    deviceCount ? `设备 ${deviceCount} 个` : "",
+    streamCount ? `数据流 ${streamCount} 条` : "",
+    fileCount ? `文件 ${fileCount} 个` : ""
+  ].filter(Boolean);
+
+  return (
+    <div className="dataset-source-cell">
+      <strong>{parts.join(" · ") || "无来源"}</strong>
+      <div className="dataset-source-ids">
+        {dataset.sources.slice(0, 2).map((source) => (
+          <CopyableId key={source.id} value={source.source_id} />
+        ))}
+        {dataset.sources.length > 2 ? <span>+{dataset.sources.length - 2}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+function describeDatasetSources(dataset: Dataset): string {
+  const deviceCount = dataset.sources.filter((source) => source.source_type === "device").length;
+  const streamCount = dataset.sources.filter((source) => source.source_type === "data_stream").length;
+  const fileCount = dataset.sources.filter((source) => source.source_type === "file").length;
+  return [
+    deviceCount ? `设备 ${deviceCount}` : "",
+    streamCount ? `数据流 ${streamCount}` : "",
+    fileCount ? `文件 ${fileCount}` : ""
+  ].filter(Boolean).join(" · ") || "无来源";
+}
+
+function canViewDatasetTelemetry(dataset: Dataset): boolean {
+  return dataset.data_type === "telemetry" || dataset.data_type === "mixed";
+}
+
+function buildDatasetTelemetryChartOption(series: DatasetTelemetrySeries): EChartsOption {
+  return {
+    animation: false,
+    color: ["#0e7c86"],
+    dataZoom: [
+      { type: "inside", throttle: 80 },
+      { bottom: 0, height: 24, type: "slider" }
+    ],
+    grid: { bottom: 48, containLabel: true, left: 18, right: 18, top: 20 },
+    series: [
+      {
+        data: series.points.map((point) => [point.ts, point.value]),
+        name: `${series.name}${series.unit ? ` (${series.unit})` : ""}`,
+        showSymbol: false,
+        smooth: true,
+        type: "line"
+      }
+    ],
+    tooltip: {
+      axisPointer: { type: "cross" },
+      trigger: "axis"
+    },
+    xAxis: {
+      axisLabel: { hideOverlap: true },
+      type: "time"
+    },
+    yAxis: {
+      name: series.unit || undefined,
+      nameGap: 14,
+      scale: true,
+      type: "value"
+    }
+  };
+}
+
+function flattenDatasetTelemetryRows(result?: DatasetTelemetryQueryResponse): DatasetTelemetryRow[] {
+  if (!result) {
+    return [];
+  }
+  return result.series.flatMap((series) =>
+    series.points.map((point, index) => ({
+      key: `${series.source_type}-${series.source_id}-${series.data_stream_id}-${point.ts}-${index}`,
+      sourceType: series.source_type,
+      sourceID: series.source_id,
+      dataStreamID: series.data_stream_id,
+      deviceID: series.device_id,
+      streamName: series.name,
+      streamCode: series.code,
+      timestamp: point.ts,
+      value: point.value,
+      unit: series.unit,
+      quality: point.quality
+    }))
+  );
+}
+
+function collectDatasetWarnings(result?: DatasetTelemetryQueryResponse) {
+  const seen = new Set<string>();
+  const warnings: Array<{ code: string; message: string; count?: number }> = [];
+  for (const series of result?.series ?? []) {
+    for (const warning of series.warnings ?? []) {
+      const key = `${warning.code}:${warning.message}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      warnings.push(warning);
+    }
+  }
+  return warnings;
+}
+
+function formatTelemetryValue(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+  return Number.isInteger(value) ? String(value) : value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function datasetTypeLabel(value: DatasetDataType): string {
+  return datasetTypeOptions.find((option) => option.value === value)?.label || value;
+}
+
+function sourceTypeLabel(value: string): string {
+  switch (value) {
+    case "device":
+      return "设备";
+    case "data_stream":
+      return "数据流";
+    case "file":
+      return "文件";
+    default:
+      return value;
+  }
+}
+
+function streamTypeLabel(value: DataStream["type"]): string {
+  switch (value) {
+    case "telemetry":
+      return "遥测";
+    case "image":
+      return "图片";
+    case "video":
+      return "视频";
+    case "audio":
+      return "音频";
+    case "event":
+      return "事件";
+    case "log":
+      return "日志";
+    default:
+      return value;
+  }
+}
+
+function isMediaStreamType(value: DataStream["type"]): boolean {
+  return value === "image" || value === "video" || value === "audio";
+}
+
+function defaultExportType(resourceType: ExportResourceType): ExportType {
+  switch (resourceType) {
+    case "dataset":
+      return "dataset_zip";
+    case "media":
+      return "media_zip";
+    default:
+      return "telemetry_csv";
+  }
+}
+
+function buildExportTypeOptions(resourceType: ExportResourceType, stream?: DataStream): Array<{ label: string; value: ExportType }> {
+  let allowed: ExportType[];
+  if (resourceType === "dataset") {
+    allowed = ["dataset_zip"];
+  } else if (resourceType === "device") {
+    allowed = ["telemetry_csv", "telemetry_excel", "media_zip"];
+  } else if (resourceType === "media") {
+    allowed = ["media_zip"];
+  } else if (!stream) {
+    allowed = [];
+  } else if (stream.type === "telemetry") {
+    allowed = ["telemetry_csv", "telemetry_excel"];
+  } else if (isMediaStreamType(stream.type)) {
+    allowed = ["media_zip"];
+  } else {
+    allowed = [];
+  }
+  return exportTypeOptions.filter((option) => allowed.includes(option.value));
+}
+
+function exportTypeRequiresTime(exportType: ExportType): boolean {
+  return exportType === "telemetry_csv" || exportType === "telemetry_excel" || exportType === "media_zip";
 }
 
 function FormSubmitButton({ disabled }: { disabled?: boolean }) {
