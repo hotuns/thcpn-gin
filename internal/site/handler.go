@@ -52,11 +52,12 @@ func NewHandler(service *Service, checker *permission.Checker, auditServices ...
 }
 
 func (h *Handler) List(c *gin.Context) {
-	workspaceID, ok := parseUUIDValue(c.Query("workspace_id"), "workspace_id", c)
+	actor, ok := actorFromContext(c)
 	if !ok {
 		return
 	}
-	if !h.authorize(c, "workspace", workspaceID, siteViewAction) {
+	workspaceID, ok := parseUUIDValue(c.Query("workspace_id"), "workspace_id", c)
+	if !ok {
 		return
 	}
 
@@ -77,8 +78,18 @@ func (h *Handler) List(c *gin.Context) {
 		httpx.WriteAppError(c, err)
 		return
 	}
+	filtered := make([]Site, 0, len(items))
+	for _, item := range items {
+		allowed, ok := h.can(c, actor.UserID, "site", item.ID, siteViewAction)
+		if !ok {
+			return
+		}
+		if allowed {
+			filtered = append(filtered, item)
+		}
+	}
 
-	c.JSON(http.StatusOK, gin.H{"items": items})
+	c.JSON(http.StatusOK, gin.H{"items": filtered})
 }
 
 func (h *Handler) AdminList(c *gin.Context) {
@@ -128,7 +139,7 @@ func (h *Handler) Create(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !h.authorize(c, "workspace", workspaceID, siteManageAction) {
+	if !h.authorize(c, "project", projectID, siteManageAction) {
 		return
 	}
 
@@ -269,6 +280,22 @@ func (h *Handler) authorize(c *gin.Context, resourceType string, resourceID uuid
 		return false
 	}
 	return true
+}
+
+func (h *Handler) can(c *gin.Context, userID uuid.UUID, resourceType string, resourceID uuid.UUID, action string) (bool, bool) {
+	if h.checker == nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInternal, "permission checker is not configured"))
+		return false, false
+	}
+	decision, err := h.checker.Can(c.Request.Context(), permission.Actor{UserID: userID}, action, permission.ResourceRef{
+		Type: resourceType,
+		ID:   resourceID,
+	})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return false, false
+	}
+	return decision.Allowed, true
 }
 
 func actorFromContext(c *gin.Context) (auth.Actor, bool) {

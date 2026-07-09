@@ -14,12 +14,12 @@ FROM workspaces
 WHERE id = $1;
 
 -- name: CreateWorkspaceMember :one
-INSERT INTO workspace_members (workspace_id, user_id, role_id)
-VALUES ($1, $2, $3)
-RETURNING id, workspace_id, user_id, role_id, status, joined_at, created_at, updated_at;
+INSERT INTO workspace_members (workspace_id, user_id, role_id, scope_type, scope_id, template_code)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, workspace_id, user_id, role_id, status, joined_at, created_at, updated_at, scope_type, scope_id, template_code;
 
 -- name: GetWorkspaceMember :one
-SELECT id, workspace_id, user_id, role_id, status, joined_at, created_at, updated_at
+SELECT id, workspace_id, user_id, role_id, status, joined_at, created_at, updated_at, scope_type, scope_id, template_code
 FROM workspace_members
 WHERE workspace_id = $1 AND user_id = $2;
 
@@ -36,12 +36,14 @@ SELECT
     wm.id AS membership_id,
     wm.status AS membership_status,
     wm.joined_at AS membership_joined_at,
-    r.id AS role_id,
-    r.code AS role_code,
-    r.name AS role_name
+    wm.scope_type AS membership_scope_type,
+    wm.scope_id AS membership_scope_id,
+    tr.id AS role_id,
+    wm.template_code AS role_code,
+    COALESCE(tr.name, '自定义权限') AS role_name
 FROM workspace_members wm
 JOIN workspaces w ON w.id = wm.workspace_id
-JOIN roles r ON r.id = wm.role_id
+LEFT JOIN roles tr ON tr.workspace_id IS NULL AND tr.code = wm.template_code
 WHERE wm.user_id = $1
   AND wm.status = 'active'
   AND w.status = 'active'

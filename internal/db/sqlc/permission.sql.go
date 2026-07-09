@@ -11,18 +11,75 @@ import (
 	"github.com/google/uuid"
 )
 
+const getWorkspaceMemberPermissionRole = `-- name: GetWorkspaceMemberPermissionRole :one
+SELECT wm.template_code
+FROM workspace_members wm
+JOIN workspace_member_permissions wmp ON wmp.member_id = wm.id
+JOIN permissions p ON p.id = wmp.permission_id
+WHERE wm.user_id = $1
+  AND wm.workspace_id = $2
+  AND wm.status = 'active'
+  AND p.code = $3
+  AND (
+    wm.scope_type = 'workspace'
+    OR (wm.scope_type = $4 AND wm.scope_id = $5)
+    OR (wm.scope_type = 'project' AND $6::uuid IS NOT NULL AND wm.scope_id = $6::uuid)
+    OR (wm.scope_type = 'site' AND $7::uuid IS NOT NULL AND wm.scope_id = $7::uuid)
+    OR (wm.scope_type = 'device' AND $8::uuid IS NOT NULL AND wm.scope_id = $8::uuid)
+    OR (wm.scope_type = 'dataset' AND $9::uuid IS NOT NULL AND wm.scope_id = $9::uuid)
+  )
+ORDER BY
+  CASE
+    WHEN wm.scope_type = $4 AND wm.scope_id = $5 THEN 0
+    WHEN wm.scope_type = 'device' AND $8::uuid IS NOT NULL AND wm.scope_id = $8::uuid THEN 1
+    WHEN wm.scope_type = 'site' AND $7::uuid IS NOT NULL AND wm.scope_id = $7::uuid THEN 2
+    WHEN wm.scope_type = 'project' AND $6::uuid IS NOT NULL AND wm.scope_id = $6::uuid THEN 3
+    ELSE 4
+  END,
+  wm.updated_at DESC,
+  wm.id DESC
+LIMIT 1
+`
+
+type GetWorkspaceMemberPermissionRoleParams struct {
+	UserID      uuid.UUID `json:"user_id"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	Code        string    `json:"code"`
+	ScopeType   string    `json:"scope_type"`
+	ScopeID     uuid.UUID `json:"scope_id"`
+	ProjectID   uuid.UUID `json:"project_id"`
+	SiteID      uuid.UUID `json:"site_id"`
+	DeviceID    uuid.UUID `json:"device_id"`
+	DatasetID   uuid.UUID `json:"dataset_id"`
+}
+
+func (q *Queries) GetWorkspaceMemberPermissionRole(ctx context.Context, arg GetWorkspaceMemberPermissionRoleParams) (string, error) {
+	row := q.db.QueryRow(ctx, getWorkspaceMemberPermissionRole,
+		arg.UserID,
+		arg.WorkspaceID,
+		arg.Code,
+		arg.ScopeType,
+		arg.ScopeID,
+		arg.ProjectID,
+		arg.SiteID,
+		arg.DeviceID,
+		arg.DatasetID,
+	)
+	var template_code string
+	err := row.Scan(&template_code)
+	return template_code, err
+}
+
 const hasWorkspacePermission = `-- name: HasWorkspacePermission :one
 SELECT EXISTS (
     SELECT 1
     FROM workspace_members wm
-    JOIN roles r ON r.id = wm.role_id
-    JOIN role_permissions rp ON rp.role_id = r.id
-    JOIN permissions p ON p.id = rp.permission_id
+    JOIN workspace_member_permissions wmp ON wmp.member_id = wm.id
+    JOIN permissions p ON p.id = wmp.permission_id
     WHERE wm.user_id = $1
       AND wm.workspace_id = $2
       AND wm.status = 'active'
       AND p.code = $3
-      AND (r.workspace_id IS NULL OR r.workspace_id = wm.workspace_id)
 ) AS allowed
 `
 

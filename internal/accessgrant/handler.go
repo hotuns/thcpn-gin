@@ -28,24 +28,26 @@ type Handler struct {
 }
 
 type createGrantRequest struct {
-	SubjectUserID  string     `json:"subject_user_id"`
-	Email          string     `json:"email"`
-	Phone          string     `json:"phone"`
-	RoleCode       string     `json:"role_code"`
-	ScopeType      string     `json:"scope_type"`
-	ScopeID        string     `json:"scope_id"`
-	ExpiresAt      *time.Time `json:"expires_at"`
-	AllowReshare   bool       `json:"allow_reshare"`
-	AllowAPIAccess bool       `json:"allow_api_access"`
+	SubjectUserID   string     `json:"subject_user_id"`
+	Email           string     `json:"email"`
+	Phone           string     `json:"phone"`
+	TemplateCode    string     `json:"template_code"`
+	PermissionCodes []string   `json:"permission_codes"`
+	ScopeType       string     `json:"scope_type"`
+	ScopeID         string     `json:"scope_id"`
+	ExpiresAt       *time.Time `json:"expires_at"`
+	AllowReshare    bool       `json:"allow_reshare"`
+	AllowAPIAccess  bool       `json:"allow_api_access"`
 }
 
 type createInvitationRequest struct {
-	Email     string     `json:"email"`
-	Phone     string     `json:"phone"`
-	RoleCode  string     `json:"role_code"`
-	ScopeType string     `json:"scope_type"`
-	ScopeID   string     `json:"scope_id"`
-	ExpiresAt *time.Time `json:"expires_at"`
+	Email           string     `json:"email"`
+	Phone           string     `json:"phone"`
+	TemplateCode    string     `json:"template_code"`
+	PermissionCodes []string   `json:"permission_codes"`
+	ScopeType       string     `json:"scope_type"`
+	ScopeID         string     `json:"scope_id"`
+	ExpiresAt       *time.Time `json:"expires_at"`
 }
 
 func NewHandler(service *Service, checker *permission.Checker, auditServices ...*audit.Service) *Handler {
@@ -105,7 +107,7 @@ func (h *Handler) CreateGrant(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !h.authorize(c, req.ScopeType, scopeID, createActionForRole(req.RoleCode)) {
+	if !h.authorize(c, req.ScopeType, scopeID, createActionForRole(req.TemplateCode)) {
 		return
 	}
 
@@ -115,22 +117,23 @@ func (h *Handler) CreateGrant(c *gin.Context) {
 	}
 
 	result, err := h.service.CreateGrant(c.Request.Context(), CreateGrantInput{
-		SubjectUserID:  subjectUserID,
-		Email:          req.Email,
-		Phone:          req.Phone,
-		RoleCode:       req.RoleCode,
-		ScopeType:      req.ScopeType,
-		ScopeID:        scopeID,
-		ExpiresAt:      req.ExpiresAt,
-		AllowReshare:   req.AllowReshare,
-		AllowAPIAccess: req.AllowAPIAccess,
-		ActorUserID:    actor.UserID,
+		SubjectUserID:   subjectUserID,
+		Email:           req.Email,
+		Phone:           req.Phone,
+		TemplateCode:    req.TemplateCode,
+		PermissionCodes: req.PermissionCodes,
+		ScopeType:       req.ScopeType,
+		ScopeID:         scopeID,
+		ExpiresAt:       req.ExpiresAt,
+		AllowReshare:    req.AllowReshare,
+		AllowAPIAccess:  req.AllowAPIAccess,
+		ActorUserID:     actor.UserID,
 	})
 	if err != nil {
 		if !h.record(c, audit.RecordInput{
 			ActorType:    audit.ActorUser,
 			ActorID:      audit.UserActorID(actor.UserID),
-			Action:       createActionForRole(req.RoleCode),
+			Action:       createActionForRole(req.TemplateCode),
 			ResourceType: req.ScopeType,
 			ResourceID:   audit.ResourceID(scopeID),
 			Result:       audit.ResultFailure,
@@ -254,24 +257,25 @@ func (h *Handler) CreateInvitation(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !h.authorize(c, req.ScopeType, scopeID, createActionForRole(req.RoleCode)) {
+	if !h.authorize(c, req.ScopeType, scopeID, createActionForRole(req.TemplateCode)) {
 		return
 	}
 
 	result, err := h.service.CreateInvitation(c.Request.Context(), CreateInvitationInput{
-		Email:       req.Email,
-		Phone:       req.Phone,
-		RoleCode:    req.RoleCode,
-		ScopeType:   req.ScopeType,
-		ScopeID:     scopeID,
-		ExpiresAt:   req.ExpiresAt,
-		ActorUserID: actor.UserID,
+		Email:           req.Email,
+		Phone:           req.Phone,
+		TemplateCode:    req.TemplateCode,
+		PermissionCodes: req.PermissionCodes,
+		ScopeType:       req.ScopeType,
+		ScopeID:         scopeID,
+		ExpiresAt:       req.ExpiresAt,
+		ActorUserID:     actor.UserID,
 	})
 	if err != nil {
 		if !h.record(c, audit.RecordInput{
 			ActorType:    audit.ActorUser,
 			ActorID:      audit.UserActorID(actor.UserID),
-			Action:       createActionForRole(req.RoleCode),
+			Action:       createActionForRole(req.TemplateCode),
 			ResourceType: req.ScopeType,
 			ResourceID:   audit.ResourceID(scopeID),
 			Result:       audit.ResultFailure,

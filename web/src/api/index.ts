@@ -1,6 +1,7 @@
 export * from "./accessGrants";
 export * from "./audit";
 export * from "./auth";
+export * from "./cameras";
 export * from "./client";
 export * from "./dataSources";
 export * from "./dataStreams";
@@ -10,6 +11,7 @@ export * from "./exports";
 export * from "./invitations";
 export * from "./media";
 export * from "./members";
+export * from "./permissions";
 export * from "./projects";
 export * from "./sites";
 export * from "./storage";

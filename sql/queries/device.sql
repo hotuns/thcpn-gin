@@ -7,10 +7,10 @@ INSERT INTO devices (
     activated_at
 )
 VALUES ($1, $2, $3, 'active', now())
-RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at;
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type;
 
 -- name: GetDevice :one
-SELECT id, product_id, serial_no, name, status, activated_at, created_at, updated_at
+SELECT id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type
 FROM devices
 WHERE id = $1;
 
@@ -22,7 +22,14 @@ SET product_id = $2,
     status = $5,
     updated_at = now()
 WHERE id = $1
-RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at;
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type;
+
+-- name: UpdateDeviceType :one
+UPDATE devices
+SET device_type = $2,
+    updated_at = now()
+WHERE id = $1
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type;
 
 -- name: CreateDeviceAssignment :one
 INSERT INTO device_assignments (
@@ -60,6 +67,9 @@ SELECT
     d.name,
     d.status,
     d.activated_at,
+    d.lifecycle_status,
+    d.lifecycle_updated_at,
+    d.device_type,
     d.created_at,
     d.updated_at,
     da.id AS assignment_id,
@@ -80,6 +90,8 @@ SELECT
     d.name,
     d.status,
     d.activated_at,
+    d.lifecycle_status,
+    d.lifecycle_updated_at,
     d.created_at,
     d.updated_at,
     da.id AS assignment_id,
@@ -88,23 +100,7 @@ SELECT
     da.site_id,
     da.assigned_by,
     da.assigned_at,
-    CASE
-        WHEN EXISTS (
-            SELECT 1
-            FROM device_relations AS child_rel
-            WHERE child_rel.parent_device_id = d.id
-              AND child_rel.relation_type = 'gateway_node'
-              AND child_rel.status = 'active'
-        ) THEN 'gateway'
-        WHEN EXISTS (
-            SELECT 1
-            FROM device_relations AS parent_rel
-            WHERE parent_rel.child_device_id = d.id
-              AND parent_rel.relation_type = 'gateway_node'
-              AND parent_rel.status = 'active'
-        ) THEN 'gateway_node'
-        ELSE 'standalone'
-    END AS topology_role,
+    d.device_type AS topology_role,
     (
         SELECT count(*)::bigint
         FROM device_relations AS child_rel
@@ -124,6 +120,9 @@ SELECT
     d.name,
     d.status,
     d.activated_at,
+    d.lifecycle_status,
+    d.lifecycle_updated_at,
+    d.device_type,
     d.created_at,
     d.updated_at,
     da.id AS assignment_id,
@@ -132,23 +131,7 @@ SELECT
     da.site_id,
     da.assigned_by,
     da.assigned_at,
-    CASE
-        WHEN EXISTS (
-            SELECT 1
-            FROM device_relations AS child_rel
-            WHERE child_rel.parent_device_id = d.id
-              AND child_rel.relation_type = 'gateway_node'
-              AND child_rel.status = 'active'
-        ) THEN 'gateway'
-        WHEN EXISTS (
-            SELECT 1
-            FROM device_relations AS parent_rel
-            WHERE parent_rel.child_device_id = d.id
-              AND parent_rel.relation_type = 'gateway_node'
-              AND parent_rel.status = 'active'
-        ) THEN 'gateway_node'
-        ELSE 'standalone'
-    END AS topology_role,
+    d.device_type AS topology_role,
     (
         SELECT count(*)::bigint
         FROM device_relations AS child_rel
@@ -172,6 +155,9 @@ SELECT
     d.name,
     d.status,
     d.activated_at,
+    d.lifecycle_status,
+    d.lifecycle_updated_at,
+    d.device_type,
     d.created_at,
     d.updated_at,
     da.id AS assignment_id,
@@ -180,23 +166,7 @@ SELECT
     da.site_id,
     da.assigned_by,
     da.assigned_at,
-    CASE
-        WHEN EXISTS (
-            SELECT 1
-            FROM device_relations AS child_rel
-            WHERE child_rel.parent_device_id = d.id
-              AND child_rel.relation_type = 'gateway_node'
-              AND child_rel.status = 'active'
-        ) THEN 'gateway'
-        WHEN EXISTS (
-            SELECT 1
-            FROM device_relations AS parent_rel
-            WHERE parent_rel.child_device_id = d.id
-              AND parent_rel.relation_type = 'gateway_node'
-              AND parent_rel.status = 'active'
-        ) THEN 'gateway_node'
-        ELSE 'standalone'
-    END AS topology_role,
+    d.device_type AS topology_role,
     (
         SELECT count(*)::bigint
         FROM device_relations AS child_rel
@@ -222,6 +192,9 @@ SELECT
     d.name,
     d.status,
     d.activated_at,
+    d.lifecycle_status,
+    d.lifecycle_updated_at,
+    d.device_type,
     d.created_at,
     d.updated_at,
     da.id AS assignment_id,
@@ -230,23 +203,7 @@ SELECT
     da.site_id,
     da.assigned_by,
     da.assigned_at,
-    CASE
-        WHEN EXISTS (
-            SELECT 1
-            FROM device_relations AS child_rel
-            WHERE child_rel.parent_device_id = d.id
-              AND child_rel.relation_type = 'gateway_node'
-              AND child_rel.status = 'active'
-        ) THEN 'gateway'
-        WHEN EXISTS (
-            SELECT 1
-            FROM device_relations AS parent_rel
-            WHERE parent_rel.child_device_id = d.id
-              AND parent_rel.relation_type = 'gateway_node'
-              AND parent_rel.status = 'active'
-        ) THEN 'gateway_node'
-        ELSE 'standalone'
-    END AS topology_role,
+    d.device_type AS topology_role,
     (
         SELECT count(*)::bigint
         FROM device_relations AS child_rel
@@ -297,6 +254,32 @@ INSERT INTO device_capabilities (device_id, capability_code)
 VALUES ($1, $2)
 ON CONFLICT (device_id, capability_code) DO NOTHING
 RETURNING id, device_id, capability_code, created_at;
+
+-- name: UpdateDeviceLifecycle :one
+UPDATE devices
+SET lifecycle_status = $2,
+    lifecycle_updated_at = $3,
+    updated_at = now()
+WHERE id = $1
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type;
+
+-- name: CreateDeviceLifecycleEvent :one
+INSERT INTO device_lifecycle_events (
+    device_id,
+    from_status,
+    to_status,
+    occurred_at,
+    note,
+    actor_user_id
+)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, device_id, from_status, to_status, occurred_at, note, actor_user_id, created_at;
+
+-- name: ListDeviceLifecycleEvents :many
+SELECT id, device_id, from_status, to_status, occurred_at, note, actor_user_id, created_at
+FROM device_lifecycle_events
+WHERE device_id = $1
+ORDER BY occurred_at DESC, id DESC;
 
 -- name: CreateDeviceOperation :one
 INSERT INTO device_operations (

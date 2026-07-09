@@ -505,6 +505,58 @@ a:hover {
   max-width: 220px;
 }
 
+.permission-picker {
+  display: grid;
+  min-width: 0;
+  gap: 14px;
+}
+
+.permission-picker > .field {
+  max-width: 360px;
+}
+
+.permission-groups {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.permission-group {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 10px;
+  border: 1px solid var(--mist);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfd;
+}
+
+.permission-group-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.permission-group-title strong {
+  overflow: hidden;
+  color: var(--graphite);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.permission-options {
+  min-width: 0;
+}
+
+.permission-options .ant-checkbox-wrapper {
+  min-width: 0;
+  margin-inline-start: 0;
+}
+
 .section.ant-card {
   min-width: 0;
   max-width: 100%;
@@ -674,6 +726,15 @@ a:hover {
   max-width: 260px;
 }
 
+.admin-device-toolbar {
+  margin-bottom: 12px;
+  max-width: 100%;
+}
+
+.admin-device-toolbar .ant-input-search {
+  max-width: 100%;
+}
+
 .device-asset-workspace {
   display: grid;
   min-width: 0;
@@ -682,7 +743,7 @@ a:hover {
 
 .device-topology-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -707,6 +768,11 @@ a:hover {
 .device-topology-summary-item.is-node {
   border-color: #b5d9dc;
   background: #f2fbfc;
+}
+
+.device-topology-summary-item.is-camera {
+  border-color: #f0b7d6;
+  background: #fff4fa;
 }
 
 .device-topology-summary-item.is-standalone {
@@ -766,6 +832,58 @@ a:hover {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.camera-live-panel {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  border: 1px solid #f0b7d6;
+  border-radius: 8px;
+  padding: 14px;
+  background: #fff7fb;
+}
+
+.camera-live-panel-head {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.camera-live-stage {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #e4ceda;
+  border-radius: 8px;
+  background: #101214;
+  aspect-ratio: 16 / 9;
+}
+
+.camera-live-container {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+}
+
+.camera-live-container > * {
+  max-width: 100% !important;
+}
+
+.camera-live-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    #101214;
+  background-size: 32px 32px;
 }
 
 .gateway-node-shortcut-grid .ant-btn small {
@@ -1296,6 +1414,12 @@ a:hover {
   height: 100%;
   min-height: 0;
   grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+  gap: 16px;
+}
+
+.drawer-stack {
+  display: grid;
+  min-width: 0;
   gap: 16px;
 }
 

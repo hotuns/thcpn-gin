@@ -1,5 +1,5 @@
 import { del, get, post } from "./client";
-import type { AccessGrant, AccessGrantRoleCode, AccessGrantScopeType, Invitation, InvitationListResponse } from "./types";
+import type { AccessGrant, AccessGrantScopeType, Invitation, InvitationListResponse, PermissionCode } from "./types";
 
 export const invitationsApi = {
   list(workspaceId: string): Promise<InvitationListResponse> {
@@ -13,7 +13,8 @@ export const invitationsApi = {
   create(input: {
     email?: string;
     phone?: string;
-    role_code: AccessGrantRoleCode;
+    template_code?: string;
+    permission_codes: PermissionCode[];
     scope_type: AccessGrantScopeType;
     scope_id: string;
     expires_at?: string;

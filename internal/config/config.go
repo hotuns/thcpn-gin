@@ -22,6 +22,7 @@ type Config struct {
 	QueryLimits QueryLimitsConfig `yaml:"query_limits"`
 	Export      ExportConfig      `yaml:"export"`
 	Tracing     TracingConfig     `yaml:"tracing"`
+	Ezviz       EzvizConfig       `yaml:"ezviz"`
 }
 
 type ServerConfig struct {
@@ -117,6 +118,13 @@ type TracingConfig struct {
 	Insecure    bool   `yaml:"insecure"`
 }
 
+type EzvizConfig struct {
+	AppKeyEnv             string `yaml:"app_key_env"`
+	AppSecretEnv          string `yaml:"app_secret_env"`
+	OpenAPIDomain         string `yaml:"open_api_domain"`
+	AccessTokenTTLSeconds int    `yaml:"access_token_ttl_seconds"`
+}
+
 func Default() Config {
 	return Config{
 		Server: ServerConfig{
@@ -195,6 +203,12 @@ func Default() Config {
 			Exporter:    "stdout",
 			Endpoint:    "localhost:4318",
 			Insecure:    true,
+		},
+		Ezviz: EzvizConfig{
+			AppKeyEnv:             "EZVIZ_APP_KEY",
+			AppSecretEnv:          "EZVIZ_APP_SECRET",
+			OpenAPIDomain:         "https://open.ys7.com",
+			AccessTokenTTLSeconds: 3600,
 		},
 	}
 }
@@ -329,6 +343,18 @@ func (cfg Config) Validate() error {
 	case "stdout", "otlp", "noop":
 	default:
 		return errors.New("tracing.exporter must be one of stdout, otlp, noop")
+	}
+	if strings.TrimSpace(cfg.Ezviz.AppKeyEnv) == "" {
+		return errors.New("ezviz.app_key_env is required")
+	}
+	if strings.TrimSpace(cfg.Ezviz.AppSecretEnv) == "" {
+		return errors.New("ezviz.app_secret_env is required")
+	}
+	if strings.TrimSpace(cfg.Ezviz.OpenAPIDomain) == "" {
+		return errors.New("ezviz.open_api_domain is required")
+	}
+	if cfg.Ezviz.AccessTokenTTLSeconds <= 0 {
+		return errors.New("ezviz.access_token_ttl_seconds must be greater than 0")
 	}
 	return nil
 }
@@ -508,6 +534,20 @@ func applyEnv(cfg *Config) {
 	if value := strings.TrimSpace(os.Getenv("TRACING_OTLP_INSECURE")); value != "" {
 		if insecure, err := strconv.ParseBool(value); err == nil {
 			cfg.Tracing.Insecure = insecure
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("EZVIZ_APP_KEY_ENV")); value != "" {
+		cfg.Ezviz.AppKeyEnv = value
+	}
+	if value := strings.TrimSpace(os.Getenv("EZVIZ_APP_SECRET_ENV")); value != "" {
+		cfg.Ezviz.AppSecretEnv = value
+	}
+	if value := strings.TrimSpace(os.Getenv("EZVIZ_OPEN_API_DOMAIN")); value != "" {
+		cfg.Ezviz.OpenAPIDomain = value
+	}
+	if value := strings.TrimSpace(os.Getenv("EZVIZ_ACCESS_TOKEN_TTL_SECONDS")); value != "" {
+		if seconds, err := strconv.Atoi(value); err == nil {
+			cfg.Ezviz.AccessTokenTTLSeconds = seconds
 		}
 	}
 }

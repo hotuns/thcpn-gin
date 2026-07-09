@@ -31,6 +31,9 @@ SELECT
     d.name,
     d.status AS device_status,
     d.activated_at,
+    d.lifecycle_status,
+    d.lifecycle_updated_at,
+    d.device_type,
     d.created_at AS device_created_at,
     d.updated_at AS device_updated_at,
     da.id AS assignment_id,
@@ -66,6 +69,9 @@ type ListActiveDeviceChildrenRow struct {
 	Name                   string             `json:"name"`
 	DeviceStatus           string             `json:"device_status"`
 	ActivatedAt            pgtype.Timestamptz `json:"activated_at"`
+	LifecycleStatus        string             `json:"lifecycle_status"`
+	LifecycleUpdatedAt     pgtype.Timestamptz `json:"lifecycle_updated_at"`
+	DeviceType             string             `json:"device_type"`
 	DeviceCreatedAt        pgtype.Timestamptz `json:"device_created_at"`
 	DeviceUpdatedAt        pgtype.Timestamptz `json:"device_updated_at"`
 	AssignmentID           *uuid.UUID         `json:"assignment_id"`
@@ -103,6 +109,9 @@ func (q *Queries) ListActiveDeviceChildren(ctx context.Context, parentDeviceID u
 			&i.Name,
 			&i.DeviceStatus,
 			&i.ActivatedAt,
+			&i.LifecycleStatus,
+			&i.LifecycleUpdatedAt,
+			&i.DeviceType,
 			&i.DeviceCreatedAt,
 			&i.DeviceUpdatedAt,
 			&i.AssignmentID,
@@ -233,6 +242,9 @@ SELECT
     d.name,
     d.status AS device_status,
     d.activated_at,
+    d.lifecycle_status,
+    d.lifecycle_updated_at,
+    d.device_type,
     d.created_at AS device_created_at,
     d.updated_at AS device_updated_at,
     da.id AS assignment_id,
@@ -272,6 +284,9 @@ type ListVisibleDeviceChildrenRow struct {
 	Name                   string             `json:"name"`
 	DeviceStatus           string             `json:"device_status"`
 	ActivatedAt            pgtype.Timestamptz `json:"activated_at"`
+	LifecycleStatus        string             `json:"lifecycle_status"`
+	LifecycleUpdatedAt     pgtype.Timestamptz `json:"lifecycle_updated_at"`
+	DeviceType             string             `json:"device_type"`
 	DeviceCreatedAt        pgtype.Timestamptz `json:"device_created_at"`
 	DeviceUpdatedAt        pgtype.Timestamptz `json:"device_updated_at"`
 	AssignmentID           uuid.UUID          `json:"assignment_id"`
@@ -309,6 +324,9 @@ func (q *Queries) ListVisibleDeviceChildren(ctx context.Context, parentDeviceID 
 			&i.Name,
 			&i.DeviceStatus,
 			&i.ActivatedAt,
+			&i.LifecycleStatus,
+			&i.LifecycleUpdatedAt,
+			&i.DeviceType,
 			&i.DeviceCreatedAt,
 			&i.DeviceUpdatedAt,
 			&i.AssignmentID,

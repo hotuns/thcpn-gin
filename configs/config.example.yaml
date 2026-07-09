@@ -73,3 +73,9 @@ tracing:
   exporter: "stdout"
   endpoint: "localhost:4318"
   insecure: true
+
+ezviz:
+  app_key_env: "EZVIZ_APP_KEY"
+  app_secret_env: "EZVIZ_APP_SECRET"
+  open_api_domain: "https://open.ys7.com"
+  access_token_ttl_seconds: 3600

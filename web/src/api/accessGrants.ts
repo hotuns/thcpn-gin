@@ -1,5 +1,5 @@
 import { del, get, post } from "./client";
-import type { AccessGrant, AccessGrantListResponse, AccessGrantRoleCode, AccessGrantScopeType } from "./types";
+import type { AccessGrant, AccessGrantListResponse, AccessGrantScopeType, PermissionCode } from "./types";
 
 export const accessGrantsApi = {
   list(workspaceId: string): Promise<AccessGrantListResponse> {
@@ -14,7 +14,8 @@ export const accessGrantsApi = {
     subject_user_id?: string;
     email?: string;
     phone?: string;
-    role_code: AccessGrantRoleCode;
+    template_code?: string;
+    permission_codes: PermissionCode[];
     scope_type: AccessGrantScopeType;
     scope_id: string;
     expires_at?: string;

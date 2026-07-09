@@ -24,23 +24,26 @@ type Service struct {
 }
 
 type Device struct {
-	ID           uuid.UUID  `json:"id"`
-	AssignmentID *uuid.UUID `json:"assignment_id,omitempty"`
-	WorkspaceID  *uuid.UUID `json:"workspace_id,omitempty"`
-	ProjectID    *uuid.UUID `json:"project_id,omitempty"`
-	SiteID       *uuid.UUID `json:"site_id,omitempty"`
-	ProductID    *string    `json:"product_id,omitempty"`
-	SerialNo     string     `json:"serial_no"`
-	Name         string     `json:"name"`
-	Status       string     `json:"status"`
-	ActivatedAt  *time.Time `json:"activated_at,omitempty"`
-	AssignedBy   *uuid.UUID `json:"assigned_by,omitempty"`
-	AssignedAt   *time.Time `json:"assigned_at,omitempty"`
-	Capabilities []string   `json:"capabilities"`
-	TopologyRole string     `json:"topology_role"`
-	ChildCount   int64      `json:"child_count"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	ID                 uuid.UUID  `json:"id"`
+	AssignmentID       *uuid.UUID `json:"assignment_id,omitempty"`
+	WorkspaceID        *uuid.UUID `json:"workspace_id,omitempty"`
+	ProjectID          *uuid.UUID `json:"project_id,omitempty"`
+	SiteID             *uuid.UUID `json:"site_id,omitempty"`
+	ProductID          *string    `json:"product_id,omitempty"`
+	SerialNo           string     `json:"serial_no"`
+	Name               string     `json:"name"`
+	Status             string     `json:"status"`
+	ActivatedAt        *time.Time `json:"activated_at,omitempty"`
+	LifecycleStatus    string     `json:"lifecycle_status"`
+	LifecycleUpdatedAt *time.Time `json:"lifecycle_updated_at,omitempty"`
+	DeviceType         string     `json:"device_type"`
+	AssignedBy         *uuid.UUID `json:"assigned_by,omitempty"`
+	AssignedAt         *time.Time `json:"assigned_at,omitempty"`
+	Capabilities       []string   `json:"capabilities"`
+	TopologyRole       string     `json:"topology_role"`
+	ChildCount         int64      `json:"child_count"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
 }
 
 type DeviceOperation struct {
@@ -53,6 +56,39 @@ type DeviceOperation struct {
 	RequestedBy   uuid.UUID       `json:"requested_by"`
 	CreatedAt     time.Time       `json:"created_at"`
 	UpdatedAt     time.Time       `json:"updated_at"`
+}
+
+type DeviceLifecycleEvent struct {
+	ID          uuid.UUID  `json:"id"`
+	DeviceID    uuid.UUID  `json:"device_id"`
+	FromStatus  *string    `json:"from_status,omitempty"`
+	ToStatus    string     `json:"to_status"`
+	OccurredAt  time.Time  `json:"occurred_at"`
+	Note        *string    `json:"note,omitempty"`
+	ActorUserID *uuid.UUID `json:"actor_user_id,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+type DeviceLifecycle struct {
+	Device Device                 `json:"device"`
+	Events []DeviceLifecycleEvent `json:"events"`
+}
+
+type DeviceCapabilityDefinition struct {
+	Code      string    `json:"code"`
+	Name      string    `json:"name"`
+	Status    string    `json:"status"`
+	SortOrder int32     `json:"sort_order"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type SystemRoleDefinition struct {
+	ID        uuid.UUID `json:"id"`
+	Code      string    `json:"code"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type DeviceRelation struct {
@@ -100,6 +136,35 @@ type UpdateInput struct {
 	Name         *string
 	Status       *string
 	Capabilities *[]string
+}
+
+type AdminUpdateInput struct {
+	DeviceID     uuid.UUID
+	ProductID    *string
+	SerialNo     *string
+	Name         *string
+	Status       *string
+	DeviceType   *string
+	Capabilities *[]string
+}
+
+type CreateCapabilityDefinitionInput struct {
+	Code      string
+	Name      string
+	Status    string
+	SortOrder int32
+}
+
+type UpdateCapabilityDefinitionInput struct {
+	Code      string
+	Name      string
+	Status    string
+	SortOrder int32
+}
+
+type UpdateSystemRoleInput struct {
+	Code string
+	Name string
 }
 
 type CalibrationInput struct {
@@ -154,6 +219,20 @@ type UnbindInput struct {
 	ActorUserID uuid.UUID
 }
 
+type UpdateLifecycleInput struct {
+	DeviceID        uuid.UUID
+	LifecycleStatus string
+	OccurredAt      *time.Time
+	Note            string
+	ActorUserID     uuid.UUID
+}
+
+type UpdateCapabilitiesInput struct {
+	DeviceID     uuid.UUID
+	Capabilities []string
+	ActorUserID  uuid.UUID
+}
+
 func NewService(db *pgxpool.Pool) *Service {
 	return &Service{
 		db:      db,
@@ -196,6 +275,9 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Device, error)
 	}()
 
 	q := s.queries.WithTx(tx)
+	if err := validateCapabilityCodes(ctx, q, capabilities); err != nil {
+		return Device{}, err
+	}
 	created, err := q.CreateDevice(ctx, sqlc.CreateDeviceParams{
 		ProductID: nullableTrimmedString(input.ProductID),
 		SerialNo:  serialNo,
@@ -317,6 +399,249 @@ func (s *Service) ListSystemAssets(ctx context.Context) ([]Device, error) {
 	return items, nil
 }
 
+func (s *Service) ListLifecycle(ctx context.Context, deviceID uuid.UUID) (DeviceLifecycle, error) {
+	if deviceID == uuid.Nil {
+		return DeviceLifecycle{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
+	}
+	deviceRow, err := s.queries.GetDevice(ctx, deviceID)
+	if err != nil {
+		return DeviceLifecycle{}, mapNotFoundOrInternal(err, "device not found")
+	}
+	capabilities, err := s.queries.ListDeviceCapabilities(ctx, deviceID)
+	if err != nil {
+		return DeviceLifecycle{}, apperr.Wrap(apperr.KindInternal, "list device capabilities", err)
+	}
+	rows, err := s.queries.ListDeviceLifecycleEvents(ctx, deviceID)
+	if err != nil {
+		return DeviceLifecycle{}, apperr.Wrap(apperr.KindInternal, "list device lifecycle events", err)
+	}
+	events := make([]DeviceLifecycleEvent, 0, len(rows))
+	for _, row := range rows {
+		events = append(events, lifecycleEventFromSQL(row))
+	}
+	return DeviceLifecycle{
+		Device: fromSQL(deviceRow, capabilities),
+		Events: events,
+	}, nil
+}
+
+func (s *Service) UpdateLifecycle(ctx context.Context, input UpdateLifecycleInput) (DeviceLifecycle, error) {
+	if input.DeviceID == uuid.Nil {
+		return DeviceLifecycle{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
+	}
+	if input.ActorUserID == uuid.Nil {
+		return DeviceLifecycle{}, apperr.New(apperr.KindInvalidArgument, "actor user id is required")
+	}
+	lifecycleStatus := strings.TrimSpace(input.LifecycleStatus)
+	if !isValidDeviceLifecycleStatus(lifecycleStatus) {
+		return DeviceLifecycle{}, apperr.New(apperr.KindInvalidArgument, "invalid lifecycle_status")
+	}
+	if s.db == nil {
+		return DeviceLifecycle{}, apperr.New(apperr.KindInternal, "database is not configured")
+	}
+	occurredAt := time.Now().UTC()
+	if input.OccurredAt != nil {
+		occurredAt = input.OccurredAt.UTC()
+	}
+
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return DeviceLifecycle{}, apperr.Wrap(apperr.KindInternal, "begin update lifecycle transaction", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+	q := s.queries.WithTx(tx)
+
+	current, err := q.GetDevice(ctx, input.DeviceID)
+	if err != nil {
+		return DeviceLifecycle{}, mapNotFoundOrInternal(err, "device not found")
+	}
+	fromStatus := current.LifecycleStatus
+	updated, err := q.UpdateDeviceLifecycle(ctx, sqlc.UpdateDeviceLifecycleParams{
+		ID:              input.DeviceID,
+		LifecycleStatus: lifecycleStatus,
+		LifecycleUpdatedAt: pgtype.Timestamptz{
+			Time:  occurredAt,
+			Valid: true,
+		},
+	})
+	if err != nil {
+		return DeviceLifecycle{}, mapWriteError(err, "update device lifecycle")
+	}
+	if _, err := q.CreateDeviceLifecycleEvent(ctx, sqlc.CreateDeviceLifecycleEventParams{
+		DeviceID:    input.DeviceID,
+		FromStatus:  nullableTrimmedString(fromStatus),
+		ToStatus:    lifecycleStatus,
+		OccurredAt:  pgtype.Timestamptz{Time: occurredAt, Valid: true},
+		Note:        nullableTrimmedString(input.Note),
+		ActorUserID: &input.ActorUserID,
+	}); err != nil {
+		return DeviceLifecycle{}, mapWriteError(err, "create device lifecycle event")
+	}
+	capabilities, err := q.ListDeviceCapabilities(ctx, input.DeviceID)
+	if err != nil {
+		return DeviceLifecycle{}, apperr.Wrap(apperr.KindInternal, "list device capabilities", err)
+	}
+	rows, err := q.ListDeviceLifecycleEvents(ctx, input.DeviceID)
+	if err != nil {
+		return DeviceLifecycle{}, apperr.Wrap(apperr.KindInternal, "list device lifecycle events", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return DeviceLifecycle{}, apperr.Wrap(apperr.KindInternal, "commit update lifecycle transaction", err)
+	}
+	committed = true
+
+	events := make([]DeviceLifecycleEvent, 0, len(rows))
+	for _, row := range rows {
+		events = append(events, lifecycleEventFromSQL(row))
+	}
+	return DeviceLifecycle{
+		Device: fromSQL(updated, capabilities),
+		Events: events,
+	}, nil
+}
+
+func (s *Service) ListCapabilities(ctx context.Context, deviceID uuid.UUID) ([]string, error) {
+	if deviceID == uuid.Nil {
+		return nil, apperr.New(apperr.KindInvalidArgument, "device id is required")
+	}
+	if _, err := s.queries.GetDevice(ctx, deviceID); err != nil {
+		return nil, mapNotFoundOrInternal(err, "device not found")
+	}
+	capabilities, err := s.queries.ListDeviceCapabilities(ctx, deviceID)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindInternal, "list device capabilities", err)
+	}
+	return capabilities, nil
+}
+
+func (s *Service) ListCapabilityDefinitions(ctx context.Context) ([]DeviceCapabilityDefinition, error) {
+	rows, err := s.queries.ListDeviceCapabilityDefinitions(ctx)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindInternal, "list device capability definitions", err)
+	}
+	items := make([]DeviceCapabilityDefinition, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, capabilityDefinitionFromSQL(row))
+	}
+	return items, nil
+}
+
+func (s *Service) CreateCapabilityDefinition(ctx context.Context, input CreateCapabilityDefinitionInput) (DeviceCapabilityDefinition, error) {
+	code, name, status, sortOrder, err := normalizeCapabilityDefinitionInput(input.Code, input.Name, input.Status, input.SortOrder)
+	if err != nil {
+		return DeviceCapabilityDefinition{}, err
+	}
+	created, err := s.queries.CreateDeviceCapabilityDefinition(ctx, sqlc.CreateDeviceCapabilityDefinitionParams{
+		Code:      code,
+		Name:      name,
+		Status:    status,
+		SortOrder: sortOrder,
+	})
+	if err != nil {
+		return DeviceCapabilityDefinition{}, mapWriteError(err, "create device capability definition")
+	}
+	return capabilityDefinitionFromSQL(created), nil
+}
+
+func (s *Service) UpdateCapabilityDefinition(ctx context.Context, input UpdateCapabilityDefinitionInput) (DeviceCapabilityDefinition, error) {
+	code, name, status, sortOrder, err := normalizeCapabilityDefinitionInput(input.Code, input.Name, input.Status, input.SortOrder)
+	if err != nil {
+		return DeviceCapabilityDefinition{}, err
+	}
+	updated, err := s.queries.UpdateDeviceCapabilityDefinition(ctx, sqlc.UpdateDeviceCapabilityDefinitionParams{
+		Code:      code,
+		Name:      name,
+		Status:    status,
+		SortOrder: sortOrder,
+	})
+	if err != nil {
+		return DeviceCapabilityDefinition{}, mapNotFoundOrInternal(err, "device capability definition not found")
+	}
+	return capabilityDefinitionFromSQL(updated), nil
+}
+
+func (s *Service) ListSystemRoles(ctx context.Context) ([]SystemRoleDefinition, error) {
+	rows, err := s.queries.ListSystemRoles(ctx)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindInternal, "list system roles", err)
+	}
+	items := make([]SystemRoleDefinition, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, systemRoleDefinitionFromSQL(row))
+	}
+	return items, nil
+}
+
+func (s *Service) UpdateSystemRole(ctx context.Context, input UpdateSystemRoleInput) (SystemRoleDefinition, error) {
+	code := strings.TrimSpace(input.Code)
+	name := strings.TrimSpace(input.Name)
+	if code == "" {
+		return SystemRoleDefinition{}, apperr.New(apperr.KindInvalidArgument, "role code is required")
+	}
+	if name == "" {
+		return SystemRoleDefinition{}, apperr.New(apperr.KindInvalidArgument, "role name is required")
+	}
+	updated, err := s.queries.UpdateSystemRoleName(ctx, sqlc.UpdateSystemRoleNameParams{
+		Code: code,
+		Name: name,
+	})
+	if err != nil {
+		return SystemRoleDefinition{}, mapNotFoundOrInternal(err, "system role not found")
+	}
+	return systemRoleDefinitionFromSQL(updated), nil
+}
+
+func (s *Service) UpdateCapabilities(ctx context.Context, input UpdateCapabilitiesInput) ([]string, error) {
+	if input.DeviceID == uuid.Nil {
+		return nil, apperr.New(apperr.KindInvalidArgument, "device id is required")
+	}
+	if input.ActorUserID == uuid.Nil {
+		return nil, apperr.New(apperr.KindInvalidArgument, "actor user id is required")
+	}
+	capabilities, err := normalizeCapabilities(input.Capabilities)
+	if err != nil {
+		return nil, err
+	}
+	if s.db == nil {
+		return nil, apperr.New(apperr.KindInternal, "database is not configured")
+	}
+
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindInternal, "begin update capabilities transaction", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+	q := s.queries.WithTx(tx)
+	if _, err := q.GetDevice(ctx, input.DeviceID); err != nil {
+		return nil, mapNotFoundOrInternal(err, "device not found")
+	}
+	if err := validateCapabilityCodes(ctx, q, capabilities); err != nil {
+		return nil, err
+	}
+	if err := replaceCapabilities(ctx, q, input.DeviceID, capabilities); err != nil {
+		return nil, err
+	}
+	updated, err := q.ListDeviceCapabilities(ctx, input.DeviceID)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindInternal, "list device capabilities", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, apperr.Wrap(apperr.KindInternal, "commit update capabilities transaction", err)
+	}
+	committed = true
+	return updated, nil
+}
+
 func (s *Service) ListAdminChildren(ctx context.Context, parentDeviceID uuid.UUID) ([]DeviceChild, error) {
 	if parentDeviceID == uuid.Nil {
 		return nil, apperr.New(apperr.KindInvalidArgument, "device id is required")
@@ -368,19 +693,42 @@ func (s *Service) AddChild(ctx context.Context, input AddChildInput) (DeviceRela
 	if input.ActorUserID == uuid.Nil {
 		return DeviceRelation{}, apperr.New(apperr.KindInvalidArgument, "actor user id is required")
 	}
+	if s.db == nil {
+		return DeviceRelation{}, apperr.New(apperr.KindInternal, "database is not configured")
+	}
 
-	if _, err := s.queries.GetDevice(ctx, input.ParentDeviceID); err != nil {
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return DeviceRelation{}, apperr.Wrap(apperr.KindInternal, "begin add device child transaction", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+	q := s.queries.WithTx(tx)
+
+	parent, err := q.GetDevice(ctx, input.ParentDeviceID)
+	if err != nil {
 		return DeviceRelation{}, mapNotFoundOrInternal(err, "parent device not found")
 	}
-	if _, err := s.queries.GetDevice(ctx, input.ChildDeviceID); err != nil {
+	child, err := q.GetDevice(ctx, input.ChildDeviceID)
+	if err != nil {
 		return DeviceRelation{}, mapNotFoundOrInternal(err, "child device not found")
 	}
+	if parent.DeviceType == "gateway_node" {
+		return DeviceRelation{}, apperr.New(apperr.KindConflict, "node device cannot be used as a gateway")
+	}
+	if child.DeviceType == "gateway" {
+		return DeviceRelation{}, apperr.New(apperr.KindConflict, "gateway device cannot be used as a child node")
+	}
 
-	parentRef, err := s.queries.GetDeviceSourceRefByDevice(ctx, input.ParentDeviceID)
+	parentRef, err := q.GetDeviceSourceRefByDevice(ctx, input.ParentDeviceID)
 	if err != nil {
 		return DeviceRelation{}, mapNotFoundOrInternal(err, "parent device source ref not found")
 	}
-	childRef, err := s.queries.GetDeviceSourceRefByDevice(ctx, input.ChildDeviceID)
+	childRef, err := q.GetDeviceSourceRefByDevice(ctx, input.ChildDeviceID)
 	if err != nil {
 		return DeviceRelation{}, mapNotFoundOrInternal(err, "child device source ref not found")
 	}
@@ -388,7 +736,7 @@ func (s *Service) AddChild(ctx context.Context, input AddChildInput) (DeviceRela
 		return DeviceRelation{}, apperr.New(apperr.KindConflict, "parent and child device must come from the same data source")
 	}
 
-	parentParents, err := s.queries.ListDeviceRelationsByChild(ctx, sqlc.ListDeviceRelationsByChildParams{
+	parentParents, err := q.ListDeviceRelationsByChild(ctx, sqlc.ListDeviceRelationsByChildParams{
 		ChildDeviceID: input.ParentDeviceID,
 		RelationType:  "gateway_node",
 	})
@@ -399,7 +747,7 @@ func (s *Service) AddChild(ctx context.Context, input AddChildInput) (DeviceRela
 		return DeviceRelation{}, apperr.New(apperr.KindConflict, "node device cannot be used as a gateway")
 	}
 
-	childChildren, err := s.queries.ListDeviceRelationsByParent(ctx, sqlc.ListDeviceRelationsByParentParams{
+	childChildren, err := q.ListDeviceRelationsByParent(ctx, sqlc.ListDeviceRelationsByParentParams{
 		ParentDeviceID: input.ChildDeviceID,
 		RelationType:   "gateway_node",
 	})
@@ -410,7 +758,7 @@ func (s *Service) AddChild(ctx context.Context, input AddChildInput) (DeviceRela
 		return DeviceRelation{}, apperr.New(apperr.KindConflict, "gateway device cannot be used as a child node")
 	}
 
-	childParents, err := s.queries.ListDeviceRelationsByChild(ctx, sqlc.ListDeviceRelationsByChildParams{
+	childParents, err := q.ListDeviceRelationsByChild(ctx, sqlc.ListDeviceRelationsByChildParams{
 		ChildDeviceID: input.ChildDeviceID,
 		RelationType:  "gateway_node",
 	})
@@ -423,7 +771,7 @@ func (s *Service) AddChild(ctx context.Context, input AddChildInput) (DeviceRela
 		}
 	}
 
-	relation, err := s.queries.UpsertDeviceRelation(ctx, sqlc.UpsertDeviceRelationParams{
+	relation, err := q.UpsertDeviceRelation(ctx, sqlc.UpsertDeviceRelationParams{
 		ParentDeviceID:         input.ParentDeviceID,
 		ChildDeviceID:          input.ChildDeviceID,
 		RelationType:           "gateway_node",
@@ -434,6 +782,26 @@ func (s *Service) AddChild(ctx context.Context, input AddChildInput) (DeviceRela
 	if err != nil {
 		return DeviceRelation{}, mapWriteError(err, "upsert device relation")
 	}
+	if parent.DeviceType != "gateway" {
+		if _, err := q.UpdateDeviceType(ctx, sqlc.UpdateDeviceTypeParams{
+			ID:         input.ParentDeviceID,
+			DeviceType: "gateway",
+		}); err != nil {
+			return DeviceRelation{}, mapWriteError(err, "update parent device type")
+		}
+	}
+	if child.DeviceType != "gateway_node" {
+		if _, err := q.UpdateDeviceType(ctx, sqlc.UpdateDeviceTypeParams{
+			ID:         input.ChildDeviceID,
+			DeviceType: "gateway_node",
+		}); err != nil {
+			return DeviceRelation{}, mapWriteError(err, "update child device type")
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return DeviceRelation{}, apperr.Wrap(apperr.KindInternal, "commit add device child transaction", err)
+	}
+	committed = true
 	return relationFromUpsertRow(relation), nil
 }
 
@@ -500,6 +868,131 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (Device, error)
 		return Device{}, mapNotFoundOrInternal(err, "device not found")
 	}
 	return fromSQLWithAssignment(device, assignment, capabilities), nil
+}
+
+func (s *Service) AdminUpdate(ctx context.Context, input AdminUpdateInput) (Device, error) {
+	if input.DeviceID == uuid.Nil {
+		return Device{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
+	}
+	if input.SerialNo != nil && strings.TrimSpace(*input.SerialNo) == "" {
+		return Device{}, apperr.New(apperr.KindInvalidArgument, "serial_no is required")
+	}
+	if input.Name != nil && strings.TrimSpace(*input.Name) == "" {
+		return Device{}, apperr.New(apperr.KindInvalidArgument, "device name is required")
+	}
+	if input.Status != nil && !isValidDeviceStatus(strings.TrimSpace(*input.Status)) {
+		return Device{}, apperr.New(apperr.KindInvalidArgument, "invalid device status")
+	}
+	if input.DeviceType != nil && !isValidDeviceType(strings.TrimSpace(*input.DeviceType)) {
+		return Device{}, apperr.New(apperr.KindInvalidArgument, "invalid device_type")
+	}
+	var normalizedCapabilities []string
+	if input.Capabilities != nil {
+		var err error
+		normalizedCapabilities, err = normalizeCapabilities(*input.Capabilities)
+		if err != nil {
+			return Device{}, err
+		}
+	}
+	if s.db == nil {
+		return Device{}, apperr.New(apperr.KindInternal, "database is not configured")
+	}
+
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Device{}, apperr.Wrap(apperr.KindInternal, "begin admin update device transaction", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+	q := s.queries.WithTx(tx)
+
+	current, err := q.GetDevice(ctx, input.DeviceID)
+	if err != nil {
+		return Device{}, mapNotFoundOrInternal(err, "device not found")
+	}
+	if input.Capabilities != nil {
+		if err := validateCapabilityCodes(ctx, q, normalizedCapabilities); err != nil {
+			return Device{}, err
+		}
+	}
+
+	productID := current.ProductID
+	if input.ProductID != nil {
+		productID = nullableTrimmedString(*input.ProductID)
+	}
+	serialNo := current.SerialNo
+	if input.SerialNo != nil {
+		serialNo = strings.TrimSpace(*input.SerialNo)
+	}
+	name := current.Name
+	if input.Name != nil {
+		name = strings.TrimSpace(*input.Name)
+	}
+	status := current.Status
+	if input.Status != nil {
+		status = strings.TrimSpace(*input.Status)
+	}
+
+	updated, err := q.UpdateDevice(ctx, sqlc.UpdateDeviceParams{
+		ID:        input.DeviceID,
+		ProductID: productID,
+		SerialNo:  serialNo,
+		Name:      name,
+		Status:    status,
+	})
+	if err != nil {
+		return Device{}, mapWriteError(err, "update device")
+	}
+
+	if input.DeviceType != nil {
+		deviceType := strings.TrimSpace(*input.DeviceType)
+		if err := validateDeviceTypeForRelations(ctx, q, input.DeviceID, deviceType); err != nil {
+			return Device{}, err
+		}
+		if updated.DeviceType != deviceType {
+			updated, err = q.UpdateDeviceType(ctx, sqlc.UpdateDeviceTypeParams{
+				ID:         input.DeviceID,
+				DeviceType: deviceType,
+			})
+			if err != nil {
+				return Device{}, mapWriteError(err, "update device type")
+			}
+		}
+	}
+
+	var capabilities []string
+	if input.Capabilities != nil {
+		if err := replaceCapabilities(ctx, q, input.DeviceID, normalizedCapabilities); err != nil {
+			return Device{}, err
+		}
+		capabilities = normalizedCapabilities
+	} else {
+		capabilities, err = q.ListDeviceCapabilities(ctx, input.DeviceID)
+		if err != nil {
+			return Device{}, apperr.Wrap(apperr.KindInternal, "list device capabilities", err)
+		}
+	}
+
+	assignment, err := q.GetActiveDeviceAssignment(ctx, input.DeviceID)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return Device{}, mapNotFoundOrInternal(err, "active device assignment not found")
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return Device{}, apperr.Wrap(apperr.KindInternal, "commit admin update device transaction", err)
+		}
+		committed = true
+		return fromSQL(updated, capabilities), nil
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Device{}, apperr.Wrap(apperr.KindInternal, "commit admin update device transaction", err)
+	}
+	committed = true
+	return fromSQLWithAssignment(updated, assignment, capabilities), nil
 }
 
 func (s *Service) Assign(ctx context.Context, input AssignInput) (Device, error) {
@@ -902,6 +1395,24 @@ func isValidDeviceStatus(status string) bool {
 	}
 }
 
+func isValidDeviceType(value string) bool {
+	switch value {
+	case "standalone", "gateway", "gateway_node", "camera":
+		return true
+	default:
+		return false
+	}
+}
+
+func isValidDeviceLifecycleStatus(status string) bool {
+	switch status {
+	case "inbound", "installed", "online", "maintenance", "repairing", "retired":
+		return true
+	default:
+		return false
+	}
+}
+
 func isValidDeviceOperationType(operationType string) bool {
 	switch operationType {
 	case "calibration", "firmware_upgrade":
@@ -919,7 +1430,7 @@ func normalizeCapabilities(values []string) ([]string, error) {
 		if value == "" {
 			continue
 		}
-		if !isValidCapability(value) {
+		if !isValidCapabilityCodeFormat(value) {
 			return nil, apperr.New(apperr.KindInvalidArgument, "invalid device capability")
 		}
 		if _, ok := seen[value]; ok {
@@ -931,13 +1442,110 @@ func normalizeCapabilities(values []string) ([]string, error) {
 	return capabilities, nil
 }
 
-func isValidCapability(value string) bool {
-	switch value {
-	case "telemetry", "image_capture", "video_stream", "ptz_control", "remote_command", "configurable", "calibratable", "firmware_update", "edge_storage":
+func isValidCapabilityCodeFormat(value string) bool {
+	if len(value) == 0 || len(value) > 64 {
+		return false
+	}
+	for index, char := range value {
+		if index == 0 {
+			if char < 'a' || char > 'z' {
+				return false
+			}
+			continue
+		}
+		if (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || char == '_' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func validateCapabilityCodes(ctx context.Context, q *sqlc.Queries, capabilities []string) error {
+	if len(capabilities) == 0 {
+		return nil
+	}
+	rows, err := q.ListDeviceCapabilityDefinitionsByCodes(ctx, capabilities)
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "list device capability definitions", err)
+	}
+	found := map[string]struct{}{}
+	for _, row := range rows {
+		found[row.Code] = struct{}{}
+	}
+	for _, capability := range capabilities {
+		if _, ok := found[capability]; !ok {
+			return apperr.New(apperr.KindInvalidArgument, "unknown device capability")
+		}
+	}
+	return nil
+}
+
+func normalizeCapabilityDefinitionInput(code string, name string, status string, sortOrder int32) (string, string, string, int32, error) {
+	code = strings.TrimSpace(code)
+	name = strings.TrimSpace(name)
+	status = strings.TrimSpace(status)
+	if status == "" {
+		status = "active"
+	}
+	if !isValidCapabilityCodeFormat(code) {
+		return "", "", "", 0, apperr.New(apperr.KindInvalidArgument, "invalid capability code")
+	}
+	if name == "" {
+		return "", "", "", 0, apperr.New(apperr.KindInvalidArgument, "capability name is required")
+	}
+	if !isValidCapabilityDefinitionStatus(status) {
+		return "", "", "", 0, apperr.New(apperr.KindInvalidArgument, "invalid capability status")
+	}
+	return code, name, status, sortOrder, nil
+}
+
+func isValidCapabilityDefinitionStatus(status string) bool {
+	switch status {
+	case "active", "disabled":
 		return true
 	default:
 		return false
 	}
+}
+
+func validateDeviceTypeForRelations(ctx context.Context, q *sqlc.Queries, deviceID uuid.UUID, deviceType string) error {
+	if deviceType == "gateway" {
+		parentRelations, err := q.ListDeviceRelationsByChild(ctx, sqlc.ListDeviceRelationsByChildParams{
+			ChildDeviceID: deviceID,
+			RelationType:  "gateway_node",
+		})
+		if err != nil {
+			return apperr.Wrap(apperr.KindInternal, "list device parent relations", err)
+		}
+		if len(parentRelations) > 0 {
+			return apperr.New(apperr.KindConflict, "gateway node device cannot be changed to gateway while it has a parent gateway")
+		}
+		return nil
+	}
+
+	childRelations, err := q.ListDeviceRelationsByParent(ctx, sqlc.ListDeviceRelationsByParentParams{
+		ParentDeviceID: deviceID,
+		RelationType:   "gateway_node",
+	})
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "list device child relations", err)
+	}
+	if deviceType == "gateway_node" && len(childRelations) > 0 {
+		return apperr.New(apperr.KindConflict, "gateway device cannot be changed to node while it has child nodes")
+	}
+
+	parentRelations, err := q.ListDeviceRelationsByChild(ctx, sqlc.ListDeviceRelationsByChildParams{
+		ChildDeviceID: deviceID,
+		RelationType:  "gateway_node",
+	})
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "list device parent relations", err)
+	}
+	if deviceType == "standalone" && (len(childRelations) > 0 || len(parentRelations) > 0) {
+		return apperr.New(apperr.KindConflict, "device with active topology relations cannot be changed to standalone")
+	}
+	return nil
 }
 
 func hasCapability(capabilities []string, required string) bool {
@@ -978,18 +1586,55 @@ func operationFromSQL(model sqlc.DeviceOperation) DeviceOperation {
 	}
 }
 
+func lifecycleEventFromSQL(model sqlc.DeviceLifecycleEvent) DeviceLifecycleEvent {
+	return DeviceLifecycleEvent{
+		ID:          model.ID,
+		DeviceID:    model.DeviceID,
+		FromStatus:  model.FromStatus,
+		ToStatus:    model.ToStatus,
+		OccurredAt:  pgTime(model.OccurredAt),
+		Note:        model.Note,
+		ActorUserID: model.ActorUserID,
+		CreatedAt:   pgTime(model.CreatedAt),
+	}
+}
+
+func capabilityDefinitionFromSQL(model sqlc.DeviceCapabilityDefinition) DeviceCapabilityDefinition {
+	return DeviceCapabilityDefinition{
+		Code:      model.Code,
+		Name:      model.Name,
+		Status:    model.Status,
+		SortOrder: model.SortOrder,
+		CreatedAt: pgTime(model.CreatedAt),
+		UpdatedAt: pgTime(model.UpdatedAt),
+	}
+}
+
+func systemRoleDefinitionFromSQL(model sqlc.Role) SystemRoleDefinition {
+	return SystemRoleDefinition{
+		ID:        model.ID,
+		Code:      model.Code,
+		Name:      model.Name,
+		CreatedAt: pgTime(model.CreatedAt),
+		UpdatedAt: pgTime(model.UpdatedAt),
+	}
+}
+
 func fromSQL(model sqlc.Device, capabilities []string) Device {
 	return Device{
-		ID:           model.ID,
-		ProductID:    model.ProductID,
-		SerialNo:     model.SerialNo,
-		Name:         model.Name,
-		Status:       model.Status,
-		ActivatedAt:  pgTimePtr(model.ActivatedAt),
-		Capabilities: capabilities,
-		TopologyRole: "standalone",
-		CreatedAt:    pgTime(model.CreatedAt),
-		UpdatedAt:    pgTime(model.UpdatedAt),
+		ID:                 model.ID,
+		ProductID:          model.ProductID,
+		SerialNo:           model.SerialNo,
+		Name:               model.Name,
+		Status:             model.Status,
+		ActivatedAt:        pgTimePtr(model.ActivatedAt),
+		LifecycleStatus:    model.LifecycleStatus,
+		LifecycleUpdatedAt: pgTimePtr(model.LifecycleUpdatedAt),
+		DeviceType:         model.DeviceType,
+		Capabilities:       capabilities,
+		TopologyRole:       model.DeviceType,
+		CreatedAt:          pgTime(model.CreatedAt),
+		UpdatedAt:          pgTime(model.UpdatedAt),
 	}
 }
 
@@ -1006,131 +1651,149 @@ func fromSQLWithAssignment(model sqlc.Device, assignment sqlc.DeviceAssignment, 
 
 func fromAssignedSQL(model sqlc.GetDeviceWithActiveAssignmentRow, capabilities []string) Device {
 	return Device{
-		ID:           model.ID,
-		AssignmentID: uuidPtr(model.AssignmentID),
-		WorkspaceID:  uuidPtr(model.WorkspaceID),
-		ProjectID:    model.ProjectID,
-		SiteID:       model.SiteID,
-		ProductID:    model.ProductID,
-		SerialNo:     model.SerialNo,
-		Name:         model.Name,
-		Status:       model.Status,
-		ActivatedAt:  pgTimePtr(model.ActivatedAt),
-		AssignedBy:   model.AssignedBy,
-		AssignedAt:   pgTimePtr(model.AssignedAt),
-		Capabilities: capabilities,
-		TopologyRole: "standalone",
-		CreatedAt:    pgTime(model.CreatedAt),
-		UpdatedAt:    pgTime(model.UpdatedAt),
+		ID:                 model.ID,
+		AssignmentID:       uuidPtr(model.AssignmentID),
+		WorkspaceID:        uuidPtr(model.WorkspaceID),
+		ProjectID:          model.ProjectID,
+		SiteID:             model.SiteID,
+		ProductID:          model.ProductID,
+		SerialNo:           model.SerialNo,
+		Name:               model.Name,
+		Status:             model.Status,
+		ActivatedAt:        pgTimePtr(model.ActivatedAt),
+		LifecycleStatus:    model.LifecycleStatus,
+		LifecycleUpdatedAt: pgTimePtr(model.LifecycleUpdatedAt),
+		DeviceType:         model.DeviceType,
+		AssignedBy:         model.AssignedBy,
+		AssignedAt:         pgTimePtr(model.AssignedAt),
+		Capabilities:       capabilities,
+		TopologyRole:       model.DeviceType,
+		CreatedAt:          pgTime(model.CreatedAt),
+		UpdatedAt:          pgTime(model.UpdatedAt),
 	}
 }
 
 func fromWorkspaceRow(model sqlc.ListDevicesByWorkspaceRow, capabilities []string) Device {
 	return Device{
-		ID:           model.ID,
-		AssignmentID: uuidPtr(model.AssignmentID),
-		WorkspaceID:  uuidPtr(model.WorkspaceID),
-		ProjectID:    model.ProjectID,
-		SiteID:       model.SiteID,
-		ProductID:    model.ProductID,
-		SerialNo:     model.SerialNo,
-		Name:         model.Name,
-		Status:       model.Status,
-		ActivatedAt:  pgTimePtr(model.ActivatedAt),
-		AssignedBy:   model.AssignedBy,
-		AssignedAt:   pgTimePtr(model.AssignedAt),
-		Capabilities: capabilities,
-		TopologyRole: model.TopologyRole,
-		ChildCount:   model.ChildCount,
-		CreatedAt:    pgTime(model.CreatedAt),
-		UpdatedAt:    pgTime(model.UpdatedAt),
+		ID:                 model.ID,
+		AssignmentID:       uuidPtr(model.AssignmentID),
+		WorkspaceID:        uuidPtr(model.WorkspaceID),
+		ProjectID:          model.ProjectID,
+		SiteID:             model.SiteID,
+		ProductID:          model.ProductID,
+		SerialNo:           model.SerialNo,
+		Name:               model.Name,
+		Status:             model.Status,
+		ActivatedAt:        pgTimePtr(model.ActivatedAt),
+		LifecycleStatus:    model.LifecycleStatus,
+		LifecycleUpdatedAt: pgTimePtr(model.LifecycleUpdatedAt),
+		DeviceType:         model.DeviceType,
+		AssignedBy:         model.AssignedBy,
+		AssignedAt:         pgTimePtr(model.AssignedAt),
+		Capabilities:       capabilities,
+		TopologyRole:       model.TopologyRole,
+		ChildCount:         model.ChildCount,
+		CreatedAt:          pgTime(model.CreatedAt),
+		UpdatedAt:          pgTime(model.UpdatedAt),
 	}
 }
 
 func fromProjectRow(model sqlc.ListDevicesByProjectRow, capabilities []string) Device {
 	return Device{
-		ID:           model.ID,
-		AssignmentID: uuidPtr(model.AssignmentID),
-		WorkspaceID:  uuidPtr(model.WorkspaceID),
-		ProjectID:    model.ProjectID,
-		SiteID:       model.SiteID,
-		ProductID:    model.ProductID,
-		SerialNo:     model.SerialNo,
-		Name:         model.Name,
-		Status:       model.Status,
-		ActivatedAt:  pgTimePtr(model.ActivatedAt),
-		AssignedBy:   model.AssignedBy,
-		AssignedAt:   pgTimePtr(model.AssignedAt),
-		Capabilities: capabilities,
-		TopologyRole: model.TopologyRole,
-		ChildCount:   model.ChildCount,
-		CreatedAt:    pgTime(model.CreatedAt),
-		UpdatedAt:    pgTime(model.UpdatedAt),
+		ID:                 model.ID,
+		AssignmentID:       uuidPtr(model.AssignmentID),
+		WorkspaceID:        uuidPtr(model.WorkspaceID),
+		ProjectID:          model.ProjectID,
+		SiteID:             model.SiteID,
+		ProductID:          model.ProductID,
+		SerialNo:           model.SerialNo,
+		Name:               model.Name,
+		Status:             model.Status,
+		ActivatedAt:        pgTimePtr(model.ActivatedAt),
+		LifecycleStatus:    model.LifecycleStatus,
+		LifecycleUpdatedAt: pgTimePtr(model.LifecycleUpdatedAt),
+		DeviceType:         model.DeviceType,
+		AssignedBy:         model.AssignedBy,
+		AssignedAt:         pgTimePtr(model.AssignedAt),
+		Capabilities:       capabilities,
+		TopologyRole:       model.TopologyRole,
+		ChildCount:         model.ChildCount,
+		CreatedAt:          pgTime(model.CreatedAt),
+		UpdatedAt:          pgTime(model.UpdatedAt),
 	}
 }
 
 func fromSiteRow(model sqlc.ListDevicesBySiteRow, capabilities []string) Device {
 	return Device{
-		ID:           model.ID,
-		AssignmentID: uuidPtr(model.AssignmentID),
-		WorkspaceID:  uuidPtr(model.WorkspaceID),
-		ProjectID:    model.ProjectID,
-		SiteID:       model.SiteID,
-		ProductID:    model.ProductID,
-		SerialNo:     model.SerialNo,
-		Name:         model.Name,
-		Status:       model.Status,
-		ActivatedAt:  pgTimePtr(model.ActivatedAt),
-		AssignedBy:   model.AssignedBy,
-		AssignedAt:   pgTimePtr(model.AssignedAt),
-		Capabilities: capabilities,
-		TopologyRole: model.TopologyRole,
-		ChildCount:   model.ChildCount,
-		CreatedAt:    pgTime(model.CreatedAt),
-		UpdatedAt:    pgTime(model.UpdatedAt),
+		ID:                 model.ID,
+		AssignmentID:       uuidPtr(model.AssignmentID),
+		WorkspaceID:        uuidPtr(model.WorkspaceID),
+		ProjectID:          model.ProjectID,
+		SiteID:             model.SiteID,
+		ProductID:          model.ProductID,
+		SerialNo:           model.SerialNo,
+		Name:               model.Name,
+		Status:             model.Status,
+		ActivatedAt:        pgTimePtr(model.ActivatedAt),
+		LifecycleStatus:    model.LifecycleStatus,
+		LifecycleUpdatedAt: pgTimePtr(model.LifecycleUpdatedAt),
+		DeviceType:         model.DeviceType,
+		AssignedBy:         model.AssignedBy,
+		AssignedAt:         pgTimePtr(model.AssignedAt),
+		Capabilities:       capabilities,
+		TopologyRole:       model.TopologyRole,
+		ChildCount:         model.ChildCount,
+		CreatedAt:          pgTime(model.CreatedAt),
+		UpdatedAt:          pgTime(model.UpdatedAt),
 	}
 }
 
 func fromSystemAssetRow(model sqlc.ListSystemDeviceAssetsRow, capabilities []string) Device {
 	return Device{
-		ID:           model.ID,
-		AssignmentID: model.AssignmentID,
-		WorkspaceID:  model.WorkspaceID,
-		ProjectID:    model.ProjectID,
-		SiteID:       model.SiteID,
-		ProductID:    model.ProductID,
-		SerialNo:     model.SerialNo,
-		Name:         model.Name,
-		Status:       model.Status,
-		ActivatedAt:  pgTimePtr(model.ActivatedAt),
-		AssignedBy:   model.AssignedBy,
-		AssignedAt:   pgTimePtr(model.AssignedAt),
-		Capabilities: capabilities,
-		TopologyRole: model.TopologyRole,
-		ChildCount:   model.ChildCount,
-		CreatedAt:    pgTime(model.CreatedAt),
-		UpdatedAt:    pgTime(model.UpdatedAt),
+		ID:                 model.ID,
+		AssignmentID:       model.AssignmentID,
+		WorkspaceID:        model.WorkspaceID,
+		ProjectID:          model.ProjectID,
+		SiteID:             model.SiteID,
+		ProductID:          model.ProductID,
+		SerialNo:           model.SerialNo,
+		Name:               model.Name,
+		Status:             model.Status,
+		ActivatedAt:        pgTimePtr(model.ActivatedAt),
+		LifecycleStatus:    model.LifecycleStatus,
+		LifecycleUpdatedAt: pgTimePtr(model.LifecycleUpdatedAt),
+		DeviceType:         model.TopologyRole,
+		AssignedBy:         model.AssignedBy,
+		AssignedAt:         pgTimePtr(model.AssignedAt),
+		Capabilities:       capabilities,
+		TopologyRole:       model.TopologyRole,
+		ChildCount:         model.ChildCount,
+		CreatedAt:          pgTime(model.CreatedAt),
+		UpdatedAt:          pgTime(model.UpdatedAt),
 	}
 }
 
 func fromActiveChildRow(model sqlc.ListActiveDeviceChildrenRow, capabilities []string) DeviceChild {
 	device := Device{
-		ID:           model.DeviceID,
-		AssignmentID: model.AssignmentID,
-		WorkspaceID:  model.WorkspaceID,
-		ProjectID:    model.ProjectID,
-		SiteID:       model.SiteID,
-		ProductID:    model.ProductID,
-		SerialNo:     model.SerialNo,
-		Name:         model.Name,
-		Status:       model.DeviceStatus,
-		ActivatedAt:  pgTimePtr(model.ActivatedAt),
-		AssignedBy:   model.AssignedBy,
-		AssignedAt:   pgTimePtr(model.AssignedAt),
-		Capabilities: capabilities,
-		TopologyRole: "gateway_node",
-		CreatedAt:    pgTime(model.DeviceCreatedAt),
-		UpdatedAt:    pgTime(model.DeviceUpdatedAt),
+		ID:                 model.DeviceID,
+		AssignmentID:       model.AssignmentID,
+		WorkspaceID:        model.WorkspaceID,
+		ProjectID:          model.ProjectID,
+		SiteID:             model.SiteID,
+		ProductID:          model.ProductID,
+		SerialNo:           model.SerialNo,
+		Name:               model.Name,
+		Status:             model.DeviceStatus,
+		ActivatedAt:        pgTimePtr(model.ActivatedAt),
+		LifecycleStatus:    model.LifecycleStatus,
+		LifecycleUpdatedAt: pgTimePtr(model.LifecycleUpdatedAt),
+		DeviceType:         model.DeviceType,
+		AssignedBy:         model.AssignedBy,
+		AssignedAt:         pgTimePtr(model.AssignedAt),
+		Capabilities:       capabilities,
+		TopologyRole:       model.DeviceType,
+		CreatedAt:          pgTime(model.DeviceCreatedAt),
+		UpdatedAt:          pgTime(model.DeviceUpdatedAt),
 	}
 	return DeviceChild{
 		Relation: relationFromActiveChildRow(model),
@@ -1140,22 +1803,25 @@ func fromActiveChildRow(model sqlc.ListActiveDeviceChildrenRow, capabilities []s
 
 func fromVisibleChildRow(model sqlc.ListVisibleDeviceChildrenRow, capabilities []string) DeviceChild {
 	device := Device{
-		ID:           model.DeviceID,
-		AssignmentID: uuidPtr(model.AssignmentID),
-		WorkspaceID:  uuidPtr(model.WorkspaceID),
-		ProjectID:    model.ProjectID,
-		SiteID:       model.SiteID,
-		ProductID:    model.ProductID,
-		SerialNo:     model.SerialNo,
-		Name:         model.Name,
-		Status:       model.DeviceStatus,
-		ActivatedAt:  pgTimePtr(model.ActivatedAt),
-		AssignedBy:   model.AssignedBy,
-		AssignedAt:   pgTimePtr(model.AssignedAt),
-		Capabilities: capabilities,
-		TopologyRole: "gateway_node",
-		CreatedAt:    pgTime(model.DeviceCreatedAt),
-		UpdatedAt:    pgTime(model.DeviceUpdatedAt),
+		ID:                 model.DeviceID,
+		AssignmentID:       uuidPtr(model.AssignmentID),
+		WorkspaceID:        uuidPtr(model.WorkspaceID),
+		ProjectID:          model.ProjectID,
+		SiteID:             model.SiteID,
+		ProductID:          model.ProductID,
+		SerialNo:           model.SerialNo,
+		Name:               model.Name,
+		Status:             model.DeviceStatus,
+		ActivatedAt:        pgTimePtr(model.ActivatedAt),
+		LifecycleStatus:    model.LifecycleStatus,
+		LifecycleUpdatedAt: pgTimePtr(model.LifecycleUpdatedAt),
+		DeviceType:         model.DeviceType,
+		AssignedBy:         model.AssignedBy,
+		AssignedAt:         pgTimePtr(model.AssignedAt),
+		Capabilities:       capabilities,
+		TopologyRole:       model.DeviceType,
+		CreatedAt:          pgTime(model.DeviceCreatedAt),
+		UpdatedAt:          pgTime(model.DeviceUpdatedAt),
 	}
 	return DeviceChild{
 		Relation: relationFromVisibleChildRow(model),

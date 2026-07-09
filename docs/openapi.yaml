@@ -7,7 +7,7 @@ info:
 
     当前文档覆盖已实现的阶段功能：健康检查、短信验证码登录/注册、邮箱验证码验证、密码注册/登录、TOTP MFA、refresh token、logout、会话管理、
     JWT 认证、Workspace 列表/创建、Workspace 成员管理、Project、Site、Device、DeviceRelation、DataStream、DataSource、DataStreamBinding、Telemetry Query、Media Query、Dataset 元信息与遥测查询管理和 ExportJob 导出任务、
-    AccessGrant 外部分享/售后临时授权、Invitation、AuditLog，以及系统管理员后台 DataSource / THCPN 标准站和组网站拓扑同步接口。
+    AccessGrant 外部分享/售后临时授权、Invitation、AuditLog、Camera 实时预览，以及系统管理员后台 DataSource / THCPN 标准站和组网站拓扑同步接口。
 
     正式业务接口优先使用 `Authorization: Bearer <token>`。
     开发环境可通过配置启用 `X-User-ID` fallback；生产环境应关闭该能力。
@@ -27,6 +27,8 @@ tags:
     description: System administrator APIs for platform-level device source operations
   - name: Members
     description: Workspace member management APIs
+  - name: Permissions
+    description: Permission catalog and built-in permission templates
   - name: Projects
     description: Project management APIs
   - name: Sites
@@ -1048,6 +1050,260 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/admin/cameras:
+    post:
+      tags:
+        - Admin
+      operationId: adminCreateCamera
+      summary: Create or update an Ezviz camera device
+      description: Requires `users.is_system_admin = true`. Creates or updates a system-level camera Device, stores Ezviz binding metadata, adds the `video_stream` capability, and can optionally assign the camera to a Workspace.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCameraRequest"
+      responses:
+        "200":
+          description: Camera device created or updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Camera"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/cameras/{device_id}:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags:
+        - Admin
+      operationId: adminGetCamera
+      summary: Get an Ezviz camera binding
+      description: Requires `users.is_system_admin = true`.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Camera device and binding.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Camera"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+    patch:
+      tags:
+        - Admin
+      operationId: adminUpdateCamera
+      summary: Update an Ezviz camera binding
+      description: Requires `users.is_system_admin = true`. Updates Ezviz serial/channel/quality/encryption metadata for an existing camera Device.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCameraRequest"
+      responses:
+        "200":
+          description: Camera binding updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Camera"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/metadata/device-capabilities:
+    get:
+      tags:
+        - Admin
+      operationId: adminListDeviceCapabilityDefinitions
+      summary: List device capability metadata
+      description: Requires `users.is_system_admin = true`.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Device capability metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceCapabilityDefinitionListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      tags:
+        - Admin
+      operationId: adminCreateDeviceCapabilityDefinition
+      summary: Create device capability metadata
+      description: Requires `users.is_system_admin = true`.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDeviceCapabilityDefinitionRequest"
+      responses:
+        "201":
+          description: Device capability metadata created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceCapabilityDefinition"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/metadata/device-capabilities/{code}:
+    parameters:
+      - name: code
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/DeviceCapabilityCode"
+    patch:
+      tags:
+        - Admin
+      operationId: adminUpdateDeviceCapabilityDefinition
+      summary: Update device capability metadata
+      description: Requires `users.is_system_admin = true`.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDeviceCapabilityDefinitionRequest"
+      responses:
+        "200":
+          description: Device capability metadata updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceCapabilityDefinition"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/metadata/system-roles:
+    get:
+      tags:
+        - Admin
+      operationId: adminListSystemRoles
+      summary: List system role metadata
+      description: Requires `users.is_system_admin = true`.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: System role metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemRoleDefinitionListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/metadata/system-roles/{code}:
+    parameters:
+      - name: code
+        in: path
+        required: true
+        schema:
+          type: string
+    patch:
+      tags:
+        - Admin
+      operationId: adminUpdateSystemRole
+      summary: Update system role metadata
+      description: Requires `users.is_system_admin = true`. Updates role display name; role code and permissions remain stable.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSystemRoleRequest"
+      responses:
+        "200":
+          description: System role metadata updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemRoleDefinition"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
   /api/v1/admin/devices:
     get:
       tags:
@@ -1069,6 +1325,43 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/PermissionDenied"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/devices/{device_id}:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    patch:
+      tags:
+        - Admin
+      operationId: adminUpdateSystemDeviceAsset
+      summary: Update system device asset
+      description: Requires `users.is_system_admin = true`. Updates asset fields, device type, and final capability codes. Assignment, topology relations, and lifecycle are managed by separate admin actions.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUpdateDeviceRequest"
+      responses:
+        "200":
+          description: System device asset updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/Internal"
   /api/v1/admin/devices/{device_id}/children:
@@ -1156,6 +1449,124 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeviceRelation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/devices/{device_id}/lifecycle:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags:
+        - Admin
+      operationId: adminGetDeviceLifecycle
+      summary: Get system device lifecycle timeline
+      description: Requires `users.is_system_admin = true`.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Device lifecycle state and events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceLifecycleResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+    patch:
+      tags:
+        - Admin
+      operationId: adminUpdateDeviceLifecycle
+      summary: Update system device lifecycle state
+      description: Requires `users.is_system_admin = true`. Lifecycle transitions are recorded but not constrained by a workflow.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDeviceLifecycleRequest"
+      responses:
+        "200":
+          description: Device lifecycle updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceLifecycleResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/devices/{device_id}/capabilities:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags:
+        - Admin
+      operationId: adminGetDeviceCapabilities
+      summary: Get system device capabilities
+      description: Requires `users.is_system_admin = true`. Returns the final effective device capability codes.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Device capabilities.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceCapabilitiesResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+    patch:
+      tags:
+        - Admin
+      operationId: adminUpdateDeviceCapabilities
+      summary: Replace system device capabilities
+      description: Requires `users.is_system_admin = true`. Replaces the final effective capability set for this device.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDeviceCapabilitiesRequest"
+      responses:
+        "200":
+          description: Device capabilities updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceCapabilitiesResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1256,7 +1667,7 @@ paths:
       description: |
         Requires `member.manage` permission in the target workspace.
         Exactly one of `user_id`, `email` or `phone` must be supplied.
-        Only internal member roles are accepted.
+        `permission_codes` is the authorization source. `template_code` only records which built-in permission template was used to prefill the list.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1270,11 +1681,22 @@ paths:
               byEmail:
                 value:
                   email: researcher@example.com
-                  role_code: viewer
+                  template_code: viewer
+                  permission_codes:
+                    - project.view
+                    - site.view
+                    - device.view
+                    - telemetry.query
               byUserId:
                 value:
                   user_id: 018fa0ec-9b6e-7a3d-9c7b-1d8b04f31988
-                  role_code: researcher
+                  template_code: researcher
+                  permission_codes:
+                    - project.view
+                    - site.view
+                    - device.view
+                    - telemetry.query
+                    - telemetry.export
       responses:
         "201":
           description: Workspace member created or restored.
@@ -1302,10 +1724,10 @@ paths:
       tags:
         - Members
       operationId: updateWorkspaceMemberRole
-      summary: Update workspace member role
+      summary: Update workspace member permissions
       description: |
         Requires `member.manage` permission in the target workspace.
-        The last active Owner cannot be changed to a non-Owner role.
+        The last active Owner cannot be changed to a non-Owner permission set.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1318,10 +1740,16 @@ paths:
             examples:
               promote:
                 value:
-                  role_code: project_manager
+                  template_code: project_manager
+                  permission_codes:
+                    - project.view
+                    - project.manage
+                    - site.view
+                    - device.view
+                    - telemetry.query
       responses:
         "200":
-          description: Workspace member role updated.
+          description: Workspace member permissions updated.
           content:
             application/json:
               schema:
@@ -1363,6 +1791,27 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/permissions/catalog:
+    get:
+      tags:
+        - Permissions
+      operationId: getPermissionCatalog
+      summary: List permission definitions and built-in templates
+      description: Returns the permission catalog used by member, access grant and invitation forms. Built-in roles are exposed as permission templates only.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Permission definitions, UI groups and built-in templates.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PermissionCatalogResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/Internal"
   /api/v1/projects:
@@ -1751,6 +2200,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeviceChildrenResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/devices/{device_id}/camera/live-session:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    post:
+      tags:
+        - Devices
+      operationId: createCameraLiveSession
+      summary: Create a camera live preview session
+      description: Requires `media.live_view` on the camera device. Returns short-lived Ezviz playback parameters; the backend keeps appSecret and long-lived credentials server-side.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Camera live session created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CameraLiveSessionResponse"
         "400":
           $ref: "#/components/responses/InvalidArgument"
         "401":
@@ -3353,24 +3831,30 @@ components:
         - active
         - disabled
         - retired
+    DeviceLifecycleStatus:
+      type: string
+      enum:
+        - inbound
+        - installed
+        - online
+        - maintenance
+        - repairing
+        - retired
     DeviceTopologyRole:
       type: string
       enum:
         - standalone
         - gateway
         - gateway_node
+        - camera
     DeviceCapabilityCode:
       type: string
+      pattern: "^[a-z][a-z0-9_]{0,63}$"
+    DeviceCapabilityDefinitionStatus:
+      type: string
       enum:
-        - telemetry
-        - image_capture
-        - video_stream
-        - ptz_control
-        - remote_command
-        - configurable
-        - calibratable
-        - firmware_update
-        - edge_storage
+        - active
+        - disabled
     DeviceOperationType:
       type: string
       enum:
@@ -3515,7 +3999,87 @@ components:
         - data_manager
         - researcher
         - viewer
-      description: Roles allowed for workspace members. Shared and service roles are reserved for future AccessGrant flows.
+      description: Built-in permission template codes available to workspace members. Authorization uses explicit `permission_codes`.
+    MemberScopeType:
+      type: string
+      enum:
+        - workspace
+        - project
+        - site
+        - device
+        - dataset
+      description: Scope types supported by internal workspace members. Owner members must use workspace scope.
+    PermissionCode:
+      type: string
+      description: Stable permission code, such as `device.view` or `telemetry.query`.
+    PermissionDefinition:
+      type: object
+      required:
+        - code
+        - name
+        - resource_type
+        - action
+        - group
+      properties:
+        code:
+          $ref: "#/components/schemas/PermissionCode"
+        name:
+          type: string
+        resource_type:
+          type: string
+        action:
+          type: string
+        group:
+          type: string
+    PermissionGroup:
+      type: object
+      required:
+        - code
+        - name
+        - codes
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        codes:
+          type: array
+          items:
+            $ref: "#/components/schemas/PermissionCode"
+    PermissionTemplate:
+      type: object
+      required:
+        - code
+        - name
+        - permission_codes
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        permission_codes:
+          type: array
+          items:
+            $ref: "#/components/schemas/PermissionCode"
+    PermissionCatalogResponse:
+      type: object
+      required:
+        - permissions
+        - groups
+        - templates
+      properties:
+        permissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PermissionDefinition"
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/PermissionGroup"
+        templates:
+          type: array
+          items:
+            $ref: "#/components/schemas/PermissionTemplate"
     SendSmsRequest:
       type: object
       required:
@@ -3918,6 +4482,8 @@ components:
         - id
         - status
         - joined_at
+        - scope_type
+        - scope_id
         - role
       properties:
         id:
@@ -3926,6 +4492,10 @@ components:
           $ref: "#/components/schemas/MembershipStatus"
         joined_at:
           $ref: "#/components/schemas/Timestamp"
+        scope_type:
+          $ref: "#/components/schemas/MemberScopeType"
+        scope_id:
+          $ref: "#/components/schemas/UUID"
         role:
           $ref: "#/components/schemas/RoleSummary"
     WorkspaceWithMembership:
@@ -3978,6 +4548,8 @@ components:
         - role_name
         - status
         - joined_at
+        - scope_type
+        - scope_id
       properties:
         id:
           $ref: "#/components/schemas/UUID"
@@ -3997,6 +4569,10 @@ components:
           $ref: "#/components/schemas/MembershipStatus"
         joined_at:
           $ref: "#/components/schemas/Timestamp"
+        scope_type:
+          $ref: "#/components/schemas/MemberScopeType"
+        scope_id:
+          $ref: "#/components/schemas/UUID"
     UserSummary:
       type: object
       required:
@@ -4021,6 +4597,11 @@ components:
         - workspace_id
         - status
         - joined_at
+        - scope_type
+        - scope_id
+        - template_code
+        - template_name
+        - permission_codes
         - user
         - role
       properties:
@@ -4032,10 +4613,24 @@ components:
           $ref: "#/components/schemas/MembershipStatus"
         joined_at:
           $ref: "#/components/schemas/Timestamp"
+        scope_type:
+          $ref: "#/components/schemas/MemberScopeType"
+        scope_id:
+          $ref: "#/components/schemas/UUID"
+        template_code:
+          type: string
+          description: Built-in permission template used to prefill the explicit permission list, or `custom`.
+        template_name:
+          type: string
+        permission_codes:
+          type: array
+          items:
+            $ref: "#/components/schemas/PermissionCode"
         user:
           $ref: "#/components/schemas/UserSummary"
         role:
           $ref: "#/components/schemas/RoleSummary"
+          description: Compatibility summary derived from `template_code`; do not use for authorization.
     WorkspaceMemberListResponse:
       type: object
       required:
@@ -4048,7 +4643,7 @@ components:
     AddWorkspaceMemberRequest:
       type: object
       required:
-        - role_code
+        - permission_codes
       oneOf:
         - required:
             - user_id
@@ -4063,15 +4658,38 @@ components:
           $ref: "#/components/schemas/Email"
         phone:
           $ref: "#/components/schemas/Phone"
-        role_code:
-          $ref: "#/components/schemas/InternalMemberRoleCode"
+        template_code:
+          type: string
+          description: Optional built-in template code used to prefill `permission_codes`; authorization still uses the submitted permission list.
+          default: viewer
+        permission_codes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/PermissionCode"
+        scope_type:
+          $ref: "#/components/schemas/MemberScopeType"
+        scope_id:
+          $ref: "#/components/schemas/UUID"
     UpdateWorkspaceMemberRoleRequest:
       type: object
       required:
-        - role_code
+        - permission_codes
       properties:
-        role_code:
-          $ref: "#/components/schemas/InternalMemberRoleCode"
+        template_code:
+          type: string
+          description: Optional built-in template code used to prefill `permission_codes`; authorization still uses the submitted permission list.
+        permission_codes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/PermissionCode"
+        scope_type:
+          $ref: "#/components/schemas/MemberScopeType"
+        scope_id:
+          $ref: "#/components/schemas/UUID"
     Project:
       type: object
       required:
@@ -4236,6 +4854,8 @@ components:
         - serial_no
         - name
         - status
+        - lifecycle_status
+        - device_type
         - capabilities
         - topology_role
         - child_count
@@ -4262,6 +4882,12 @@ components:
           $ref: "#/components/schemas/DeviceStatus"
         activated_at:
           $ref: "#/components/schemas/Timestamp"
+        lifecycle_status:
+          $ref: "#/components/schemas/DeviceLifecycleStatus"
+        lifecycle_updated_at:
+          $ref: "#/components/schemas/Timestamp"
+        device_type:
+          $ref: "#/components/schemas/DeviceTopologyRole"
         assigned_by:
           $ref: "#/components/schemas/UUID"
         assigned_at:
@@ -4289,6 +4915,311 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Device"
+    CameraProvider:
+      type: string
+      enum:
+        - ezviz
+    CameraQuality:
+      type: string
+      enum:
+        - fluent
+        - standard
+        - hd
+        - ultra_hd
+    CameraBindingStatus:
+      type: string
+      enum:
+        - active
+        - disabled
+    CameraBinding:
+      type: object
+      required:
+        - id
+        - device_id
+        - provider
+        - device_serial
+        - channel_no
+        - default_quality
+        - is_encrypted
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        device_id:
+          $ref: "#/components/schemas/UUID"
+        provider:
+          $ref: "#/components/schemas/CameraProvider"
+        device_serial:
+          type: string
+        channel_no:
+          type: integer
+          format: int32
+          minimum: 1
+        default_quality:
+          $ref: "#/components/schemas/CameraQuality"
+        is_encrypted:
+          type: boolean
+        validate_code_secret_ref:
+          type: string
+        status:
+          $ref: "#/components/schemas/CameraBindingStatus"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    Camera:
+      type: object
+      required:
+        - device
+        - binding
+      properties:
+        device:
+          $ref: "#/components/schemas/Device"
+        binding:
+          $ref: "#/components/schemas/CameraBinding"
+    CreateCameraRequest:
+      type: object
+      required:
+        - serial_no
+        - name
+        - device_serial
+      properties:
+        product_id:
+          type: string
+        serial_no:
+          type: string
+        name:
+          type: string
+        device_serial:
+          type: string
+        channel_no:
+          type: integer
+          format: int32
+          minimum: 1
+          default: 1
+        default_quality:
+          $ref: "#/components/schemas/CameraQuality"
+        is_encrypted:
+          type: boolean
+          default: false
+        validate_code_secret_ref:
+          type: string
+        target_workspace_id:
+          $ref: "#/components/schemas/UUID"
+        project_id:
+          $ref: "#/components/schemas/UUID"
+        site_id:
+          $ref: "#/components/schemas/UUID"
+    UpdateCameraRequest:
+      type: object
+      properties:
+        device_serial:
+          type: string
+        channel_no:
+          type: integer
+          format: int32
+          minimum: 1
+        default_quality:
+          $ref: "#/components/schemas/CameraQuality"
+        is_encrypted:
+          type: boolean
+        validate_code_secret_ref:
+          type: string
+        status:
+          $ref: "#/components/schemas/CameraBindingStatus"
+    CameraLiveSessionResponse:
+      type: object
+      required:
+        - provider
+        - access_token
+        - url
+        - quality
+        - expires_at
+        - device_serial
+        - channel_no
+      properties:
+        provider:
+          $ref: "#/components/schemas/CameraProvider"
+        access_token:
+          type: string
+        url:
+          type: string
+          example: ezopen://open.ys7.com/BD3957004/1.live
+        quality:
+          $ref: "#/components/schemas/CameraQuality"
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+        device_serial:
+          type: string
+        channel_no:
+          type: integer
+          format: int32
+    DeviceLifecycleEvent:
+      type: object
+      required:
+        - id
+        - device_id
+        - to_status
+        - occurred_at
+        - created_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        device_id:
+          $ref: "#/components/schemas/UUID"
+        from_status:
+          $ref: "#/components/schemas/DeviceLifecycleStatus"
+        to_status:
+          $ref: "#/components/schemas/DeviceLifecycleStatus"
+        occurred_at:
+          $ref: "#/components/schemas/Timestamp"
+        note:
+          type: string
+        actor_user_id:
+          $ref: "#/components/schemas/UUID"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+    DeviceLifecycleResponse:
+      type: object
+      required:
+        - device
+        - events
+      properties:
+        device:
+          $ref: "#/components/schemas/Device"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceLifecycleEvent"
+    UpdateDeviceLifecycleRequest:
+      type: object
+      required:
+        - lifecycle_status
+      properties:
+        lifecycle_status:
+          $ref: "#/components/schemas/DeviceLifecycleStatus"
+        occurred_at:
+          $ref: "#/components/schemas/Timestamp"
+        note:
+          type: string
+    DeviceCapabilitiesResponse:
+      type: object
+      required:
+        - capabilities
+      properties:
+        capabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceCapabilityCode"
+    DeviceCapabilityDefinition:
+      type: object
+      required:
+        - code
+        - name
+        - status
+        - sort_order
+        - created_at
+        - updated_at
+      properties:
+        code:
+          $ref: "#/components/schemas/DeviceCapabilityCode"
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/DeviceCapabilityDefinitionStatus"
+        sort_order:
+          type: integer
+          format: int32
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    DeviceCapabilityDefinitionListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceCapabilityDefinition"
+    CreateDeviceCapabilityDefinitionRequest:
+      type: object
+      required:
+        - code
+        - name
+        - status
+        - sort_order
+      properties:
+        code:
+          $ref: "#/components/schemas/DeviceCapabilityCode"
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/DeviceCapabilityDefinitionStatus"
+        sort_order:
+          type: integer
+          format: int32
+    UpdateDeviceCapabilityDefinitionRequest:
+      type: object
+      required:
+        - name
+        - status
+        - sort_order
+      properties:
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/DeviceCapabilityDefinitionStatus"
+        sort_order:
+          type: integer
+          format: int32
+    SystemRoleDefinition:
+      type: object
+      required:
+        - id
+        - code
+        - name
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        code:
+          type: string
+        name:
+          type: string
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    SystemRoleDefinitionListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SystemRoleDefinition"
+    UpdateSystemRoleRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+    UpdateDeviceCapabilitiesRequest:
+      type: object
+      required:
+        - capabilities
+      properties:
+        capabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceCapabilityCode"
     DeviceRelation:
       type: object
       required:
@@ -4367,6 +5298,24 @@ components:
           $ref: "#/components/schemas/UUID"
         site_id:
           $ref: "#/components/schemas/UUID"
+    AdminUpdateDeviceRequest:
+      type: object
+      description: System admin update for device asset fields. Assignment, topology relations, and lifecycle are managed separately.
+      properties:
+        product_id:
+          type: string
+        serial_no:
+          type: string
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/DeviceStatus"
+        device_type:
+          $ref: "#/components/schemas/DeviceTopologyRole"
+        capabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceCapabilityCode"
     DeviceOperation:
       type: object
       required:
@@ -4628,6 +5577,7 @@ components:
         - serial_no
         - name
         - status
+        - device_type
         - created_at
         - updated_at
       properties:
@@ -4649,6 +5599,8 @@ components:
           type: string
         status:
           $ref: "#/components/schemas/DeviceStatus"
+        device_type:
+          $ref: "#/components/schemas/DeviceTopologyRole"
         assigned_by:
           $ref: "#/components/schemas/UUID"
         assigned_at:
@@ -5390,7 +6342,7 @@ components:
         - shared_viewer
         - shared_downloader
         - service_engineer
-      description: Roles allowed for scoped access grants. Owner and Admin are intentionally excluded.
+      description: Built-in permission template codes available to scoped access grants. Authorization uses explicit `permission_codes`.
     AccessGrantScopeType:
       type: string
       enum:
@@ -5438,6 +6390,9 @@ components:
         - workspace_id
         - subject
         - role
+        - template_code
+        - template_name
+        - permission_codes
         - scope_type
         - scope_id
         - allow_reshare
@@ -5455,6 +6410,16 @@ components:
           $ref: "#/components/schemas/AccessGrantSubject"
         role:
           $ref: "#/components/schemas/RoleSummary"
+          description: Compatibility summary derived from `template_code`; do not use for authorization.
+        template_code:
+          type: string
+          description: Built-in permission template used to prefill the explicit permission list, or `custom`.
+        template_name:
+          type: string
+        permission_codes:
+          type: array
+          items:
+            $ref: "#/components/schemas/PermissionCode"
         scope_type:
           $ref: "#/components/schemas/AccessGrantScopeType"
         scope_id:
@@ -5485,7 +6450,7 @@ components:
     CreateAccessGrantRequest:
       type: object
       required:
-        - role_code
+        - permission_codes
         - scope_type
         - scope_id
       oneOf:
@@ -5502,8 +6467,16 @@ components:
           $ref: "#/components/schemas/Email"
         phone:
           $ref: "#/components/schemas/Phone"
-        role_code:
-          $ref: "#/components/schemas/AccessGrantRoleCode"
+        template_code:
+          type: string
+          description: Optional built-in template code used to prefill `permission_codes`; authorization still uses the submitted permission list.
+          default: viewer
+        permission_codes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/PermissionCode"
         scope_type:
           $ref: "#/components/schemas/AccessGrantScopeType"
         scope_id:
@@ -5522,6 +6495,9 @@ components:
         - id
         - workspace_id
         - role
+        - template_code
+        - template_name
+        - permission_codes
         - scope_type
         - scope_id
         - invited_by
@@ -5539,6 +6515,16 @@ components:
           $ref: "#/components/schemas/Phone"
         role:
           $ref: "#/components/schemas/RoleSummary"
+          description: Compatibility summary derived from `template_code`; do not use for authorization.
+        template_code:
+          type: string
+          description: Built-in permission template used to prefill the explicit permission list, or `custom`.
+        template_name:
+          type: string
+        permission_codes:
+          type: array
+          items:
+            $ref: "#/components/schemas/PermissionCode"
         scope_type:
           $ref: "#/components/schemas/AccessGrantScopeType"
         scope_id:
@@ -5565,7 +6551,7 @@ components:
     CreateInvitationRequest:
       type: object
       required:
-        - role_code
+        - permission_codes
         - scope_type
         - scope_id
       oneOf:
@@ -5578,8 +6564,16 @@ components:
           $ref: "#/components/schemas/Email"
         phone:
           $ref: "#/components/schemas/Phone"
-        role_code:
-          $ref: "#/components/schemas/AccessGrantRoleCode"
+        template_code:
+          type: string
+          description: Optional built-in template code used to prefill `permission_codes`; authorization still uses the submitted permission list.
+          default: viewer
+        permission_codes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/PermissionCode"
         scope_type:
           $ref: "#/components/schemas/AccessGrantScopeType"
         scope_id:

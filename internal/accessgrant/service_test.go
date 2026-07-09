@@ -14,22 +14,24 @@ func TestCreateGrantRequiresExactlyOneSubjectSelector(t *testing.T) {
 	service := NewService(nil)
 
 	_, err := service.CreateGrant(context.Background(), CreateGrantInput{
-		RoleCode:    "shared_viewer",
-		ScopeType:   "project",
-		ScopeID:     uuid.New(),
-		ActorUserID: uuid.New(),
+		TemplateCode:    "shared_viewer",
+		PermissionCodes: []string{"project.view"},
+		ScopeType:       "project",
+		ScopeID:         uuid.New(),
+		ActorUserID:     uuid.New(),
 	})
 	if apperr.KindOf(err) != apperr.KindInvalidArgument {
 		t.Fatalf("expected invalid argument for missing selector, got %v", err)
 	}
 
 	_, err = service.CreateGrant(context.Background(), CreateGrantInput{
-		SubjectUserID: uuid.New(),
-		Email:         "expert@example.com",
-		RoleCode:      "shared_viewer",
-		ScopeType:     "project",
-		ScopeID:       uuid.New(),
-		ActorUserID:   uuid.New(),
+		SubjectUserID:   uuid.New(),
+		Email:           "expert@example.com",
+		TemplateCode:    "shared_viewer",
+		PermissionCodes: []string{"project.view"},
+		ScopeType:       "project",
+		ScopeID:         uuid.New(),
+		ActorUserID:     uuid.New(),
 	})
 	if apperr.KindOf(err) != apperr.KindInvalidArgument {
 		t.Fatalf("expected invalid argument for multiple selectors, got %v", err)

@@ -58,6 +58,8 @@ type Membership struct {
 	RoleName    string    `json:"role_name"`
 	Status      string    `json:"status"`
 	JoinedAt    time.Time `json:"joined_at"`
+	ScopeType   string    `json:"scope_type"`
+	ScopeID     uuid.UUID `json:"scope_id"`
 }
 
 type RegisterInput struct {
@@ -127,12 +129,25 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (RegisterRe
 	}
 
 	createdMember, err := q.CreateWorkspaceMember(ctx, sqlc.CreateWorkspaceMemberParams{
-		WorkspaceID: createdWorkspace.ID,
-		UserID:      createdUser.ID,
-		RoleID:      ownerRole.ID,
+		WorkspaceID:  createdWorkspace.ID,
+		UserID:       createdUser.ID,
+		RoleID:       ownerRole.ID,
+		ScopeType:    "workspace",
+		ScopeID:      createdWorkspace.ID,
+		TemplateCode: ownerRoleCode,
 	})
 	if err != nil {
 		return RegisterResult{}, mapWriteError(err, "create workspace membership")
+	}
+	ownerPermissions, err := q.ListPermissionCodesByTemplate(ctx, ownerRoleCode)
+	if err != nil {
+		return RegisterResult{}, apperr.Wrap(apperr.KindInternal, "list owner permissions", err)
+	}
+	if _, err := q.AddWorkspaceMemberPermissions(ctx, sqlc.AddWorkspaceMemberPermissionsParams{
+		MemberID: createdMember.ID,
+		Column2:  ownerPermissions,
+	}); err != nil {
+		return RegisterResult{}, apperr.Wrap(apperr.KindInternal, "create workspace owner permissions", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -229,6 +244,8 @@ func membershipFromSQL(model sqlc.WorkspaceMember, roleCode string, roleName str
 		RoleName:    roleName,
 		Status:      model.Status,
 		JoinedAt:    pgTime(model.JoinedAt),
+		ScopeType:   model.ScopeType,
+		ScopeID:     model.ScopeID,
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/audit"
 	"thcpn-gin/internal/auth"
+	"thcpn-gin/internal/camera"
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/dataset"
 	"thcpn-gin/internal/datasource"
@@ -87,12 +88,14 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	userService := user.NewService(deps.Postgres)
 	workspaceService := workspace.NewService(deps.Postgres)
 	permissionChecker := permission.NewChecker(sqlc.New(deps.Postgres))
+	permissionCatalogService := permission.NewCatalogService(deps.Postgres)
 	auditService := audit.NewService(deps.Postgres)
 	memberService := member.NewService(deps.Postgres)
 	accessGrantService := accessgrant.NewService(deps.Postgres)
 	projectService := project.NewService(deps.Postgres)
 	siteService := site.NewService(deps.Postgres)
 	deviceService := device.NewService(deps.Postgres)
+	cameraService := camera.NewService(deps.Postgres, cfg.Ezviz)
 	dataStreamService := datastream.NewService(deps.Postgres)
 	dataSourceService := datasource.NewService(deps.Postgres)
 	datasetService := dataset.NewService(deps.Postgres, dataset.QueryDependencies{
@@ -124,6 +127,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	workspaceHandler := workspace.NewHandler(workspaceService, auditService)
 	memberHandler := member.NewHandler(memberService, permissionChecker, auditService)
 	accessGrantHandler := accessgrant.NewHandler(accessGrantService, permissionChecker, auditService)
+	permissionCatalogHandler := permission.NewCatalogHandler(permissionCatalogService)
 	auditHandler := audit.NewHandler(auditService, permissionChecker, func(c *gin.Context) (uuid.UUID, bool) {
 		actor, ok := auth.ActorFromContext(c)
 		if !ok {
@@ -134,6 +138,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	projectHandler := project.NewHandler(projectService, permissionChecker, auditService)
 	siteHandler := site.NewHandler(siteService, permissionChecker, auditService)
 	deviceHandler := device.NewHandler(deviceService, permissionChecker, auditService)
+	cameraHandler := camera.NewHandler(cameraService, permissionChecker, auditService)
 	dataStreamHandler := datastream.NewHandler(dataStreamService, permissionChecker, auditService)
 	datasetHandler := dataset.NewHandler(datasetService, permissionChecker, auditService)
 	dataSourceHandler := datasource.NewHandler(dataSourceService, permissionChecker, auditService)
@@ -178,12 +183,26 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.GET("/me", userHandler.Me)
 	authed.GET("/workspaces", workspaceHandler.List)
 	authed.POST("/workspaces", workspaceHandler.Create)
+	authed.GET("/permissions/catalog", permissionCatalogHandler.Catalog)
 	admin := authed.Group("/admin")
 	admin.Use(auth.RequireSystemAdmin())
 	admin.GET("/workspaces", workspaceHandler.AdminList)
 	admin.GET("/projects", projectHandler.AdminList)
 	admin.GET("/sites", siteHandler.AdminList)
+	admin.GET("/metadata/device-capabilities", deviceHandler.AdminListCapabilityDefinitions)
+	admin.POST("/metadata/device-capabilities", deviceHandler.AdminCreateCapabilityDefinition)
+	admin.PATCH("/metadata/device-capabilities/:code", deviceHandler.AdminUpdateCapabilityDefinition)
+	admin.GET("/metadata/system-roles", deviceHandler.AdminListSystemRoles)
+	admin.PATCH("/metadata/system-roles/:code", deviceHandler.AdminUpdateSystemRole)
+	admin.POST("/cameras", cameraHandler.AdminCreate)
+	admin.GET("/cameras/:device_id", cameraHandler.AdminGet)
+	admin.PATCH("/cameras/:device_id", cameraHandler.AdminUpdate)
 	admin.GET("/devices", deviceHandler.AdminListSystemAssets)
+	admin.PATCH("/devices/:device_id", deviceHandler.AdminUpdate)
+	admin.GET("/devices/:device_id/lifecycle", deviceHandler.AdminLifecycle)
+	admin.PATCH("/devices/:device_id/lifecycle", deviceHandler.AdminUpdateLifecycle)
+	admin.GET("/devices/:device_id/capabilities", deviceHandler.AdminCapabilities)
+	admin.PATCH("/devices/:device_id/capabilities", deviceHandler.AdminUpdateCapabilities)
 	admin.POST("/devices/:device_id/assignment", deviceHandler.AdminAssign)
 	admin.DELETE("/devices/:device_id/assignment", deviceHandler.AdminUnassign)
 	admin.POST("/devices/:device_id/children", deviceHandler.AdminAddChild)
@@ -224,6 +243,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.GET("/devices", deviceHandler.List)
 	admin.GET("/devices/:device_id/children", deviceHandler.AdminChildren)
 	authed.GET("/devices/:device_id/children", deviceHandler.Children)
+	authed.POST("/devices/:device_id/camera/live-session", cameraHandler.CreateLiveSession)
 	authed.GET("/devices/:device_id/telemetry", telemetryHandler.QueryDevice)
 	authed.GET("/devices/:device_id/media", mediaHandler.ListDevice)
 	authed.GET("/devices/:device_id/media/images", mediaHandler.ListDeviceImages)

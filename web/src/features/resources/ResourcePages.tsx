@@ -39,10 +39,10 @@ import {
   exportJobsApi,
   formatApiError,
   invitationsApi,
+  permissionsApi,
   projectsApi,
   sitesApi,
   type AccessGrant,
-  type AccessGrantRoleCode,
   type AccessGrantScopeType,
   type AuditLog,
   type DataStream,
@@ -53,16 +53,20 @@ import {
   type DatasetTelemetrySeries,
   type Device,
   type DeviceChild,
+  type DeviceLifecycleStatus,
   type ExportJob,
   type ExportResourceType,
   type ExportType,
   type Invitation,
+  type PermissionCode,
+  type PermissionCatalogResponse,
   type Project,
   type Site
 } from "../../api";
 import { useWorkspace } from "../../app/WorkspaceProvider";
 import { formatDateTime, labelOrDash } from "../../app/format";
-import { accessRoleMeta, accessRoleOptions, roleLabel } from "../settings/roleMeta";
+import { accessRoleMeta, roleLabel } from "../settings/roleMeta";
+import { PermissionPicker, PermissionSummary } from "../settings/PermissionPicker";
 import {
   Badge,
   Button,
@@ -81,7 +85,7 @@ import { copyableId, statusColor, tableScrollX } from "../../app/ui";
 use([EChartsLineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer]);
 
 const DATASET_PREVIEW_LIMIT = 500;
-type DeviceTopologyFilter = "all" | "gateway" | "gateway_node" | "standalone";
+type DeviceTopologyFilter = "all" | "gateway" | "gateway_node" | "camera" | "standalone";
 
 const datasetTypeOptions: Array<{ label: string; value: DatasetDataType }> = [
   { label: "遥测", value: "telemetry" },
@@ -290,6 +294,7 @@ export function DevicesPage() {
       all: allDevices.length,
       gateway: allDevices.filter((item) => item.topology_role === "gateway").length,
       gateway_node: allDevices.filter((item) => item.topology_role === "gateway_node").length,
+      camera: allDevices.filter((item) => item.topology_role === "camera").length,
       standalone: allDevices.filter((item) => item.topology_role === "standalone").length
     }),
     [allDevices]
@@ -309,6 +314,7 @@ export function DevicesPage() {
       )
     },
     { key: "topology", title: "类型", width: 150, render: (_, item) => deviceTopologyTag(item) },
+    { key: "lifecycle", title: "生命周期", width: 120, render: (_, item) => deviceLifecycleTag(item.lifecycle_status) },
     { key: "status", title: "状态", width: 130, render: (_, item) => <Tag color={statusColor(item.status)}>{item.status}</Tag> },
     {
       key: "capabilities",
@@ -330,7 +336,13 @@ export function DevicesPage() {
       render: (_, item) => (
         <Space size={8} wrap>
           <AntButton icon={<ChartLine size={15} />} onClick={() => navigate(`/device-data?device_id=${encodeURIComponent(item.id)}`)} type="primary">
-            {item.topology_role === "gateway" ? "网关数据" : item.topology_role === "gateway_node" ? "节点数据" : "查看数据"}
+            {item.topology_role === "gateway"
+              ? "网关数据"
+              : item.topology_role === "gateway_node"
+                ? "节点数据"
+                : item.topology_role === "camera"
+                  ? "实时视频"
+                  : "查看数据"}
           </AntButton>
           <AntButton danger disabled={unbind.isPending} icon={<Trash2 size={15} />} onClick={() => unbind.mutate(item.id)}>
             解绑
@@ -364,6 +376,7 @@ export function DevicesPage() {
               <DeviceTopologySummary label="全部设备" value={topologyCounts.all} />
               <DeviceTopologySummary label="组网站" value={topologyCounts.gateway} tone="gateway" />
               <DeviceTopologySummary label="节点" value={topologyCounts.gateway_node} tone="node" />
+              <DeviceTopologySummary label="相机" value={topologyCounts.camera} tone="camera" />
               <DeviceTopologySummary label="普通设备" value={topologyCounts.standalone} tone="standalone" />
             </div>
             <Tabs
@@ -372,6 +385,7 @@ export function DevicesPage() {
                 { key: "all", label: `全部 (${topologyCounts.all})` },
                 { key: "gateway", label: `组网站 (${topologyCounts.gateway})` },
                 { key: "gateway_node", label: `节点 (${topologyCounts.gateway_node})` },
+                { key: "camera", label: `相机 (${topologyCounts.camera})` },
                 { key: "standalone", label: `普通设备 (${topologyCounts.standalone})` }
               ]}
               onChange={(key) => setTopologyFilter(key as DeviceTopologyFilter)}
@@ -404,7 +418,7 @@ function DeviceTopologySummary({
   value
 }: {
   label: string;
-  tone?: "all" | "gateway" | "node" | "standalone";
+  tone?: "all" | "gateway" | "node" | "camera" | "standalone";
   value: number;
 }) {
   return (
@@ -492,7 +506,30 @@ function deviceTopologyTag(device: Device) {
   if (device.topology_role === "gateway_node") {
     return <Tag color="cyan">节点</Tag>;
   }
+  if (device.topology_role === "camera") {
+    return <Tag color="magenta">相机</Tag>;
+  }
   return <Tag>普通设备</Tag>;
+}
+
+function deviceLifecycleTag(status: DeviceLifecycleStatus) {
+  const label: Record<DeviceLifecycleStatus, string> = {
+    inbound: "入库",
+    installed: "安装",
+    online: "上线",
+    maintenance: "维护",
+    repairing: "维修",
+    retired: "报废"
+  };
+  const color: Record<DeviceLifecycleStatus, string> = {
+    inbound: "default",
+    installed: "blue",
+    online: "green",
+    maintenance: "gold",
+    repairing: "orange",
+    retired: "red"
+  };
+  return <Tag color={color[status]}>{label[status]}</Tag>;
 }
 
 export function DataStreamsPage() {
@@ -1118,7 +1155,8 @@ export function AccessGrantsPage() {
   const [subjectKind, setSubjectKind] = useState<"email" | "phone" | "subject_user_id">("email");
   const [form, setForm] = useState({
     subject: "",
-    role_code: "viewer" as AccessGrantRoleCode,
+    template_code: "viewer",
+    permission_codes: [] as PermissionCode[],
     scope_type: "workspace" as AccessGrantScopeType,
     scope_id: "",
     expires_at: "",
@@ -1151,9 +1189,13 @@ export function AccessGrantsPage() {
     enabled: Boolean(selectedWorkspaceId)
   });
   const mine = useQuery({ queryKey: ["access-grants", "mine"], queryFn: accessGrantsApi.listMine });
+  const catalog = useQuery({
+    queryKey: ["permissions-catalog"],
+    queryFn: permissionsApi.catalog
+  });
   const allowedScopeOptions = useMemo(
-    () => scopeTypeOptions.filter((option) => accessRoleMeta[form.role_code].allowedScopes.includes(option.value)),
-    [form.role_code]
+    () => scopeTypeOptions.filter((option) => accessGrantAllowedScopes(form.template_code).includes(option.value)),
+    [form.template_code]
   );
   const scopeOptions = useMemo(
     () => buildScopeResourceOptions(form.scope_type, selectedWorkspaceId, projects.data?.items ?? [], sites.data?.items ?? [], devices.data?.items ?? [], datasets.data?.items ?? []),
@@ -1169,11 +1211,17 @@ export function AccessGrantsPage() {
       setForm((current) => ({ ...current, scope_id: selectedWorkspaceId }));
     }
   }, [form.scope_id, form.scope_type, selectedWorkspaceId]);
+  useEffect(() => {
+    if (catalog.data && form.permission_codes.length === 0) {
+      setForm((current) => ({ ...current, permission_codes: templatePermissionCodes(catalog.data, current.template_code) }));
+    }
+  }, [catalog.data, form.permission_codes.length, form.template_code]);
   const create = useMutation({
     mutationFn: () =>
       accessGrantsApi.create({
         [subjectKind]: form.subject.trim(),
-        role_code: form.role_code,
+        template_code: form.template_code,
+        permission_codes: form.permission_codes,
         scope_type: form.scope_type,
         scope_id: form.scope_id.trim(),
         expires_at: optionalIso(form.expires_at),
@@ -1181,7 +1229,16 @@ export function AccessGrantsPage() {
         allow_api_access: form.allow_api_access
       }),
     onSuccess: () => {
-      setForm({ subject: "", role_code: "viewer", scope_type: "workspace", scope_id: "", expires_at: "", allow_reshare: false, allow_api_access: false });
+      setForm({
+        subject: "",
+        template_code: "viewer",
+        permission_codes: templatePermissionCodes(catalog.data, "viewer"),
+        scope_type: "workspace",
+        scope_id: "",
+        expires_at: "",
+        allow_reshare: false,
+        allow_api_access: false
+      });
       void queryClient.invalidateQueries({ queryKey: ["access-grants"] });
       void message.success("授权已创建");
     }
@@ -1194,12 +1251,13 @@ export function AccessGrantsPage() {
     }
   });
 
-  function handleRoleChange(roleCode: AccessGrantRoleCode) {
-    const allowedScopes = accessRoleMeta[roleCode].allowedScopes;
+  function handleTemplateChange(templateCode: string) {
+    const allowedScopes = accessGrantAllowedScopes(templateCode);
     const scopeType = allowedScopes.includes(form.scope_type) ? form.scope_type : allowedScopes[0];
     setForm({
       ...form,
-      role_code: roleCode,
+      template_code: templateCode,
+      permission_codes: templateCode === "custom" ? form.permission_codes : templatePermissionCodes(catalog.data, templateCode),
       scope_type: scopeType,
       scope_id: scopeType === "workspace" ? selectedWorkspaceId : ""
     });
@@ -1210,7 +1268,7 @@ export function AccessGrantsPage() {
   }
 
   function handleCreateGrant() {
-    if (form.role_code === "service_engineer") {
+    if (form.template_code === "service_engineer") {
       if (form.scope_type !== "device" && form.scope_type !== "site") {
         void message.warning("服务工程师只能授权到设备或站点");
         return;
@@ -1222,6 +1280,10 @@ export function AccessGrantsPage() {
     }
     if (!form.scope_id.trim()) {
       void message.warning("请选择或填写授权范围");
+      return;
+    }
+    if (!form.permission_codes.length) {
+      void message.warning("请选择权限");
       return;
     }
     create.mutate();
@@ -1242,15 +1304,6 @@ export function AccessGrantsPage() {
             value={subjectKind}
           />
           <TextInput label="对象" onChange={(event) => setForm({ ...form, subject: event.target.value })} required value={form.subject} />
-          <Form.Item className="field" label="角色">
-            <Select
-              className="control"
-              onChange={handleRoleChange}
-              optionRender={(option) => <RoleOption code={option.value as AccessGrantRoleCode} />}
-              options={accessRoleOptions}
-              value={form.role_code}
-            />
-          </Form.Item>
           <Form.Item className="field" label="范围类型">
             <Select className="control" onChange={handleScopeTypeChange} options={allowedScopeOptions} value={form.scope_type} />
           </Form.Item>
@@ -1268,7 +1321,7 @@ export function AccessGrantsPage() {
             />
           </Form.Item>
           <TextInput label="或粘贴范围 ID" onChange={(event) => setForm({ ...form, scope_id: event.target.value })} required value={form.scope_id} />
-          <TextInput label={form.role_code === "service_engineer" ? "过期时间 (必填)" : "过期时间"} onChange={(event) => setForm({ ...form, expires_at: event.target.value })} required={form.role_code === "service_engineer"} type="datetime-local" value={form.expires_at} />
+          <TextInput label={form.template_code === "service_engineer" ? "过期时间 (必填)" : "过期时间"} onChange={(event) => setForm({ ...form, expires_at: event.target.value })} required={form.template_code === "service_engineer"} type="datetime-local" value={form.expires_at} />
           <Checkbox
             checked={form.allow_reshare}
             className="check-field"
@@ -1283,15 +1336,23 @@ export function AccessGrantsPage() {
           >
             允许 API 访问
           </Checkbox>
-          <FormSubmitButton disabled={create.isPending} />
+          <FormSubmitButton disabled={create.isPending || !form.permission_codes.length} />
         </form>
+        <PermissionPicker
+          catalog={catalog.data}
+          mode="grant"
+          onChange={(permissionCodes) => setForm((current) => ({ ...current, permission_codes: permissionCodes }))}
+          onTemplateChange={handleTemplateChange}
+          templateCode={form.template_code}
+          value={form.permission_codes}
+        />
         {create.error || revoke.error ? <p className="form-error">{formatApiError(create.error || revoke.error)}</p> : null}
       </Section>
       <Section title="工作区授权">
-        <GrantTable query={query} revoke={(id) => revoke.mutate(id)} scopeLabels={scopeLabels} />
+        <GrantTable catalog={catalog.data} query={query} revoke={(id) => revoke.mutate(id)} scopeLabels={scopeLabels} />
       </Section>
       <Section title="授予我的资源">
-        <GrantTable query={mine} revoke={null} scopeLabels={scopeLabels} />
+        <GrantTable catalog={catalog.data} query={mine} revoke={null} scopeLabels={scopeLabels} />
       </Section>
     </Page>
   );
@@ -1304,7 +1365,8 @@ export function InvitationsPage() {
   const [targetKind, setTargetKind] = useState<"email" | "phone">("email");
   const [form, setForm] = useState({
     target: "",
-    role_code: "viewer" as AccessGrantRoleCode,
+    template_code: "viewer",
+    permission_codes: [] as PermissionCode[],
     scope_type: "workspace" as AccessGrantScopeType,
     scope_id: "",
     expires_at: ""
@@ -1335,9 +1397,13 @@ export function InvitationsPage() {
     enabled: Boolean(selectedWorkspaceId)
   });
   const mine = useQuery({ queryKey: ["invitations", "mine"], queryFn: invitationsApi.listMine });
+  const catalog = useQuery({
+    queryKey: ["permissions-catalog"],
+    queryFn: permissionsApi.catalog
+  });
   const allowedScopeOptions = useMemo(
-    () => scopeTypeOptions.filter((option) => accessRoleMeta[form.role_code].allowedScopes.includes(option.value)),
-    [form.role_code]
+    () => scopeTypeOptions.filter((option) => accessGrantAllowedScopes(form.template_code).includes(option.value)),
+    [form.template_code]
   );
   const scopeOptions = useMemo(
     () => buildScopeResourceOptions(form.scope_type, selectedWorkspaceId, projects.data?.items ?? [], sites.data?.items ?? [], devices.data?.items ?? [], datasets.data?.items ?? []),
@@ -1353,18 +1419,31 @@ export function InvitationsPage() {
       setForm((current) => ({ ...current, scope_id: selectedWorkspaceId }));
     }
   }, [form.scope_id, form.scope_type, selectedWorkspaceId]);
+  useEffect(() => {
+    if (catalog.data && form.permission_codes.length === 0) {
+      setForm((current) => ({ ...current, permission_codes: templatePermissionCodes(catalog.data, current.template_code) }));
+    }
+  }, [catalog.data, form.permission_codes.length, form.template_code]);
 
   const create = useMutation({
     mutationFn: () =>
       invitationsApi.create({
         [targetKind]: form.target.trim(),
-        role_code: form.role_code,
+        template_code: form.template_code,
+        permission_codes: form.permission_codes,
         scope_type: form.scope_type,
         scope_id: form.scope_id.trim(),
         expires_at: optionalIso(form.expires_at)
       }),
     onSuccess: () => {
-      setForm({ target: "", role_code: "viewer", scope_type: "workspace", scope_id: "", expires_at: "" });
+      setForm({
+        target: "",
+        template_code: "viewer",
+        permission_codes: templatePermissionCodes(catalog.data, "viewer"),
+        scope_type: "workspace",
+        scope_id: "",
+        expires_at: ""
+      });
       void queryClient.invalidateQueries({ queryKey: ["invitations"] });
       void message.success("邀请已创建");
     }
@@ -1385,12 +1464,13 @@ export function InvitationsPage() {
     }
   });
 
-  function handleRoleChange(roleCode: AccessGrantRoleCode) {
-    const allowedScopes = accessRoleMeta[roleCode].allowedScopes;
+  function handleTemplateChange(templateCode: string) {
+    const allowedScopes = accessGrantAllowedScopes(templateCode);
     const scopeType = allowedScopes.includes(form.scope_type) ? form.scope_type : allowedScopes[0];
     setForm({
       ...form,
-      role_code: roleCode,
+      template_code: templateCode,
+      permission_codes: templateCode === "custom" ? form.permission_codes : templatePermissionCodes(catalog.data, templateCode),
       scope_type: scopeType,
       scope_id: scopeType === "workspace" ? selectedWorkspaceId : ""
     });
@@ -1401,7 +1481,7 @@ export function InvitationsPage() {
   }
 
   function handleCreateInvitation() {
-    if (form.role_code === "service_engineer") {
+    if (form.template_code === "service_engineer") {
       if (form.scope_type !== "device" && form.scope_type !== "site") {
         void message.warning("服务工程师只能邀请到设备或站点范围");
         return;
@@ -1413,6 +1493,10 @@ export function InvitationsPage() {
     }
     if (!form.scope_id.trim()) {
       void message.warning("请选择或填写邀请范围");
+      return;
+    }
+    if (!form.permission_codes.length) {
+      void message.warning("请选择权限");
       return;
     }
     create.mutate();
@@ -1432,15 +1516,6 @@ export function InvitationsPage() {
             value={targetKind}
           />
           <TextInput label="邀请对象" onChange={(event) => setForm({ ...form, target: event.target.value })} required value={form.target} />
-          <Form.Item className="field" label="角色">
-            <Select
-              className="control"
-              onChange={handleRoleChange}
-              optionRender={(option) => <RoleOption code={option.value as AccessGrantRoleCode} />}
-              options={accessRoleOptions}
-              value={form.role_code}
-            />
-          </Form.Item>
           <Form.Item className="field" label="范围类型">
             <Select className="control" onChange={handleScopeTypeChange} options={allowedScopeOptions} value={form.scope_type} />
           </Form.Item>
@@ -1458,18 +1533,26 @@ export function InvitationsPage() {
             />
           </Form.Item>
           <TextInput label="或粘贴范围 ID" onChange={(event) => setForm({ ...form, scope_id: event.target.value })} required value={form.scope_id} />
-          <TextInput label={form.role_code === "service_engineer" ? "过期时间 (必填)" : "过期时间"} onChange={(event) => setForm({ ...form, expires_at: event.target.value })} required={form.role_code === "service_engineer"} type="datetime-local" value={form.expires_at} />
-          <FormSubmitButton disabled={create.isPending} />
+          <TextInput label={form.template_code === "service_engineer" ? "过期时间 (必填)" : "过期时间"} onChange={(event) => setForm({ ...form, expires_at: event.target.value })} required={form.template_code === "service_engineer"} type="datetime-local" value={form.expires_at} />
+          <FormSubmitButton disabled={create.isPending || !form.permission_codes.length} />
         </form>
+        <PermissionPicker
+          catalog={catalog.data}
+          mode="grant"
+          onChange={(permissionCodes) => setForm((current) => ({ ...current, permission_codes: permissionCodes }))}
+          onTemplateChange={handleTemplateChange}
+          templateCode={form.template_code}
+          value={form.permission_codes}
+        />
         {create.error || accept.error || revoke.error ? (
           <p className="form-error">{formatApiError(create.error || accept.error || revoke.error)}</p>
         ) : null}
       </Section>
       <Section title="工作区邀请">
-        <InvitationTable accept={null} query={query} revoke={(id) => revoke.mutate(id)} scopeLabels={scopeLabels} />
+        <InvitationTable accept={null} catalog={catalog.data} query={query} revoke={(id) => revoke.mutate(id)} scopeLabels={scopeLabels} />
       </Section>
       <Section title="我的待处理邀请">
-        <InvitationTable accept={(id) => accept.mutate(id)} query={mine} revoke={null} scopeLabels={scopeLabels} />
+        <InvitationTable accept={(id) => accept.mutate(id)} catalog={catalog.data} query={mine} revoke={null} scopeLabels={scopeLabels} />
       </Section>
     </Page>
   );
@@ -1830,22 +1913,6 @@ function DatasetTelemetrySeriesChart({ series }: { series: DatasetTelemetrySerie
   return <div aria-label={`${series.name}趋势图`} className="telemetry-chart" ref={chartRef} />;
 }
 
-function RoleCell({ code }: { code: string }) {
-  return (
-    <div className="role-summary compact">
-      <strong>{roleLabel(code)}</strong>
-    </div>
-  );
-}
-
-function RoleOption({ code }: { code: AccessGrantRoleCode }) {
-  return (
-    <div className="role-option">
-      <strong>{roleLabel(code)}</strong>
-    </div>
-  );
-}
-
 function ScopeCell({ scopeID, scopeLabels, scopeType }: { scopeID: string; scopeLabels: Map<string, string>; scopeType: AccessGrantScopeType }) {
   return (
     <div className="scope-cell">
@@ -1853,6 +1920,14 @@ function ScopeCell({ scopeID, scopeLabels, scopeType }: { scopeID: string; scope
       <CopyableId value={scopeID} />
     </div>
   );
+}
+
+function accessGrantAllowedScopes(templateCode: string): AccessGrantScopeType[] {
+  return accessRoleMeta[templateCode as keyof typeof accessRoleMeta]?.allowedScopes ?? ["workspace", "project", "site", "device", "dataset"];
+}
+
+function templatePermissionCodes(catalog: PermissionCatalogResponse | undefined, templateCode: string): PermissionCode[] {
+  return catalog?.templates.find((template) => template.code === templateCode)?.permission_codes ?? [];
 }
 
 function buildScopeResourceOptions(
@@ -1965,10 +2040,12 @@ function ResourcePageFrame<T>({
 }
 
 function GrantTable({
+  catalog,
   query,
   revoke,
   scopeLabels
 }: {
+  catalog?: PermissionCatalogResponse;
   query: { data?: { items: AccessGrant[] }; error: unknown; isLoading: boolean; refetch: () => unknown };
   revoke: ((id: string) => void) | null;
   scopeLabels: Map<string, string>;
@@ -1986,7 +2063,8 @@ function GrantTable({
     <DataTable<AccessGrant>
       columns={[
         { key: "subject", header: "对象", render: (item) => <NameCell name={item.subject.name || item.subject.email || item.subject.phone || item.subject.id} detail={item.subject.type} /> },
-        { key: "role", header: "角色", render: (item) => <RoleCell code={item.role.code} /> },
+        { key: "permissions", header: "权限", render: (item) => <PermissionSummary catalog={catalog} codes={item.permission_codes} /> },
+        { key: "template", header: "模板", render: (item) => <Tag>{item.template_name || roleLabel(item.template_code)}</Tag> },
         { key: "scope", header: "范围", render: (item) => <ScopeCell scopeID={item.scope_id} scopeLabels={scopeLabels} scopeType={item.scope_type} /> },
         { key: "status", header: "状态", render: (item) => <Badge tone={statusTone(item.status)}>{item.status}</Badge> },
         { key: "expires", header: "过期时间", render: (item) => formatDateTime(item.expires_at) },
@@ -2013,11 +2091,13 @@ function GrantTable({
 
 function InvitationTable({
   accept,
+  catalog,
   query,
   revoke,
   scopeLabels
 }: {
   accept: ((id: string) => void) | null;
+  catalog?: PermissionCatalogResponse;
   query: { data?: { items: Invitation[] }; error: unknown; isLoading: boolean; refetch: () => unknown };
   revoke: ((id: string) => void) | null;
   scopeLabels: Map<string, string>;
@@ -2035,7 +2115,8 @@ function InvitationTable({
     <DataTable<Invitation>
       columns={[
         { key: "target", header: "对象", render: (item) => item.invitee_email || item.invitee_phone || "-" },
-        { key: "role", header: "角色", render: (item) => <RoleCell code={item.role.code} /> },
+        { key: "permissions", header: "权限", render: (item) => <PermissionSummary catalog={catalog} codes={item.permission_codes} /> },
+        { key: "template", header: "模板", render: (item) => <Tag>{item.template_name || roleLabel(item.template_code)}</Tag> },
         { key: "scope", header: "范围", render: (item) => <ScopeCell scopeID={item.scope_id} scopeLabels={scopeLabels} scopeType={item.scope_type} /> },
         { key: "status", header: "状态", render: (item) => <Badge tone={statusTone(item.status)}>{item.status}</Badge> },
         { key: "expires", header: "过期时间", render: (item) => formatDateTime(item.expires_at) },

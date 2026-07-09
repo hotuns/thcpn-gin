@@ -10,6 +10,9 @@ func TestDefaultConfigIsValid(t *testing.T) {
 	if cfg.ObjectStore.PublicURLPrefix != "https://iot-datas.oss-cn-beijing.aliyuncs.com" {
 		t.Fatalf("expected default object store public URL prefix, got %q", cfg.ObjectStore.PublicURLPrefix)
 	}
+	if cfg.Ezviz.OpenAPIDomain != "https://open.ys7.com" {
+		t.Fatalf("expected default ezviz open api domain, got %q", cfg.Ezviz.OpenAPIDomain)
+	}
 }
 
 func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
@@ -38,6 +41,10 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("TRACING_EXPORTER", "otlp")
 	t.Setenv("TRACING_OTLP_ENDPOINT", "collector:4318")
 	t.Setenv("TRACING_OTLP_INSECURE", "false")
+	t.Setenv("EZVIZ_APP_KEY_ENV", "TEST_EZVIZ_APP_KEY")
+	t.Setenv("EZVIZ_APP_SECRET_ENV", "TEST_EZVIZ_APP_SECRET")
+	t.Setenv("EZVIZ_OPEN_API_DOMAIN", "https://example-ezviz.test")
+	t.Setenv("EZVIZ_ACCESS_TOKEN_TTL_SECONDS", "120")
 
 	cfg, err := Load()
 	if err != nil {
@@ -118,5 +125,14 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.Tracing.Insecure {
 		t.Fatal("expected tracing insecure override")
+	}
+	if cfg.Ezviz.AppKeyEnv != "TEST_EZVIZ_APP_KEY" || cfg.Ezviz.AppSecretEnv != "TEST_EZVIZ_APP_SECRET" {
+		t.Fatalf("expected ezviz env overrides, got %#v", cfg.Ezviz)
+	}
+	if cfg.Ezviz.OpenAPIDomain != "https://example-ezviz.test" {
+		t.Fatalf("expected ezviz domain override, got %q", cfg.Ezviz.OpenAPIDomain)
+	}
+	if cfg.Ezviz.AccessTokenTTLSeconds != 120 {
+		t.Fatalf("expected ezviz ttl override, got %d", cfg.Ezviz.AccessTokenTTLSeconds)
 	}
 }

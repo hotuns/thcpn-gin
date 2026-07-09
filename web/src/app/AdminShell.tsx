@@ -9,7 +9,8 @@ import {
   LogoutOutlined,
   MenuOutlined,
   ReloadOutlined,
-  SafetyCertificateOutlined
+  SafetyCertificateOutlined,
+  SettingOutlined
 } from "@ant-design/icons";
 import { App as AntApp, Button, Drawer, Dropdown, Layout, Menu, Space, Tag, Tooltip, Typography } from "antd";
 import type { MenuProps } from "antd";
@@ -21,7 +22,8 @@ const { Content, Sider } = Layout;
 const adminNavItems = [
   { to: "/admin", label: "后台总览", icon: <DashboardOutlined /> },
   { to: "/admin/data-sources", label: "THCPN 数据源", icon: <ControlOutlined /> },
-  { to: "/admin/devices", label: "设备资产", icon: <HddOutlined /> }
+  { to: "/admin/devices", label: "设备管理", icon: <HddOutlined /> },
+  { to: "/admin/metadata", label: "元数据管理", icon: <SettingOutlined /> }
 ];
 
 export function AdminShell() {

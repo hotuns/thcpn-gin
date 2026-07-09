@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import dayjs, { type Dayjs } from "dayjs";
 import { CloudSyncOutlined, DatabaseOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import {
   Alert,
@@ -7,6 +8,7 @@ import {
   Button,
   Card,
   Col,
+  DatePicker,
   Descriptions,
   Drawer,
   Form,
@@ -26,17 +28,28 @@ import {
 } from "antd";
 import type { TableColumnsType, TransferProps } from "antd";
 import {
+  adminCamerasApi,
+  adminDeviceCapabilityDefinitionsApi,
   adminDevicesApi,
   adminDataSourcesApi,
   adminProjectsApi,
   adminSitesApi,
+  adminSystemRolesApi,
   adminWorkspacesApi,
   formatApiError,
   type DataSource,
   type DataSourceStatus,
   type DataSourceType,
   type Device,
+  type CameraBindingStatus,
+  type CameraQuality,
+  type DeviceCapabilityCode,
+  type DeviceCapabilityDefinition,
+  type DeviceCapabilityDefinitionStatus,
   type DeviceChild,
+  type DeviceLifecycleEvent,
+  type DeviceLifecycleStatus,
+  type SystemRoleDefinition,
   type THCPNGatewaySyncResult,
   type THCPNStandardStationSyncResult
 } from "../../api";
@@ -50,6 +63,30 @@ const dataSourceTypeOptions: Array<{ label: string; value: DataSourceType }> = [
   { label: "HTTP API", value: "http_api" },
   { label: "文件", value: "file" }
 ];
+
+const lifecycleOptions: Array<{ label: string; value: DeviceLifecycleStatus }> = [
+  { label: "入库", value: "inbound" },
+  { label: "安装", value: "installed" },
+  { label: "上线", value: "online" },
+  { label: "维护", value: "maintenance" },
+  { label: "维修", value: "repairing" },
+  { label: "报废", value: "retired" }
+];
+
+const deviceStatusOptions: Array<{ label: string; value: Device["status"] }> = [
+  { label: "active", value: "active" },
+  { label: "disabled", value: "disabled" },
+  { label: "retired", value: "retired" }
+];
+
+const cameraQualityOptions: Array<{ label: string; value: CameraQuality }> = [
+  { label: "流畅", value: "fluent" },
+  { label: "标清", value: "standard" },
+  { label: "高清", value: "hd" },
+  { label: "超清", value: "ultra_hd" }
+];
+
+const emptyDevices: Device[] = [];
 
 interface CreateDataSourceValues {
   name: string;
@@ -84,7 +121,60 @@ interface AssignDeviceValues {
   assign_children?: boolean;
 }
 
-type DeviceTopologyFilter = "all" | "gateway" | "gateway_node" | "standalone";
+interface EditDeviceValues {
+  product_id?: string;
+  serial_no: string;
+  name: string;
+  status: Device["status"];
+  device_type: Device["device_type"];
+  capabilities: DeviceCapabilityCode[];
+}
+
+interface CreateCameraValues {
+  product_id?: string;
+  serial_no: string;
+  name: string;
+  device_serial: string;
+  channel_no?: number;
+  default_quality?: CameraQuality;
+  is_encrypted?: boolean;
+  validate_code_secret_ref?: string;
+  target_workspace_id?: string;
+  project_id?: string;
+  site_id?: string;
+}
+
+interface CameraBindingValues {
+  device_serial: string;
+  channel_no: number;
+  default_quality: CameraQuality;
+  is_encrypted: boolean;
+  validate_code_secret_ref?: string;
+  status: CameraBindingStatus;
+}
+
+interface LifecycleValues {
+  lifecycle_status: DeviceLifecycleStatus;
+  occurred_at?: Dayjs;
+  note?: string;
+}
+
+interface CapabilityValues {
+  capabilities: DeviceCapabilityCode[];
+}
+
+interface CapabilityDefinitionValues {
+  code: string;
+  name: string;
+  status: DeviceCapabilityDefinitionStatus;
+  sort_order: number;
+}
+
+interface SystemRoleValues {
+  name: string;
+}
+
+type DeviceTopologyFilter = "all" | "gateway" | "gateway_node" | "standalone" | "camera";
 
 interface TopologyTransferItem {
   key: string;
@@ -210,7 +300,7 @@ export function AdminDataSourcesPage() {
       void queryClient.invalidateQueries({ queryKey: ["data-streams"] });
       void queryClient.invalidateQueries({ queryKey: ["data-stream-bindings"] });
       void queryClient.invalidateQueries({ queryKey: ["admin", "data-sources"] });
-      void message.success("THCPN 标准站已同步到系统设备资产库");
+      void message.success("THCPN 标准站已同步到设备管理");
     }
   });
   const syncGateway = useMutation({
@@ -482,13 +572,30 @@ export function AdminDataSourcesPage() {
 }
 
 export function AdminDeviceAssetsPage() {
+  const [editForm] = Form.useForm<EditDeviceValues>();
+  const [cameraForm] = Form.useForm<CreateCameraValues>();
+  const [cameraBindingForm] = Form.useForm<CameraBindingValues>();
   const [assignForm] = Form.useForm<AssignDeviceValues>();
+  const [lifecycleForm] = Form.useForm<LifecycleValues>();
+  const [capabilityForm] = Form.useForm<CapabilityValues>();
+  const [selectedEditDevice, setSelectedEditDevice] = useState<Device | null>(null);
   const [selectedAssignDevice, setSelectedAssignDevice] = useState<Device | null>(null);
   const [selectedTopologyDevice, setSelectedTopologyDevice] = useState<Device | null>(null);
+  const [selectedLifecycleDevice, setSelectedLifecycleDevice] = useState<Device | null>(null);
+  const [selectedCapabilityDevice, setSelectedCapabilityDevice] = useState<Device | null>(null);
+  const [cameraModalOpen, setCameraModalOpen] = useState(false);
   const [topologyTargetKeys, setTopologyTargetKeys] = useState<string[]>([]);
   const [topologyFilter, setTopologyFilter] = useState<DeviceTopologyFilter>("all");
+  const [deviceSearch, setDeviceSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | Device["status"]>("all");
+  const [lifecycleFilter, setLifecycleFilter] = useState<"all" | DeviceLifecycleStatus>("all");
+  const [assignmentFilter, setAssignmentFilter] = useState<"all" | "assigned" | "unassigned">("all");
+  const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([]);
+  const [batchStatus, setBatchStatus] = useState<Device["status"]>("active");
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [cameraWorkspaceId, setCameraWorkspaceId] = useState("");
+  const [cameraProjectId, setCameraProjectId] = useState("");
   const { message } = AntApp.useApp();
   const queryClient = useQueryClient();
 
@@ -500,10 +607,29 @@ export function AdminDeviceAssetsPage() {
     queryKey: ["admin", "devices"],
     queryFn: adminDevicesApi.list
   });
+  const capabilityDefinitions = useQuery({
+    queryKey: ["admin", "device-capability-definitions"],
+    queryFn: adminDeviceCapabilityDefinitionsApi.list
+  });
   const topologyChildren = useQuery({
     queryKey: ["admin", "device-children", selectedTopologyDevice?.id],
     queryFn: () => adminDevicesApi.children(selectedTopologyDevice?.id ?? ""),
     enabled: Boolean(selectedTopologyDevice)
+  });
+  const lifecycle = useQuery({
+    queryKey: ["admin", "device-lifecycle", selectedLifecycleDevice?.id],
+    queryFn: () => adminDevicesApi.lifecycle(selectedLifecycleDevice?.id ?? ""),
+    enabled: Boolean(selectedLifecycleDevice)
+  });
+  const capabilities = useQuery({
+    queryKey: ["admin", "device-capabilities", selectedCapabilityDevice?.id],
+    queryFn: () => adminDevicesApi.capabilities(selectedCapabilityDevice?.id ?? ""),
+    enabled: Boolean(selectedCapabilityDevice)
+  });
+  const editCamera = useQuery({
+    queryKey: ["admin", "camera", selectedEditDevice?.id],
+    queryFn: () => adminCamerasApi.get(selectedEditDevice?.id ?? ""),
+    enabled: selectedEditDevice?.device_type === "camera"
   });
   const projects = useQuery({
     queryKey: ["admin", "projects", selectedWorkspaceId],
@@ -514,6 +640,85 @@ export function AdminDeviceAssetsPage() {
     queryKey: ["admin", "sites", selectedWorkspaceId, selectedProjectId],
     queryFn: () => adminSitesApi.list({ workspace_id: selectedWorkspaceId, project_id: selectedProjectId || undefined }),
     enabled: Boolean(selectedWorkspaceId && selectedProjectId)
+  });
+  const cameraProjects = useQuery({
+    queryKey: ["admin", "projects", cameraWorkspaceId],
+    queryFn: () => adminProjectsApi.list(cameraWorkspaceId),
+    enabled: Boolean(cameraWorkspaceId)
+  });
+  const cameraSites = useQuery({
+    queryKey: ["admin", "sites", cameraWorkspaceId, cameraProjectId],
+    queryFn: () => adminSitesApi.list({ workspace_id: cameraWorkspaceId, project_id: cameraProjectId || undefined }),
+    enabled: Boolean(cameraWorkspaceId && cameraProjectId)
+  });
+
+  const updateDevice = useMutation({
+    mutationFn: (values: EditDeviceValues) => {
+      if (!selectedEditDevice) {
+        throw new Error("missing selected device");
+      }
+      return adminDevicesApi.update(selectedEditDevice.id, {
+        product_id: values.product_id?.trim() ?? "",
+        serial_no: values.serial_no,
+        name: values.name,
+        status: values.status,
+        device_type: values.device_type,
+        capabilities: values.capabilities ?? []
+      });
+    },
+    onSuccess: () => {
+      setSelectedEditDevice(null);
+      editForm.resetFields();
+      void queryClient.invalidateQueries({ queryKey: ["admin", "devices"] });
+      void message.success("设备信息已更新");
+    }
+  });
+
+  const createCamera = useMutation({
+    mutationFn: (values: CreateCameraValues) =>
+      adminCamerasApi.create({
+        product_id: optional(values.product_id),
+        serial_no: values.serial_no,
+        name: values.name,
+        device_serial: values.device_serial,
+        channel_no: Number(values.channel_no || 1),
+        default_quality: values.default_quality || "hd",
+        is_encrypted: Boolean(values.is_encrypted),
+        validate_code_secret_ref: optional(values.validate_code_secret_ref),
+        target_workspace_id: optional(values.target_workspace_id),
+        project_id: optional(values.project_id),
+        site_id: optional(values.site_id)
+      }),
+    onSuccess: () => {
+      setCameraModalOpen(false);
+      setCameraWorkspaceId("");
+      setCameraProjectId("");
+      cameraForm.resetFields();
+      void queryClient.invalidateQueries({ queryKey: ["admin", "devices"] });
+      void queryClient.invalidateQueries({ queryKey: ["devices"] });
+      void message.success("相机已保存");
+    }
+  });
+
+  const updateCameraBinding = useMutation({
+    mutationFn: (values: CameraBindingValues) => {
+      if (!selectedEditDevice) {
+        throw new Error("missing selected camera");
+      }
+      return adminCamerasApi.update(selectedEditDevice.id, {
+        device_serial: values.device_serial,
+        channel_no: Number(values.channel_no || 1),
+        default_quality: values.default_quality,
+        is_encrypted: Boolean(values.is_encrypted),
+        validate_code_secret_ref: optional(values.validate_code_secret_ref),
+        status: values.status
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "devices"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin", "camera", selectedEditDevice?.id] });
+      void message.success("相机接入已更新");
+    }
   });
 
   const assignDevice = useMutation({
@@ -541,11 +746,81 @@ export function AdminDeviceAssetsPage() {
     }
   });
 
+  const updateLifecycle = useMutation({
+    mutationFn: (values: LifecycleValues) => {
+      if (!selectedLifecycleDevice) {
+        throw new Error("missing selected device");
+      }
+      return adminDevicesApi.updateLifecycle(selectedLifecycleDevice.id, {
+        lifecycle_status: values.lifecycle_status,
+        occurred_at: values.occurred_at?.toISOString(),
+        note: optional(values.note)
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "devices"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin", "device-lifecycle", selectedLifecycleDevice?.id] });
+      void message.success("生命周期已更新");
+    }
+  });
+
+  const updateCapabilities = useMutation({
+    mutationFn: (values: CapabilityValues) => {
+      if (!selectedCapabilityDevice) {
+        throw new Error("missing selected device");
+      }
+      return adminDevicesApi.updateCapabilities(selectedCapabilityDevice.id, {
+        capabilities: values.capabilities ?? []
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "devices"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin", "device-capabilities", selectedCapabilityDevice?.id] });
+      void message.success("设备能力已更新");
+    }
+  });
+
   const unassignDevice = useMutation({
     mutationFn: (deviceId: string) => adminDevicesApi.unassign(deviceId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin", "devices"] });
       void message.success("设备分配已移除");
+    }
+  });
+  const batchUpdateStatus = useMutation({
+    mutationFn: async (status: Device["status"]) => {
+      const targets = [...selectedDeviceIds];
+      for (const deviceId of targets) {
+        await adminDevicesApi.update(deviceId, { status });
+      }
+      return targets.length;
+    },
+    onSuccess: (count) => {
+      setSelectedDeviceIds([]);
+      void queryClient.invalidateQueries({ queryKey: ["admin", "devices"] });
+      void queryClient.invalidateQueries({ queryKey: ["devices"] });
+      void message.success(`已更新 ${count} 台设备`);
+    },
+    onError: (error) => {
+      void message.error(formatApiError(error));
+    }
+  });
+  const batchUnassignDevices = useMutation({
+    mutationFn: async () => {
+      const targets = allDevices.filter((item) => selectedDeviceIds.includes(item.id) && item.workspace_id);
+      for (const device of targets) {
+        await adminDevicesApi.unassign(device.id);
+      }
+      return targets.length;
+    },
+    onSuccess: (count) => {
+      setSelectedDeviceIds([]);
+      void queryClient.invalidateQueries({ queryKey: ["admin", "devices"] });
+      void queryClient.invalidateQueries({ queryKey: ["devices"] });
+      void message.success(`已移除 ${count} 台设备分配`);
+    },
+    onError: (error) => {
+      void message.error(formatApiError(error));
     }
   });
   const saveTopologyChildren = useMutation({
@@ -600,22 +875,92 @@ export function AdminDeviceAssetsPage() {
       })),
     [sites.data?.items]
   );
+  const cameraProjectOptions = useMemo(
+    () =>
+      (cameraProjects.data?.items ?? []).map((item) => ({
+        label: item.name,
+        value: item.id
+      })),
+    [cameraProjects.data?.items]
+  );
+  const cameraSiteOptions = useMemo(
+    () =>
+      (cameraSites.data?.items ?? []).map((item) => ({
+        label: item.name,
+        value: item.id
+      })),
+    [cameraSites.data?.items]
+  );
+  const capabilityOptions = useMemo(
+    () =>
+      (capabilityDefinitions.data?.items ?? []).map((item) => ({
+        label: item.name,
+        value: item.code
+      })),
+    [capabilityDefinitions.data?.items]
+  );
   const selectedDeviceCanAssignChildren =
     selectedAssignDevice?.topology_role === "gateway" && (selectedAssignDevice.child_count ?? 0) > 0;
-  const allDevices = devices.data?.items ?? [];
+  const allDevices = devices.data?.items ?? emptyDevices;
+  const selectedDevices = useMemo(
+    () => allDevices.filter((item) => selectedDeviceIds.includes(item.id)),
+    [allDevices, selectedDeviceIds]
+  );
+  const selectedAssignedDevices = useMemo(
+    () => selectedDevices.filter((item) => item.workspace_id),
+    [selectedDevices]
+  );
   const topologyCounts = useMemo(
     () => ({
       all: allDevices.length,
       gateway: allDevices.filter((item) => item.topology_role === "gateway").length,
       gateway_node: allDevices.filter((item) => item.topology_role === "gateway_node").length,
+      camera: allDevices.filter((item) => item.topology_role === "camera").length,
       standalone: allDevices.filter((item) => item.topology_role === "standalone").length
     }),
     [allDevices]
   );
-  const filteredDevices = useMemo(
-    () => (topologyFilter === "all" ? allDevices : allDevices.filter((item) => item.topology_role === topologyFilter)),
-    [allDevices, topologyFilter]
-  );
+  const filteredDevices = useMemo(() => {
+    const keyword = deviceSearch.trim().toLocaleLowerCase();
+    return allDevices.filter((item) => {
+      if (topologyFilter !== "all" && item.topology_role !== topologyFilter) {
+        return false;
+      }
+      if (statusFilter !== "all" && item.status !== statusFilter) {
+        return false;
+      }
+      if (lifecycleFilter !== "all" && item.lifecycle_status !== lifecycleFilter) {
+        return false;
+      }
+      if (assignmentFilter === "assigned" && !item.workspace_id) {
+        return false;
+      }
+      if (assignmentFilter === "unassigned" && item.workspace_id) {
+        return false;
+      }
+      if (!keyword) {
+        return true;
+      }
+      const haystack = [
+        item.id,
+        item.name,
+        item.serial_no,
+        item.product_id,
+        item.workspace_id,
+        item.project_id,
+        item.site_id,
+        item.status,
+        item.lifecycle_status,
+        item.topology_role,
+        item.device_type,
+        ...item.capabilities
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase();
+      return haystack.includes(keyword);
+    });
+  }, [allDevices, assignmentFilter, deviceSearch, lifecycleFilter, statusFilter, topologyFilter]);
   const currentTopologyChildren = useMemo(
     () => topologyChildren.data?.items ?? [],
     [topologyChildren.data?.items]
@@ -625,10 +970,54 @@ export function AdminDeviceAssetsPage() {
     [currentTopologyChildren]
   );
   useEffect(() => {
+    if (selectedEditDevice) {
+      editForm.setFieldsValue({
+        product_id: selectedEditDevice.product_id ?? "",
+        serial_no: selectedEditDevice.serial_no,
+        name: selectedEditDevice.name,
+        status: selectedEditDevice.status,
+        device_type: selectedEditDevice.device_type,
+        capabilities: selectedEditDevice.capabilities
+      });
+    }
+  }, [editForm, selectedEditDevice]);
+  useEffect(() => {
+    if (editCamera.data) {
+      cameraBindingForm.setFieldsValue({
+        device_serial: editCamera.data.binding.device_serial,
+        channel_no: editCamera.data.binding.channel_no,
+        default_quality: editCamera.data.binding.default_quality,
+        is_encrypted: editCamera.data.binding.is_encrypted,
+        validate_code_secret_ref: editCamera.data.binding.validate_code_secret_ref ?? "",
+        status: editCamera.data.binding.status
+      });
+    }
+  }, [cameraBindingForm, editCamera.data]);
+  useEffect(() => {
     if (selectedTopologyDevice && !topologyChildren.isLoading) {
       setTopologyTargetKeys(currentTopologyChildIds);
     }
   }, [currentTopologyChildIds, selectedTopologyDevice, topologyChildren.isLoading]);
+  useEffect(() => {
+    if (selectedLifecycleDevice) {
+      lifecycleForm.setFieldsValue({
+        lifecycle_status: lifecycle.data?.device.lifecycle_status ?? selectedLifecycleDevice.lifecycle_status,
+        occurred_at: dayjs(),
+        note: ""
+      });
+    }
+  }, [lifecycle.data?.device.lifecycle_status, lifecycleForm, selectedLifecycleDevice]);
+  useEffect(() => {
+    if (selectedCapabilityDevice) {
+      capabilityForm.setFieldsValue({
+        capabilities: capabilities.data?.capabilities ?? selectedCapabilityDevice.capabilities
+      });
+    }
+  }, [capabilities.data?.capabilities, capabilityForm, selectedCapabilityDevice]);
+  useEffect(() => {
+    const deviceIds = new Set(allDevices.map((item) => item.id));
+    setSelectedDeviceIds((current) => current.filter((id) => deviceIds.has(id)));
+  }, [allDevices]);
   const topologyTransferItems = useMemo<TopologyTransferItem[]>(() => {
     const itemsById = new Map<string, TopologyTransferItem>();
     for (const child of currentTopologyChildren) {
@@ -669,6 +1058,12 @@ export function AdminDeviceAssetsPage() {
       render: (_, item) => topologyTag(item)
     },
     {
+      key: "lifecycle",
+      title: "生命周期",
+      width: 120,
+      render: (_, item) => lifecycleTag(item.lifecycle_status)
+    },
+    {
       key: "assignment",
       title: "当前分配",
       width: 260,
@@ -697,9 +1092,18 @@ export function AdminDeviceAssetsPage() {
       key: "actions",
       title: "操作",
       fixed: "right",
-      width: 230,
+      width: 370,
       render: (_, item) => (
         <Space>
+          <Button
+            onClick={() => {
+              setSelectedEditDevice(item);
+            }}
+            size="small"
+            type="link"
+          >
+            编辑
+          </Button>
           {item.topology_role !== "gateway_node" ? (
             <Button
               onClick={() => {
@@ -712,6 +1116,24 @@ export function AdminDeviceAssetsPage() {
               拓扑
             </Button>
           ) : null}
+          <Button
+            onClick={() => {
+              setSelectedLifecycleDevice(item);
+            }}
+            size="small"
+            type="link"
+          >
+            生命周期
+          </Button>
+          <Button
+            onClick={() => {
+              setSelectedCapabilityDevice(item);
+            }}
+            size="small"
+            type="link"
+          >
+            能力
+          </Button>
           <Button
             onClick={() => {
               setSelectedAssignDevice(item);
@@ -749,22 +1171,124 @@ export function AdminDeviceAssetsPage() {
     <div className="page">
       <div className="page-header">
         <div>
-          <Typography.Title level={2}>设备资产</Typography.Title>
+          <Typography.Title level={2}>设备管理</Typography.Title>
         </div>
-        <Button icon={<ReloadOutlined />} onClick={() => void devices.refetch()}>
-          刷新
-        </Button>
+        <Space>
+          <Button
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setCameraWorkspaceId("");
+              setCameraProjectId("");
+              cameraForm.setFieldsValue({
+                channel_no: 1,
+                default_quality: "hd",
+                is_encrypted: false
+              });
+              setCameraModalOpen(true);
+            }}
+            type="primary"
+          >
+            添加相机
+          </Button>
+          <Button icon={<ReloadOutlined />} onClick={() => void devices.refetch()}>
+            刷新
+          </Button>
+        </Space>
       </div>
 
-      <Card title={<Typography.Text strong>系统设备资产 / 设备分配</Typography.Text>}>
+      <Card title={<Typography.Text strong>设备列表</Typography.Text>}>
         {workspaces.error ? <Alert message={formatApiError(workspaces.error)} showIcon type="error" /> : null}
         {devices.error ? <Alert message={formatApiError(devices.error)} showIcon type="error" /> : null}
+        <Space className="admin-device-toolbar" wrap>
+          <Input.Search
+            allowClear
+            onChange={(event) => setDeviceSearch(event.target.value)}
+            placeholder="搜索设备"
+            style={{ width: 260 }}
+            value={deviceSearch}
+          />
+          <Select
+            onChange={setStatusFilter}
+            options={[
+              { label: "全部状态", value: "all" },
+              ...deviceStatusOptions
+            ]}
+            style={{ width: 136 }}
+            value={statusFilter}
+          />
+          <Select
+            onChange={setLifecycleFilter}
+            options={[
+              { label: "全部生命周期", value: "all" },
+              ...lifecycleOptions
+            ]}
+            style={{ width: 156 }}
+            value={lifecycleFilter}
+          />
+          <Select
+            onChange={setAssignmentFilter}
+            options={[
+              { label: "全部分配", value: "all" },
+              { label: "已分配", value: "assigned" },
+              { label: "未分配", value: "unassigned" }
+            ]}
+            style={{ width: 132 }}
+            value={assignmentFilter}
+          />
+          <Tag color={selectedDeviceIds.length ? "blue" : "default"}>{`已选 ${selectedDeviceIds.length}`}</Tag>
+          <Select
+            disabled={!selectedDeviceIds.length || batchUpdateStatus.isPending}
+            onChange={setBatchStatus}
+            options={deviceStatusOptions}
+            style={{ width: 124 }}
+            value={batchStatus}
+          />
+          <Button
+            disabled={!selectedDeviceIds.length}
+            loading={batchUpdateStatus.isPending}
+            onClick={() => batchUpdateStatus.mutate(batchStatus)}
+          >
+            批量改状态
+          </Button>
+          <Popconfirm
+            okText="移除"
+            onConfirm={() => batchUnassignDevices.mutate()}
+            title={`移除 ${selectedAssignedDevices.length} 台设备的当前分配？`}
+          >
+            <Button
+              danger
+              disabled={!selectedAssignedDevices.length}
+              loading={batchUnassignDevices.isPending}
+            >
+              批量移除分配
+            </Button>
+          </Popconfirm>
+          <Button
+            disabled={
+              !deviceSearch &&
+              statusFilter === "all" &&
+              lifecycleFilter === "all" &&
+              assignmentFilter === "all" &&
+              !selectedDeviceIds.length
+            }
+            onClick={() => {
+              setDeviceSearch("");
+              setStatusFilter("all");
+              setLifecycleFilter("all");
+              setAssignmentFilter("all");
+              setSelectedDeviceIds([]);
+            }}
+          >
+            重置
+          </Button>
+        </Space>
         <Tabs
           activeKey={topologyFilter}
           items={[
             { key: "all", label: `全部 (${topologyCounts.all})` },
             { key: "gateway", label: `组网站 (${topologyCounts.gateway})` },
             { key: "gateway_node", label: `节点 (${topologyCounts.gateway_node})` },
+            { key: "camera", label: `相机 (${topologyCounts.camera})` },
             { key: "standalone", label: `普通设备 (${topologyCounts.standalone})` }
           ]}
           onChange={(key) => setTopologyFilter(key as DeviceTopologyFilter)}
@@ -778,11 +1302,112 @@ export function AdminDeviceAssetsPage() {
           }}
           loading={devices.isLoading}
           pagination={{ pageSize: 10 }}
+          rowSelection={{
+            preserveSelectedRowKeys: true,
+            selectedRowKeys: selectedDeviceIds,
+            onChange: (keys) => setSelectedDeviceIds(keys.map(String))
+          }}
           rowKey="id"
           scroll={{ x: tableScrollX(deviceColumns) }}
           size="small"
         />
       </Card>
+
+      <Modal
+        confirmLoading={createCamera.isPending}
+        destroyOnHidden
+        okText="保存相机"
+        onCancel={() => {
+          setCameraModalOpen(false);
+          setCameraWorkspaceId("");
+          setCameraProjectId("");
+          cameraForm.resetFields();
+        }}
+        onOk={() => cameraForm.submit()}
+        open={cameraModalOpen}
+        title="添加相机"
+        width="min(760px, calc(100vw - 24px))"
+      >
+        <Form<CreateCameraValues>
+          form={cameraForm}
+          layout="vertical"
+          onFinish={(values) => createCamera.mutate(values)}
+          onValuesChange={(changed) => {
+            if ("target_workspace_id" in changed) {
+              const nextWorkspaceId = changed.target_workspace_id || "";
+              setCameraWorkspaceId(nextWorkspaceId);
+              setCameraProjectId("");
+              cameraForm.setFieldsValue({ project_id: undefined, site_id: undefined });
+            }
+            if ("project_id" in changed) {
+              const nextProjectId = changed.project_id || "";
+              setCameraProjectId(nextProjectId);
+              cameraForm.setFieldValue("site_id", undefined);
+            }
+          }}
+        >
+          <Row gutter={12}>
+            <Col md={12} xs={24}>
+              <Form.Item label="名称" name="name" rules={[{ required: true, message: "请输入名称" }]}>
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
+              <Form.Item label="序列号" name="serial_no" rules={[{ required: true, message: "请输入序列号" }]}>
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
+              <Form.Item label="产品 ID" name="product_id">
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
+              <Form.Item label="萤石设备序列号" name="device_serial" rules={[{ required: true, message: "请输入萤石设备序列号" }]}>
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
+              <Form.Item label="通道号" name="channel_no" rules={[{ required: true, message: "请输入通道号" }]}>
+                <InputNumber min={1} style={{ width: "100%" }} />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
+              <Form.Item label="默认清晰度" name="default_quality" rules={[{ required: true, message: "请选择默认清晰度" }]}>
+                <Select options={cameraQualityOptions} />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
+              <Form.Item label="加密设备" name="is_encrypted" valuePropName="checked">
+                <Switch />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
+              <Form.Item label="验证码 Secret Ref" name="validate_code_secret_ref">
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col md={24} xs={24}>
+              <Form.Item label="目标工作区" name="target_workspace_id">
+                <Select allowClear loading={workspaces.isLoading} options={workspaceOptions} showSearch optionFilterProp="label" />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
+              <Form.Item label="项目" name="project_id">
+                <Select allowClear disabled={!cameraWorkspaceId} loading={cameraProjects.isLoading} options={cameraProjectOptions} showSearch optionFilterProp="label" />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
+              <Form.Item label="站点" name="site_id">
+                <Select allowClear disabled={!cameraProjectId} loading={cameraSites.isLoading} options={cameraSiteOptions} showSearch optionFilterProp="label" />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Form>
+        {cameraProjects.error ? <Alert message={formatApiError(cameraProjects.error)} showIcon type="error" /> : null}
+        {cameraSites.error ? <Alert message={formatApiError(cameraSites.error)} showIcon type="error" /> : null}
+        {createCamera.error ? <Alert message={formatApiError(createCamera.error)} showIcon type="error" /> : null}
+      </Modal>
 
       <Drawer
         className="topology-drawer"
@@ -813,8 +1438,8 @@ export function AdminDeviceAssetsPage() {
         }}
         open={Boolean(selectedTopologyDevice)}
         placement="right"
-        size="min(1180px, calc(100vw - 24px))"
         title="设置网关节点拓扑"
+        width="min(1180px, calc(100vw - 24px))"
       >
         {selectedTopologyDevice ? (
           <div className="topology-drawer-content">
@@ -856,6 +1481,229 @@ export function AdminDeviceAssetsPage() {
             ) : null}
             {saveTopologyChildren.error ? <Alert title={formatApiError(saveTopologyChildren.error)} showIcon type="error" /> : null}
             {topologyChildren.error ? <Alert title={formatApiError(topologyChildren.error)} showIcon type="error" /> : null}
+          </div>
+        ) : null}
+      </Drawer>
+
+      <Drawer
+        destroyOnHidden
+        footer={
+          <Space className="drawer-footer-actions">
+            <Button
+              onClick={() => {
+                setSelectedEditDevice(null);
+                editForm.resetFields();
+              }}
+            >
+              取消
+            </Button>
+            <Button loading={updateDevice.isPending} onClick={() => editForm.submit()} type="primary">
+              保存设备
+            </Button>
+          </Space>
+        }
+        onClose={() => {
+          setSelectedEditDevice(null);
+          editForm.resetFields();
+        }}
+        open={Boolean(selectedEditDevice)}
+        placement="right"
+        title="编辑设备"
+        width="min(680px, calc(100vw - 24px))"
+      >
+        {selectedEditDevice ? (
+          <div className="drawer-stack">
+            <Descriptions column={1} size="small">
+              <Descriptions.Item label="设备 ID">{copyableId(selectedEditDevice.id)}</Descriptions.Item>
+            </Descriptions>
+            <Form<EditDeviceValues> form={editForm} layout="vertical" onFinish={(values) => updateDevice.mutate(values)}>
+              <Form.Item label="产品 ID" name="product_id">
+                <Input />
+              </Form.Item>
+              <Form.Item label="序列号" name="serial_no" rules={[{ required: true, message: "请输入序列号" }]}>
+                <Input />
+              </Form.Item>
+              <Form.Item label="名称" name="name" rules={[{ required: true, message: "请输入名称" }]}>
+                <Input />
+              </Form.Item>
+              <Form.Item label="状态" name="status" rules={[{ required: true, message: "请选择状态" }]}>
+                <Select
+                  options={deviceStatusOptions}
+                />
+              </Form.Item>
+              <Form.Item label="设备类型" name="device_type" rules={[{ required: true, message: "请选择设备类型" }]}>
+                <Select
+                  options={[
+                    { label: "普通设备", value: "standalone" },
+                    { label: "网关", value: "gateway" },
+                    { label: "节点", value: "gateway_node" },
+                    { label: "相机", value: "camera" }
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item label="设备能力" name="capabilities">
+                <Select
+                  allowClear
+                  loading={capabilityDefinitions.isLoading}
+                  mode="multiple"
+                  optionFilterProp="label"
+                  options={capabilityOptions}
+                  placeholder="选择设备能力"
+                />
+              </Form.Item>
+            </Form>
+            {selectedEditDevice.device_type === "camera" ? (
+              <Card size="small" title={<Typography.Text strong>相机接入</Typography.Text>}>
+                <Form<CameraBindingValues>
+                  form={cameraBindingForm}
+                  layout="vertical"
+                  onFinish={(values) => updateCameraBinding.mutate(values)}
+                >
+                  <Form.Item label="萤石设备序列号" name="device_serial" rules={[{ required: true, message: "请输入萤石设备序列号" }]}>
+                    <Input />
+                  </Form.Item>
+                  <Form.Item label="通道号" name="channel_no" rules={[{ required: true, message: "请输入通道号" }]}>
+                    <InputNumber min={1} style={{ width: "100%" }} />
+                  </Form.Item>
+                  <Form.Item label="默认清晰度" name="default_quality" rules={[{ required: true, message: "请选择默认清晰度" }]}>
+                    <Select options={cameraQualityOptions} />
+                  </Form.Item>
+                  <Form.Item label="加密设备" name="is_encrypted" valuePropName="checked">
+                    <Switch />
+                  </Form.Item>
+                  <Form.Item label="验证码 Secret Ref" name="validate_code_secret_ref">
+                    <Input />
+                  </Form.Item>
+                  <Form.Item label="接入状态" name="status" rules={[{ required: true, message: "请选择接入状态" }]}>
+                    <Select
+                      options={[
+                        { label: "active", value: "active" },
+                        { label: "disabled", value: "disabled" }
+                      ]}
+                    />
+                  </Form.Item>
+                  <Button loading={updateCameraBinding.isPending} onClick={() => cameraBindingForm.submit()} type="primary">
+                    保存相机接入
+                  </Button>
+                </Form>
+                {editCamera.error ? <Alert message={formatApiError(editCamera.error)} showIcon type="error" /> : null}
+                {updateCameraBinding.error ? <Alert message={formatApiError(updateCameraBinding.error)} showIcon type="error" /> : null}
+              </Card>
+            ) : null}
+            {updateDevice.error ? <Alert message={formatApiError(updateDevice.error)} showIcon type="error" /> : null}
+          </div>
+        ) : null}
+      </Drawer>
+
+      <Drawer
+        destroyOnHidden
+        footer={
+          <Space className="drawer-footer-actions">
+            <Button
+              onClick={() => {
+                setSelectedLifecycleDevice(null);
+                lifecycleForm.resetFields();
+              }}
+            >
+              取消
+            </Button>
+            <Button loading={updateLifecycle.isPending} onClick={() => lifecycleForm.submit()} type="primary">
+              保存生命周期
+            </Button>
+          </Space>
+        }
+        onClose={() => {
+          setSelectedLifecycleDevice(null);
+          lifecycleForm.resetFields();
+        }}
+        open={Boolean(selectedLifecycleDevice)}
+        placement="right"
+        title="设备生命周期"
+        width="min(720px, calc(100vw - 24px))"
+      >
+        {selectedLifecycleDevice ? (
+          <div className="drawer-stack">
+            <Descriptions column={1} size="small">
+              <Descriptions.Item label="设备">{selectedLifecycleDevice.name}</Descriptions.Item>
+              <Descriptions.Item label="序列号">{selectedLifecycleDevice.serial_no}</Descriptions.Item>
+              <Descriptions.Item label="当前生命周期">{lifecycleTag(lifecycle.data?.device.lifecycle_status ?? selectedLifecycleDevice.lifecycle_status)}</Descriptions.Item>
+            </Descriptions>
+            <Form<LifecycleValues> form={lifecycleForm} layout="vertical" onFinish={(values) => updateLifecycle.mutate(values)}>
+              <Form.Item label="生命周期" name="lifecycle_status" rules={[{ required: true, message: "请选择生命周期" }]}>
+                <Select options={lifecycleOptions} />
+              </Form.Item>
+              <Form.Item label="发生时间" name="occurred_at">
+                <DatePicker showTime style={{ width: "100%" }} />
+              </Form.Item>
+              <Form.Item label="备注" name="note">
+                <Input.TextArea autoSize={{ minRows: 3, maxRows: 5 }} />
+              </Form.Item>
+            </Form>
+            {updateLifecycle.error ? <Alert message={formatApiError(updateLifecycle.error)} showIcon type="error" /> : null}
+            {lifecycle.error ? <Alert message={formatApiError(lifecycle.error)} showIcon type="error" /> : null}
+            <Table<DeviceLifecycleEvent>
+              columns={[
+                { key: "to", title: "状态", width: 120, render: (_, item) => lifecycleTag(item.to_status) },
+                { dataIndex: "occurred_at", key: "occurred", title: "发生时间", width: 180, render: formatDateTime },
+                { dataIndex: "note", key: "note", title: "备注", render: (value?: string) => labelOrDash(value) }
+              ]}
+              dataSource={lifecycle.data?.events ?? []}
+              loading={lifecycle.isLoading}
+              pagination={false}
+              rowKey="id"
+              scroll={{ x: 560 }}
+              size="small"
+            />
+          </div>
+        ) : null}
+      </Drawer>
+
+      <Drawer
+        destroyOnHidden
+        footer={
+          <Space className="drawer-footer-actions">
+            <Button
+              onClick={() => {
+                setSelectedCapabilityDevice(null);
+                capabilityForm.resetFields();
+              }}
+            >
+              取消
+            </Button>
+            <Button loading={updateCapabilities.isPending} onClick={() => capabilityForm.submit()} type="primary">
+              保存能力
+            </Button>
+          </Space>
+        }
+        onClose={() => {
+          setSelectedCapabilityDevice(null);
+          capabilityForm.resetFields();
+        }}
+        open={Boolean(selectedCapabilityDevice)}
+        placement="right"
+        title="设备能力"
+        width="min(620px, calc(100vw - 24px))"
+      >
+        {selectedCapabilityDevice ? (
+          <div className="drawer-stack">
+            <Descriptions column={1} size="small">
+              <Descriptions.Item label="设备">{selectedCapabilityDevice.name}</Descriptions.Item>
+              <Descriptions.Item label="序列号">{selectedCapabilityDevice.serial_no}</Descriptions.Item>
+            </Descriptions>
+            <Form<CapabilityValues> form={capabilityForm} layout="vertical" onFinish={(values) => updateCapabilities.mutate(values)}>
+              <Form.Item label="能力" name="capabilities">
+                <Select
+                  allowClear
+                  loading={capabilities.isLoading}
+                  mode="multiple"
+                  optionFilterProp="label"
+                  options={capabilityOptions}
+                  placeholder="选择设备能力"
+                />
+              </Form.Item>
+            </Form>
+            {capabilities.error ? <Alert message={formatApiError(capabilities.error)} showIcon type="error" /> : null}
+            {updateCapabilities.error ? <Alert message={formatApiError(updateCapabilities.error)} showIcon type="error" /> : null}
           </div>
         ) : null}
       </Drawer>
@@ -1087,6 +1935,249 @@ function THCPNGatewaySyncResultView({ result }: { result: THCPNGatewaySyncResult
   );
 }
 
+export function AdminMetadataPage() {
+  const [capabilityDefinitionForm] = Form.useForm<CapabilityDefinitionValues>();
+  const [roleForm] = Form.useForm<SystemRoleValues>();
+  const [selectedCapabilityDefinition, setSelectedCapabilityDefinition] = useState<DeviceCapabilityDefinition | null>(null);
+  const [selectedRole, setSelectedRole] = useState<SystemRoleDefinition | null>(null);
+  const [capabilityDefinitionModalOpen, setCapabilityDefinitionModalOpen] = useState(false);
+  const { message } = AntApp.useApp();
+  const queryClient = useQueryClient();
+
+  const capabilityDefinitions = useQuery({
+    queryKey: ["admin", "device-capability-definitions"],
+    queryFn: adminDeviceCapabilityDefinitionsApi.list
+  });
+  const systemRoles = useQuery({
+    queryKey: ["admin", "system-roles"],
+    queryFn: adminSystemRolesApi.list
+  });
+
+  const saveCapabilityDefinition = useMutation({
+    mutationFn: (values: CapabilityDefinitionValues) => {
+      const body = {
+        name: values.name,
+        status: values.status,
+        sort_order: Number(values.sort_order ?? 0)
+      };
+      if (selectedCapabilityDefinition) {
+        return adminDeviceCapabilityDefinitionsApi.update(selectedCapabilityDefinition.code, body);
+      }
+      return adminDeviceCapabilityDefinitionsApi.create({
+        code: values.code,
+        ...body
+      });
+    },
+    onSuccess: () => {
+      setCapabilityDefinitionModalOpen(false);
+      setSelectedCapabilityDefinition(null);
+      capabilityDefinitionForm.resetFields();
+      void queryClient.invalidateQueries({ queryKey: ["admin", "device-capability-definitions"] });
+      void message.success("设备能力已保存");
+    }
+  });
+
+  const updateRole = useMutation({
+    mutationFn: (values: SystemRoleValues) => {
+      if (!selectedRole) {
+        throw new Error("missing selected role");
+      }
+      return adminSystemRolesApi.update(selectedRole.code, { name: values.name });
+    },
+    onSuccess: () => {
+      setSelectedRole(null);
+      roleForm.resetFields();
+      void queryClient.invalidateQueries({ queryKey: ["admin", "system-roles"] });
+      void message.success("预置角色已保存");
+    }
+  });
+
+  const capabilityDefinitionColumns: TableColumnsType<DeviceCapabilityDefinition> = [
+    { dataIndex: "code", key: "code", title: "Code", width: 180 },
+    { dataIndex: "name", key: "name", title: "名称", width: 180 },
+    {
+      dataIndex: "status",
+      key: "status",
+      title: "状态",
+      width: 120,
+      render: (value: DeviceCapabilityDefinitionStatus) => <Tag color={value === "active" ? "green" : "default"}>{value}</Tag>
+    },
+    { dataIndex: "sort_order", key: "sort", title: "排序", width: 100 },
+    {
+      key: "actions",
+      title: "操作",
+      fixed: "right",
+      width: 90,
+      render: (_, item) => (
+        <Button
+          onClick={() => {
+            setSelectedCapabilityDefinition(item);
+            capabilityDefinitionForm.setFieldsValue({
+              code: item.code,
+              name: item.name,
+              status: item.status,
+              sort_order: item.sort_order
+            });
+            setCapabilityDefinitionModalOpen(true);
+          }}
+          size="small"
+          type="link"
+        >
+          编辑
+        </Button>
+      )
+    }
+  ];
+
+  const roleColumns: TableColumnsType<SystemRoleDefinition> = [
+    { dataIndex: "code", key: "code", title: "Code", width: 220 },
+    { dataIndex: "name", key: "name", title: "名称", width: 220 },
+    { dataIndex: "updated_at", key: "updated", title: "更新时间", width: 180, render: formatDateTime },
+    {
+      key: "actions",
+      title: "操作",
+      fixed: "right",
+      width: 90,
+      render: (_, item) => (
+        <Button
+          onClick={() => {
+            setSelectedRole(item);
+            roleForm.setFieldsValue({ name: item.name });
+          }}
+          size="small"
+          type="link"
+        >
+          编辑
+        </Button>
+      )
+    }
+  ];
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <Typography.Title level={2}>元数据管理</Typography.Title>
+        </div>
+        <Space>
+          <Button icon={<ReloadOutlined />} onClick={() => void capabilityDefinitions.refetch()}>
+            刷新能力
+          </Button>
+          <Button icon={<ReloadOutlined />} onClick={() => void systemRoles.refetch()}>
+            刷新角色
+          </Button>
+        </Space>
+      </div>
+
+      <Card
+        title={<Typography.Text strong>设备能力</Typography.Text>}
+        extra={
+          <Button
+            onClick={() => {
+              setSelectedCapabilityDefinition(null);
+              capabilityDefinitionForm.setFieldsValue({ code: "", name: "", status: "active", sort_order: 1000 });
+              setCapabilityDefinitionModalOpen(true);
+            }}
+            type="primary"
+          >
+            新增能力
+          </Button>
+        }
+      >
+        {capabilityDefinitions.error ? <Alert message={formatApiError(capabilityDefinitions.error)} showIcon type="error" /> : null}
+        <Table<DeviceCapabilityDefinition>
+          columns={capabilityDefinitionColumns}
+          dataSource={capabilityDefinitions.data?.items ?? []}
+          loading={capabilityDefinitions.isLoading}
+          pagination={false}
+          rowKey="code"
+          scroll={{ x: tableScrollX(capabilityDefinitionColumns) }}
+          size="small"
+        />
+      </Card>
+
+      <Card title={<Typography.Text strong>预置角色</Typography.Text>}>
+        {systemRoles.error ? <Alert message={formatApiError(systemRoles.error)} showIcon type="error" /> : null}
+        <Table<SystemRoleDefinition>
+          columns={roleColumns}
+          dataSource={systemRoles.data?.items ?? []}
+          loading={systemRoles.isLoading}
+          pagination={false}
+          rowKey="code"
+          scroll={{ x: tableScrollX(roleColumns) }}
+          size="small"
+        />
+      </Card>
+
+      <Modal
+        confirmLoading={saveCapabilityDefinition.isPending}
+        destroyOnHidden
+        okText="保存"
+        onCancel={() => {
+          setCapabilityDefinitionModalOpen(false);
+          setSelectedCapabilityDefinition(null);
+          capabilityDefinitionForm.resetFields();
+        }}
+        onOk={() => capabilityDefinitionForm.submit()}
+        open={capabilityDefinitionModalOpen}
+        title={selectedCapabilityDefinition ? "编辑设备能力" : "新增设备能力"}
+      >
+        <Form<CapabilityDefinitionValues>
+          form={capabilityDefinitionForm}
+          layout="vertical"
+          onFinish={(values) => saveCapabilityDefinition.mutate(values)}
+        >
+          <Form.Item label="Code" name="code" rules={[{ required: true, message: "请输入 Code" }]}>
+            <Input disabled={Boolean(selectedCapabilityDefinition)} />
+          </Form.Item>
+          <Form.Item label="名称" name="name" rules={[{ required: true, message: "请输入名称" }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item label="状态" name="status" rules={[{ required: true, message: "请选择状态" }]}>
+            <Select
+              options={[
+                { label: "active", value: "active" },
+                { label: "disabled", value: "disabled" }
+              ]}
+            />
+          </Form.Item>
+          <Form.Item label="排序" name="sort_order" rules={[{ required: true, message: "请输入排序" }]}>
+            <InputNumber min={0} style={{ width: "100%" }} />
+          </Form.Item>
+        </Form>
+        {saveCapabilityDefinition.error ? <Alert message={formatApiError(saveCapabilityDefinition.error)} showIcon type="error" /> : null}
+      </Modal>
+
+      <Modal
+        confirmLoading={updateRole.isPending}
+        destroyOnHidden
+        okText="保存"
+        onCancel={() => {
+          setSelectedRole(null);
+          roleForm.resetFields();
+        }}
+        onOk={() => roleForm.submit()}
+        open={Boolean(selectedRole)}
+        title="编辑预置角色"
+      >
+        {selectedRole ? (
+          <div className="drawer-stack">
+            <Descriptions column={1} size="small">
+              <Descriptions.Item label="Code">{selectedRole.code}</Descriptions.Item>
+            </Descriptions>
+            <Form<SystemRoleValues> form={roleForm} layout="vertical" onFinish={(values) => updateRole.mutate(values)}>
+              <Form.Item label="名称" name="name" rules={[{ required: true, message: "请输入名称" }]}>
+                <Input />
+              </Form.Item>
+            </Form>
+            {updateRole.error ? <Alert message={formatApiError(updateRole.error)} showIcon type="error" /> : null}
+          </div>
+        ) : null}
+      </Modal>
+    </div>
+  );
+}
+
 function AdminDeviceChildrenTable({ deviceId }: { deviceId: string }) {
   const children = useQuery({
     queryKey: ["admin", "device-children", deviceId],
@@ -1189,7 +2280,23 @@ function topologyTag(device: Device) {
   if (device.topology_role === "gateway_node") {
     return <Tag color="cyan">节点</Tag>;
   }
+  if (device.topology_role === "camera") {
+    return <Tag color="magenta">相机</Tag>;
+  }
   return <Tag>普通设备</Tag>;
+}
+
+function lifecycleTag(status: DeviceLifecycleStatus) {
+  const label = lifecycleOptions.find((item) => item.value === status)?.label ?? status;
+  const color: Record<DeviceLifecycleStatus, string> = {
+    inbound: "default",
+    installed: "blue",
+    online: "green",
+    maintenance: "gold",
+    repairing: "orange",
+    retired: "red"
+  };
+  return <Tag color={color[status]}>{label}</Tag>;
 }
 
 function workspaceName(workspaceId: string, workspaces: Array<{ id: string; name: string }>): string {

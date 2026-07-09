@@ -22,7 +22,7 @@ type Store interface {
 	GetProject(ctx context.Context, id uuid.UUID) (sqlc.Project, error)
 	GetSite(ctx context.Context, id uuid.UUID) (sqlc.Site, error)
 	GetAccessGrantPermissionRole(ctx context.Context, arg sqlc.GetAccessGrantPermissionRoleParams) (string, error)
-	HasWorkspacePermission(ctx context.Context, arg sqlc.HasWorkspacePermissionParams) (bool, error)
+	GetWorkspaceMemberPermissionRole(ctx context.Context, arg sqlc.GetWorkspaceMemberPermissionRoleParams) (string, error)
 }
 
 type Checker struct {
@@ -95,16 +95,24 @@ func (c *Checker) Can(ctx context.Context, actor Actor, action string, resource 
 		return Decision{Allowed: false, Reason: "unsupported resource type"}, nil
 	}
 
-	allowed, err := c.store.HasWorkspacePermission(ctx, sqlc.HasWorkspacePermissionParams{
+	memberRoleCode, err := c.store.GetWorkspaceMemberPermissionRole(ctx, sqlc.GetWorkspaceMemberPermissionRoleParams{
 		UserID:      actor.UserID,
 		WorkspaceID: scope.WorkspaceID,
 		Code:        action,
+		ScopeType:   scope.ScopeType,
+		ScopeID:     scope.ScopeID,
+		ProjectID:   scope.ProjectID,
+		SiteID:      scope.SiteID,
+		DeviceID:    scope.DeviceID,
+		DatasetID:   scope.DatasetID,
 	})
 	if err != nil {
-		return Decision{}, apperr.Wrap(apperr.KindInternal, "check workspace permission", err)
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return Decision{}, apperr.Wrap(apperr.KindInternal, "check workspace member permission", err)
+		}
 	}
-	if allowed {
-		return Decision{Allowed: true, Reason: "allowed by workspace membership", Source: "workspace_member"}, nil
+	if memberRoleCode != "" {
+		return Decision{Allowed: true, Reason: "allowed by workspace membership", Source: "workspace_member", GrantRoleCode: memberRoleCode}, nil
 	}
 
 	grantRoleCode, err := c.store.GetAccessGrantPermissionRole(ctx, sqlc.GetAccessGrantPermissionRoleParams{

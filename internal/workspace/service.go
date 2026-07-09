@@ -41,10 +41,12 @@ type Role struct {
 }
 
 type Membership struct {
-	ID       uuid.UUID `json:"id"`
-	Status   string    `json:"status"`
-	JoinedAt time.Time `json:"joined_at"`
-	Role     Role      `json:"role"`
+	ID        uuid.UUID `json:"id"`
+	Status    string    `json:"status"`
+	JoinedAt  time.Time `json:"joined_at"`
+	ScopeType string    `json:"scope_type"`
+	ScopeID   uuid.UUID `json:"scope_id"`
+	Role      Role      `json:"role"`
 }
 
 type WorkspaceWithMembership struct {
@@ -106,12 +108,25 @@ func (s *Service) CreateOrganization(ctx context.Context, input CreateOrganizati
 	}
 
 	createdMember, err := q.CreateWorkspaceMember(ctx, sqlc.CreateWorkspaceMemberParams{
-		WorkspaceID: createdWorkspace.ID,
-		UserID:      input.OwnerUserID,
-		RoleID:      ownerRole.ID,
+		WorkspaceID:  createdWorkspace.ID,
+		UserID:       input.OwnerUserID,
+		RoleID:       ownerRole.ID,
+		ScopeType:    "workspace",
+		ScopeID:      createdWorkspace.ID,
+		TemplateCode: ownerRoleCode,
 	})
 	if err != nil {
 		return WorkspaceWithMembership{}, mapWriteError(err, "create workspace membership")
+	}
+	ownerPermissions, err := q.ListPermissionCodesByTemplate(ctx, ownerRoleCode)
+	if err != nil {
+		return WorkspaceWithMembership{}, apperr.Wrap(apperr.KindInternal, "list owner permissions", err)
+	}
+	if _, err := q.AddWorkspaceMemberPermissions(ctx, sqlc.AddWorkspaceMemberPermissionsParams{
+		MemberID: createdMember.ID,
+		Column2:  ownerPermissions,
+	}); err != nil {
+		return WorkspaceWithMembership{}, apperr.Wrap(apperr.KindInternal, "create workspace owner permissions", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -122,12 +137,14 @@ func (s *Service) CreateOrganization(ctx context.Context, input CreateOrganizati
 	return WorkspaceWithMembership{
 		Workspace: workspaceFromSQL(createdWorkspace),
 		Membership: membershipFromSQL(sqlc.ListWorkspacesForUserRow{
-			MembershipID:       createdMember.ID,
-			MembershipStatus:   createdMember.Status,
-			MembershipJoinedAt: createdMember.JoinedAt,
-			RoleID:             ownerRole.ID,
-			RoleCode:           ownerRole.Code,
-			RoleName:           ownerRole.Name,
+			MembershipID:        createdMember.ID,
+			MembershipStatus:    createdMember.Status,
+			MembershipJoinedAt:  createdMember.JoinedAt,
+			MembershipScopeType: createdMember.ScopeType,
+			MembershipScopeID:   createdMember.ScopeID,
+			RoleID:              &ownerRole.ID,
+			RoleCode:            ownerRole.Code,
+			RoleName:            ownerRole.Name,
 		}),
 	}, nil
 }
@@ -201,15 +218,24 @@ func workspaceFromListRow(row sqlc.ListWorkspacesForUserRow) Workspace {
 
 func membershipFromSQL(row sqlc.ListWorkspacesForUserRow) Membership {
 	return Membership{
-		ID:       row.MembershipID,
-		Status:   row.MembershipStatus,
-		JoinedAt: pgTime(row.MembershipJoinedAt),
+		ID:        row.MembershipID,
+		Status:    row.MembershipStatus,
+		JoinedAt:  pgTime(row.MembershipJoinedAt),
+		ScopeType: row.MembershipScopeType,
+		ScopeID:   row.MembershipScopeID,
 		Role: Role{
-			ID:   row.RoleID,
+			ID:   uuidValue(row.RoleID),
 			Code: row.RoleCode,
 			Name: row.RoleName,
 		},
 	}
+}
+
+func uuidValue(value *uuid.UUID) uuid.UUID {
+	if value == nil {
+		return uuid.Nil
+	}
+	return *value
 }
 
 func pgTime(value pgtype.Timestamptz) time.Time {

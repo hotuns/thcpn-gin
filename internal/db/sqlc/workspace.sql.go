@@ -68,19 +68,29 @@ func (q *Queries) CreatePersonalWorkspace(ctx context.Context, arg CreatePersona
 }
 
 const createWorkspaceMember = `-- name: CreateWorkspaceMember :one
-INSERT INTO workspace_members (workspace_id, user_id, role_id)
-VALUES ($1, $2, $3)
-RETURNING id, workspace_id, user_id, role_id, status, joined_at, created_at, updated_at
+INSERT INTO workspace_members (workspace_id, user_id, role_id, scope_type, scope_id, template_code)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, workspace_id, user_id, role_id, status, joined_at, created_at, updated_at, scope_type, scope_id, template_code
 `
 
 type CreateWorkspaceMemberParams struct {
-	WorkspaceID uuid.UUID `json:"workspace_id"`
-	UserID      uuid.UUID `json:"user_id"`
-	RoleID      uuid.UUID `json:"role_id"`
+	WorkspaceID  uuid.UUID `json:"workspace_id"`
+	UserID       uuid.UUID `json:"user_id"`
+	RoleID       uuid.UUID `json:"role_id"`
+	ScopeType    string    `json:"scope_type"`
+	ScopeID      uuid.UUID `json:"scope_id"`
+	TemplateCode string    `json:"template_code"`
 }
 
 func (q *Queries) CreateWorkspaceMember(ctx context.Context, arg CreateWorkspaceMemberParams) (WorkspaceMember, error) {
-	row := q.db.QueryRow(ctx, createWorkspaceMember, arg.WorkspaceID, arg.UserID, arg.RoleID)
+	row := q.db.QueryRow(ctx, createWorkspaceMember,
+		arg.WorkspaceID,
+		arg.UserID,
+		arg.RoleID,
+		arg.ScopeType,
+		arg.ScopeID,
+		arg.TemplateCode,
+	)
 	var i WorkspaceMember
 	err := row.Scan(
 		&i.ID,
@@ -91,6 +101,9 @@ func (q *Queries) CreateWorkspaceMember(ctx context.Context, arg CreateWorkspace
 		&i.JoinedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ScopeType,
+		&i.ScopeID,
+		&i.TemplateCode,
 	)
 	return i, err
 }
@@ -118,7 +131,7 @@ func (q *Queries) GetWorkspace(ctx context.Context, id uuid.UUID) (Workspace, er
 }
 
 const getWorkspaceMember = `-- name: GetWorkspaceMember :one
-SELECT id, workspace_id, user_id, role_id, status, joined_at, created_at, updated_at
+SELECT id, workspace_id, user_id, role_id, status, joined_at, created_at, updated_at, scope_type, scope_id, template_code
 FROM workspace_members
 WHERE workspace_id = $1 AND user_id = $2
 `
@@ -140,6 +153,9 @@ func (q *Queries) GetWorkspaceMember(ctx context.Context, arg GetWorkspaceMember
 		&i.JoinedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ScopeType,
+		&i.ScopeID,
+		&i.TemplateCode,
 	)
 	return i, err
 }
@@ -192,12 +208,14 @@ SELECT
     wm.id AS membership_id,
     wm.status AS membership_status,
     wm.joined_at AS membership_joined_at,
-    r.id AS role_id,
-    r.code AS role_code,
-    r.name AS role_name
+    wm.scope_type AS membership_scope_type,
+    wm.scope_id AS membership_scope_id,
+    tr.id AS role_id,
+    wm.template_code AS role_code,
+    COALESCE(tr.name, '自定义权限') AS role_name
 FROM workspace_members wm
 JOIN workspaces w ON w.id = wm.workspace_id
-JOIN roles r ON r.id = wm.role_id
+LEFT JOIN roles tr ON tr.workspace_id IS NULL AND tr.code = wm.template_code
 WHERE wm.user_id = $1
   AND wm.status = 'active'
   AND w.status = 'active'
@@ -205,20 +223,22 @@ ORDER BY w.created_at ASC
 `
 
 type ListWorkspacesForUserRow struct {
-	ID                 uuid.UUID          `json:"id"`
-	Type               string             `json:"type"`
-	OrganizationType   *string            `json:"organization_type"`
-	Name               string             `json:"name"`
-	OwnerUserID        uuid.UUID          `json:"owner_user_id"`
-	Status             string             `json:"status"`
-	CreatedAt          pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
-	MembershipID       uuid.UUID          `json:"membership_id"`
-	MembershipStatus   string             `json:"membership_status"`
-	MembershipJoinedAt pgtype.Timestamptz `json:"membership_joined_at"`
-	RoleID             uuid.UUID          `json:"role_id"`
-	RoleCode           string             `json:"role_code"`
-	RoleName           string             `json:"role_name"`
+	ID                  uuid.UUID          `json:"id"`
+	Type                string             `json:"type"`
+	OrganizationType    *string            `json:"organization_type"`
+	Name                string             `json:"name"`
+	OwnerUserID         uuid.UUID          `json:"owner_user_id"`
+	Status              string             `json:"status"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	MembershipID        uuid.UUID          `json:"membership_id"`
+	MembershipStatus    string             `json:"membership_status"`
+	MembershipJoinedAt  pgtype.Timestamptz `json:"membership_joined_at"`
+	MembershipScopeType string             `json:"membership_scope_type"`
+	MembershipScopeID   uuid.UUID          `json:"membership_scope_id"`
+	RoleID              *uuid.UUID         `json:"role_id"`
+	RoleCode            string             `json:"role_code"`
+	RoleName            string             `json:"role_name"`
 }
 
 func (q *Queries) ListWorkspacesForUser(ctx context.Context, userID uuid.UUID) ([]ListWorkspacesForUserRow, error) {
@@ -242,6 +262,8 @@ func (q *Queries) ListWorkspacesForUser(ctx context.Context, userID uuid.UUID) (
 			&i.MembershipID,
 			&i.MembershipStatus,
 			&i.MembershipJoinedAt,
+			&i.MembershipScopeType,
+			&i.MembershipScopeID,
 			&i.RoleID,
 			&i.RoleCode,
 			&i.RoleName,

@@ -49,6 +49,7 @@ type updateDeviceRequest struct {
 	SerialNo     *string   `json:"serial_no"`
 	Name         *string   `json:"name"`
 	Status       *string   `json:"status"`
+	DeviceType   *string   `json:"device_type"`
 	Capabilities *[]string `json:"capabilities"`
 }
 
@@ -83,6 +84,33 @@ type addDeviceChildRequest struct {
 	ChildDeviceID string `json:"child_device_id"`
 }
 
+type updateDeviceLifecycleRequest struct {
+	LifecycleStatus string     `json:"lifecycle_status"`
+	OccurredAt      *time.Time `json:"occurred_at"`
+	Note            string     `json:"note"`
+}
+
+type updateDeviceCapabilitiesRequest struct {
+	Capabilities []string `json:"capabilities"`
+}
+
+type createCapabilityDefinitionRequest struct {
+	Code      string `json:"code"`
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	SortOrder int32  `json:"sort_order"`
+}
+
+type updateCapabilityDefinitionRequest struct {
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	SortOrder int32  `json:"sort_order"`
+}
+
+type updateSystemRoleRequest struct {
+	Name string `json:"name"`
+}
+
 func NewHandler(service *Service, checker *permission.Checker, auditServices ...*audit.Service) *Handler {
 	var auditService *audit.Service
 	if len(auditServices) > 0 {
@@ -92,11 +120,12 @@ func NewHandler(service *Service, checker *permission.Checker, auditServices ...
 }
 
 func (h *Handler) List(c *gin.Context) {
-	workspaceID, ok := parseUUIDValue(c.Query("workspace_id"), "workspace_id", c)
+	actor, ok := actorFromContext(c)
 	if !ok {
 		return
 	}
-	if !h.authorize(c, "workspace", workspaceID, deviceViewAction) {
+	workspaceID, ok := parseUUIDValue(c.Query("workspace_id"), "workspace_id", c)
+	if !ok {
 		return
 	}
 
@@ -118,8 +147,18 @@ func (h *Handler) List(c *gin.Context) {
 		httpx.WriteAppError(c, err)
 		return
 	}
+	filtered := make([]Device, 0, len(items))
+	for _, item := range items {
+		allowed, ok := h.can(c, actor.UserID, "device", item.ID, deviceViewAction)
+		if !ok {
+			return
+		}
+		if allowed {
+			filtered = append(filtered, item)
+		}
+	}
 
-	c.JSON(http.StatusOK, gin.H{"items": items})
+	c.JSON(http.StatusOK, gin.H{"items": filtered})
 }
 
 func (h *Handler) AdminListSystemAssets(c *gin.Context) {
@@ -129,6 +168,327 @@ func (h *Handler) AdminListSystemAssets(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+func (h *Handler) AdminUpdate(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	var req updateDeviceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	if req.ProjectID != nil || req.SiteID != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "assignment is managed by separate admin actions"))
+		return
+	}
+	result, err := h.service.AdminUpdate(c.Request.Context(), AdminUpdateInput{
+		DeviceID:     deviceID,
+		ProductID:    req.ProductID,
+		SerialNo:     req.SerialNo,
+		Name:         req.Name,
+		Status:       req.Status,
+		DeviceType:   req.DeviceType,
+		Capabilities: req.Capabilities,
+	})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "device.admin_update",
+			ResourceType: "device",
+			ResourceID:   audit.ResourceID(deviceID),
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "device.admin_update",
+		ResourceType: "device",
+		ResourceID:   audit.ResourceID(result.ID),
+		Result:       audit.ResultSuccess,
+	}) {
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminLifecycle(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	result, err := h.service.ListLifecycle(c.Request.Context(), deviceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminUpdateLifecycle(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	var req updateDeviceLifecycleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	result, err := h.service.UpdateLifecycle(c.Request.Context(), UpdateLifecycleInput{
+		DeviceID:        deviceID,
+		LifecycleStatus: req.LifecycleStatus,
+		OccurredAt:      req.OccurredAt,
+		Note:            req.Note,
+		ActorUserID:     actor.UserID,
+	})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "device.lifecycle.update",
+			ResourceType: "device",
+			ResourceID:   audit.ResourceID(deviceID),
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "device.lifecycle.update",
+		ResourceType: "device",
+		ResourceID:   audit.ResourceID(deviceID),
+		Result:       audit.ResultSuccess,
+	}) {
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminCapabilities(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	capabilities, err := h.service.ListCapabilities(c.Request.Context(), deviceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"capabilities": capabilities})
+}
+
+func (h *Handler) AdminUpdateCapabilities(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	var req updateDeviceCapabilitiesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	capabilities, err := h.service.UpdateCapabilities(c.Request.Context(), UpdateCapabilitiesInput{
+		DeviceID:     deviceID,
+		Capabilities: req.Capabilities,
+		ActorUserID:  actor.UserID,
+	})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "device.capability.update",
+			ResourceType: "device",
+			ResourceID:   audit.ResourceID(deviceID),
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "device.capability.update",
+		ResourceType: "device",
+		ResourceID:   audit.ResourceID(deviceID),
+		Result:       audit.ResultSuccess,
+	}) {
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"capabilities": capabilities})
+}
+
+func (h *Handler) AdminListCapabilityDefinitions(c *gin.Context) {
+	items, err := h.service.ListCapabilityDefinitions(c.Request.Context())
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+func (h *Handler) AdminCreateCapabilityDefinition(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	var req createCapabilityDefinitionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	result, err := h.service.CreateCapabilityDefinition(c.Request.Context(), CreateCapabilityDefinitionInput{
+		Code:      req.Code,
+		Name:      req.Name,
+		Status:    req.Status,
+		SortOrder: req.SortOrder,
+	})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "metadata.device_capability.create",
+			ResourceType: "device_capability",
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "metadata.device_capability.create",
+		ResourceType: "device_capability",
+		Result:       audit.ResultSuccess,
+	}) {
+		return
+	}
+	c.JSON(http.StatusCreated, result)
+}
+
+func (h *Handler) AdminUpdateCapabilityDefinition(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	code := c.Param("code")
+	var req updateCapabilityDefinitionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	result, err := h.service.UpdateCapabilityDefinition(c.Request.Context(), UpdateCapabilityDefinitionInput{
+		Code:      code,
+		Name:      req.Name,
+		Status:    req.Status,
+		SortOrder: req.SortOrder,
+	})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "metadata.device_capability.update",
+			ResourceType: "device_capability",
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "metadata.device_capability.update",
+		ResourceType: "device_capability",
+		Result:       audit.ResultSuccess,
+	}) {
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminListSystemRoles(c *gin.Context) {
+	items, err := h.service.ListSystemRoles(c.Request.Context())
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+func (h *Handler) AdminUpdateSystemRole(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	code := c.Param("code")
+	var req updateSystemRoleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	result, err := h.service.UpdateSystemRole(c.Request.Context(), UpdateSystemRoleInput{
+		Code: code,
+		Name: req.Name,
+	})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "metadata.system_role.update",
+			ResourceType: "system_role",
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "metadata.system_role.update",
+		ResourceType: "system_role",
+		Result:       audit.ResultSuccess,
+	}) {
+		return
+	}
+	c.JSON(http.StatusOK, result)
 }
 
 func (h *Handler) AdminChildren(c *gin.Context) {
@@ -755,6 +1115,22 @@ func (h *Handler) Unbind(c *gin.Context) {
 func (h *Handler) authorize(c *gin.Context, resourceType string, resourceID uuid.UUID, action string) bool {
 	_, ok := h.authorizeDecision(c, resourceType, resourceID, action)
 	return ok
+}
+
+func (h *Handler) can(c *gin.Context, userID uuid.UUID, resourceType string, resourceID uuid.UUID, action string) (bool, bool) {
+	if h.checker == nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInternal, "permission checker is not configured"))
+		return false, false
+	}
+	decision, err := h.checker.Can(c.Request.Context(), permission.Actor{UserID: userID}, action, permission.ResourceRef{
+		Type: resourceType,
+		ID:   resourceID,
+	})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return false, false
+	}
+	return decision.Allowed, true
 }
 
 func (h *Handler) authorizeDecision(c *gin.Context, resourceType string, resourceID uuid.UUID, action string) (permission.Decision, bool) {

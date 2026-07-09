@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import dayjs, { type Dayjs } from "dayjs";
@@ -31,6 +31,7 @@ import {
 import type { TableColumnsType } from "antd";
 import { SearchOutlined, SyncOutlined } from "@ant-design/icons";
 import {
+  camerasApi,
   dataStreamsApi,
   datasetsApi,
   devicesApi,
@@ -41,7 +42,9 @@ import {
   type DataStream,
   type DatasetDataType,
   type DatasetSourceInput,
+  type CameraLiveSessionResponse,
   type Device,
+  type DeviceLifecycleStatus,
   type MediaItem,
   type MediaListResponse,
   type QueryWarning,
@@ -55,6 +58,12 @@ import { tableScrollX } from "../../app/ui";
 const IMAGE_PAGE_SIZE_LIMIT = 100;
 const RESULT_TAB_DATA = "data";
 const RESULT_TAB_IMAGES = "images";
+const cameraQualityCode: Record<CameraLiveSessionResponse["quality"], number> = {
+  fluent: 0,
+  standard: 1,
+  hd: 2,
+  ultra_hd: 3
+};
 
 use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer]);
 
@@ -100,12 +109,18 @@ interface SaveDatasetFormState {
   description: string;
 }
 
+interface CameraPlayerInstance {
+  stop?: () => Promise<void> | void;
+  destroy?: () => Promise<void> | void;
+}
+
 export function DeviceDataPage() {
   const { selectedWorkspaceId } = useWorkspace();
   const { message } = AntApp.useApp();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const streamAutoSelectedDeviceRef = useRef("");
+  const cameraPlayerRef = useRef<CameraPlayerInstance | null>(null);
   const requestedDeviceId = searchParams.get("device_id") || searchParams.get("deviceId") || "";
   const [activeResultTab, setActiveResultTab] = useState(RESULT_TAB_DATA);
   const [form, setForm] = useState<QueryFormState>({
@@ -145,6 +160,13 @@ export function DeviceDataPage() {
     queryFn: () => devicesApi.children(selectedDevice?.id ?? ""),
     enabled: selectedDevice?.topology_role === "gateway"
   });
+  const selectedDeviceIsCamera = Boolean(
+    selectedDevice && (selectedDevice.device_type === "camera" || selectedDevice.topology_role === "camera" || selectedDevice.capabilities.includes("video_stream"))
+  );
+  const cameraContainerId = useMemo(
+    () => `ezviz-live-${(form.deviceId || "empty").replace(/[^a-zA-Z0-9_-]/g, "")}`,
+    [form.deviceId]
+  );
 
   const streams = useQuery({
     queryKey: ["data-streams", form.deviceId],
@@ -213,6 +235,10 @@ export function DeviceDataPage() {
       return { telemetry, media };
     }
   });
+  const liveSession = useMutation({
+    mutationFn: (deviceId: string) => camerasApi.createLiveSession(deviceId),
+    onError: (error) => message.error(formatApiError(error))
+  });
 
   const telemetryResult = query.data?.telemetry;
   const mediaResult = query.data?.media;
@@ -256,6 +282,17 @@ export function DeviceDataPage() {
     }));
     query.reset();
   }, [devices.data?.items, devices.isLoading, form.deviceId, requestedDeviceId]);
+
+  useEffect(() => {
+    return () => {
+      disposeCameraPlayer(cameraPlayerRef);
+    };
+  }, []);
+
+  useEffect(() => {
+    disposeCameraPlayer(cameraPlayerRef);
+    liveSession.reset();
+  }, [form.deviceId]);
 
   useEffect(() => {
     if (!query.data) {
@@ -382,6 +419,46 @@ export function DeviceDataPage() {
       selectedStreamIds: []
     }));
     query.reset();
+  }
+
+  function handleCreateLiveSession() {
+    if (!form.deviceId || !selectedDeviceIsCamera) {
+      void message.warning("请选择相机设备");
+      return;
+    }
+    disposeCameraPlayer(cameraPlayerRef);
+    liveSession.mutate(form.deviceId, {
+      onSuccess: async (session) => {
+        try {
+          const { EZUIKitPlayer } = await import("ezuikit-js");
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+          const container = document.getElementById(cameraContainerId);
+          if (!container) {
+            void message.error("视频容器未就绪");
+            return;
+          }
+          const width = Math.max(container.clientWidth, 320);
+          const height = Math.round(width * 0.5625);
+          container.innerHTML = "";
+          cameraPlayerRef.current = new EZUIKitPlayer({
+            id: cameraContainerId,
+            accessToken: session.access_token,
+            url: session.url,
+            width,
+            height,
+            template: "pcLive",
+            quality: cameraQualityCode[session.quality],
+            handleError: (error) => {
+              console.error("EZUIKit player error", error);
+              void message.error("实时视频播放失败");
+            }
+          });
+        } catch (error) {
+          console.error("Failed to load EZUIKit player", error);
+          void message.error("播放器加载失败");
+        }
+      }
+    });
   }
 
   function selectStreamGroup(streamsToSelect: DataStream[]) {
@@ -570,6 +647,31 @@ export function DeviceDataPage() {
                 ))}
               </div>
             )}
+          </div>
+        ) : null}
+
+        {selectedDeviceIsCamera ? (
+          <div className="camera-live-panel">
+            <div className="camera-live-panel-head">
+              <Space align="center" size={8}>
+                <Typography.Text strong>实时视频</Typography.Text>
+                <Tag color="magenta">相机</Tag>
+              </Space>
+              <Button loading={liveSession.isPending} onClick={handleCreateLiveSession} type="primary">
+                播放
+              </Button>
+            </div>
+            <div className="camera-live-stage">
+              <div className="camera-live-container" id={cameraContainerId} />
+              {!liveSession.data ? (
+                <div className="camera-live-empty">
+                  <Button loading={liveSession.isPending} onClick={handleCreateLiveSession} type="primary">
+                    启动实时预览
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+            {liveSession.error ? <Alert message={formatApiError(liveSession.error)} showIcon type="error" /> : null}
           </div>
         ) : null}
 
@@ -827,6 +929,24 @@ function emptySaveDatasetForm(): SaveDatasetFormState {
   };
 }
 
+function disposeCameraPlayer(playerRef: MutableRefObject<CameraPlayerInstance | null>) {
+  const player = playerRef.current;
+  if (!player) {
+    return;
+  }
+  playerRef.current = null;
+  try {
+    void player.stop?.();
+  } catch (error) {
+    console.warn("failed to stop EZUIKit player", error);
+  }
+  try {
+    void player.destroy?.();
+  } catch (error) {
+    console.warn("failed to destroy EZUIKit player", error);
+  }
+}
+
 function inferDatasetType(hasTelemetry: boolean, hasImages: boolean): DatasetDataType {
   if (hasTelemetry && hasImages) {
     return "mixed";
@@ -1063,7 +1183,7 @@ function describeDevice(device?: Device): string {
   if (!device) {
     return "-";
   }
-  return `${deviceTopologyText(device)} · ${device.name} · ${device.serial_no}`;
+  return `${deviceTopologyText(device)} · ${deviceLifecycleText(device.lifecycle_status)} · ${device.name} · ${device.serial_no}`;
 }
 
 function deviceTopologyText(device: Device): string {
@@ -1073,7 +1193,22 @@ function deviceTopologyText(device: Device): string {
   if (device.topology_role === "gateway_node") {
     return "节点";
   }
+  if (device.topology_role === "camera") {
+    return "相机";
+  }
   return "普通设备";
+}
+
+function deviceLifecycleText(status: DeviceLifecycleStatus): string {
+  const label: Record<DeviceLifecycleStatus, string> = {
+    inbound: "入库",
+    installed: "安装",
+    online: "上线",
+    maintenance: "维护",
+    repairing: "维修",
+    retired: "报废"
+  };
+  return label[status];
 }
 
 function describeSelectedStreams(selectedStreams: DataStream[], telemetryCount: number, imageCount: number): string {

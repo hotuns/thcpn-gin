@@ -492,12 +492,26 @@ func createPersonalWorkspaceMembership(ctx context.Context, q *sqlc.Queries, use
 		return mapWriteError(err, "create personal workspace")
 	}
 
-	if _, err := q.CreateWorkspaceMember(ctx, sqlc.CreateWorkspaceMemberParams{
-		WorkspaceID: workspace.ID,
-		UserID:      userID,
-		RoleID:      ownerRole.ID,
-	}); err != nil {
+	createdMember, err := q.CreateWorkspaceMember(ctx, sqlc.CreateWorkspaceMemberParams{
+		WorkspaceID:  workspace.ID,
+		UserID:       userID,
+		RoleID:       ownerRole.ID,
+		ScopeType:    "workspace",
+		ScopeID:      workspace.ID,
+		TemplateCode: ownerRoleCode,
+	})
+	if err != nil {
 		return mapWriteError(err, "create workspace membership")
+	}
+	ownerPermissions, err := q.ListPermissionCodesByTemplate(ctx, ownerRoleCode)
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "list owner permissions", err)
+	}
+	if _, err := q.AddWorkspaceMemberPermissions(ctx, sqlc.AddWorkspaceMemberPermissionsParams{
+		MemberID: createdMember.ID,
+		Column2:  ownerPermissions,
+	}); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "create workspace owner permissions", err)
 	}
 	return nil
 }

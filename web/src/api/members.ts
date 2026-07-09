@@ -1,5 +1,5 @@
 import { del, get, patch, post } from "./client";
-import type { InternalMemberRoleCode, WorkspaceMember, WorkspaceMemberListResponse } from "./types";
+import type { MemberScopeType, PermissionCode, WorkspaceMember, WorkspaceMemberListResponse } from "./types";
 
 export const membersApi = {
   list(workspaceId: string): Promise<WorkspaceMemberListResponse> {
@@ -12,15 +12,27 @@ export const membersApi = {
       user_id?: string;
       email?: string;
       phone?: string;
-      role_code: InternalMemberRoleCode;
+      template_code?: string;
+      permission_codes: PermissionCode[];
+      scope_type?: MemberScopeType;
+      scope_id?: string;
     }
   ): Promise<WorkspaceMember> {
     return post<WorkspaceMember>(`/api/v1/workspaces/${workspaceId}/members`, input);
   },
 
-  updateRole(workspaceId: string, memberId: string, roleCode: InternalMemberRoleCode): Promise<WorkspaceMember> {
+  updateRole(
+    workspaceId: string,
+    memberId: string,
+    input: {
+      template_code?: string;
+      permission_codes: PermissionCode[];
+      scope_type?: MemberScopeType;
+      scope_id?: string;
+    }
+  ): Promise<WorkspaceMember> {
     return patch<WorkspaceMember>(`/api/v1/workspaces/${workspaceId}/members/${memberId}`, {
-      role_code: roleCode
+      ...input
     });
   },
 

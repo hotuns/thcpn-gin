@@ -19,7 +19,7 @@ SET status = 'accepted',
 WHERE id = $1
   AND status = 'pending'
   AND (expires_at IS NULL OR expires_at > now())
-RETURNING id, workspace_id, invitee_email, invitee_phone, role_id, scope_type, scope_id, expires_at, invited_by, status, created_at, updated_at
+RETURNING id, workspace_id, invitee_email, invitee_phone, role_id, scope_type, scope_id, expires_at, invited_by, status, created_at, updated_at, template_code
 `
 
 func (q *Queries) AcceptInvitation(ctx context.Context, id uuid.UUID) (Invitation, error) {
@@ -38,8 +38,72 @@ func (q *Queries) AcceptInvitation(ctx context.Context, id uuid.UUID) (Invitatio
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TemplateCode,
 	)
 	return i, err
+}
+
+const addAccessGrantPermissions = `-- name: AddAccessGrantPermissions :execrows
+INSERT INTO access_grant_permissions (access_grant_id, permission_id)
+SELECT $1, p.id
+FROM permissions p
+WHERE p.code = ANY($2::text[])
+ON CONFLICT DO NOTHING
+`
+
+type AddAccessGrantPermissionsParams struct {
+	AccessGrantID uuid.UUID `json:"access_grant_id"`
+	Column2       []string  `json:"column_2"`
+}
+
+func (q *Queries) AddAccessGrantPermissions(ctx context.Context, arg AddAccessGrantPermissionsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, addAccessGrantPermissions, arg.AccessGrantID, arg.Column2)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const addInvitationPermissions = `-- name: AddInvitationPermissions :execrows
+INSERT INTO invitation_permissions (invitation_id, permission_id)
+SELECT $1, p.id
+FROM permissions p
+WHERE p.code = ANY($2::text[])
+ON CONFLICT DO NOTHING
+`
+
+type AddInvitationPermissionsParams struct {
+	InvitationID uuid.UUID `json:"invitation_id"`
+	Column2      []string  `json:"column_2"`
+}
+
+func (q *Queries) AddInvitationPermissions(ctx context.Context, arg AddInvitationPermissionsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, addInvitationPermissions, arg.InvitationID, arg.Column2)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const copyInvitationPermissionsToAccessGrant = `-- name: CopyInvitationPermissionsToAccessGrant :execrows
+INSERT INTO access_grant_permissions (access_grant_id, permission_id)
+SELECT $2, ip.permission_id
+FROM invitation_permissions ip
+WHERE ip.invitation_id = $1
+ON CONFLICT DO NOTHING
+`
+
+type CopyInvitationPermissionsToAccessGrantParams struct {
+	InvitationID  uuid.UUID `json:"invitation_id"`
+	AccessGrantID uuid.UUID `json:"access_grant_id"`
+}
+
+func (q *Queries) CopyInvitationPermissionsToAccessGrant(ctx context.Context, arg CopyInvitationPermissionsToAccessGrantParams) (int64, error) {
+	result, err := q.db.Exec(ctx, copyInvitationPermissionsToAccessGrant, arg.InvitationID, arg.AccessGrantID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const createAccessGrant = `-- name: CreateAccessGrant :one
@@ -53,10 +117,11 @@ INSERT INTO access_grants (
     expires_at,
     allow_reshare,
     allow_api_access,
-    created_by
+    created_by,
+    template_code
 )
-VALUES ($1, 'user', $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, workspace_id, subject_type, subject_id, role_id, scope_type, scope_id, expires_at, allow_reshare, allow_api_access, created_by, status, created_at, updated_at
+VALUES ($1, 'user', $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING id, workspace_id, subject_type, subject_id, role_id, scope_type, scope_id, expires_at, allow_reshare, allow_api_access, created_by, status, created_at, updated_at, template_code
 `
 
 type CreateAccessGrantParams struct {
@@ -69,6 +134,7 @@ type CreateAccessGrantParams struct {
 	AllowReshare   bool               `json:"allow_reshare"`
 	AllowApiAccess bool               `json:"allow_api_access"`
 	CreatedBy      uuid.UUID          `json:"created_by"`
+	TemplateCode   string             `json:"template_code"`
 }
 
 func (q *Queries) CreateAccessGrant(ctx context.Context, arg CreateAccessGrantParams) (AccessGrant, error) {
@@ -82,6 +148,7 @@ func (q *Queries) CreateAccessGrant(ctx context.Context, arg CreateAccessGrantPa
 		arg.AllowReshare,
 		arg.AllowApiAccess,
 		arg.CreatedBy,
+		arg.TemplateCode,
 	)
 	var i AccessGrant
 	err := row.Scan(
@@ -99,6 +166,7 @@ func (q *Queries) CreateAccessGrant(ctx context.Context, arg CreateAccessGrantPa
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TemplateCode,
 	)
 	return i, err
 }
@@ -112,10 +180,11 @@ INSERT INTO invitations (
     scope_type,
     scope_id,
     expires_at,
-    invited_by
+    invited_by,
+    template_code
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, workspace_id, invitee_email, invitee_phone, role_id, scope_type, scope_id, expires_at, invited_by, status, created_at, updated_at
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, workspace_id, invitee_email, invitee_phone, role_id, scope_type, scope_id, expires_at, invited_by, status, created_at, updated_at, template_code
 `
 
 type CreateInvitationParams struct {
@@ -127,6 +196,7 @@ type CreateInvitationParams struct {
 	ScopeID      uuid.UUID          `json:"scope_id"`
 	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
 	InvitedBy    uuid.UUID          `json:"invited_by"`
+	TemplateCode string             `json:"template_code"`
 }
 
 func (q *Queries) CreateInvitation(ctx context.Context, arg CreateInvitationParams) (Invitation, error) {
@@ -139,6 +209,7 @@ func (q *Queries) CreateInvitation(ctx context.Context, arg CreateInvitationPara
 		arg.ScopeID,
 		arg.ExpiresAt,
 		arg.InvitedBy,
+		arg.TemplateCode,
 	)
 	var i Invitation
 	err := row.Scan(
@@ -154,8 +225,29 @@ func (q *Queries) CreateInvitation(ctx context.Context, arg CreateInvitationPara
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TemplateCode,
 	)
 	return i, err
+}
+
+const deleteAccessGrantPermissions = `-- name: DeleteAccessGrantPermissions :exec
+DELETE FROM access_grant_permissions
+WHERE access_grant_id = $1
+`
+
+func (q *Queries) DeleteAccessGrantPermissions(ctx context.Context, accessGrantID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteAccessGrantPermissions, accessGrantID)
+	return err
+}
+
+const deleteInvitationPermissions = `-- name: DeleteInvitationPermissions :exec
+DELETE FROM invitation_permissions
+WHERE invitation_id = $1
+`
+
+func (q *Queries) DeleteInvitationPermissions(ctx context.Context, invitationID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteInvitationPermissions, invitationID)
+	return err
 }
 
 const expireAccessGrants = `-- name: ExpireAccessGrants :execrows
@@ -199,8 +291,17 @@ SELECT
     ag.subject_type,
     ag.subject_id,
     ag.role_id,
-    r.code AS role_code,
-    r.name AS role_name,
+    ag.template_code AS role_code,
+    COALESCE(tr.name, '自定义权限') AS role_name,
+    ag.template_code,
+    COALESCE(tr.name, '自定义权限') AS template_name,
+    ARRAY(
+        SELECT p.code
+        FROM access_grant_permissions agp
+        JOIN permissions p ON p.id = agp.permission_id
+        WHERE agp.access_grant_id = ag.id
+        ORDER BY p.resource_type, p.action, p.code
+    )::text[] AS permission_codes,
     ag.scope_type,
     ag.scope_id,
     ag.expires_at,
@@ -211,27 +312,30 @@ SELECT
     ag.created_at,
     ag.updated_at
 FROM access_grants ag
-JOIN roles r ON r.id = ag.role_id
+LEFT JOIN roles tr ON tr.workspace_id IS NULL AND tr.code = ag.template_code
 WHERE ag.id = $1
 `
 
 type GetAccessGrantRow struct {
-	ID             uuid.UUID          `json:"id"`
-	WorkspaceID    uuid.UUID          `json:"workspace_id"`
-	SubjectType    string             `json:"subject_type"`
-	SubjectID      uuid.UUID          `json:"subject_id"`
-	RoleID         uuid.UUID          `json:"role_id"`
-	RoleCode       string             `json:"role_code"`
-	RoleName       string             `json:"role_name"`
-	ScopeType      string             `json:"scope_type"`
-	ScopeID        uuid.UUID          `json:"scope_id"`
-	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
-	AllowReshare   bool               `json:"allow_reshare"`
-	AllowApiAccess bool               `json:"allow_api_access"`
-	CreatedBy      uuid.UUID          `json:"created_by"`
-	Status         string             `json:"status"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	ID              uuid.UUID          `json:"id"`
+	WorkspaceID     uuid.UUID          `json:"workspace_id"`
+	SubjectType     string             `json:"subject_type"`
+	SubjectID       uuid.UUID          `json:"subject_id"`
+	RoleID          uuid.UUID          `json:"role_id"`
+	RoleCode        string             `json:"role_code"`
+	RoleName        string             `json:"role_name"`
+	TemplateCode    string             `json:"template_code"`
+	TemplateName    string             `json:"template_name"`
+	PermissionCodes []string           `json:"permission_codes"`
+	ScopeType       string             `json:"scope_type"`
+	ScopeID         uuid.UUID          `json:"scope_id"`
+	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
+	AllowReshare    bool               `json:"allow_reshare"`
+	AllowApiAccess  bool               `json:"allow_api_access"`
+	CreatedBy       uuid.UUID          `json:"created_by"`
+	Status          string             `json:"status"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
 func (q *Queries) GetAccessGrant(ctx context.Context, id uuid.UUID) (GetAccessGrantRow, error) {
@@ -245,6 +349,9 @@ func (q *Queries) GetAccessGrant(ctx context.Context, id uuid.UUID) (GetAccessGr
 		&i.RoleID,
 		&i.RoleCode,
 		&i.RoleName,
+		&i.TemplateCode,
+		&i.TemplateName,
+		&i.PermissionCodes,
 		&i.ScopeType,
 		&i.ScopeID,
 		&i.ExpiresAt,
@@ -259,18 +366,16 @@ func (q *Queries) GetAccessGrant(ctx context.Context, id uuid.UUID) (GetAccessGr
 }
 
 const getAccessGrantPermissionRole = `-- name: GetAccessGrantPermissionRole :one
-SELECT r.code
+SELECT ag.template_code
 FROM access_grants ag
-JOIN roles r ON r.id = ag.role_id
-JOIN role_permissions rp ON rp.role_id = r.id
-JOIN permissions p ON p.id = rp.permission_id
+JOIN access_grant_permissions agp ON agp.access_grant_id = ag.id
+JOIN permissions p ON p.id = agp.permission_id
 WHERE ag.subject_type = 'user'
   AND ag.subject_id = $1
   AND ag.workspace_id = $2
   AND ag.status = 'active'
   AND (ag.expires_at IS NULL OR ag.expires_at > now())
   AND p.code = $3
-  AND (r.workspace_id IS NULL OR r.workspace_id = ag.workspace_id)
   AND (
     ag.scope_type = 'workspace'
     OR (ag.scope_type = $4 AND ag.scope_id = $5)
@@ -280,7 +385,7 @@ WHERE ag.subject_type = 'user'
     OR (ag.scope_type = 'dataset' AND $9::uuid IS NOT NULL AND ag.scope_id = $9::uuid)
   )
 ORDER BY
-  CASE WHEN r.code = 'service_engineer' THEN 0 ELSE 1 END,
+  CASE WHEN ag.template_code = 'service_engineer' THEN 0 ELSE 1 END,
   ag.created_at DESC,
   ag.id DESC
 LIMIT 1
@@ -310,9 +415,9 @@ func (q *Queries) GetAccessGrantPermissionRole(ctx context.Context, arg GetAcces
 		arg.DeviceID,
 		arg.DatasetID,
 	)
-	var code string
-	err := row.Scan(&code)
-	return code, err
+	var template_code string
+	err := row.Scan(&template_code)
+	return template_code, err
 }
 
 const getInvitation = `-- name: GetInvitation :one
@@ -322,8 +427,17 @@ SELECT
     i.invitee_email,
     i.invitee_phone,
     i.role_id,
-    r.code AS role_code,
-    r.name AS role_name,
+    i.template_code AS role_code,
+    COALESCE(tr.name, '自定义权限') AS role_name,
+    i.template_code,
+    COALESCE(tr.name, '自定义权限') AS template_name,
+    ARRAY(
+        SELECT p.code
+        FROM invitation_permissions ip
+        JOIN permissions p ON p.id = ip.permission_id
+        WHERE ip.invitation_id = i.id
+        ORDER BY p.resource_type, p.action, p.code
+    )::text[] AS permission_codes,
     i.scope_type,
     i.scope_id,
     i.expires_at,
@@ -332,25 +446,28 @@ SELECT
     i.created_at,
     i.updated_at
 FROM invitations i
-JOIN roles r ON r.id = i.role_id
+LEFT JOIN roles tr ON tr.workspace_id IS NULL AND tr.code = i.template_code
 WHERE i.id = $1
 `
 
 type GetInvitationRow struct {
-	ID           uuid.UUID          `json:"id"`
-	WorkspaceID  uuid.UUID          `json:"workspace_id"`
-	InviteeEmail *string            `json:"invitee_email"`
-	InviteePhone *string            `json:"invitee_phone"`
-	RoleID       uuid.UUID          `json:"role_id"`
-	RoleCode     string             `json:"role_code"`
-	RoleName     string             `json:"role_name"`
-	ScopeType    string             `json:"scope_type"`
-	ScopeID      uuid.UUID          `json:"scope_id"`
-	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
-	InvitedBy    uuid.UUID          `json:"invited_by"`
-	Status       string             `json:"status"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	ID              uuid.UUID          `json:"id"`
+	WorkspaceID     uuid.UUID          `json:"workspace_id"`
+	InviteeEmail    *string            `json:"invitee_email"`
+	InviteePhone    *string            `json:"invitee_phone"`
+	RoleID          uuid.UUID          `json:"role_id"`
+	RoleCode        string             `json:"role_code"`
+	RoleName        string             `json:"role_name"`
+	TemplateCode    string             `json:"template_code"`
+	TemplateName    string             `json:"template_name"`
+	PermissionCodes []string           `json:"permission_codes"`
+	ScopeType       string             `json:"scope_type"`
+	ScopeID         uuid.UUID          `json:"scope_id"`
+	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
+	InvitedBy       uuid.UUID          `json:"invited_by"`
+	Status          string             `json:"status"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
 func (q *Queries) GetInvitation(ctx context.Context, id uuid.UUID) (GetInvitationRow, error) {
@@ -364,6 +481,9 @@ func (q *Queries) GetInvitation(ctx context.Context, id uuid.UUID) (GetInvitatio
 		&i.RoleID,
 		&i.RoleCode,
 		&i.RoleName,
+		&i.TemplateCode,
+		&i.TemplateName,
+		&i.PermissionCodes,
 		&i.ScopeType,
 		&i.ScopeID,
 		&i.ExpiresAt,
@@ -373,60 +493,6 @@ func (q *Queries) GetInvitation(ctx context.Context, id uuid.UUID) (GetInvitatio
 		&i.UpdatedAt,
 	)
 	return i, err
-}
-
-const hasAccessGrantPermission = `-- name: HasAccessGrantPermission :one
-SELECT EXISTS (
-    SELECT 1
-    FROM access_grants ag
-    JOIN roles r ON r.id = ag.role_id
-    JOIN role_permissions rp ON rp.role_id = r.id
-    JOIN permissions p ON p.id = rp.permission_id
-    WHERE ag.subject_type = 'user'
-      AND ag.subject_id = $1
-      AND ag.workspace_id = $2
-      AND ag.status = 'active'
-      AND (ag.expires_at IS NULL OR ag.expires_at > now())
-      AND p.code = $3
-      AND (r.workspace_id IS NULL OR r.workspace_id = ag.workspace_id)
-      AND (
-        ag.scope_type = 'workspace'
-        OR (ag.scope_type = $4 AND ag.scope_id = $5)
-        OR (ag.scope_type = 'project' AND $6::uuid IS NOT NULL AND ag.scope_id = $6::uuid)
-        OR (ag.scope_type = 'site' AND $7::uuid IS NOT NULL AND ag.scope_id = $7::uuid)
-        OR (ag.scope_type = 'device' AND $8::uuid IS NOT NULL AND ag.scope_id = $8::uuid)
-        OR (ag.scope_type = 'dataset' AND $9::uuid IS NOT NULL AND ag.scope_id = $9::uuid)
-      )
-) AS allowed
-`
-
-type HasAccessGrantPermissionParams struct {
-	SubjectID   uuid.UUID `json:"subject_id"`
-	WorkspaceID uuid.UUID `json:"workspace_id"`
-	Code        string    `json:"code"`
-	ScopeType   string    `json:"scope_type"`
-	ScopeID     uuid.UUID `json:"scope_id"`
-	ProjectID   uuid.UUID `json:"project_id"`
-	SiteID      uuid.UUID `json:"site_id"`
-	DeviceID    uuid.UUID `json:"device_id"`
-	DatasetID   uuid.UUID `json:"dataset_id"`
-}
-
-func (q *Queries) HasAccessGrantPermission(ctx context.Context, arg HasAccessGrantPermissionParams) (bool, error) {
-	row := q.db.QueryRow(ctx, hasAccessGrantPermission,
-		arg.SubjectID,
-		arg.WorkspaceID,
-		arg.Code,
-		arg.ScopeType,
-		arg.ScopeID,
-		arg.ProjectID,
-		arg.SiteID,
-		arg.DeviceID,
-		arg.DatasetID,
-	)
-	var allowed bool
-	err := row.Scan(&allowed)
-	return allowed, err
 }
 
 const listAccessGrantsByWorkspace = `-- name: ListAccessGrantsByWorkspace :many
@@ -439,8 +505,17 @@ SELECT
     u.phone AS subject_phone,
     u.email AS subject_email,
     ag.role_id,
-    r.code AS role_code,
-    r.name AS role_name,
+    ag.template_code AS role_code,
+    COALESCE(tr.name, '自定义权限') AS role_name,
+    ag.template_code,
+    COALESCE(tr.name, '自定义权限') AS template_name,
+    ARRAY(
+        SELECT p.code
+        FROM access_grant_permissions agp
+        JOIN permissions p ON p.id = agp.permission_id
+        WHERE agp.access_grant_id = ag.id
+        ORDER BY p.resource_type, p.action, p.code
+    )::text[] AS permission_codes,
     ag.scope_type,
     ag.scope_id,
     ag.expires_at,
@@ -451,32 +526,35 @@ SELECT
     ag.created_at,
     ag.updated_at
 FROM access_grants ag
-JOIN roles r ON r.id = ag.role_id
+LEFT JOIN roles tr ON tr.workspace_id IS NULL AND tr.code = ag.template_code
 JOIN users u ON u.id = ag.subject_id
 WHERE ag.workspace_id = $1
 ORDER BY ag.created_at DESC, ag.id DESC
 `
 
 type ListAccessGrantsByWorkspaceRow struct {
-	ID             uuid.UUID          `json:"id"`
-	WorkspaceID    uuid.UUID          `json:"workspace_id"`
-	SubjectType    string             `json:"subject_type"`
-	SubjectID      uuid.UUID          `json:"subject_id"`
-	SubjectName    string             `json:"subject_name"`
-	SubjectPhone   *string            `json:"subject_phone"`
-	SubjectEmail   *string            `json:"subject_email"`
-	RoleID         uuid.UUID          `json:"role_id"`
-	RoleCode       string             `json:"role_code"`
-	RoleName       string             `json:"role_name"`
-	ScopeType      string             `json:"scope_type"`
-	ScopeID        uuid.UUID          `json:"scope_id"`
-	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
-	AllowReshare   bool               `json:"allow_reshare"`
-	AllowApiAccess bool               `json:"allow_api_access"`
-	CreatedBy      uuid.UUID          `json:"created_by"`
-	Status         string             `json:"status"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	ID              uuid.UUID          `json:"id"`
+	WorkspaceID     uuid.UUID          `json:"workspace_id"`
+	SubjectType     string             `json:"subject_type"`
+	SubjectID       uuid.UUID          `json:"subject_id"`
+	SubjectName     string             `json:"subject_name"`
+	SubjectPhone    *string            `json:"subject_phone"`
+	SubjectEmail    *string            `json:"subject_email"`
+	RoleID          uuid.UUID          `json:"role_id"`
+	RoleCode        string             `json:"role_code"`
+	RoleName        string             `json:"role_name"`
+	TemplateCode    string             `json:"template_code"`
+	TemplateName    string             `json:"template_name"`
+	PermissionCodes []string           `json:"permission_codes"`
+	ScopeType       string             `json:"scope_type"`
+	ScopeID         uuid.UUID          `json:"scope_id"`
+	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
+	AllowReshare    bool               `json:"allow_reshare"`
+	AllowApiAccess  bool               `json:"allow_api_access"`
+	CreatedBy       uuid.UUID          `json:"created_by"`
+	Status          string             `json:"status"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
 func (q *Queries) ListAccessGrantsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]ListAccessGrantsByWorkspaceRow, error) {
@@ -499,6 +577,9 @@ func (q *Queries) ListAccessGrantsByWorkspace(ctx context.Context, workspaceID u
 			&i.RoleID,
 			&i.RoleCode,
 			&i.RoleName,
+			&i.TemplateCode,
+			&i.TemplateName,
+			&i.PermissionCodes,
 			&i.ScopeType,
 			&i.ScopeID,
 			&i.ExpiresAt,
@@ -527,8 +608,17 @@ SELECT
     ag.subject_id,
     w.name AS workspace_name,
     ag.role_id,
-    r.code AS role_code,
-    r.name AS role_name,
+    ag.template_code AS role_code,
+    COALESCE(tr.name, '自定义权限') AS role_name,
+    ag.template_code,
+    COALESCE(tr.name, '自定义权限') AS template_name,
+    ARRAY(
+        SELECT p.code
+        FROM access_grant_permissions agp
+        JOIN permissions p ON p.id = agp.permission_id
+        WHERE agp.access_grant_id = ag.id
+        ORDER BY p.resource_type, p.action, p.code
+    )::text[] AS permission_codes,
     ag.scope_type,
     ag.scope_id,
     ag.expires_at,
@@ -539,7 +629,7 @@ SELECT
     ag.created_at,
     ag.updated_at
 FROM access_grants ag
-JOIN roles r ON r.id = ag.role_id
+LEFT JOIN roles tr ON tr.workspace_id IS NULL AND tr.code = ag.template_code
 JOIN workspaces w ON w.id = ag.workspace_id
 WHERE ag.subject_type = 'user'
   AND ag.subject_id = $1
@@ -549,23 +639,26 @@ ORDER BY ag.created_at DESC, ag.id DESC
 `
 
 type ListAccessGrantsForUserRow struct {
-	ID             uuid.UUID          `json:"id"`
-	WorkspaceID    uuid.UUID          `json:"workspace_id"`
-	SubjectType    string             `json:"subject_type"`
-	SubjectID      uuid.UUID          `json:"subject_id"`
-	WorkspaceName  string             `json:"workspace_name"`
-	RoleID         uuid.UUID          `json:"role_id"`
-	RoleCode       string             `json:"role_code"`
-	RoleName       string             `json:"role_name"`
-	ScopeType      string             `json:"scope_type"`
-	ScopeID        uuid.UUID          `json:"scope_id"`
-	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
-	AllowReshare   bool               `json:"allow_reshare"`
-	AllowApiAccess bool               `json:"allow_api_access"`
-	CreatedBy      uuid.UUID          `json:"created_by"`
-	Status         string             `json:"status"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	ID              uuid.UUID          `json:"id"`
+	WorkspaceID     uuid.UUID          `json:"workspace_id"`
+	SubjectType     string             `json:"subject_type"`
+	SubjectID       uuid.UUID          `json:"subject_id"`
+	WorkspaceName   string             `json:"workspace_name"`
+	RoleID          uuid.UUID          `json:"role_id"`
+	RoleCode        string             `json:"role_code"`
+	RoleName        string             `json:"role_name"`
+	TemplateCode    string             `json:"template_code"`
+	TemplateName    string             `json:"template_name"`
+	PermissionCodes []string           `json:"permission_codes"`
+	ScopeType       string             `json:"scope_type"`
+	ScopeID         uuid.UUID          `json:"scope_id"`
+	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
+	AllowReshare    bool               `json:"allow_reshare"`
+	AllowApiAccess  bool               `json:"allow_api_access"`
+	CreatedBy       uuid.UUID          `json:"created_by"`
+	Status          string             `json:"status"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
 func (q *Queries) ListAccessGrantsForUser(ctx context.Context, subjectID uuid.UUID) ([]ListAccessGrantsForUserRow, error) {
@@ -586,6 +679,9 @@ func (q *Queries) ListAccessGrantsForUser(ctx context.Context, subjectID uuid.UU
 			&i.RoleID,
 			&i.RoleCode,
 			&i.RoleName,
+			&i.TemplateCode,
+			&i.TemplateName,
+			&i.PermissionCodes,
 			&i.ScopeType,
 			&i.ScopeID,
 			&i.ExpiresAt,
@@ -613,8 +709,17 @@ SELECT
     i.invitee_email,
     i.invitee_phone,
     i.role_id,
-    r.code AS role_code,
-    r.name AS role_name,
+    i.template_code AS role_code,
+    COALESCE(tr.name, '自定义权限') AS role_name,
+    i.template_code,
+    COALESCE(tr.name, '自定义权限') AS template_name,
+    ARRAY(
+        SELECT p.code
+        FROM invitation_permissions ip
+        JOIN permissions p ON p.id = ip.permission_id
+        WHERE ip.invitation_id = i.id
+        ORDER BY p.resource_type, p.action, p.code
+    )::text[] AS permission_codes,
     i.scope_type,
     i.scope_id,
     i.expires_at,
@@ -623,26 +728,29 @@ SELECT
     i.created_at,
     i.updated_at
 FROM invitations i
-JOIN roles r ON r.id = i.role_id
+LEFT JOIN roles tr ON tr.workspace_id IS NULL AND tr.code = i.template_code
 WHERE i.workspace_id = $1
 ORDER BY i.created_at DESC, i.id DESC
 `
 
 type ListInvitationsByWorkspaceRow struct {
-	ID           uuid.UUID          `json:"id"`
-	WorkspaceID  uuid.UUID          `json:"workspace_id"`
-	InviteeEmail *string            `json:"invitee_email"`
-	InviteePhone *string            `json:"invitee_phone"`
-	RoleID       uuid.UUID          `json:"role_id"`
-	RoleCode     string             `json:"role_code"`
-	RoleName     string             `json:"role_name"`
-	ScopeType    string             `json:"scope_type"`
-	ScopeID      uuid.UUID          `json:"scope_id"`
-	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
-	InvitedBy    uuid.UUID          `json:"invited_by"`
-	Status       string             `json:"status"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	ID              uuid.UUID          `json:"id"`
+	WorkspaceID     uuid.UUID          `json:"workspace_id"`
+	InviteeEmail    *string            `json:"invitee_email"`
+	InviteePhone    *string            `json:"invitee_phone"`
+	RoleID          uuid.UUID          `json:"role_id"`
+	RoleCode        string             `json:"role_code"`
+	RoleName        string             `json:"role_name"`
+	TemplateCode    string             `json:"template_code"`
+	TemplateName    string             `json:"template_name"`
+	PermissionCodes []string           `json:"permission_codes"`
+	ScopeType       string             `json:"scope_type"`
+	ScopeID         uuid.UUID          `json:"scope_id"`
+	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
+	InvitedBy       uuid.UUID          `json:"invited_by"`
+	Status          string             `json:"status"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
 func (q *Queries) ListInvitationsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]ListInvitationsByWorkspaceRow, error) {
@@ -662,6 +770,9 @@ func (q *Queries) ListInvitationsByWorkspace(ctx context.Context, workspaceID uu
 			&i.RoleID,
 			&i.RoleCode,
 			&i.RoleName,
+			&i.TemplateCode,
+			&i.TemplateName,
+			&i.PermissionCodes,
 			&i.ScopeType,
 			&i.ScopeID,
 			&i.ExpiresAt,
@@ -687,8 +798,17 @@ SELECT
     i.invitee_email,
     i.invitee_phone,
     i.role_id,
-    r.code AS role_code,
-    r.name AS role_name,
+    i.template_code AS role_code,
+    COALESCE(tr.name, '自定义权限') AS role_name,
+    i.template_code,
+    COALESCE(tr.name, '自定义权限') AS template_name,
+    ARRAY(
+        SELECT p.code
+        FROM invitation_permissions ip
+        JOIN permissions p ON p.id = ip.permission_id
+        WHERE ip.invitation_id = i.id
+        ORDER BY p.resource_type, p.action, p.code
+    )::text[] AS permission_codes,
     i.scope_type,
     i.scope_id,
     i.expires_at,
@@ -697,7 +817,7 @@ SELECT
     i.created_at,
     i.updated_at
 FROM invitations i
-JOIN roles r ON r.id = i.role_id
+LEFT JOIN roles tr ON tr.workspace_id IS NULL AND tr.code = i.template_code
 WHERE i.status = 'pending'
   AND (i.expires_at IS NULL OR i.expires_at > now())
   AND (
@@ -714,20 +834,23 @@ type ListPendingInvitationsForIdentityParams struct {
 }
 
 type ListPendingInvitationsForIdentityRow struct {
-	ID           uuid.UUID          `json:"id"`
-	WorkspaceID  uuid.UUID          `json:"workspace_id"`
-	InviteeEmail *string            `json:"invitee_email"`
-	InviteePhone *string            `json:"invitee_phone"`
-	RoleID       uuid.UUID          `json:"role_id"`
-	RoleCode     string             `json:"role_code"`
-	RoleName     string             `json:"role_name"`
-	ScopeType    string             `json:"scope_type"`
-	ScopeID      uuid.UUID          `json:"scope_id"`
-	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
-	InvitedBy    uuid.UUID          `json:"invited_by"`
-	Status       string             `json:"status"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	ID              uuid.UUID          `json:"id"`
+	WorkspaceID     uuid.UUID          `json:"workspace_id"`
+	InviteeEmail    *string            `json:"invitee_email"`
+	InviteePhone    *string            `json:"invitee_phone"`
+	RoleID          uuid.UUID          `json:"role_id"`
+	RoleCode        string             `json:"role_code"`
+	RoleName        string             `json:"role_name"`
+	TemplateCode    string             `json:"template_code"`
+	TemplateName    string             `json:"template_name"`
+	PermissionCodes []string           `json:"permission_codes"`
+	ScopeType       string             `json:"scope_type"`
+	ScopeID         uuid.UUID          `json:"scope_id"`
+	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
+	InvitedBy       uuid.UUID          `json:"invited_by"`
+	Status          string             `json:"status"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
 func (q *Queries) ListPendingInvitationsForIdentity(ctx context.Context, arg ListPendingInvitationsForIdentityParams) ([]ListPendingInvitationsForIdentityRow, error) {
@@ -747,6 +870,9 @@ func (q *Queries) ListPendingInvitationsForIdentity(ctx context.Context, arg Lis
 			&i.RoleID,
 			&i.RoleCode,
 			&i.RoleName,
+			&i.TemplateCode,
+			&i.TemplateName,
+			&i.PermissionCodes,
 			&i.ScopeType,
 			&i.ScopeID,
 			&i.ExpiresAt,
@@ -771,7 +897,7 @@ SET status = 'revoked',
     updated_at = now()
 WHERE id = $1
   AND status = 'active'
-RETURNING id, workspace_id, subject_type, subject_id, role_id, scope_type, scope_id, expires_at, allow_reshare, allow_api_access, created_by, status, created_at, updated_at
+RETURNING id, workspace_id, subject_type, subject_id, role_id, scope_type, scope_id, expires_at, allow_reshare, allow_api_access, created_by, status, created_at, updated_at, template_code
 `
 
 func (q *Queries) RevokeAccessGrant(ctx context.Context, id uuid.UUID) (AccessGrant, error) {
@@ -792,6 +918,7 @@ func (q *Queries) RevokeAccessGrant(ctx context.Context, id uuid.UUID) (AccessGr
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TemplateCode,
 	)
 	return i, err
 }
@@ -802,7 +929,7 @@ SET status = 'revoked',
     updated_at = now()
 WHERE id = $1
   AND status = 'pending'
-RETURNING id, workspace_id, invitee_email, invitee_phone, role_id, scope_type, scope_id, expires_at, invited_by, status, created_at, updated_at
+RETURNING id, workspace_id, invitee_email, invitee_phone, role_id, scope_type, scope_id, expires_at, invited_by, status, created_at, updated_at, template_code
 `
 
 func (q *Queries) RevokeInvitation(ctx context.Context, id uuid.UUID) (Invitation, error) {
@@ -821,6 +948,7 @@ func (q *Queries) RevokeInvitation(ctx context.Context, id uuid.UUID) (Invitatio
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TemplateCode,
 	)
 	return i, err
 }

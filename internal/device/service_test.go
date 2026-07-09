@@ -51,7 +51,7 @@ func TestCapabilityValidation(t *testing.T) {
 		t.Fatalf("expected duplicate capabilities to be removed, got %v", capabilities)
 	}
 
-	_, err = normalizeCapabilities([]string{"raw_sql"})
+	_, err = normalizeCapabilities([]string{"raw-sql"})
 	if apperr.KindOf(err) != apperr.KindInvalidArgument {
 		t.Fatalf("expected invalid capability to be rejected, got %v", err)
 	}
@@ -65,6 +65,28 @@ func TestDeviceStatusValidation(t *testing.T) {
 	}
 	if isValidDeviceStatus("archived") {
 		t.Fatal("archived should not be a valid device status")
+	}
+}
+
+func TestDeviceTypeValidationIncludesCamera(t *testing.T) {
+	for _, deviceType := range []string{"standalone", "gateway", "gateway_node", "camera"} {
+		if !isValidDeviceType(deviceType) {
+			t.Fatalf("expected %q to be valid", deviceType)
+		}
+	}
+	if isValidDeviceType("recorder") {
+		t.Fatal("recorder should not be a valid device type")
+	}
+}
+
+func TestDeviceLifecycleStatusValidation(t *testing.T) {
+	for _, status := range []string{"inbound", "installed", "online", "maintenance", "repairing", "retired"} {
+		if !isValidDeviceLifecycleStatus(status) {
+			t.Fatalf("expected %q to be valid", status)
+		}
+	}
+	if isValidDeviceLifecycleStatus("offline") {
+		t.Fatal("offline should not be a valid lifecycle status in v1")
 	}
 }
 
@@ -360,6 +382,116 @@ func TestListChildrenRequiresParentDevice(t *testing.T) {
 	}
 }
 
+func TestLifecycleValidation(t *testing.T) {
+	service := NewService(nil)
+
+	_, err := service.UpdateLifecycle(context.Background(), UpdateLifecycleInput{
+		LifecycleStatus: "online",
+		ActorUserID:     uuid.New(),
+	})
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected invalid argument for missing device, got %v", err)
+	}
+
+	_, err = service.UpdateLifecycle(context.Background(), UpdateLifecycleInput{
+		DeviceID:        uuid.New(),
+		LifecycleStatus: "offline",
+		ActorUserID:     uuid.New(),
+	})
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected invalid argument for invalid lifecycle status, got %v", err)
+	}
+
+	_, err = service.UpdateLifecycle(context.Background(), UpdateLifecycleInput{
+		DeviceID:        uuid.New(),
+		LifecycleStatus: "online",
+	})
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected invalid argument for missing actor, got %v", err)
+	}
+}
+
+func TestUpdateCapabilitiesValidation(t *testing.T) {
+	service := NewService(nil)
+
+	_, err := service.UpdateCapabilities(context.Background(), UpdateCapabilitiesInput{
+		Capabilities: []string{"telemetry"},
+		ActorUserID:  uuid.New(),
+	})
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected invalid argument for missing device, got %v", err)
+	}
+
+	_, err = service.UpdateCapabilities(context.Background(), UpdateCapabilitiesInput{
+		DeviceID:     uuid.New(),
+		Capabilities: []string{"raw-sql"},
+		ActorUserID:  uuid.New(),
+	})
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected invalid argument for invalid capability, got %v", err)
+	}
+
+	_, err = service.UpdateCapabilities(context.Background(), UpdateCapabilitiesInput{
+		DeviceID:     uuid.New(),
+		Capabilities: []string{"telemetry"},
+	})
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected invalid argument for missing actor, got %v", err)
+	}
+}
+
+func TestAdminUpdateValidation(t *testing.T) {
+	service := NewService(nil)
+
+	_, err := service.AdminUpdate(context.Background(), AdminUpdateInput{
+		SerialNo: stringPtr("SN-001"),
+	})
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected invalid argument for missing device, got %v", err)
+	}
+
+	_, err = service.AdminUpdate(context.Background(), AdminUpdateInput{
+		DeviceID: uuid.New(),
+		SerialNo: stringPtr(" "),
+	})
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected invalid argument for blank serial_no, got %v", err)
+	}
+
+	_, err = service.AdminUpdate(context.Background(), AdminUpdateInput{
+		DeviceID: uuid.New(),
+		Name:     stringPtr(" "),
+	})
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected invalid argument for blank name, got %v", err)
+	}
+
+	_, err = service.AdminUpdate(context.Background(), AdminUpdateInput{
+		DeviceID: uuid.New(),
+		Status:   stringPtr("archived"),
+	})
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected invalid argument for invalid status, got %v", err)
+	}
+
+	_, err = service.AdminUpdate(context.Background(), AdminUpdateInput{
+		DeviceID:   uuid.New(),
+		DeviceType: stringPtr("sensor"),
+	})
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected invalid argument for invalid device type, got %v", err)
+	}
+
+	capabilities := []string{"telemetry", "raw-sql"}
+	_, err = service.AdminUpdate(context.Background(), AdminUpdateInput{
+		DeviceID:     uuid.New(),
+		Capabilities: &capabilities,
+	})
+	if apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected invalid argument for invalid capability, got %v", err)
+	}
+}
+
 func TestDeviceTopologyFieldsFromRows(t *testing.T) {
 	now := pgtype.Timestamptz{Time: time.Date(2026, 7, 8, 9, 30, 0, 0, time.UTC), Valid: true}
 	deviceID := uuid.New()
@@ -368,21 +500,26 @@ func TestDeviceTopologyFieldsFromRows(t *testing.T) {
 	capabilities := []string{"telemetry", "image_capture"}
 
 	workspaceDevice := fromWorkspaceRow(sqlc.ListDevicesByWorkspaceRow{
-		ID:           deviceID,
-		SerialNo:     "GW-001",
-		Name:         "Gateway",
-		Status:       "active",
-		CreatedAt:    now,
-		UpdatedAt:    now,
-		AssignmentID: assignmentID,
-		WorkspaceID:  workspaceID,
-		AssignedAt:   now,
-		TopologyRole: "gateway",
-		ChildCount:   3,
+		ID:                 deviceID,
+		SerialNo:           "GW-001",
+		Name:               "Gateway",
+		Status:             "active",
+		LifecycleStatus:    "online",
+		LifecycleUpdatedAt: now,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		AssignmentID:       assignmentID,
+		WorkspaceID:        workspaceID,
+		AssignedAt:         now,
+		TopologyRole:       "gateway",
+		ChildCount:         3,
 	}, capabilities)
 
 	if workspaceDevice.TopologyRole != "gateway" || workspaceDevice.ChildCount != 3 {
 		t.Fatalf("expected topology fields to be preserved, got role=%q count=%d", workspaceDevice.TopologyRole, workspaceDevice.ChildCount)
+	}
+	if workspaceDevice.LifecycleStatus != "online" || workspaceDevice.LifecycleUpdatedAt == nil {
+		t.Fatalf("expected lifecycle fields to be preserved, got status=%q updated_at=%v", workspaceDevice.LifecycleStatus, workspaceDevice.LifecycleUpdatedAt)
 	}
 	if workspaceDevice.AssignmentID == nil || *workspaceDevice.AssignmentID != assignmentID {
 		t.Fatalf("expected assignment id to be mapped, got %#v", workspaceDevice.AssignmentID)
@@ -392,20 +529,25 @@ func TestDeviceTopologyFieldsFromRows(t *testing.T) {
 	}
 
 	systemDevice := fromSystemAssetRow(sqlc.ListSystemDeviceAssetsRow{
-		ID:           deviceID,
-		SerialNo:     "NODE-001",
-		Name:         "Node",
-		Status:       "active",
-		CreatedAt:    now,
-		UpdatedAt:    now,
-		AssignmentID: &assignmentID,
-		WorkspaceID:  &workspaceID,
-		AssignedAt:   now,
-		TopologyRole: "gateway_node",
-		ChildCount:   0,
+		ID:                 deviceID,
+		SerialNo:           "NODE-001",
+		Name:               "Node",
+		Status:             "active",
+		LifecycleStatus:    "installed",
+		LifecycleUpdatedAt: now,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		AssignmentID:       &assignmentID,
+		WorkspaceID:        &workspaceID,
+		AssignedAt:         now,
+		TopologyRole:       "gateway_node",
+		ChildCount:         0,
 	}, nil)
 	if systemDevice.TopologyRole != "gateway_node" || systemDevice.ChildCount != 0 {
 		t.Fatalf("expected system topology fields to be preserved, got role=%q count=%d", systemDevice.TopologyRole, systemDevice.ChildCount)
+	}
+	if systemDevice.LifecycleStatus != "installed" || systemDevice.LifecycleUpdatedAt == nil {
+		t.Fatalf("expected system lifecycle fields to be preserved, got status=%q updated_at=%v", systemDevice.LifecycleStatus, systemDevice.LifecycleUpdatedAt)
 	}
 	if systemDevice.WorkspaceID == nil || *systemDevice.WorkspaceID != workspaceID {
 		t.Fatalf("expected system workspace id to be mapped, got %#v", systemDevice.WorkspaceID)
@@ -437,6 +579,9 @@ func TestChildRowMappingUsesGatewayNodeRole(t *testing.T) {
 		SerialNo:               "NODE-002",
 		Name:                   "Node 2",
 		DeviceStatus:           "active",
+		LifecycleStatus:        "maintenance",
+		LifecycleUpdatedAt:     now,
+		DeviceType:             "gateway_node",
 		DeviceCreatedAt:        now,
 		DeviceUpdatedAt:        now,
 		AssignmentID:           assignmentID,
@@ -447,10 +592,17 @@ func TestChildRowMappingUsesGatewayNodeRole(t *testing.T) {
 	if child.Device.TopologyRole != "gateway_node" {
 		t.Fatalf("expected child device topology role gateway_node, got %q", child.Device.TopologyRole)
 	}
+	if child.Device.LifecycleStatus != "maintenance" || child.Device.LifecycleUpdatedAt == nil {
+		t.Fatalf("expected child lifecycle fields to be mapped, got status=%q updated_at=%v", child.Device.LifecycleStatus, child.Device.LifecycleUpdatedAt)
+	}
 	if child.Device.AssignmentID == nil || *child.Device.AssignmentID != assignmentID {
 		t.Fatalf("expected child assignment id to be mapped, got %#v", child.Device.AssignmentID)
 	}
 	if child.Relation.ParentDeviceID != parentID || child.Relation.ChildDeviceID != childID {
 		t.Fatalf("unexpected relation mapping: %#v", child.Relation)
 	}
+}
+
+func stringPtr(value string) *string {
+	return &value
 }

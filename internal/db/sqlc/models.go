@@ -24,6 +24,12 @@ type AccessGrant struct {
 	Status         string             `json:"status"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	TemplateCode   string             `json:"template_code"`
+}
+
+type AccessGrantPermission struct {
+	AccessGrantID uuid.UUID `json:"access_grant_id"`
+	PermissionID  uuid.UUID `json:"permission_id"`
 }
 
 type AppMetadatum struct {
@@ -68,6 +74,20 @@ type AuthRefreshSession struct {
 	RevokedAt        pgtype.Timestamptz `json:"revoked_at"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CameraBinding struct {
+	ID                    uuid.UUID          `json:"id"`
+	DeviceID              uuid.UUID          `json:"device_id"`
+	Provider              string             `json:"provider"`
+	DeviceSerial          string             `json:"device_serial"`
+	ChannelNo             int32              `json:"channel_no"`
+	DefaultQuality        string             `json:"default_quality"`
+	IsEncrypted           bool               `json:"is_encrypted"`
+	ValidateCodeSecretRef *string            `json:"validate_code_secret_ref"`
+	Status                string             `json:"status"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
 }
 
 type DataSource struct {
@@ -138,14 +158,17 @@ type DatasetSource struct {
 }
 
 type Device struct {
-	ID          uuid.UUID          `json:"id"`
-	ProductID   *string            `json:"product_id"`
-	SerialNo    string             `json:"serial_no"`
-	Name        string             `json:"name"`
-	Status      string             `json:"status"`
-	ActivatedAt pgtype.Timestamptz `json:"activated_at"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	ID                 uuid.UUID          `json:"id"`
+	ProductID          *string            `json:"product_id"`
+	SerialNo           string             `json:"serial_no"`
+	Name               string             `json:"name"`
+	Status             string             `json:"status"`
+	ActivatedAt        pgtype.Timestamptz `json:"activated_at"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	LifecycleStatus    string             `json:"lifecycle_status"`
+	LifecycleUpdatedAt pgtype.Timestamptz `json:"lifecycle_updated_at"`
+	DeviceType         string             `json:"device_type"`
 }
 
 type DeviceAssignment struct {
@@ -169,6 +192,15 @@ type DeviceCapability struct {
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }
 
+type DeviceCapabilityDefinition struct {
+	Code      string             `json:"code"`
+	Name      string             `json:"name"`
+	Status    string             `json:"status"`
+	SortOrder int32              `json:"sort_order"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
 type DeviceConfigSnapshot struct {
 	ID               uuid.UUID          `json:"id"`
 	DeviceID         uuid.UUID          `json:"device_id"`
@@ -184,6 +216,17 @@ type DeviceConfigSnapshot struct {
 	SourceUpdatedAt  pgtype.Timestamptz `json:"source_updated_at"`
 	SyncedAt         pgtype.Timestamptz `json:"synced_at"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+}
+
+type DeviceLifecycleEvent struct {
+	ID          uuid.UUID          `json:"id"`
+	DeviceID    uuid.UUID          `json:"device_id"`
+	FromStatus  *string            `json:"from_status"`
+	ToStatus    string             `json:"to_status"`
+	OccurredAt  pgtype.Timestamptz `json:"occurred_at"`
+	Note        *string            `json:"note"`
+	ActorUserID *uuid.UUID         `json:"actor_user_id"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
 type DeviceOperation struct {
@@ -258,6 +301,12 @@ type Invitation struct {
 	Status       string             `json:"status"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	TemplateCode string             `json:"template_code"`
+}
+
+type InvitationPermission struct {
+	InvitationID uuid.UUID `json:"invitation_id"`
+	PermissionID uuid.UUID `json:"permission_id"`
 }
 
 type Permission struct {
@@ -355,12 +404,20 @@ type Workspace struct {
 }
 
 type WorkspaceMember struct {
-	ID          uuid.UUID          `json:"id"`
-	WorkspaceID uuid.UUID          `json:"workspace_id"`
-	UserID      uuid.UUID          `json:"user_id"`
-	RoleID      uuid.UUID          `json:"role_id"`
-	Status      string             `json:"status"`
-	JoinedAt    pgtype.Timestamptz `json:"joined_at"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	ID           uuid.UUID          `json:"id"`
+	WorkspaceID  uuid.UUID          `json:"workspace_id"`
+	UserID       uuid.UUID          `json:"user_id"`
+	RoleID       uuid.UUID          `json:"role_id"`
+	Status       string             `json:"status"`
+	JoinedAt     pgtype.Timestamptz `json:"joined_at"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	ScopeType    string             `json:"scope_type"`
+	ScopeID      uuid.UUID          `json:"scope_id"`
+	TemplateCode string             `json:"template_code"`
+}
+
+type WorkspaceMemberPermission struct {
+	MemberID     uuid.UUID `json:"member_id"`
+	PermissionID uuid.UUID `json:"permission_id"`
 }

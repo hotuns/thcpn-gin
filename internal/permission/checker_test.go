@@ -12,11 +12,12 @@ import (
 )
 
 type fakePermissionStore struct {
-	workspaceAllowed bool
+	memberAllowed    bool
+	memberRoleCode   string
 	grantAllowed     bool
 	grantRoleCode    string
 	err              error
-	workspaceArg     sqlc.HasWorkspacePermissionParams
+	memberArg        sqlc.GetWorkspaceMemberPermissionRoleParams
 	grantArg         sqlc.GetAccessGrantPermissionRoleParams
 	dataset          sqlc.Dataset
 	project          sqlc.Project
@@ -26,12 +27,18 @@ type fakePermissionStore struct {
 	dataStream       sqlc.DataStream
 }
 
-func (f *fakePermissionStore) HasWorkspacePermission(_ context.Context, arg sqlc.HasWorkspacePermissionParams) (bool, error) {
-	f.workspaceArg = arg
+func (f *fakePermissionStore) GetWorkspaceMemberPermissionRole(_ context.Context, arg sqlc.GetWorkspaceMemberPermissionRoleParams) (string, error) {
+	f.memberArg = arg
 	if f.err != nil {
-		return false, f.err
+		return "", f.err
 	}
-	return f.workspaceAllowed, nil
+	if !f.memberAllowed {
+		return "", pgx.ErrNoRows
+	}
+	if f.memberRoleCode != "" {
+		return f.memberRoleCode, nil
+	}
+	return "viewer", nil
 }
 
 func (f *fakePermissionStore) GetAccessGrantPermissionRole(_ context.Context, arg sqlc.GetAccessGrantPermissionRoleParams) (string, error) {
@@ -84,7 +91,7 @@ func (f *fakePermissionStore) GetDataStream(_ context.Context, id uuid.UUID) (sq
 }
 
 func TestCheckerAllowsWorkspacePermission(t *testing.T) {
-	store := &fakePermissionStore{workspaceAllowed: true}
+	store := &fakePermissionStore{memberAllowed: true, memberRoleCode: "admin"}
 	checker := NewChecker(store)
 	userID := uuid.New()
 	workspaceID := uuid.New()
@@ -102,13 +109,19 @@ func TestCheckerAllowsWorkspacePermission(t *testing.T) {
 	if decision.Source != "workspace_member" {
 		t.Fatalf("expected workspace member source, got %#v", decision)
 	}
-	if store.workspaceArg.UserID != userID || store.workspaceArg.WorkspaceID != workspaceID || store.workspaceArg.Code != "workspace.view" {
-		t.Fatalf("unexpected store arg: %#v", store.workspaceArg)
+	if decision.GrantRoleCode != "admin" {
+		t.Fatalf("expected member role code, got %#v", decision)
+	}
+	if store.memberArg.UserID != userID || store.memberArg.WorkspaceID != workspaceID || store.memberArg.Code != "workspace.view" {
+		t.Fatalf("unexpected store arg: %#v", store.memberArg)
+	}
+	if store.memberArg.ScopeType != "workspace" || store.memberArg.ScopeID != workspaceID {
+		t.Fatalf("unexpected member scope arg: %#v", store.memberArg)
 	}
 }
 
 func TestCheckerDeniesMissingMembershipPermission(t *testing.T) {
-	checker := NewChecker(&fakePermissionStore{workspaceAllowed: false})
+	checker := NewChecker(&fakePermissionStore{memberAllowed: false})
 
 	decision, err := checker.Can(context.Background(), Actor{UserID: uuid.New()}, "workspace.manage", ResourceRef{
 		Type: "workspace",
@@ -123,7 +136,7 @@ func TestCheckerDeniesMissingMembershipPermission(t *testing.T) {
 }
 
 func TestCheckerRejectsUnsupportedResource(t *testing.T) {
-	checker := NewChecker(&fakePermissionStore{workspaceAllowed: true})
+	checker := NewChecker(&fakePermissionStore{memberAllowed: true})
 
 	decision, err := checker.Can(context.Background(), Actor{UserID: uuid.New()}, "workspace.view", ResourceRef{
 		Type: "unknown",
@@ -163,11 +176,42 @@ func TestCheckerAllowsProjectAccessGrant(t *testing.T) {
 	if decision.Source != "access_grant" || decision.GrantRoleCode != "shared_viewer" {
 		t.Fatalf("expected access grant decision metadata, got %#v", decision)
 	}
-	if store.workspaceArg.WorkspaceID != workspaceID {
-		t.Fatalf("expected workspace permission to use resolved workspace id, got %#v", store.workspaceArg)
+	if store.memberArg.WorkspaceID != workspaceID {
+		t.Fatalf("expected workspace permission to use resolved workspace id, got %#v", store.memberArg)
 	}
 	if store.grantArg.ProjectID != projectID || store.grantArg.ScopeType != "project" || store.grantArg.ScopeID != projectID {
 		t.Fatalf("unexpected grant arg: %#v", store.grantArg)
+	}
+}
+
+func TestCheckerPassesProjectScopeToWorkspaceMemberPermission(t *testing.T) {
+	workspaceID := uuid.New()
+	projectID := uuid.New()
+	userID := uuid.New()
+	store := &fakePermissionStore{
+		memberAllowed: true,
+		project: sqlc.Project{
+			ID:          projectID,
+			WorkspaceID: workspaceID,
+		},
+	}
+	checker := NewChecker(store)
+
+	decision, err := checker.Can(context.Background(), Actor{UserID: userID}, "project.view", ResourceRef{
+		Type: "project",
+		ID:   projectID,
+	})
+	if err != nil {
+		t.Fatalf("check permission: %v", err)
+	}
+	if !decision.Allowed || decision.Source != "workspace_member" {
+		t.Fatalf("expected workspace member decision, got %#v", decision)
+	}
+	if store.memberArg.ScopeType != "project" || store.memberArg.ScopeID != projectID || store.memberArg.ProjectID != projectID {
+		t.Fatalf("unexpected member arg: %#v", store.memberArg)
+	}
+	if store.grantArg.SubjectID != uuid.Nil {
+		t.Fatalf("expected access grant not to be checked after member allow, got %#v", store.grantArg)
 	}
 }
 
@@ -197,6 +241,68 @@ func TestCheckerAllowsProjectGrantForDataset(t *testing.T) {
 	}
 	if store.grantArg.DatasetID != datasetID || store.grantArg.ProjectID != projectID {
 		t.Fatalf("unexpected grant arg: %#v", store.grantArg)
+	}
+}
+
+func TestCheckerPassesDeviceAndSiteScopeToWorkspaceMemberPermission(t *testing.T) {
+	workspaceID := uuid.New()
+	projectID := uuid.New()
+	siteID := uuid.New()
+	deviceID := uuid.New()
+	store := &fakePermissionStore{
+		memberAllowed: true,
+		device: sqlc.Device{
+			ID: deviceID,
+		},
+		deviceAssignment: sqlc.DeviceAssignment{
+			WorkspaceID: workspaceID,
+			ProjectID:   &projectID,
+			SiteID:      &siteID,
+		},
+	}
+	checker := NewChecker(store)
+
+	decision, err := checker.Can(context.Background(), Actor{UserID: uuid.New()}, "device.view", ResourceRef{
+		Type: "device",
+		ID:   deviceID,
+	})
+	if err != nil {
+		t.Fatalf("check permission: %v", err)
+	}
+	if !decision.Allowed {
+		t.Fatalf("expected allowed decision, got %#v", decision)
+	}
+	if store.memberArg.DeviceID != deviceID || store.memberArg.SiteID != siteID || store.memberArg.ProjectID != projectID {
+		t.Fatalf("unexpected member arg: %#v", store.memberArg)
+	}
+}
+
+func TestCheckerPassesDatasetScopeToWorkspaceMemberPermission(t *testing.T) {
+	workspaceID := uuid.New()
+	projectID := uuid.New()
+	datasetID := uuid.New()
+	store := &fakePermissionStore{
+		memberAllowed: true,
+		dataset: sqlc.Dataset{
+			ID:          datasetID,
+			WorkspaceID: workspaceID,
+			ProjectID:   &projectID,
+		},
+	}
+	checker := NewChecker(store)
+
+	decision, err := checker.Can(context.Background(), Actor{UserID: uuid.New()}, "dataset.view", ResourceRef{
+		Type: "dataset",
+		ID:   datasetID,
+	})
+	if err != nil {
+		t.Fatalf("check permission: %v", err)
+	}
+	if !decision.Allowed {
+		t.Fatalf("expected allowed decision, got %#v", decision)
+	}
+	if store.memberArg.DatasetID != datasetID || store.memberArg.ProjectID != projectID || store.memberArg.ScopeType != "dataset" {
+		t.Fatalf("unexpected member arg: %#v", store.memberArg)
 	}
 }
 

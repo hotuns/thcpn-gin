@@ -79,7 +79,7 @@ INSERT INTO devices (
     activated_at
 )
 VALUES ($1, $2, $3, 'active', now())
-RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type
 `
 
 type CreateDeviceParams struct {
@@ -100,6 +100,9 @@ func (q *Queries) CreateDevice(ctx context.Context, arg CreateDeviceParams) (Dev
 		&i.ActivatedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LifecycleStatus,
+		&i.LifecycleUpdatedAt,
+		&i.DeviceType,
 	)
 	return i, err
 }
@@ -145,6 +148,51 @@ func (q *Queries) CreateDeviceAssignment(ctx context.Context, arg CreateDeviceAs
 		&i.UnassignedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createDeviceLifecycleEvent = `-- name: CreateDeviceLifecycleEvent :one
+INSERT INTO device_lifecycle_events (
+    device_id,
+    from_status,
+    to_status,
+    occurred_at,
+    note,
+    actor_user_id
+)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, device_id, from_status, to_status, occurred_at, note, actor_user_id, created_at
+`
+
+type CreateDeviceLifecycleEventParams struct {
+	DeviceID    uuid.UUID          `json:"device_id"`
+	FromStatus  *string            `json:"from_status"`
+	ToStatus    string             `json:"to_status"`
+	OccurredAt  pgtype.Timestamptz `json:"occurred_at"`
+	Note        *string            `json:"note"`
+	ActorUserID *uuid.UUID         `json:"actor_user_id"`
+}
+
+func (q *Queries) CreateDeviceLifecycleEvent(ctx context.Context, arg CreateDeviceLifecycleEventParams) (DeviceLifecycleEvent, error) {
+	row := q.db.QueryRow(ctx, createDeviceLifecycleEvent,
+		arg.DeviceID,
+		arg.FromStatus,
+		arg.ToStatus,
+		arg.OccurredAt,
+		arg.Note,
+		arg.ActorUserID,
+	)
+	var i DeviceLifecycleEvent
+	err := row.Scan(
+		&i.ID,
+		&i.DeviceID,
+		&i.FromStatus,
+		&i.ToStatus,
+		&i.OccurredAt,
+		&i.Note,
+		&i.ActorUserID,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -260,7 +308,7 @@ func (q *Queries) GetActiveDeviceAssignmentByDataStream(ctx context.Context, id 
 }
 
 const getDevice = `-- name: GetDevice :one
-SELECT id, product_id, serial_no, name, status, activated_at, created_at, updated_at
+SELECT id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type
 FROM devices
 WHERE id = $1
 `
@@ -277,6 +325,9 @@ func (q *Queries) GetDevice(ctx context.Context, id uuid.UUID) (Device, error) {
 		&i.ActivatedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LifecycleStatus,
+		&i.LifecycleUpdatedAt,
+		&i.DeviceType,
 	)
 	return i, err
 }
@@ -289,6 +340,9 @@ SELECT
     d.name,
     d.status,
     d.activated_at,
+    d.lifecycle_status,
+    d.lifecycle_updated_at,
+    d.device_type,
     d.created_at,
     d.updated_at,
     da.id AS assignment_id,
@@ -303,20 +357,23 @@ WHERE d.id = $1
 `
 
 type GetDeviceWithActiveAssignmentRow struct {
-	ID           uuid.UUID          `json:"id"`
-	ProductID    *string            `json:"product_id"`
-	SerialNo     string             `json:"serial_no"`
-	Name         string             `json:"name"`
-	Status       string             `json:"status"`
-	ActivatedAt  pgtype.Timestamptz `json:"activated_at"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
-	AssignmentID uuid.UUID          `json:"assignment_id"`
-	WorkspaceID  uuid.UUID          `json:"workspace_id"`
-	ProjectID    *uuid.UUID         `json:"project_id"`
-	SiteID       *uuid.UUID         `json:"site_id"`
-	AssignedBy   *uuid.UUID         `json:"assigned_by"`
-	AssignedAt   pgtype.Timestamptz `json:"assigned_at"`
+	ID                 uuid.UUID          `json:"id"`
+	ProductID          *string            `json:"product_id"`
+	SerialNo           string             `json:"serial_no"`
+	Name               string             `json:"name"`
+	Status             string             `json:"status"`
+	ActivatedAt        pgtype.Timestamptz `json:"activated_at"`
+	LifecycleStatus    string             `json:"lifecycle_status"`
+	LifecycleUpdatedAt pgtype.Timestamptz `json:"lifecycle_updated_at"`
+	DeviceType         string             `json:"device_type"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	AssignmentID       uuid.UUID          `json:"assignment_id"`
+	WorkspaceID        uuid.UUID          `json:"workspace_id"`
+	ProjectID          *uuid.UUID         `json:"project_id"`
+	SiteID             *uuid.UUID         `json:"site_id"`
+	AssignedBy         *uuid.UUID         `json:"assigned_by"`
+	AssignedAt         pgtype.Timestamptz `json:"assigned_at"`
 }
 
 func (q *Queries) GetDeviceWithActiveAssignment(ctx context.Context, id uuid.UUID) (GetDeviceWithActiveAssignmentRow, error) {
@@ -329,6 +386,9 @@ func (q *Queries) GetDeviceWithActiveAssignment(ctx context.Context, id uuid.UUI
 		&i.Name,
 		&i.Status,
 		&i.ActivatedAt,
+		&i.LifecycleStatus,
+		&i.LifecycleUpdatedAt,
+		&i.DeviceType,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AssignmentID,
@@ -361,6 +421,42 @@ func (q *Queries) ListDeviceCapabilities(ctx context.Context, deviceID uuid.UUID
 			return nil, err
 		}
 		items = append(items, capability_code)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDeviceLifecycleEvents = `-- name: ListDeviceLifecycleEvents :many
+SELECT id, device_id, from_status, to_status, occurred_at, note, actor_user_id, created_at
+FROM device_lifecycle_events
+WHERE device_id = $1
+ORDER BY occurred_at DESC, id DESC
+`
+
+func (q *Queries) ListDeviceLifecycleEvents(ctx context.Context, deviceID uuid.UUID) ([]DeviceLifecycleEvent, error) {
+	rows, err := q.db.Query(ctx, listDeviceLifecycleEvents, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DeviceLifecycleEvent{}
+	for rows.Next() {
+		var i DeviceLifecycleEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.DeviceID,
+			&i.FromStatus,
+			&i.ToStatus,
+			&i.OccurredAt,
+			&i.Note,
+			&i.ActorUserID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -413,6 +509,9 @@ SELECT
     d.name,
     d.status,
     d.activated_at,
+    d.lifecycle_status,
+    d.lifecycle_updated_at,
+    d.device_type,
     d.created_at,
     d.updated_at,
     da.id AS assignment_id,
@@ -421,23 +520,7 @@ SELECT
     da.site_id,
     da.assigned_by,
     da.assigned_at,
-    CASE
-        WHEN EXISTS (
-            SELECT 1
-            FROM device_relations AS child_rel
-            WHERE child_rel.parent_device_id = d.id
-              AND child_rel.relation_type = 'gateway_node'
-              AND child_rel.status = 'active'
-        ) THEN 'gateway'
-        WHEN EXISTS (
-            SELECT 1
-            FROM device_relations AS parent_rel
-            WHERE parent_rel.child_device_id = d.id
-              AND parent_rel.relation_type = 'gateway_node'
-              AND parent_rel.status = 'active'
-        ) THEN 'gateway_node'
-        ELSE 'standalone'
-    END AS topology_role,
+    d.device_type AS topology_role,
     (
         SELECT count(*)::bigint
         FROM device_relations AS child_rel
@@ -462,22 +545,25 @@ type ListDevicesByProjectParams struct {
 }
 
 type ListDevicesByProjectRow struct {
-	ID           uuid.UUID          `json:"id"`
-	ProductID    *string            `json:"product_id"`
-	SerialNo     string             `json:"serial_no"`
-	Name         string             `json:"name"`
-	Status       string             `json:"status"`
-	ActivatedAt  pgtype.Timestamptz `json:"activated_at"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
-	AssignmentID uuid.UUID          `json:"assignment_id"`
-	WorkspaceID  uuid.UUID          `json:"workspace_id"`
-	ProjectID    *uuid.UUID         `json:"project_id"`
-	SiteID       *uuid.UUID         `json:"site_id"`
-	AssignedBy   *uuid.UUID         `json:"assigned_by"`
-	AssignedAt   pgtype.Timestamptz `json:"assigned_at"`
-	TopologyRole string             `json:"topology_role"`
-	ChildCount   int64              `json:"child_count"`
+	ID                 uuid.UUID          `json:"id"`
+	ProductID          *string            `json:"product_id"`
+	SerialNo           string             `json:"serial_no"`
+	Name               string             `json:"name"`
+	Status             string             `json:"status"`
+	ActivatedAt        pgtype.Timestamptz `json:"activated_at"`
+	LifecycleStatus    string             `json:"lifecycle_status"`
+	LifecycleUpdatedAt pgtype.Timestamptz `json:"lifecycle_updated_at"`
+	DeviceType         string             `json:"device_type"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	AssignmentID       uuid.UUID          `json:"assignment_id"`
+	WorkspaceID        uuid.UUID          `json:"workspace_id"`
+	ProjectID          *uuid.UUID         `json:"project_id"`
+	SiteID             *uuid.UUID         `json:"site_id"`
+	AssignedBy         *uuid.UUID         `json:"assigned_by"`
+	AssignedAt         pgtype.Timestamptz `json:"assigned_at"`
+	TopologyRole       string             `json:"topology_role"`
+	ChildCount         int64              `json:"child_count"`
 }
 
 func (q *Queries) ListDevicesByProject(ctx context.Context, arg ListDevicesByProjectParams) ([]ListDevicesByProjectRow, error) {
@@ -496,6 +582,9 @@ func (q *Queries) ListDevicesByProject(ctx context.Context, arg ListDevicesByPro
 			&i.Name,
 			&i.Status,
 			&i.ActivatedAt,
+			&i.LifecycleStatus,
+			&i.LifecycleUpdatedAt,
+			&i.DeviceType,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.AssignmentID,
@@ -525,6 +614,9 @@ SELECT
     d.name,
     d.status,
     d.activated_at,
+    d.lifecycle_status,
+    d.lifecycle_updated_at,
+    d.device_type,
     d.created_at,
     d.updated_at,
     da.id AS assignment_id,
@@ -533,23 +625,7 @@ SELECT
     da.site_id,
     da.assigned_by,
     da.assigned_at,
-    CASE
-        WHEN EXISTS (
-            SELECT 1
-            FROM device_relations AS child_rel
-            WHERE child_rel.parent_device_id = d.id
-              AND child_rel.relation_type = 'gateway_node'
-              AND child_rel.status = 'active'
-        ) THEN 'gateway'
-        WHEN EXISTS (
-            SELECT 1
-            FROM device_relations AS parent_rel
-            WHERE parent_rel.child_device_id = d.id
-              AND parent_rel.relation_type = 'gateway_node'
-              AND parent_rel.status = 'active'
-        ) THEN 'gateway_node'
-        ELSE 'standalone'
-    END AS topology_role,
+    d.device_type AS topology_role,
     (
         SELECT count(*)::bigint
         FROM device_relations AS child_rel
@@ -574,22 +650,25 @@ type ListDevicesBySiteParams struct {
 }
 
 type ListDevicesBySiteRow struct {
-	ID           uuid.UUID          `json:"id"`
-	ProductID    *string            `json:"product_id"`
-	SerialNo     string             `json:"serial_no"`
-	Name         string             `json:"name"`
-	Status       string             `json:"status"`
-	ActivatedAt  pgtype.Timestamptz `json:"activated_at"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
-	AssignmentID uuid.UUID          `json:"assignment_id"`
-	WorkspaceID  uuid.UUID          `json:"workspace_id"`
-	ProjectID    *uuid.UUID         `json:"project_id"`
-	SiteID       *uuid.UUID         `json:"site_id"`
-	AssignedBy   *uuid.UUID         `json:"assigned_by"`
-	AssignedAt   pgtype.Timestamptz `json:"assigned_at"`
-	TopologyRole string             `json:"topology_role"`
-	ChildCount   int64              `json:"child_count"`
+	ID                 uuid.UUID          `json:"id"`
+	ProductID          *string            `json:"product_id"`
+	SerialNo           string             `json:"serial_no"`
+	Name               string             `json:"name"`
+	Status             string             `json:"status"`
+	ActivatedAt        pgtype.Timestamptz `json:"activated_at"`
+	LifecycleStatus    string             `json:"lifecycle_status"`
+	LifecycleUpdatedAt pgtype.Timestamptz `json:"lifecycle_updated_at"`
+	DeviceType         string             `json:"device_type"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	AssignmentID       uuid.UUID          `json:"assignment_id"`
+	WorkspaceID        uuid.UUID          `json:"workspace_id"`
+	ProjectID          *uuid.UUID         `json:"project_id"`
+	SiteID             *uuid.UUID         `json:"site_id"`
+	AssignedBy         *uuid.UUID         `json:"assigned_by"`
+	AssignedAt         pgtype.Timestamptz `json:"assigned_at"`
+	TopologyRole       string             `json:"topology_role"`
+	ChildCount         int64              `json:"child_count"`
 }
 
 func (q *Queries) ListDevicesBySite(ctx context.Context, arg ListDevicesBySiteParams) ([]ListDevicesBySiteRow, error) {
@@ -608,6 +687,9 @@ func (q *Queries) ListDevicesBySite(ctx context.Context, arg ListDevicesBySitePa
 			&i.Name,
 			&i.Status,
 			&i.ActivatedAt,
+			&i.LifecycleStatus,
+			&i.LifecycleUpdatedAt,
+			&i.DeviceType,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.AssignmentID,
@@ -637,6 +719,9 @@ SELECT
     d.name,
     d.status,
     d.activated_at,
+    d.lifecycle_status,
+    d.lifecycle_updated_at,
+    d.device_type,
     d.created_at,
     d.updated_at,
     da.id AS assignment_id,
@@ -645,23 +730,7 @@ SELECT
     da.site_id,
     da.assigned_by,
     da.assigned_at,
-    CASE
-        WHEN EXISTS (
-            SELECT 1
-            FROM device_relations AS child_rel
-            WHERE child_rel.parent_device_id = d.id
-              AND child_rel.relation_type = 'gateway_node'
-              AND child_rel.status = 'active'
-        ) THEN 'gateway'
-        WHEN EXISTS (
-            SELECT 1
-            FROM device_relations AS parent_rel
-            WHERE parent_rel.child_device_id = d.id
-              AND parent_rel.relation_type = 'gateway_node'
-              AND parent_rel.status = 'active'
-        ) THEN 'gateway_node'
-        ELSE 'standalone'
-    END AS topology_role,
+    d.device_type AS topology_role,
     (
         SELECT count(*)::bigint
         FROM device_relations AS child_rel
@@ -679,22 +748,25 @@ ORDER BY da.assigned_at DESC, d.created_at DESC, d.id DESC
 `
 
 type ListDevicesByWorkspaceRow struct {
-	ID           uuid.UUID          `json:"id"`
-	ProductID    *string            `json:"product_id"`
-	SerialNo     string             `json:"serial_no"`
-	Name         string             `json:"name"`
-	Status       string             `json:"status"`
-	ActivatedAt  pgtype.Timestamptz `json:"activated_at"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
-	AssignmentID uuid.UUID          `json:"assignment_id"`
-	WorkspaceID  uuid.UUID          `json:"workspace_id"`
-	ProjectID    *uuid.UUID         `json:"project_id"`
-	SiteID       *uuid.UUID         `json:"site_id"`
-	AssignedBy   *uuid.UUID         `json:"assigned_by"`
-	AssignedAt   pgtype.Timestamptz `json:"assigned_at"`
-	TopologyRole string             `json:"topology_role"`
-	ChildCount   int64              `json:"child_count"`
+	ID                 uuid.UUID          `json:"id"`
+	ProductID          *string            `json:"product_id"`
+	SerialNo           string             `json:"serial_no"`
+	Name               string             `json:"name"`
+	Status             string             `json:"status"`
+	ActivatedAt        pgtype.Timestamptz `json:"activated_at"`
+	LifecycleStatus    string             `json:"lifecycle_status"`
+	LifecycleUpdatedAt pgtype.Timestamptz `json:"lifecycle_updated_at"`
+	DeviceType         string             `json:"device_type"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	AssignmentID       uuid.UUID          `json:"assignment_id"`
+	WorkspaceID        uuid.UUID          `json:"workspace_id"`
+	ProjectID          *uuid.UUID         `json:"project_id"`
+	SiteID             *uuid.UUID         `json:"site_id"`
+	AssignedBy         *uuid.UUID         `json:"assigned_by"`
+	AssignedAt         pgtype.Timestamptz `json:"assigned_at"`
+	TopologyRole       string             `json:"topology_role"`
+	ChildCount         int64              `json:"child_count"`
 }
 
 func (q *Queries) ListDevicesByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]ListDevicesByWorkspaceRow, error) {
@@ -713,6 +785,9 @@ func (q *Queries) ListDevicesByWorkspace(ctx context.Context, workspaceID uuid.U
 			&i.Name,
 			&i.Status,
 			&i.ActivatedAt,
+			&i.LifecycleStatus,
+			&i.LifecycleUpdatedAt,
+			&i.DeviceType,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.AssignmentID,
@@ -742,6 +817,8 @@ SELECT
     d.name,
     d.status,
     d.activated_at,
+    d.lifecycle_status,
+    d.lifecycle_updated_at,
     d.created_at,
     d.updated_at,
     da.id AS assignment_id,
@@ -750,23 +827,7 @@ SELECT
     da.site_id,
     da.assigned_by,
     da.assigned_at,
-    CASE
-        WHEN EXISTS (
-            SELECT 1
-            FROM device_relations AS child_rel
-            WHERE child_rel.parent_device_id = d.id
-              AND child_rel.relation_type = 'gateway_node'
-              AND child_rel.status = 'active'
-        ) THEN 'gateway'
-        WHEN EXISTS (
-            SELECT 1
-            FROM device_relations AS parent_rel
-            WHERE parent_rel.child_device_id = d.id
-              AND parent_rel.relation_type = 'gateway_node'
-              AND parent_rel.status = 'active'
-        ) THEN 'gateway_node'
-        ELSE 'standalone'
-    END AS topology_role,
+    d.device_type AS topology_role,
     (
         SELECT count(*)::bigint
         FROM device_relations AS child_rel
@@ -780,22 +841,24 @@ ORDER BY d.created_at DESC, d.id DESC
 `
 
 type ListSystemDeviceAssetsRow struct {
-	ID           uuid.UUID          `json:"id"`
-	ProductID    *string            `json:"product_id"`
-	SerialNo     string             `json:"serial_no"`
-	Name         string             `json:"name"`
-	Status       string             `json:"status"`
-	ActivatedAt  pgtype.Timestamptz `json:"activated_at"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
-	AssignmentID *uuid.UUID         `json:"assignment_id"`
-	WorkspaceID  *uuid.UUID         `json:"workspace_id"`
-	ProjectID    *uuid.UUID         `json:"project_id"`
-	SiteID       *uuid.UUID         `json:"site_id"`
-	AssignedBy   *uuid.UUID         `json:"assigned_by"`
-	AssignedAt   pgtype.Timestamptz `json:"assigned_at"`
-	TopologyRole string             `json:"topology_role"`
-	ChildCount   int64              `json:"child_count"`
+	ID                 uuid.UUID          `json:"id"`
+	ProductID          *string            `json:"product_id"`
+	SerialNo           string             `json:"serial_no"`
+	Name               string             `json:"name"`
+	Status             string             `json:"status"`
+	ActivatedAt        pgtype.Timestamptz `json:"activated_at"`
+	LifecycleStatus    string             `json:"lifecycle_status"`
+	LifecycleUpdatedAt pgtype.Timestamptz `json:"lifecycle_updated_at"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	AssignmentID       *uuid.UUID         `json:"assignment_id"`
+	WorkspaceID        *uuid.UUID         `json:"workspace_id"`
+	ProjectID          *uuid.UUID         `json:"project_id"`
+	SiteID             *uuid.UUID         `json:"site_id"`
+	AssignedBy         *uuid.UUID         `json:"assigned_by"`
+	AssignedAt         pgtype.Timestamptz `json:"assigned_at"`
+	TopologyRole       string             `json:"topology_role"`
+	ChildCount         int64              `json:"child_count"`
 }
 
 func (q *Queries) ListSystemDeviceAssets(ctx context.Context) ([]ListSystemDeviceAssetsRow, error) {
@@ -814,6 +877,8 @@ func (q *Queries) ListSystemDeviceAssets(ctx context.Context) ([]ListSystemDevic
 			&i.Name,
 			&i.Status,
 			&i.ActivatedAt,
+			&i.LifecycleStatus,
+			&i.LifecycleUpdatedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.AssignmentID,
@@ -843,7 +908,7 @@ SET product_id = $2,
     status = $5,
     updated_at = now()
 WHERE id = $1
-RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type
 `
 
 type UpdateDeviceParams struct {
@@ -872,6 +937,9 @@ func (q *Queries) UpdateDevice(ctx context.Context, arg UpdateDeviceParams) (Dev
 		&i.ActivatedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LifecycleStatus,
+		&i.LifecycleUpdatedAt,
+		&i.DeviceType,
 	)
 	return i, err
 }
@@ -907,6 +975,72 @@ func (q *Queries) UpdateDeviceAssignment(ctx context.Context, arg UpdateDeviceAs
 		&i.UnassignedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateDeviceLifecycle = `-- name: UpdateDeviceLifecycle :one
+UPDATE devices
+SET lifecycle_status = $2,
+    lifecycle_updated_at = $3,
+    updated_at = now()
+WHERE id = $1
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type
+`
+
+type UpdateDeviceLifecycleParams struct {
+	ID                 uuid.UUID          `json:"id"`
+	LifecycleStatus    string             `json:"lifecycle_status"`
+	LifecycleUpdatedAt pgtype.Timestamptz `json:"lifecycle_updated_at"`
+}
+
+func (q *Queries) UpdateDeviceLifecycle(ctx context.Context, arg UpdateDeviceLifecycleParams) (Device, error) {
+	row := q.db.QueryRow(ctx, updateDeviceLifecycle, arg.ID, arg.LifecycleStatus, arg.LifecycleUpdatedAt)
+	var i Device
+	err := row.Scan(
+		&i.ID,
+		&i.ProductID,
+		&i.SerialNo,
+		&i.Name,
+		&i.Status,
+		&i.ActivatedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LifecycleStatus,
+		&i.LifecycleUpdatedAt,
+		&i.DeviceType,
+	)
+	return i, err
+}
+
+const updateDeviceType = `-- name: UpdateDeviceType :one
+UPDATE devices
+SET device_type = $2,
+    updated_at = now()
+WHERE id = $1
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type
+`
+
+type UpdateDeviceTypeParams struct {
+	ID         uuid.UUID `json:"id"`
+	DeviceType string    `json:"device_type"`
+}
+
+func (q *Queries) UpdateDeviceType(ctx context.Context, arg UpdateDeviceTypeParams) (Device, error) {
+	row := q.db.QueryRow(ctx, updateDeviceType, arg.ID, arg.DeviceType)
+	var i Device
+	err := row.Scan(
+		&i.ID,
+		&i.ProductID,
+		&i.SerialNo,
+		&i.Name,
+		&i.Status,
+		&i.ActivatedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LifecycleStatus,
+		&i.LifecycleUpdatedAt,
+		&i.DeviceType,
 	)
 	return i, err
 }

@@ -4,7 +4,7 @@ import { AppShell } from "./AppShell";
 import { AdminRouteGuard, ProtectedRoute, PublicOnlyRoute, RootRedirect } from "./RouteGuards";
 import { DashboardPage } from "../features/dashboard/DashboardPage";
 import { LoginPage, RegisterPage } from "../features/auth/AuthPages";
-import { AdminDataSourcesPage, AdminDeviceAssetsPage, AdminOverviewPage } from "../features/admin/AdminPages";
+import { AdminDataSourcesPage, AdminDeviceAssetsPage, AdminMetadataPage, AdminOverviewPage } from "../features/admin/AdminPages";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { DeviceDataPage } from "../features/telemetry/DeviceDataPage";
 import { WorkspacesPage } from "../features/workspaces/WorkspacesPage";
@@ -28,6 +28,7 @@ export function AppRouter() {
           <Route element={<AdminOverviewPage />} index />
           <Route element={<AdminDataSourcesPage />} path="data-sources" />
           <Route element={<AdminDeviceAssetsPage />} path="devices" />
+          <Route element={<AdminMetadataPage />} path="metadata" />
         </Route>
       </Route>
 

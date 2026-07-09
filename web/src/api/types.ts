@@ -36,6 +36,8 @@ export type InternalMemberRoleCode =
   | "data_manager"
   | "researcher"
   | "viewer";
+export type MemberScopeType = "workspace" | "project" | "site" | "device" | "dataset";
+export type PermissionCode = string;
 
 export interface UserProfile {
   id: UUID;
@@ -131,6 +133,8 @@ export interface WorkspaceMembership {
   id: UUID;
   status: MembershipStatus;
   joined_at: Timestamp;
+  scope_type: MemberScopeType;
+  scope_id: UUID;
   role: RoleSummary;
 }
 
@@ -160,6 +164,11 @@ export interface WorkspaceMember {
   workspace_id: UUID;
   status: MembershipStatus;
   joined_at: Timestamp;
+  scope_type: MemberScopeType;
+  scope_id: UUID;
+  template_code: string;
+  template_name: string;
+  permission_codes: PermissionCode[];
   user: UserSummary;
   role: RoleSummary;
 }
@@ -193,22 +202,17 @@ export interface DevRegisterResponse {
     role_name: string;
     status: MembershipStatus;
     joined_at: Timestamp;
+    scope_type: MemberScopeType;
+    scope_id: UUID;
   };
 }
 
 export type ProjectStatus = "active" | "archived";
 export type SiteStatus = "active" | "archived";
 export type DeviceStatus = "active" | "disabled" | "retired";
-export type DeviceCapabilityCode =
-  | "telemetry"
-  | "image_capture"
-  | "video_stream"
-  | "ptz_control"
-  | "remote_command"
-  | "configurable"
-  | "calibratable"
-  | "firmware_update"
-  | "edge_storage";
+export type DeviceLifecycleStatus = "inbound" | "installed" | "online" | "maintenance" | "repairing" | "retired";
+export type DeviceCapabilityCode = string;
+export type DeviceCapabilityDefinitionStatus = "active" | "disabled";
 export type DataStreamType = "telemetry" | "image" | "video" | "audio" | "event" | "log";
 export type DataStreamStatus = "active" | "disabled" | "archived";
 export type DataSourceType = "postgres" | "mysql" | "clickhouse" | "http_api" | "file";
@@ -218,7 +222,10 @@ export type DataStreamBindingAdapterCode = "generic_columns" | "generic_media" |
 export type DataStreamBindingStatus = "active" | "disabled" | "archived";
 export type DeviceRelationStatus = "active" | "removed";
 export type DeviceRelationType = "gateway_node";
-export type DeviceTopologyRole = "standalone" | "gateway" | "gateway_node";
+export type DeviceTopologyRole = "standalone" | "gateway" | "gateway_node" | "camera";
+export type CameraProvider = "ezviz";
+export type CameraQuality = "fluent" | "standard" | "hd" | "ultra_hd";
+export type CameraBindingStatus = "active" | "disabled";
 export type MediaType = "image" | "video" | "audio";
 export type DatasetDataType = "telemetry" | "image" | "video" | "audio" | "event" | "log" | "mixed";
 export type DatasetStatus = "draft" | "locked" | "archived" | "published";
@@ -240,6 +247,32 @@ export type AccessGrantStatus = "active" | "revoked" | "expired";
 export type InvitationStatus = "pending" | "accepted" | "expired" | "revoked";
 export type AuditActorType = "user" | "service_account" | "system" | "anonymous";
 export type AuditResult = "success" | "failure";
+
+export interface PermissionDefinition {
+  code: PermissionCode;
+  name: string;
+  resource_type: string;
+  action: string;
+  group: string;
+}
+
+export interface PermissionGroup {
+  code: string;
+  name: string;
+  codes: PermissionCode[];
+}
+
+export interface PermissionTemplate {
+  code: string;
+  name: string;
+  permission_codes: PermissionCode[];
+}
+
+export interface PermissionCatalogResponse {
+  permissions: PermissionDefinition[];
+  groups: PermissionGroup[];
+  templates: PermissionTemplate[];
+}
 
 export interface Project {
   id: UUID;
@@ -286,6 +319,9 @@ export interface Device {
   name: string;
   status: DeviceStatus;
   activated_at?: Timestamp;
+  lifecycle_status: DeviceLifecycleStatus;
+  lifecycle_updated_at?: Timestamp;
+  device_type: DeviceTopologyRole;
   assigned_by?: UUID;
   assigned_at?: Timestamp;
   capabilities: DeviceCapabilityCode[];
@@ -297,6 +333,80 @@ export interface Device {
 
 export interface DeviceListResponse {
   items: Device[];
+}
+
+export interface CameraBinding {
+  id: UUID;
+  device_id: UUID;
+  provider: CameraProvider;
+  device_serial: string;
+  channel_no: number;
+  default_quality: CameraQuality;
+  is_encrypted: boolean;
+  validate_code_secret_ref?: string;
+  status: CameraBindingStatus;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+}
+
+export interface Camera {
+  device: Device;
+  binding: CameraBinding;
+}
+
+export interface CameraLiveSessionResponse {
+  provider: CameraProvider;
+  access_token: string;
+  url: string;
+  quality: CameraQuality;
+  expires_at: Timestamp;
+  device_serial: string;
+  channel_no: number;
+}
+
+export interface DeviceLifecycleEvent {
+  id: UUID;
+  device_id: UUID;
+  from_status?: DeviceLifecycleStatus;
+  to_status: DeviceLifecycleStatus;
+  occurred_at: Timestamp;
+  note?: string;
+  actor_user_id?: UUID;
+  created_at: Timestamp;
+}
+
+export interface DeviceLifecycleResponse {
+  device: Device;
+  events: DeviceLifecycleEvent[];
+}
+
+export interface DeviceCapabilityDefinition {
+  code: string;
+  name: string;
+  status: DeviceCapabilityDefinitionStatus;
+  sort_order: number;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+}
+
+export interface DeviceCapabilityDefinitionListResponse {
+  items: DeviceCapabilityDefinition[];
+}
+
+export interface SystemRoleDefinition {
+  id: UUID;
+  code: string;
+  name: string;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+}
+
+export interface SystemRoleDefinitionListResponse {
+  items: SystemRoleDefinition[];
+}
+
+export interface DeviceCapabilitiesResponse {
+  capabilities: DeviceCapabilityCode[];
 }
 
 export interface DeviceRelation {
@@ -414,6 +524,7 @@ export interface SyncedDevice {
   serial_no: string;
   name: string;
   status: DeviceStatus;
+  device_type: DeviceTopologyRole;
   assigned_by?: UUID;
   assigned_at?: Timestamp;
   created_at: Timestamp;
@@ -634,6 +745,9 @@ export interface AccessGrant {
   workspace_id: UUID;
   subject: AccessGrantSubject;
   role: RoleSummary;
+  template_code: string;
+  template_name: string;
+  permission_codes: PermissionCode[];
   scope_type: AccessGrantScopeType;
   scope_id: UUID;
   expires_at?: Timestamp;
@@ -655,6 +769,9 @@ export interface Invitation {
   invitee_email?: string;
   invitee_phone?: string;
   role: RoleSummary;
+  template_code: string;
+  template_name: string;
+  permission_codes: PermissionCode[];
   scope_type: AccessGrantScopeType;
   scope_id: UUID;
   expires_at?: Timestamp;

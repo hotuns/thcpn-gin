@@ -7,7 +7,22 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
+
+const countPermissionsByCodes = `-- name: CountPermissionsByCodes :one
+SELECT count(*)::bigint
+FROM permissions
+WHERE code = ANY($1::text[])
+`
+
+func (q *Queries) CountPermissionsByCodes(ctx context.Context, dollar_1 []string) (int64, error) {
+	row := q.db.QueryRow(ctx, countPermissionsByCodes, dollar_1)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
 
 const getSystemRoleByCode = `-- name: GetSystemRoleByCode :one
 SELECT id, workspace_id, code, name, is_system_role, created_at, updated_at
@@ -28,6 +43,119 @@ func (q *Queries) GetSystemRoleByCode(ctx context.Context, code string) (Role, e
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listPermissionCodesByTemplate = `-- name: ListPermissionCodesByTemplate :many
+SELECT p.code
+FROM roles r
+JOIN role_permissions rp ON rp.role_id = r.id
+JOIN permissions p ON p.id = rp.permission_id
+WHERE r.workspace_id IS NULL
+  AND r.is_system_role = true
+  AND r.code = $1
+ORDER BY p.resource_type, p.action, p.code
+`
+
+func (q *Queries) ListPermissionCodesByTemplate(ctx context.Context, code string) ([]string, error) {
+	rows, err := q.db.Query(ctx, listPermissionCodesByTemplate, code)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
+		}
+		items = append(items, code)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPermissions = `-- name: ListPermissions :many
+SELECT id, code, name, resource_type, action
+FROM permissions
+ORDER BY resource_type, action, code
+`
+
+func (q *Queries) ListPermissions(ctx context.Context) ([]Permission, error) {
+	rows, err := q.db.Query(ctx, listPermissions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Permission{}
+	for rows.Next() {
+		var i Permission
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.ResourceType,
+			&i.Action,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSystemRolePermissionTemplates = `-- name: ListSystemRolePermissionTemplates :many
+SELECT
+    r.id,
+    r.code,
+    r.name,
+    ARRAY(
+        SELECT p.code
+        FROM role_permissions rp
+        JOIN permissions p ON p.id = rp.permission_id
+        WHERE rp.role_id = r.id
+        ORDER BY p.resource_type, p.action, p.code
+    )::text[] AS permission_codes
+FROM roles r
+WHERE r.workspace_id IS NULL
+  AND r.is_system_role = true
+ORDER BY r.code
+`
+
+type ListSystemRolePermissionTemplatesRow struct {
+	ID              uuid.UUID `json:"id"`
+	Code            string    `json:"code"`
+	Name            string    `json:"name"`
+	PermissionCodes []string  `json:"permission_codes"`
+}
+
+func (q *Queries) ListSystemRolePermissionTemplates(ctx context.Context) ([]ListSystemRolePermissionTemplatesRow, error) {
+	rows, err := q.db.Query(ctx, listSystemRolePermissionTemplates)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSystemRolePermissionTemplatesRow{}
+	for rows.Next() {
+		var i ListSystemRolePermissionTemplatesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.PermissionCodes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listSystemRoles = `-- name: ListSystemRoles :many
@@ -63,4 +191,34 @@ func (q *Queries) ListSystemRoles(ctx context.Context) ([]Role, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateSystemRoleName = `-- name: UpdateSystemRoleName :one
+UPDATE roles
+SET name = $2,
+    updated_at = now()
+WHERE workspace_id IS NULL
+  AND code = $1
+  AND is_system_role = true
+RETURNING id, workspace_id, code, name, is_system_role, created_at, updated_at
+`
+
+type UpdateSystemRoleNameParams struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+}
+
+func (q *Queries) UpdateSystemRoleName(ctx context.Context, arg UpdateSystemRoleNameParams) (Role, error) {
+	row := q.db.QueryRow(ctx, updateSystemRoleName, arg.Code, arg.Name)
+	var i Role
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Code,
+		&i.Name,
+		&i.IsSystemRole,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

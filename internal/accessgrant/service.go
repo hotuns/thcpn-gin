@@ -38,19 +38,22 @@ type SubjectSummary struct {
 }
 
 type AccessGrant struct {
-	ID             uuid.UUID      `json:"id"`
-	WorkspaceID    uuid.UUID      `json:"workspace_id"`
-	Subject        SubjectSummary `json:"subject"`
-	Role           RoleSummary    `json:"role"`
-	ScopeType      string         `json:"scope_type"`
-	ScopeID        uuid.UUID      `json:"scope_id"`
-	ExpiresAt      *time.Time     `json:"expires_at,omitempty"`
-	AllowReshare   bool           `json:"allow_reshare"`
-	AllowAPIAccess bool           `json:"allow_api_access"`
-	CreatedBy      uuid.UUID      `json:"created_by"`
-	Status         string         `json:"status"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
+	ID              uuid.UUID      `json:"id"`
+	WorkspaceID     uuid.UUID      `json:"workspace_id"`
+	Subject         SubjectSummary `json:"subject"`
+	Role            RoleSummary    `json:"role"`
+	TemplateCode    string         `json:"template_code"`
+	TemplateName    string         `json:"template_name"`
+	PermissionCodes []string       `json:"permission_codes"`
+	ScopeType       string         `json:"scope_type"`
+	ScopeID         uuid.UUID      `json:"scope_id"`
+	ExpiresAt       *time.Time     `json:"expires_at,omitempty"`
+	AllowReshare    bool           `json:"allow_reshare"`
+	AllowAPIAccess  bool           `json:"allow_api_access"`
+	CreatedBy       uuid.UUID      `json:"created_by"`
+	Status          string         `json:"status"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
 }
 
 type CleanupExpiredResult struct {
@@ -59,41 +62,46 @@ type CleanupExpiredResult struct {
 }
 
 type Invitation struct {
-	ID           uuid.UUID   `json:"id"`
-	WorkspaceID  uuid.UUID   `json:"workspace_id"`
-	InviteeEmail *string     `json:"invitee_email,omitempty"`
-	InviteePhone *string     `json:"invitee_phone,omitempty"`
-	Role         RoleSummary `json:"role"`
-	ScopeType    string      `json:"scope_type"`
-	ScopeID      uuid.UUID   `json:"scope_id"`
-	ExpiresAt    *time.Time  `json:"expires_at,omitempty"`
-	InvitedBy    uuid.UUID   `json:"invited_by"`
-	Status       string      `json:"status"`
-	CreatedAt    time.Time   `json:"created_at"`
-	UpdatedAt    time.Time   `json:"updated_at"`
+	ID              uuid.UUID   `json:"id"`
+	WorkspaceID     uuid.UUID   `json:"workspace_id"`
+	InviteeEmail    *string     `json:"invitee_email,omitempty"`
+	InviteePhone    *string     `json:"invitee_phone,omitempty"`
+	Role            RoleSummary `json:"role"`
+	TemplateCode    string      `json:"template_code"`
+	TemplateName    string      `json:"template_name"`
+	PermissionCodes []string    `json:"permission_codes"`
+	ScopeType       string      `json:"scope_type"`
+	ScopeID         uuid.UUID   `json:"scope_id"`
+	ExpiresAt       *time.Time  `json:"expires_at,omitempty"`
+	InvitedBy       uuid.UUID   `json:"invited_by"`
+	Status          string      `json:"status"`
+	CreatedAt       time.Time   `json:"created_at"`
+	UpdatedAt       time.Time   `json:"updated_at"`
 }
 
 type CreateGrantInput struct {
-	SubjectUserID  uuid.UUID
-	Email          string
-	Phone          string
-	RoleCode       string
-	ScopeType      string
-	ScopeID        uuid.UUID
-	ExpiresAt      *time.Time
-	AllowReshare   bool
-	AllowAPIAccess bool
-	ActorUserID    uuid.UUID
+	SubjectUserID   uuid.UUID
+	Email           string
+	Phone           string
+	TemplateCode    string
+	PermissionCodes []string
+	ScopeType       string
+	ScopeID         uuid.UUID
+	ExpiresAt       *time.Time
+	AllowReshare    bool
+	AllowAPIAccess  bool
+	ActorUserID     uuid.UUID
 }
 
 type CreateInvitationInput struct {
-	Email       string
-	Phone       string
-	RoleCode    string
-	ScopeType   string
-	ScopeID     uuid.UUID
-	ExpiresAt   *time.Time
-	ActorUserID uuid.UUID
+	Email           string
+	Phone           string
+	TemplateCode    string
+	PermissionCodes []string
+	ScopeType       string
+	ScopeID         uuid.UUID
+	ExpiresAt       *time.Time
+	ActorUserID     uuid.UUID
 }
 
 type AcceptInvitationInput struct {
@@ -111,6 +119,7 @@ func NewService(db *pgxpool.Pool) *Service {
 }
 
 func (s *Service) CreateGrant(ctx context.Context, input CreateGrantInput) (AccessGrant, error) {
+	templateCode := normalizeTemplateCode(input.TemplateCode)
 	if input.ActorUserID == uuid.Nil {
 		return AccessGrant{}, apperr.New(apperr.KindInvalidArgument, "actor user id is required")
 	}
@@ -123,6 +132,9 @@ func (s *Service) CreateGrant(ctx context.Context, input CreateGrantInput) (Acce
 	if err := validateExpiresAt(input.ExpiresAt); err != nil {
 		return AccessGrant{}, err
 	}
+	if err := validateServiceEngineerTemplate(templateCode, input.ScopeType, input.ExpiresAt); err != nil {
+		return AccessGrant{}, err
+	}
 
 	subject, err := s.resolveSubject(ctx, input)
 	if err != nil {
@@ -132,7 +144,11 @@ func (s *Service) CreateGrant(ctx context.Context, input CreateGrantInput) (Acce
 	if err != nil {
 		return AccessGrant{}, err
 	}
-	role, err := s.resolveRole(ctx, input.RoleCode, input.ScopeType, input.ExpiresAt)
+	role, err := s.resolveRole(ctx, storageRoleCode(templateCode), input.ScopeType, input.ExpiresAt)
+	if err != nil {
+		return AccessGrant{}, err
+	}
+	permissionCodes, err := s.normalizeGrantPermissionCodes(ctx, input.PermissionCodes)
 	if err != nil {
 		return AccessGrant{}, err
 	}
@@ -147,12 +163,16 @@ func (s *Service) CreateGrant(ctx context.Context, input CreateGrantInput) (Acce
 		AllowReshare:   input.AllowReshare,
 		AllowApiAccess: input.AllowAPIAccess,
 		CreatedBy:      input.ActorUserID,
+		TemplateCode:   templateCode,
 	})
 	if err != nil {
 		return AccessGrant{}, mapWriteError(err, "create access grant")
 	}
+	if err := s.replaceAccessGrantPermissions(ctx, s.queries, created.ID, permissionCodes); err != nil {
+		return AccessGrant{}, err
+	}
 
-	return grantFromSQL(created, role, subject), nil
+	return grantFromSQL(created, role, subject, permissionCodes), nil
 }
 
 func (s *Service) GetGrant(ctx context.Context, grantID uuid.UUID) (AccessGrant, error) {
@@ -234,6 +254,7 @@ func (s *Service) CleanupExpired(ctx context.Context) (CleanupExpiredResult, err
 }
 
 func (s *Service) CreateInvitation(ctx context.Context, input CreateInvitationInput) (Invitation, error) {
+	templateCode := normalizeTemplateCode(input.TemplateCode)
 	if input.ActorUserID == uuid.Nil {
 		return Invitation{}, apperr.New(apperr.KindInvalidArgument, "actor user id is required")
 	}
@@ -248,12 +269,19 @@ func (s *Service) CreateInvitation(ctx context.Context, input CreateInvitationIn
 	if err := validateExpiresAt(input.ExpiresAt); err != nil {
 		return Invitation{}, err
 	}
+	if err := validateServiceEngineerTemplate(templateCode, input.ScopeType, input.ExpiresAt); err != nil {
+		return Invitation{}, err
+	}
 
 	scope, err := s.resolveScope(ctx, input.ScopeType, input.ScopeID)
 	if err != nil {
 		return Invitation{}, err
 	}
-	role, err := s.resolveRole(ctx, input.RoleCode, input.ScopeType, input.ExpiresAt)
+	role, err := s.resolveRole(ctx, storageRoleCode(templateCode), input.ScopeType, input.ExpiresAt)
+	if err != nil {
+		return Invitation{}, err
+	}
+	permissionCodes, err := s.normalizeGrantPermissionCodes(ctx, input.PermissionCodes)
 	if err != nil {
 		return Invitation{}, err
 	}
@@ -267,12 +295,16 @@ func (s *Service) CreateInvitation(ctx context.Context, input CreateInvitationIn
 		ScopeID:      scope.scopeID,
 		ExpiresAt:    pgTime(input.ExpiresAt),
 		InvitedBy:    input.ActorUserID,
+		TemplateCode: templateCode,
 	})
 	if err != nil {
 		return Invitation{}, mapWriteError(err, "create invitation")
 	}
+	if err := s.replaceInvitationPermissions(ctx, s.queries, created.ID, permissionCodes); err != nil {
+		return Invitation{}, err
+	}
 
-	return invitationFromSQL(created, role), nil
+	return invitationFromSQL(created, role, permissionCodes), nil
 }
 
 func (s *Service) GetInvitation(ctx context.Context, invitationID uuid.UUID) (Invitation, error) {
@@ -380,9 +412,16 @@ func (s *Service) AcceptInvitation(ctx context.Context, input AcceptInvitationIn
 		AllowReshare:   false,
 		AllowApiAccess: false,
 		CreatedBy:      accepted.InvitedBy,
+		TemplateCode:   accepted.TemplateCode,
 	})
 	if err != nil {
 		return AccessGrant{}, mapWriteError(err, "create access grant from invitation")
+	}
+	if _, err := q.CopyInvitationPermissionsToAccessGrant(ctx, sqlc.CopyInvitationPermissionsToAccessGrantParams{
+		InvitationID:  input.InvitationID,
+		AccessGrantID: created.ID,
+	}); err != nil {
+		return AccessGrant{}, apperr.Wrap(apperr.KindInternal, "copy invitation permissions", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -397,7 +436,7 @@ func (s *Service) AcceptInvitation(ctx context.Context, input AcceptInvitationIn
 	}, SubjectSummary{
 		Type: "user",
 		ID:   input.ActorUserID,
-	}), nil
+	}, invitation.PermissionCodes), nil
 }
 
 func (s *Service) RevokeInvitation(ctx context.Context, invitationID uuid.UUID) (Invitation, error) {
@@ -535,9 +574,110 @@ func validateExpiresAt(expiresAt *time.Time) error {
 	return nil
 }
 
+func normalizeTemplateCode(templateCode string) string {
+	trimmed := strings.TrimSpace(templateCode)
+	if trimmed == "" {
+		return "custom"
+	}
+	return trimmed
+}
+
+func storageRoleCode(templateCode string) string {
+	if templateCode == "custom" {
+		return "shared_viewer"
+	}
+	return templateCode
+}
+
+func validateServiceEngineerTemplate(templateCode string, scopeType string, expiresAt *time.Time) error {
+	if templateCode != serviceEngineerRoleCode {
+		return nil
+	}
+	if expiresAt == nil {
+		return apperr.New(apperr.KindInvalidArgument, "service engineer grants require expires_at")
+	}
+	if scopeType != "device" && scopeType != "site" {
+		return apperr.New(apperr.KindInvalidArgument, "service engineer grants require device or site scope")
+	}
+	return nil
+}
+
+func (s *Service) normalizeGrantPermissionCodes(ctx context.Context, codes []string) ([]string, error) {
+	normalized := make([]string, 0, len(codes))
+	seen := make(map[string]struct{}, len(codes))
+	for _, code := range codes {
+		trimmed := strings.TrimSpace(code)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			return nil, apperr.New(apperr.KindInvalidArgument, "duplicate permission code")
+		}
+		if isInternalOnlyPermission(trimmed) {
+			return nil, apperr.New(apperr.KindInvalidArgument, "permission is not allowed for access grants")
+		}
+		seen[trimmed] = struct{}{}
+		normalized = append(normalized, trimmed)
+	}
+	if len(normalized) == 0 {
+		return nil, apperr.New(apperr.KindInvalidArgument, "permission_codes is required")
+	}
+	count, err := s.queries.CountPermissionsByCodes(ctx, normalized)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindInternal, "validate permission codes", err)
+	}
+	if count != int64(len(normalized)) {
+		return nil, apperr.New(apperr.KindInvalidArgument, "invalid permission code")
+	}
+	return normalized, nil
+}
+
+func isInternalOnlyPermission(code string) bool {
+	switch code {
+	case "member.manage", "workspace.manage", "audit.view":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Service) replaceAccessGrantPermissions(ctx context.Context, q *sqlc.Queries, accessGrantID uuid.UUID, permissionCodes []string) error {
+	if err := q.DeleteAccessGrantPermissions(ctx, accessGrantID); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "delete access grant permissions", err)
+	}
+	rows, err := q.AddAccessGrantPermissions(ctx, sqlc.AddAccessGrantPermissionsParams{
+		AccessGrantID: accessGrantID,
+		Column2:       permissionCodes,
+	})
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "add access grant permissions", err)
+	}
+	if rows != int64(len(permissionCodes)) {
+		return apperr.New(apperr.KindInvalidArgument, "invalid permission code")
+	}
+	return nil
+}
+
+func (s *Service) replaceInvitationPermissions(ctx context.Context, q *sqlc.Queries, invitationID uuid.UUID, permissionCodes []string) error {
+	if err := q.DeleteInvitationPermissions(ctx, invitationID); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "delete invitation permissions", err)
+	}
+	rows, err := q.AddInvitationPermissions(ctx, sqlc.AddInvitationPermissionsParams{
+		InvitationID: invitationID,
+		Column2:      permissionCodes,
+	})
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "add invitation permissions", err)
+	}
+	if rows != int64(len(permissionCodes)) {
+		return apperr.New(apperr.KindInvalidArgument, "invalid permission code")
+	}
+	return nil
+}
+
 func isAccessGrantRole(roleCode string) bool {
 	switch roleCode {
-	case "project_manager", "site_operator", "data_manager", "researcher", "viewer", "shared_viewer", "shared_downloader", "service_engineer":
+	case "custom", "project_manager", "site_operator", "data_manager", "researcher", "viewer", "shared_viewer", "shared_downloader", "service_engineer":
 		return true
 	default:
 		return false
@@ -564,21 +704,24 @@ func subjectFromUser(user sqlc.User) SubjectSummary {
 	}
 }
 
-func grantFromSQL(model sqlc.AccessGrant, role RoleSummary, subject SubjectSummary) AccessGrant {
+func grantFromSQL(model sqlc.AccessGrant, role RoleSummary, subject SubjectSummary, permissionCodes []string) AccessGrant {
 	return AccessGrant{
-		ID:             model.ID,
-		WorkspaceID:    model.WorkspaceID,
-		Subject:        subject,
-		Role:           role,
-		ScopeType:      model.ScopeType,
-		ScopeID:        model.ScopeID,
-		ExpiresAt:      pgTimePtr(model.ExpiresAt),
-		AllowReshare:   model.AllowReshare,
-		AllowAPIAccess: model.AllowApiAccess,
-		CreatedBy:      model.CreatedBy,
-		Status:         model.Status,
-		CreatedAt:      pgTimeValue(model.CreatedAt),
-		UpdatedAt:      pgTimeValue(model.UpdatedAt),
+		ID:              model.ID,
+		WorkspaceID:     model.WorkspaceID,
+		Subject:         subject,
+		Role:            role,
+		TemplateCode:    model.TemplateCode,
+		TemplateName:    role.Name,
+		PermissionCodes: permissionCodes,
+		ScopeType:       model.ScopeType,
+		ScopeID:         model.ScopeID,
+		ExpiresAt:       pgTimePtr(model.ExpiresAt),
+		AllowReshare:    model.AllowReshare,
+		AllowAPIAccess:  model.AllowApiAccess,
+		CreatedBy:       model.CreatedBy,
+		Status:          model.Status,
+		CreatedAt:       pgTimeValue(model.CreatedAt),
+		UpdatedAt:       pgTimeValue(model.UpdatedAt),
 	}
 }
 
@@ -595,15 +738,18 @@ func grantFromGetRow(row sqlc.GetAccessGrantRow) AccessGrant {
 			Code: row.RoleCode,
 			Name: row.RoleName,
 		},
-		ScopeType:      row.ScopeType,
-		ScopeID:        row.ScopeID,
-		ExpiresAt:      pgTimePtr(row.ExpiresAt),
-		AllowReshare:   row.AllowReshare,
-		AllowAPIAccess: row.AllowApiAccess,
-		CreatedBy:      row.CreatedBy,
-		Status:         row.Status,
-		CreatedAt:      pgTimeValue(row.CreatedAt),
-		UpdatedAt:      pgTimeValue(row.UpdatedAt),
+		TemplateCode:    row.TemplateCode,
+		TemplateName:    row.TemplateName,
+		PermissionCodes: row.PermissionCodes,
+		ScopeType:       row.ScopeType,
+		ScopeID:         row.ScopeID,
+		ExpiresAt:       pgTimePtr(row.ExpiresAt),
+		AllowReshare:    row.AllowReshare,
+		AllowAPIAccess:  row.AllowApiAccess,
+		CreatedBy:       row.CreatedBy,
+		Status:          row.Status,
+		CreatedAt:       pgTimeValue(row.CreatedAt),
+		UpdatedAt:       pgTimeValue(row.UpdatedAt),
 	}
 }
 
@@ -623,15 +769,18 @@ func grantFromWorkspaceRow(row sqlc.ListAccessGrantsByWorkspaceRow) AccessGrant 
 			Code: row.RoleCode,
 			Name: row.RoleName,
 		},
-		ScopeType:      row.ScopeType,
-		ScopeID:        row.ScopeID,
-		ExpiresAt:      pgTimePtr(row.ExpiresAt),
-		AllowReshare:   row.AllowReshare,
-		AllowAPIAccess: row.AllowApiAccess,
-		CreatedBy:      row.CreatedBy,
-		Status:         row.Status,
-		CreatedAt:      pgTimeValue(row.CreatedAt),
-		UpdatedAt:      pgTimeValue(row.UpdatedAt),
+		TemplateCode:    row.TemplateCode,
+		TemplateName:    row.TemplateName,
+		PermissionCodes: row.PermissionCodes,
+		ScopeType:       row.ScopeType,
+		ScopeID:         row.ScopeID,
+		ExpiresAt:       pgTimePtr(row.ExpiresAt),
+		AllowReshare:    row.AllowReshare,
+		AllowAPIAccess:  row.AllowApiAccess,
+		CreatedBy:       row.CreatedBy,
+		Status:          row.Status,
+		CreatedAt:       pgTimeValue(row.CreatedAt),
+		UpdatedAt:       pgTimeValue(row.UpdatedAt),
 	}
 }
 
@@ -648,32 +797,38 @@ func grantFromUserRow(row sqlc.ListAccessGrantsForUserRow) AccessGrant {
 			Code: row.RoleCode,
 			Name: row.RoleName,
 		},
-		ScopeType:      row.ScopeType,
-		ScopeID:        row.ScopeID,
-		ExpiresAt:      pgTimePtr(row.ExpiresAt),
-		AllowReshare:   row.AllowReshare,
-		AllowAPIAccess: row.AllowApiAccess,
-		CreatedBy:      row.CreatedBy,
-		Status:         row.Status,
-		CreatedAt:      pgTimeValue(row.CreatedAt),
-		UpdatedAt:      pgTimeValue(row.UpdatedAt),
+		TemplateCode:    row.TemplateCode,
+		TemplateName:    row.TemplateName,
+		PermissionCodes: row.PermissionCodes,
+		ScopeType:       row.ScopeType,
+		ScopeID:         row.ScopeID,
+		ExpiresAt:       pgTimePtr(row.ExpiresAt),
+		AllowReshare:    row.AllowReshare,
+		AllowAPIAccess:  row.AllowApiAccess,
+		CreatedBy:       row.CreatedBy,
+		Status:          row.Status,
+		CreatedAt:       pgTimeValue(row.CreatedAt),
+		UpdatedAt:       pgTimeValue(row.UpdatedAt),
 	}
 }
 
-func invitationFromSQL(model sqlc.Invitation, role RoleSummary) Invitation {
+func invitationFromSQL(model sqlc.Invitation, role RoleSummary, permissionCodes []string) Invitation {
 	return Invitation{
-		ID:           model.ID,
-		WorkspaceID:  model.WorkspaceID,
-		InviteeEmail: model.InviteeEmail,
-		InviteePhone: model.InviteePhone,
-		Role:         role,
-		ScopeType:    model.ScopeType,
-		ScopeID:      model.ScopeID,
-		ExpiresAt:    pgTimePtr(model.ExpiresAt),
-		InvitedBy:    model.InvitedBy,
-		Status:       model.Status,
-		CreatedAt:    pgTimeValue(model.CreatedAt),
-		UpdatedAt:    pgTimeValue(model.UpdatedAt),
+		ID:              model.ID,
+		WorkspaceID:     model.WorkspaceID,
+		InviteeEmail:    model.InviteeEmail,
+		InviteePhone:    model.InviteePhone,
+		Role:            role,
+		TemplateCode:    model.TemplateCode,
+		TemplateName:    role.Name,
+		PermissionCodes: permissionCodes,
+		ScopeType:       model.ScopeType,
+		ScopeID:         model.ScopeID,
+		ExpiresAt:       pgTimePtr(model.ExpiresAt),
+		InvitedBy:       model.InvitedBy,
+		Status:          model.Status,
+		CreatedAt:       pgTimeValue(model.CreatedAt),
+		UpdatedAt:       pgTimeValue(model.UpdatedAt),
 	}
 }
 
@@ -688,13 +843,16 @@ func invitationFromGetRow(row sqlc.GetInvitationRow) Invitation {
 			Code: row.RoleCode,
 			Name: row.RoleName,
 		},
-		ScopeType: row.ScopeType,
-		ScopeID:   row.ScopeID,
-		ExpiresAt: pgTimePtr(row.ExpiresAt),
-		InvitedBy: row.InvitedBy,
-		Status:    row.Status,
-		CreatedAt: pgTimeValue(row.CreatedAt),
-		UpdatedAt: pgTimeValue(row.UpdatedAt),
+		TemplateCode:    row.TemplateCode,
+		TemplateName:    row.TemplateName,
+		PermissionCodes: row.PermissionCodes,
+		ScopeType:       row.ScopeType,
+		ScopeID:         row.ScopeID,
+		ExpiresAt:       pgTimePtr(row.ExpiresAt),
+		InvitedBy:       row.InvitedBy,
+		Status:          row.Status,
+		CreatedAt:       pgTimeValue(row.CreatedAt),
+		UpdatedAt:       pgTimeValue(row.UpdatedAt),
 	}
 }
 
@@ -709,13 +867,16 @@ func invitationFromWorkspaceRow(row sqlc.ListInvitationsByWorkspaceRow) Invitati
 			Code: row.RoleCode,
 			Name: row.RoleName,
 		},
-		ScopeType: row.ScopeType,
-		ScopeID:   row.ScopeID,
-		ExpiresAt: pgTimePtr(row.ExpiresAt),
-		InvitedBy: row.InvitedBy,
-		Status:    row.Status,
-		CreatedAt: pgTimeValue(row.CreatedAt),
-		UpdatedAt: pgTimeValue(row.UpdatedAt),
+		TemplateCode:    row.TemplateCode,
+		TemplateName:    row.TemplateName,
+		PermissionCodes: row.PermissionCodes,
+		ScopeType:       row.ScopeType,
+		ScopeID:         row.ScopeID,
+		ExpiresAt:       pgTimePtr(row.ExpiresAt),
+		InvitedBy:       row.InvitedBy,
+		Status:          row.Status,
+		CreatedAt:       pgTimeValue(row.CreatedAt),
+		UpdatedAt:       pgTimeValue(row.UpdatedAt),
 	}
 }
 
@@ -730,13 +891,16 @@ func invitationFromIdentityRow(row sqlc.ListPendingInvitationsForIdentityRow) In
 			Code: row.RoleCode,
 			Name: row.RoleName,
 		},
-		ScopeType: row.ScopeType,
-		ScopeID:   row.ScopeID,
-		ExpiresAt: pgTimePtr(row.ExpiresAt),
-		InvitedBy: row.InvitedBy,
-		Status:    row.Status,
-		CreatedAt: pgTimeValue(row.CreatedAt),
-		UpdatedAt: pgTimeValue(row.UpdatedAt),
+		TemplateCode:    row.TemplateCode,
+		TemplateName:    row.TemplateName,
+		PermissionCodes: row.PermissionCodes,
+		ScopeType:       row.ScopeType,
+		ScopeID:         row.ScopeID,
+		ExpiresAt:       pgTimePtr(row.ExpiresAt),
+		InvitedBy:       row.InvitedBy,
+		Status:          row.Status,
+		CreatedAt:       pgTimeValue(row.CreatedAt),
+		UpdatedAt:       pgTimeValue(row.UpdatedAt),
 	}
 }
 

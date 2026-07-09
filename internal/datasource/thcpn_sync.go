@@ -71,6 +71,7 @@ type SyncedDevice struct {
 	SerialNo     string     `json:"serial_no"`
 	Name         string     `json:"name"`
 	Status       string     `json:"status"`
+	DeviceType   string     `json:"device_type"`
 	AssignedBy   *uuid.UUID `json:"assigned_by,omitempty"`
 	AssignedAt   *time.Time `json:"assigned_at,omitempty"`
 	CreatedAt    time.Time  `json:"created_at"`
@@ -180,6 +181,7 @@ type thcpnDeviceSyncInput struct {
 	ProjectID         *uuid.UUID
 	SiteID            *uuid.UUID
 	ExternalDeviceID  int64
+	DeviceType        string
 	ProductID         string
 	SerialNo          string
 	Name              string
@@ -195,6 +197,7 @@ func (s *Service) SyncTHCPNStandardStation(ctx context.Context, input SyncTHCPNS
 		ProjectID:         input.ProjectID,
 		SiteID:            input.SiteID,
 		ExternalDeviceID:  input.ExternalDeviceID,
+		DeviceType:        "standalone",
 		ProductID:         input.ProductID,
 		SerialNo:          input.SerialNo,
 		Name:              input.Name,
@@ -296,6 +299,7 @@ func (s *Service) SyncTHCPNGateway(ctx context.Context, input SyncTHCPNGatewayIn
 	for _, nodeID := range gateNodes {
 		nodeInput := thcpnDeviceSyncInput{
 			ExternalDeviceID: nodeID,
+			DeviceType:       "gateway_node",
 			ActorUserID:      input.ActorUserID,
 		}
 		if input.AssignNodes {
@@ -378,6 +382,9 @@ func validateTHCPNDeviceSyncInput(input thcpnDeviceSyncInput) error {
 	if input.ExternalDeviceID <= 0 {
 		return apperr.New(apperr.KindInvalidArgument, "external_device_id is required")
 	}
+	if input.DeviceType != "" && !isValidTHCPNDeviceType(input.DeviceType) {
+		return apperr.New(apperr.KindInvalidArgument, "invalid device_type")
+	}
 	if input.TargetWorkspaceID == uuid.Nil {
 		if input.ProjectID != nil || input.SiteID != nil {
 			return apperr.New(apperr.KindInvalidArgument, "target_workspace_id is required when project_id or site_id is set")
@@ -396,6 +403,7 @@ func validateTHCPNGatewaySyncInput(input SyncTHCPNGatewayInput) (thcpnDeviceSync
 		ProjectID:         input.ProjectID,
 		SiteID:            input.SiteID,
 		ExternalDeviceID:  input.ExternalGatewayID,
+		DeviceType:        "gateway",
 		ProductID:         input.ProductID,
 		SerialNo:          input.SerialNo,
 		Name:              input.Name,
@@ -424,14 +432,16 @@ func (s *Service) syncTHCPNDevice(ctx context.Context, q *sqlc.Queries, source s
 		return THCPNStandardStationSyncResult{}, err
 	}
 
-	deviceRow, assignmentRow, err := s.upsertTHCPNPlatformDevice(ctx, q, source, input, externalDevice)
+	deviceRow, assignmentRow, created, err := s.upsertTHCPNPlatformDevice(ctx, q, source, input, externalDevice)
 	if err != nil {
 		return THCPNStandardStationSyncResult{}, err
 	}
-	capabilities := capabilitiesForTHCPNStreams(streamSpecs)
-	for _, capability := range capabilities {
-		if err := addDeviceCapabilityIfMissing(ctx, q, deviceRow.ID, capability); err != nil {
-			return THCPNStandardStationSyncResult{}, err
+	if created {
+		capabilities := capabilitiesForTHCPNStreams(streamSpecs)
+		for _, capability := range capabilities {
+			if err := addDeviceCapabilityIfMissing(ctx, q, deviceRow.ID, capability); err != nil {
+				return THCPNStandardStationSyncResult{}, err
+			}
 		}
 	}
 
@@ -529,7 +539,7 @@ func validateTHCPNSyncTarget(ctx context.Context, q *sqlc.Queries, workspaceID u
 	return nil
 }
 
-func (s *Service) upsertTHCPNPlatformDevice(ctx context.Context, q *sqlc.Queries, source sqlc.DataSource, input thcpnDeviceSyncInput, external thcpnExternalDevice) (sqlc.Device, *sqlc.DeviceAssignment, error) {
+func (s *Service) upsertTHCPNPlatformDevice(ctx context.Context, q *sqlc.Queries, source sqlc.DataSource, input thcpnDeviceSyncInput, external thcpnExternalDevice) (sqlc.Device, *sqlc.DeviceAssignment, bool, error) {
 	productID := strings.TrimSpace(input.ProductID)
 	if productID == "" {
 		productID = defaultTHCPNProductID
@@ -560,7 +570,7 @@ func (s *Service) upsertTHCPNPlatformDevice(ctx context.Context, q *sqlc.Queries
 	if err == nil {
 		current, err := q.GetDevice(ctx, existingRef.DeviceID)
 		if err != nil {
-			return sqlc.Device{}, nil, mapNotFoundOrInternal(err, "mapped device not found")
+			return sqlc.Device{}, nil, false, mapNotFoundOrInternal(err, "mapped device not found")
 		}
 		device, err := q.UpdateDevice(ctx, sqlc.UpdateDeviceParams{
 			ID:        current.ID,
@@ -570,16 +580,20 @@ func (s *Service) upsertTHCPNPlatformDevice(ctx context.Context, q *sqlc.Queries
 			Status:    current.Status,
 		})
 		if err != nil {
-			return sqlc.Device{}, nil, mapWriteError(err, "update synced device")
+			return sqlc.Device{}, nil, false, mapWriteError(err, "update synced device")
+		}
+		device, err = updateSyncedDeviceType(ctx, q, device, input.DeviceType)
+		if err != nil {
+			return sqlc.Device{}, nil, false, err
 		}
 		assignment, err := syncAssignmentIfRequested(ctx, q, device.ID, input)
 		if err != nil {
-			return sqlc.Device{}, nil, err
+			return sqlc.Device{}, nil, false, err
 		}
-		return device, assignment, nil
+		return device, assignment, false, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return sqlc.Device{}, nil, apperr.Wrap(apperr.KindInternal, "lookup device source ref", err)
+		return sqlc.Device{}, nil, false, apperr.Wrap(apperr.KindInternal, "lookup device source ref", err)
 	}
 
 	device, err := q.CreateDevice(ctx, sqlc.CreateDeviceParams{
@@ -588,13 +602,44 @@ func (s *Service) upsertTHCPNPlatformDevice(ctx context.Context, q *sqlc.Queries
 		Name:      name,
 	})
 	if err != nil {
-		return sqlc.Device{}, nil, mapWriteError(err, "create synced device")
+		return sqlc.Device{}, nil, false, mapWriteError(err, "create synced device")
+	}
+	device, err = updateSyncedDeviceType(ctx, q, device, input.DeviceType)
+	if err != nil {
+		return sqlc.Device{}, nil, false, err
 	}
 	assignment, err := syncAssignmentIfRequested(ctx, q, device.ID, input)
 	if err != nil {
-		return sqlc.Device{}, nil, err
+		return sqlc.Device{}, nil, false, err
 	}
-	return device, assignment, nil
+	return device, assignment, true, nil
+}
+
+func updateSyncedDeviceType(ctx context.Context, q *sqlc.Queries, device sqlc.Device, deviceType string) (sqlc.Device, error) {
+	normalized := strings.TrimSpace(deviceType)
+	if normalized == "" {
+		normalized = "standalone"
+	}
+	if device.DeviceType == normalized {
+		return device, nil
+	}
+	updated, err := q.UpdateDeviceType(ctx, sqlc.UpdateDeviceTypeParams{
+		ID:         device.ID,
+		DeviceType: normalized,
+	})
+	if err != nil {
+		return sqlc.Device{}, mapWriteError(err, "update synced device type")
+	}
+	return updated, nil
+}
+
+func isValidTHCPNDeviceType(value string) bool {
+	switch value {
+	case "standalone", "gateway", "gateway_node":
+		return true
+	default:
+		return false
+	}
 }
 
 func syncAssignmentIfRequested(ctx context.Context, q *sqlc.Queries, deviceID uuid.UUID, input thcpnDeviceSyncInput) (*sqlc.DeviceAssignment, error) {
@@ -1101,13 +1146,14 @@ func pgTimePtr(value pgtype.Timestamptz) *time.Time {
 
 func syncedDeviceFromSQL(model sqlc.Device, assignment *sqlc.DeviceAssignment) SyncedDevice {
 	device := SyncedDevice{
-		ID:        model.ID,
-		ProductID: model.ProductID,
-		SerialNo:  model.SerialNo,
-		Name:      model.Name,
-		Status:    model.Status,
-		CreatedAt: pgTime(model.CreatedAt),
-		UpdatedAt: pgTime(model.UpdatedAt),
+		ID:         model.ID,
+		ProductID:  model.ProductID,
+		SerialNo:   model.SerialNo,
+		Name:       model.Name,
+		Status:     model.Status,
+		DeviceType: model.DeviceType,
+		CreatedAt:  pgTime(model.CreatedAt),
+		UpdatedAt:  pgTime(model.UpdatedAt),
 	}
 	if assignment != nil {
 		device.AssignmentID = &assignment.ID

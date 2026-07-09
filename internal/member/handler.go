@@ -22,14 +22,20 @@ type Handler struct {
 }
 
 type addMemberRequest struct {
-	UserID   string `json:"user_id"`
-	Email    string `json:"email"`
-	Phone    string `json:"phone"`
-	RoleCode string `json:"role_code"`
+	UserID          string   `json:"user_id"`
+	Email           string   `json:"email"`
+	Phone           string   `json:"phone"`
+	TemplateCode    string   `json:"template_code"`
+	PermissionCodes []string `json:"permission_codes"`
+	ScopeType       string   `json:"scope_type"`
+	ScopeID         string   `json:"scope_id"`
 }
 
 type updateMemberRoleRequest struct {
-	RoleCode string `json:"role_code"`
+	TemplateCode    string   `json:"template_code"`
+	PermissionCodes []string `json:"permission_codes"`
+	ScopeType       string   `json:"scope_type"`
+	ScopeID         string   `json:"scope_id"`
 }
 
 func NewHandler(service *Service, checker *permission.Checker, auditServices ...*audit.Service) *Handler {
@@ -83,13 +89,20 @@ func (h *Handler) Add(c *gin.Context) {
 		}
 		userID = parsed
 	}
+	scopeID, ok := parseOptionalRequestUUID(req.ScopeID, "scope_id", c)
+	if !ok {
+		return
+	}
 
 	result, err := h.service.Add(c.Request.Context(), AddInput{
-		WorkspaceID: workspaceID,
-		UserID:      userID,
-		Email:       req.Email,
-		Phone:       req.Phone,
-		RoleCode:    req.RoleCode,
+		WorkspaceID:     workspaceID,
+		UserID:          userID,
+		Email:           req.Email,
+		Phone:           req.Phone,
+		TemplateCode:    req.TemplateCode,
+		PermissionCodes: req.PermissionCodes,
+		ScopeType:       req.ScopeType,
+		ScopeID:         scopeID,
 	})
 	if err != nil {
 		if !h.record(c, audit.RecordInput{
@@ -142,11 +155,18 @@ func (h *Handler) UpdateRole(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
+	scopeID, ok := parseOptionalRequestUUID(req.ScopeID, "scope_id", c)
+	if !ok {
+		return
+	}
 
 	result, err := h.service.UpdateRole(c.Request.Context(), UpdateRoleInput{
-		WorkspaceID: workspaceID,
-		MemberID:    memberID,
-		RoleCode:    req.RoleCode,
+		WorkspaceID:     workspaceID,
+		MemberID:        memberID,
+		TemplateCode:    req.TemplateCode,
+		PermissionCodes: req.PermissionCodes,
+		ScopeType:       req.ScopeType,
+		ScopeID:         scopeID,
 	})
 	if err != nil {
 		if !h.record(c, audit.RecordInput{
@@ -268,6 +288,18 @@ func parseMemberID(c *gin.Context) (uuid.UUID, bool) {
 	id, err := uuid.Parse(c.Param("member_id"))
 	if err != nil {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid member_id"))
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
+func parseOptionalRequestUUID(value string, field string, c *gin.Context) (uuid.UUID, bool) {
+	if value == "" {
+		return uuid.Nil, true
+	}
+	id, err := uuid.Parse(value)
+	if err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid "+field))
 		return uuid.Nil, false
 	}
 	return id, true

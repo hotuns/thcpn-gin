@@ -12,14 +12,33 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addWorkspaceMemberPermissions = `-- name: AddWorkspaceMemberPermissions :execrows
+INSERT INTO workspace_member_permissions (member_id, permission_id)
+SELECT $1, p.id
+FROM permissions p
+WHERE p.code = ANY($2::text[])
+ON CONFLICT DO NOTHING
+`
+
+type AddWorkspaceMemberPermissionsParams struct {
+	MemberID uuid.UUID `json:"member_id"`
+	Column2  []string  `json:"column_2"`
+}
+
+func (q *Queries) AddWorkspaceMemberPermissions(ctx context.Context, arg AddWorkspaceMemberPermissionsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, addWorkspaceMemberPermissions, arg.MemberID, arg.Column2)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const countActiveWorkspaceOwners = `-- name: CountActiveWorkspaceOwners :one
 SELECT count(*)::bigint
 FROM workspace_members wm
-JOIN roles r ON r.id = wm.role_id
 WHERE wm.workspace_id = $1
   AND wm.status = 'active'
-  AND r.code = 'owner'
-  AND r.workspace_id IS NULL
+  AND wm.template_code = 'owner'
 `
 
 func (q *Queries) CountActiveWorkspaceOwners(ctx context.Context, workspaceID uuid.UUID) (int64, error) {
@@ -27,6 +46,16 @@ func (q *Queries) CountActiveWorkspaceOwners(ctx context.Context, workspaceID uu
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const deleteWorkspaceMemberPermissions = `-- name: DeleteWorkspaceMemberPermissions :exec
+DELETE FROM workspace_member_permissions
+WHERE member_id = $1
+`
+
+func (q *Queries) DeleteWorkspaceMemberPermissions(ctx context.Context, memberID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteWorkspaceMemberPermissions, memberID)
+	return err
 }
 
 const getWorkspaceMemberDetail = `-- name: GetWorkspaceMemberDetail :one
@@ -39,15 +68,26 @@ SELECT
     wm.joined_at,
     wm.created_at,
     wm.updated_at,
+    wm.scope_type,
+    wm.scope_id,
+    wm.template_code,
+    COALESCE(tr.name, '自定义权限') AS template_name,
+    ARRAY(
+        SELECT p.code
+        FROM workspace_member_permissions wmp
+        JOIN permissions p ON p.id = wmp.permission_id
+        WHERE wmp.member_id = wm.id
+        ORDER BY p.resource_type, p.action, p.code
+    )::text[] AS permission_codes,
     u.name AS user_name,
     u.phone AS user_phone,
     u.email AS user_email,
     u.status AS user_status,
-    r.code AS role_code,
-    r.name AS role_name
+    wm.template_code AS role_code,
+    COALESCE(tr.name, '自定义权限') AS role_name
 FROM workspace_members wm
 JOIN users u ON u.id = wm.user_id
-JOIN roles r ON r.id = wm.role_id
+LEFT JOIN roles tr ON tr.workspace_id IS NULL AND tr.code = wm.template_code
 WHERE wm.workspace_id = $1
   AND wm.id = $2
 `
@@ -58,20 +98,25 @@ type GetWorkspaceMemberDetailParams struct {
 }
 
 type GetWorkspaceMemberDetailRow struct {
-	ID          uuid.UUID          `json:"id"`
-	WorkspaceID uuid.UUID          `json:"workspace_id"`
-	UserID      uuid.UUID          `json:"user_id"`
-	RoleID      uuid.UUID          `json:"role_id"`
-	Status      string             `json:"status"`
-	JoinedAt    pgtype.Timestamptz `json:"joined_at"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
-	UserName    string             `json:"user_name"`
-	UserPhone   *string            `json:"user_phone"`
-	UserEmail   *string            `json:"user_email"`
-	UserStatus  string             `json:"user_status"`
-	RoleCode    string             `json:"role_code"`
-	RoleName    string             `json:"role_name"`
+	ID              uuid.UUID          `json:"id"`
+	WorkspaceID     uuid.UUID          `json:"workspace_id"`
+	UserID          uuid.UUID          `json:"user_id"`
+	RoleID          uuid.UUID          `json:"role_id"`
+	Status          string             `json:"status"`
+	JoinedAt        pgtype.Timestamptz `json:"joined_at"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	ScopeType       string             `json:"scope_type"`
+	ScopeID         uuid.UUID          `json:"scope_id"`
+	TemplateCode    string             `json:"template_code"`
+	TemplateName    string             `json:"template_name"`
+	PermissionCodes []string           `json:"permission_codes"`
+	UserName        string             `json:"user_name"`
+	UserPhone       *string            `json:"user_phone"`
+	UserEmail       *string            `json:"user_email"`
+	UserStatus      string             `json:"user_status"`
+	RoleCode        string             `json:"role_code"`
+	RoleName        string             `json:"role_name"`
 }
 
 func (q *Queries) GetWorkspaceMemberDetail(ctx context.Context, arg GetWorkspaceMemberDetailParams) (GetWorkspaceMemberDetailRow, error) {
@@ -86,6 +131,11 @@ func (q *Queries) GetWorkspaceMemberDetail(ctx context.Context, arg GetWorkspace
 		&i.JoinedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ScopeType,
+		&i.ScopeID,
+		&i.TemplateCode,
+		&i.TemplateName,
+		&i.PermissionCodes,
 		&i.UserName,
 		&i.UserPhone,
 		&i.UserEmail,
@@ -94,6 +144,34 @@ func (q *Queries) GetWorkspaceMemberDetail(ctx context.Context, arg GetWorkspace
 		&i.RoleName,
 	)
 	return i, err
+}
+
+const listWorkspaceMemberPermissionCodes = `-- name: ListWorkspaceMemberPermissionCodes :many
+SELECT p.code
+FROM workspace_member_permissions wmp
+JOIN permissions p ON p.id = wmp.permission_id
+WHERE wmp.member_id = $1
+ORDER BY p.resource_type, p.action, p.code
+`
+
+func (q *Queries) ListWorkspaceMemberPermissionCodes(ctx context.Context, memberID uuid.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, listWorkspaceMemberPermissionCodes, memberID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
+		}
+		items = append(items, code)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listWorkspaceMembers = `-- name: ListWorkspaceMembers :many
@@ -106,35 +184,51 @@ SELECT
     wm.joined_at,
     wm.created_at,
     wm.updated_at,
+    wm.scope_type,
+    wm.scope_id,
+    wm.template_code,
+    COALESCE(tr.name, '自定义权限') AS template_name,
+    ARRAY(
+        SELECT p.code
+        FROM workspace_member_permissions wmp
+        JOIN permissions p ON p.id = wmp.permission_id
+        WHERE wmp.member_id = wm.id
+        ORDER BY p.resource_type, p.action, p.code
+    )::text[] AS permission_codes,
     u.name AS user_name,
     u.phone AS user_phone,
     u.email AS user_email,
     u.status AS user_status,
-    r.code AS role_code,
-    r.name AS role_name
+    wm.template_code AS role_code,
+    COALESCE(tr.name, '自定义权限') AS role_name
 FROM workspace_members wm
 JOIN users u ON u.id = wm.user_id
-JOIN roles r ON r.id = wm.role_id
+LEFT JOIN roles tr ON tr.workspace_id IS NULL AND tr.code = wm.template_code
 WHERE wm.workspace_id = $1
   AND wm.status != 'removed'
 ORDER BY wm.joined_at ASC
 `
 
 type ListWorkspaceMembersRow struct {
-	ID          uuid.UUID          `json:"id"`
-	WorkspaceID uuid.UUID          `json:"workspace_id"`
-	UserID      uuid.UUID          `json:"user_id"`
-	RoleID      uuid.UUID          `json:"role_id"`
-	Status      string             `json:"status"`
-	JoinedAt    pgtype.Timestamptz `json:"joined_at"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
-	UserName    string             `json:"user_name"`
-	UserPhone   *string            `json:"user_phone"`
-	UserEmail   *string            `json:"user_email"`
-	UserStatus  string             `json:"user_status"`
-	RoleCode    string             `json:"role_code"`
-	RoleName    string             `json:"role_name"`
+	ID              uuid.UUID          `json:"id"`
+	WorkspaceID     uuid.UUID          `json:"workspace_id"`
+	UserID          uuid.UUID          `json:"user_id"`
+	RoleID          uuid.UUID          `json:"role_id"`
+	Status          string             `json:"status"`
+	JoinedAt        pgtype.Timestamptz `json:"joined_at"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	ScopeType       string             `json:"scope_type"`
+	ScopeID         uuid.UUID          `json:"scope_id"`
+	TemplateCode    string             `json:"template_code"`
+	TemplateName    string             `json:"template_name"`
+	PermissionCodes []string           `json:"permission_codes"`
+	UserName        string             `json:"user_name"`
+	UserPhone       *string            `json:"user_phone"`
+	UserEmail       *string            `json:"user_email"`
+	UserStatus      string             `json:"user_status"`
+	RoleCode        string             `json:"role_code"`
+	RoleName        string             `json:"role_name"`
 }
 
 func (q *Queries) ListWorkspaceMembers(ctx context.Context, workspaceID uuid.UUID) ([]ListWorkspaceMembersRow, error) {
@@ -155,6 +249,11 @@ func (q *Queries) ListWorkspaceMembers(ctx context.Context, workspaceID uuid.UUI
 			&i.JoinedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ScopeType,
+			&i.ScopeID,
+			&i.TemplateCode,
+			&i.TemplateName,
+			&i.PermissionCodes,
 			&i.UserName,
 			&i.UserPhone,
 			&i.UserEmail,
@@ -178,7 +277,7 @@ SET status = 'removed',
     updated_at = now()
 WHERE workspace_id = $1
   AND id = $2
-RETURNING id, workspace_id, user_id, role_id, status, joined_at, created_at, updated_at
+RETURNING id, workspace_id, user_id, role_id, status, joined_at, created_at, updated_at, scope_type, scope_id, template_code
 `
 
 type RemoveWorkspaceMemberParams struct {
@@ -198,6 +297,9 @@ func (q *Queries) RemoveWorkspaceMember(ctx context.Context, arg RemoveWorkspace
 		&i.JoinedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ScopeType,
+		&i.ScopeID,
+		&i.TemplateCode,
 	)
 	return i, err
 }
@@ -205,20 +307,33 @@ func (q *Queries) RemoveWorkspaceMember(ctx context.Context, arg RemoveWorkspace
 const updateWorkspaceMemberRole = `-- name: UpdateWorkspaceMemberRole :one
 UPDATE workspace_members
 SET role_id = $3,
+    scope_type = $4,
+    scope_id = $5,
+    template_code = $6,
     updated_at = now()
 WHERE workspace_id = $1
   AND id = $2
-RETURNING id, workspace_id, user_id, role_id, status, joined_at, created_at, updated_at
+RETURNING id, workspace_id, user_id, role_id, status, joined_at, created_at, updated_at, scope_type, scope_id, template_code
 `
 
 type UpdateWorkspaceMemberRoleParams struct {
-	WorkspaceID uuid.UUID `json:"workspace_id"`
-	ID          uuid.UUID `json:"id"`
-	RoleID      uuid.UUID `json:"role_id"`
+	WorkspaceID  uuid.UUID `json:"workspace_id"`
+	ID           uuid.UUID `json:"id"`
+	RoleID       uuid.UUID `json:"role_id"`
+	ScopeType    string    `json:"scope_type"`
+	ScopeID      uuid.UUID `json:"scope_id"`
+	TemplateCode string    `json:"template_code"`
 }
 
 func (q *Queries) UpdateWorkspaceMemberRole(ctx context.Context, arg UpdateWorkspaceMemberRoleParams) (WorkspaceMember, error) {
-	row := q.db.QueryRow(ctx, updateWorkspaceMemberRole, arg.WorkspaceID, arg.ID, arg.RoleID)
+	row := q.db.QueryRow(ctx, updateWorkspaceMemberRole,
+		arg.WorkspaceID,
+		arg.ID,
+		arg.RoleID,
+		arg.ScopeType,
+		arg.ScopeID,
+		arg.TemplateCode,
+	)
 	var i WorkspaceMember
 	err := row.Scan(
 		&i.ID,
@@ -229,6 +344,9 @@ func (q *Queries) UpdateWorkspaceMemberRole(ctx context.Context, arg UpdateWorks
 		&i.JoinedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ScopeType,
+		&i.ScopeID,
+		&i.TemplateCode,
 	)
 	return i, err
 }
@@ -237,6 +355,9 @@ const updateWorkspaceMemberRoleStatusByUser = `-- name: UpdateWorkspaceMemberRol
 UPDATE workspace_members
 SET role_id = $3,
     status = $4,
+    scope_type = $5,
+    scope_id = $6,
+    template_code = $7,
     joined_at = CASE
         WHEN status != 'active' AND $4 = 'active' THEN now()
         ELSE joined_at
@@ -244,14 +365,17 @@ SET role_id = $3,
     updated_at = now()
 WHERE workspace_id = $1
   AND user_id = $2
-RETURNING id, workspace_id, user_id, role_id, status, joined_at, created_at, updated_at
+RETURNING id, workspace_id, user_id, role_id, status, joined_at, created_at, updated_at, scope_type, scope_id, template_code
 `
 
 type UpdateWorkspaceMemberRoleStatusByUserParams struct {
-	WorkspaceID uuid.UUID `json:"workspace_id"`
-	UserID      uuid.UUID `json:"user_id"`
-	RoleID      uuid.UUID `json:"role_id"`
-	Status      string    `json:"status"`
+	WorkspaceID  uuid.UUID `json:"workspace_id"`
+	UserID       uuid.UUID `json:"user_id"`
+	RoleID       uuid.UUID `json:"role_id"`
+	Status       string    `json:"status"`
+	ScopeType    string    `json:"scope_type"`
+	ScopeID      uuid.UUID `json:"scope_id"`
+	TemplateCode string    `json:"template_code"`
 }
 
 func (q *Queries) UpdateWorkspaceMemberRoleStatusByUser(ctx context.Context, arg UpdateWorkspaceMemberRoleStatusByUserParams) (WorkspaceMember, error) {
@@ -260,6 +384,9 @@ func (q *Queries) UpdateWorkspaceMemberRoleStatusByUser(ctx context.Context, arg
 		arg.UserID,
 		arg.RoleID,
 		arg.Status,
+		arg.ScopeType,
+		arg.ScopeID,
+		arg.TemplateCode,
 	)
 	var i WorkspaceMember
 	err := row.Scan(
@@ -271,6 +398,9 @@ func (q *Queries) UpdateWorkspaceMemberRoleStatusByUser(ctx context.Context, arg
 		&i.JoinedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ScopeType,
+		&i.ScopeID,
+		&i.TemplateCode,
 	)
 	return i, err
 }
