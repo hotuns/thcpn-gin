@@ -37,6 +37,15 @@ WHERE device_id = $1
 ORDER BY synced_at DESC, id DESC
 LIMIT 1;
 
+-- name: GetActiveTHCPNDeviceSourceRefByDevice :one
+SELECT id, device_id, data_source_id, adapter_code, external_device_id, external_sn, external_uuid, external_device_type, status, synced_at, created_at, updated_at
+FROM device_source_refs
+WHERE device_id = $1
+  AND adapter_code = 'thcpn_legacy_mysql'
+  AND status = 'active'
+ORDER BY synced_at DESC, id DESC
+LIMIT 1;
+
 -- name: UpsertDeviceConfigSnapshot :one
 INSERT INTO device_config_snapshots (
     device_id,
@@ -78,3 +87,10 @@ SELECT id, device_id, data_source_id, adapter_code, external_device_id, external
 FROM device_config_snapshots
 WHERE device_id = $1
 ORDER BY synced_at DESC, external_config_id DESC;
+
+-- name: GetLatestDeviceConfigSnapshotByDevice :one
+SELECT id, device_id, data_source_id, adapter_code, external_device_id, external_config_id, version, data_json, image_json, control_json, source_created_at, source_updated_at, synced_at, created_at
+FROM device_config_snapshots
+WHERE device_id = $1
+ORDER BY synced_at DESC, external_config_id DESC
+LIMIT 1;

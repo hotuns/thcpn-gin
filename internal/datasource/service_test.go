@@ -210,6 +210,37 @@ func TestValidateTHCPNGatewaySyncInputRequiresTargetWhenAssigningNodes(t *testin
 	}
 }
 
+func TestNormalizeTHCPNConfigJSONShapes(t *testing.T) {
+	if _, err := normalizeTHCPNConfigArrayJSON(json.RawMessage(`{"bad":true}`), "data_json"); apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected object data_json to fail, got %v", err)
+	}
+	if _, err := normalizeTHCPNConfigArrayJSON(json.RawMessage(`[{"key":"temp"}]`), "data_json"); err != nil {
+		t.Fatalf("expected array data_json to pass, got %v", err)
+	}
+	if _, err := normalizeTHCPNConfigObjectJSON(json.RawMessage(`[{"bad":true}]`), "control_json"); apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected array control_json to fail, got %v", err)
+	}
+	if _, err := normalizeTHCPNConfigObjectJSON(json.RawMessage(`{"relay":true}`), "control_json"); err != nil {
+		t.Fatalf("expected object control_json to pass, got %v", err)
+	}
+}
+
+func TestCapabilitiesForSyncedTHCPNStreams(t *testing.T) {
+	capabilities := capabilitiesForSyncedTHCPNStreams([]SyncedDataStream{
+		{Type: "telemetry"},
+		{Type: "image"},
+	})
+	seen := map[string]bool{}
+	for _, capability := range capabilities {
+		seen[capability] = true
+	}
+	for _, required := range []string{"configurable", "telemetry", "image_capture"} {
+		if !seen[required] {
+			t.Fatalf("expected capability %s in %#v", required, capabilities)
+		}
+	}
+}
+
 func TestSyncTHCPNGatewayValidatesInputBeforeDatabase(t *testing.T) {
 	service := NewService(nil)
 

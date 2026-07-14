@@ -897,6 +897,28 @@ func bindingFromUpdateRow(model sqlc.UpdateDataStreamBindingRow) DataStreamBindi
 	}
 }
 
+func bindingFromDisableMissingTHCPNRow(model sqlc.DisableMissingTHCPNDataStreamBindingsRow) DataStreamBinding {
+	return DataStreamBinding{
+		ID:                model.ID,
+		DataStreamID:      model.DataStreamID,
+		DataSourceID:      model.DataSourceID,
+		AdapterCode:       model.AdapterCode,
+		DatabaseName:      model.DatabaseName,
+		SchemaName:        model.SchemaName,
+		TableName:         model.TableName,
+		DeviceKeyField:    model.DeviceKeyField,
+		DeviceKeyValue:    model.DeviceKeyValue,
+		TimeField:         model.TimeField,
+		ValueField:        model.ValueField,
+		PayloadType:       model.PayloadType,
+		AdapterConfigJSON: json.RawMessage(model.AdapterConfigJson),
+		Status:            model.Status,
+		CreatedBy:         model.CreatedBy,
+		CreatedAt:         pgTime(model.CreatedAt),
+		UpdatedAt:         pgTime(model.UpdatedAt),
+	}
+}
+
 func derefString(value *string) string {
 	if value == nil {
 		return ""

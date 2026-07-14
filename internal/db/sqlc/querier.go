@@ -52,6 +52,8 @@ type Querier interface {
 	DeleteInvitationPermissions(ctx context.Context, invitationID uuid.UUID) error
 	DeleteUserTOTP(ctx context.Context, userID uuid.UUID) (int64, error)
 	DeleteWorkspaceMemberPermissions(ctx context.Context, memberID uuid.UUID) error
+	DisableMissingTHCPNDataStreamBindings(ctx context.Context, arg DisableMissingTHCPNDataStreamBindingsParams) ([]DisableMissingTHCPNDataStreamBindingsRow, error)
+	DisableMissingTHCPNDataStreams(ctx context.Context, arg DisableMissingTHCPNDataStreamsParams) ([]DataStream, error)
 	EnableUserTOTP(ctx context.Context, arg EnableUserTOTPParams) (UserMfaTotp, error)
 	ExpireAccessGrants(ctx context.Context) (int64, error)
 	ExpireExportJobs(ctx context.Context) (int64, error)
@@ -66,6 +68,7 @@ type Querier interface {
 	GetActiveDeviceAssignment(ctx context.Context, deviceID uuid.UUID) (DeviceAssignment, error)
 	GetActiveDeviceAssignmentByDataStream(ctx context.Context, id uuid.UUID) (DeviceAssignment, error)
 	GetActiveRefreshSessionByHash(ctx context.Context, refreshTokenHash string) (AuthRefreshSession, error)
+	GetActiveTHCPNDeviceSourceRefByDevice(ctx context.Context, deviceID uuid.UUID) (DeviceSourceRef, error)
 	GetActiveUser(ctx context.Context, id uuid.UUID) (User, error)
 	GetAppMetadata(ctx context.Context, key string) (AppMetadatum, error)
 	GetCameraBindingByDevice(ctx context.Context, deviceID uuid.UUID) (CameraBinding, error)
@@ -81,6 +84,7 @@ type Querier interface {
 	GetEnabledUserTOTP(ctx context.Context, userID uuid.UUID) (UserMfaTotp, error)
 	GetExportJob(ctx context.Context, id uuid.UUID) (ExportJob, error)
 	GetInvitation(ctx context.Context, id uuid.UUID) (GetInvitationRow, error)
+	GetLatestDeviceConfigSnapshotByDevice(ctx context.Context, deviceID uuid.UUID) (DeviceConfigSnapshot, error)
 	GetProject(ctx context.Context, id uuid.UUID) (Project, error)
 	GetSite(ctx context.Context, id uuid.UUID) (Site, error)
 	GetSystemRoleByCode(ctx context.Context, code string) (Role, error)

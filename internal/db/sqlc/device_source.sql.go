@@ -12,6 +12,36 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getActiveTHCPNDeviceSourceRefByDevice = `-- name: GetActiveTHCPNDeviceSourceRefByDevice :one
+SELECT id, device_id, data_source_id, adapter_code, external_device_id, external_sn, external_uuid, external_device_type, status, synced_at, created_at, updated_at
+FROM device_source_refs
+WHERE device_id = $1
+  AND adapter_code = 'thcpn_legacy_mysql'
+  AND status = 'active'
+ORDER BY synced_at DESC, id DESC
+LIMIT 1
+`
+
+func (q *Queries) GetActiveTHCPNDeviceSourceRefByDevice(ctx context.Context, deviceID uuid.UUID) (DeviceSourceRef, error) {
+	row := q.db.QueryRow(ctx, getActiveTHCPNDeviceSourceRefByDevice, deviceID)
+	var i DeviceSourceRef
+	err := row.Scan(
+		&i.ID,
+		&i.DeviceID,
+		&i.DataSourceID,
+		&i.AdapterCode,
+		&i.ExternalDeviceID,
+		&i.ExternalSn,
+		&i.ExternalUuid,
+		&i.ExternalDeviceType,
+		&i.Status,
+		&i.SyncedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getDeviceConfigSnapshotByExternalConfig = `-- name: GetDeviceConfigSnapshotByExternalConfig :one
 SELECT id, device_id, data_source_id, adapter_code, external_device_id, external_config_id, version, data_json, image_json, control_json, source_created_at, source_updated_at, synced_at, created_at
 FROM device_config_snapshots
@@ -107,6 +137,36 @@ func (q *Queries) GetDeviceSourceRefByExternal(ctx context.Context, arg GetDevic
 		&i.SyncedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getLatestDeviceConfigSnapshotByDevice = `-- name: GetLatestDeviceConfigSnapshotByDevice :one
+SELECT id, device_id, data_source_id, adapter_code, external_device_id, external_config_id, version, data_json, image_json, control_json, source_created_at, source_updated_at, synced_at, created_at
+FROM device_config_snapshots
+WHERE device_id = $1
+ORDER BY synced_at DESC, external_config_id DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLatestDeviceConfigSnapshotByDevice(ctx context.Context, deviceID uuid.UUID) (DeviceConfigSnapshot, error) {
+	row := q.db.QueryRow(ctx, getLatestDeviceConfigSnapshotByDevice, deviceID)
+	var i DeviceConfigSnapshot
+	err := row.Scan(
+		&i.ID,
+		&i.DeviceID,
+		&i.DataSourceID,
+		&i.AdapterCode,
+		&i.ExternalDeviceID,
+		&i.ExternalConfigID,
+		&i.Version,
+		&i.DataJson,
+		&i.ImageJson,
+		&i.ControlJson,
+		&i.SourceCreatedAt,
+		&i.SourceUpdatedAt,
+		&i.SyncedAt,
+		&i.CreatedAt,
 	)
 	return i, err
 }

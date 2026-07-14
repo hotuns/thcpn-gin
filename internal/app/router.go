@@ -203,6 +203,8 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.PATCH("/devices/:device_id/lifecycle", deviceHandler.AdminUpdateLifecycle)
 	admin.GET("/devices/:device_id/capabilities", deviceHandler.AdminCapabilities)
 	admin.PATCH("/devices/:device_id/capabilities", deviceHandler.AdminUpdateCapabilities)
+	admin.GET("/devices/:device_id/thcpn-config", dataSourceHandler.AdminGetTHCPNDeviceConfig)
+	admin.POST("/devices/:device_id/thcpn-config", dataSourceHandler.AdminUpdateTHCPNDeviceConfig)
 	admin.POST("/devices/:device_id/assignment", deviceHandler.AdminAssign)
 	admin.DELETE("/devices/:device_id/assignment", deviceHandler.AdminUnassign)
 	admin.POST("/devices/:device_id/children", deviceHandler.AdminAddChild)

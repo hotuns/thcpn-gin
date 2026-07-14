@@ -1,0 +1,7 @@
+{
+  "name": "@thcpn/platform",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "vite", "build": "tsc -b && vite build", "typecheck": "tsc -b", "preview": "vite preview" },
+  "dependencies": { "@tanstack/react-query": "^5.90.16", "@thcpn/api": "*", "@thcpn/auth": "*", "@thcpn/ui": "*", "@thcpn/workspace": "*", "lucide-react": "^0.468.0", "react": "^19.2.7", "react-dom": "^19.2.7", "react-router-dom": "^7.18.1" }
+}

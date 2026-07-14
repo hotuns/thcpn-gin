@@ -78,3 +78,17 @@ SET data_source_id = $2,
     updated_at = now()
 WHERE id = $1
 RETURNING id, data_stream_id, data_source_id, adapter_code, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at;
+
+-- name: DisableMissingTHCPNDataStreamBindings :many
+UPDATE data_stream_bindings AS dsb
+SET status = 'disabled',
+    updated_at = now()
+FROM data_streams AS ds
+WHERE ds.id = dsb.data_stream_id
+  AND ds.device_id = sqlc.arg(device_id)
+  AND dsb.data_source_id = sqlc.arg(data_source_id)
+  AND dsb.adapter_code = 'thcpn_legacy_mysql'
+  AND dsb.status = 'active'
+  AND (dsb.adapter_config_json->>'external_device_id')::bigint = sqlc.arg(external_device_id)::bigint
+  AND NOT (ds.code = ANY(sqlc.arg(active_codes)::text[]))
+RETURNING dsb.id, dsb.data_stream_id, dsb.data_source_id, dsb.adapter_code, dsb.database_name, dsb.schema_name, dsb.table_name, dsb.device_key_field, dsb.device_key_value, dsb.time_field, dsb.value_field, dsb.payload_type, dsb.adapter_config_json, dsb.status, dsb.created_by, dsb.created_at, dsb.updated_at;

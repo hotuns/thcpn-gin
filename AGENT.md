@@ -1,565 +1,149 @@
 # thcpn-gin Agent Guide
 
-本文件给后续参与本仓库开发的 Codex/Agent 使用。开始任何实现前，先阅读：
+本文件只维护仓库开发规则、架构边界和验证要求，不记录功能进度、历史验收结果或临时任务状态。
+
+开始实现前先阅读：
 
 - `iot_research_permission_mvp.md`
 - `iot_research_go_backend_dev_guide.md`
+- `thcpn-adapter.md`
+- `docs/frontend-functional-design.md`，涉及前端时必读
 - 本文件
 
-**最小化可选评论。在执行过程中，仅发送必要的通知、阻塞性问题、有意义的进度更新、风险/验证说明以及最终结果。**
+## 文档维护
 
-## 项目定位
+- 本文件只记录长期有效的规则，不记录已完成功能、migration 数量、测试通过历史、版本验收或待办清单。
+- 功能契约变化时更新对应设计文档和 OpenAPI；任务进度保留在 issue、commit、PR 或当次协作记录中。
+- 避免复制可从源码直接读取且容易过期的清单、版本号和统计数字。
+- 删除或调整规则时说明架构原因，不用项目进度作为长期规则。
 
-- 本项目是科研物联网数据管理平台后端，不负责 MQTT 接入、设备上报解析或实时采集写入。
-- 当前阶段是 Go 模块化单体，包含 `api` 和 `worker` 两个进程。
-- 平台业务库是 PostgreSQL，设备采集数据源库与平台业务库必须分离。
-- 平台维护设备列表和外部设备源映射；设备源 adapter 在代码中注册，当前 THCPN 设备源实例以 system scoped `data_sources` 由系统管理员后台维护；普通 Workspace 用户不管理 DSN、库表字段映射、adapter 配置或 raw SQL。
-- Redis 用于后续 Asynq、缓存和异步任务基础设施。
-- 第一版权限主线是 `Role + Scope + AccessGrant + AuditLog`。
+## 项目边界
 
-## 当前技术栈
+- 本项目是科研物联网数据管理平台，采用 Go 模块化单体，包含 `api` 和 `worker` 两个进程，以及 `frontend/` 下的独立前端。
+- 本项目不负责 MQTT 接入、设备上报解析或实时采集写入。
+- 平台业务库使用 PostgreSQL；设备采集数据源必须与平台业务库分离。
+- Redis 用于验证码、会话辅助、Asynq 队列及必要缓存。
+- 权限模型遵循 `Role + Scope + AccessGrant + AuditLog`。
+- 保持模块化单体，不提前拆分微服务，不引入与当前规模不匹配的复杂 ABAC、ReBAC、审批流或组织树。
 
-- Go module: `thcpn-gin`
-- Go version: `1.26.4`
-- HTTP: Gin
-- PostgreSQL: `pgxpool`
-- SQL generation: sqlc
-- Migration: golang-migrate through Docker
-- Redis: go-redis
-- Logger: standard library `log/slog`
-- Config: YAML plus environment variable overrides
-- Auth: JWT HS256 access token, bcrypt password hash, SMS / email verification code in Redis, TOTP MFA
-- SMS sender: `log` / `noop` / Aliyun Dysmsapi
-- Web: Vite + React + TypeScript，独立工程位于 `web/`
+## 信息来源
 
-## 已实现功能
+- 数据库结构以 `migrations/` 为准。
+- 平台 SQL 查询以 `sql/queries/` 为准，`internal/db/sqlc/` 是生成代码。
+- HTTP 路由以 `internal/app/router.go` 为准，HTTP 契约以 `docs/openapi.yaml` 为准；两者必须同步。
+- 后端依赖和 Go 版本以 `go.mod` 为准。
+- 前端依赖和脚本以 `frontend/package.json` 为准；`web/` 是旧工程，不作为新实现的参考或兼容目标。
+- 前端功能边界、页面职责和关键流程以 `docs/frontend-functional-design.md` 为准。
+- 设计文档描述目标模型；代码与文档冲突时，先识别是实现偏差还是设计变更，不要静默选择一方。
 
-### 基础工程
+## 目录职责
 
-- 已初始化 Go 模块化单体工程，包含 `cmd/api` 和 `cmd/worker` 两个入口。
-- API 已接入 Gin、request id、结构化 access log、panic recovery 和统一错误响应。
-- Worker 已完成配置、日志、PostgreSQL、Redis 初始化、优雅退出和 Asynq ExportJob 任务处理；`WORKER_RUN_ONCE=true` 仍保留一次性 DB claim 补偿/烟测模式。
-- 已提供 Docker Compose 本地基础设施：PostgreSQL、Redis、migrate 工具容器。
-- 已提供 Makefile 常用命令：`db-up`、`db-down`、`migrate-up`、`migrate-down`、`sqlc`、`test`、`run-api`、`run-worker`、`web-install`、`run-web`、`build-web`。
-- 已提供配置加载：默认值、YAML 配置、环境变量覆盖。
-- 已提供独立 Web 前端，可通过 Vite dev server 调用本地 API。
+- `cmd/api`：API 进程入口和生命周期管理。
+- `cmd/worker`：异步任务进程入口和生命周期管理。
+- `internal/app`：Gin router、middleware 和服务装配。
+- `internal/config`：默认配置、YAML 加载、环境变量覆盖和校验。
+- `internal/auth`：认证、token、验证码、会话和 MFA。
+- `internal/permission`：权限目录、资源解析和授权判断。
+- `internal/audit`：审计写入和查询。
+- `internal/project`、`site`、`device`、`datastream`、`dataset`：平台资源领域模块。
+- `internal/datasource`：设备数据源元信息、同步和运行时 adapter。
+- `internal/telemetry`、`media`：设备数据查询工作流。
+- `internal/export`、`task`：导出任务和异步处理。
+- `internal/objectstore`：对象上传、读取、删除和临时访问签名。
+- `internal/httpx`、`metrics`、`tracing`、`logger`：横切基础设施。
+- `migrations`：平台 PostgreSQL schema 迁移。
+- `sql/queries`：sqlc 查询定义。
+- `internal/db/sqlc`：sqlc 生成结果，禁止手改。
+- `frontend/src/lib`：前端 API client、DTO 和领域无关工具。
+- `frontend/src/app`：前端路由、上下文、壳层和全局状态。
+- `frontend/src/pages`：按业务能力组织的前端页面。
+- `frontend/src/components`：无业务归属的共享组件。
 
-### 健康检查
+## 配置与密钥
 
-- `GET /healthz`：API 进程存活检查。
-- `GET /readyz`：检查 PostgreSQL 和 Redis 是否可用。
-- 依赖不可用时使用统一错误结构返回 `SERVICE_UNAVAILABLE`。
+- 不得提交真实 `.env`、数据库密码、JWT 密钥、对象存储密钥、设备数据源 DSN、短信密钥或摄像头平台密钥。
+- 示例值只维护在 `.env.example` 和 `configs/config.example.yaml`。
+- 敏感配置必须通过环境变量、Secret Manager 或部署系统注入，平台库只保存 secret 引用。
+- `CONFIG_FILE` 可指定 YAML 配置；环境变量覆盖配置文件。
+- 新增配置项时必须同时更新配置结构、默认值、校验、环境变量覆盖、示例配置和配置测试。
+- 开发默认值不得被当作生产配置。生产环境必须使用强随机 JWT 密钥，并关闭开发注册和 `X-User-ID` fallback。
+- 日志、错误响应、审计记录和 trace 属性不得包含密码、token、验证码、TOTP secret、完整 DSN 或对象存储密钥。
 
-### 数据库和 sqlc
+## 认证与会话
 
-- 已有 migration：
-  - `000001_init`：启用 `pgcrypto`，创建 `app_metadata`。
-  - `000002_accounts_permissions`：创建账户、Workspace、成员、角色、权限和角色权限表。
-  - `000003_auth_credentials`：为 `users` 增加验证/登录时间字段，创建 `user_credentials` 密码凭证表。
-  - `000017_system_admin_data_sources`：为 `users` 增加 `is_system_admin`，为 `data_sources` 增加 `scope` 并支持 system scoped 数据源。
-- 已 seed 系统权限基础数据：
-  - 10 个系统角色：`owner`、`admin`、`project_manager`、`site_operator`、`data_manager`、`researcher`、`viewer`、`shared_viewer`、`shared_downloader`、`service_engineer`。
-  - 34 个权限点。
-  - 173 条 `role_permissions` 矩阵记录。
-- sqlc 已生成平台业务库查询代码到 `internal/db/sqlc`。
+- 正式业务接口使用 `Authorization: Bearer <token>`；不得新增只依赖 `X-User-ID` 的接口。
+- `X-User-ID` 仅用于明确启用的本地开发环境。
+- 开发注册接口必须受配置开关保护，生产环境必须关闭。
+- 密码必须经过策略校验并使用 bcrypt 等单向密码哈希保存，禁止明文或可逆加密。
+- 短信和邮箱验证码只保存在 Redis，保存哈希、尝试次数和过期信息，不写 PostgreSQL。
+- access token 主动失效必须继续走 blacklist；refresh token 必须使用服务端 session 和 token hash，不得只依赖客户端删除。
+- TOTP secret 必须加密持久化；除 setup 响应外不得返回或记录明文 secret。
+- 认证失败、账号锁定、会话撤销和 MFA 校验必须使用统一错误模型，并避免泄露账号是否存在等敏感信息。
 
-### 账户和认证
+## 数据库与 sqlc
 
-- 已实现开发注册接口：`POST /api/v1/auth/register`。
-- 开发注册由 `auth.dev_register_enabled` / `AUTH_DEV_REGISTER_ENABLED` 控制；默认开发开启，生产应关闭。
-- 已实现密码注册接口：`POST /api/v1/auth/password/register`。
-- 已实现密码登录接口：`POST /api/v1/auth/password/login`。
-- 已实现短信验证码发送接口：`POST /api/v1/auth/sms/send`。
-- 已实现短信验证码登录/自动注册接口：`POST /api/v1/auth/sms/login`。
-- 已实现邮箱验证码发送和验证接口：`POST /api/v1/auth/email/send`、`POST /api/v1/auth/email/verify`，用于验证当前登录用户已绑定的邮箱。
-- 已实现 TOTP MFA：
-  - `GET /api/v1/auth/mfa` 查询当前用户 MFA 状态。
-  - `POST /api/v1/auth/mfa/totp/setup` 生成 TOTP secret 和 otpauth URI，secret 使用 `auth.jwt_secret` 派生密钥加密后保存。
-  - `POST /api/v1/auth/mfa/totp/enable` 校验 TOTP code 后启用。
-  - `DELETE /api/v1/auth/mfa/totp` 校验当前 TOTP code 后禁用。
-  - 密码登录和已存在用户的短信登录在账号启用 TOTP 后必须提供 `mfa_code`；成功校验会记录 last used step，防止同一时间步重放。
-- 注册类流程在事务中完成：
-  - 创建 `users` 记录。
-  - 自动创建 personal workspace。
-  - 自动创建 Owner membership。
-- 密码注册额外创建 `user_credentials`，密码使用 bcrypt 哈希保存，不保存明文密码。
-- 短信登录使用 Redis 保存验证码哈希，不把验证码写入 PostgreSQL；手机号不存在时自动创建用户和 personal workspace。
-- 邮箱验证码使用 Redis 保存验证码哈希、冷却、每日限额和尝试次数；本地默认 `email.provider=log`，验证码写入服务日志。
-- 已实现 JWT access token 签发和校验，claims 使用 `sub=user_id`、`iat`、`exp`。
-- API 认证 middleware 优先读取 `Authorization: Bearer <token>`。
-- 仍保留开发期 `X-User-ID` fallback，由 `auth.dev_user_header_enabled` / `AUTH_DEV_USER_HEADER_ENABLED` 控制；默认开发开启，生产应关闭。
-- 已实现当前用户接口：`GET /api/v1/me`。
-- `users.is_system_admin` 用于区分系统后台权限；`/api/v1/me` 和登录响应会返回 `is_system_admin`。系统管理员权限独立于 workspace Owner/Admin。
-- 已实现 refresh token / logout / access token blacklist：
-  - 登录和注册会返回 `refresh_token` 与 `refresh_expires_in`。
-  - `POST /api/v1/auth/refresh` 使用 refresh token 换取新 access token，并轮换 refresh session。
-  - `POST /api/v1/auth/logout` 会撤销当前 access token；请求体带 `refresh_token` 时同时撤销对应 refresh session。
-  - `GET /api/v1/auth/sessions` 列出当前用户活跃 refresh sessions；`DELETE /api/v1/auth/sessions/:session_id` 撤销指定会话。
-  - 平台库新增 `auth_refresh_sessions` 和 `auth_access_token_blacklist`，refresh session 保存 token hash、过期时间、user agent 和 client ip。
-- Web 开发控制台已保存 refresh token，可刷新 access token、调用服务端 logout，提供活跃会话列表/撤销入口，支持发送和提交邮箱验证码，并支持 TOTP MFA setup/enable/disable。
-- 账号密码登录失败会累计失败次数，默认 5 次后锁定 15 分钟。
-- 短信验证码默认 5 分钟有效、60 秒冷却、单手机号每日 10 次、最多 5 次校验尝试。
-- 邮箱验证码默认 5 分钟有效、60 秒冷却、单邮箱每日 10 次、最多 5 次校验尝试。
-- 阿里云短信 sender 已接入，但本地默认使用 `sms.provider=log`，避免测试消耗短信费用。
-
-### Workspace
-
-- 已实现创建 organization workspace：`POST /api/v1/workspaces`。
-- 已实现当前用户 workspace 列表：`GET /api/v1/workspaces`。
-- 创建 organization workspace 时，创建者自动成为 Owner。
-- personal workspace 只能由注册流程自动创建。
-- organization type 当前支持：`lab`、`institution`、`company`、`government`、`service_provider`、`other`。
-
-### 权限检查
-
-- 已实现 `permission.Checker`。
-- 当前 checker 支持 `workspace`、`project`、`site`、`device`、`data_stream`、`dataset` 资源解析。
-- 当前 checker 先基于 `workspace_members` + `roles` + `role_permissions` 判断 workspace 成员权限，再基于有效 `access_grants` 判断局部授权权限。
-- 当前 AccessGrant 覆盖规则：
-  - `workspace` grant 覆盖 workspace 下资源。
-  - `project` grant 覆盖 project 下 site、device、data_stream。
-  - `site` grant 覆盖 site 下 device、data_stream。
-  - `device` grant 覆盖 device 和其 data_stream。
-  - `dataset` grant 覆盖单个 dataset。
-- 成员管理接口已经使用 `member.manage` 做实际权限保护。
-
-### Workspace 成员管理
-
-- 已实现成员管理接口：
-  - `GET /api/v1/workspaces/:workspace_id/members`
-  - `POST /api/v1/workspaces/:workspace_id/members`
-  - `PATCH /api/v1/workspaces/:workspace_id/members/:member_id`
-  - `DELETE /api/v1/workspaces/:workspace_id/members/:member_id`
-- 所有成员管理接口都需要 JWT；开发环境也可在配置允许时使用 `X-User-ID` fallback。当前用户必须对目标 workspace 拥有 `member.manage`。
-- 添加成员只支持已注册 active 用户，可用 `user_id`、`email` 或 `phone` 三选一指定。
-- 添加 workspace member 只允许内部成员角色：`owner`、`admin`、`project_manager`、`site_operator`、`data_manager`、`researcher`、`viewer`。
-- 明确不允许把 `shared_viewer`、`shared_downloader`、`service_engineer` 作为 workspace member；这些应走后续 `AccessGrant`。
-- 删除成员是软删除：`workspace_members.status = 'removed'`。
-- 已保护最后一个 active Owner：不允许删除最后一个 Owner，也不允许把最后一个 Owner 改成非 Owner 角色。
-
-### 项目、站点、设备和数据流
-
-- 已新增平台业务库资源模型 migration `000004_assets`：
-  - `projects`
-  - `sites`
-  - `devices`
-  - `device_capabilities`
-  - `data_streams`
-- 已实现 Project 管理接口：
-  - `GET /api/v1/projects?workspace_id=...`
-  - `POST /api/v1/projects`
-  - `GET /api/v1/projects/:project_id`
-  - `PATCH /api/v1/projects/:project_id`
-- 已实现 Site / Station 管理接口：
-  - `GET /api/v1/sites?workspace_id=...`
-  - `POST /api/v1/sites`
-  - `GET /api/v1/sites/:site_id`
-  - `PATCH /api/v1/sites/:site_id`
-- 已实现 Device 资产管理接口：
-  - `GET /api/v1/devices?workspace_id=...`
-  - `POST /api/v1/devices`
-  - `GET /api/v1/devices/:device_id`
-  - `PATCH /api/v1/devices/:device_id`
-- 已新增设备高风险操作请求 migration `000013_device_operations`，创建 `device_operations`。
-- 已实现设备校准和固件升级请求接口：
-  - `POST /api/v1/devices/:device_id/calibrations`
-  - `POST /api/v1/devices/:device_id/firmware-upgrades`
-  - 校准请求要求设备具备 `calibratable` capability；固件升级请求要求设备具备 `firmware_update` capability。
-- 已新增设备转移约束 migration `000014_device_transfer_cascade`，DataStream 归属随设备 workspace 变更级联更新。
-- 已实现第一版设备转移接口：
-  - `POST /api/v1/devices/:device_id/transfer`
-  - 需要源设备 `device.transfer` 和目标 workspace `device.bind`；要求确认历史 Dataset 归属策略，当前不自动迁移历史 Dataset。
-- 已实现设备解绑接口：`POST /api/v1/devices/:device_id/unbind`，要求 `device.unbind`，保留设备记录和历史引用，清空 project/site 并标记为 `retired`。
-- 已实现 DataStream 元信息接口：
-  - `GET /api/v1/data-streams?device_id=...`
-  - `POST /api/v1/data-streams`
-  - `GET /api/v1/data-streams/:data_stream_id`
-  - `PATCH /api/v1/data-streams/:data_stream_id`
-- 已新增设备数据源元信息 migration `000008_data_sources`：
-  - `data_sources`
-  - `data_stream_bindings`
-- 已新增 adapter_code 重构 migration `000015_adapter_code_bindings`：
-  - `data_stream_bindings.adapter_code`
-  - `query_config_json` 已重命名为 `adapter_config_json`
-  - 通用库表字段允许为空，由 adapter 规则决定是否必填
-- 已新增 THCPN 只读接入 migration `000016_thcpn_read_only_assets`：
-  - `device_source_refs`
-  - `device_config_snapshots`
-  - 第一阶段只保存平台设备到旧库 `devices.id` 的映射和最新 `device_config` 快照，不做配置写入。
-- 已实现 DataSource 元信息接口：
-  - `GET /api/v1/data-sources?workspace_id=...`
-  - `POST /api/v1/data-sources`
-  - `GET /api/v1/data-sources/:data_source_id`
-  - `PATCH /api/v1/data-sources/:data_source_id`
-- 已实现系统管理员 DataSource / THCPN 标准站只读同步入口：
-  - `GET /api/v1/admin/data-sources`
-  - `POST /api/v1/admin/data-sources`
-  - `PATCH /api/v1/admin/data-sources/:data_source_id`
-  - `POST /api/v1/admin/data-sources/:data_source_id/thcpn-standard-station/devices`
-  - 同步请求必须指定 `target_workspace_id`；接口读取旧库 `devices` 和最新 `device_config`，upsert 平台 Device、DeviceSourceRef、DeviceConfigSnapshot、DataStream 和 DataStreamBinding。
-- 已实现 DataStreamBinding 元信息接口：
-  - `GET /api/v1/data-stream-bindings?data_stream_id=...`
-  - `POST /api/v1/data-stream-bindings`
-  - `GET /api/v1/data-stream-bindings/:binding_id`
-  - `PATCH /api/v1/data-stream-bindings/:binding_id`
-- DataSource 只保存 `dsn_secret_ref`，不保存明文 DSN。
-- DataStreamBinding 保存已审核的 adapter 选择和库/表/字段映射；标准数据源使用 `generic_columns` / `generic_media`，特殊数据源使用专用 adapter 和 `adapter_config_json`。用户侧 Telemetry/Media 查询后续不得直接传入 `table_name`、`field_name` 或 `raw_sql`。
-- 已实现按 `data_stream_bindings.adapter_code` 分发的 PostgreSQL / MySQL / ClickHouse / HTTP API Telemetry 运行时适配器：
-  - `dsn_secret_ref` 当前支持 `env:NAME`，运行时从环境变量读取 DSN。
-  - `generic_columns` 通过 PostgreSQL / MySQL / ClickHouse 查询 `payload_type = columns`；`http_api` 支持 `payload_type = columns` / `json`，返回统一 JSON `points`。
-  - 查询 SQL 只使用 DataStreamBinding 中已校验的表名/字段名，设备 key、时间范围和 limit 均使用参数绑定。
-  - MySQL 使用 `go-sql-driver/mysql`，运行时会规范化 DSN 并启用 `parseTime=true`。
-  - ClickHouse 使用 `clickhouse-go/v2`，优先使用 DataStreamBinding 的 `database_name` 限定表名，未配置时可使用 `schema_name` 作为库名别名。
-  - HTTP API 使用 DataSource secret 作为 base URL，`adapter_config` 可配置 `method`、相对 `path`、`headers` 和参数名；默认 GET，POST 时发送 JSON body。
-  - `thcpn_legacy_mysql` 第一阶段已支持只读 telemetry：按 `device_data_index` 命中 `device_data_*` 分表，按 `external_device_id`、时间范围、`type='data'` 和受控 JSON key 读取 `$.<key>.value`。
-- 已实现 Telemetry Query 接口：
-  - `GET /api/v1/devices/:device_id/telemetry?start_time=...&end_time=...&limit=...`
-  - `GET /api/v1/data-streams/:data_stream_id/telemetry?start_time=...&end_time=...&limit=...`
-  - 需要 `telemetry.view_history` 权限；时间范围和点数受 `query_limits` 限制。
-- 已实现按 `adapter_code` 分发的 PostgreSQL / MySQL / ClickHouse / HTTP API Media Query 运行时适配器：
-  - 只支持 `payload_type = media` 的 image/video/audio 查询。
-  - `generic_media` 使用 `adapter_config` 配置 `id_field`、`object_key_field`、`thumbnail_key_field`、`media_type_field` 和 `media_type`。
-  - MySQL / ClickHouse 优先使用 DataStreamBinding 的 `database_name` 限定表名，未配置时可使用 `schema_name` 作为库名别名。
-  - HTTP API 返回统一 JSON `items` / `total`，路径必须为相对路径，避免 binding 配置绕过 DataSource base URL。
-  - `thcpn_legacy_mysql` 第一阶段已支持只读 image media：按 `device_data_index` 命中 `device_data_*` 分表，按 `external_device_id`、时间范围、`type='image'` 和受控 image key 读取对象 key。
-  - 预览、缩略图和下载 URL 使用 HMAC + 过期时间签名，不返回永久公开 URL。
-- 已实现 Media Query / Download 接口：
-  - `GET /api/v1/devices/:device_id/media?start_time=...&end_time=...&media_type=...&page=...&page_size=...`
-  - `GET /api/v1/devices/:device_id/media/images?start_time=...&end_time=...`
-  - `GET /api/v1/devices/:device_id/media/videos?start_time=...&end_time=...`
-  - `GET /api/v1/data-streams/:data_stream_id/media?start_time=...&end_time=...&page=...&page_size=...`
-  - `GET /api/v1/media/download?token=...`
-  - 列表需要 `media.archive_view`；下载需要 `media.download` 并写 audit log。
-- 当前阶段三资源接口均需要 JWT；开发环境也可在配置允许时使用 `X-User-ID` fallback。
-- 当前阶段三资源接口需要对应资源权限：
-  - Project: `project.view` / `project.manage`
-  - Site: `site.view` / `site.manage`
-  - Device: `device.view` / `device.bind` / `device.configure`
-  - DataStream: `device.view` / `device.configure`
-  - DataSource: 普通 `/api/v1/data-sources` 仍按 `workspace.manage` 保留兼容；正式 THCPN 设备源管理使用 `/api/v1/admin/data-sources`，要求 `users.is_system_admin = true`
-  - DataStreamBinding: `device.configure`（当前实现遗留；后续应由同步任务、seed 或内部脚本生成）
-  - Telemetry Query: `telemetry.view_history`
-  - Media Query: `media.archive_view`
-  - Media Download: `media.download`
-  - Media Delete: `media.delete`
-- 设备绑定会记录 `bound_by`、`activated_at` 并写入 audit log。
-
-设计方向已调整：DataSource / DataStreamBinding 不应继续作为普通 Workspace 管理资源。当前实现保留 `/api/v1/data-sources` 和 `/api/v1/data-stream-bindings` 作为内部兼容配置载体，运行时按 `data_stream_bindings.adapter_code` 分发；普通前端导航已隐藏“数据源”和内部绑定入口。系统级 THCPN 数据源通过 `/api/v1/admin/data-sources` 和前端 `/admin/data-sources` 维护，只允许 `users.is_system_admin = true` 的系统管理员访问。系统管理员同步 THCPN 设备时选择 `target_workspace_id`，平台设备归属于该工作区；当前阶段不实现普通用户自助把设备绑定到自己工作区的流程。
-
-### Dataset
-
-- 已新增 Dataset 元信息 migration `000007_datasets`：
-  - `datasets`
-  - `dataset_sources`
-- 已实现 Dataset 元信息和查询定义接口：
-  - `GET /api/v1/datasets?workspace_id=...&project_id=...`
-  - `POST /api/v1/datasets`
-  - `GET /api/v1/datasets/:dataset_id`
-  - `GET /api/v1/datasets/:dataset_id/telemetry`
-  - `PATCH /api/v1/datasets/:dataset_id`
-  - `DELETE /api/v1/datasets/:dataset_id`
-- 当前 Dataset 第一版保存 query definition / metadata；遥测查询会按 Dataset source 通过 DataStreamBinding 读取设备数据源，默认使用 Dataset 时间范围，并沿用同步查询时间/点数上限，超限需走导出。
-- 导出通过 ExportJob 异步任务创建，Worker 可生成 `dataset_zip`、telemetry CSV / Excel 和 media ZIP 文件并上传对象存储。
-- Dataset source 当前支持 `device`、`data_stream`、`file`；`device` / `data_stream` 会校验所属 workspace，带 `project_id` 时也校验所属 project。
-- Dataset 权限动作：`dataset.view`、`dataset.create`、`dataset.delete`，将状态更新为 `locked` 时需要 `dataset.lock`。
-- Dataset scope AccessGrant 已接入 checker，可授权到单个 dataset。
-
-### ExportJob
-
-- 已新增导出任务 migration：
-  - `000009_export_jobs` 创建 `export_jobs`。
-  - `000010_export_job_request_config` 给导出任务保存 `request_config_json`，用于 Worker 获取 `start_time`、`end_time`、`limit` 等任务参数。
-- 已实现 ExportJob API：
-  - `GET /api/v1/export-jobs?mine=true&workspace_id=...&limit=...`
-  - `POST /api/v1/export-jobs`
-  - `GET /api/v1/export-jobs/:export_job_id`
-  - `GET /api/v1/export-jobs/:export_job_id/download`
-  - `POST /api/v1/datasets/:dataset_id/export`
-- 支持的导出任务类型：
-  - `telemetry_csv` / `telemetry_excel`，资源为 `device` 或 `data_stream`，需要 `telemetry.export`。
-  - `dataset_zip`，资源为 `dataset`，需要 `dataset.export`。
-  - `media_zip`，资源为 `device`、`data_stream` 或媒体 data-stream alias，需要 `media.download`。
-- API 当前创建 `pending` 任务、记录文件过期时间、把 ExportJob 投递到 Asynq `exports` 队列，并为成功任务生成临时对象下载 URL。
-- 已实现平台签名对象下载代理：`GET /api/v1/objects/download?object_key=...&expires=...&signature=...`，用于本地文件对象存储和非 S3 预签名 fallback。
-- Worker 默认消费 Asynq `export:process` 任务；处理时按 job id claim `pending` 任务、过期旧任务、生成并上传导出文件，然后把任务更新为 `success` 或 `failed`：
-  - `telemetry_csv`：支持 `device` / `data_stream` 资源，使用任务 `request_config_json.start_time`、`end_time`、`limit` 查询已绑定 PostgreSQL / MySQL / ClickHouse / HTTP API telemetry 数据源并生成 CSV。
-  - `telemetry_excel`：支持 `device` / `data_stream` 资源，使用同一 telemetry 查询链路生成最小有效 XLSX 工作簿。
-  - `dataset_zip`：支持 Dataset 元信息 ZIP，包含 `dataset.json`、`sources.csv`，并为 telemetry 类型的 device / data_stream source 生成 CSV。
-  - `media_zip`：支持 `device` / `data_stream` / 媒体 data-stream alias 资源，使用任务 `request_config_json.start_time`、`end_time`、`limit`、`media_type` 查询已绑定 PostgreSQL / MySQL / ClickHouse / HTTP API media 数据源，读取 object store 原始媒体文件并生成带 `manifest.csv` 的 ZIP。
-- Worker 启动后会周期性清理过期导出文件：删除对象存储里的成功导出文件，并将对应成功任务置为 `expired`。
-- 对象存储当前支持本地文件后端（`object_store.provider=file`）和 MinIO/S3 SigV4 PUT/GET；下载 URL 在配置访问密钥时使用 S3 预签名 GET，否则回退为平台 HMAC 临时 URL 并由对象下载代理校验签名后读取对象。
-- 导出任务创建和下载准备会写 audit log；按 workspace 查询全量导出任务需要 `audit.view`，默认列表只返回当前用户创建的任务。
-
-### AccessGrant 和 Invitation
-
-- 已新增分享和临时授权 migration `000005_access_grants`：
-  - `access_grants`
-  - `invitations`
-- 已实现 AccessGrant 接口：
-  - `GET /api/v1/access-grants?workspace_id=...`
-  - `POST /api/v1/access-grants`
-  - `GET /api/v1/access-grants/mine`
-  - `DELETE /api/v1/access-grants/:access_grant_id`
-- 已实现 Invitation 接口：
-  - `GET /api/v1/invitations?workspace_id=...`
-  - `POST /api/v1/invitations`
-  - `GET /api/v1/invitations/mine`
-  - `POST /api/v1/invitations/:invitation_id/accept`
-  - `DELETE /api/v1/invitations/:invitation_id`
-- AccessGrant 第一版只支持 `subject_type = user`。
-- 可授权角色：`project_manager`、`site_operator`、`data_manager`、`researcher`、`viewer`、`shared_viewer`、`shared_downloader`、`service_engineer`；不允许通过 AccessGrant 授予 `owner` 或 `admin`。
-- `service_engineer` 授权必须设置 `expires_at`，且 scope 只能是 `device` 或 `site`。
-- Worker 启动后会周期性把已过期的 active AccessGrant 和 pending Invitation 状态清理为 `expired`；`WORKER_RUN_ONCE=true` 时也会先执行一次清理。
-- 对已注册用户创建 AccessGrant 时，目标用户可用 `subject_user_id`、`email` 或 `phone` 三选一指定。
-- 对未注册用户使用 Invitation，邀请人可用 `email` 或 `phone` 三选一指定；被邀请用户注册或登录后，若账号 email/phone 匹配，可 accept invitation 并转换为 AccessGrant。
-### AuditLog
-
-- 已新增审计日志 migration `000006_audit_logs`，创建 `audit_logs`。
-- 已实现审计查询接口：`GET /api/v1/audit-logs?workspace_id=...&limit=...`，需要 `audit.view`。
-- 已对当前已实现的敏感操作写入 audit log：
-  - 密码注册、密码登录、短信登录成功和失败。
-  - 创建 organization workspace 成功和失败。
-  - 添加成员、修改成员角色、删除成员成功和失败。
-  - 设备绑定、设备配置修改成功和失败。
-  - 创建 AccessGrant、撤销 AccessGrant 成功和失败。
-  - 创建 Invitation、接受 Invitation、撤销 Invitation 成功和失败。
-  - `service_engineer` 授权使用 `service_access.grant` action 写审计。
-  - `service_engineer` 通过临时授权访问设备详情时使用 `service_access.device_access` action 写审计。
-  - 创建、更新 Project / Site / DataStream 成功和失败。
-  - 设备校准、固件升级请求成功和失败。
-  - 设备转移成功和失败。
-  - 设备解绑成功和失败。
-  - 创建、更新、锁定、删除 Dataset 成功和失败。
-  - 媒体下载成功和权限拒绝。
-  - 媒体对象删除成功、权限拒绝和删除失败。
-  - 创建导出任务成功和失败，导出文件下载准备成功和失败。
-- 审计日志记录 actor、action、resource、result、reason、ip、user_agent、request_id 和 created_at。
-
-### 可观测性
-
-- API 请求日志已带 `request_id`、method、path、status、bytes、duration_ms 和 client_ip。
-- 已暴露 Prometheus 指标端点：`GET /metrics`。
-- 已接入核心 Prometheus 指标：
-  - `http_requests_total`
-  - `http_request_duration_seconds`
-  - `datasource_query_duration_seconds`
-  - `datasource_errors_total`
-  - `export_jobs_total`
-  - `export_job_duration_seconds`
-- DataSource runtime 会按 source_type、operation、payload_type 和结果记录查询耗时；失败时记录 error_kind。
-- Export Worker 会按 export_type 和处理状态记录任务数与处理耗时。
-- 已接入 OpenTelemetry Trace 基础设施：
-  - 配置段为 `tracing.enabled`、`service_name`、`exporter`、`endpoint`、`insecure`；默认关闭。
-  - 支持 `stdout` 和 OTLP/HTTP exporter；环境变量支持 `TRACING_*`，并兼容 `OTEL_SERVICE_NAME` / `OTEL_EXPORTER_OTLP_ENDPOINT`。
-  - API 在启用 tracing 时使用 Gin OpenTelemetry middleware，并在 access log 中追加 `trace_id`。
-  - 权限判断、DataSource 查询、Export Worker 处理和对象存储上传会创建 span，错误会记录到 span status。
-
-### 已验证事项
-
-- `make sqlc` 可正常生成代码。
-- `go test ./...` / `make test` 通过。
-- `make migrate-up` 可迁移到版本 14。
-- `make migrate-down MIGRATE_STEPS=1` 已验证 `000014` down 可用，随后已重新 `make migrate-up` 到版本 14。
-- 已通过真实 HTTP 验证健康检查、密码注册、密码登录、JWT 调 `/me`、短信验证码发送、短信登录自动注册、JWT 调 workspace 列表、普通成员 JWT 访问成员管理被拒绝。
-- 已通过真实 HTTP 验证 Project / Site / Device / DataStream 创建和列表查询。
-- 已通过事务内 SQL 验证设备 workspace 变更会级联更新其 DataStream workspace，且验证数据已回滚。
-- 已通过真实 HTTP 验证 DataSource 创建/列表，以及 DataStreamBinding 创建/列表。
-- 已通过真实 HTTP 验证 PostgreSQL Telemetry Query：创建外部表样例、配置 `env:PLATFORM_DATABASE_DSN` DataSource、绑定 DataStream 后返回 2 个时序点。
-- 已通过真实 HTTP 验证 PostgreSQL Media Query：创建媒体表样例、绑定 image DataStream 后返回 2 条媒体记录，`/media/download` 返回临时对象 URL，并确认 `media.download` audit log 写入。
-- 已通过自动化测试验证 ClickHouse DataSource telemetry/media 查询计划、DSN 解析，以及 HTTP API DataSource telemetry GET、media POST、统一 JSON 响应解析和相对路径约束。
-- 已通过真实 HTTP 验证 Dataset ExportJob：`POST /api/v1/datasets/:dataset_id/export` 创建 `pending` 任务，`GET /api/v1/export-jobs?mine=true` 可查到任务，pending 下载返回 409；手动标记 success 后 `/export-jobs/:id/download` 返回临时对象 URL，并确认 `dataset.export` audit log 写入。
-- 已通过真实 API + Worker 验证 Telemetry CSV 导出：创建设备、DataStream、DataSource、DataStreamBinding 和外部样例表后，`POST /api/v1/export-jobs` 创建 `telemetry_csv` 任务，`WORKER_RUN_ONCE=true go run ./cmd/worker` 将任务处理为 `success`，本地对象存储生成 CSV，`/export-jobs/:id/download` 返回 200。
-- 已通过真实 API + Worker 验证 Media ZIP 导出：创建 image DataStream、media DataStreamBinding、样例 media 表和本地对象文件后，`POST /api/v1/export-jobs` 创建 `media_zip` 任务，Worker 将任务处理为 `success`，本地对象存储生成 ZIP，ZIP 内包含媒体文件和 `manifest.csv`，`/export-jobs/:id/download` 返回 200。
-- 已通过自动化测试验证 `telemetry_excel` 渲染为可解包的 XLSX，包含 telemetry 工作表、表头、遥测行、数值单元格和 XML 转义。
-- 已通过真实 HTTP 验证 AccessGrant：未授权用户访问 device 被拒绝，创建 `shared_viewer` device grant 后可读取 device，但仍不能 PATCH device。
-- 已通过真实 HTTP 验证 `service_engineer` device grant 必须通过显式 grant 创建并带过期时间。
-- 已通过真实 HTTP 验证 Invitation：创建 project invitation、受邀用户在 `/invitations/mine` 看到邀请、accept 后可读取 project。
-- 已通过真实 HTTP 验证 audit log 写入和 `GET /api/v1/audit-logs?workspace_id=...` 查询。
-- 已通过自动化测试验证 `/metrics` 暴露 Prometheus 指标并记录 `/healthz` 请求。
-- 已通过自动化测试验证 bearer token 可查黑名单并拒绝已撤销 token，refresh token 生成和 hash 稳定且不存明文，并验证 auth session 响应模型映射。
-- 已通过 `npm --prefix web run build` 验证前端会话管理界面、refresh/logout 客户端类型和 API 封装可编译。
-- 已通过自动化测试验证邮箱验证码可签发、验证成功后删除，并与短信验证码共用 Redis 哈希存储和尝试次数控制逻辑。
-- 已通过自动化测试验证 TOTP code 校验、同一时间步重放拒绝、MFA secret AES-GCM 加解密，以及前端 MFA 控制台可编译；本地浏览器已检查 MFA 面板桌面/移动渲染无控制台错误。
-- 此前已通过真实 HTTP 验证开发注册、workspace 列表、创建 organization workspace、添加成员、列成员、更新成员角色、普通成员访问成员管理被拒绝、删除成员。
-
-### 最终验收状态
-
-- 已对照 `iot_research_go_backend_dev_guide.md` 和 `iot_research_permission_mvp.md` 完成第一版后端全量复核，当前无已知第一版模块缺口。
-- 最终门禁已通过：`go test ./...`、`npm --prefix web run build`、OpenAPI YAML 解析、`git diff --check`、`make migrate-up`、`make migrate-down MIGRATE_STEPS=1 && make migrate-up`。
-
-## 重要目录
-
-- `cmd/api`: API 服务入口。
-- `cmd/worker`: Worker 服务入口。
-- `internal/app`: Gin router and service wiring.
-- `internal/config`: 配置加载、默认值、环境变量覆盖和校验。
-- `internal/logger`: slog 初始化。
-- `internal/db`: PostgreSQL/Redis 连接与健康检查。
-- `internal/db/sqlc`: sqlc 生成代码，禁止手改。
-- `internal/httpx`: request id、统一错误响应、HTTP middleware。
-- `internal/audit`: AuditLog 写入和查询。
-- `internal/accessgrant`: AccessGrant、Invitation、外部分享和售后临时授权。
-- `internal/project`: Project 管理。
-- `internal/site`: Site / Station 管理。
-- `internal/device`: Device 资产和 capability 管理。
-- `internal/datastream`: DataStream 元信息管理。
-- `internal/datasource`: DataSource / DataStreamBinding 元信息和设备数据源运行时适配器。
-- `internal/telemetry`: 时序数据查询 workflow。
-- `internal/media`: 图片、视频、音频媒体查询和下载 workflow。
-- `internal/metrics`: Prometheus 指标定义和记录辅助函数。
-- `internal/objectstore`: 对象存储 URL / 下载 token 签名。
-- `internal/export`: 导出任务创建、查询、下载准备和权限审计 workflow。
-- `internal/task`: Asynq 任务定义、投递和 Worker handler。
-- `internal/tracing`: OpenTelemetry provider 初始化和 span 辅助函数。
-- `migrations`: PostgreSQL 平台业务库迁移。
-- `sql/queries`: sqlc 查询定义。
-- `web`: 独立前端工程，使用 Vite proxy 调用后端 `/api`、`/healthz`、`/readyz`。
-- `configs/config.example.yaml`: 示例配置。
-- `docs/openapi.yaml`: 当前已实现 HTTP API 的 OpenAPI 3.1 文档，新增/调整接口时必须同步更新。
-
-## 常用命令
-
-```bash
-make db-up
-make db-down
-make migrate-up
-make migrate-down
-make sqlc
-make test
-make run-api
-make run-worker
-make web-install
-make run-web
-make build-web
-```
-
-## 健康检查
-
-- `GET /healthz`: 只判断 API 进程是否存活。
-- `GET /readyz`: 判断 PostgreSQL 和 Redis 是否可用。
-
-正常响应：
-
-```json
-{"status":"ok"}
-```
-
-依赖不可用时，`/readyz` 返回统一错误结构：
-
-```json
-{
-  "error": {
-    "code": "SERVICE_UNAVAILABLE",
-    "message": "postgres is not ready",
-    "request_id": "..."
-  }
-}
-```
-
-## 配置约束
-
-- 不要提交真实 `.env`、数据库密码、JWT 密钥、对象存储密钥或设备数据源 DSN。
-- 示例配置只写入 `.env.example` 和 `configs/config.example.yaml`。
-- `CONFIG_FILE` 可指定 YAML 配置文件。
-- 关键环境变量：
-  - `SERVER_ADDR`
-  - `PLATFORM_DATABASE_DSN`
-  - `REDIS_ADDR`
-  - `REDIS_PASSWORD`
-  - `REDIS_DB`
-  - `JWT_SECRET`
-  - `AUTH_ACCESS_TOKEN_TTL_MINUTES`
-  - `AUTH_DEV_USER_HEADER_ENABLED`
-  - `AUTH_DEV_REGISTER_ENABLED`
-  - `SMS_PROVIDER`
-  - `SMS_CODE_TTL_SECONDS`
-  - `SMS_COOLDOWN_SECONDS`
-  - `SMS_DAILY_LIMIT`
-  - `SMS_MAX_VERIFY_ATTEMPTS`
-  - `ALIYUN_ACCESS_KEY_ID`
-  - `ALIYUN_ACCESS_KEY_SECRET`
-  - `ALIYUN_SMS_SIGN_NAME`
-  - `ALIYUN_SMS_TEMPLATE_CODE`
-
-## 认证开发约束
-
-- 业务接口优先使用 `Authorization: Bearer <token>`；不要新增只依赖 `X-User-ID` 的正式接口。
-- `X-User-ID` 只作为开发期 fallback，生产环境必须关闭 `AUTH_DEV_USER_HEADER_ENABLED`。
-- `POST /api/v1/auth/register` 是开发注册接口，生产环境必须关闭 `AUTH_DEV_REGISTER_ENABLED`。
-- 本地/测试默认使用 `SMS_PROVIDER=log` 或 `noop`；只有配置好阿里云环境变量并确认模板审核通过后才使用 `aliyun`。
-- 短信和邮箱验证码只存 Redis，value 保存 code hash、attempt count 和过期信息；不要把明文验证码写入数据库或响应体。
-- 密码必须通过 `ValidatePassword` 校验，并使用 `bcrypt` 保存哈希；不要保存明文密码或可逆加密密码。
-- access token 支持 blacklist 主动失效；涉及 logout、踢下线或会话管理时必须继续走 `auth_refresh_sessions` 和 `auth_access_token_blacklist`，不要引入仅客户端删除 token 的实现。
-- TOTP MFA secret 必须加密保存，不要明文写入日志、响应以外的持久层或 audit log；`setup` 响应是唯一允许把 secret 返回给当前登录用户的流程。
-
-## 数据库和 sqlc 规则
-
-- 修改 schema 时必须新增 migration，不要直接改已应用 migration，除非项目仍处在明确允许重写历史的初始化阶段。
-- 每个 migration 必须有对应 down 文件，并验证 `migrate-up` 和 `migrate-down`。
-- 修改 `sql/queries` 后必须运行 `make sqlc`。
-- `internal/db/sqlc` 是生成代码，禁止手动编辑。
-- 业务代码应通过 sqlc 或封装好的 repository/query 方法访问平台业务库。
+- schema 变更必须新增成对的 `*.up.sql` 和 `*.down.sql` migration；不要修改已应用迁移，除非项目明确处于允许重写历史的初始化阶段。
+- migration 必须可从空库完整升级，并至少验证最近一步 down/up。
+- 修改 `sql/queries/*.sql` 后必须运行 `make sqlc`，并提交对应的 `internal/db/sqlc` 生成结果。
+- 禁止手工编辑 `internal/db/sqlc`。
+- 平台业务代码优先通过 sqlc 或领域层封装访问 PostgreSQL，不在 handler 中直接拼 SQL。
+- 跨库写操作不能假设原子性；必须使用幂等设计、状态记录、补偿或对账机制处理部分成功。
 - 平台业务库不保存大量原始设备采集数据。
 
-## 架构边界
+## 设备数据源与 Adapter
 
-- 业务模块不得直接拼接或访问设备数据源 SQL。
-- 所有设备数据查询必须通过 `internal/datasource` 的适配层。
-- 用户请求不能直接传入 `table_name`、`field_name`、`raw_sql`。
-- 普通 Workspace 用户、Workspace Owner 和 Workspace Admin 不应创建或编辑设备源连接密钥、外部设备映射或 DataStreamBinding。
-- 当前阶段设备归属由系统管理员 THCPN 同步时指定 `target_workspace_id`；未来如提供用户自助绑定，只能接受平台设备标识、SN、二维码或授权码，source_code、库表字段、JSONPath 和适配器配置仍应来自代码注册、系统后台、同步任务或内部脚本。
-- 对接 THCPN 旧设备库时，应优先设计 `thcpn_legacy_mysql` 适配器、`device_source_refs` 和 `device_config_snapshots`，而不是把旧库分表和 JSON 解析规则暴露给客户前端。
-- `thcpn_legacy_mysql` 当前只实现第一阶段只读：同步 `devices` / 最新 `device_config`，生成 DataStream/DataStreamBinding，并读取 `device_data_index` / `device_data_*` 中的 telemetry/image 数据。尚未实现 `gate_node` 组网站拓扑同步、配置写入、新增 `device_config`、历史配置精确解释、旧库数据同步到分析库或设备命令能力。
-- 设备数据查询必须有时间范围、分页或点数上限。
-- 大范围查询应走异步导出任务，不应在 API 请求中同步返回。
-- 媒体预览/下载 URL 不应是永久公开 URL。
+- 所有设备数据查询必须通过 `internal/datasource` adapter 层。
+- 业务模块不得绕过 adapter 直接访问设备数据源。
+- 用户请求不得传入 `table_name`、`field_name`、`JSONPath`、`adapter_config` 或 `raw_sql`。
+- DataSource、DSN、外部设备映射和 DataStreamBinding 属于系统运维边界，不属于普通 Workspace 管理能力。
+- Workspace Owner/Admin 也不能获得系统级数据源管理权限。
+- 系统管理员身份与 Workspace 角色必须分离；系统后台必须校验 `users.is_system_admin`。
+- adapter 由代码注册，DataSource 只描述受控实例，DataStreamBinding 只保存经过审核的映射。
+- 表名、列名和 JSON path 必须来自受控配置并经过严格校验；数据值使用参数绑定。
+- 设备查询必须有时间范围、分页或点数上限；大范围查询走异步导出。
+- 媒体预览和下载使用临时签名 URL 或受控代理，不返回永久公开地址。
+- THCPN 旧库接入应围绕 `thcpn_legacy_mysql`、DeviceSourceRef、DeviceConfigSnapshot、DataStream 和 DataStreamBinding 展开，不把旧库结构暴露给普通前端。
+- THCPN 配置写入必须保留配置变更状态、审计和失败恢复能力；外部 MySQL 与平台 PostgreSQL 的更新需要显式处理一致性。
 
-## 权限模型约束
+## 资源与权限
 
-- 不要只按角色判断权限；必须同时考虑 scope。
-- MVP scope 包含：
-  - `workspace`
-  - `project`
-  - `site`
-  - `device`
-  - `dataset`
-- Workspace 权限覆盖该 workspace 下资源。
-- Project 权限覆盖该 project 下的 site、device、dataset。
-- Site 权限覆盖该 site 下的 device。
-- Device 和 Dataset 权限只覆盖自身。
-- 外部个人分享、售后临时授权和局部授权走 `AccessGrant`，不要把临时外部人员直接加入 `workspace_members`。
-- 图片/视频权限必须独立于时序数据权限。
-- 售后权限必须显式授权、可过期、可审计。
+- 权限判断必须同时考虑 action、resource 和 scope，禁止只按角色名称放行。
+- 支持的资源范围为 `workspace`、`project`、`site`、`device`、`data_stream` 和 `dataset`；对外授权范围以产品权限模型允许的集合为准。
+- Workspace 权限覆盖该 Workspace 下资源。
+- Project 权限覆盖该 Project 下的 Site、Device、DataStream 和 Dataset。
+- Site 权限覆盖该 Site 下的 Device 和 DataStream。
+- Device 权限覆盖设备及其 DataStream；Dataset 权限只覆盖自身。
+- 内部长期协作者使用 WorkspaceMember；外部个人分享、临时售后和局部授权使用 AccessGrant。
+- 未注册对象使用 Invitation，接受后再转为 AccessGrant。
+- 外部授权不得包含 `member.manage`、`workspace.manage`、`audit.view` 等内部管理权限。
+- 售后授权必须显式、限范围、可过期、可撤销、可审计。
+- 图片、视频和音频访问权限必须与普通时序数据权限分开。
+- 设备转移不得静默改变历史 Dataset 的归属和可访问性。
+- 删除成员、降级 Owner 等操作必须保护最后一个有效 Owner。
 
-## 审计规则
+## 审计
 
-以下操作属于高风险或敏感操作，后续实现时必须写 audit log：
+- 高风险操作的成功和失败都应记录审计，除非设计文档明确说明只记录成功。
+- 审计至少包含 actor、action、resource、result、reason、client IP、user agent、request ID 和时间。
+- 必须审计的操作包括：
+  - 登录、异常登录、会话撤销和高风险认证变更。
+  - 创建组织空间、成员邀请、角色或范围变更。
+  - 设备分配、解绑、转移、配置修改、校准和固件升级。
+  - DataSource、外部映射、配置快照和 DataStreamBinding 变更。
+  - Dataset 创建、更新、锁定、删除、分享和导出。
+  - 媒体下载、导出和删除。
+  - AccessGrant、Invitation、售后授权和撤销。
+  - 内部排障访问客户设备数据。
+- 审计写入失败时，高风险业务操作不得伪装成成功；具体失败策略由领域操作决定并写测试。
 
-- 登录和异常登录
-- 创建组织空间
-- 邀请成员
-- 修改成员角色
-- 设备绑定、解绑、转移
-- 修改设备配置
-- 设备校准
-- 固件升级
-- 创建数据集
-- 导出时序数据
-- 下载图片或视频
-- 导出数据集
-- 分享资源和撤销分享
-- 授权售后
-- 售后访问设备
-- 删除数据或媒体
-- 修改设备源部署配置
-- 修改外部设备映射、设备配置快照或 DataStreamBinding
-- 内部排障访问客户设备数据
+## API 规则
 
-敏感操作失败也应按操作风险写审计。
-
-## API 和错误响应
-
-统一错误响应格式：
+- API 路由使用 `/api/v1` 前缀；健康检查和指标端点除外。
+- 新增或修改路由时必须同步 `docs/openapi.yaml` 和 `frontend/src/lib/api.ts` 中相关调用。
+- handler 负责解析、认证上下文、响应映射；业务校验和状态变化放在 service。
+- 请求必须先认证、再授权、最后执行业务逻辑。
+- 列表接口必须有明确的范围条件和分页/limit 上限。
+- 统一错误响应：
 
 ```json
 {
@@ -571,54 +155,86 @@ make build-web
 }
 ```
 
-常用错误码：
+- 错误码使用稳定枚举，例如 `INVALID_ARGUMENT`、`UNAUTHORIZED`、`PERMISSION_DENIED`、`NOT_FOUND`、`CONFLICT`、`RATE_LIMITED`、`DATA_SOURCE_ERROR`、`EXPORT_TOO_LARGE`、`SERVICE_UNAVAILABLE` 和 `INTERNAL`。
+- 不向客户端返回底层 SQL、DSN、堆栈或第三方密钥信息。
 
-- `INVALID_ARGUMENT`
-- `UNAUTHORIZED`
-- `PERMISSION_DENIED`
-- `NOT_FOUND`
-- `CONFLICT`
-- `RATE_LIMITED`
-- `INTERNAL`
-- `DATA_SOURCE_ERROR`
-- `EXPORT_TOO_LARGE`
-- `SERVICE_UNAVAILABLE`
+## Worker、导出与对象存储
 
-新增 API 时应先经过认证和权限判断，再执行业务逻辑。
+- 长耗时、跨大量数据或需要重试的工作放到 Worker，不阻塞 API 请求。
+- 异步任务必须有明确状态机、幂等 claim、失败原因、重试策略和过期处理。
+- 创建任务与投递队列之间必须考虑部分失败；Worker 应能补偿可恢复的 pending 任务。
+- 导出必须校验资源权限、时间范围和最大行数，生成文件必须设置过期时间。
+- 对象 key 必须校验并防止路径穿越；上传、下载和删除必须受 context 控制。
+- 对象存储 provider 差异封装在 `internal/objectstore`，业务模块不直接调用云厂商 SDK。
 
-## 开发守则
+## 可观测性
 
-- 开始任何代码、文档或配置修改前，先运行 `git branch --show-current` 和 `git status --short` 确认当前分支与工作区状态。
-- 日常开发必须在 `dev` 分支进行；`main` 只作为稳定集成/发布分支，不用于直接开发。
-- 如果当前在 `main` 且需要修改文件，先切换到 `dev`；若本地没有 `dev`，从当前稳定状态创建 `dev` 后再继续。
-- 不要在 `main` 上提交普通功能、修复、文档或前端调整。只有用户明确要求发布、合并、回滚或热修时，才可以对 `main` 执行对应 Git 操作。
-- 从 `dev` 合入 `main` 前，必须完成对应范围的构建、测试或冒烟验证，并在最终说明中列出验证结果。
-- 如果已经在 `main` 上存在未提交修改，不要直接切分支、stash 或提交；先说明风险并让用户确认处理方式，避免把开发变更误落到主分支。
-- 优先沿用现有包边界和命名风格，不要引入新的框架层级。
-- 保持模块化单体，不要提前拆微服务。
-- 不要在第一版引入复杂 ABAC/ReBAC 引擎、审批流、组织树或设备接入重构。
-- 代码变更后运行 `gofmt`。
-- 依赖变更后运行 `go mod tidy`。
-- 查询或 migration 变更后运行 `make sqlc`。
-- 提交前至少运行 `make test`。
-- 涉及 Docker PostgreSQL/Redis、migration 或健康检查时，运行对应的 `make db-up`、`make migrate-up` 和 `/readyz` 验证。
+- 请求日志至少包含 request ID、method、route、status、duration 和 client IP；可用时加入 user ID、workspace ID 和 trace ID。
+- 指标标签必须低基数，禁止使用用户 ID、设备 ID、对象 key 或原始 URL 作为 Prometheus label。
+- 权限拒绝、审计失败、设备数据源错误和导出任务结果应有可监控信号。
+- trace 应覆盖 API、权限判断、平台库、设备数据源、导出任务和对象存储等关键边界。
+- 健康检查区分进程存活与依赖就绪；新增关键依赖时评估是否加入 readiness。
+- 反向代理场景必须显式配置可信代理，不能无条件信任客户端转发的 IP header。
 
-## Git 提交指引
+## 前端规则
 
-- 提交前先运行 `git status --short`，确认没有把 `.env`、真实密钥、临时日志、构建产物或本地缓存加入暂存区。
-- 每次提交应聚焦一个可描述的开发目标；不要把无关重构、格式化和功能变更混在同一个 commit。
-- 提交信息使用简洁的 Conventional Commits 风格：
-  - `feat: add workspace registration flow`
-  - `fix: handle inactive user auth`
-  - `docs: update agent development guide`
-  - `chore: refresh generated sqlc code`
-- 涉及 migration、sqlc 或 Go 依赖时，提交中必须包含配套文件：
-  - migration 变更同时提交 `migrations/*.up.sql` 和 `migrations/*.down.sql`
-  - query 变更同时提交 `sql/queries/*.sql` 和 `internal/db/sqlc/*`
-  - dependency 变更同时提交 `go.mod` 和 `go.sum`
-- 提交前根据变更范围运行验证：
-  - Go 代码变更：`gofmt` 后运行 `make test`
-  - SQL 查询或 schema 变更：运行 `make sqlc` 和 `make test`
-  - migration 变更：运行 `make migrate-up`，必要时运行 `make migrate-down MIGRATE_STEPS=1 && make migrate-up`
-- 如果工作区里有他人或用户的未提交修改，不要重置、覆盖或顺手提交无关文件；先用 `git diff` 和 `git status` 分清变更来源。
-- 不使用破坏性命令清理工作区，例如 `git reset --hard` 或 `git checkout -- <file>`，除非用户明确要求。
+- 前端功能、角色边界、路由职责和关键流程遵循 `docs/frontend-functional-design.md`。
+- 前端功能契约变化时同步更新该文档；不要在其中维护重构进度、负责人或完成百分比。
+- 保持系统后台与 Workspace 控制台的身份和导航边界，不把系统运维能力放进普通控制台。
+- Workspace 是普通控制台的全局上下文；所有 Workspace 资源查询和 mutation 必须使用当前选择并在切换后刷新相关缓存。
+- UI 隐藏或禁用操作不能替代后端授权；前端应根据权限改善体验，后端仍是最终裁决者。
+- API 调用集中在 `frontend/src/lib/api.ts`，页面不得散落原始 `fetch` 或重复 DTO。
+- TanStack Query key 必须包含影响结果的 workspace、resource ID、filter 和分页参数；mutation 成功后只失效相关缓存。
+- 页面必须提供 loading、empty、error、success/feedback 和 destructive confirmation 状态。
+- 高风险操作必须清楚展示作用范围和后果，不使用含糊的确认文案。
+- 资源 ID 应可复制，但页面主标签优先显示人类可读名称、序列号和上下文。
+- 保持桌面和移动端可用；表格、筛选器、弹窗、抽屉和图表不得溢出或遮挡。
+- 大型页面和第三方播放器应按路由或功能懒加载，避免进入控制台时加载无关代码。
+- 前端重构可以更换组件和目录，但不得无意改变功能设计文档中的业务不变量。
+
+## 测试与验证
+
+- Go 代码变更后运行 `gofmt` 和 `go test ./...`。
+- 并发、认证、队列或共享状态变更应运行 `go test -race ./...`。
+- 提交前运行可用的静态检查；新增告警不得被忽略或通过降低规则规避。
+- SQL 查询变更运行 `make sqlc` 和 Go 测试。
+- migration 变更运行完整 up，并验证对应 down/up。
+- 前端变更至少运行 `npm --prefix frontend run build`；功能行为变更应增加单元、组件或端到端测试。
+- API 变更必须验证 OpenAPI 能解析，并核对 router method/path 与文档一致。
+- 涉及 PostgreSQL、Redis、设备数据源、对象存储或 Worker 的流程应优先增加真实依赖集成测试。
+- 权限测试必须包含允许和拒绝路径，特别关注跨 Workspace、过期授权、外部分享和系统管理员边界。
+- 不把手工 HTTP 验证当作长期自动化测试的替代品。
+
+## 开发流程
+
+- 开始修改前运行 `git branch --show-current` 和 `git status --short`。
+- 日常开发在 `dev` 分支进行；`main` 只用于稳定集成、发布或明确的热修。
+- 工作区可能包含用户未提交改动。先阅读 diff，保留并兼容这些改动，不重置、不覆盖、不顺手提交无关文件。
+- 不使用 `git reset --hard`、`git checkout -- <file>` 等破坏性命令，除非用户明确要求。
+- 修改范围应聚焦请求，不做无关重构或格式化。
+- 优先沿用现有包边界、命名和依赖，只有在确实降低复杂度时才新增抽象。
+- 注释解释原因、边界和非显然行为，不复述代码。
+- 依赖变更后运行 `go mod tidy` 或更新前端 lockfile，并提交 manifest 与 lockfile。
+- 提交前检查 `.env`、日志、构建产物、临时文件和真实密钥未进入暂存区。
+- commit 使用简洁的 Conventional Commits 风格，并保持单一目标。
+
+## 常用命令
+
+```bash
+make db-up
+make db-down
+make migrate-up
+make migrate-down MIGRATE_STEPS=1
+make sqlc
+make test
+make run-api
+make run-worker
+make frontend-install
+make run-frontend
+make build-frontend
+
+go test -race ./...
+go vet ./...
+npm --prefix frontend run build
+git diff --check
+```

@@ -141,6 +141,91 @@ func (q *Queries) CreateDataStreamBinding(ctx context.Context, arg CreateDataStr
 	return i, err
 }
 
+const disableMissingTHCPNDataStreamBindings = `-- name: DisableMissingTHCPNDataStreamBindings :many
+UPDATE data_stream_bindings AS dsb
+SET status = 'disabled',
+    updated_at = now()
+FROM data_streams AS ds
+WHERE ds.id = dsb.data_stream_id
+  AND ds.device_id = $1
+  AND dsb.data_source_id = $2
+  AND dsb.adapter_code = 'thcpn_legacy_mysql'
+  AND dsb.status = 'active'
+  AND (dsb.adapter_config_json->>'external_device_id')::bigint = $3::bigint
+  AND NOT (ds.code = ANY($4::text[]))
+RETURNING dsb.id, dsb.data_stream_id, dsb.data_source_id, dsb.adapter_code, dsb.database_name, dsb.schema_name, dsb.table_name, dsb.device_key_field, dsb.device_key_value, dsb.time_field, dsb.value_field, dsb.payload_type, dsb.adapter_config_json, dsb.status, dsb.created_by, dsb.created_at, dsb.updated_at
+`
+
+type DisableMissingTHCPNDataStreamBindingsParams struct {
+	DeviceID         uuid.UUID `json:"device_id"`
+	DataSourceID     uuid.UUID `json:"data_source_id"`
+	ExternalDeviceID int64     `json:"external_device_id"`
+	ActiveCodes      []string  `json:"active_codes"`
+}
+
+type DisableMissingTHCPNDataStreamBindingsRow struct {
+	ID                uuid.UUID          `json:"id"`
+	DataStreamID      uuid.UUID          `json:"data_stream_id"`
+	DataSourceID      uuid.UUID          `json:"data_source_id"`
+	AdapterCode       string             `json:"adapter_code"`
+	DatabaseName      *string            `json:"database_name"`
+	SchemaName        *string            `json:"schema_name"`
+	TableName         *string            `json:"table_name"`
+	DeviceKeyField    *string            `json:"device_key_field"`
+	DeviceKeyValue    *string            `json:"device_key_value"`
+	TimeField         *string            `json:"time_field"`
+	ValueField        *string            `json:"value_field"`
+	PayloadType       string             `json:"payload_type"`
+	AdapterConfigJson []byte             `json:"adapter_config_json"`
+	Status            string             `json:"status"`
+	CreatedBy         uuid.UUID          `json:"created_by"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) DisableMissingTHCPNDataStreamBindings(ctx context.Context, arg DisableMissingTHCPNDataStreamBindingsParams) ([]DisableMissingTHCPNDataStreamBindingsRow, error) {
+	rows, err := q.db.Query(ctx, disableMissingTHCPNDataStreamBindings,
+		arg.DeviceID,
+		arg.DataSourceID,
+		arg.ExternalDeviceID,
+		arg.ActiveCodes,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DisableMissingTHCPNDataStreamBindingsRow{}
+	for rows.Next() {
+		var i DisableMissingTHCPNDataStreamBindingsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DataStreamID,
+			&i.DataSourceID,
+			&i.AdapterCode,
+			&i.DatabaseName,
+			&i.SchemaName,
+			&i.TableName,
+			&i.DeviceKeyField,
+			&i.DeviceKeyValue,
+			&i.TimeField,
+			&i.ValueField,
+			&i.PayloadType,
+			&i.AdapterConfigJson,
+			&i.Status,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getActiveDataStreamBinding = `-- name: GetActiveDataStreamBinding :one
 SELECT id, data_stream_id, data_source_id, adapter_code, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at
 FROM data_stream_bindings

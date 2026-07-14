@@ -1,6 +1,7 @@
 package objectstore
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aliyun/alibabacloud-oss-go-sdk-v2/oss"
+	"github.com/aliyun/alibabacloud-oss-go-sdk-v2/oss/credentials"
 	"github.com/google/uuid"
 
 	"thcpn-gin/internal/apperr"
@@ -21,6 +24,7 @@ import (
 type Signer struct {
 	cfg       config.ObjectStoreConfig
 	accessKey string
+	secretKey string
 	secret    string
 	now       func() time.Time
 }
@@ -43,13 +47,15 @@ type DownloadTokenClaims struct {
 
 func NewSigner(cfg config.ObjectStoreConfig, fallbackSecret string) *Signer {
 	accessKey := strings.TrimSpace(os.Getenv(strings.TrimSpace(cfg.AccessKeyEnv)))
-	secret := strings.TrimSpace(os.Getenv(strings.TrimSpace(cfg.SecretKeyEnv)))
+	secretKey := strings.TrimSpace(os.Getenv(strings.TrimSpace(cfg.SecretKeyEnv)))
+	secret := secretKey
 	if secret == "" {
 		secret = strings.TrimSpace(fallbackSecret)
 	}
 	return &Signer{
 		cfg:       cfg,
 		accessKey: accessKey,
+		secretKey: secretKey,
 		secret:    secret,
 		now:       time.Now,
 	}
@@ -68,15 +74,30 @@ func (s *Signer) SignObjectURL(objectKey string, ttl time.Duration) (SignedURL, 
 	if isAbsoluteHTTPURL(objectKey) {
 		return SignedURL{URL: objectKey, ExpiresAt: expiresAt}, nil
 	}
+	validObjectKey, err := validateObjectKey(objectKey)
+	if err != nil {
+		return SignedURL{}, err
+	}
 	if publicURLPrefix := normalizedPublicURLPrefix(s.cfg.PublicURLPrefix); publicURLPrefix != "" {
-		return SignedURL{URL: joinPublicObjectURL(publicURLPrefix, objectKey), ExpiresAt: expiresAt}, nil
+		return SignedURL{URL: joinPublicObjectURL(publicURLPrefix, validObjectKey), ExpiresAt: expiresAt}, nil
 	}
 	if err := s.validate(); err != nil {
 		return SignedURL{}, err
 	}
 
-	if (normalizedProvider(s.cfg.Provider) == "minio" || normalizedProvider(s.cfg.Provider) == "s3") && s.accessKey != "" && strings.TrimSpace(os.Getenv(strings.TrimSpace(s.cfg.SecretKeyEnv))) != "" {
-		u, err := presignGetObjectURL(s.cfg.Endpoint, s.cfg.Bucket, objectKey, s.accessKey, strings.TrimSpace(os.Getenv(strings.TrimSpace(s.cfg.SecretKeyEnv))), s.cfg.Region, s.now(), ttl)
+	provider := normalizedProvider(s.cfg.Provider)
+	if provider == "oss" {
+		if s.accessKey == "" || s.secretKey == "" {
+			return SignedURL{}, apperr.New(apperr.KindInternal, "object store access key and secret key are required")
+		}
+		u, err := presignOSSGetObjectURL(s.cfg, validObjectKey, s.accessKey, s.secretKey, expiresAt)
+		if err != nil {
+			return SignedURL{}, apperr.Wrap(apperr.KindInternal, "presign oss object url", err)
+		}
+		return SignedURL{URL: u, ExpiresAt: expiresAt}, nil
+	}
+	if (provider == "minio" || provider == "s3") && s.accessKey != "" && s.secretKey != "" {
+		u, err := presignGetObjectURL(s.cfg.Endpoint, s.cfg.Bucket, validObjectKey, s.accessKey, s.secretKey, s.cfg.Region, s.now(), ttl)
 		if err != nil {
 			return SignedURL{}, apperr.Wrap(apperr.KindInternal, "presign object url", err)
 		}
@@ -84,16 +105,44 @@ func (s *Signer) SignObjectURL(objectKey string, ttl time.Duration) (SignedURL, 
 	}
 
 	expires := strconv.FormatInt(expiresAt.Unix(), 10)
-	signature := s.signature("GET", objectKey, expires)
+	signature := s.signature("GET", validObjectKey, expires)
 
 	u := url.URL{Path: signedObjectDownloadPath}
 	q := u.Query()
-	q.Set("object_key", objectKey)
+	q.Set("object_key", validObjectKey)
 	q.Set("expires", expires)
 	q.Set("signature", signature)
 	u.RawQuery = q.Encode()
 
 	return SignedURL{URL: u.String(), ExpiresAt: expiresAt}, nil
+}
+
+func presignOSSGetObjectURL(cfg config.ObjectStoreConfig, objectKey string, accessKey string, secretKey string, expiresAt time.Time) (string, error) {
+	if strings.TrimSpace(cfg.Endpoint) == "" {
+		return "", apperr.New(apperr.KindInternal, "object store endpoint is required")
+	}
+	if strings.TrimSpace(cfg.Bucket) == "" {
+		return "", apperr.New(apperr.KindInternal, "object store bucket is required")
+	}
+	if strings.TrimSpace(cfg.Region) == "" {
+		return "", apperr.New(apperr.KindInternal, "object store region is required")
+	}
+	if strings.TrimSpace(accessKey) == "" || strings.TrimSpace(secretKey) == "" {
+		return "", apperr.New(apperr.KindInternal, "object store access key and secret key are required")
+	}
+	ossCfg := oss.LoadDefaultConfig().
+		WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey)).
+		WithRegion(strings.TrimSpace(cfg.Region)).
+		WithEndpoint(strings.TrimSpace(cfg.Endpoint)).
+		WithSignatureVersion(oss.SignatureVersionV4)
+	result, err := oss.NewClient(ossCfg).Presign(context.Background(), &oss.GetObjectRequest{
+		Bucket: oss.Ptr(strings.TrimSpace(cfg.Bucket)),
+		Key:    oss.Ptr(objectKey),
+	}, oss.PresignExpiration(expiresAt))
+	if err != nil {
+		return "", err
+	}
+	return result.URL, nil
 }
 
 func (s *Signer) VerifyObjectURLSignature(method string, objectKey string, expires string, signature string) error {

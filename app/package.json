@@ -1,0 +1,24 @@
+{
+  "name": "@thcpn/app",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev:platform": "npm --workspace @thcpn/platform run dev -- --host 127.0.0.1",
+    "dev:admin": "npm --workspace @thcpn/admin run dev -- --host 127.0.0.1",
+    "build": "npm run build --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "@tailwindcss/postcss": "^4.1.17",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.17",
+    "typescript": "^5.9.3",
+    "vite": "^8.1.0"
+  }
+}

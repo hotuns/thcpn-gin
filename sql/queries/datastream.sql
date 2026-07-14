@@ -39,3 +39,21 @@ SET code = $2,
     updated_at = now()
 WHERE id = $1
 RETURNING id, device_id, code, name, type, unit, status, created_by, created_at, updated_at;
+
+-- name: DisableMissingTHCPNDataStreams :many
+UPDATE data_streams AS ds
+SET status = 'disabled',
+    updated_at = now()
+WHERE ds.device_id = sqlc.arg(device_id)
+  AND ds.status = 'active'
+  AND NOT (ds.code = ANY(sqlc.arg(active_codes)::text[]))
+  AND EXISTS (
+      SELECT 1
+      FROM data_stream_bindings AS dsb
+      WHERE dsb.data_stream_id = ds.id
+        AND dsb.data_source_id = sqlc.arg(data_source_id)
+        AND dsb.adapter_code = 'thcpn_legacy_mysql'
+        AND dsb.status = 'active'
+        AND (dsb.adapter_config_json->>'external_device_id')::bigint = sqlc.arg(external_device_id)::bigint
+  )
+RETURNING ds.id, ds.device_id, ds.code, ds.name, ds.type, ds.unit, ds.status, ds.created_by, ds.created_at, ds.updated_at;

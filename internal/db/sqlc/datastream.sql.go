@@ -51,6 +51,68 @@ func (q *Queries) CreateDataStream(ctx context.Context, arg CreateDataStreamPara
 	return i, err
 }
 
+const disableMissingTHCPNDataStreams = `-- name: DisableMissingTHCPNDataStreams :many
+UPDATE data_streams AS ds
+SET status = 'disabled',
+    updated_at = now()
+WHERE ds.device_id = $1
+  AND ds.status = 'active'
+  AND NOT (ds.code = ANY($2::text[]))
+  AND EXISTS (
+      SELECT 1
+      FROM data_stream_bindings AS dsb
+      WHERE dsb.data_stream_id = ds.id
+        AND dsb.data_source_id = $3
+        AND dsb.adapter_code = 'thcpn_legacy_mysql'
+        AND dsb.status = 'active'
+        AND (dsb.adapter_config_json->>'external_device_id')::bigint = $4::bigint
+  )
+RETURNING ds.id, ds.device_id, ds.code, ds.name, ds.type, ds.unit, ds.status, ds.created_by, ds.created_at, ds.updated_at
+`
+
+type DisableMissingTHCPNDataStreamsParams struct {
+	DeviceID         uuid.UUID `json:"device_id"`
+	ActiveCodes      []string  `json:"active_codes"`
+	DataSourceID     uuid.UUID `json:"data_source_id"`
+	ExternalDeviceID int64     `json:"external_device_id"`
+}
+
+func (q *Queries) DisableMissingTHCPNDataStreams(ctx context.Context, arg DisableMissingTHCPNDataStreamsParams) ([]DataStream, error) {
+	rows, err := q.db.Query(ctx, disableMissingTHCPNDataStreams,
+		arg.DeviceID,
+		arg.ActiveCodes,
+		arg.DataSourceID,
+		arg.ExternalDeviceID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DataStream{}
+	for rows.Next() {
+		var i DataStream
+		if err := rows.Scan(
+			&i.ID,
+			&i.DeviceID,
+			&i.Code,
+			&i.Name,
+			&i.Type,
+			&i.Unit,
+			&i.Status,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getDataStream = `-- name: GetDataStream :one
 SELECT id, device_id, code, name, type, unit, status, created_by, created_at, updated_at
 FROM data_streams

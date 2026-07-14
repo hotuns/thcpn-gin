@@ -2,6 +2,7 @@ package datasource
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -90,6 +91,12 @@ type syncTHCPNGatewayRequest struct {
 	ProductID         string `json:"product_id"`
 	SerialNo          string `json:"serial_no"`
 	Name              string `json:"name"`
+}
+
+type updateTHCPNDeviceConfigRequest struct {
+	DataJSON    json.RawMessage `json:"data_json"`
+	ImageJSON   json.RawMessage `json:"image_json"`
+	ControlJSON json.RawMessage `json:"control_json"`
 }
 
 func NewHandler(service *Service, checker *permission.Checker, auditServices ...*audit.Service) *Handler {
@@ -316,6 +323,69 @@ func (h *Handler) AdminSyncTHCPNGateway(c *gin.Context) {
 		}) {
 			return
 		}
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminGetTHCPNDeviceConfig(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	result, err := h.service.GetTHCPNDeviceConfig(c.Request.Context(), deviceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminUpdateTHCPNDeviceConfig(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	var req updateTHCPNDeviceConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	result, err := h.service.UpdateTHCPNDeviceConfig(c.Request.Context(), UpdateTHCPNDeviceConfigInput{
+		DeviceID:    deviceID,
+		DataJSON:    req.DataJSON,
+		ImageJSON:   req.ImageJSON,
+		ControlJSON: req.ControlJSON,
+		ActorUserID: actor.UserID,
+	})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorUser,
+			ActorID:      audit.UserActorID(actor.UserID),
+			Action:       "device.config.update",
+			ResourceType: "device",
+			ResourceID:   audit.ResourceID(deviceID),
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "device.config.update",
+		ResourceType: "device",
+		ResourceID:   audit.ResourceID(deviceID),
+		Result:       audit.ResultSuccess,
+		Reason:       "external_config_id=" + fmt.Sprint(result.Config.ID),
+	}) {
+		return
 	}
 	c.JSON(http.StatusOK, result)
 }

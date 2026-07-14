@@ -71,7 +71,7 @@ Web / Admin / OpenAPI Client
           |
           |-- Redis
           |
-          |-- Object Storage: S3 / MinIO
+         |-- Object Storage: Alibaba Cloud OSS / local file
           |
           v
    Data Source Adapter
@@ -129,7 +129,7 @@ HTTP 框架：Gin
 数据库迁移：golang-migrate
 缓存：Redis + go-redis
 异步任务：Asynq
-对象存储：S3 / MinIO
+对象存储：Alibaba Cloud OSS，local file 用于本地开发
 权限：自研 Role + Scope + AccessGrant
 API 文档：OpenAPI + oapi-codegen
 日志：log/slog
@@ -296,7 +296,7 @@ test/
 | `internal/permission` | 权限判断 |
 | `internal/accessgrant` | 分享、临时授权 |
 | `internal/audit` | 审计日志 |
-| `internal/objectstore` | S3 / MinIO 文件访问 |
+| `internal/objectstore` | OSS / local file 对象访问 |
 | `internal/task` | Asynq 任务定义和调度 |
 
 ---
@@ -1098,9 +1098,12 @@ redis:
   db: 0
 
 object_store:
-  provider: "minio"
-  endpoint: "127.0.0.1:9000"
+  provider: "oss"
+  endpoint: "https://oss-cn-beijing.aliyuncs.com"
   bucket: "iot-platform"
+  region: "cn-beijing"
+  local_path: "var/objectstore"
+  public_url_prefix: ""
   access_key_env: "OBJECT_STORE_ACCESS_KEY"
   secret_key_env: "OBJECT_STORE_SECRET_KEY"
 
@@ -1202,7 +1205,7 @@ AccessGrant 过期和撤销
 PostgreSQL
 Redis
 MySQL, 如需要测试设备数据源
-MinIO, 如需要测试对象存储
+OSS mock 或本地 file store, 如需要测试对象存储
 ```
 
 重点测试：
@@ -1506,7 +1509,7 @@ Go 模块化单体
 + Role + Scope + AccessGrant 权限模型
 + Dataset 数据资产模型
 + Asynq 异步导出
-+ S3 / MinIO 对象存储
++ Alibaba Cloud OSS / local file 对象存储
 + AuditLog 敏感操作审计
 ```
 

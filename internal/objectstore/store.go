@@ -13,6 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aliyun/alibabacloud-oss-go-sdk-v2/oss"
+	"github.com/aliyun/alibabacloud-oss-go-sdk-v2/oss/credentials"
+
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/config"
 )
@@ -47,6 +50,19 @@ type S3Store struct {
 	now       func() time.Time
 }
 
+type ossObjectClient interface {
+	DeleteObject(ctx context.Context, request *oss.DeleteObjectRequest, optFns ...func(*oss.Options)) (*oss.DeleteObjectResult, error)
+	GetObject(ctx context.Context, request *oss.GetObjectRequest, optFns ...func(*oss.Options)) (*oss.GetObjectResult, error)
+	PutObject(ctx context.Context, request *oss.PutObjectRequest, optFns ...func(*oss.Options)) (*oss.PutObjectResult, error)
+}
+
+type OSSStore struct {
+	cfg       config.ObjectStoreConfig
+	accessKey string
+	secretKey string
+	client    ossObjectClient
+}
+
 func NewStore(cfg config.ObjectStoreConfig) Store {
 	switch normalizedProvider(cfg.Provider) {
 	case "file", "local":
@@ -55,6 +71,15 @@ func NewStore(cfg config.ObjectStoreConfig) Store {
 			root = "var/objectstore"
 		}
 		return &FileStore{rootDir: root, bucket: strings.TrimSpace(cfg.Bucket)}
+	case "oss":
+		accessKey := strings.TrimSpace(os.Getenv(strings.TrimSpace(cfg.AccessKeyEnv)))
+		secretKey := strings.TrimSpace(os.Getenv(strings.TrimSpace(cfg.SecretKeyEnv)))
+		return &OSSStore{
+			cfg:       cfg,
+			accessKey: accessKey,
+			secretKey: secretKey,
+			client:    newOSSClient(cfg, accessKey, secretKey),
+		}
 	default:
 		return &S3Store{
 			cfg:       cfg,
@@ -148,10 +173,94 @@ func (s *FileStore) objectPath(objectKey string) (string, error) {
 	return filepath.Join(parts...), nil
 }
 
+func (s *OSSStore) Get(ctx context.Context, objectKey string) (GetResult, error) {
+	objectKey, err := validateObjectKey(objectKey)
+	if err != nil {
+		return GetResult{}, err
+	}
+	if err := s.validateConfig(); err != nil {
+		return GetResult{}, err
+	}
+	result, err := s.client.GetObject(ctx, &oss.GetObjectRequest{
+		Bucket: oss.Ptr(strings.TrimSpace(s.cfg.Bucket)),
+		Key:    oss.Ptr(objectKey),
+	})
+	if err != nil {
+		return GetResult{}, apperr.Wrap(apperr.KindInternal, "download oss object", err)
+	}
+	contentType := ""
+	if result.ContentType != nil {
+		contentType = strings.TrimSpace(*result.ContentType)
+	}
+	return GetResult{Body: result.Body, ContentType: contentType}, nil
+}
+
+func (s *OSSStore) Delete(ctx context.Context, objectKey string) error {
+	objectKey, err := validateObjectKey(objectKey)
+	if err != nil {
+		return err
+	}
+	if err := s.validateConfig(); err != nil {
+		return err
+	}
+	if _, err := s.client.DeleteObject(ctx, &oss.DeleteObjectRequest{
+		Bucket: oss.Ptr(strings.TrimSpace(s.cfg.Bucket)),
+		Key:    oss.Ptr(objectKey),
+	}); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "delete oss object", err)
+	}
+	return nil
+}
+
+func (s *OSSStore) Put(ctx context.Context, input PutInput) error {
+	objectKey, err := validateObjectKey(input.ObjectKey)
+	if err != nil {
+		return err
+	}
+	if input.Body == nil {
+		return apperr.New(apperr.KindInvalidArgument, "object body is required")
+	}
+	if err := s.validateConfig(); err != nil {
+		return err
+	}
+	request := &oss.PutObjectRequest{
+		Bucket: oss.Ptr(strings.TrimSpace(s.cfg.Bucket)),
+		Key:    oss.Ptr(objectKey),
+		Body:   input.Body,
+	}
+	if contentType := strings.TrimSpace(input.ContentType); contentType != "" {
+		request.ContentType = oss.Ptr(contentType)
+	}
+	if _, err := s.client.PutObject(ctx, request); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "upload oss object", err)
+	}
+	return nil
+}
+
+func (s *OSSStore) validateConfig() error {
+	if strings.TrimSpace(s.cfg.Endpoint) == "" {
+		return apperr.New(apperr.KindInternal, "object store endpoint is required")
+	}
+	if strings.TrimSpace(s.cfg.Bucket) == "" {
+		return apperr.New(apperr.KindInternal, "object store bucket is required")
+	}
+	if strings.TrimSpace(s.cfg.Region) == "" {
+		return apperr.New(apperr.KindInternal, "object store region is required")
+	}
+	if s.accessKey == "" || s.secretKey == "" {
+		return apperr.New(apperr.KindInternal, "object store access key and secret key are required")
+	}
+	if s.client == nil {
+		return apperr.New(apperr.KindInternal, "object store client is not configured")
+	}
+	return nil
+}
+
 func (s *S3Store) Get(ctx context.Context, objectKey string) (GetResult, error) {
-	objectKey = strings.TrimSpace(objectKey)
-	if objectKey == "" {
-		return GetResult{}, apperr.New(apperr.KindInvalidArgument, "object key is required")
+	var err error
+	objectKey, err = validateObjectKey(objectKey)
+	if err != nil {
+		return GetResult{}, err
 	}
 	if strings.TrimSpace(s.cfg.Endpoint) == "" {
 		return GetResult{}, apperr.New(apperr.KindInternal, "object store endpoint is required")
@@ -186,9 +295,10 @@ func (s *S3Store) Get(ctx context.Context, objectKey string) (GetResult, error) 
 }
 
 func (s *S3Store) Delete(ctx context.Context, objectKey string) error {
-	objectKey = strings.TrimSpace(objectKey)
-	if objectKey == "" {
-		return apperr.New(apperr.KindInvalidArgument, "object key is required")
+	var err error
+	objectKey, err = validateObjectKey(objectKey)
+	if err != nil {
+		return err
 	}
 	if err := s.validateRemoteConfig(); err != nil {
 		return err
@@ -213,9 +323,9 @@ func (s *S3Store) Delete(ctx context.Context, objectKey string) error {
 }
 
 func (s *S3Store) Put(ctx context.Context, input PutInput) error {
-	objectKey := strings.TrimSpace(input.ObjectKey)
-	if objectKey == "" {
-		return apperr.New(apperr.KindInvalidArgument, "object key is required")
+	objectKey, err := validateObjectKey(input.ObjectKey)
+	if err != nil {
+		return err
 	}
 	if input.Body == nil {
 		return apperr.New(apperr.KindInvalidArgument, "object body is required")
@@ -323,12 +433,34 @@ func (s *S3Store) newSignedRequest(ctx context.Context, method string, objectKey
 	return req, nil
 }
 
+func newOSSClient(cfg config.ObjectStoreConfig, accessKey string, secretKey string) *oss.Client {
+	ossCfg := oss.LoadDefaultConfig().
+		WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey)).
+		WithRegion(strings.TrimSpace(cfg.Region)).
+		WithEndpoint(strings.TrimSpace(cfg.Endpoint)).
+		WithSignatureVersion(oss.SignatureVersionV4)
+	return oss.NewClient(ossCfg)
+}
+
 func normalizedProvider(provider string) string {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	if provider == "" {
-		return "minio"
+		return "oss"
 	}
 	return provider
+}
+
+func validateObjectKey(objectKey string) (string, error) {
+	objectKey = strings.TrimSpace(objectKey)
+	if objectKey == "" {
+		return "", apperr.New(apperr.KindInvalidArgument, "object key is required")
+	}
+	for _, part := range strings.Split(strings.Trim(objectKey, "/"), "/") {
+		if part == "." || part == ".." {
+			return "", apperr.New(apperr.KindInvalidArgument, "invalid object key")
+		}
+	}
+	return objectKey, nil
 }
 
 func sha256HexBytes(value []byte) string {

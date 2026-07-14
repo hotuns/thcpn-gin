@@ -49,12 +49,12 @@ email:
   max_verify_attempts: 5
 
 object_store:
-  provider: "minio"
-  endpoint: "127.0.0.1:9000"
+  provider: "oss"
+  endpoint: "https://oss-cn-beijing.aliyuncs.com"
   bucket: "iot-platform"
-  region: "us-east-1"
+  region: "cn-beijing"
   local_path: "var/objectstore"
-  public_url_prefix: "https://iot-datas.oss-cn-beijing.aliyuncs.com"
+  public_url_prefix: ""
   access_key_env: "OBJECT_STORE_ACCESS_KEY"
   secret_key_env: "OBJECT_STORE_SECRET_KEY"
 

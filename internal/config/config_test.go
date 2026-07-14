@@ -7,8 +7,14 @@ func TestDefaultConfigIsValid(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("default config should be valid: %v", err)
 	}
-	if cfg.ObjectStore.PublicURLPrefix != "https://iot-datas.oss-cn-beijing.aliyuncs.com" {
-		t.Fatalf("expected default object store public URL prefix, got %q", cfg.ObjectStore.PublicURLPrefix)
+	if cfg.ObjectStore.Provider != "oss" {
+		t.Fatalf("expected default object store provider, got %q", cfg.ObjectStore.Provider)
+	}
+	if cfg.ObjectStore.Endpoint != "https://oss-cn-beijing.aliyuncs.com" {
+		t.Fatalf("expected default object store endpoint, got %q", cfg.ObjectStore.Endpoint)
+	}
+	if cfg.ObjectStore.Region != "cn-beijing" {
+		t.Fatalf("expected default object store region, got %q", cfg.ObjectStore.Region)
 	}
 	if cfg.Ezviz.OpenAPIDomain != "https://open.ys7.com" {
 		t.Fatalf("expected default ezviz open api domain, got %q", cfg.Ezviz.OpenAPIDomain)
@@ -32,7 +38,10 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("EMAIL_COOLDOWN_SECONDS", "120")
 	t.Setenv("EMAIL_DAILY_LIMIT", "12")
 	t.Setenv("EMAIL_MAX_VERIFY_ATTEMPTS", "4")
-	t.Setenv("OBJECT_STORE_PROVIDER", "file")
+	t.Setenv("OBJECT_STORE_PROVIDER", "oss")
+	t.Setenv("OBJECT_STORE_ENDPOINT", "https://oss-cn-shanghai.aliyuncs.com")
+	t.Setenv("OBJECT_STORE_BUCKET", "example-bucket")
+	t.Setenv("OBJECT_STORE_REGION", "cn-shanghai")
 	t.Setenv("OBJECT_STORE_LOCAL_PATH", "/tmp/thcpn-objectstore")
 	t.Setenv("OBJECT_STORE_PUBLIC_URL_PREFIX", "https://example-bucket.oss-cn-beijing.aliyuncs.com")
 	t.Setenv("EXPORT_MAX_ROWS", "250000")
@@ -99,8 +108,17 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	if cfg.Email.MaxVerifyAttempts != 4 {
 		t.Fatalf("expected email max verify attempts override, got %d", cfg.Email.MaxVerifyAttempts)
 	}
-	if cfg.ObjectStore.Provider != "file" {
+	if cfg.ObjectStore.Provider != "oss" {
 		t.Fatalf("expected object store provider override, got %q", cfg.ObjectStore.Provider)
+	}
+	if cfg.ObjectStore.Endpoint != "https://oss-cn-shanghai.aliyuncs.com" {
+		t.Fatalf("expected object store endpoint override, got %q", cfg.ObjectStore.Endpoint)
+	}
+	if cfg.ObjectStore.Bucket != "example-bucket" {
+		t.Fatalf("expected object store bucket override, got %q", cfg.ObjectStore.Bucket)
+	}
+	if cfg.ObjectStore.Region != "cn-shanghai" {
+		t.Fatalf("expected object store region override, got %q", cfg.ObjectStore.Region)
 	}
 	if cfg.ObjectStore.LocalPath != "/tmp/thcpn-objectstore" {
 		t.Fatalf("expected object store local path override, got %q", cfg.ObjectStore.LocalPath)

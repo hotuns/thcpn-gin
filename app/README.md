@@ -1,0 +1,51 @@
+# THCPN Frontend
+
+全新前端 monorepo，API 契约以 `../docs/openapi.yaml` 为准。
+
+## Applications
+
+- `apps/platform`: Workspace 用户控制台，Shadcn 风格共享组件。
+- `apps/admin`: 系统后台，Ant Design 管理组件。
+
+开发环境由 platform 将 `/admin` 代理到 admin Vite 服务，使两个应用共享同一浏览器 origin 和认证存储。
+
+## Shared Packages
+
+- `packages/api`: 统一 token、refresh、错误 envelope、request ID、DTO 和领域请求方法。
+- `packages/auth`: 会话恢复、登录态、登出和路由守卫。
+- `packages/workspace`: Workspace 选择、持久化和 query key 隔离。
+- `packages/ui`: 设计 token、基础组件和页面状态。
+- `packages/admin-ui`: Ant Design theme 和后台通用组件出口。
+
+## Platform Routes
+
+- `/login`, `/register`: 密码、短信、MFA 登录和密码注册。
+- `/dashboard`: Workspace 设备、Dataset 和 Export 汇总。
+- `/workspaces`: Workspace 列表、创建和切换。
+- `/devices`: 设备列表、详情、子节点、相机会话、校准、升级、转移和解绑。
+- `/device-data`: DataStream、设备/流遥测、媒体、下载和删除。
+- `/datasets`: Dataset CRUD、预览和导出。
+- `/exports`: ExportJob 创建、详情和下载。
+- `/settings?tab=resources`: Project 和 Site。
+- `/settings?tab=access`: Member、AccessGrant、Invitation 和 Permission Catalog。
+- `/settings?tab=audit`: AuditLog。
+- `/settings?tab=security`: refresh、session、邮箱验证和 MFA。
+
+## Admin Routes
+
+- `/admin`: Workspace、Project、Site、DataSource 和系统设备汇总。
+- `/admin/sources`: DataSource CRUD、标准站和组网站同步。
+- `/admin/devices`: 系统设备、拓扑、THCPN 配置、生命周期、能力、分配和相机。
+- `/admin/metadata`: 设备能力定义和系统角色。
+
+高频流程使用结构化表单。THCPN 配置、权限 scope、角色权限等低频复杂请求使用 JSON 操作台，字段结构直接遵循 OpenAPI；高风险操作提交前必须二次确认。
+
+## Commands
+
+```bash
+npm install
+npm run dev:platform
+npm run dev:admin
+npm run typecheck
+npm run build
+```

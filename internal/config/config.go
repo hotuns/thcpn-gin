@@ -179,12 +179,12 @@ func Default() Config {
 			MaxVerifyAttempts: 5,
 		},
 		ObjectStore: ObjectStoreConfig{
-			Provider:        "minio",
-			Endpoint:        "127.0.0.1:9000",
+			Provider:        "oss",
+			Endpoint:        "https://oss-cn-beijing.aliyuncs.com",
 			Bucket:          "iot-platform",
-			Region:          "us-east-1",
+			Region:          "cn-beijing",
 			LocalPath:       "var/objectstore",
-			PublicURLPrefix: "https://iot-datas.oss-cn-beijing.aliyuncs.com",
+			PublicURLPrefix: "",
 			AccessKeyEnv:    "OBJECT_STORE_ACCESS_KEY",
 			SecretKeyEnv:    "OBJECT_STORE_SECRET_KEY",
 		},
@@ -311,9 +311,9 @@ func (cfg Config) Validate() error {
 	}
 	objectStoreProvider := strings.TrimSpace(cfg.ObjectStore.Provider)
 	switch objectStoreProvider {
-	case "file", "local", "minio", "s3":
+	case "file", "local", "oss", "minio", "s3":
 	default:
-		return errors.New("object_store.provider must be one of file, local, minio, s3")
+		return errors.New("object_store.provider must be one of file, local, oss, minio, s3")
 	}
 	if strings.TrimSpace(cfg.ObjectStore.Bucket) == "" {
 		return errors.New("object_store.bucket is required")
