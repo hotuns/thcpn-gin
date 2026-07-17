@@ -1,68 +1,478 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, Navigate, NavLink, Outlet, Route, Routes, useNavigate } from "react-router-dom";
-import { Boxes, ChevronRight, Database, Home, LogOut, Menu, RefreshCw, Search, ShieldCheck, TableProperties } from "lucide-react";
-import { Table, Tag, Statistic, Space, Select, Input, Button as AntButton } from "@thcpn/admin-ui";
-import { api, formatApiError, type JsonRecord } from "@thcpn/api";
-import { useAuth } from "@thcpn/auth";
-import { Badge, Brand, Button, CloseButton, IconButton, PageHeader, Panel, ServiceStatus, StateView } from "@thcpn/ui";
-import { AdminMetadataPage } from "./admin-metadata";
-import { AdminSourcesPage } from "./admin-sources";
-import { AdminDevicesPage } from "./admin-devices";
+import {
+  Link,
+  Navigate,
+  NavLink,
+  Outlet,
+  Route,
+  Routes,
+} from "react-router-dom";
+import {
+  Boxes,
+  ChevronRight,
+  Database,
+  Home,
+  Settings,
+  LogOut,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ShieldCheck,
+  TableProperties,
+  Users,
+} from "lucide-react";
+import { Statistic, Space } from "@thcpn/admin-ui";
+import { api, formatApiError } from "@thcpn/api";
+import { useAdminAuth } from "@thcpn/auth";
+import {
+  Badge,
+  Brand,
+  Button,
+  CloseButton,
+  IconButton,
+  PageHeader,
+  Panel,
+  ServiceStatus,
+  StateView,
+} from "@thcpn/ui";
+const AdminMetadataPage = lazy(() =>
+  import("./admin-metadata").then((module) => ({
+    default: module.AdminMetadataPage,
+  })),
+);
+const AdminSourcesPage = lazy(() =>
+  import("./admin-sources").then((module) => ({
+    default: module.AdminSourcesPage,
+  })),
+);
+const AdminDevicesPage = lazy(() =>
+  import("./admin-devices").then((module) => ({
+    default: module.AdminDevicesPage,
+  })),
+);
+const AdminWorkspacesPage = lazy(() =>
+  import("./admin-control").then((module) => ({
+    default: module.AdminWorkspacesPage,
+  })),
+);
+const AdminSettingsPage = lazy(() =>
+  import("./admin-control").then((module) => ({
+    default: module.AdminSettingsPage,
+  })),
+);
 
-const adminNav = [{ to: "/admin", label: "后台总览", icon: Home }, { to: "/admin/sources", label: "数据源", icon: Database }, { to: "/admin/devices", label: "系统设备", icon: Boxes }, { to: "/admin/metadata", label: "元数据", icon: TableProperties }];
-const platformUrl = (import.meta.env.VITE_PLATFORM_URL as string | undefined) ?? "http://127.0.0.1:5173";
+const adminNav = [
+  { to: "/admin", label: "后台总览", icon: Home },
+  { to: "/admin/sources", label: "数据源", icon: Database },
+  { to: "/admin/devices", label: "系统设备", icon: Boxes },
+  { to: "/admin/workspaces", label: "Workspace 与权限", icon: Users },
+  { to: "/admin/metadata", label: "元数据", icon: TableProperties },
+  { to: "/admin/settings", label: "系统设置", icon: Settings },
+];
+const platformUrl =
+  (import.meta.env.VITE_PLATFORM_URL as string | undefined) ??
+  "http://127.0.0.1:5173";
 
 function AdminShell() {
-  const [open, setOpen] = useState(false); const { user, signOut } = useAuth(); const health = useQuery({ queryKey: ["admin-health"], queryFn: api.health, refetchInterval: 30_000 }); const ready = useQuery({ queryKey: ["admin-ready"], queryFn: api.ready, refetchInterval: 30_000 }); const navigate = useNavigate(); const status = (query: typeof health) => query.isLoading ? "loading" : query.isError ? "error" : "ok";
-  return <div className="app-shell"><div className="admin-sidebar-wrap">{open && <div className="mobile-drawer-backdrop" onClick={() => setOpen(false)} />}</div><aside className={`sidebar admin-sidebar ${open ? "open" : ""}`}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><Brand admin /><div className="mobile-close"><CloseButton onClick={() => setOpen(false)} /></div></div><div className="workspace-switcher" style={{ color: "#dbeafa", background: "#1a466f", borderColor: "#2a608e" }}><div className="workspace-label" style={{ color: "#dbeafa" }}><span>系统范围</span><ShieldCheck size={12} /></div><div style={{ marginTop: 10, fontSize: 12, fontWeight: 700 }}>Platform Control Plane</div><div style={{ marginTop: 5, color: "#9fc0dc", fontSize: 10 }}>Workspace context disabled</div></div><nav className="nav-group"><div className="nav-title">SYSTEM</div>{adminNav.map((item) => { const Icon = item.icon; return <NavLink key={item.to} to={item.to} end={item.to === "/admin"} onClick={() => setOpen(false)} className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}><Icon size={16} />{item.label}</NavLink>; })}</nav><div className="sidebar-footer"><ServiceStatus health={status(health)} ready={status(ready)} onRefresh={() => { void health.refetch(); void ready.refetch(); }} /><a className="admin-link" style={{ color: "#b8d5f1" }} href={`${platformUrl}/dashboard`}><ChevronRight size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />返回用户平台</a><div className="account-row"><div className="avatar">{(user?.name ?? "A").slice(0, 1)}</div><div className="account-name"><div>{user?.name ?? "系统管理员"}</div><div className="account-role">System Administrator</div></div><IconButton label="退出登录" onClick={() => void signOut()}><LogOut size={15} /></IconButton></div></div></aside><div className="main-area"><header className="topbar admin-topbar"><div className="topbar-left"><IconButton label="打开导航" className="mobile-menu" onClick={() => setOpen(true)}><Menu size={18} /></IconButton><div className="topbar-context"><span className="mono">THCPN / SYSTEM / </span>平台管理</div></div><Space><Badge tone="info">SYSTEM SCOPE</Badge><IconButton label="返回平台" onClick={() => window.location.assign(`${platformUrl}/dashboard`)}><ChevronRight size={18} /></IconButton></Space></header><main className="page"><Outlet /></main></div></div>;
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem("thcpn:sidebar-collapsed") === "true",
+  );
+  const { admin: user, signOut } = useAdminAuth();
+  const health = useQuery({
+    queryKey: ["admin-health"],
+    queryFn: api.health,
+    refetchInterval: 30_000,
+  });
+  const ready = useQuery({
+    queryKey: ["admin-ready"],
+    queryFn: api.ready,
+    refetchInterval: 30_000,
+  });
+  const status = (query: typeof health) =>
+    query.isLoading ? "loading" : query.isError ? "error" : "ok";
+  useEffect(() => {
+    localStorage.setItem(
+      "thcpn:sidebar-collapsed",
+      String(sidebarCollapsed),
+    );
+  }, [sidebarCollapsed]);
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileOpen(false);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [mobileOpen]);
+  return (
+    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+      <div className="admin-sidebar-wrap">
+        {mobileOpen && (
+          <button
+            type="button"
+            className="mobile-drawer-backdrop"
+            aria-label="关闭导航"
+            onClick={() => setMobileOpen(false)}
+          />
+        )}
+      </div>
+      <aside
+        className={`sidebar admin-sidebar ${mobileOpen ? "open" : ""}`}
+        aria-label="后台导航"
+      >
+        <div className="sidebar-brand-row">
+          <Brand admin />
+          <div className="desktop-sidebar-toggle">
+            <IconButton
+              label="收起侧栏"
+              onClick={() => setSidebarCollapsed(true)}
+            >
+              <PanelLeftClose size={18} />
+            </IconButton>
+          </div>
+          <div className="mobile-close">
+            <CloseButton onClick={() => setMobileOpen(false)} />
+          </div>
+        </div>
+        <div
+          className="workspace-switcher"
+          style={{
+            color: "#dbeafa",
+            background: "#1a466f",
+            borderColor: "#2a608e",
+          }}
+        >
+          <div className="workspace-label" style={{ color: "#dbeafa" }}>
+            <span>系统范围</span>
+            <ShieldCheck size={12} />
+          </div>
+          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700 }}>
+            Platform Control Plane
+          </div>
+          <div style={{ marginTop: 5, color: "#9fc0dc", fontSize: 10 }}>
+            Workspace context disabled
+          </div>
+        </div>
+        <nav className="nav-group">
+          <div className="nav-title">SYSTEM</div>
+          {adminNav.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === "/admin"}
+                onClick={() => setMobileOpen(false)}
+                className={({ isActive }) =>
+                  `nav-item ${isActive ? "active" : ""}`
+                }
+              >
+                <Icon size={16} />
+                {item.label}
+              </NavLink>
+            );
+          })}
+        </nav>
+        <div className="sidebar-footer">
+          <ServiceStatus
+            health={status(health)}
+            ready={status(ready)}
+            onRefresh={() => {
+              void health.refetch();
+              void ready.refetch();
+            }}
+          />
+          <a
+            className="admin-link"
+            style={{ color: "#b8d5f1" }}
+            href={`${platformUrl}/dashboard`}
+          >
+            <ChevronRight
+              size={13}
+              style={{ verticalAlign: "-2px", marginRight: 5 }}
+            />
+            返回用户平台
+          </a>
+          <div className="account-row">
+            <div className="avatar">{(user?.name ?? "A").slice(0, 1)}</div>
+            <div className="account-name">
+              <div>{user?.name ?? "系统管理员"}</div>
+              <div className="account-role">系统管理员</div>
+            </div>
+            <IconButton label="退出登录" onClick={() => void signOut()}>
+              <LogOut size={15} />
+            </IconButton>
+          </div>
+        </div>
+      </aside>
+      <div className="main-area">
+        <header className="topbar admin-topbar">
+          <div className="topbar-left">
+            <div className="desktop-sidebar-open">
+              <IconButton
+                label="展开侧栏"
+                onClick={() => setSidebarCollapsed(false)}
+              >
+                <PanelLeftOpen size={18} />
+              </IconButton>
+            </div>
+            <IconButton
+              label="打开导航"
+              className="mobile-menu"
+              onClick={() => setMobileOpen(true)}
+            >
+              <Menu size={18} />
+            </IconButton>
+            <div className="topbar-context">
+              <span className="mono">THCPN / SYSTEM / </span>平台管理
+            </div>
+          </div>
+          <Space>
+            <Badge tone="info">SYSTEM SCOPE</Badge>
+            <IconButton
+              label="返回平台"
+              onClick={() => window.location.assign(`${platformUrl}/dashboard`)}
+            >
+              <ChevronRight size={18} />
+            </IconButton>
+          </Space>
+        </header>
+        <main className="page">
+          <Suspense
+            fallback={
+              <div className="route-placeholder">
+                <div className="app-loading">正在加载后台页面…</div>
+              </div>
+            }
+          >
+            <Outlet />
+          </Suspense>
+        </main>
+      </div>
+    </div>
+  );
 }
 
-function Forbidden() { return <Panel className="forbidden"><StateView type="error" title="403 · 无权访问系统后台" description="系统后台只对 is_system_admin=true 的账号开放。Workspace Owner 或管理员权限不能替代系统管理员身份。" action={<a href={`${platformUrl}/dashboard`}><Button><Home size={15} />返回用户平台</Button></a>} /></Panel>; }
-
-function RedirectToPlatformLogin() { useEffect(() => { window.location.assign(`${platformUrl}/login?next=%2Fadmin`); }, []); return <div className="app-loading">正在跳转到登录…</div>; }
-function AdminGuard() { const { user, loading } = useAuth(); if (loading) return <div className="app-loading">正在检查系统权限…</div>; if (!user) return <RedirectToPlatformLogin />; return user.is_system_admin ? <AdminShell /> : <Forbidden />; }
-
-function AdminOverview() { const sources = useQuery({ queryKey: ["admin", "sources"], queryFn: api.admin.sources }); const devices = useQuery({ queryKey: ["admin", "devices"], queryFn: api.admin.devices }); const workspaces = useQuery({ queryKey: ["admin", "workspaces"], queryFn: api.workspaces.adminList }); const projects = useQuery({ queryKey: ["admin", "projects"], queryFn: () => api.projects.adminList() }); const sites = useQuery({ queryKey: ["admin", "sites"], queryFn: () => api.sites.adminList() }); const stat = (query: any) => query.isError ? "—" : query.data?.items.length ?? 0; return <><PageHeader eyebrow="System / overview" title="后台总览" description="平台级 Workspace、Project、Site、设备资产与数据源运行入口。" actions={<Badge tone="info"><ShieldCheck size={13} />系统管理员</Badge>} /><div className="grid grid-4"><Panel className="admin-stat"><Statistic title="Workspace" value={stat(workspaces)} suffix={workspaces.isError ? "不可用" : "个"} /></Panel><Panel className="admin-stat"><Statistic title="Project / Site" value={`${stat(projects)} / ${stat(sites)}`} /></Panel><Panel className="admin-stat"><Statistic title="数据源" value={stat(sources)} suffix={sources.isError ? "不可用" : "个"} /></Panel><Panel className="admin-stat"><Statistic title="系统设备" value={stat(devices)} suffix={devices.isError ? "不可用" : "台"} /></Panel></div><Panel className="section-gap"><div className="panel-header"><div><h2 className="panel-title">控制平面状态</h2><div className="panel-kicker">平台管理不依赖 Workspace Provider</div></div><Badge tone="success">已隔离</Badge></div><div className="panel-body"><div className="command-note">设备注册、DataSource、DSN、Binding、拓扑、能力、生命周期与分配只在系统后台操作；涉及 Workspace 的动作必须显式提交目标 Workspace ID。</div></div></Panel></>; }
-
-function AdminList({ kind }: { kind: "sources" | "devices" }) {
-  const config = {
-    sources: { title: "数据源", desc: "维护平台级 DataSource 与同步入口。", query: api.admin.sources },
-    devices: { title: "系统设备", desc: "管理设备资产、拓扑、生命周期、能力和 Workspace 分配。", query: api.admin.devices }
-  }[kind];
-  const query = useQuery({ queryKey: ["admin", kind], queryFn: config.query });
-  const [selectedId, setSelectedId] = useState("");
-  const [keyword, setKeyword] = useState("");
-  const error = query.error ? formatApiError(query.error) : null;
-  const rows = query.data?.items ?? [];
-  const filteredRows = rows.filter((row) => `${String(row.name ?? "")} ${String(row.serial_no ?? "")} ${String(row.id ?? "")}`.toLowerCase().includes(keyword.toLowerCase()));
-  useEffect(() => { if (rows.length && !rows.some((row) => String(row.id ?? row.code) === selectedId)) setSelectedId(String(rows[0].id ?? rows[0].code)); }, [rows, selectedId]);
-  const columns = kind === "sources" ? [
-    { title: "数据源", dataIndex: "name", render: (item: string, row: any) => <div><div className="cell-title">{item || "未命名数据源"}</div><div className="cell-sub mono">{row.id}</div></div> },
-    { title: "类型", dataIndex: "type", width: 120 },
-    { title: "Secret 引用", dataIndex: "dsn_secret_ref", render: (item: string) => <span className="mono">{item || "—"}</span> },
-    { title: "状态", dataIndex: "status", width: 110, render: (item: string) => <Tag color={item === "active" ? "green" : "default"}>{item}</Tag> },
-    { title: "操作", width: 90, render: (_: unknown, row: any) => <AntButton type="link" onClick={() => setSelectedId(String(row.id))}>管理</AntButton> }
-  ] : [
-    { title: "设备", dataIndex: "name", render: (item: string, row: any) => <div><div className="cell-title">{item || "未命名设备"}</div><div className="cell-sub mono">{row.serial_no || row.id}</div></div> },
-    { title: "拓扑", dataIndex: "topology_role", width: 120, render: (item: string, row: any) => <div>{item || row.device_type || "—"}<div className="cell-sub">{row.child_count ? `${row.child_count} 个子节点` : ""}</div></div> },
-    { title: "生命周期", dataIndex: "lifecycle_status", width: 130, render: (item: string) => <Tag color={item === "active" ? "green" : "blue"}>{item || "—"}</Tag> },
-    { title: "分配", dataIndex: "workspace_id", width: 130, render: (item: string) => item ? <Tag color="blue">已分配</Tag> : <Tag>未分配</Tag> },
-    { title: "状态", dataIndex: "status", width: 100, render: (item: string) => <Tag color={item === "active" ? "green" : "default"}>{item || "—"}</Tag> },
-    { title: "操作", width: 90, render: (_: unknown, row: any) => <AntButton type="link" onClick={() => setSelectedId(String(row.id))}>管理</AntButton> }
-  ];
-  const sourceOperations: AdminOperation[] = [{ label: "创建数据源", description: "创建系统级连接元数据，仅保存 Secret 引用。", template: { name: "", type: "mysql", dsn_secret_ref: "env://" }, run: api.admin.createSource }, { label: "更新选中数据源", description: "修改名称、类型、Secret 引用或状态。", template: { name: "", type: "mysql", dsn_secret_ref: "env://", status: "active" }, run: (payload) => api.admin.updateSource(selectedId, payload) }, { label: "同步标准站设备", description: "从 THCPN MySQL 同步单个标准站设备。", template: { external_device_id: 0, target_workspace_id: "", project_id: "", site_id: "", product_id: "", serial_no: "", name: "" }, run: (payload) => api.admin.syncStation(selectedId, payload) }, { label: "同步组网站", description: "同步网关及节点，可选择是否级联分配。", template: { external_gateway_id: 0, target_workspace_id: "", project_id: "", site_id: "", assign_nodes: false }, run: (payload) => api.admin.syncGateway(selectedId, payload) }];
-  const deviceOperations: AdminOperation[] = [{ label: "更新设备资料", description: "修改系统设备允许编辑的基础字段。", template: { name: "", serial_no: "", status: "active" }, run: (payload) => api.admin.updateDevice(selectedId, payload) }, { label: "查看子节点", description: "读取当前网关的直接子节点。", template: {}, run: () => api.admin.deviceChildren(selectedId) }, { label: "添加子节点", description: "将指定设备关联为当前网关子节点。", template: { child_device_id: "" }, run: (payload) => api.admin.addDeviceChild(selectedId, payload) }, { label: "移除子节点", description: "解除父子拓扑关系。", template: { child_device_id: "" }, run: (payload) => api.admin.removeDeviceChild(selectedId, String(payload.child_device_id ?? "")), dangerous: true }, { label: "读取 THCPN 配置", description: "查看外部配置与平台快照。", template: {}, run: () => api.admin.deviceConfig(selectedId) }, { label: "更新 THCPN 配置", description: "写入外部设备库并刷新平台 DataStream/Binding。", template: { data_json: {}, image_json: {}, control_json: {} }, run: (payload) => api.admin.updateDeviceConfig(selectedId, payload), dangerous: true }, { label: "读取生命周期", description: "查看当前状态及历史事件。", template: {}, run: () => api.admin.lifecycle(selectedId) }, { label: "更新生命周期", description: "提交新的生命周期状态和原因。", template: { status: "active", reason: "" }, run: (payload) => api.admin.updateLifecycle(selectedId, payload) }, { label: "读取能力", description: "查看设备最终能力集合。", template: {}, run: () => api.admin.capabilities(selectedId) }, { label: "更新能力", description: "替换设备最终能力集合。", template: { capabilities: [] }, run: (payload) => api.admin.updateCapabilities(selectedId, payload) }, { label: "分配到 Workspace", description: "显式选择 Workspace，可选 Project 和 Site。", template: { workspace_id: "", project_id: "", site_id: "" }, run: (payload) => api.admin.assignDevice(selectedId, payload), dangerous: true }, { label: "取消分配", description: "解除当前有效 Workspace 分配。", template: {}, run: () => api.admin.unassignDevice(selectedId), dangerous: true }, { label: "创建相机", description: "创建系统相机及受控绑定信息。", template: { name: "", serial_no: "", provider: "ezviz" }, run: api.admin.createCamera }, { label: "读取相机绑定", description: "查看选中相机的绑定。", template: {}, run: () => api.admin.camera(selectedId) }, { label: "更新相机绑定", description: "修改相机受控字段。", template: {}, run: (payload) => api.admin.updateCamera(selectedId, payload) }];
-  const operations = kind === "sources" ? sourceOperations : deviceOperations;
-  return <>
-    <PageHeader eyebrow={`System / ${kind}`} title={config.title} description={config.desc} actions={<AntButton icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>刷新</AntButton>} />
-    {error ? <Panel><StateView type="error" title={`${config.title}加载失败`} description={error.message} requestId={error.requestId} action={<Button variant="secondary" onClick={() => void query.refetch()}>重新加载</Button>} /></Panel> : query.isLoading ? <Panel><StateView type="loading" title="正在加载" description="正在读取系统范围资源。" /></Panel> : <Panel><div className="admin-list-toolbar"><div className="admin-search"><Search size={15} /><input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder={kind === "sources" ? "搜索数据源名称或 ID" : "搜索设备名称、序列号或 ID"} /></div><Badge tone="info">{filteredRows.length} 条</Badge></div>{filteredRows.length ? <Table rowKey={(row: any) => row.id} rowClassName={(row: any) => String(row.id) === selectedId ? "admin-selected-row" : ""} dataSource={filteredRows} columns={columns} pagination={{ pageSize: 10, showSizeChanger: false }} scroll={{ x: 820 }} /> : <StateView type="empty" title={`没有匹配的${config.title}`} description={keyword ? "请调整搜索条件。" : "服务端当前没有返回可管理资源。"} />}</Panel>}
-    <AdminOperationConsole operations={operations} selectedId={selectedId} onDone={() => { void query.refetch(); }} />
-  </>;
+function Forbidden() {
+  return (
+    <Panel className="forbidden">
+      <StateView
+        type="error"
+        title="403 · 无权访问系统后台"
+        description="系统后台使用独立的管理员账号登录。Workspace Owner 或普通成员权限不能替代系统管理员身份。"
+        action={
+          <a href={`${platformUrl}/dashboard`}>
+            <Button>
+              <Home size={15} />
+              返回用户平台
+            </Button>
+          </a>
+        }
+      />
+    </Panel>
+  );
 }
 
-type AdminOperation = { label: string; description: string; template: JsonRecord; run: (payload: JsonRecord) => Promise<unknown>; dangerous?: boolean };
-function AdminOperationConsole({ operations, selectedId, onDone }: { operations: AdminOperation[]; selectedId: string; onDone: () => void }) { const [index, setIndex] = useState(0); const [payload, setPayload] = useState(() => JSON.stringify(operations[0]?.template ?? {}, null, 2)); const [result, setResult] = useState(""); const [busy, setBusy] = useState(false); const operation = operations[index]; const changeOperation = (value: number) => { setIndex(value); setPayload(JSON.stringify(operations[value]?.template ?? {}, null, 2)); setResult(""); }; const submit = async (event: FormEvent) => { event.preventDefault(); if (operation.dangerous && !window.confirm(`确认执行“${operation.label}”？`)) return; setBusy(true); try { const response = await operation.run(payload.trim() ? JSON.parse(payload) as JsonRecord : {}); setResult(response === undefined ? "操作成功" : JSON.stringify(response, null, 2)); onDone(); } catch (error) { const value = formatApiError(error); setResult(`${value.message}${value.requestId ? `\nrequest id: ${value.requestId}` : ""}`); } finally { setBusy(false); } }; return <Panel className="section-gap admin-operation"><div className="panel-header"><div><h2 className="panel-title">资源操作</h2><div className="panel-kicker">{operation.description}</div></div><div className="selected-resource"><span>当前资源</span><strong className="mono">{selectedId || "创建新资源"}</strong></div></div><form onSubmit={submit}><Select value={index} onChange={changeOperation} options={operations.map((item, value) => ({ value, label: item.dangerous ? `高风险 · ${item.label}` : item.label }))} /><Input.TextArea value={payload} onChange={(event) => setPayload(event.target.value)} autoSize={{ minRows: 5, maxRows: 14 }} style={{ fontFamily: "IBM Plex Mono, monospace", fontSize: 11 }} /><AntButton htmlType="submit" type="primary" danger={operation.dangerous} loading={busy}>执行</AntButton></form>{result && <pre className="admin-json-view">{result}</pre>}</Panel>; }
+function RedirectToAdminLogin() {
+  useEffect(() => {
+    window.location.assign("/admin/login");
+  }, []);
+  return <div className="app-loading">正在进入管理员登录…</div>;
+}
+function AdminGuard() {
+  const { admin: user, loading } = useAdminAuth();
+  if (loading) return <div className="app-loading">正在检查系统权限…</div>;
+  if (!user) return <RedirectToAdminLogin />;
+  return <AdminShell />;
+}
 
-function AdminRoot() { return <Routes><Route path="/admin" element={<AdminGuard />}><Route index element={<AdminOverview />} /><Route path="sources" element={<AdminSourcesPage />} /><Route path="devices" element={<AdminDevicesPage />} /><Route path="metadata" element={<AdminMetadataPage />} /></Route><Route path="*" element={<Navigate to="/admin" replace />} /></Routes>; }
-export function AdminApp() { return <AdminRoot />; }
+function AdminLoginPage() {
+  const { admin, loading, signIn } = useAdminAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  if (loading) return <div className="app-loading">正在检查管理员会话…</div>;
+  if (admin) { window.location.assign("/admin"); return <div className="app-loading">正在进入后台…</div>; }
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); setBusy(true); setError("");
+    try { signIn(await api.adminAuth.login({ email, password })); window.location.assign("/admin"); }
+    catch (reason) { setError(formatApiError(reason).message); }
+    finally { setBusy(false); }
+  };
+  return <main className="admin-auth-page"><section className="admin-auth-panel"><div className="brand-mark"><ShieldCheck size={20} /></div><div className="eyebrow">THCPN / SYSTEM CONTROL</div><h1>管理员登录</h1><p>使用独立的系统管理员账号进入平台管理后台。</p><form onSubmit={submit}><label>管理员邮箱<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required /></label><label>密码<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></label>{error && <div className="admin-login-error">{error}</div>}<button type="submit" disabled={busy}>{busy ? "登录中…" : "登录后台"}</button></form><a href={`${platformUrl}/login`}>返回用户平台登录</a></section></main>;
+}
+
+async function listAllAdminResources(kind: "projects" | "sites") {
+  const workspaces = await api.workspaces.adminList();
+  const responses = await Promise.all(
+    workspaces.items.map((workspace) =>
+      kind === "projects"
+        ? api.projects.adminList(String(workspace.id))
+        : api.sites.adminList(String(workspace.id)),
+    ),
+  );
+  return { items: responses.flatMap((response) => response.items) };
+}
+function AdminOverview() {
+  const sources = useQuery({
+    queryKey: ["admin", "sources"],
+    queryFn: api.admin.sources,
+  });
+  const devices = useQuery({
+    queryKey: ["admin", "devices"],
+    queryFn: api.admin.devices,
+  });
+  const workspaces = useQuery({
+    queryKey: ["admin", "workspaces"],
+    queryFn: api.workspaces.adminList,
+  });
+  const projects = useQuery({
+    queryKey: ["admin", "projects", "all-workspaces"],
+    queryFn: () => listAllAdminResources("projects"),
+  });
+  const sites = useQuery({
+    queryKey: ["admin", "sites", "all-workspaces"],
+    queryFn: () => listAllAdminResources("sites"),
+  });
+  const stat = (query: any) =>
+    query.isError ? "—" : (query.data?.items.length ?? 0);
+  const failures = [
+    { name: "Workspace", query: workspaces },
+    { name: "Project", query: projects },
+    { name: "Site", query: sites },
+    { name: "DataSource", query: sources },
+    { name: "设备", query: devices },
+  ].filter((item) => item.query.isError);
+  return (
+    <>
+      <PageHeader
+        eyebrow="System / overview"
+        title="后台总览"
+        description="平台级 Workspace、Project、Site、设备资产与数据源运行入口。"
+        actions={
+          <Badge tone="info">
+            <ShieldCheck size={13} />
+            系统管理员
+          </Badge>
+        }
+      />
+      <div className="grid grid-4">
+        <Panel
+          className={`admin-stat ${workspaces.isError ? "metric-error" : ""}`}
+        >
+          <Statistic
+            title="Workspace"
+            value={stat(workspaces)}
+            suffix={workspaces.isError ? "不可用" : "个"}
+          />
+        </Panel>
+        <Panel
+          className={`admin-stat ${projects.isError || sites.isError ? "metric-error" : ""}`}
+        >
+          <Statistic
+            title="Project / Site"
+            value={`${stat(projects)} / ${stat(sites)}`}
+          />
+        </Panel>
+        <Panel
+          className={`admin-stat ${sources.isError ? "metric-error" : ""}`}
+        >
+          <Statistic
+            title="数据源"
+            value={stat(sources)}
+            suffix={sources.isError ? "不可用" : "个"}
+          />
+        </Panel>
+        <Panel
+          className={`admin-stat ${devices.isError ? "metric-error" : ""}`}
+        >
+          <Statistic
+            title="系统设备"
+            value={stat(devices)}
+            suffix={devices.isError ? "不可用" : "台"}
+          />
+        </Panel>
+      </div>
+      {failures.length ? (
+        <Panel className="section-gap">
+          <StateView
+            type="error"
+            title="部分统计加载失败"
+            description={failures
+              .map(
+                (item) =>
+                  `${item.name}：${formatApiError(item.query.error).message}`,
+              )
+              .join("；")}
+            requestId={failures
+              .map((item) => formatApiError(item.query.error).requestId)
+              .find(Boolean)}
+          />
+        </Panel>
+      ) : null}
+      <div className="admin-shortcuts section-gap">
+        <Link to="/admin/sources">
+          <Database size={17} />
+          <span>
+            <strong>THCPN 数据源</strong>
+            <small>连接配置与设备同步</small>
+          </span>
+          <ChevronRight size={15} />
+        </Link>
+        <Link to="/admin/devices">
+          <Boxes size={17} />
+          <span>
+            <strong>系统设备</strong>
+            <small>拓扑、分配与生命周期</small>
+          </span>
+          <ChevronRight size={15} />
+        </Link>
+      </div>
+      <Panel className="section-gap">
+        <div className="panel-header">
+          <div>
+            <h2 className="panel-title">控制平面状态</h2>
+            <div className="panel-kicker">
+              平台管理不依赖 Workspace Provider
+            </div>
+          </div>
+          <Badge tone="success">已隔离</Badge>
+        </div>
+        <div className="panel-body">
+          <div className="command-note">
+            设备注册、DataSource、DSN、Binding、拓扑、能力、生命周期与分配只在系统后台操作；涉及
+            Workspace 的动作必须显式选择目标 Workspace。
+          </div>
+        </div>
+      </Panel>
+    </>
+  );
+}
+
+function AdminRoot() {
+  return (
+    <Routes>
+      <Route path="/admin/login" element={<AdminLoginPage />} />
+      <Route path="/admin" element={<AdminGuard />}>
+        <Route index element={<AdminOverview />} />
+        <Route path="sources" element={<AdminSourcesPage />} />
+        <Route path="devices" element={<AdminDevicesPage />} />
+        <Route path="workspaces" element={<AdminWorkspacesPage />} />
+        <Route path="metadata" element={<AdminMetadataPage />} />
+        <Route path="settings" element={<AdminSettingsPage />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/admin" replace />} />
+    </Routes>
+  );
+}
+export function AdminApp() {
+  return <AdminRoot />;
+}

@@ -17,10 +17,13 @@ type Querier interface {
 	AddInvitationPermissions(ctx context.Context, arg AddInvitationPermissionsParams) (int64, error)
 	AddWorkspaceMemberPermissions(ctx context.Context, arg AddWorkspaceMemberPermissionsParams) (int64, error)
 	BlacklistAccessToken(ctx context.Context, arg BlacklistAccessTokenParams) error
+	CascadeInactiveAccessGrants(ctx context.Context) (int64, error)
 	ClaimNextPendingExportJob(ctx context.Context) (ExportJob, error)
+	ClearDeviceProfileImageCover(ctx context.Context, deviceID uuid.UUID) error
 	CloseActiveDeviceAssignment(ctx context.Context, arg CloseActiveDeviceAssignmentParams) (DeviceAssignment, error)
 	CopyInvitationPermissionsToAccessGrant(ctx context.Context, arg CopyInvitationPermissionsToAccessGrantParams) (int64, error)
 	CountActiveWorkspaceOwners(ctx context.Context, workspaceID uuid.UUID) (int64, error)
+	CountDeviceProfileImages(ctx context.Context, deviceID uuid.UUID) (int64, error)
 	CountPermissionsByCodes(ctx context.Context, dollar_1 []string) (int64, error)
 	CreateAccessGrant(ctx context.Context, arg CreateAccessGrantParams) (AccessGrant, error)
 	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) (AuditLog, error)
@@ -34,6 +37,7 @@ type Querier interface {
 	CreateDeviceCapabilityDefinition(ctx context.Context, arg CreateDeviceCapabilityDefinitionParams) (DeviceCapabilityDefinition, error)
 	CreateDeviceLifecycleEvent(ctx context.Context, arg CreateDeviceLifecycleEventParams) (DeviceLifecycleEvent, error)
 	CreateDeviceOperation(ctx context.Context, arg CreateDeviceOperationParams) (DeviceOperation, error)
+	CreateDeviceProfileImage(ctx context.Context, arg CreateDeviceProfileImageParams) (DeviceProfileImage, error)
 	CreateExportJob(ctx context.Context, arg CreateExportJobParams) (ExportJob, error)
 	CreateInvitation(ctx context.Context, arg CreateInvitationParams) (Invitation, error)
 	CreateOrganizationWorkspace(ctx context.Context, arg CreateOrganizationWorkspaceParams) (Workspace, error)
@@ -48,6 +52,7 @@ type Querier interface {
 	DeleteDataset(ctx context.Context, id uuid.UUID) (Dataset, error)
 	DeleteDatasetSources(ctx context.Context, datasetID uuid.UUID) error
 	DeleteDeviceCapabilities(ctx context.Context, deviceID uuid.UUID) error
+	DeleteDeviceProfileImage(ctx context.Context, arg DeleteDeviceProfileImageParams) (DeviceProfileImage, error)
 	DeleteExpiredAuthTokens(ctx context.Context) error
 	DeleteInvitationPermissions(ctx context.Context, invitationID uuid.UUID) error
 	DeleteUserTOTP(ctx context.Context, userID uuid.UUID) (int64, error)
@@ -78,6 +83,9 @@ type Querier interface {
 	GetDataset(ctx context.Context, id uuid.UUID) (Dataset, error)
 	GetDevice(ctx context.Context, id uuid.UUID) (Device, error)
 	GetDeviceConfigSnapshotByExternalConfig(ctx context.Context, arg GetDeviceConfigSnapshotByExternalConfigParams) (DeviceConfigSnapshot, error)
+	GetDeviceProfile(ctx context.Context, deviceID uuid.UUID) (DeviceProfile, error)
+	GetDeviceProfileImage(ctx context.Context, arg GetDeviceProfileImageParams) (DeviceProfileImage, error)
+	GetDeviceProfileSite(ctx context.Context, deviceID uuid.UUID) (GetDeviceProfileSiteRow, error)
 	GetDeviceSourceRefByDevice(ctx context.Context, deviceID uuid.UUID) (DeviceSourceRef, error)
 	GetDeviceSourceRefByExternal(ctx context.Context, arg GetDeviceSourceRefByExternalParams) (DeviceSourceRef, error)
 	GetDeviceWithActiveAssignment(ctx context.Context, id uuid.UUID) (GetDeviceWithActiveAssignmentRow, error)
@@ -116,6 +124,7 @@ type Querier interface {
 	ListDeviceConfigSnapshotsByDevice(ctx context.Context, deviceID uuid.UUID) ([]DeviceConfigSnapshot, error)
 	ListDeviceLifecycleEvents(ctx context.Context, deviceID uuid.UUID) ([]DeviceLifecycleEvent, error)
 	ListDeviceOperationsByDevice(ctx context.Context, deviceID uuid.UUID) ([]DeviceOperation, error)
+	ListDeviceProfileImages(ctx context.Context, deviceID uuid.UUID) ([]DeviceProfileImage, error)
 	ListDeviceRelationsByChild(ctx context.Context, arg ListDeviceRelationsByChildParams) ([]DeviceRelation, error)
 	ListDeviceRelationsByParent(ctx context.Context, arg ListDeviceRelationsByParentParams) ([]DeviceRelation, error)
 	ListDevicesByProject(ctx context.Context, arg ListDevicesByProjectParams) ([]ListDevicesByProjectRow, error)
@@ -140,12 +149,14 @@ type Querier interface {
 	ListWorkspaceMembers(ctx context.Context, workspaceID uuid.UUID) ([]ListWorkspaceMembersRow, error)
 	ListWorkspaces(ctx context.Context) ([]Workspace, error)
 	ListWorkspacesForUser(ctx context.Context, userID uuid.UUID) ([]ListWorkspacesForUserRow, error)
+	LockDeviceProfileUploads(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	MarkDeviceRelationRemovedByDevices(ctx context.Context, arg MarkDeviceRelationRemovedByDevicesParams) (DeviceRelation, error)
 	MarkExportJobExpired(ctx context.Context, id uuid.UUID) (ExportJob, error)
 	MarkExportJobFailed(ctx context.Context, arg MarkExportJobFailedParams) (ExportJob, error)
 	MarkExportJobRunning(ctx context.Context, id uuid.UUID) (ExportJob, error)
 	MarkExportJobSuccess(ctx context.Context, arg MarkExportJobSuccessParams) (ExportJob, error)
 	MarkMissingDeviceRelationsRemoved(ctx context.Context, arg MarkMissingDeviceRelationsRemovedParams) ([]DeviceRelation, error)
+	PromoteFirstDeviceProfileImageCover(ctx context.Context, deviceID uuid.UUID) error
 	RemoveWorkspaceMember(ctx context.Context, arg RemoveWorkspaceMemberParams) (WorkspaceMember, error)
 	ResetUserCredentialFailure(ctx context.Context, userID uuid.UUID) (UserCredential, error)
 	RevokeAccessGrant(ctx context.Context, id uuid.UUID) (AccessGrant, error)
@@ -154,6 +165,7 @@ type Querier interface {
 	RevokeRefreshSessionByHash(ctx context.Context, refreshTokenHash string) error
 	RevokeRefreshSessionForUser(ctx context.Context, arg RevokeRefreshSessionForUserParams) (int64, error)
 	RotateRefreshSession(ctx context.Context, arg RotateRefreshSessionParams) (AuthRefreshSession, error)
+	SetDeviceProfileImageOrder(ctx context.Context, arg SetDeviceProfileImageOrderParams) error
 	UpdateCameraBindingStatus(ctx context.Context, arg UpdateCameraBindingStatusParams) (CameraBinding, error)
 	UpdateDataSource(ctx context.Context, arg UpdateDataSourceParams) (DataSource, error)
 	UpdateDataStream(ctx context.Context, arg UpdateDataStreamParams) (DataStream, error)
@@ -163,6 +175,7 @@ type Querier interface {
 	UpdateDeviceAssignment(ctx context.Context, arg UpdateDeviceAssignmentParams) (DeviceAssignment, error)
 	UpdateDeviceCapabilityDefinition(ctx context.Context, arg UpdateDeviceCapabilityDefinitionParams) (DeviceCapabilityDefinition, error)
 	UpdateDeviceLifecycle(ctx context.Context, arg UpdateDeviceLifecycleParams) (Device, error)
+	UpdateDeviceProfileImage(ctx context.Context, arg UpdateDeviceProfileImageParams) (DeviceProfileImage, error)
 	UpdateDeviceType(ctx context.Context, arg UpdateDeviceTypeParams) (Device, error)
 	UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error)
 	UpdateSite(ctx context.Context, arg UpdateSiteParams) (Site, error)
@@ -179,6 +192,7 @@ type Querier interface {
 	UpsertCameraDevice(ctx context.Context, arg UpsertCameraDeviceParams) (Device, error)
 	UpsertDataStreamFromSync(ctx context.Context, arg UpsertDataStreamFromSyncParams) (DataStream, error)
 	UpsertDeviceConfigSnapshot(ctx context.Context, arg UpsertDeviceConfigSnapshotParams) (DeviceConfigSnapshot, error)
+	UpsertDeviceProfile(ctx context.Context, arg UpsertDeviceProfileParams) (DeviceProfile, error)
 	UpsertDeviceRelation(ctx context.Context, arg UpsertDeviceRelationParams) (UpsertDeviceRelationRow, error)
 	UpsertDeviceSourceRef(ctx context.Context, arg UpsertDeviceSourceRefParams) (DeviceSourceRef, error)
 	UpsertUserTOTPSetup(ctx context.Context, arg UpsertUserTOTPSetupParams) (UserMfaTotp, error)

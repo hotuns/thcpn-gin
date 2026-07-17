@@ -1,12 +1,13 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { api, authStorage, type User } from "@thcpn/api";
+import { api, adminAuthClearedEvent, adminAuthStorage, authClearedEvent, authStorage, type AdminUser, type User } from "@thcpn/api";
 
 type AuthContextValue = {
   user: User | null;
   loading: boolean;
   signIn: (tokens: { access_token: string; refresh_token: string; user: User }) => void;
+  refreshUser: () => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -29,6 +30,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }).finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    const handleCleared = () => { setUser(null); queryClient.clear(); };
+    window.addEventListener(authClearedEvent, handleCleared);
+    return () => window.removeEventListener(authClearedEvent, handleCleared);
+  }, [queryClient]);
+
   const value = useMemo<AuthContextValue>(() => ({
     user,
     loading,
@@ -36,8 +43,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authStorage.write({ accessToken: tokens.access_token, refreshToken: tokens.refresh_token });
       setUser(tokens.user);
     },
+    refreshUser: async () => {
+      const { user: currentUser } = await api.me();
+      setUser(currentUser);
+    },
     signOut: async () => {
-      try { await api.auth.logout(); } finally {
+      const tokens = authStorage.read();
+      try { await api.auth.logout(tokens?.refreshToken); } finally {
         authStorage.clear();
         setUser(null);
         queryClient.clear();
@@ -58,14 +70,48 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   const location = useLocation();
   if (loading) return <div className="app-loading">正在恢复会话…</div>;
-  if (!user) return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />;
+  if (!user) {
+    const target = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate to={`/login?next=${encodeURIComponent(target)}`} replace />;
+  }
   return <>{children}</>;
 }
 
-export function RequireSystemAdmin({ children, forbidden }: { children: ReactNode; forbidden?: ReactNode }) {
-  const { user, loading } = useAuth();
-  if (loading) return <div className="app-loading">正在检查权限…</div>;
-  if (!user) return <Navigate to="/login?next=%2Fadmin" replace />;
-  if (!user.is_system_admin) return <>{forbidden ?? <div role="alert">403 · 无权访问系统后台</div>}</>;
-  return <>{children}</>;
+type AdminAuthContextValue = {
+  admin: AdminUser | null;
+  loading: boolean;
+  signIn: (tokens: { access_token: string; refresh_token: string; admin: AdminUser }) => void;
+  signOut: () => Promise<void>;
+  refreshAdmin: () => Promise<void>;
+};
+
+const AdminAuthContext = createContext<AdminAuthContextValue | null>(null);
+
+export function AdminAuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
+  const [admin, setAdmin] = useState<AdminUser | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    if (!adminAuthStorage.read()) { setLoading(false); return; }
+    api.adminAuth.me().then(({ admin: current }) => setAdmin(current)).catch(() => adminAuthStorage.clear()).finally(() => setLoading(false));
+  }, []);
+  useEffect(() => {
+    const handleCleared = () => { setAdmin(null); queryClient.clear(); };
+    window.addEventListener(adminAuthClearedEvent, handleCleared);
+    return () => window.removeEventListener(adminAuthClearedEvent, handleCleared);
+  }, [queryClient]);
+  const value = useMemo<AdminAuthContextValue>(() => ({
+    admin,
+    loading,
+    signIn: (tokens) => { adminAuthStorage.write({ accessToken: tokens.access_token, refreshToken: tokens.refresh_token }); setAdmin(tokens.admin); },
+    signOut: async () => { const tokens = adminAuthStorage.read(); try { await api.adminAuth.logout(tokens?.refreshToken); } finally { adminAuthStorage.clear(); setAdmin(null); queryClient.clear(); } },
+    refreshAdmin: async () => { const { admin: current } = await api.adminAuth.me(); setAdmin(current); },
+  }), [admin, loading, queryClient]);
+  return <AdminAuthContext.Provider value={value}>{children}</AdminAuthContext.Provider>;
+}
+
+export function useAdminAuth() {
+  const context = useContext(AdminAuthContext);
+  if (!context) throw new Error("useAdminAuth must be used inside AdminAuthProvider");
+  return context;
 }

@@ -809,7 +809,7 @@ device_source_configs
 - `adapter_code` 对应代码中注册的 adapter。
 - `dsn_secret_ref` 不保存明文连接串，真实 DSN 放在环境变量、Secret Manager 或部署配置中。
 - 普通 Workspace 用户不创建、不编辑、不查看设备源配置。
-- THCPN 设备源当前已产品化为系统管理员后台能力：`users.is_system_admin = true` 的账号可通过 `/api/v1/admin/data-sources` 和前端 `/admin/data-sources` 维护系统级 DataSource，把外部设备同步为系统设备资产，再通过系统设备资产 / 设备分配入口分配给 Workspace。
+- THCPN 设备源当前已产品化为系统管理员后台能力：`system_admins` 中的有效管理员可通过 `/api/v1/admin/data-sources` 和前端 `/admin/data-sources` 维护系统级 DataSource，把外部设备同步为系统设备资产，再通过系统设备资产 / 设备分配入口分配给 Workspace。
 
 当前代码实现保留 `data_sources` 表作为系统级设备源实例配置载体；`data_sources.type` 表示物理连接类型，不再保存工作区归属字段。普通工作区控制台不暴露数据源管理；业务读取策略由 `data_stream_bindings.adapter_code` 决定，不再按 `data_sources.type` 直接分发。
 

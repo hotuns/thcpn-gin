@@ -1,6 +1,48 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestLoadDotEnvUsesFileWhenEnvironmentIsUnset(t *testing.T) {
+	dir := t.TempDir()
+	envFile := filepath.Join(dir, ".env")
+	if err := os.WriteFile(envFile, []byte("SERVER_ADDR=:9191\nREDIS_ADDR=127.0.0.1:6391\n"), 0o600); err != nil {
+		t.Fatalf("write env file: %v", err)
+	}
+	t.Setenv("ENV_FILE", envFile)
+	os.Unsetenv("SERVER_ADDR")
+	os.Unsetenv("REDIS_ADDR")
+
+	if err := loadDotEnv(); err != nil {
+		t.Fatalf("load dotenv: %v", err)
+	}
+	if got := os.Getenv("SERVER_ADDR"); got != ":9191" {
+		t.Fatalf("expected SERVER_ADDR from dotenv, got %q", got)
+	}
+	if got := os.Getenv("REDIS_ADDR"); got != "127.0.0.1:6391" {
+		t.Fatalf("expected REDIS_ADDR from dotenv, got %q", got)
+	}
+}
+
+func TestLoadDotEnvDoesNotOverrideEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	envFile := filepath.Join(dir, ".env")
+	if err := os.WriteFile(envFile, []byte("SERVER_ADDR=:9191\n"), 0o600); err != nil {
+		t.Fatalf("write env file: %v", err)
+	}
+	t.Setenv("ENV_FILE", envFile)
+	t.Setenv("SERVER_ADDR", ":9292")
+
+	if err := loadDotEnv(); err != nil {
+		t.Fatalf("load dotenv: %v", err)
+	}
+	if got := os.Getenv("SERVER_ADDR"); got != ":9292" {
+		t.Fatalf("dotenv overrode existing SERVER_ADDR: %q", got)
+	}
+}
 
 func TestDefaultConfigIsValid(t *testing.T) {
 	cfg := Default()

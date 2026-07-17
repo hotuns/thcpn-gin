@@ -22,8 +22,8 @@
 - `/login`, `/register`: 密码、短信、MFA 登录和密码注册。
 - `/dashboard`: Workspace 设备、Dataset 和 Export 汇总。
 - `/workspaces`: Workspace 列表、创建和切换。
-- `/devices`: 设备列表、详情、子节点、相机会话、校准、升级、转移和解绑。
-- `/device-data`: DataStream、设备/流遥测、媒体、下载和删除。
+- `/devices`: 设备列表；选择设备后进入 `/devices/:deviceId` 查看概览、数据或实时视频、配置和操作记录。
+- `/device-data`: 旧链接兼容入口，自动跳转到设备详情的数据或实时视频标签。
 - `/datasets`: Dataset CRUD、预览和导出。
 - `/exports`: ExportJob 创建、详情和下载。
 - `/settings?tab=resources`: Project 和 Site。
@@ -41,6 +41,8 @@
 高频流程使用结构化表单。THCPN 配置、权限 scope、角色权限等低频复杂请求使用 JSON 操作台，字段结构直接遵循 OpenAPI；高风险操作提交前必须二次确认。
 
 ## Commands
+
+`npm run generate:api` regenerates `packages/api/src/openapi.ts` from `../docs/openapi.yaml`. Root `typecheck` and `build` run this automatically so contract drift fails at compile time.
 
 ```bash
 npm install

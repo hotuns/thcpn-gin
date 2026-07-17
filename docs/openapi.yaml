@@ -484,7 +484,6 @@ paths:
                       phone: "13800000000"
                       email: zhangsan@example.com
                       status: active
-                      is_system_admin: false
                       last_login_at: "2026-06-30T14:12:44+08:00"
                     created: true
         "400":
@@ -787,13 +786,91 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/admin/auth/password/login:
+    post:
+      tags: [Admin]
+      operationId: adminPasswordLogin
+      summary: Administrator password login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminPasswordLoginRequest"
+      responses:
+        "200":
+          description: Administrator session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminLoginResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/admin/auth/refresh:
+    post:
+      tags: [Admin]
+      operationId: adminRefresh
+      summary: Refresh administrator session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: Refreshed administrator session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminLoginResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/admin/me:
+    get:
+      tags: [Admin]
+      operationId: adminMe
+      summary: Get current administrator
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current administrator.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [admin]
+                properties:
+                  admin:
+                    $ref: "#/components/schemas/SystemAdmin"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/admin/auth/logout:
+    post:
+      tags: [Admin]
+      operationId: adminLogout
+      summary: Logout administrator
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "204":
+          description: Administrator session revoked.
   /api/v1/admin/workspaces:
     get:
       tags:
         - Admin
       operationId: adminListWorkspaces
       summary: List all workspaces for system admin
-      description: Requires `users.is_system_admin = true`. This endpoint does not depend on workspace membership.
+      description: Requires a valid administrator bearer token. This endpoint does not depend on workspace membership.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -816,7 +893,7 @@ paths:
         - Admin
       operationId: adminListProjects
       summary: List projects in a workspace for system admin
-      description: Requires `users.is_system_admin = true`. Used by the admin THCPN device sync form.
+      description: Requires a valid administrator bearer token. Used by the admin THCPN device sync form.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -847,7 +924,7 @@ paths:
         - Admin
       operationId: adminListSites
       summary: List sites in a workspace or project for system admin
-      description: Requires `users.is_system_admin = true`. Used by the admin THCPN device sync form.
+      description: Requires a valid administrator bearer token. Used by the admin THCPN device sync form.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -883,7 +960,7 @@ paths:
         - Admin
       operationId: adminListDataSources
       summary: List system data sources
-      description: Requires `users.is_system_admin = true`. Returns system-level device source instances such as THCPN MySQL.
+      description: Requires a valid administrator bearer token. Returns system-level device source instances such as THCPN MySQL.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -905,7 +982,7 @@ paths:
         - Admin
       operationId: adminCreateDataSource
       summary: Create system data source
-      description: Requires `users.is_system_admin = true`. Creates system-level data source metadata with no workspace owner.
+      description: Requires a valid administrator bearer token. Creates system-level data source metadata with no workspace owner.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -940,7 +1017,7 @@ paths:
         - Admin
       operationId: adminUpdateDataSource
       summary: Update system data source
-      description: Requires `users.is_system_admin = true`. The target data source is system-level.
+      description: Requires a valid administrator bearer token. The target data source is system-level.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -978,7 +1055,7 @@ paths:
       operationId: adminSyncTHCPNStandardStationDevice
       summary: Sync a THCPN standard station device into the system asset registry
       description: >
-        Requires `users.is_system_admin = true`. Uses a system-level THCPN MySQL DataSource to read the external
+        Requires a valid administrator bearer token. Uses a system-level THCPN MySQL DataSource to read the external
         device and latest config, then creates or updates platform Device, DeviceSourceRef, DeviceConfigSnapshot,
         DataStreams and DataStreamBindings. `target_workspace_id` is optional; when omitted, the Device remains
         an unassigned system asset until an admin assigns it through the system device asset APIs.
@@ -1019,7 +1096,7 @@ paths:
       operationId: adminSyncTHCPNGateway
       summary: Sync a THCPN gateway topology into the system asset registry
       description: >
-        Requires `users.is_system_admin = true`. Reads `gate_node` for the external gateway, synchronizes
+        Requires a valid administrator bearer token. Reads `gate_node` for the external gateway, synchronizes
         the gateway and node devices as independent platform Devices, and stores gateway-node relations.
         Node assignment is explicit and only runs when `assign_nodes` is true.
       security:
@@ -1056,7 +1133,7 @@ paths:
         - Admin
       operationId: adminCreateCamera
       summary: Create or update an Ezviz camera device
-      description: Requires `users.is_system_admin = true`. Creates or updates a system-level camera Device, stores Ezviz binding metadata, adds the `video_stream` capability, and can optionally assign the camera to a Workspace.
+      description: Requires a valid administrator bearer token. Creates or updates a system-level camera Device, stores Ezviz binding metadata, adds the `video_stream` capability, and can optionally assign the camera to a Workspace.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1093,7 +1170,7 @@ paths:
         - Admin
       operationId: adminGetCamera
       summary: Get an Ezviz camera binding
-      description: Requires `users.is_system_admin = true`.
+      description: Requires a valid administrator bearer token.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1119,7 +1196,7 @@ paths:
         - Admin
       operationId: adminUpdateCamera
       summary: Update an Ezviz camera binding
-      description: Requires `users.is_system_admin = true`. Updates Ezviz serial/channel/quality/encryption metadata for an existing camera Device.
+      description: Requires a valid administrator bearer token. Updates Ezviz serial/channel/quality/encryption metadata for an existing camera Device.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1154,7 +1231,7 @@ paths:
         - Admin
       operationId: adminListDeviceCapabilityDefinitions
       summary: List device capability metadata
-      description: Requires `users.is_system_admin = true`.
+      description: Requires a valid administrator bearer token.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1176,7 +1253,7 @@ paths:
         - Admin
       operationId: adminCreateDeviceCapabilityDefinition
       summary: Create device capability metadata
-      description: Requires `users.is_system_admin = true`.
+      description: Requires a valid administrator bearer token.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1215,7 +1292,7 @@ paths:
         - Admin
       operationId: adminUpdateDeviceCapabilityDefinition
       summary: Update device capability metadata
-      description: Requires `users.is_system_admin = true`.
+      description: Requires a valid administrator bearer token.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1248,7 +1325,7 @@ paths:
         - Admin
       operationId: adminListSystemRoles
       summary: List system role metadata
-      description: Requires `users.is_system_admin = true`.
+      description: Requires a valid administrator bearer token.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1277,7 +1354,7 @@ paths:
         - Admin
       operationId: adminUpdateSystemRole
       summary: Update system role metadata
-      description: Requires `users.is_system_admin = true`. Updates role display name; role code and permissions remain stable.
+      description: Requires a valid administrator bearer token. Updates role display name; role code and permissions remain stable.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1310,7 +1387,7 @@ paths:
         - Admin
       operationId: adminListSystemDeviceAssets
       summary: List system device assets
-      description: Requires `users.is_system_admin = true`. Includes both unassigned devices and devices with an active Workspace assignment.
+      description: Requires a valid administrator bearer token. Includes both unassigned devices and devices with an active Workspace assignment.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1335,7 +1412,7 @@ paths:
         - Admin
       operationId: adminUpdateSystemDeviceAsset
       summary: Update system device asset
-      description: Requires `users.is_system_admin = true`. Updates asset fields, device type, and final capability codes. Assignment, topology relations, and lifecycle are managed by separate admin actions.
+      description: Requires a valid administrator bearer token. Updates asset fields, device type, and final capability codes. Assignment, topology relations, and lifecycle are managed by separate admin actions.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1372,7 +1449,7 @@ paths:
         - Admin
       operationId: adminListDeviceChildren
       summary: List gateway child devices for a system device asset
-      description: Requires `users.is_system_admin = true`. Returns active gateway-node relations, including unassigned child devices.
+      description: Requires a valid administrator bearer token. Returns active gateway-node relations, including unassigned child devices.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1396,7 +1473,7 @@ paths:
         - Admin
       operationId: adminAddDeviceChild
       summary: Add a gateway child relation
-      description: Requires `users.is_system_admin = true`. The parent and child must be synced system devices from the same data source; the child must not already belong to another gateway.
+      description: Requires a valid administrator bearer token. The parent and child must be synced system devices from the same data source; the child must not already belong to another gateway.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1438,7 +1515,7 @@ paths:
         - Admin
       operationId: adminRemoveDeviceChild
       summary: Remove a gateway child relation
-      description: Requires `users.is_system_admin = true`. Marks the active gateway-node relation as removed.
+      description: Requires a valid administrator bearer token. Marks the active gateway-node relation as removed.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1465,7 +1542,7 @@ paths:
         - Admin
       operationId: adminGetTHCPNDeviceConfig
       summary: Get latest THCPN device config
-      description: Requires `users.is_system_admin = true`. Returns the latest THCPN `device_config` row and the latest platform config snapshot for a synced THCPN device.
+      description: Requires a valid administrator bearer token. Returns the latest THCPN `device_config` row and the latest platform config snapshot for a synced THCPN device.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1491,7 +1568,7 @@ paths:
         - Admin
       operationId: adminUpdateTHCPNDeviceConfig
       summary: Insert and apply a new THCPN device config
-      description: Requires `users.is_system_admin = true`. Inserts a new row into the THCPN legacy `device_config` table, then applies the config to platform config snapshots, data streams and bindings.
+      description: Requires a valid administrator bearer token. Inserts a new row into the THCPN legacy `device_config` table, then applies the config to platform config snapshots, data streams and bindings.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1526,7 +1603,7 @@ paths:
         - Admin
       operationId: adminGetDeviceLifecycle
       summary: Get system device lifecycle timeline
-      description: Requires `users.is_system_admin = true`.
+      description: Requires a valid administrator bearer token.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1550,7 +1627,7 @@ paths:
         - Admin
       operationId: adminUpdateDeviceLifecycle
       summary: Update system device lifecycle state
-      description: Requires `users.is_system_admin = true`. Lifecycle transitions are recorded but not constrained by a workflow.
+      description: Requires a valid administrator bearer token. Lifecycle transitions are recorded but not constrained by a workflow.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1585,7 +1662,7 @@ paths:
         - Admin
       operationId: adminGetDeviceCapabilities
       summary: Get system device capabilities
-      description: Requires `users.is_system_admin = true`. Returns the final effective device capability codes.
+      description: Requires a valid administrator bearer token. Returns the final effective device capability codes.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1609,7 +1686,7 @@ paths:
         - Admin
       operationId: adminUpdateDeviceCapabilities
       summary: Replace system device capabilities
-      description: Requires `users.is_system_admin = true`. Replaces the final effective capability set for this device.
+      description: Requires a valid administrator bearer token. Replaces the final effective capability set for this device.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1644,7 +1721,7 @@ paths:
         - Admin
       operationId: adminAssignSystemDevice
       summary: Assign or transfer a system device asset
-      description: Requires `users.is_system_admin = true`. Creates an active assignment for an unassigned device, updates placement within the same Workspace, or transfers the active assignment to another Workspace.
+      description: Requires a valid administrator bearer token. Creates an active assignment for an unassigned device, updates placement within the same Workspace, or transfers the active assignment to another Workspace.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1678,7 +1755,7 @@ paths:
         - Admin
       operationId: adminRemoveSystemDeviceAssignment
       summary: Remove the active assignment from a system device asset
-      description: Requires `users.is_system_admin = true`. The system Device remains in the asset registry.
+      description: Requires a valid administrator bearer token. The system Device remains in the asset registry.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -2271,6 +2348,168 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/devices/{device_id}/profile:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags: [Devices]
+      operationId: getDeviceProfile
+      summary: Get device-owned profile and asset gallery
+      description: Requires `device.view`. Empty device location fields inherit the active Site location.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Device profile with effective location and signed image previews.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceProfile"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
+    patch:
+      tags: [Devices]
+      operationId: updateDeviceProfile
+      summary: Update device-owned profile
+      description: Requires `device.configure`. Latitude and longitude must be supplied together.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDeviceProfileRequest"
+      responses:
+        "200":
+          description: Updated device profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceProfile"
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/devices/{device_id}/profile/images:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    post:
+      tags: [Devices]
+      operationId: uploadDeviceProfileImages
+      summary: Upload device asset images
+      description: Requires `device.configure`. Accepts up to 12 total JPEG, PNG or WebP images, 10 MB each.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [files]
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        "201":
+          description: Uploaded images.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceProfileImageListResponse"
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/devices/{device_id}/profile/images/order:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    put:
+      tags: [Devices]
+      operationId: reorderDeviceProfileImages
+      summary: Reorder all device asset images
+      description: Requires `device.configure`.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [image_ids]
+              properties:
+                image_ids:
+                  type: array
+                  items: { $ref: "#/components/schemas/UUID" }
+      responses:
+        "200":
+          description: Reordered images.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceProfileImageListResponse" }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/devices/{device_id}/profile/images/{image_id}:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+      - name: image_id
+        in: path
+        required: true
+        schema: { $ref: "#/components/schemas/UUID" }
+    patch:
+      tags: [Devices]
+      operationId: updateDeviceProfileImage
+      summary: Update image caption or cover state
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                caption: { type: string, nullable: true }
+                is_cover: { type: boolean }
+      responses:
+        "200":
+          description: Updated image.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceProfileImage" }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
+    delete:
+      tags: [Devices]
+      operationId: deleteDeviceProfileImage
+      summary: Delete a device asset image
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "204": { description: Image deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
   /api/v1/devices/{device_id}/camera/live-session:
     parameters:
       - $ref: "#/components/parameters/DeviceID"
@@ -3244,6 +3483,17 @@ paths:
           required: true
           schema:
             $ref: "#/components/schemas/UUID"
+        - name: scope_type
+          in: query
+          required: false
+          description: When supplied with `scope_id`, returns only direct grants on that scope and authorizes `share.view` on the scope instead of the whole Workspace.
+          schema:
+            $ref: "#/components/schemas/AccessGrantScopeType"
+        - name: scope_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/UUID"
       responses:
         "200":
           description: Access grants in the workspace.
@@ -3359,6 +3609,17 @@ paths:
         - name: workspace_id
           in: query
           required: true
+          schema:
+            $ref: "#/components/schemas/UUID"
+        - name: scope_type
+          in: query
+          required: false
+          description: When supplied with `scope_id`, returns only direct invitations on that scope and authorizes `share.view` on the scope.
+          schema:
+            $ref: "#/components/schemas/AccessGrantScopeType"
+        - name: scope_id
+          in: query
+          required: false
           schema:
             $ref: "#/components/schemas/UUID"
       responses:
@@ -4385,7 +4646,6 @@ components:
         - id
         - name
         - status
-        - is_system_admin
       properties:
         id:
           $ref: "#/components/schemas/UUID"
@@ -4397,22 +4657,70 @@ components:
           $ref: "#/components/schemas/Email"
         status:
           $ref: "#/components/schemas/UserStatus"
-        is_system_admin:
-          type: boolean
-          description: Whether the user can access `/api/v1/admin/*` APIs and the `/admin` frontend.
         phone_verified_at:
           $ref: "#/components/schemas/Timestamp"
         email_verified_at:
           $ref: "#/components/schemas/Timestamp"
         last_login_at:
           $ref: "#/components/schemas/Timestamp"
+    SystemAdmin:
+      type: object
+      required:
+        - id
+        - name
+        - email
+        - status
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        name:
+          type: string
+        email:
+          $ref: "#/components/schemas/Email"
+        status:
+          $ref: "#/components/schemas/UserStatus"
+        last_login_at:
+          $ref: "#/components/schemas/Timestamp"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    AdminPasswordLoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          $ref: "#/components/schemas/Email"
+        password:
+          type: string
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+    AdminLoginResponse:
+      type: object
+      required: [access_token, refresh_token, token_type, expires_in, refresh_expires_in, admin]
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        token_type:
+          type: string
+        expires_in:
+          type: integer
+        refresh_expires_in:
+          type: integer
+        admin:
+          $ref: "#/components/schemas/SystemAdmin"
     Actor:
       type: object
       required:
         - id
         - name
         - status
-        - is_system_admin
       properties:
         id:
           $ref: "#/components/schemas/UUID"
@@ -4424,8 +4732,6 @@ components:
           $ref: "#/components/schemas/Email"
         status:
           $ref: "#/components/schemas/UserStatus"
-        is_system_admin:
-          type: boolean
         phone_verified_at:
           $ref: "#/components/schemas/Timestamp"
         email_verified_at:
@@ -4471,7 +4777,6 @@ components:
         - id
         - name
         - status
-        - is_system_admin
         - created_at
         - updated_at
       properties:
@@ -4485,8 +4790,6 @@ components:
           $ref: "#/components/schemas/Email"
         status:
           $ref: "#/components/schemas/UserStatus"
-        is_system_admin:
-          type: boolean
         created_at:
           $ref: "#/components/schemas/Timestamp"
         updated_at:
@@ -4976,6 +5279,94 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Device"
+    DeviceProfileLocation:
+      type: object
+      properties:
+        location_text:
+          type: string
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+    DeviceProfileSiteSummary:
+      type: object
+      required: [id, name]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        name: { type: string }
+    DeviceProfileImage:
+      type: object
+      required:
+        - id
+        - device_id
+        - original_filename
+        - content_type
+        - size_bytes
+        - sort_order
+        - is_cover
+        - preview_url
+        - preview_expires_at
+        - uploaded_by
+        - created_at
+        - updated_at
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        device_id: { $ref: "#/components/schemas/UUID" }
+        original_filename: { type: string }
+        content_type: { type: string, enum: [image/jpeg, image/png, image/webp] }
+        size_bytes: { type: integer, format: int64 }
+        width: { type: integer }
+        height: { type: integer }
+        caption: { type: string }
+        sort_order: { type: integer }
+        is_cover: { type: boolean }
+        preview_url: { type: string, format: uri-reference }
+        preview_expires_at: { $ref: "#/components/schemas/Timestamp" }
+        uploaded_by: { $ref: "#/components/schemas/UUID" }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+    DeviceProfileImageListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/DeviceProfileImage" }
+    DeviceProfile:
+      type: object
+      required: [device_id, location_source, images, can_configure]
+      properties:
+        device_id: { $ref: "#/components/schemas/UUID" }
+        description: { type: string }
+        location_text: { type: string }
+        latitude: { type: number, format: double }
+        longitude: { type: number, format: double }
+        effective_location: { $ref: "#/components/schemas/DeviceProfileLocation" }
+        location_source:
+          type: string
+          enum: [device, site, none]
+        site: { $ref: "#/components/schemas/DeviceProfileSiteSummary" }
+        images:
+          type: array
+          items: { $ref: "#/components/schemas/DeviceProfileImage" }
+        can_configure:
+          type: boolean
+        updated_by: { $ref: "#/components/schemas/UUID" }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+    UpdateDeviceProfileRequest:
+      type: object
+      properties:
+        description: { type: string, nullable: true }
+        location_text: { type: string, nullable: true }
+        latitude: { type: number, format: double, nullable: true, minimum: -90, maximum: 90 }
+        longitude: { type: number, format: double, nullable: true, minimum: -180, maximum: 180 }
     CameraProvider:
       type: string
       enum:
@@ -6611,6 +7002,9 @@ components:
           type: boolean
         allow_api_access:
           type: boolean
+        parent_grant_id:
+          $ref: "#/components/schemas/UUID"
+          description: Source grant when this authorization was created through allowed resharing.
         created_by:
           $ref: "#/components/schemas/UUID"
         status:
@@ -6712,6 +7106,9 @@ components:
           $ref: "#/components/schemas/UUID"
         expires_at:
           $ref: "#/components/schemas/Timestamp"
+        parent_grant_id:
+          $ref: "#/components/schemas/UUID"
+          description: Source grant preserved when the invitation is accepted.
         invited_by:
           $ref: "#/components/schemas/UUID"
         status:

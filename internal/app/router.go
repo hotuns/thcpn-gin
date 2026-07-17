@@ -14,6 +14,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"thcpn-gin/internal/accessgrant"
+	"thcpn-gin/internal/adminauth"
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/audit"
 	"thcpn-gin/internal/auth"
@@ -25,6 +26,7 @@ import (
 	"thcpn-gin/internal/db"
 	"thcpn-gin/internal/db/sqlc"
 	"thcpn-gin/internal/device"
+	"thcpn-gin/internal/deviceprofile"
 	emailx "thcpn-gin/internal/email"
 	"thcpn-gin/internal/export"
 	"thcpn-gin/internal/httpx"
@@ -107,6 +109,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	objectSigner := objectstore.NewSigner(cfg.ObjectStore, cfg.Auth.JWTSecret)
 	objectStore := objectstore.NewStore(cfg.ObjectStore)
 	objectHandler := objectstore.NewHandler(objectStore, objectSigner)
+	deviceProfileService := deviceprofile.NewService(deps.Postgres, objectStore, objectSigner)
 	mediaService := media.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil), objectSigner, cfg.QueryLimits, objectStore)
 	exportService := export.NewService(deps.Postgres, objectSigner, cfg.Export)
 	tokenManager := auth.NewTokenManager(cfg.Auth.JWTSecret, time.Duration(cfg.Auth.AccessTokenTTLMinutes)*time.Minute)
@@ -121,8 +124,11 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	}
 	emailCodeStore := auth.NewEmailCodeStore(deps.Redis, cfg.Auth.JWTSecret, cfg.Email)
 	authService := auth.NewService(deps.Postgres, tokenManager, smsCodeStore, smsSender, emailCodeStore, emailSender, cfg.Auth, cfg.SMS, cfg.Email)
+	adminTokenManager := auth.NewTokenManager(cfg.Auth.AdminJWTSecret, time.Duration(cfg.Auth.AccessTokenTTLMinutes)*time.Minute)
+	adminAuthService := adminauth.NewService(deps.Postgres, adminTokenManager, time.Duration(cfg.Auth.AccessTokenTTLMinutes)*time.Minute, time.Duration(cfg.Auth.RefreshTokenTTLDays)*24*time.Hour)
 
 	authHandler := auth.NewHandler(authService, auditService)
+	adminAuthHandler := adminauth.NewHandler(adminAuthService)
 	userHandler := user.NewHandler(userService)
 	workspaceHandler := workspace.NewHandler(workspaceService, auditService)
 	memberHandler := member.NewHandler(memberService, permissionChecker, auditService)
@@ -134,10 +140,14 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 			return uuid.Nil, false
 		}
 		return actor.UserID, true
+	}, func(c *gin.Context) bool {
+		actor, ok := auth.ActorFromContext(c)
+		return ok && actor.IsSystemAdmin
 	})
 	projectHandler := project.NewHandler(projectService, permissionChecker, auditService)
 	siteHandler := site.NewHandler(siteService, permissionChecker, auditService)
 	deviceHandler := device.NewHandler(deviceService, permissionChecker, auditService)
+	deviceProfileHandler := deviceprofile.NewHandler(deviceProfileService, permissionChecker, auditService)
 	cameraHandler := camera.NewHandler(cameraService, permissionChecker, auditService)
 	dataStreamHandler := datastream.NewHandler(dataStreamService, permissionChecker, auditService)
 	datasetHandler := dataset.NewHandler(datasetService, permissionChecker, auditService)
@@ -161,6 +171,8 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	api.POST("/auth/password/register", authHandler.RegisterWithPassword)
 	api.POST("/auth/password/login", authHandler.LoginWithPassword)
 	api.POST("/auth/refresh", authHandler.Refresh)
+	api.POST("/admin/auth/password/login", adminAuthHandler.Login)
+	api.POST("/admin/auth/refresh", adminAuthHandler.Refresh)
 	if cfg.Auth.DevRegisterEnabled {
 		api.POST("/auth/register", userHandler.Register)
 	} else {
@@ -184,8 +196,10 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.GET("/workspaces", workspaceHandler.List)
 	authed.POST("/workspaces", workspaceHandler.Create)
 	authed.GET("/permissions/catalog", permissionCatalogHandler.Catalog)
-	admin := authed.Group("/admin")
-	admin.Use(auth.RequireSystemAdmin())
+	admin := api.Group("/admin")
+	admin.Use(adminauth.Middleware(adminTokenManager, adminAuthService))
+	admin.GET("/me", adminAuthHandler.Me)
+	admin.POST("/auth/logout", adminAuthHandler.Logout)
 	admin.GET("/workspaces", workspaceHandler.AdminList)
 	admin.GET("/projects", projectHandler.AdminList)
 	admin.GET("/sites", siteHandler.AdminList)
@@ -214,6 +228,21 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.PATCH("/data-sources/:data_source_id", dataSourceHandler.AdminUpdateDataSource)
 	admin.POST("/data-sources/:data_source_id/thcpn-standard-station/devices", dataSourceHandler.AdminSyncTHCPNStandardStation)
 	admin.POST("/data-sources/:data_source_id/thcpn-standard-station/gateways", dataSourceHandler.AdminSyncTHCPNGateway)
+	admin.GET("/workspaces/:workspace_id/members", memberHandler.List)
+	admin.POST("/workspaces/:workspace_id/members", memberHandler.Add)
+	admin.PATCH("/workspaces/:workspace_id/members/:member_id", memberHandler.UpdateRole)
+	admin.DELETE("/workspaces/:workspace_id/members/:member_id", memberHandler.Remove)
+	admin.GET("/access-grants", accessGrantHandler.ListGrants)
+	admin.POST("/access-grants", accessGrantHandler.CreateGrant)
+	admin.DELETE("/access-grants/:access_grant_id", accessGrantHandler.RevokeGrant)
+	admin.GET("/invitations", accessGrantHandler.ListInvitations)
+	admin.POST("/invitations", accessGrantHandler.CreateInvitation)
+	admin.DELETE("/invitations/:invitation_id", accessGrantHandler.RevokeInvitation)
+	admin.GET("/audit-logs", auditHandler.List)
+	admin.POST("/projects", projectHandler.Create)
+	admin.PATCH("/projects/:project_id", projectHandler.Update)
+	admin.POST("/sites", siteHandler.Create)
+	admin.PATCH("/sites/:site_id", siteHandler.Update)
 	authed.GET("/workspaces/:workspace_id/members", memberHandler.List)
 	authed.POST("/workspaces/:workspace_id/members", memberHandler.Add)
 	authed.PATCH("/workspaces/:workspace_id/members/:member_id", memberHandler.UpdateRole)
@@ -256,6 +285,12 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.POST("/devices/:device_id/unbind", deviceHandler.Unbind)
 	authed.GET("/devices/:device_id", deviceHandler.Get)
 	authed.PATCH("/devices/:device_id", deviceHandler.Update)
+	authed.GET("/devices/:device_id/profile", deviceProfileHandler.Get)
+	authed.PATCH("/devices/:device_id/profile", deviceProfileHandler.Update)
+	authed.POST("/devices/:device_id/profile/images", deviceProfileHandler.Upload)
+	authed.PATCH("/devices/:device_id/profile/images/:image_id", deviceProfileHandler.UpdateImage)
+	authed.PUT("/devices/:device_id/profile/images/order", deviceProfileHandler.Reorder)
+	authed.DELETE("/devices/:device_id/profile/images/:image_id", deviceProfileHandler.DeleteImage)
 	authed.GET("/data-streams", dataStreamHandler.List)
 	authed.GET("/data-streams/:data_stream_id/telemetry", telemetryHandler.QueryDataStream)
 	authed.GET("/data-streams/:data_stream_id/media", mediaHandler.ListDataStream)

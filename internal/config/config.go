@@ -4,9 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v3"
 )
 
@@ -48,6 +50,8 @@ type RedisConfig struct {
 type AuthConfig struct {
 	JWTSecretEnv          string         `yaml:"jwt_secret_env"`
 	JWTSecret             string         `yaml:"jwt_secret"`
+	AdminJWTSecretEnv     string         `yaml:"admin_jwt_secret_env"`
+	AdminJWTSecret        string         `yaml:"admin_jwt_secret"`
 	AccessTokenTTLMinutes int            `yaml:"access_token_ttl_minutes"`
 	RefreshTokenTTLDays   int            `yaml:"refresh_token_ttl_days"`
 	DevUserHeaderEnabled  bool           `yaml:"dev_user_header_enabled"`
@@ -145,6 +149,8 @@ func Default() Config {
 		Auth: AuthConfig{
 			JWTSecretEnv:          "JWT_SECRET",
 			JWTSecret:             "dev-insecure-change-me",
+			AdminJWTSecretEnv:     "ADMIN_JWT_SECRET",
+			AdminJWTSecret:        "dev-admin-insecure-change-me",
 			AccessTokenTTLMinutes: 1440,
 			RefreshTokenTTLDays:   30,
 			DevUserHeaderEnabled:  true,
@@ -214,6 +220,9 @@ func Default() Config {
 }
 
 func Load() (Config, error) {
+	if err := loadDotEnv(); err != nil {
+		return Config{}, err
+	}
 	cfg := Default()
 
 	if path := strings.TrimSpace(os.Getenv("CONFIG_FILE")); path != "" {
@@ -235,6 +244,45 @@ func Load() (Config, error) {
 	return cfg, nil
 }
 
+// loadDotEnv makes local development independent from the process that starts
+// the binary. Existing environment variables always win over values in .env.
+func loadDotEnv() error {
+	paths := make([]string, 0, 2)
+	if path := strings.TrimSpace(os.Getenv("ENV_FILE")); path != "" {
+		paths = append(paths, path)
+	} else if cwd, err := os.Getwd(); err == nil {
+		for dir := cwd; ; dir = filepath.Dir(dir) {
+			paths = append(paths, filepath.Join(dir, ".env"))
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+		}
+	}
+
+	for _, path := range paths {
+		if _, err := os.Stat(path); err != nil {
+			if os.IsNotExist(err) && os.Getenv("ENV_FILE") == "" {
+				continue
+			}
+			return fmt.Errorf("find env file %q: %w", path, err)
+		}
+		values, err := godotenv.Read(path)
+		if err != nil {
+			return fmt.Errorf("read env file %q: %w", path, err)
+		}
+		for key, value := range values {
+			if _, exists := os.LookupEnv(key); !exists {
+				if err := os.Setenv(key, value); err != nil {
+					return fmt.Errorf("set env %q from %q: %w", key, path, err)
+				}
+			}
+		}
+		return nil
+	}
+	return nil
+}
+
 func (cfg Config) Validate() error {
 	if strings.TrimSpace(cfg.Server.Addr) == "" {
 		return errors.New("server.addr is required")
@@ -250,6 +298,9 @@ func (cfg Config) Validate() error {
 	}
 	if strings.TrimSpace(cfg.Auth.JWTSecret) == "" {
 		return errors.New("auth.jwt_secret is required")
+	}
+	if strings.TrimSpace(cfg.Auth.AdminJWTSecret) == "" {
+		return errors.New("auth.admin_jwt_secret is required")
 	}
 	if cfg.Auth.AccessTokenTTLMinutes <= 0 {
 		return errors.New("auth.access_token_ttl_minutes must be greater than 0")
@@ -392,6 +443,18 @@ func applyEnv(cfg *Config) {
 	}
 	if value := strings.TrimSpace(os.Getenv(jwtSecretEnv)); value != "" {
 		cfg.Auth.JWTSecret = value
+	}
+
+	adminJWTSecretEnv := strings.TrimSpace(cfg.Auth.AdminJWTSecretEnv)
+	if adminJWTSecretEnv == "" {
+		adminJWTSecretEnv = "ADMIN_JWT_SECRET"
+		cfg.Auth.AdminJWTSecretEnv = adminJWTSecretEnv
+	}
+	if value := strings.TrimSpace(os.Getenv(adminJWTSecretEnv)); value != "" {
+		cfg.Auth.AdminJWTSecret = value
+	}
+	if strings.TrimSpace(cfg.Auth.AdminJWTSecret) == "" {
+		cfg.Auth.AdminJWTSecret = cfg.Auth.JWTSecret + "-admin"
 	}
 	if value := strings.TrimSpace(os.Getenv("AUTH_ACCESS_TOKEN_TTL_MINUTES")); value != "" {
 		if minutes, err := strconv.Atoi(value); err == nil {

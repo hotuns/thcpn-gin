@@ -2,6 +2,7 @@ package accessgrant
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -63,11 +64,24 @@ func (h *Handler) ListGrants(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !h.authorize(c, "workspace", workspaceID, shareViewAction) {
+	scopeType, scopeID, scoped, ok := parseScopeFilter(c)
+	if !ok {
 		return
 	}
-
-	items, err := h.service.ListGrantsByWorkspace(c.Request.Context(), workspaceID)
+	if scoped {
+		if !h.authorize(c, scopeType, scopeID, shareViewAction) {
+			return
+		}
+	} else if !h.authorize(c, "workspace", workspaceID, shareViewAction) {
+		return
+	}
+	var items []AccessGrant
+	var err error
+	if scoped {
+		items, err = h.service.ListGrantsByScope(c.Request.Context(), workspaceID, scopeType, scopeID)
+	} else {
+		items, err = h.service.ListGrantsByWorkspace(c.Request.Context(), workspaceID)
+	}
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -107,7 +121,8 @@ func (h *Handler) CreateGrant(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !h.authorize(c, req.ScopeType, scopeID, createActionForRole(req.TemplateCode)) {
+	decision, allowed := h.authorizeDecision(c, req.ScopeType, scopeID, createActionForRole(req.TemplateCode))
+	if !allowed {
 		return
 	}
 
@@ -128,6 +143,7 @@ func (h *Handler) CreateGrant(c *gin.Context) {
 		AllowReshare:    req.AllowReshare,
 		AllowAPIAccess:  req.AllowAPIAccess,
 		ActorUserID:     actor.UserID,
+		Delegated:       decision.Source == "access_grant",
 	})
 	if err != nil {
 		if !h.record(c, audit.RecordInput{
@@ -213,11 +229,24 @@ func (h *Handler) ListInvitations(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !h.authorize(c, "workspace", workspaceID, shareViewAction) {
+	scopeType, scopeID, scoped, ok := parseScopeFilter(c)
+	if !ok {
 		return
 	}
-
-	items, err := h.service.ListInvitationsByWorkspace(c.Request.Context(), workspaceID)
+	if scoped {
+		if !h.authorize(c, scopeType, scopeID, shareViewAction) {
+			return
+		}
+	} else if !h.authorize(c, "workspace", workspaceID, shareViewAction) {
+		return
+	}
+	var items []Invitation
+	var err error
+	if scoped {
+		items, err = h.service.ListInvitationsByScope(c.Request.Context(), workspaceID, scopeType, scopeID)
+	} else {
+		items, err = h.service.ListInvitationsByWorkspace(c.Request.Context(), workspaceID)
+	}
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -257,7 +286,8 @@ func (h *Handler) CreateInvitation(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !h.authorize(c, req.ScopeType, scopeID, createActionForRole(req.TemplateCode)) {
+	decision, allowed := h.authorizeDecision(c, req.ScopeType, scopeID, createActionForRole(req.TemplateCode))
+	if !allowed {
 		return
 	}
 
@@ -270,6 +300,7 @@ func (h *Handler) CreateInvitation(c *gin.Context) {
 		ScopeID:         scopeID,
 		ExpiresAt:       req.ExpiresAt,
 		ActorUserID:     actor.UserID,
+		Delegated:       decision.Source == "access_grant",
 	})
 	if err != nil {
 		if !h.record(c, audit.RecordInput{
@@ -398,13 +429,21 @@ func (h *Handler) RevokeInvitation(c *gin.Context) {
 }
 
 func (h *Handler) authorize(c *gin.Context, resourceType string, resourceID uuid.UUID, action string) bool {
+	_, ok := h.authorizeDecision(c, resourceType, resourceID, action)
+	return ok
+}
+
+func (h *Handler) authorizeDecision(c *gin.Context, resourceType string, resourceID uuid.UUID, action string) (permission.Decision, bool) {
 	actor, ok := actorFromContext(c)
 	if !ok {
-		return false
+		return permission.Decision{}, false
+	}
+	if actor.IsSystemAdmin {
+		return permission.Decision{Allowed: true, Reason: "allowed by system administrator"}, true
 	}
 	if h.checker == nil {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInternal, "permission checker is not configured"))
-		return false
+		return permission.Decision{}, false
 	}
 
 	decision, err := h.checker.Can(c.Request.Context(), permission.Actor{UserID: actor.UserID}, action, permission.ResourceRef{
@@ -413,13 +452,33 @@ func (h *Handler) authorize(c *gin.Context, resourceType string, resourceID uuid
 	})
 	if err != nil {
 		httpx.WriteAppError(c, err)
-		return false
+		return permission.Decision{}, false
 	}
 	if !decision.Allowed {
 		httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "permission denied"))
-		return false
+		return permission.Decision{}, false
 	}
-	return true
+	return decision, true
+}
+
+func parseScopeFilter(c *gin.Context) (string, uuid.UUID, bool, bool) {
+	scopeType := strings.TrimSpace(c.Query("scope_type"))
+	scopeIDValue := strings.TrimSpace(c.Query("scope_id"))
+	if scopeType == "" && scopeIDValue == "" {
+		return "", uuid.Nil, false, true
+	}
+	if scopeType == "" || scopeIDValue == "" {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "scope_type and scope_id must be provided together"))
+		return "", uuid.Nil, false, false
+	}
+	switch scopeType {
+	case "workspace", "project", "site", "device", "dataset":
+	default:
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid scope_type"))
+		return "", uuid.Nil, false, false
+	}
+	scopeID, ok := parseUUIDValue(scopeIDValue, "scope_id", c)
+	return scopeType, scopeID, true, ok
 }
 
 func createActionForRole(roleCode string) string {

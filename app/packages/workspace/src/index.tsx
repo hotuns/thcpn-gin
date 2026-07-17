@@ -15,6 +15,11 @@ type WorkspaceContextValue = {
 const storageKey = "thcpn.workspace.current";
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
+export const resolveWorkspaceId = (persistedId: string | null, workspaces: Array<{ id: string }>) => {
+  if (!workspaces.length) return null;
+  return persistedId && workspaces.some((workspace) => workspace.id === persistedId) ? persistedId : workspaces[0].id;
+};
+
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["workspaces"], queryFn: api.workspaces.list });
@@ -23,10 +28,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!workspaces.length) return;
-    const valid = currentId && workspaces.some((workspace) => workspace.id === currentId);
-    if (!valid) {
-      setCurrentIdState(workspaces[0].id);
-      localStorage.setItem(storageKey, workspaces[0].id);
+    const resolved = resolveWorkspaceId(currentId, workspaces);
+    if (resolved !== currentId && resolved) {
+      setCurrentIdState(resolved);
+      localStorage.setItem(storageKey, resolved);
     }
   }, [currentId, workspaces]);
 

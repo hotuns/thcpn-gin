@@ -262,6 +262,9 @@ func (h *Handler) authorize(c *gin.Context, resourceType string, resourceID uuid
 	if !ok {
 		return false
 	}
+	if actor.IsSystemAdmin {
+		return true
+	}
 	if h.checker == nil {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInternal, "permission checker is not configured"))
 		return false

@@ -395,7 +395,7 @@ dsn_secret_ref 不直接保存明文数据库密码。
 source_code、DataSource 和 adapter 不属于任何 workspace；客户权限边界来自分配后的 Device / DataStream / Dataset。
 ```
 
-当前代码实现保留 `data_sources` 表作为系统级设备源实例配置载体，`data_sources.type` 表示物理连接类型，例如 `postgres`、`mysql`、`clickhouse` 或 `http_api`，不再保存工作区归属字段。THCPN 设备源由 `users.is_system_admin = true` 的系统管理员通过 `/api/v1/admin/data-sources` 和前端 `/admin/data-sources` 维护；普通 Workspace 控制台不暴露 DataSource、DSN、库表字段或 adapter 配置。运行时业务分发不再按 `data_sources.type` 决定，而是按 `data_stream_bindings.adapter_code` 决定。
+当前代码实现保留 `data_sources` 表作为系统级设备源实例配置载体，`data_sources.type` 表示物理连接类型，例如 `postgres`、`mysql`、`clickhouse` 或 `http_api`，不再保存工作区归属字段。THCPN 设备源由 `system_admins` 中的有效管理员通过 `/api/v1/admin/data-sources` 和前端 `/admin/data-sources` 维护；普通 Workspace 控制台不暴露 DataSource、DSN、库表字段或 adapter 配置。运行时业务分发不再按 `data_sources.type` 决定，而是按 `data_stream_bindings.adapter_code` 决定。
 
 ### 7.2 DataStreamBinding
 

@@ -50,6 +50,7 @@ type AccessGrant struct {
 	ExpiresAt       *time.Time     `json:"expires_at,omitempty"`
 	AllowReshare    bool           `json:"allow_reshare"`
 	AllowAPIAccess  bool           `json:"allow_api_access"`
+	ParentGrantID   *uuid.UUID     `json:"parent_grant_id,omitempty"`
 	CreatedBy       uuid.UUID      `json:"created_by"`
 	Status          string         `json:"status"`
 	CreatedAt       time.Time      `json:"created_at"`
@@ -73,6 +74,7 @@ type Invitation struct {
 	ScopeType       string      `json:"scope_type"`
 	ScopeID         uuid.UUID   `json:"scope_id"`
 	ExpiresAt       *time.Time  `json:"expires_at,omitempty"`
+	ParentGrantID   *uuid.UUID  `json:"parent_grant_id,omitempty"`
 	InvitedBy       uuid.UUID   `json:"invited_by"`
 	Status          string      `json:"status"`
 	CreatedAt       time.Time   `json:"created_at"`
@@ -91,6 +93,7 @@ type CreateGrantInput struct {
 	AllowReshare    bool
 	AllowAPIAccess  bool
 	ActorUserID     uuid.UUID
+	Delegated       bool
 }
 
 type CreateInvitationInput struct {
@@ -102,6 +105,7 @@ type CreateInvitationInput struct {
 	ScopeID         uuid.UUID
 	ExpiresAt       *time.Time
 	ActorUserID     uuid.UUID
+	Delegated       bool
 }
 
 type AcceptInvitationInput struct {
@@ -152,6 +156,10 @@ func (s *Service) CreateGrant(ctx context.Context, input CreateGrantInput) (Acce
 	if err != nil {
 		return AccessGrant{}, err
 	}
+	parentGrantID, err := s.resolveParentGrant(ctx, input.ActorUserID, input.Delegated, scope, permissionCodes, input.ExpiresAt)
+	if err != nil {
+		return AccessGrant{}, err
+	}
 
 	created, err := s.queries.CreateAccessGrant(ctx, sqlc.CreateAccessGrantParams{
 		WorkspaceID:    scope.workspaceID,
@@ -164,6 +172,7 @@ func (s *Service) CreateGrant(ctx context.Context, input CreateGrantInput) (Acce
 		AllowApiAccess: input.AllowAPIAccess,
 		CreatedBy:      input.ActorUserID,
 		TemplateCode:   templateCode,
+		ParentGrantID:  parentGrantID,
 	})
 	if err != nil {
 		return AccessGrant{}, mapWriteError(err, "create access grant")
@@ -205,6 +214,20 @@ func (s *Service) ListGrantsByWorkspace(ctx context.Context, workspaceID uuid.UU
 	return items, nil
 }
 
+func (s *Service) ListGrantsByScope(ctx context.Context, workspaceID uuid.UUID, scopeType string, scopeID uuid.UUID) ([]AccessGrant, error) {
+	items, err := s.ListGrantsByWorkspace(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	filtered := make([]AccessGrant, 0)
+	for _, item := range items {
+		if item.ScopeType == scopeType && item.ScopeID == scopeID {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered, nil
+}
+
 func (s *Service) ListGrantsForUser(ctx context.Context, userID uuid.UUID) ([]AccessGrant, error) {
 	if userID == uuid.Nil {
 		return nil, apperr.New(apperr.KindInvalidArgument, "user id is required")
@@ -235,6 +258,9 @@ func (s *Service) RevokeGrant(ctx context.Context, grantID uuid.UUID) (AccessGra
 	if err != nil {
 		return AccessGrant{}, mapNotFoundOrInternal(err, "access grant not found")
 	}
+	if _, err := s.queries.CascadeInactiveAccessGrants(ctx); err != nil {
+		return AccessGrant{}, apperr.Wrap(apperr.KindInternal, "cascade revoked access grants", err)
+	}
 	return grantFromGetRow(row), nil
 }
 
@@ -243,12 +269,16 @@ func (s *Service) CleanupExpired(ctx context.Context) (CleanupExpiredResult, err
 	if err != nil {
 		return CleanupExpiredResult{}, apperr.Wrap(apperr.KindInternal, "expire access grants", err)
 	}
+	cascaded, err := s.queries.CascadeInactiveAccessGrants(ctx)
+	if err != nil {
+		return CleanupExpiredResult{}, apperr.Wrap(apperr.KindInternal, "cascade expired access grants", err)
+	}
 	invitations, err := s.queries.ExpireInvitations(ctx)
 	if err != nil {
 		return CleanupExpiredResult{}, apperr.Wrap(apperr.KindInternal, "expire invitations", err)
 	}
 	return CleanupExpiredResult{
-		AccessGrantsExpired: accessGrants,
+		AccessGrantsExpired: accessGrants + cascaded,
 		InvitationsExpired:  invitations,
 	}, nil
 }
@@ -285,17 +315,22 @@ func (s *Service) CreateInvitation(ctx context.Context, input CreateInvitationIn
 	if err != nil {
 		return Invitation{}, err
 	}
+	parentGrantID, err := s.resolveParentGrant(ctx, input.ActorUserID, input.Delegated, scope, permissionCodes, input.ExpiresAt)
+	if err != nil {
+		return Invitation{}, err
+	}
 
 	created, err := s.queries.CreateInvitation(ctx, sqlc.CreateInvitationParams{
-		WorkspaceID:  scope.workspaceID,
-		InviteeEmail: email,
-		InviteePhone: phone,
-		RoleID:       role.ID,
-		ScopeType:    scope.scopeType,
-		ScopeID:      scope.scopeID,
-		ExpiresAt:    pgTime(input.ExpiresAt),
-		InvitedBy:    input.ActorUserID,
-		TemplateCode: templateCode,
+		WorkspaceID:   scope.workspaceID,
+		InviteeEmail:  email,
+		InviteePhone:  phone,
+		RoleID:        role.ID,
+		ScopeType:     scope.scopeType,
+		ScopeID:       scope.scopeID,
+		ExpiresAt:     pgTime(input.ExpiresAt),
+		InvitedBy:     input.ActorUserID,
+		TemplateCode:  templateCode,
+		ParentGrantID: parentGrantID,
 	})
 	if err != nil {
 		return Invitation{}, mapWriteError(err, "create invitation")
@@ -334,6 +369,20 @@ func (s *Service) ListInvitationsByWorkspace(ctx context.Context, workspaceID uu
 		items = append(items, invitationFromWorkspaceRow(row))
 	}
 	return items, nil
+}
+
+func (s *Service) ListInvitationsByScope(ctx context.Context, workspaceID uuid.UUID, scopeType string, scopeID uuid.UUID) ([]Invitation, error) {
+	items, err := s.ListInvitationsByWorkspace(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	filtered := make([]Invitation, 0)
+	for _, item := range items {
+		if item.ScopeType == scopeType && item.ScopeID == scopeID {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered, nil
 }
 
 func (s *Service) ListPendingInvitationsForActor(ctx context.Context, email *string, phone *string) ([]Invitation, error) {
@@ -385,6 +434,15 @@ func (s *Service) AcceptInvitation(ctx context.Context, input AcceptInvitationIn
 	if !matchesInvitee(invitation.InviteeEmail, invitation.InviteePhone, input.ActorEmail, input.ActorPhone) {
 		return AccessGrant{}, apperr.New(apperr.KindPermissionDenied, "invitation does not belong to current user")
 	}
+	if invitation.ParentGrantID != nil {
+		parent, err := s.GetGrant(ctx, *invitation.ParentGrantID)
+		if err != nil {
+			return AccessGrant{}, err
+		}
+		if err := s.validateGrantChain(ctx, parent); err != nil {
+			return AccessGrant{}, err
+		}
+	}
 
 	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -413,6 +471,7 @@ func (s *Service) AcceptInvitation(ctx context.Context, input AcceptInvitationIn
 		AllowApiAccess: false,
 		CreatedBy:      accepted.InvitedBy,
 		TemplateCode:   accepted.TemplateCode,
+		ParentGrantID:  accepted.ParentGrantID,
 	})
 	if err != nil {
 		return AccessGrant{}, mapWriteError(err, "create access grant from invitation")
@@ -484,6 +543,10 @@ type resolvedScope struct {
 	workspaceID uuid.UUID
 	scopeType   string
 	scopeID     uuid.UUID
+	projectID   uuid.UUID
+	siteID      uuid.UUID
+	deviceID    uuid.UUID
+	datasetID   uuid.UUID
 }
 
 func (s *Service) resolveScope(ctx context.Context, scopeType string, scopeID uuid.UUID) (resolvedScope, error) {
@@ -500,13 +563,13 @@ func (s *Service) resolveScope(ctx context.Context, scopeType string, scopeID uu
 		if err != nil {
 			return resolvedScope{}, mapNotFoundOrInternal(err, "project not found")
 		}
-		return resolvedScope{workspaceID: project.WorkspaceID, scopeType: "project", scopeID: project.ID}, nil
+		return resolvedScope{workspaceID: project.WorkspaceID, scopeType: "project", scopeID: project.ID, projectID: project.ID}, nil
 	case "site":
 		site, err := s.queries.GetSite(ctx, scopeID)
 		if err != nil {
 			return resolvedScope{}, mapNotFoundOrInternal(err, "site not found")
 		}
-		return resolvedScope{workspaceID: site.WorkspaceID, scopeType: "site", scopeID: site.ID}, nil
+		return resolvedScope{workspaceID: site.WorkspaceID, scopeType: "site", scopeID: site.ID, projectID: site.ProjectID, siteID: site.ID}, nil
 	case "device":
 		device, err := s.queries.GetDevice(ctx, scopeID)
 		if err != nil {
@@ -516,16 +579,140 @@ func (s *Service) resolveScope(ctx context.Context, scopeType string, scopeID uu
 		if err != nil {
 			return resolvedScope{}, mapNotFoundOrInternal(err, "active device assignment not found")
 		}
-		return resolvedScope{workspaceID: assignment.WorkspaceID, scopeType: "device", scopeID: device.ID}, nil
+		result := resolvedScope{workspaceID: assignment.WorkspaceID, scopeType: "device", scopeID: device.ID, deviceID: device.ID}
+		if assignment.ProjectID != nil {
+			result.projectID = *assignment.ProjectID
+		}
+		if assignment.SiteID != nil {
+			result.siteID = *assignment.SiteID
+		}
+		return result, nil
 	case "dataset":
 		dataset, err := s.queries.GetDataset(ctx, scopeID)
 		if err != nil {
 			return resolvedScope{}, mapNotFoundOrInternal(err, "dataset not found")
 		}
-		return resolvedScope{workspaceID: dataset.WorkspaceID, scopeType: "dataset", scopeID: dataset.ID}, nil
+		result := resolvedScope{workspaceID: dataset.WorkspaceID, scopeType: "dataset", scopeID: dataset.ID, datasetID: dataset.ID}
+		if dataset.ProjectID != nil {
+			result.projectID = *dataset.ProjectID
+		}
+		return result, nil
 	default:
 		return resolvedScope{}, apperr.New(apperr.KindInvalidArgument, "invalid scope_type")
 	}
+}
+
+func (s *Service) resolveParentGrant(ctx context.Context, actorUserID uuid.UUID, delegated bool, target resolvedScope, permissionCodes []string, expiresAt *time.Time) (*uuid.UUID, error) {
+	if !delegated {
+		return nil, nil
+	}
+	items, err := s.ListGrantsForUser(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+	var selected *AccessGrant
+	selectedScore := -1
+	for index := range items {
+		item := &items[index]
+		if item.WorkspaceID != target.workspaceID || !item.AllowReshare || !contains(item.PermissionCodes, "share.create") {
+			continue
+		}
+		if !grantCoversScope(*item, target) || !permissionSubset(permissionCodes, item.PermissionCodes) {
+			continue
+		}
+		if item.ExpiresAt != nil && (expiresAt == nil || expiresAt.After(*item.ExpiresAt)) {
+			continue
+		}
+		score := scopeSpecificity(item.ScopeType)
+		if score > selectedScore {
+			selected, selectedScore = item, score
+		}
+	}
+	if selected == nil {
+		return nil, apperr.New(apperr.KindPermissionDenied, "no active reshare grant covers the requested permissions and expiration")
+	}
+	if err := s.validateGrantChain(ctx, *selected); err != nil {
+		return nil, err
+	}
+	id := selected.ID
+	return &id, nil
+}
+
+func (s *Service) validateGrantChain(ctx context.Context, grant AccessGrant) error {
+	if grant.Status != "active" || (grant.ExpiresAt != nil && !grant.ExpiresAt.After(time.Now())) {
+		return apperr.New(apperr.KindPermissionDenied, "parent access grant is no longer active")
+	}
+	seen := map[uuid.UUID]struct{}{grant.ID: {}}
+	parentID := grant.ParentGrantID
+	for parentID != nil {
+		if _, exists := seen[*parentID]; exists {
+			return apperr.New(apperr.KindConflict, "access grant delegation cycle detected")
+		}
+		seen[*parentID] = struct{}{}
+		parent, err := s.GetGrant(ctx, *parentID)
+		if err != nil {
+			return err
+		}
+		if parent.Status != "active" || (parent.ExpiresAt != nil && !parent.ExpiresAt.After(time.Now())) {
+			return apperr.New(apperr.KindPermissionDenied, "parent access grant is no longer active")
+		}
+		parentID = parent.ParentGrantID
+	}
+	return nil
+}
+
+func grantCoversScope(grant AccessGrant, target resolvedScope) bool {
+	switch grant.ScopeType {
+	case "workspace":
+		return grant.ScopeID == target.workspaceID
+	case "project":
+		return target.projectID != uuid.Nil && grant.ScopeID == target.projectID
+	case "site":
+		return target.siteID != uuid.Nil && grant.ScopeID == target.siteID
+	case "device":
+		return target.deviceID != uuid.Nil && grant.ScopeID == target.deviceID
+	case "dataset":
+		return target.datasetID != uuid.Nil && grant.ScopeID == target.datasetID
+	default:
+		return false
+	}
+}
+
+func scopeSpecificity(scopeType string) int {
+	switch scopeType {
+	case "device", "dataset":
+		return 4
+	case "site":
+		return 3
+	case "project":
+		return 2
+	case "workspace":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func permissionSubset(requested, available []string) bool {
+	set := make(map[string]struct{}, len(available))
+	for _, value := range available {
+		set[value] = struct{}{}
+	}
+	for _, value := range requested {
+		if _, ok := set[value]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func contains(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) resolveRole(ctx context.Context, roleCode string, scopeType string, expiresAt *time.Time) (RoleSummary, error) {
@@ -718,6 +905,7 @@ func grantFromSQL(model sqlc.AccessGrant, role RoleSummary, subject SubjectSumma
 		ExpiresAt:       pgTimePtr(model.ExpiresAt),
 		AllowReshare:    model.AllowReshare,
 		AllowAPIAccess:  model.AllowApiAccess,
+		ParentGrantID:   model.ParentGrantID,
 		CreatedBy:       model.CreatedBy,
 		Status:          model.Status,
 		CreatedAt:       pgTimeValue(model.CreatedAt),
@@ -746,6 +934,7 @@ func grantFromGetRow(row sqlc.GetAccessGrantRow) AccessGrant {
 		ExpiresAt:       pgTimePtr(row.ExpiresAt),
 		AllowReshare:    row.AllowReshare,
 		AllowAPIAccess:  row.AllowApiAccess,
+		ParentGrantID:   row.ParentGrantID,
 		CreatedBy:       row.CreatedBy,
 		Status:          row.Status,
 		CreatedAt:       pgTimeValue(row.CreatedAt),
@@ -777,6 +966,7 @@ func grantFromWorkspaceRow(row sqlc.ListAccessGrantsByWorkspaceRow) AccessGrant 
 		ExpiresAt:       pgTimePtr(row.ExpiresAt),
 		AllowReshare:    row.AllowReshare,
 		AllowAPIAccess:  row.AllowApiAccess,
+		ParentGrantID:   row.ParentGrantID,
 		CreatedBy:       row.CreatedBy,
 		Status:          row.Status,
 		CreatedAt:       pgTimeValue(row.CreatedAt),
@@ -805,6 +995,7 @@ func grantFromUserRow(row sqlc.ListAccessGrantsForUserRow) AccessGrant {
 		ExpiresAt:       pgTimePtr(row.ExpiresAt),
 		AllowReshare:    row.AllowReshare,
 		AllowAPIAccess:  row.AllowApiAccess,
+		ParentGrantID:   row.ParentGrantID,
 		CreatedBy:       row.CreatedBy,
 		Status:          row.Status,
 		CreatedAt:       pgTimeValue(row.CreatedAt),
@@ -825,6 +1016,7 @@ func invitationFromSQL(model sqlc.Invitation, role RoleSummary, permissionCodes 
 		ScopeType:       model.ScopeType,
 		ScopeID:         model.ScopeID,
 		ExpiresAt:       pgTimePtr(model.ExpiresAt),
+		ParentGrantID:   model.ParentGrantID,
 		InvitedBy:       model.InvitedBy,
 		Status:          model.Status,
 		CreatedAt:       pgTimeValue(model.CreatedAt),
@@ -849,6 +1041,7 @@ func invitationFromGetRow(row sqlc.GetInvitationRow) Invitation {
 		ScopeType:       row.ScopeType,
 		ScopeID:         row.ScopeID,
 		ExpiresAt:       pgTimePtr(row.ExpiresAt),
+		ParentGrantID:   row.ParentGrantID,
 		InvitedBy:       row.InvitedBy,
 		Status:          row.Status,
 		CreatedAt:       pgTimeValue(row.CreatedAt),
@@ -873,6 +1066,7 @@ func invitationFromWorkspaceRow(row sqlc.ListInvitationsByWorkspaceRow) Invitati
 		ScopeType:       row.ScopeType,
 		ScopeID:         row.ScopeID,
 		ExpiresAt:       pgTimePtr(row.ExpiresAt),
+		ParentGrantID:   row.ParentGrantID,
 		InvitedBy:       row.InvitedBy,
 		Status:          row.Status,
 		CreatedAt:       pgTimeValue(row.CreatedAt),
@@ -897,6 +1091,7 @@ func invitationFromIdentityRow(row sqlc.ListPendingInvitationsForIdentityRow) In
 		ScopeType:       row.ScopeType,
 		ScopeID:         row.ScopeID,
 		ExpiresAt:       pgTimePtr(row.ExpiresAt),
+		ParentGrantID:   row.ParentGrantID,
 		InvitedBy:       row.InvitedBy,
 		Status:          row.Status,
 		CreatedAt:       pgTimeValue(row.CreatedAt),

@@ -254,6 +254,9 @@ func (h *Handler) authorize(c *gin.Context, workspaceID uuid.UUID) bool {
 		httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "missing authenticated user"))
 		return false
 	}
+	if actor.IsSystemAdmin {
+		return true
+	}
 	if h.checker == nil {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInternal, "permission checker is not configured"))
 		return false

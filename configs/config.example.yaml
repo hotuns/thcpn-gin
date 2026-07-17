@@ -17,6 +17,8 @@ redis:
 auth:
   jwt_secret_env: "JWT_SECRET"
   jwt_secret: "dev-insecure-change-me"
+  admin_jwt_secret_env: "ADMIN_JWT_SECRET"
+  admin_jwt_secret: "dev-admin-insecure-change-me"
   access_token_ttl_minutes: 1440
   refresh_token_ttl_days: 30
   dev_user_header_enabled: true

@@ -25,6 +25,7 @@ type AccessGrant struct {
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 	TemplateCode   string             `json:"template_code"`
+	ParentGrantID  *uuid.UUID         `json:"parent_grant_id"`
 }
 
 type AccessGrantPermission struct {
@@ -241,6 +242,34 @@ type DeviceOperation struct {
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 }
 
+type DeviceProfile struct {
+	DeviceID     uuid.UUID          `json:"device_id"`
+	Description  *string            `json:"description"`
+	LocationText *string            `json:"location_text"`
+	Latitude     pgtype.Float8      `json:"latitude"`
+	Longitude    pgtype.Float8      `json:"longitude"`
+	UpdatedBy    *uuid.UUID         `json:"updated_by"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type DeviceProfileImage struct {
+	ID               uuid.UUID          `json:"id"`
+	DeviceID         uuid.UUID          `json:"device_id"`
+	ObjectKey        string             `json:"object_key"`
+	OriginalFilename string             `json:"original_filename"`
+	ContentType      string             `json:"content_type"`
+	SizeBytes        int64              `json:"size_bytes"`
+	Width            pgtype.Int4        `json:"width"`
+	Height           pgtype.Int4        `json:"height"`
+	Caption          *string            `json:"caption"`
+	SortOrder        int32              `json:"sort_order"`
+	IsCover          bool               `json:"is_cover"`
+	UploadedBy       uuid.UUID          `json:"uploaded_by"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
 type DeviceRelation struct {
 	ID                     uuid.UUID          `json:"id"`
 	ParentDeviceID         uuid.UUID          `json:"parent_device_id"`
@@ -289,19 +318,20 @@ type ExportJob struct {
 }
 
 type Invitation struct {
-	ID           uuid.UUID          `json:"id"`
-	WorkspaceID  uuid.UUID          `json:"workspace_id"`
-	InviteeEmail *string            `json:"invitee_email"`
-	InviteePhone *string            `json:"invitee_phone"`
-	RoleID       uuid.UUID          `json:"role_id"`
-	ScopeType    string             `json:"scope_type"`
-	ScopeID      uuid.UUID          `json:"scope_id"`
-	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
-	InvitedBy    uuid.UUID          `json:"invited_by"`
-	Status       string             `json:"status"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
-	TemplateCode string             `json:"template_code"`
+	ID            uuid.UUID          `json:"id"`
+	WorkspaceID   uuid.UUID          `json:"workspace_id"`
+	InviteeEmail  *string            `json:"invitee_email"`
+	InviteePhone  *string            `json:"invitee_phone"`
+	RoleID        uuid.UUID          `json:"role_id"`
+	ScopeType     string             `json:"scope_type"`
+	ScopeID       uuid.UUID          `json:"scope_id"`
+	ExpiresAt     pgtype.Timestamptz `json:"expires_at"`
+	InvitedBy     uuid.UUID          `json:"invited_by"`
+	Status        string             `json:"status"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	TemplateCode  string             `json:"template_code"`
+	ParentGrantID *uuid.UUID         `json:"parent_grant_id"`
 }
 
 type InvitationPermission struct {
@@ -358,6 +388,32 @@ type Site struct {
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
+type SystemAdmin struct {
+	ID             uuid.UUID          `json:"id"`
+	Name           string             `json:"name"`
+	Email          string             `json:"email"`
+	PasswordHash   string             `json:"password_hash"`
+	Status         string             `json:"status"`
+	FailedAttempts int32              `json:"failed_attempts"`
+	LockedUntil    pgtype.Timestamptz `json:"locked_until"`
+	LastLoginAt    pgtype.Timestamptz `json:"last_login_at"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+type SystemAdminRefreshSession struct {
+	ID               uuid.UUID          `json:"id"`
+	AdminID          uuid.UUID          `json:"admin_id"`
+	RefreshTokenHash string             `json:"refresh_token_hash"`
+	UserAgent        *string            `json:"user_agent"`
+	ClientIp         *string            `json:"client_ip"`
+	ExpiresAt        pgtype.Timestamptz `json:"expires_at"`
+	LastUsedAt       pgtype.Timestamptz `json:"last_used_at"`
+	RevokedAt        pgtype.Timestamptz `json:"revoked_at"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
 type User struct {
 	ID              uuid.UUID          `json:"id"`
 	Name            string             `json:"name"`
@@ -369,7 +425,6 @@ type User struct {
 	PhoneVerifiedAt pgtype.Timestamptz `json:"phone_verified_at"`
 	EmailVerifiedAt pgtype.Timestamptz `json:"email_verified_at"`
 	LastLoginAt     pgtype.Timestamptz `json:"last_login_at"`
-	IsSystemAdmin   bool               `json:"is_system_admin"`
 }
 
 type UserCredential struct {

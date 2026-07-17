@@ -143,19 +143,6 @@ func ActorFromContext(c *gin.Context) (Actor, bool) {
 	return actor, ok
 }
 
-func RequireSystemAdmin() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		actor, ok := ActorFromContext(c)
-		if !ok {
-			httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "missing authenticated user"))
-			c.Abort()
-			return
-		}
-		if !actor.IsSystemAdmin {
-			httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "system administrator required"))
-			c.Abort()
-			return
-		}
-		c.Next()
-	}
+func SetActorContext(c *gin.Context, actor Actor) {
+	c.Set(actorContextKey, actor)
 }

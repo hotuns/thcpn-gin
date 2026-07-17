@@ -19,7 +19,7 @@ SET status = 'accepted',
 WHERE id = $1
   AND status = 'pending'
   AND (expires_at IS NULL OR expires_at > now())
-RETURNING id, workspace_id, invitee_email, invitee_phone, role_id, scope_type, scope_id, expires_at, invited_by, status, created_at, updated_at, template_code
+RETURNING id, workspace_id, invitee_email, invitee_phone, role_id, scope_type, scope_id, expires_at, invited_by, status, created_at, updated_at, template_code, parent_grant_id
 `
 
 func (q *Queries) AcceptInvitation(ctx context.Context, id uuid.UUID) (Invitation, error) {
@@ -39,6 +39,7 @@ func (q *Queries) AcceptInvitation(ctx context.Context, id uuid.UUID) (Invitatio
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.TemplateCode,
+		&i.ParentGrantID,
 	)
 	return i, err
 }
@@ -85,6 +86,32 @@ func (q *Queries) AddInvitationPermissions(ctx context.Context, arg AddInvitatio
 	return result.RowsAffected(), nil
 }
 
+const cascadeInactiveAccessGrants = `-- name: CascadeInactiveAccessGrants :execrows
+WITH RECURSIVE inactive AS (
+    SELECT child.id
+    FROM access_grants child
+    JOIN access_grants parent ON parent.id = child.parent_grant_id
+    WHERE child.status = 'active'
+      AND (parent.status <> 'active' OR (parent.expires_at IS NOT NULL AND parent.expires_at <= now()))
+    UNION
+    SELECT child.id
+    FROM access_grants child
+    JOIN inactive parent ON parent.id = child.parent_grant_id
+    WHERE child.status = 'active'
+)
+UPDATE access_grants
+SET status = 'revoked', updated_at = now()
+WHERE id IN (SELECT id FROM inactive)
+`
+
+func (q *Queries) CascadeInactiveAccessGrants(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, cascadeInactiveAccessGrants)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const copyInvitationPermissionsToAccessGrant = `-- name: CopyInvitationPermissionsToAccessGrant :execrows
 INSERT INTO access_grant_permissions (access_grant_id, permission_id)
 SELECT $2, ip.permission_id
@@ -118,10 +145,11 @@ INSERT INTO access_grants (
     allow_reshare,
     allow_api_access,
     created_by,
-    template_code
+    template_code,
+    parent_grant_id
 )
-VALUES ($1, 'user', $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, workspace_id, subject_type, subject_id, role_id, scope_type, scope_id, expires_at, allow_reshare, allow_api_access, created_by, status, created_at, updated_at, template_code
+VALUES ($1, 'user', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, workspace_id, subject_type, subject_id, role_id, scope_type, scope_id, expires_at, allow_reshare, allow_api_access, created_by, status, created_at, updated_at, template_code, parent_grant_id
 `
 
 type CreateAccessGrantParams struct {
@@ -135,6 +163,7 @@ type CreateAccessGrantParams struct {
 	AllowApiAccess bool               `json:"allow_api_access"`
 	CreatedBy      uuid.UUID          `json:"created_by"`
 	TemplateCode   string             `json:"template_code"`
+	ParentGrantID  *uuid.UUID         `json:"parent_grant_id"`
 }
 
 func (q *Queries) CreateAccessGrant(ctx context.Context, arg CreateAccessGrantParams) (AccessGrant, error) {
@@ -149,6 +178,7 @@ func (q *Queries) CreateAccessGrant(ctx context.Context, arg CreateAccessGrantPa
 		arg.AllowApiAccess,
 		arg.CreatedBy,
 		arg.TemplateCode,
+		arg.ParentGrantID,
 	)
 	var i AccessGrant
 	err := row.Scan(
@@ -167,6 +197,7 @@ func (q *Queries) CreateAccessGrant(ctx context.Context, arg CreateAccessGrantPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.TemplateCode,
+		&i.ParentGrantID,
 	)
 	return i, err
 }
@@ -181,22 +212,24 @@ INSERT INTO invitations (
     scope_id,
     expires_at,
     invited_by,
-    template_code
+    template_code,
+    parent_grant_id
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, workspace_id, invitee_email, invitee_phone, role_id, scope_type, scope_id, expires_at, invited_by, status, created_at, updated_at, template_code
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING id, workspace_id, invitee_email, invitee_phone, role_id, scope_type, scope_id, expires_at, invited_by, status, created_at, updated_at, template_code, parent_grant_id
 `
 
 type CreateInvitationParams struct {
-	WorkspaceID  uuid.UUID          `json:"workspace_id"`
-	InviteeEmail *string            `json:"invitee_email"`
-	InviteePhone *string            `json:"invitee_phone"`
-	RoleID       uuid.UUID          `json:"role_id"`
-	ScopeType    string             `json:"scope_type"`
-	ScopeID      uuid.UUID          `json:"scope_id"`
-	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
-	InvitedBy    uuid.UUID          `json:"invited_by"`
-	TemplateCode string             `json:"template_code"`
+	WorkspaceID   uuid.UUID          `json:"workspace_id"`
+	InviteeEmail  *string            `json:"invitee_email"`
+	InviteePhone  *string            `json:"invitee_phone"`
+	RoleID        uuid.UUID          `json:"role_id"`
+	ScopeType     string             `json:"scope_type"`
+	ScopeID       uuid.UUID          `json:"scope_id"`
+	ExpiresAt     pgtype.Timestamptz `json:"expires_at"`
+	InvitedBy     uuid.UUID          `json:"invited_by"`
+	TemplateCode  string             `json:"template_code"`
+	ParentGrantID *uuid.UUID         `json:"parent_grant_id"`
 }
 
 func (q *Queries) CreateInvitation(ctx context.Context, arg CreateInvitationParams) (Invitation, error) {
@@ -210,6 +243,7 @@ func (q *Queries) CreateInvitation(ctx context.Context, arg CreateInvitationPara
 		arg.ExpiresAt,
 		arg.InvitedBy,
 		arg.TemplateCode,
+		arg.ParentGrantID,
 	)
 	var i Invitation
 	err := row.Scan(
@@ -226,6 +260,7 @@ func (q *Queries) CreateInvitation(ctx context.Context, arg CreateInvitationPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.TemplateCode,
+		&i.ParentGrantID,
 	)
 	return i, err
 }
@@ -307,6 +342,7 @@ SELECT
     ag.expires_at,
     ag.allow_reshare,
     ag.allow_api_access,
+    ag.parent_grant_id,
     ag.created_by,
     ag.status,
     ag.created_at,
@@ -332,6 +368,7 @@ type GetAccessGrantRow struct {
 	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
 	AllowReshare    bool               `json:"allow_reshare"`
 	AllowApiAccess  bool               `json:"allow_api_access"`
+	ParentGrantID   *uuid.UUID         `json:"parent_grant_id"`
 	CreatedBy       uuid.UUID          `json:"created_by"`
 	Status          string             `json:"status"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
@@ -357,6 +394,7 @@ func (q *Queries) GetAccessGrant(ctx context.Context, id uuid.UUID) (GetAccessGr
 		&i.ExpiresAt,
 		&i.AllowReshare,
 		&i.AllowApiAccess,
+		&i.ParentGrantID,
 		&i.CreatedBy,
 		&i.Status,
 		&i.CreatedAt,
@@ -375,6 +413,16 @@ WHERE ag.subject_type = 'user'
   AND ag.workspace_id = $2
   AND ag.status = 'active'
   AND (ag.expires_at IS NULL OR ag.expires_at > now())
+  AND (
+    ag.parent_grant_id IS NULL
+    OR EXISTS (
+      SELECT 1
+      FROM access_grants parent
+      WHERE parent.id = ag.parent_grant_id
+        AND parent.status = 'active'
+        AND (parent.expires_at IS NULL OR parent.expires_at > now())
+    )
+  )
   AND p.code = $3
   AND (
     ag.scope_type = 'workspace'
@@ -441,6 +489,7 @@ SELECT
     i.scope_type,
     i.scope_id,
     i.expires_at,
+    i.parent_grant_id,
     i.invited_by,
     i.status,
     i.created_at,
@@ -464,6 +513,7 @@ type GetInvitationRow struct {
 	ScopeType       string             `json:"scope_type"`
 	ScopeID         uuid.UUID          `json:"scope_id"`
 	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
+	ParentGrantID   *uuid.UUID         `json:"parent_grant_id"`
 	InvitedBy       uuid.UUID          `json:"invited_by"`
 	Status          string             `json:"status"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
@@ -487,6 +537,7 @@ func (q *Queries) GetInvitation(ctx context.Context, id uuid.UUID) (GetInvitatio
 		&i.ScopeType,
 		&i.ScopeID,
 		&i.ExpiresAt,
+		&i.ParentGrantID,
 		&i.InvitedBy,
 		&i.Status,
 		&i.CreatedAt,
@@ -521,6 +572,7 @@ SELECT
     ag.expires_at,
     ag.allow_reshare,
     ag.allow_api_access,
+    ag.parent_grant_id,
     ag.created_by,
     ag.status,
     ag.created_at,
@@ -551,6 +603,7 @@ type ListAccessGrantsByWorkspaceRow struct {
 	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
 	AllowReshare    bool               `json:"allow_reshare"`
 	AllowApiAccess  bool               `json:"allow_api_access"`
+	ParentGrantID   *uuid.UUID         `json:"parent_grant_id"`
 	CreatedBy       uuid.UUID          `json:"created_by"`
 	Status          string             `json:"status"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
@@ -585,6 +638,7 @@ func (q *Queries) ListAccessGrantsByWorkspace(ctx context.Context, workspaceID u
 			&i.ExpiresAt,
 			&i.AllowReshare,
 			&i.AllowApiAccess,
+			&i.ParentGrantID,
 			&i.CreatedBy,
 			&i.Status,
 			&i.CreatedAt,
@@ -624,6 +678,7 @@ SELECT
     ag.expires_at,
     ag.allow_reshare,
     ag.allow_api_access,
+    ag.parent_grant_id,
     ag.created_by,
     ag.status,
     ag.created_at,
@@ -655,6 +710,7 @@ type ListAccessGrantsForUserRow struct {
 	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
 	AllowReshare    bool               `json:"allow_reshare"`
 	AllowApiAccess  bool               `json:"allow_api_access"`
+	ParentGrantID   *uuid.UUID         `json:"parent_grant_id"`
 	CreatedBy       uuid.UUID          `json:"created_by"`
 	Status          string             `json:"status"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
@@ -687,6 +743,7 @@ func (q *Queries) ListAccessGrantsForUser(ctx context.Context, subjectID uuid.UU
 			&i.ExpiresAt,
 			&i.AllowReshare,
 			&i.AllowApiAccess,
+			&i.ParentGrantID,
 			&i.CreatedBy,
 			&i.Status,
 			&i.CreatedAt,
@@ -723,6 +780,7 @@ SELECT
     i.scope_type,
     i.scope_id,
     i.expires_at,
+    i.parent_grant_id,
     i.invited_by,
     i.status,
     i.created_at,
@@ -747,6 +805,7 @@ type ListInvitationsByWorkspaceRow struct {
 	ScopeType       string             `json:"scope_type"`
 	ScopeID         uuid.UUID          `json:"scope_id"`
 	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
+	ParentGrantID   *uuid.UUID         `json:"parent_grant_id"`
 	InvitedBy       uuid.UUID          `json:"invited_by"`
 	Status          string             `json:"status"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
@@ -776,6 +835,7 @@ func (q *Queries) ListInvitationsByWorkspace(ctx context.Context, workspaceID uu
 			&i.ScopeType,
 			&i.ScopeID,
 			&i.ExpiresAt,
+			&i.ParentGrantID,
 			&i.InvitedBy,
 			&i.Status,
 			&i.CreatedAt,
@@ -812,6 +872,7 @@ SELECT
     i.scope_type,
     i.scope_id,
     i.expires_at,
+    i.parent_grant_id,
     i.invited_by,
     i.status,
     i.created_at,
@@ -847,6 +908,7 @@ type ListPendingInvitationsForIdentityRow struct {
 	ScopeType       string             `json:"scope_type"`
 	ScopeID         uuid.UUID          `json:"scope_id"`
 	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
+	ParentGrantID   *uuid.UUID         `json:"parent_grant_id"`
 	InvitedBy       uuid.UUID          `json:"invited_by"`
 	Status          string             `json:"status"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
@@ -876,6 +938,7 @@ func (q *Queries) ListPendingInvitationsForIdentity(ctx context.Context, arg Lis
 			&i.ScopeType,
 			&i.ScopeID,
 			&i.ExpiresAt,
+			&i.ParentGrantID,
 			&i.InvitedBy,
 			&i.Status,
 			&i.CreatedAt,
@@ -897,7 +960,7 @@ SET status = 'revoked',
     updated_at = now()
 WHERE id = $1
   AND status = 'active'
-RETURNING id, workspace_id, subject_type, subject_id, role_id, scope_type, scope_id, expires_at, allow_reshare, allow_api_access, created_by, status, created_at, updated_at, template_code
+RETURNING id, workspace_id, subject_type, subject_id, role_id, scope_type, scope_id, expires_at, allow_reshare, allow_api_access, created_by, status, created_at, updated_at, template_code, parent_grant_id
 `
 
 func (q *Queries) RevokeAccessGrant(ctx context.Context, id uuid.UUID) (AccessGrant, error) {
@@ -919,6 +982,7 @@ func (q *Queries) RevokeAccessGrant(ctx context.Context, id uuid.UUID) (AccessGr
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.TemplateCode,
+		&i.ParentGrantID,
 	)
 	return i, err
 }
@@ -929,7 +993,7 @@ SET status = 'revoked',
     updated_at = now()
 WHERE id = $1
   AND status = 'pending'
-RETURNING id, workspace_id, invitee_email, invitee_phone, role_id, scope_type, scope_id, expires_at, invited_by, status, created_at, updated_at, template_code
+RETURNING id, workspace_id, invitee_email, invitee_phone, role_id, scope_type, scope_id, expires_at, invited_by, status, created_at, updated_at, template_code, parent_grant_id
 `
 
 func (q *Queries) RevokeInvitation(ctx context.Context, id uuid.UUID) (Invitation, error) {
@@ -949,6 +1013,7 @@ func (q *Queries) RevokeInvitation(ctx context.Context, id uuid.UUID) (Invitatio
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.TemplateCode,
+		&i.ParentGrantID,
 	)
 	return i, err
 }

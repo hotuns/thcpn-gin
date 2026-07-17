@@ -97,7 +97,7 @@
 - 用户请求不得传入 `table_name`、`field_name`、`JSONPath`、`adapter_config` 或 `raw_sql`。
 - DataSource、DSN、外部设备映射和 DataStreamBinding 属于系统运维边界，不属于普通 Workspace 管理能力。
 - Workspace Owner/Admin 也不能获得系统级数据源管理权限。
-- 系统管理员身份与 Workspace 角色必须分离；系统后台必须校验 `users.is_system_admin`。
+- 系统管理员身份与 Workspace 角色必须分离；系统后台必须使用独立管理员账号和管理员会话校验。
 - adapter 由代码注册，DataSource 只描述受控实例，DataStreamBinding 只保存经过审核的映射。
 - 表名、列名和 JSON path 必须来自受控配置并经过严格校验；数据值使用参数绑定。
 - 设备查询必须有时间范围、分页或点数上限；大范围查询走异步导出。

@@ -85,3 +85,31 @@ func TestMatchesInvitee(t *testing.T) {
 		t.Fatal("expected phone match")
 	}
 }
+
+func TestGrantCoversNestedDeviceScope(t *testing.T) {
+	workspaceID, projectID, siteID, deviceID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	target := resolvedScope{workspaceID: workspaceID, projectID: projectID, siteID: siteID, deviceID: deviceID, scopeType: "device", scopeID: deviceID}
+	for _, grant := range []AccessGrant{
+		{ScopeType: "workspace", ScopeID: workspaceID},
+		{ScopeType: "project", ScopeID: projectID},
+		{ScopeType: "site", ScopeID: siteID},
+		{ScopeType: "device", ScopeID: deviceID},
+	} {
+		if !grantCoversScope(grant, target) {
+			t.Fatalf("expected %#v to cover device target", grant)
+		}
+	}
+	if grantCoversScope(AccessGrant{ScopeType: "site", ScopeID: uuid.New()}, target) {
+		t.Fatal("unexpected unrelated site scope coverage")
+	}
+}
+
+func TestPermissionSubset(t *testing.T) {
+	available := []string{"device.view", "share.create", "telemetry.view_history"}
+	if !permissionSubset([]string{"device.view", "telemetry.view_history"}, available) {
+		t.Fatal("expected requested permissions to be a subset")
+	}
+	if permissionSubset([]string{"device.configure"}, available) {
+		t.Fatal("expected elevated permission to be rejected")
+	}
+}

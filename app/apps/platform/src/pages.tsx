@@ -1,109 +1,384 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, Eye, RefreshCw, Search, TrendingUp, Wrench } from "lucide-react";
-import { api, formatApiError, type JsonRecord, type TelemetrySeries } from "@thcpn/api";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
+import { TrendingUp } from "lucide-react";
+import { api, formatApiError } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, PageHeader, Panel, StateView } from "@thcpn/ui";
+import {
+  CameraLive,
+  DeviceMedia,
+  isCameraDevice,
+} from "./device-media";
+import { DataQuickNavigator } from "./data-quick-navigator";
+import {
+  DeviceQueryActions,
+  querySelectedTelemetry,
+} from "./device-query-actions";
+import { TelemetryCharts } from "./telemetry-charts";
+import { TelemetryTable } from "./telemetry-table";
 
 const dateTimeLocal = (date: Date) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
   return local.toISOString().slice(0, 16);
 };
 
-const formatTime = (value?: string) => value ? new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(value)) : "—";
-const statusTone = (status?: string): "success" | "warning" | "danger" | "neutral" | "info" => status === "active" || status === "success" ? "success" : status === "failed" || status === "error" ? "danger" : status === "pending" || status === "processing" ? "warning" : "neutral";
-
+const formatTime = (value?: string) =>
+  value
+    ? new Intl.DateTimeFormat("zh-CN", {
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      }).format(new Date(value))
+    : "—";
 function WorkspaceMissing() {
-  return <Panel><StateView type="empty" title="请选择 Workspace" description="当前页面需要一个 Workspace 上下文才能读取业务数据。" /></Panel>;
+  return (
+    <Panel>
+      <StateView
+        type="empty"
+        title="请选择 Workspace"
+        description="当前页面需要一个 Workspace 上下文才能读取业务数据。"
+      />
+    </Panel>
+  );
 }
 
-export function DevicesPage() {
+export function DeviceDataPage({
+  deviceId: fixedDeviceId,
+  embedded = false,
+}: { deviceId?: string; embedded?: boolean } = {}) {
   const { currentId } = useWorkspace();
-  const [keyword, setKeyword] = useState("");
-  const [selectedId, setSelectedId] = useState("");
-  const query = useQuery({ queryKey: workspaceQueryKey(currentId, "devices"), queryFn: () => api.devices.list(currentId!), enabled: Boolean(currentId) });
-  const devices = useMemo(() => (query.data?.items ?? []).filter((item) => `${item.name} ${item.serial_no} ${item.id}`.toLowerCase().includes(keyword.toLowerCase())), [keyword, query.data]);
-  useEffect(() => { if (devices.length && !devices.some((item) => item.id === selectedId)) setSelectedId(devices[0].id); }, [devices, selectedId]);
-  if (!currentId) return <><PageHeader eyebrow="Workspace / devices" title="设备" description="查看当前 Workspace 已分配的设备。" /><WorkspaceMissing /></>;
-  return <><PageHeader eyebrow="Workspace / devices" title="设备" description="查看设备资产、拓扑角色、生命周期和能力。设备注册与数据源绑定仅在系统后台管理。" actions={<Button variant="secondary" onClick={() => void query.refetch()}><RefreshCw size={14} />刷新</Button>} />
-    <Panel><div className="panel-header"><div className="filter-input"><Search size={15} /><input aria-label="搜索设备" value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索名称、序列号或 ID" /></div><Badge tone="info">{query.data?.items.length ?? 0} 台设备</Badge></div>
-      {query.isLoading ? <StateView type="loading" title="正在加载设备" description="正在读取当前 Workspace 的设备资产。" /> : query.error ? <StateView type="error" title="设备加载失败" description={formatApiError(query.error).message} requestId={formatApiError(query.error).requestId} action={<Button variant="secondary" onClick={() => void query.refetch()}>重试</Button>} /> : devices.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>设备</th><th>拓扑</th><th>生命周期</th><th>能力</th><th>状态</th><th>操作</th></tr></thead><tbody>{devices.map((device) => <tr key={device.id} className={selectedId === device.id ? "selected-row" : ""}><td><div className="cell-title">{device.name}</div><div className="cell-sub mono">{device.serial_no} · {device.id.slice(0, 8)}</div></td><td>{device.topology_role || device.device_type}<div className="cell-sub">{device.child_count ? `${device.child_count} 个子节点` : "独立设备"}</div></td><td><Badge tone={statusTone(device.lifecycle_status)}>{device.lifecycle_status}</Badge></td><td><div className="capability-list">{device.capabilities.length ? device.capabilities.slice(0, 3).map((item) => <Badge key={item}>{item}</Badge>) : <span className="muted">无</span>}</div></td><td><Badge tone={statusTone(device.status)}>{device.status}</Badge></td><td><Button variant="secondary" onClick={() => setSelectedId(device.id)}><Eye size={13} />管理</Button></td></tr>)}</tbody></table></div> : <StateView type="empty" title="没有匹配的设备" description={keyword ? "请调整搜索条件。" : "当前 Workspace 尚未分配系统设备。"} />}
-    </Panel>{selectedId && <OperationConsole title="设备操作" description="查看详情、子节点、相机实时会话、校准、固件升级、转移与解绑。" initial={{}} operations={[{ label: "查看详情", run: () => api.devices.get(selectedId) }, { label: "更新设备", run: (payload) => api.devices.update(selectedId, payload) }, { label: "查看子节点", run: () => api.devices.children(selectedId) }, { label: "创建相机会话", run: (payload) => api.devices.liveSession(selectedId, payload) }, { label: "请求校准", run: (payload) => api.devices.calibrate(selectedId, payload) }, { label: "固件升级", run: (payload) => api.devices.firmwareUpgrade(selectedId, payload) }, { label: "转移设备", run: (payload) => api.devices.transfer(selectedId, payload), dangerous: true }, { label: "解绑设备", run: () => api.devices.unbind(selectedId), dangerous: true }]} onDone={() => query.refetch()} />}</>;
-}
-
-export function DeviceDataPage() {
-  const { currentId } = useWorkspace();
-  const [deviceId, setDeviceId] = useState("");
-  const [startTime, setStartTime] = useState(() => dateTimeLocal(new Date(Date.now() - 24 * 60 * 60 * 1000)));
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [deviceId, setDeviceId] = useState(fixedDeviceId ?? "");
+  const [startTime, setStartTime] = useState(() =>
+    dateTimeLocal(new Date(Date.now() - 24 * 60 * 60 * 1000)),
+  );
   const [endTime, setEndTime] = useState(() => dateTimeLocal(new Date()));
   const [limit, setLimit] = useState(500);
-  const devicesQuery = useQuery({ queryKey: workspaceQueryKey(currentId, "devices"), queryFn: () => api.devices.list(currentId!), enabled: Boolean(currentId) });
+  const [selectedStreamIds, setSelectedStreamIds] = useState<string[]>([]);
+  const [appliedStartTime, setAppliedStartTime] = useState(startTime);
+  const [appliedEndTime, setAppliedEndTime] = useState(endTime);
+  const [appliedLimit, setAppliedLimit] = useState(limit);
+  const [appliedStreamIds, setAppliedStreamIds] = useState<string[]>([]);
+  const [selectionReadyForDevice, setSelectionReadyForDevice] = useState("");
+  const devicesQuery = useQuery({
+    queryKey: workspaceQueryKey(currentId, "devices"),
+    queryFn: () => api.devices.list(currentId!),
+    enabled: Boolean(currentId),
+  });
   const devices = devicesQuery.data?.items ?? [];
-  useEffect(() => { if (devices.length && !devices.some((item) => item.id === deviceId)) setDeviceId(devices[0].id); }, [deviceId, devices]);
-  const streamsQuery = useQuery({ queryKey: ["device", deviceId, "streams"], queryFn: () => api.dataStreams.list(deviceId), enabled: Boolean(deviceId) });
-  const telemetryQuery = useQuery({ queryKey: ["device", deviceId, "telemetry", startTime, endTime, limit], queryFn: () => api.telemetry.device(deviceId, { startTime: new Date(startTime).toISOString(), endTime: new Date(endTime).toISOString(), limit }), enabled: Boolean(deviceId && startTime && endTime) });
-  const points = useMemo(() => (telemetryQuery.data?.series ?? []).flatMap((series) => series.points.map((point) => ({ ...point, series }))).sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts)).slice(0, 200), [telemetryQuery.data]);
-  const setRange = (hours: number) => { const end = new Date(); setEndTime(dateTimeLocal(end)); setStartTime(dateTimeLocal(new Date(end.getTime() - hours * 60 * 60 * 1000))); };
-  if (!currentId) return <><PageHeader eyebrow="Workspace / telemetry" title="设备数据" description="按设备和时间范围查询遥测数据。" /><WorkspaceMissing /></>;
-  return <><PageHeader eyebrow="Workspace / telemetry" title="设备数据" description="数据查询只通过已审核的数据流绑定执行，不暴露数据库、表名或原始 SQL。" actions={<Button onClick={() => void telemetryQuery.refetch()} disabled={!deviceId}><RefreshCw size={14} />查询</Button>} />
-    <Panel><div className="query-bar"><label className="field"><span className="field-label">设备</span><select value={deviceId} onChange={(event) => setDeviceId(event.target.value)}><option value="">选择设备</option>{devices.map((device) => <option key={device.id} value={device.id}>{device.name} · {device.serial_no}</option>)}</select></label><label className="field"><span className="field-label">开始时间</span><input type="datetime-local" value={startTime} onChange={(event) => setStartTime(event.target.value)} /></label><label className="field"><span className="field-label">结束时间</span><input type="datetime-local" value={endTime} onChange={(event) => setEndTime(event.target.value)} /></label><label className="field"><span className="field-label">结果上限</span><input type="number" min="1" max="5000" value={limit} onChange={(event) => setLimit(Math.min(5000, Math.max(1, Number(event.target.value))))} /></label></div><div className="range-presets"><span>快捷范围</span>{[{ label: "1 小时", hours: 1 }, { label: "6 小时", hours: 6 }, { label: "24 小时", hours: 24 }, { label: "7 天", hours: 168 }].map((item) => <button key={item.hours} type="button" onClick={() => setRange(item.hours)}>{item.label}</button>)}</div></Panel>
-    {devicesQuery.isLoading ? <Panel className="section-gap"><StateView type="loading" title="正在加载设备" description="正在准备可查询的设备列表。" /></Panel> : devicesQuery.error ? <Panel className="section-gap"><StateView type="error" title="设备加载失败" description={formatApiError(devicesQuery.error).message} /></Panel> : !devices.length ? <Panel className="section-gap"><StateView type="empty" title="没有可查询设备" description="当前 Workspace 尚未分配设备。" /></Panel> : <>
-      <div className="grid grid-3 section-gap"><Panel className="metric"><div className="metric-label">数据流</div><div className="metric-value">{streamsQuery.data?.items.length ?? "—"}</div><div className="metric-meta neutral">{streamsQuery.isError ? "加载失败" : "设备可用通道"}</div></Panel><Panel className="metric"><div className="metric-label">遥测序列</div><div className="metric-value">{telemetryQuery.data?.series.length ?? "—"}</div><div className="metric-meta neutral">当前时间范围</div></Panel><Panel className="metric"><div className="metric-label">数据点</div><div className="metric-value">{telemetryQuery.data?.series.reduce((count, series) => count + series.points.length, 0) ?? "—"}</div><div className="metric-meta neutral">最多 {limit} 条</div></Panel></div>
-      <Panel className="section-gap"><div className="panel-header"><div><h2 className="panel-title">遥测趋势</h2><div className="panel-kicker">各指标独立量程，共享所选时间范围</div></div><TrendingUp size={16} className="muted" /></div>{telemetryQuery.isLoading ? <StateView type="loading" title="正在生成趋势" description="正在读取并整理时间序列。" /> : telemetryQuery.error ? <StateView type="error" title="趋势加载失败" description={formatApiError(telemetryQuery.error).message} requestId={formatApiError(telemetryQuery.error).requestId} /> : telemetryQuery.data?.series.some((series) => series.points.length) ? <TelemetryCharts series={telemetryQuery.data.series} startTime={startTime} endTime={endTime} /> : <StateView type="empty" title="没有可视化数据" description="当前时间范围内没有数值遥测点。" />}</Panel>
-      <div className="grid grid-2 section-gap"><Panel><div className="panel-header"><div><h2 className="panel-title">序列状态</h2><div className="panel-kicker">最新值与数据质量</div></div><Activity size={16} className="muted" /></div>{telemetryQuery.isLoading ? <StateView type="loading" title="正在查询遥测" description="正在读取数据源。" /> : telemetryQuery.error ? <StateView type="error" title="遥测查询失败" description={formatApiError(telemetryQuery.error).message} requestId={formatApiError(telemetryQuery.error).requestId} /> : telemetryQuery.data?.series.length ? <div className="series-list">{telemetryQuery.data.series.map((series) => <SeriesRow key={series.data_stream_id} series={series} />)}</div> : <StateView type="empty" title="时间范围内没有数据" description="可以调整时间范围、设备或确认数据流绑定状态。" />}</Panel><Panel><div className="panel-header"><div><h2 className="panel-title">数据流</h2><div className="panel-kicker">当前设备的只读通道</div></div><Badge tone="info">{streamsQuery.data?.items.length ?? 0}</Badge></div>{streamsQuery.error ? <StateView type="error" title="数据流加载失败" description={formatApiError(streamsQuery.error).message} /> : streamsQuery.data?.items.length ? <div className="series-list">{streamsQuery.data.items.map((stream) => <div className="series-row" key={stream.id}><div><div className="cell-title">{stream.name}</div><div className="cell-sub mono">{stream.code} · {stream.type}</div></div><div><Badge tone={statusTone(stream.status)}>{stream.status}</Badge><span className="unit-label">{stream.unit}</span></div></div>)}</div> : <StateView type="empty" title="没有数据流" description="系统尚未为该设备同步数据流。" />}</Panel></div>
-      <Panel className="section-gap"><div className="panel-header"><div><h2 className="panel-title">遥测明细</h2><div className="panel-kicker">按时间倒序展示最近 200 条</div></div><Badge tone="neutral">{points.length} 条</Badge></div>{points.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>数据流</th><th>时间</th><th>值</th><th>质量</th></tr></thead><tbody>{points.map((point, index) => <tr key={`${point.series.data_stream_id}-${point.ts}-${index}`}><td><div className="cell-title">{point.series.name}</div><div className="cell-sub mono">{point.series.code}</div></td><td>{formatTime(point.ts)}</td><td><span className="reading-value">{point.value}</span> <span className="muted">{point.series.unit}</span></td><td><Badge tone={point.quality === "good" ? "success" : "warning"}>{point.quality}</Badge></td></tr>)}</tbody></table></div> : <StateView type="empty" title="暂无明细" description="完成一次有结果的遥测查询后，数据点会显示在这里。" />}</Panel>
-      <OperationConsole title="媒体与数据流操作" description="查询归档媒体、图片、视频、单数据流遥测/媒体，以及准备下载或删除媒体对象。" initial={{ start_time: new Date(startTime).toISOString(), end_time: new Date(endTime).toISOString(), limit }} operations={[{ label: "设备媒体", run: (payload) => api.media.device(deviceId, payload) }, { label: "设备图片", run: (payload) => api.media.images(deviceId, payload) }, { label: "设备视频", run: (payload) => api.media.videos(deviceId, payload) }, { label: "数据流详情", run: (payload) => api.dataStreams.get(String(payload.data_stream_id ?? streamsQuery.data?.items[0]?.id ?? "")) }, { label: "数据流遥测", run: (payload) => api.telemetry.dataStream(String(payload.data_stream_id ?? streamsQuery.data?.items[0]?.id ?? ""), { startTime: String(payload.start_time), endTime: String(payload.end_time), limit: Number(payload.limit ?? limit) }) }, { label: "数据流媒体", run: (payload) => api.media.dataStream(String(payload.data_stream_id ?? streamsQuery.data?.items[0]?.id ?? ""), payload) }, { label: "准备媒体下载", run: api.media.prepareDownload }, { label: "删除媒体对象", run: api.media.remove, dangerous: true }]} />
-    </>}
-  </>;
+  const selectedDevice = devices.find((item) => item.id === deviceId);
+  useEffect(() => {
+    if (fixedDeviceId) {
+      if (deviceId !== fixedDeviceId) setDeviceId(fixedDeviceId);
+      return;
+    }
+    const requested = searchParams.get("device");
+    if (
+      requested &&
+      devices.some((item) => item.id === requested) &&
+      requested !== deviceId
+    )
+      setDeviceId(requested);
+    else if (devices.length && !devices.some((item) => item.id === deviceId))
+      setDeviceId(devices[0].id);
+  }, [deviceId, devices, fixedDeviceId, searchParams]);
+  const streamsQuery = useQuery({
+    queryKey: workspaceQueryKey(currentId, "device", deviceId, "streams"),
+    queryFn: () => api.dataStreams.list(deviceId),
+    enabled: Boolean(
+      deviceId && selectedDevice && !isCameraDevice(selectedDevice),
+    ),
+  });
+  useEffect(() => {
+    setSelectedStreamIds([]);
+    setAppliedStreamIds([]);
+    setSelectionReadyForDevice("");
+  }, [deviceId]);
+  useEffect(() => {
+    if (!deviceId || !streamsQuery.isSuccess || selectionReadyForDevice === deviceId)
+      return;
+    const defaults = streamsQuery.data.items
+        .filter((item) => item.type === "telemetry" && item.status === "active")
+        .map((item) => item.id);
+    setSelectedStreamIds(defaults);
+    setAppliedStreamIds(defaults);
+    setSelectionReadyForDevice(deviceId);
+  }, [deviceId, selectionReadyForDevice, streamsQuery.data, streamsQuery.isSuccess]);
+  const telemetryQuery = useQuery({
+    queryKey: workspaceQueryKey(
+      currentId,
+      "device",
+      deviceId,
+      "telemetry",
+      appliedStreamIds.slice().sort().join(",") || "all",
+      appliedStartTime,
+      appliedEndTime,
+      String(appliedLimit),
+    ),
+    queryFn: () =>
+      querySelectedTelemetry(deviceId, appliedStreamIds, {
+        startTime: new Date(appliedStartTime).toISOString(),
+        endTime: new Date(appliedEndTime).toISOString(),
+        limit: appliedLimit,
+      }),
+    enabled: Boolean(
+      deviceId &&
+      selectedDevice &&
+      !isCameraDevice(selectedDevice) &&
+      selectionReadyForDevice === deviceId &&
+      appliedStartTime &&
+      appliedEndTime,
+    ),
+  });
+  const points = useMemo(
+    () =>
+      (telemetryQuery.data?.series ?? [])
+        .flatMap((series) =>
+          series.points.map((point) => ({ ...point, series })),
+        )
+        .sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts)),
+    [telemetryQuery.data],
+  );
+  const imageStreams = useMemo(
+    () =>
+      (streamsQuery.data?.items ?? []).filter(
+        (item) => item.type === "image" && item.status === "active",
+      ),
+    [streamsQuery.data],
+  );
+  const setRange = (hours: number) => {
+    const end = new Date();
+    setEndTime(dateTimeLocal(end));
+    setStartTime(
+      dateTimeLocal(new Date(end.getTime() - hours * 60 * 60 * 1000)),
+    );
+  };
+  const search = () => {
+    setAppliedStartTime(startTime);
+    setAppliedEndTime(endTime);
+    setAppliedLimit(limit);
+    setAppliedStreamIds(selectedStreamIds);
+  };
+  const queryDirty =
+    startTime !== appliedStartTime ||
+    endTime !== appliedEndTime ||
+    limit !== appliedLimit ||
+    selectedStreamIds.slice().sort().join(",") !==
+      appliedStreamIds.slice().sort().join(",");
+  const querying = telemetryQuery.isFetching || streamsQuery.isFetching;
+  if (!currentId)
+    return (
+      <>
+        {!embedded && (
+          <PageHeader
+            eyebrow="Workspace / telemetry"
+            title="设备数据"
+            description="按设备和时间范围查询遥测数据。"
+          />
+        )}
+        <WorkspaceMissing />
+      </>
+    );
+  if (selectedDevice && isCameraDevice(selectedDevice))
+    return (
+      <>
+        {!embedded && (
+          <PageHeader
+            eyebrow="Workspace / camera"
+            title={selectedDevice.name}
+            description="海康相机实时视频。播放凭证为短期会话，仅在当前页面使用。"
+          />
+        )}
+        {!embedded && (
+          <Panel>
+            <div className="camera-only-selector">
+              <label className="field">
+                <span className="field-label">相机</span>
+                <select
+                  value={deviceId}
+                  onChange={(event) => {
+                    const nextId = event.target.value;
+                    setDeviceId(nextId);
+                    setSearchParams(nextId ? { device: nextId } : {});
+                  }}
+                >
+                  {devices.map((device) => (
+                    <option key={device.id} value={device.id}>
+                      {device.name} · {device.serial_no}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="camera-identity">
+                <Badge tone="info">海康视频</Badge>
+                <span className="mono">{selectedDevice.serial_no}</span>
+              </div>
+            </div>
+          </Panel>
+        )}
+        <CameraLive device={selectedDevice} />
+      </>
+    );
+  return (
+    <>
+      {!embedded && (
+        <PageHeader
+          eyebrow="Workspace / telemetry"
+          title="设备数据"
+          description="查看设备遥测趋势、明细和采集图片。"
+        />
+      )}
+      {devicesQuery.isLoading ? (
+        <Panel className="section-gap">
+          <StateView
+            type="loading"
+            title="正在加载设备"
+            description="正在准备可查询的设备列表。"
+          />
+        </Panel>
+      ) : devicesQuery.error ? (
+        <Panel className="section-gap">
+          <StateView
+            type="error"
+            title="设备加载失败"
+            description={formatApiError(devicesQuery.error).message}
+          />
+        </Panel>
+      ) : !devices.length ? (
+        <Panel className="section-gap">
+          <StateView
+            type="empty"
+            title="没有可查询设备"
+            description="当前 Workspace 尚未分配设备。"
+          />
+        </Panel>
+      ) : (
+        <div className="device-data-layout">
+          <div className="device-data-content">
+          {selectedDevice && (
+            <div id="data-section-metrics" className="data-page-anchor">
+              <DeviceQueryActions
+                streams={streamsQuery.data?.items ?? []}
+                selected={selectedStreamIds}
+                onSelectedChange={setSelectedStreamIds}
+                startTime={startTime}
+                endTime={endTime}
+                limit={limit}
+                onStartTimeChange={setStartTime}
+                onEndTimeChange={setEndTime}
+                onLimitChange={setLimit}
+                onRangeChange={setRange}
+                onSearch={search}
+                dirty={queryDirty}
+                searching={querying}
+              />
+            </div>
+          )}
+          <div id="data-section-trend" className="data-page-anchor section-gap">
+          <Panel>
+            <div className="panel-header">
+              <div>
+                <h2 className="panel-title">遥测趋势</h2>
+                <div className="panel-kicker">
+                  各指标独立量程，共享所选时间范围
+                </div>
+              </div>
+              <TrendingUp size={16} className="muted" />
+            </div>
+            {telemetryQuery.isLoading ? (
+              <TelemetryLoading />
+            ) : telemetryQuery.error ? (
+              <StateView
+                type="error"
+                title="趋势加载失败"
+                description={formatApiError(telemetryQuery.error).message}
+                requestId={formatApiError(telemetryQuery.error).requestId}
+              />
+            ) : telemetryQuery.data?.series.some(
+                (series) => series.points.length,
+              ) ? (
+              <TelemetryCharts
+                series={telemetryQuery.data.series}
+                startTime={appliedStartTime}
+                endTime={appliedEndTime}
+              />
+            ) : (
+              <StateView
+                type="empty"
+                title="没有可视化数据"
+                description="当前时间范围内没有数值遥测点。"
+              />
+            )}
+          </Panel>
+          </div>
+          <div id="data-section-detail" className="data-page-anchor section-gap">
+          <Panel className="telemetry-detail-panel">
+            <details>
+              <summary>
+                <div>
+                  <h2 className="panel-title">遥测明细</h2>
+                  <div className="panel-kicker">展开查看宽表数据</div>
+                </div>
+                <Badge tone="neutral">{points.length} 条</Badge>
+              </summary>
+              {points.length ? (
+                <TelemetryTable points={points} formatTime={formatTime} />
+              ) : (
+                <StateView
+                  type="empty"
+                  title="暂无明细"
+                  description="当前时间范围内没有遥测明细。"
+                />
+              )}
+            </details>
+          </Panel>
+          </div>
+          {selectedDevice && (
+            <DeviceMedia
+              workspaceId={currentId}
+              device={selectedDevice}
+              streams={streamsQuery.data?.items ?? []}
+              startTime={appliedStartTime}
+              endTime={appliedEndTime}
+            />
+          )}
+          </div>
+          <DataQuickNavigator imageStreams={imageStreams} />
+        </div>
+      )}
+    </>
+  );
 }
 
-function TelemetryCharts({ series, startTime, endTime }: { series: TelemetrySeries[]; startTime: string; endTime: string }) {
-  return <div className="telemetry-charts">{series.filter((item) => item.points.length).map((item, index) => <TelemetryChart key={item.data_stream_id} series={item} colorIndex={index} startTime={startTime} endTime={endTime} />)}</div>;
-}
-
-function TelemetryChart({ series, colorIndex, startTime, endTime }: { series: TelemetrySeries; colorIndex: number; startTime: string; endTime: string }) {
-  const source = series.points.filter((point) => Number.isFinite(point.value) && Number.isFinite(Date.parse(point.ts))).sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
-  if (!source.length) return null;
-  const step = Math.max(1, Math.ceil(source.length / 240));
-  const data = source.filter((_, index) => index % step === 0 || index === source.length - 1);
-  const values = source.map((point) => point.value);
-  const min = Math.min(...values); const max = Math.max(...values); const average = values.reduce((sum, item) => sum + item, 0) / Math.max(1, values.length);
-  const start = Date.parse(startTime); const end = Date.parse(endTime); const span = Math.max(1, end - start); const range = max - min;
-  const x = (ts: string) => 42 + ((Date.parse(ts) - start) / span) * 718;
-  const y = (item: number) => range === 0 ? 68 : 12 + (1 - (item - min) / range) * 112;
-  const path = data.map((point, index) => `${index ? "L" : "M"}${x(point.ts).toFixed(1)},${y(point.value).toFixed(1)}`).join(" ");
-  const latest = source.at(-1); const good = source.filter((point) => point.quality === "good").length; const quality = source.length ? Math.round(good / source.length * 100) : 0;
-  const format = (number: number) => new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(number);
-  return <section className={`telemetry-chart chart-color-${colorIndex % 5}`}><header><div><div className="cell-title">{series.name}</div><div className="cell-sub mono">{series.code} · {source.length} 个数据点</div></div><div className="chart-latest"><strong>{latest ? format(latest.value) : "—"}</strong><span>{series.unit}</span></div></header><div className="chart-stats"><span>最小 <strong>{format(min)}</strong></span><span>平均 <strong>{format(average)}</strong></span><span>最大 <strong>{format(max)}</strong></span><span>质量 <strong>{quality}%</strong></span></div><svg viewBox="0 0 780 154" role="img" aria-label={`${series.name}时间序列趋势`} preserveAspectRatio="none"><line x1="42" y1="12" x2="42" y2="124" className="chart-axis" /><line x1="42" y1="124" x2="760" y2="124" className="chart-axis" /><line x1="42" y1="68" x2="760" y2="68" className="chart-grid-line" /><text x="36" y="17" textAnchor="end">{format(max)}</text><text x="36" y="128" textAnchor="end">{format(min)}</text><path d={`${path} L${x(data.at(-1)?.ts ?? startTime).toFixed(1)},124 L${x(data[0]?.ts ?? startTime).toFixed(1)},124 Z`} className="chart-area" /><path d={path} className="chart-line" />{data.length <= 60 && data.map((point) => <circle key={point.ts} cx={x(point.ts)} cy={y(point.value)} r="2.5" className="chart-point"><title>{`${formatTime(point.ts)} · ${format(point.value)} ${series.unit ?? ""}`}</title></circle>)}<text x="42" y="148">{formatTime(new Date(start).toISOString())}</text><text x="760" y="148" textAnchor="end">{formatTime(new Date(end).toISOString())}</text></svg>{series.warnings?.length ? <div className="chart-warning">{series.warnings.map((warning) => warning.message).join("；")}</div> : null}</section>;
-}
-
-function SeriesRow({ series }: { series: TelemetrySeries }) {
-  const latest = series.points.at(-1);
-  return <div className="series-row"><div><div className="cell-title">{series.name}</div><div className="cell-sub mono">{series.code} · {series.points.length} points</div></div><div className="series-reading"><strong>{latest?.value ?? "—"}</strong><span>{series.unit}</span></div></div>;
-}
-
-export function DatasetsPage() {
-  const { currentId } = useWorkspace();
-  const [selectedId, setSelectedId] = useState("");
-  const query = useQuery({ queryKey: workspaceQueryKey(currentId, "datasets"), queryFn: () => api.datasets.list(currentId!), enabled: Boolean(currentId) });
-  useEffect(() => { const items = query.data?.items ?? []; if (items.length && !items.some((item) => item.id === selectedId)) setSelectedId(items[0].id); }, [query.data, selectedId]);
-  return <><PageHeader eyebrow="Workspace / datasets" title="数据集" description="创建、查看、更新、预览、导出和删除 Dataset。" actions={<Button variant="secondary" onClick={() => void query.refetch()}><RefreshCw size={14} />刷新</Button>} />{!currentId ? <WorkspaceMissing /> : <><Panel>{query.isLoading ? <StateView type="loading" title="正在加载数据集" description="正在读取数据集元数据。" /> : query.error ? <StateView type="error" title="数据集加载失败" description={formatApiError(query.error).message} requestId={formatApiError(query.error).requestId} /> : query.data?.items.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>数据集</th><th>类型</th><th>时间范围</th><th>来源</th><th>状态</th><th>操作</th></tr></thead><tbody>{query.data.items.map((dataset) => <tr key={dataset.id} className={selectedId === dataset.id ? "selected-row" : ""}><td><div className="cell-title">{dataset.name}</div><div className="cell-sub">{dataset.description || dataset.id}</div></td><td>{dataset.data_type}</td><td>{formatTime(dataset.time_start)}<div className="cell-sub">至 {formatTime(dataset.time_end)}</div></td><td>{dataset.sources.length}</td><td><Badge tone={statusTone(dataset.status)}>{dataset.status}</Badge></td><td><Button variant="secondary" onClick={() => setSelectedId(dataset.id)}><Wrench size={13} />管理</Button></td></tr>)}</tbody></table></div> : <StateView type="empty" title="暂无数据集" description="当前 Workspace 还没有可访问的数据集。" />}</Panel><OperationConsole title="Dataset 操作" description="创建 Dataset；对选中 Dataset 查看、更新、遥测预览、创建导出或删除。" initial={{ workspace_id: currentId, name: "", data_type: "telemetry", time_start: new Date(Date.now() - 86_400_000).toISOString(), time_end: new Date().toISOString(), sources: [] }} operations={[{ label: "创建 Dataset", run: api.datasets.create }, { label: "查看详情", run: () => api.datasets.get(selectedId) }, { label: "更新 Dataset", run: (payload) => api.datasets.update(selectedId, payload) }, { label: "遥测预览", run: (payload) => api.telemetry.dataset(selectedId, { startTime: String(payload.start_time ?? "") || undefined, endTime: String(payload.end_time ?? "") || undefined, limit: Number(payload.limit ?? 500) }) }, { label: "导出 Dataset", run: (payload) => api.datasets.export(selectedId, payload) }, { label: "删除 Dataset", run: () => api.datasets.remove(selectedId), dangerous: true }]} onDone={() => query.refetch()} /></>}</>;
-}
-
-export function ExportsPage() {
-  const { currentId } = useWorkspace();
-  const [selectedId, setSelectedId] = useState("");
-  const query = useQuery({ queryKey: workspaceQueryKey(currentId, "exports"), queryFn: () => api.exports.list(currentId!), enabled: Boolean(currentId), refetchInterval: 15_000 });
-  useEffect(() => { const items = query.data?.items ?? []; if (items.length && !items.some((item) => item.id === selectedId)) setSelectedId(items[0].id); }, [query.data, selectedId]);
-  return <><PageHeader eyebrow="Workspace / exports" title="导出任务" description="创建、查看和下载异步导出任务。运行中的任务每 15 秒自动刷新。" actions={<Button variant="secondary" onClick={() => void query.refetch()}><RefreshCw size={14} />刷新</Button>} />{!currentId ? <WorkspaceMissing /> : <><Panel>{query.isLoading ? <StateView type="loading" title="正在加载导出任务" description="正在读取任务状态。" /> : query.error ? <StateView type="error" title="导出任务加载失败" description={formatApiError(query.error).message} requestId={formatApiError(query.error).requestId} /> : query.data?.items.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>任务</th><th>资源</th><th>类型</th><th>状态</th><th>创建时间</th><th>操作</th></tr></thead><tbody>{query.data.items.map((job) => <tr key={job.id} className={selectedId === job.id ? "selected-row" : ""}><td><div className="cell-title mono">{job.id.slice(0, 12)}</div>{job.error_message && <div className="cell-sub" style={{ color: "var(--red)" }}>{job.error_message}</div>}</td><td>{job.resource_type}<div className="cell-sub mono">{job.resource_id.slice(0, 8)}</div></td><td>{job.export_type}</td><td><Badge tone={statusTone(job.status)}>{job.status}</Badge></td><td>{formatTime(job.created_at)}</td><td><Button variant="secondary" onClick={() => setSelectedId(job.id)}>管理</Button></td></tr>)}</tbody></table></div> : <StateView type="empty" title="暂无导出任务" description="从数据集或设备数据页面发起导出后，任务会显示在这里。" />}</Panel><OperationConsole title="导出操作" description="创建导出任务；查看选中任务详情或准备临时下载地址。" initial={{ resource_type: "device", resource_id: "", export_type: "telemetry_csv", start_time: new Date(Date.now() - 86_400_000).toISOString(), end_time: new Date().toISOString(), limit: 5000 }} operations={[{ label: "创建导出", run: api.exports.create }, { label: "任务详情", run: () => api.exports.get(selectedId) }, { label: "准备下载", run: () => api.exports.download(selectedId) }]} onDone={() => query.refetch()} /></>}</>;
-}
-
-type Operation = { label: string; run: (payload: JsonRecord) => Promise<unknown>; dangerous?: boolean };
-function OperationConsole({ title, description, initial = {}, operations, onDone }: { title: string; description: string; initial?: JsonRecord; operations: Operation[]; onDone?: () => void | Promise<unknown> }) {
-  const [operationIndex, setOperationIndex] = useState(0);
-  const [payload, setPayload] = useState(() => JSON.stringify(initial, null, 2));
-  const [result, setResult] = useState("");
-  const [busy, setBusy] = useState(false);
-  const submit = async (event: FormEvent) => { event.preventDefault(); const operation = operations[operationIndex]; if (operation.dangerous && !window.confirm(`确认执行“${operation.label}”？该操作可能不可逆。`)) return; setBusy(true); try { const value = payload.trim() ? JSON.parse(payload) as JsonRecord : {}; const response = await operation.run(value); setResult(response === undefined ? "操作成功" : JSON.stringify(response, null, 2)); await onDone?.(); } catch (error) { const formatted = formatApiError(error); setResult(`${formatted.message}${formatted.requestId ? `\nrequest id: ${formatted.requestId}` : ""}`); } finally { setBusy(false); } };
-  return <Panel className="section-gap operation-console"><div className="panel-header"><div><h2 className="panel-title">{title}</h2><div className="panel-kicker">{description}</div></div><Wrench size={16} className="muted" /></div><form onSubmit={submit}><label className="field"><span className="field-label">操作</span><select value={operationIndex} onChange={(event) => { setOperationIndex(Number(event.target.value)); setResult(""); }}>{operations.map((operation, index) => <option value={index} key={operation.label}>{operation.dangerous ? `高风险 · ${operation.label}` : operation.label}</option>)}</select></label><label className="field"><span className="field-label">请求参数 JSON</span><textarea value={payload} onChange={(event) => setPayload(event.target.value)} spellCheck={false} /></label><Button type="submit" variant={operations[operationIndex]?.dangerous ? "danger" : "primary"} disabled={busy}>{busy ? "执行中…" : "执行操作"}</Button></form>{result && <pre className="json-view">{result}</pre>}</Panel>;
+function TelemetryLoading() {
+  return (
+    <div
+      className="telemetry-loading"
+      aria-label="正在生成遥测趋势"
+      aria-busy="true"
+    >
+      <div className="telemetry-loading-head">
+        <span />
+        <span />
+      </div>
+      <div className="telemetry-loading-stats">
+        <span />
+        <span />
+        <span />
+        <span />
+      </div>
+      <div className="telemetry-loading-chart">
+        <i />
+        <i />
+        <i />
+        <i />
+        <i />
+        <i />
+      </div>
+      <div className="telemetry-loading-caption">正在读取并整理时间序列…</div>
+    </div>
+  );
 }

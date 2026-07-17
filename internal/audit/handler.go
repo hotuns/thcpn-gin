@@ -17,10 +17,15 @@ type Handler struct {
 	service   *Service
 	checker   *permission.Checker
 	actorFunc func(*gin.Context) (uuid.UUID, bool)
+	adminFunc func(*gin.Context) bool
 }
 
-func NewHandler(service *Service, checker *permission.Checker, actorFunc func(*gin.Context) (uuid.UUID, bool)) *Handler {
-	return &Handler{service: service, checker: checker, actorFunc: actorFunc}
+func NewHandler(service *Service, checker *permission.Checker, actorFunc func(*gin.Context) (uuid.UUID, bool), adminFuncs ...func(*gin.Context) bool) *Handler {
+	var adminFunc func(*gin.Context) bool
+	if len(adminFuncs) > 0 {
+		adminFunc = adminFuncs[0]
+	}
+	return &Handler{service: service, checker: checker, actorFunc: actorFunc, adminFunc: adminFunc}
 }
 
 func (h *Handler) List(c *gin.Context) {
@@ -45,6 +50,9 @@ func (h *Handler) List(c *gin.Context) {
 }
 
 func (h *Handler) authorize(c *gin.Context, workspaceID uuid.UUID) bool {
+	if h.adminFunc != nil && h.adminFunc(c) {
+		return true
+	}
 	userID, ok := h.actorUserID(c)
 	if !ok {
 		httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "missing authenticated user"))
