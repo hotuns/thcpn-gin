@@ -24,11 +24,6 @@ type createWorkspaceRequest struct {
 	OrganizationType string `json:"organization_type"`
 }
 
-type interventionRequest struct {
-	Reason          string `json:"reason"`
-	DurationMinutes int    `json:"duration_minutes"`
-}
-
 type workspaceStatusRequest struct {
 	Status      string `json:"status"`
 	ConfirmText string `json:"confirm_text"`
@@ -97,63 +92,6 @@ func (h *Handler) AdminGet(c *gin.Context) {
 	c.JSON(http.StatusOK, item)
 }
 
-func (h *Handler) AdminStartIntervention(c *gin.Context) {
-	workspaceID, ok := parseUUIDParam(c, "workspace_id")
-	if !ok {
-		return
-	}
-	actor, ok := auth.ActorFromContext(c)
-	if !ok || !actor.IsSystemAdmin {
-		httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "missing system administrator"))
-		return
-	}
-	var req interventionRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
-		return
-	}
-	item, err := h.service.StartIntervention(c.Request.Context(), workspaceID, actor.SystemAdministratorID(), req.Reason, req.DurationMinutes)
-	if err != nil {
-		httpx.WriteAppError(c, err)
-		return
-	}
-	c.Set("admin_intervention_reason", item.Reason)
-	if !h.record(c, audit.RecordInput{WorkspaceID: audit.WorkspaceID(workspaceID), Action: "workspace.intervention.start", ResourceType: "workspace", ResourceID: audit.ResourceID(workspaceID), Result: audit.ResultSuccess}) {
-		return
-	}
-	c.JSON(http.StatusCreated, item)
-}
-
-func (h *Handler) AdminEndIntervention(c *gin.Context) {
-	workspaceID, ok := parseUUIDParam(c, "workspace_id")
-	if !ok {
-		return
-	}
-	interventionID, ok := parseUUIDParam(c, "intervention_id")
-	if !ok {
-		return
-	}
-	actor, ok := auth.ActorFromContext(c)
-	if !ok || !actor.IsSystemAdmin {
-		httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "missing system administrator"))
-		return
-	}
-	item, err := h.service.ValidateIntervention(c.Request.Context(), workspaceID, interventionID, actor.SystemAdministratorID())
-	if err != nil {
-		httpx.WriteAppError(c, err)
-		return
-	}
-	c.Set("admin_intervention_reason", item.Reason)
-	if err := h.service.EndIntervention(c.Request.Context(), workspaceID, interventionID, actor.SystemAdministratorID()); err != nil {
-		httpx.WriteAppError(c, err)
-		return
-	}
-	if !h.record(c, audit.RecordInput{WorkspaceID: audit.WorkspaceID(workspaceID), Action: "workspace.intervention.end", ResourceType: "workspace", ResourceID: audit.ResourceID(workspaceID), Result: audit.ResultSuccess}) {
-		return
-	}
-	c.Status(http.StatusNoContent)
-}
-
 func (h *Handler) AdminUpdateStatus(c *gin.Context) {
 	workspaceID, ok := parseUUIDParam(c, "workspace_id")
 	if !ok {
@@ -209,25 +147,11 @@ func (h *Handler) AdminTransferOwner(c *gin.Context) {
 	c.JSON(http.StatusOK, item)
 }
 
-func (h *Handler) RequireWorkspaceIntervention() gin.HandlerFunc {
-	return h.requireIntervention(func(c *gin.Context) (uuid.UUID, error) { return uuid.Parse(c.Param("workspace_id")) })
-}
-
 func (h *Handler) TenantManagedOperation(c *gin.Context) {
 	httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "creation is managed by the Workspace owner in the user platform"))
 }
 
-func (h *Handler) RequireResourceIntervention(resourceType, param string) gin.HandlerFunc {
-	return h.requireIntervention(func(c *gin.Context) (uuid.UUID, error) {
-		id, err := uuid.Parse(c.Param(param))
-		if err != nil {
-			return uuid.Nil, apperr.New(apperr.KindInvalidArgument, "invalid "+param)
-		}
-		return h.service.WorkspaceIDForResource(c.Request.Context(), resourceType, id)
-	})
-}
-
-func (h *Handler) requireIntervention(resolve func(*gin.Context) (uuid.UUID, error)) gin.HandlerFunc {
+func (h *Handler) RequireAdminReason() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		actor, ok := auth.ActorFromContext(c)
 		if !ok || !actor.IsSystemAdmin {
@@ -235,26 +159,13 @@ func (h *Handler) requireIntervention(resolve func(*gin.Context) (uuid.UUID, err
 			c.Abort()
 			return
 		}
-		workspaceID, err := resolve(c)
-		if err != nil {
-			httpx.WriteAppError(c, err)
+		reason := strings.TrimSpace(c.GetHeader("X-Admin-Reason"))
+		if len([]rune(reason)) < 5 {
+			httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "administrator operation reason must contain at least 5 characters"))
 			c.Abort()
 			return
 		}
-		interventionID, err := uuid.Parse(strings.TrimSpace(c.GetHeader("X-Admin-Intervention-ID")))
-		if err != nil {
-			httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "administrator intervention is required"))
-			c.Abort()
-			return
-		}
-		item, err := h.service.ValidateIntervention(c.Request.Context(), workspaceID, interventionID, actor.SystemAdministratorID())
-		if err != nil {
-			httpx.WriteAppError(c, err)
-			c.Abort()
-			return
-		}
-		c.Set("admin_intervention_reason", item.Reason)
-		c.Set("admin_intervention_id", item.ID)
+		c.Set("admin_operation_reason", reason)
 		c.Next()
 	}
 }

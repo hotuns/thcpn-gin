@@ -56,23 +56,13 @@ export async function querySelectedTelemetry(
       limit: rawLimit,
       series: [],
     };
-  const responses = await queryTelemetryStreams(
-    streamIds,
-    (id) =>
-      client.dataStream(id, {
-        ...input,
-        limit: rawLimit,
-        adaptive: true,
-        targetPoints,
-      }),
-  );
-  return {
-    device_id: deviceId,
-    start_time: input.startTime,
-    end_time: input.endTime,
+  return client.device(deviceId, {
+    ...input,
     limit: rawLimit,
-    series: responses.flatMap((item) => item.series),
-  };
+    adaptive: true,
+    targetPoints,
+    dataStreamIds: streamIds,
+  });
 }
 
 export async function querySelectedTelemetryRaw(

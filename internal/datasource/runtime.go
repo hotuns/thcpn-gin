@@ -12,6 +12,7 @@ import (
 
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
 	mysql "github.com/go-sql-driver/mysql"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel/attribute"
 
@@ -125,6 +126,88 @@ func (r *Runtime) QueryTelemetry(ctx context.Context, source DataSource, req Tel
 	default:
 		return TelemetryResult{}, apperr.New(apperr.KindDataSource, "unsupported telemetry adapter_code")
 	}
+}
+
+func (r *Runtime) QueryTelemetryBatch(ctx context.Context, source DataSource, req TelemetryBatchQuery) (result TelemetryBatchResult, err error) {
+	start := time.Now()
+	ctx, span := tracing.Start(ctx, "datasource.telemetry_batch",
+		attribute.String("datasource.type", source.Type),
+		attribute.String("datasource.id", source.ID.String()),
+		attribute.Int("telemetry.stream_count", len(req.Bindings)),
+	)
+	defer func() {
+		result.ReturnedPoints = 0
+		result.SampledSeries = 0
+		for _, series := range result.Series {
+			result.ReturnedPoints += len(series.Points)
+			if series.Sampled {
+				result.SampledSeries++
+			}
+		}
+		span.SetAttributes(
+			attribute.Int("telemetry.source_scans", result.SourceScans),
+			attribute.Int("telemetry.rows_read", result.RowsRead),
+			attribute.Int("telemetry.returned_points", result.ReturnedPoints),
+			attribute.Int("telemetry.sampled_series", result.SampledSeries),
+		)
+		metrics.ObserveTelemetryBatch(source.Type, len(req.Bindings), result.SourceScans, result.RowsRead, result.ReturnedPoints, result.SampledSeries)
+		metrics.ObserveDataSourceQuery(source.Type, "telemetry_batch", "json", err, time.Since(start))
+		tracing.End(span, err)
+	}()
+	result.Series = make(map[uuid.UUID]TelemetryResult, len(req.Bindings))
+	if source.Status != "active" {
+		return result, apperr.New(apperr.KindDataSource, "data source is not active")
+	}
+
+	type fallbackItem struct {
+		binding DataStreamBinding
+	}
+	groups := make(map[string][]thcpnBatchMetric)
+	fallback := make([]fallbackItem, 0)
+	for _, binding := range req.Bindings {
+		if binding.Status != "active" {
+			return result, apperr.New(apperr.KindDataSource, "data stream binding is not active")
+		}
+		if binding.AdapterCode != AdapterTHCPNLegacy {
+			fallback = append(fallback, fallbackItem{binding: binding})
+			continue
+		}
+		cfg, parseErr := parseTHCPNLegacyTelemetryConfig(binding.AdapterConfigJSON)
+		if parseErr != nil {
+			return result, parseErr
+		}
+		if !supportsTHCPNTelemetryBatch(cfg) {
+			fallback = append(fallback, fallbackItem{binding: binding})
+			continue
+		}
+		key := thcpnTelemetryBatchGroupKey(cfg)
+		groups[key] = append(groups[key], thcpnBatchMetric{Binding: binding, Config: cfg})
+	}
+
+	for _, group := range groups {
+		batchResult, batchErr := r.queryThcpnLegacyMySQLTelemetryBatch(ctx, source, req, group)
+		if batchErr != nil {
+			return result, batchErr
+		}
+		for id, item := range batchResult.Series {
+			result.Series[id] = item
+		}
+		result.SourceScans += batchResult.SourceScans
+		result.RowsRead += batchResult.RowsRead
+	}
+	for _, item := range fallback {
+		telemetryResult, queryErr := r.QueryTelemetry(ctx, source, TelemetryQuery{
+			Binding: item.binding, Start: req.Start, End: req.End, Limit: req.Limit,
+			Adaptive: req.Adaptive, TargetPoints: req.TargetPoints,
+		})
+		if queryErr != nil {
+			return result, queryErr
+		}
+		result.Series[item.binding.DataStreamID] = telemetryResult
+		result.SourceScans++
+		result.RowsRead += telemetryResult.SourceCount
+	}
+	return result, nil
 }
 
 func (r *Runtime) queryGenericColumnsTelemetry(ctx context.Context, source DataSource, req TelemetryQuery) (TelemetryResult, error) {

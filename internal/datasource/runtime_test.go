@@ -409,6 +409,9 @@ func TestTHCPNLegacyConfigParsingAndPaths(t *testing.T) {
 	if cfg.ValuePath != `$."pm2.5".value` {
 		t.Fatalf("unexpected JSON path: %s", cfg.ValuePath)
 	}
+	if directPath := thcpnJSONDirectPath("pm2.5"); directPath != `$."pm2.5"` {
+		t.Fatalf("unexpected direct JSON path: %s", directPath)
+	}
 	if cfg.TableIndex != defaultTHCPNTableIndexField || cfg.TimeField != defaultTHCPNTimeField {
 		t.Fatalf("expected default table/time fields, got %#v", cfg)
 	}
@@ -530,6 +533,59 @@ func TestParseTHCPNTelemetryValueSkipsConfigMismatches(t *testing.T) {
 				t.Fatalf("expected value %v, got %v", tt.value, value)
 			}
 		})
+	}
+}
+
+func TestParseTHCPNBatchTelemetryValueSupportsLegacyAndDirectShapes(t *testing.T) {
+	tests := []struct {
+		name  string
+		raw   json.RawMessage
+		ok    bool
+		value float64
+	}{
+		{name: "direct number", raw: json.RawMessage(`26.38`), ok: true, value: 26.38},
+		{name: "numeric string", raw: json.RawMessage(`"12.91"`), ok: true, value: 12.91},
+		{name: "legacy nested number", raw: json.RawMessage(`{"value":25.2}`), ok: true, value: 25.2},
+		{name: "legacy nested string", raw: json.RawMessage(`{"value":"99"}`), ok: true, value: 99},
+		{name: "missing", raw: nil, ok: false},
+		{name: "null", raw: json.RawMessage(`null`), ok: false},
+		{name: "not a number", raw: json.RawMessage(`"bad"`), ok: false},
+		{name: "nan", raw: json.RawMessage(`"NaN"`), ok: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			value, ok := parseTHCPNBatchTelemetryValue(tt.raw)
+			if ok != tt.ok || (ok && value != tt.value) {
+				t.Fatalf("got value=%v ok=%v, want value=%v ok=%v", value, ok, tt.value, tt.ok)
+			}
+		})
+	}
+}
+
+func TestTHCPNTelemetryBatchGroupSeparatesIncompatibleSources(t *testing.T) {
+	base := thcpnLegacyBindingConfig{
+		ExternalDeviceID: 1206,
+		RowType:          "data",
+		TableIndex:       "device_data_index",
+		TableNameField:   "table_name",
+		IndexStartField:  "start_time",
+		IndexEndField:    "end_time",
+		DeviceIDField:    "device_id",
+		DataField:        "data",
+		TimeField:        "ts",
+		TypeField:        "type",
+		DeletedAtField:   "deleted_at",
+		MaxShardTables:   8,
+	}
+	otherMetric := base
+	otherMetric.JSONKey = "temp"
+	if thcpnTelemetryBatchGroupKey(base) != thcpnTelemetryBatchGroupKey(otherMetric) {
+		t.Fatal("metric JSON keys must share one source scan")
+	}
+	otherDevice := base
+	otherDevice.ExternalDeviceID++
+	if thcpnTelemetryBatchGroupKey(base) == thcpnTelemetryBatchGroupKey(otherDevice) {
+		t.Fatal("different external devices must not share a source scan")
 	}
 }
 

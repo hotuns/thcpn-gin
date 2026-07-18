@@ -1,33 +1,35 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { Pencil, Plus, X } from "lucide-react";
 import { api, formatApiError, type JsonRecord } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, PageHeader, Panel, StateView } from "@thcpn/ui";
 import { AccessControlTab } from "./access-control";
-import { SecurityTab as StructuredSecurityTab } from "./security-tab";
 
 const text = (value: unknown, fallback = "—") =>
   value === undefined || value === null || value === ""
     ? fallback
     : String(value);
+const resourceKindLabel = (kind: "Project" | "Site") =>
+  kind === "Project" ? "项目" : "样地";
 export function SettingsPage() {
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") ?? "resources";
+  if (tab === "security")
+    return <Navigate to="/account?tab=security" replace />;
   const tabs = [
     { id: "resources", label: "基础资料" },
     { id: "access", label: "访问控制" },
     { id: "audit", label: "审计日志" },
-    { id: "security", label: "账号安全" },
   ];
   return (
     <>
       <PageHeader
-        eyebrow="Workspace / settings"
-        title="设置"
-        description="管理 Workspace 基础资料、协作关系、审计和当前账号安全。"
+        eyebrow="工作区 / 设置"
+        title="工作区设置"
+        description="管理当前工作区的基础资料、协作关系和审计记录。"
       />
       <div className="settings-tabs">
         {tabs.map((item) => (
@@ -44,10 +46,8 @@ export function SettingsPage() {
         <ResourcesTab />
       ) : tab === "access" ? (
         <AccessControlTab />
-      ) : tab === "audit" ? (
-        <AuditTab />
       ) : (
-        <StructuredSecurityTab />
+        <AuditTab />
       )}
     </>
   );
@@ -66,14 +66,9 @@ function ResourcesTab() {
     queryFn: () => api.sites.list(currentId!),
     enabled: Boolean(currentId),
   });
-  const [projectName, setProjectName] = useState("");
-  const [projectDescription, setProjectDescription] = useState("");
-  const [siteName, setSiteName] = useState("");
-  const [siteLocation, setSiteLocation] = useState("");
-  const [projectId, setProjectId] = useState("");
-  const [editing, setEditing] = useState<{
+  const [resourceDialog, setResourceDialog] = useState<{
     kind: "Project" | "Site";
-    record: JsonRecord;
+    record?: JsonRecord;
   } | null>(null);
   const [message, setMessage] = useState("");
   const showError = (error: unknown) => {
@@ -82,59 +77,30 @@ function ResourcesTab() {
       `${item.message}${item.requestId ? ` · request id ${item.requestId}` : ""}`,
     );
   };
-  const createProject = async () => {
-    if (!currentId || !projectName.trim()) return;
+  const saveResource = async (
+    kind: "Project" | "Site",
+    record: JsonRecord | undefined,
+    payload: JsonRecord,
+  ) => {
+    if (!currentId) return false;
     try {
-      await api.projects.create({
-        workspace_id: currentId,
-        name: projectName.trim(),
-        description: projectDescription.trim() || undefined,
-      });
-      setProjectName("");
-      setProjectDescription("");
-      setMessage("Project 已创建");
-      await client.invalidateQueries({
-        queryKey: workspaceQueryKey(currentId, "projects"),
-      });
-    } catch (error) {
-      showError(error);
-    }
-  };
-  const createSite = async () => {
-    if (!currentId || !projectId || !siteName.trim()) return;
-    try {
-      await api.sites.create({
-        workspace_id: currentId,
-        project_id: projectId,
-        name: siteName.trim(),
-        location_text: siteLocation.trim() || undefined,
-      });
-      setSiteName("");
-      setSiteLocation("");
-      setMessage("Site 已创建");
-      await client.invalidateQueries({
-        queryKey: workspaceQueryKey(currentId, "sites"),
-      });
-    } catch (error) {
-      showError(error);
-    }
-  };
-  const updateResource = async (payload: JsonRecord) => {
-    if (!editing) return;
-    try {
-      if (editing.kind === "Project")
-        await api.projects.update(text(editing.record.id), payload);
-      else await api.sites.update(text(editing.record.id), payload);
-      setMessage(`${editing.kind} 已更新`);
-      setEditing(null);
+      if (kind === "Project") {
+        if (record) await api.projects.update(text(record.id), payload);
+        else await api.projects.create({ workspace_id: currentId, ...payload });
+      } else if (record) await api.sites.update(text(record.id), payload);
+      else await api.sites.create({ workspace_id: currentId, ...payload });
+      setMessage(`${resourceKindLabel(kind)}${record ? "已更新" : "已创建"}`);
+      setResourceDialog(null);
       await client.invalidateQueries({
         queryKey: workspaceQueryKey(
           currentId,
-          editing.kind === "Project" ? "projects" : "sites",
+          kind === "Project" ? "projects" : "sites",
         ),
       });
+      return true;
     } catch (error) {
       showError(error);
+      return false;
     }
   };
   if (!currentId)
@@ -142,8 +108,8 @@ function ResourcesTab() {
       <Panel>
         <StateView
           type="empty"
-          title="请选择 Workspace"
-          description="基础资料依赖 Workspace 上下文。"
+          title="请选择工作区"
+          description="请先选择工作区，再管理基础资料。"
         />
       </Panel>
     );
@@ -153,88 +119,66 @@ function ResourcesTab() {
         <Panel>
           <div className="panel-header">
             <div>
-              <h2 className="panel-title">Project</h2>
-              <div className="panel-kicker">Workspace 下的研究项目</div>
+              <h2 className="panel-title">项目</h2>
+              <div className="panel-kicker">工作区下的研究项目</div>
             </div>
-            <Badge tone="info">{projects.data?.items.length ?? 0}</Badge>
-          </div>
-          <div className="resource-create">
-            <input
-              value={projectName}
-              onChange={(event) => setProjectName(event.target.value)}
-              placeholder="Project 名称"
-            />
-            <input
-              value={projectDescription}
-              onChange={(event) => setProjectDescription(event.target.value)}
-              placeholder="描述（可选）"
-            />
-            <Button
-              disabled={!projectName.trim()}
-              onClick={() => void createProject()}
-            >
-              <Plus size={14} />
-              创建
-            </Button>
+            <div className="resource-panel-actions">
+              <Badge tone="info">{projects.data?.items.length ?? 0}</Badge>
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  setResourceDialog({ kind: "Project" })
+                }
+              >
+                <Plus size={14} />
+                创建项目
+              </Button>
+            </div>
           </div>
           <ResourceRows
             query={projects}
             kind="Project"
-            onEdit={(record) => setEditing({ kind: "Project", record })}
+            onEdit={(record) =>
+              setResourceDialog({ kind: "Project", record })
+            }
           />
         </Panel>
         <Panel>
           <div className="panel-header">
             <div>
-              <h2 className="panel-title">Site</h2>
-              <div className="panel-kicker">Project 下的现场站点</div>
+              <h2 className="panel-title">样地</h2>
+              <div className="panel-kicker">项目下的现场样地</div>
             </div>
-            <Badge tone="info">{sites.data?.items.length ?? 0}</Badge>
-          </div>
-          <div className="resource-create resource-create-site">
-            <select
-              value={projectId}
-              onChange={(event) => setProjectId(event.target.value)}
-            >
-              <option value="">选择 Project</option>
-              {projects.data?.items.map((item) => (
-                <option key={text(item.id)} value={text(item.id)}>
-                  {text(item.name)}
-                </option>
-              ))}
-            </select>
-            <input
-              value={siteName}
-              onChange={(event) => setSiteName(event.target.value)}
-              placeholder="Site 名称"
-            />
-            <input
-              value={siteLocation}
-              onChange={(event) => setSiteLocation(event.target.value)}
-              placeholder="位置（可选）"
-            />
-            <Button
-              disabled={!projectId || !siteName.trim()}
-              onClick={() => void createSite()}
-            >
-              <Plus size={14} />
-              创建
-            </Button>
+            <div className="resource-panel-actions">
+              <Badge tone="info">{sites.data?.items.length ?? 0}</Badge>
+              <Button
+                variant="secondary"
+                onClick={() => setResourceDialog({ kind: "Site" })}
+              >
+                <Plus size={14} />
+                创建样地
+              </Button>
+            </div>
           </div>
           <ResourceRows
             query={sites}
             kind="Site"
-            onEdit={(record) => setEditing({ kind: "Site", record })}
+            onEdit={(record) =>
+              setResourceDialog({ kind: "Site", record })
+            }
           />
         </Panel>
       </div>
-      {editing && (
-        <ResourceEditor
-          key={text(editing.record.id)}
-          editing={editing}
+      {resourceDialog && (
+        <ResourceFormDialog
+          key={`${resourceDialog.kind}-${text(resourceDialog.record?.id, "new")}`}
+          kind={resourceDialog.kind}
+          record={resourceDialog.record}
           projects={projects.data?.items ?? []}
-          onClose={() => setEditing(null)}
-          onSave={updateResource}
+          onClose={() => setResourceDialog(null)}
+          onSave={(payload) =>
+            saveResource(resourceDialog.kind, resourceDialog.record, payload)
+          }
         />
       )}
       {message && <div className="command-note section-gap">{message}</div>}
@@ -248,14 +192,14 @@ function ResourceRows({
   onEdit,
 }: {
   query: any;
-  kind: string;
+  kind: "Project" | "Site";
   onEdit: (record: JsonRecord) => void;
 }) {
   if (query.isLoading)
     return (
       <StateView
         type="loading"
-        title={`正在加载 ${kind}`}
+        title={`正在加载${resourceKindLabel(kind)}`}
         description="正在读取基础资料。"
       />
     );
@@ -263,7 +207,7 @@ function ResourceRows({
     return (
       <StateView
         type="error"
-        title={`${kind} 加载失败`}
+        title={`${resourceKindLabel(kind)}加载失败`}
         description={formatApiError(query.error).message}
       />
     );
@@ -271,8 +215,8 @@ function ResourceRows({
     return (
       <StateView
         type="empty"
-        title={`暂无 ${kind}`}
-        description={`创建第一个 ${kind} 后会显示在这里。`}
+        title={`暂无${resourceKindLabel(kind)}`}
+        description={`创建第一个${resourceKindLabel(kind)}后会显示在这里。`}
       />
     );
   return (
@@ -301,66 +245,100 @@ function ResourceRows({
   );
 }
 
-function ResourceEditor({
-  editing,
+function ResourceFormDialog({
+  kind,
+  record,
   projects,
   onClose,
   onSave,
 }: {
-  editing: { kind: "Project" | "Site"; record: JsonRecord };
+  kind: "Project" | "Site";
+  record?: JsonRecord;
   projects: JsonRecord[];
   onClose: () => void;
-  onSave: (payload: JsonRecord) => Promise<void>;
+  onSave: (payload: JsonRecord) => Promise<boolean>;
 }) {
-  const [name, setName] = useState(text(editing.record.name, ""));
+  const editing = Boolean(record);
+  const [name, setName] = useState(text(record?.name, ""));
   const [description, setDescription] = useState(
-    text(editing.record.description, ""),
+    text(record?.description, ""),
   );
   const [location, setLocation] = useState(
-    text(editing.record.location_text, ""),
+    text(record?.location_text, ""),
   );
-  const [status, setStatus] = useState(text(editing.record.status, "active"));
+  const [projectId, setProjectId] = useState(text(record?.project_id, ""));
+  const [status, setStatus] = useState(text(record?.status, "active"));
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busy) onClose();
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [busy, onClose]);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
     try {
       await onSave(
-        editing.kind === "Project"
+        kind === "Project"
           ? { name: name.trim(), description: description.trim(), status }
-          : { name: name.trim(), location_text: location.trim(), status },
+          : {
+              name: name.trim(),
+              project_id: projectId,
+              location_text: location.trim(),
+              status,
+            },
       );
     } finally {
       setBusy(false);
     }
   };
-  const projectName = text(
-    projects.find((item) => text(item.id) === text(editing.record.project_id))
-      ?.name,
-    text(editing.record.project_id),
-  );
   return (
-    <Panel className="section-gap resource-editor">
-      <div className="panel-header">
-        <div>
-          <h2 className="panel-title">编辑 {editing.kind}</h2>
-          <div className="panel-kicker mono">{text(editing.record.id)}</div>
+    <div className="resource-dialog-layer">
+      <button
+        type="button"
+        className="resource-dialog-backdrop"
+        aria-label="关闭资源表单"
+        onClick={() => !busy && onClose()}
+      />
+      <div
+        className="resource-dialog-shell"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="resource-dialog-title"
+      >
+        <Panel className="resource-dialog">
+          <div className="panel-header">
+          <div>
+            <h2 className="panel-title" id="resource-dialog-title">
+              {editing ? "编辑" : "创建"}{resourceKindLabel(kind)}
+            </h2>
+            <div className="panel-kicker">
+              {kind === "Project" ? "管理项目名称和描述" : "设置所属项目和样地位置"}
+            </div>
+          </div>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            <X size={14} />
+            关闭
+          </Button>
         </div>
-        <Button variant="secondary" onClick={onClose}>
-          <X size={14} />
-          关闭
-        </Button>
-      </div>
-      <form className="resource-editor-form" onSubmit={submit}>
+        <form className="resource-dialog-form" onSubmit={submit}>
         <label className="field">
           <span className="field-label">名称</span>
           <input
+            autoFocus
             required
             value={name}
             onChange={(event) => setName(event.target.value)}
           />
         </label>
-        {editing.kind === "Project" ? (
+        {kind === "Project" ? (
           <label className="field">
             <span className="field-label">描述</span>
             <input
@@ -371,8 +349,19 @@ function ResourceEditor({
         ) : (
           <>
             <label className="field">
-              <span className="field-label">所属 Project</span>
-              <input value={projectName} disabled />
+              <span className="field-label">所属项目</span>
+              <select
+                required
+                value={projectId}
+                onChange={(event) => setProjectId(event.target.value)}
+              >
+                <option value="">选择项目</option>
+                {projects.map((item) => (
+                  <option key={text(item.id)} value={text(item.id)}>
+                    {text(item.name)}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="field">
               <span className="field-label">位置</span>
@@ -383,21 +372,33 @@ function ResourceEditor({
             </label>
           </>
         )}
-        <label className="field">
-          <span className="field-label">状态</span>
-          <select
-            value={status}
-            onChange={(event) => setStatus(event.target.value)}
-          >
-            <option value="active">启用</option>
-            <option value="archived">归档</option>
-          </select>
-        </label>
-        <Button type="submit" disabled={busy || !name.trim()}>
-          {busy ? "保存中…" : "保存更改"}
-        </Button>
-      </form>
-    </Panel>
+        {editing && (
+          <label className="field">
+            <span className="field-label">状态</span>
+            <select
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+            >
+              <option value="active">启用</option>
+              <option value="archived">归档</option>
+            </select>
+          </label>
+        )}
+          <div className="form-actions">
+            <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
+              取消
+            </Button>
+            <Button
+              type="submit"
+              disabled={busy || !name.trim() || (kind === "Site" && !projectId)}
+            >
+              {busy ? "保存中…" : editing ? "保存更改" : "确认创建"}
+            </Button>
+          </div>
+          </form>
+        </Panel>
+      </div>
+    </div>
   );
 }
 
@@ -464,13 +465,13 @@ function AuditTab() {
       const memberUser = member.user as JsonRecord | undefined;
       const name = text(
         memberUser?.name,
-        text(memberUser?.email, text(memberUser?.phone, "Workspace 成员")),
+        text(memberUser?.email, text(memberUser?.phone, "工作区成员")),
       );
       const userId = text(memberUser?.id, text(member.user_id, ""));
       if (userId) actors.set(userId, name);
       addResource(["member", "workspace_member"], member.id, name);
     });
-    addResource(["workspace"], currentId, current?.name ?? "当前 Workspace");
+    addResource(["workspace"], currentId, current?.name ?? "当前工作区");
     (projects.data?.items ?? []).forEach((item) =>
       addResource(["project"], item.id, item.name),
     );
@@ -714,9 +715,9 @@ function NamedAuditValue({
 }
 const resourceTypeLabel = (type: string) =>
   ({
-    workspace: "Workspace",
-    project: "Project",
-    site: "Site",
+    workspace: "工作区",
+    project: "项目",
+    site: "站点",
     device: "设备",
     dataset: "Dataset",
     export: "导出任务",

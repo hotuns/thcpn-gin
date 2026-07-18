@@ -2,11 +2,14 @@ package workspace
 
 import (
 	"context"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/auth"
 )
 
 func TestNormalizeGovernancePage(t *testing.T) {
@@ -20,15 +23,34 @@ func TestNormalizeGovernancePage(t *testing.T) {
 	}
 }
 
-func TestStartInterventionValidatesBeforeDatabase(t *testing.T) {
-	service := &Service{}
-	_, err := service.StartIntervention(context.Background(), uuid.New(), uuid.New(), "短", 30)
-	if apperr.KindOf(err) != apperr.KindInvalidArgument {
-		t.Fatalf("expected invalid argument for short reason, got %v", err)
+func TestRequireAdminReason(t *testing.T) {
+	tests := []struct {
+		name    string
+		reason  string
+		aborted bool
+	}{
+		{name: "missing", aborted: true},
+		{name: "too short", reason: "短", aborted: true},
+		{name: "valid", reason: "修复异常权限范围", aborted: false},
 	}
-	_, err = service.StartIntervention(context.Background(), uuid.New(), uuid.New(), "修复异常权限范围", 10)
-	if apperr.KindOf(err) != apperr.KindInvalidArgument {
-		t.Fatalf("expected invalid argument for duration, got %v", err)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest("PATCH", "/", nil)
+			c.Request.Header.Set("X-Admin-Reason", test.reason)
+			auth.SetActorContext(c, auth.Actor{UserID: uuid.New(), IsSystemAdmin: true})
+			NewHandler(nil).RequireAdminReason()(c)
+			if c.IsAborted() != test.aborted {
+				t.Fatalf("aborted = %v, want %v", c.IsAborted(), test.aborted)
+			}
+			if !test.aborted {
+				reason, _ := c.Get("admin_operation_reason")
+				if reason != test.reason {
+					t.Fatalf("reason = %q, want %q", reason, test.reason)
+				}
+			}
+		})
 	}
 }
 

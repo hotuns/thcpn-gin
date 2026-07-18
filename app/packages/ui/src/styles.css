@@ -316,26 +316,20 @@ a {
 }
 .page-header {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 28px;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+.page-header .eyebrow,
+.page-description {
+  display: none;
 }
 .page-title {
-  margin: 7px 0 6px;
-  color: var(--ink);
-  font:
-    800 clamp(24px, 3vw, 34px)/1.12 "Manrope",
-    sans-serif;
-  letter-spacing: -0.04em;
-}
-.page-description {
-  max-width: 650px;
   margin: 0;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.7;
-  text-wrap: pretty;
+  color: var(--ink);
+  font: 800 20px/1.25 "Manrope", sans-serif;
+  letter-spacing: 0;
 }
 .header-actions {
   display: flex;
@@ -427,17 +421,17 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 18px 20px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--soft-line);
 }
 .panel-title {
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
+  letter-spacing: 0;
 }
 .panel-kicker {
-  color: var(--muted);
-  font-size: 11px;
+  display: none;
 }
 .panel-body {
   padding: 20px;
@@ -812,10 +806,10 @@ a {
   }
   .page-header {
     display: block;
-    margin-bottom: 22px;
+    margin-bottom: 16px;
   }
   .header-actions {
-    margin-top: 18px;
+    margin-top: 12px;
   }
   .grid-4,
   .grid-3,

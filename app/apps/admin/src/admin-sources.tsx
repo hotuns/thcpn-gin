@@ -293,7 +293,7 @@ export function AdminSourcesPage() {
               <Network size={15} />
               同步会读取外部 THCPN
               数据库并更新平台设备、数据流和绑定。建议先不指定
-              Workspace，确认资产后再单独分配。
+              工作区，确认资产后再单独分配。
             </>
           ) : (
             <>
@@ -375,14 +375,14 @@ function PlacementFields({ form }: { form: ReturnType<typeof Form.useForm>[0] })
   const sites = useQuery({ queryKey: ["admin", "sites", workspaceId, projectId], queryFn: () => api.sites.adminList(workspaceId, projectId), enabled: Boolean(workspaceId) });
   return (
     <>
-      <Form.Item name="target_workspace_id" label="目标 Workspace">
+      <Form.Item name="target_workspace_id" label="目标工作区">
         <Select allowClear showSearch optionFilterProp="label" loading={workspaces.isLoading} placeholder="可选，留空则只同步系统资产" options={(workspaces.data?.items ?? []).map((item) => ({ value: string(item.id, ""), label: string(item.name, item.id) }))} onChange={() => form.setFieldsValue({ project_id: undefined, site_id: undefined })} />
       </Form.Item>
       <div className="drawer-grid">
-        <Form.Item name="project_id" label="Project">
+        <Form.Item name="project_id" label="项目">
           <Select allowClear showSearch optionFilterProp="label" disabled={!workspaceId} loading={projects.isLoading} options={(projects.data?.items ?? []).map((item) => ({ value: string(item.id, ""), label: string(item.name, item.id) }))} onChange={() => form.setFieldValue("site_id", undefined)} />
         </Form.Item>
-        <Form.Item name="site_id" label="Site">
+        <Form.Item name="site_id" label="站点">
           <Select allowClear showSearch optionFilterProp="label" disabled={!workspaceId} loading={sites.isLoading} options={(sites.data?.items ?? []).map((item) => ({ value: string(item.id, ""), label: string(item.name, item.id) }))} />
         </Form.Item>
       </div>

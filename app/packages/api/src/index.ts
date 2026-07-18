@@ -1,5 +1,6 @@
 import type { components } from "./openapi";
 export * from "./display-labels";
+export * from "./sampling-profile";
 
 type Schema<Name extends keyof components["schemas"]> =
   components["schemas"][Name];
@@ -34,6 +35,11 @@ export type ExportJob = Schema<"ExportJob">;
 export type THCPNLatestAttributesResponse = Schema<"THCPNLatestAttributesResponse">;
 export type THCPNDeviceLogListResponse = Schema<"THCPNDeviceLogListResponse">;
 export type THCPNDeviceLogAccessResponse = Schema<"THCPNDeviceLogAccessResponse">;
+export type SamplingProfile = Schema<"SamplingProfileResponse">;
+export type UpdateSamplingProfile = Schema<"UpdateSamplingProfileRequest">;
+export type DevicePublicAccess = Schema<"DevicePublicAccess">;
+export type PublicDevice = Schema<"PublicDevice">;
+export type PublicDeviceStream = Schema<"PublicDeviceStream">;
 export type LoginResponse = Schema<"LoginResponse">;
 export type AdminUser = {
   id: string;
@@ -75,10 +81,10 @@ const jsonRequest = <T>(path: string, method: string, body?: unknown) =>
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 
-const interventionRequest = <T>(path: string, method: string, interventionId: string, body?: unknown) =>
+const adminReasonRequest = <T>(path: string, method: string, reason: string, body?: unknown) =>
   request<T>(path, {
     method,
-    headers: { "X-Admin-Intervention-ID": interventionId },
+    headers: { "X-Admin-Reason": reason },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 
@@ -219,6 +225,15 @@ async function request<T>(
     }
     throw error;
   }
+}
+
+async function anonymousRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  headers.set("Accept", "application/json");
+  if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  const response = await fetch(`${baseUrl}${path}`, { ...init, headers, credentials: "same-origin" });
+  const { body } = await parseResponse(response);
+  return body as T;
 }
 
 async function download(path: string): Promise<Blob> {
@@ -439,6 +454,26 @@ export const api = {
         "PATCH",
         payload,
       ),
+    samplingProfile: (id: string) =>
+      request<SamplingProfile>(
+        `/api/v1/devices/${encodeURIComponent(id)}/sampling-profile`,
+      ),
+    updateSamplingProfile: (id: string, payload: UpdateSamplingProfile) =>
+      jsonRequest<SamplingProfile>(
+        `/api/v1/devices/${encodeURIComponent(id)}/sampling-profile`,
+        "PATCH",
+        payload,
+      ),
+    publicAccess: (id: string) =>
+      request<DevicePublicAccess>(
+        `/api/v1/devices/${encodeURIComponent(id)}/public-access`,
+      ),
+    updatePublicAccess: (id: string, payload: { enabled: boolean; password_enabled: boolean; password?: string }) =>
+      jsonRequest<DevicePublicAccess>(
+        `/api/v1/devices/${encodeURIComponent(id)}/public-access`,
+        "PATCH",
+        payload,
+      ),
     uploadProfileImages: (id: string, files: File[]) => {
       const body = new FormData();
       files.forEach((file) => body.append("files", file));
@@ -497,6 +532,21 @@ export const api = {
         method: "POST",
       }),
   },
+  publicDevices: {
+    get: (slug: string) =>
+      anonymousRequest<PublicDevice>(`/api/v1/public/devices/${encodeURIComponent(slug)}`),
+    unlock: (slug: string, password: string) =>
+      anonymousRequest<void>(`/api/v1/public/devices/${encodeURIComponent(slug)}/unlock`, {
+        method: "POST",
+        body: JSON.stringify({ password }),
+      }),
+    telemetry: (slug: string) =>
+      anonymousRequest<TelemetryQueryResponse>(`/api/v1/public/devices/${encodeURIComponent(slug)}/telemetry`),
+    images: (slug: string, streamId: string, page = 1, pageSize = 24) =>
+      anonymousRequest<MediaListResponse>(
+        `/api/v1/public/devices/${encodeURIComponent(slug)}/images${queryString({ data_stream_id: streamId, page, page_size: pageSize })}`,
+      ),
+  },
   dataStreams: {
     list: (deviceId: string) =>
       request<ListResponse<DataStream>>(
@@ -508,7 +558,7 @@ export const api = {
   telemetry: {
     device: (
       deviceId: string,
-      input: { startTime: string; endTime: string; limit?: number; adaptive?: boolean; targetPoints?: number },
+      input: { startTime: string; endTime: string; limit?: number; adaptive?: boolean; targetPoints?: number; dataStreamIds?: string[] },
     ) => {
       const params = new URLSearchParams({
         start_time: input.startTime,
@@ -517,6 +567,9 @@ export const api = {
       if (input.limit) params.set("limit", String(input.limit));
       if (input.adaptive !== undefined) params.set("adaptive", String(input.adaptive));
       if (input.targetPoints) params.set("target_points", String(input.targetPoints));
+      if (input.dataStreamIds?.length) {
+        params.set("data_stream_ids", [...input.dataStreamIds].sort().join(","));
+      }
       return request<TelemetryQueryResponse>(
         `/api/v1/devices/${encodeURIComponent(deviceId)}/telemetry?${params}`,
       );
@@ -651,10 +704,8 @@ export const api = {
     workspaces: {
       list: (filters: JsonRecord = {}) => request<ListResponse<JsonRecord>>(`/api/v1/admin/workspaces${queryString(filters as Record<string, string | number | boolean>)}`),
       get: (id: string) => request<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(id)}`),
-      startIntervention: (id: string, payload: JsonRecord) => jsonRequest<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(id)}/interventions`, "POST", payload),
-      endIntervention: (id: string, interventionId: string) => request<void>(`/api/v1/admin/workspaces/${encodeURIComponent(id)}/interventions/${encodeURIComponent(interventionId)}`, { method: "DELETE" }),
-      updateStatus: (id: string, interventionId: string, payload: JsonRecord) => interventionRequest<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(id)}/status`, "PATCH", interventionId, payload),
-      transferOwner: (id: string, interventionId: string, payload: JsonRecord) => interventionRequest<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(id)}/transfer-owner`, "POST", interventionId, payload),
+      updateStatus: (id: string, reason: string, payload: JsonRecord) => adminReasonRequest<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(id)}/status`, "PATCH", reason, payload),
+      transferOwner: (id: string, reason: string, payload: JsonRecord) => adminReasonRequest<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(id)}/transfer-owner`, "POST", reason, payload),
     },
     permissionsCatalog: () => request<JsonRecord>("/api/v1/admin/permissions/catalog"),
     sources: () =>
@@ -796,24 +847,24 @@ export const api = {
         payload,
       ),
     createProject: (payload: JsonRecord) => jsonRequest<JsonRecord>("/api/v1/admin/projects", "POST", payload),
-    updateProject: (id: string, interventionId: string, payload: JsonRecord) => interventionRequest<JsonRecord>(`/api/v1/admin/projects/${encodeURIComponent(id)}`, "PATCH", interventionId, payload),
+    updateProject: (id: string, reason: string, payload: JsonRecord) => adminReasonRequest<JsonRecord>(`/api/v1/admin/projects/${encodeURIComponent(id)}`, "PATCH", reason, payload),
     createSite: (payload: JsonRecord) => jsonRequest<JsonRecord>("/api/v1/admin/sites", "POST", payload),
-    updateSite: (id: string, interventionId: string, payload: JsonRecord) => interventionRequest<JsonRecord>(`/api/v1/admin/sites/${encodeURIComponent(id)}`, "PATCH", interventionId, payload),
+    updateSite: (id: string, reason: string, payload: JsonRecord) => adminReasonRequest<JsonRecord>(`/api/v1/admin/sites/${encodeURIComponent(id)}`, "PATCH", reason, payload),
     members: {
       list: (workspaceId: string) => request<ListResponse<JsonRecord>>(`/api/v1/admin/workspaces/${encodeURIComponent(workspaceId)}/members`),
-      add: (workspaceId: string, interventionId: string, payload: JsonRecord) => interventionRequest<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(workspaceId)}/members`, "POST", interventionId, payload),
-      update: (workspaceId: string, memberId: string, interventionId: string, payload: JsonRecord) => interventionRequest<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(memberId)}`, "PATCH", interventionId, payload),
-      remove: (workspaceId: string, memberId: string, interventionId: string) => interventionRequest<void>(`/api/v1/admin/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(memberId)}`, "DELETE", interventionId),
+      add: (workspaceId: string, reason: string, payload: JsonRecord) => adminReasonRequest<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(workspaceId)}/members`, "POST", reason, payload),
+      update: (workspaceId: string, memberId: string, reason: string, payload: JsonRecord) => adminReasonRequest<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(memberId)}`, "PATCH", reason, payload),
+      remove: (workspaceId: string, memberId: string, reason: string) => adminReasonRequest<void>(`/api/v1/admin/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(memberId)}`, "DELETE", reason),
     },
     grants: {
       list: (workspaceId: string) => request<ListResponse<JsonRecord>>(`/api/v1/admin/access-grants${queryString({ workspace_id: workspaceId })}`),
       create: (payload: JsonRecord) => jsonRequest<JsonRecord>("/api/v1/admin/access-grants", "POST", payload),
-      revoke: (id: string, interventionId: string) => interventionRequest<void>(`/api/v1/admin/access-grants/${encodeURIComponent(id)}`, "DELETE", interventionId),
+      revoke: (id: string, reason: string) => adminReasonRequest<void>(`/api/v1/admin/access-grants/${encodeURIComponent(id)}`, "DELETE", reason),
     },
     invitations: {
       list: (workspaceId: string) => request<ListResponse<JsonRecord>>(`/api/v1/admin/invitations${queryString({ workspace_id: workspaceId })}`),
       create: (payload: JsonRecord) => jsonRequest<JsonRecord>("/api/v1/admin/invitations", "POST", payload),
-      revoke: (id: string, interventionId: string) => interventionRequest<void>(`/api/v1/admin/invitations/${encodeURIComponent(id)}`, "DELETE", interventionId),
+      revoke: (id: string, reason: string) => adminReasonRequest<void>(`/api/v1/admin/invitations/${encodeURIComponent(id)}`, "DELETE", reason),
     },
     audit: (workspaceId: string, filters: JsonRecord = {}) => request<ListResponse<JsonRecord>>(`/api/v1/admin/audit-logs${queryString({ workspace_id: workspaceId, ...(filters as Record<string, string | number | boolean>) })}`),
     users: {

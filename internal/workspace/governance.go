@@ -62,18 +62,6 @@ type GovernanceListResult struct {
 	PageSize int                   `json:"page_size"`
 }
 
-type AdminIntervention struct {
-	ID            uuid.UUID  `json:"id"`
-	WorkspaceID   uuid.UUID  `json:"workspace_id"`
-	AdminID       uuid.UUID  `json:"admin_id"`
-	AdminName     string     `json:"admin_name"`
-	Reason        string     `json:"reason"`
-	ExpiresAt     time.Time  `json:"expires_at"`
-	EndedAt       *time.Time `json:"ended_at,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	RemainingSecs int64      `json:"remaining_seconds"`
-}
-
 func (s *Service) AdminListGovernance(ctx context.Context, input GovernanceListInput) (GovernanceListResult, error) {
 	page, pageSize := normalizePage(input.Page, input.PageSize)
 	conditions := []string{"TRUE"}
@@ -163,103 +151,6 @@ func (s *Service) AdminGetGovernance(ctx context.Context, workspaceID uuid.UUID)
 		return GovernanceWorkspace{}, err
 	}
 	return item, nil
-}
-
-func (s *Service) StartIntervention(ctx context.Context, workspaceID, adminID uuid.UUID, reason string, durationMinutes int) (AdminIntervention, error) {
-	reason = strings.TrimSpace(reason)
-	if workspaceID == uuid.Nil || adminID == uuid.Nil {
-		return AdminIntervention{}, apperr.New(apperr.KindInvalidArgument, "workspace and administrator are required")
-	}
-	if len([]rune(reason)) < 5 {
-		return AdminIntervention{}, apperr.New(apperr.KindInvalidArgument, "intervention reason must contain at least 5 characters")
-	}
-	if durationMinutes != 15 && durationMinutes != 30 && durationMinutes != 60 {
-		return AdminIntervention{}, apperr.New(apperr.KindInvalidArgument, "duration must be 15, 30, or 60 minutes")
-	}
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return AdminIntervention{}, apperr.Wrap(apperr.KindInternal, "begin intervention", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, `UPDATE workspace_admin_interventions SET ended_at = now(), updated_at = now() WHERE workspace_id = $1 AND admin_id = $2 AND ended_at IS NULL`, workspaceID, adminID); err != nil {
-		return AdminIntervention{}, apperr.Wrap(apperr.KindInternal, "end previous intervention", err)
-	}
-	var item AdminIntervention
-	err = tx.QueryRow(ctx, `
-		INSERT INTO workspace_admin_interventions (workspace_id, admin_id, reason, expires_at)
-		SELECT w.id, sa.id, $3, now() + make_interval(mins => $4)
-		FROM workspaces w CROSS JOIN system_admins sa
-		WHERE w.id = $1 AND sa.id = $2 AND sa.status = 'active'
-		RETURNING id, workspace_id, admin_id, reason, expires_at, ended_at, created_at
-	`, workspaceID, adminID, reason, durationMinutes).Scan(&item.ID, &item.WorkspaceID, &item.AdminID, &item.Reason, &item.ExpiresAt, &item.EndedAt, &item.CreatedAt)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return AdminIntervention{}, apperr.New(apperr.KindNotFound, "workspace or administrator not found")
-		}
-		return AdminIntervention{}, apperr.Wrap(apperr.KindInternal, "create intervention", err)
-	}
-	if err := tx.QueryRow(ctx, `SELECT name FROM system_admins WHERE id = $1`, adminID).Scan(&item.AdminName); err != nil {
-		return AdminIntervention{}, apperr.Wrap(apperr.KindInternal, "load intervention administrator", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return AdminIntervention{}, apperr.Wrap(apperr.KindInternal, "commit intervention", err)
-	}
-	item.RemainingSecs = int64(time.Until(item.ExpiresAt).Seconds())
-	return item, nil
-}
-
-func (s *Service) EndIntervention(ctx context.Context, workspaceID, interventionID, adminID uuid.UUID) error {
-	result, err := s.db.Exec(ctx, `UPDATE workspace_admin_interventions SET ended_at = now(), updated_at = now() WHERE id = $1 AND workspace_id = $2 AND admin_id = $3 AND ended_at IS NULL`, interventionID, workspaceID, adminID)
-	if err != nil {
-		return apperr.Wrap(apperr.KindInternal, "end intervention", err)
-	}
-	if result.RowsAffected() == 0 {
-		return apperr.New(apperr.KindNotFound, "active intervention not found")
-	}
-	return nil
-}
-
-func (s *Service) ValidateIntervention(ctx context.Context, workspaceID, interventionID, adminID uuid.UUID) (AdminIntervention, error) {
-	var item AdminIntervention
-	err := s.db.QueryRow(ctx, `
-		SELECT i.id, i.workspace_id, i.admin_id, sa.name, i.reason, i.expires_at, i.ended_at, i.created_at
-		FROM workspace_admin_interventions i
-		JOIN system_admins sa ON sa.id = i.admin_id
-		WHERE i.id = $1 AND i.workspace_id = $2 AND i.admin_id = $3
-			AND i.ended_at IS NULL AND i.expires_at > now() AND sa.status = 'active'
-	`, interventionID, workspaceID, adminID).Scan(&item.ID, &item.WorkspaceID, &item.AdminID, &item.AdminName, &item.Reason, &item.ExpiresAt, &item.EndedAt, &item.CreatedAt)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return AdminIntervention{}, apperr.New(apperr.KindPermissionDenied, "administrator intervention is missing or expired")
-		}
-		return AdminIntervention{}, apperr.Wrap(apperr.KindInternal, "validate intervention", err)
-	}
-	item.RemainingSecs = int64(time.Until(item.ExpiresAt).Seconds())
-	return item, nil
-}
-
-func (s *Service) WorkspaceIDForResource(ctx context.Context, resourceType string, resourceID uuid.UUID) (uuid.UUID, error) {
-	if resourceID == uuid.Nil {
-		return uuid.Nil, apperr.New(apperr.KindInvalidArgument, "resource id is required")
-	}
-	queries := map[string]string{
-		"project":      `SELECT workspace_id FROM projects WHERE id = $1`,
-		"site":         `SELECT workspace_id FROM sites WHERE id = $1`,
-		"access_grant": `SELECT workspace_id FROM access_grants WHERE id = $1`,
-		"invitation":   `SELECT workspace_id FROM invitations WHERE id = $1`,
-	}
-	query, ok := queries[resourceType]
-	if !ok {
-		return uuid.Nil, apperr.New(apperr.KindInvalidArgument, "unsupported intervention resource")
-	}
-	var workspaceID uuid.UUID
-	if err := s.db.QueryRow(ctx, query, resourceID).Scan(&workspaceID); err != nil {
-		if err == pgx.ErrNoRows {
-			return uuid.Nil, apperr.New(apperr.KindNotFound, "resource not found")
-		}
-		return uuid.Nil, apperr.Wrap(apperr.KindInternal, "resolve resource workspace", err)
-	}
-	return workspaceID, nil
 }
 
 func (s *Service) AdminUpdateStatus(ctx context.Context, workspaceID uuid.UUID, status string) (GovernanceWorkspace, error) {

@@ -1,5 +1,4 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import {
   Link,
   Navigate,
@@ -8,20 +7,16 @@ import {
   Route,
   Routes,
   useLocation,
-  useNavigate,
 } from "react-router-dom";
 import {
   BarChart3,
   Boxes,
   Building2,
-  CircleUserRound,
   Download,
   Gauge,
   Home,
-  LogOut,
   PanelLeftClose,
   PanelLeftOpen,
-  Settings,
   SlidersHorizontal,
   Table2,
   Truck,
@@ -48,9 +43,9 @@ import {
   MobileMenuButton,
   PageHeader,
   Panel,
-  ServiceStatus,
   StateView,
 } from "@thcpn/ui";
+import { AccountMenu, WorkspaceMenu } from "./shell-menus";
 const DevicesPage = lazy(() =>
   import("./devices-page").then((module) => ({ default: module.DevicesPage })),
 );
@@ -74,11 +69,24 @@ const DatasetDetailPage = lazy(() =>
     default: module.DatasetDetailPage,
   })),
 );
+const DatasetEditorPage = lazy(() =>
+  import("./datasets-page").then((module) => ({
+    default: module.DatasetEditorPage,
+  })),
+);
 const ExportsPage = lazy(() =>
   import("./exports-page").then((module) => ({ default: module.ExportsPage })),
 );
+const DataComparisonPage = lazy(() =>
+  import("./data-comparison-page").then((module) => ({
+    default: module.DataComparisonPage,
+  })),
+);
 const SettingsPage = lazy(() =>
   import("./settings").then((module) => ({ default: module.SettingsPage })),
+);
+const AccountPage = lazy(() =>
+  import("./account-page").then((module) => ({ default: module.AccountPage })),
 );
 const AuthPage = lazy(() =>
   import("./auth-pages").then((module) => ({ default: module.AuthPage })),
@@ -87,6 +95,9 @@ const DashboardPage = lazy(() =>
   import("./dashboard-page").then((module) => ({
     default: module.DashboardPage,
   })),
+);
+const PublicDevicePage = lazy(() =>
+  import("./public-device-page").then((module) => ({ default: module.PublicDevicePage })),
 );
 
 const navGroups = [
@@ -100,16 +111,14 @@ const navGroups = [
   {
     label: "数据",
     items: [
+      { to: "/data-compare", label: "数据对比", icon: BarChart3 },
       { to: "/datasets", label: "数据集", icon: Table2 },
       { to: "/exports", label: "导出任务", icon: Download },
     ],
   },
   {
     label: "管理",
-    items: [
-      { to: "/workspaces", label: "Workspace", icon: Building2 },
-      { to: "/settings", label: "设置", icon: Settings },
-    ],
+    items: [{ to: "/workspaces", label: "工作区", icon: Building2 }],
   },
 ];
 
@@ -118,43 +127,41 @@ function Shell() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem("thcpn:sidebar-collapsed") === "true",
   );
+  const [activeSidebarMenu, setActiveSidebarMenu] = useState<
+    "workspace" | "account" | null
+  >(null);
   const { user, signOut } = useAuth();
-  const navigate = useNavigate();
   const workspace = useWorkspace();
-  const health = useQuery({
-    queryKey: ["health"],
-    queryFn: api.health,
-    refetchInterval: 30_000,
-  });
-  const ready = useQuery({
-    queryKey: ["ready"],
-    queryFn: api.ready,
-    refetchInterval: 30_000,
-  });
   const location = useLocation();
-  const serviceStatus = (query: typeof health) =>
-    query.isLoading ? "loading" : query.isError ? "error" : "ok";
-  const serviceReady = health.isSuccess && ready.isSuccess;
   const routeLabel =
     location.pathname === "/devices"
       ? "设备"
       : location.pathname.startsWith("/devices/")
         ? "设备详情"
-        : location.pathname === "/datasets"
+      : location.pathname === "/datasets"
           ? "数据集"
-          : location.pathname.startsWith("/datasets/")
-            ? "数据集详情"
+          : location.pathname === "/datasets/new"
+            ? "创建数据集"
+            : location.pathname.endsWith("/edit")
+              ? "编辑数据集"
+              : location.pathname.startsWith("/datasets/")
+                ? "数据集详情"
+          : location.pathname === "/data-compare"
+            ? "数据对比"
           : location.pathname === "/exports"
             ? "导出任务"
             : location.pathname === "/workspaces"
-              ? "Workspace"
-              : location.pathname === "/settings"
-                ? "设置"
+              ? "工作区"
+            : location.pathname === "/settings"
+                ? "工作区设置"
+                : location.pathname === "/account"
+                  ? "账户中心"
                 : location.pathname === "/dashboard"
                   ? "总览"
                   : "";
   useEffect(() => {
     setMobileOpen(false);
+    setActiveSidebarMenu(null);
   }, [location.pathname, location.search]);
   useEffect(() => {
     localStorage.setItem("thcpn:sidebar-collapsed", String(sidebarCollapsed));
@@ -200,32 +207,23 @@ function Shell() {
             <CloseButton onClick={() => setMobileOpen(false)} />
           </div>
         </div>
-        <div className="workspace-switcher">
-          <div className="workspace-label">
-            <span>当前上下文</span>
-          </div>
-          {workspace.loading ? (
-            <div className="muted" style={{ marginTop: 10, fontSize: 11 }}>
-              载入 Workspace…
-            </div>
-          ) : workspace.workspaces.length ? (
-            <select
-              className="workspace-select"
-              value={workspace.currentId ?? ""}
-              onChange={(event) => workspace.setCurrentId(event.target.value)}
-            >
-              {workspace.workspaces.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <div className="muted" style={{ marginTop: 10, fontSize: 11 }}>
-              暂无可用 Workspace
-            </div>
-          )}
-        </div>
+        <WorkspaceMenu
+          open={activeSidebarMenu === "workspace"}
+          workspaces={workspace.workspaces}
+          current={workspace.current}
+          loading={workspace.loading}
+          onToggle={() =>
+            setActiveSidebarMenu((current) =>
+              current === "workspace" ? null : "workspace",
+            )
+          }
+          onClose={() => setActiveSidebarMenu(null)}
+          onSwitch={workspace.setCurrentId}
+          onNavigate={() => {
+            setActiveSidebarMenu(null);
+            setMobileOpen(false);
+          }}
+        />
         <nav style={{ display: "grid", gap: 20 }}>
           {navGroups.map((group) => (
             <div className="nav-group" key={group.label}>
@@ -250,26 +248,25 @@ function Shell() {
           ))}
         </nav>
         <div className="sidebar-footer">
-          <ServiceStatus
-            health={serviceStatus(health)}
-            ready={serviceStatus(ready)}
-            onRefresh={() => {
-              void health.refetch();
-              void ready.refetch();
+          <AccountMenu
+            open={activeSidebarMenu === "account"}
+            user={user}
+            onToggle={() =>
+              setActiveSidebarMenu((current) =>
+                current === "account" ? null : "account",
+              )
+            }
+            onClose={() => setActiveSidebarMenu(null)}
+            onNavigate={() => {
+              setActiveSidebarMenu(null);
+              setMobileOpen(false);
+            }}
+            onSignOut={async () => {
+              setActiveSidebarMenu(null);
+              setMobileOpen(false);
+              await signOut();
             }}
           />
-          <div className="account-row">
-            <div className="avatar">{(user?.name ?? "U").slice(0, 1)}</div>
-            <div className="account-name">
-              <div>{user?.name ?? "当前用户"}</div>
-              <div className="account-role">
-                Workspace 成员
-              </div>
-            </div>
-            <IconButton label="退出登录" onClick={() => void signOut()}>
-              <LogOut size={15} />
-            </IconButton>
-          </div>
         </div>
       </aside>
       <div className="main-area">
@@ -286,7 +283,7 @@ function Shell() {
             <MobileMenuButton onClick={() => setMobileOpen(true)} />
             <div className="topbar-context">
               <span className="mono">THCPN / </span>
-              {workspace.current?.name ?? "Workspace 控制台"}
+              {workspace.current?.name ?? "工作区控制台"}
               {routeLabel && (
                 <>
                   <span className="breadcrumb-separator">/</span>
@@ -294,30 +291,6 @@ function Shell() {
                 </>
               )}
             </div>
-          </div>
-          <div className="topbar-actions">
-            <Badge
-              tone={
-                serviceReady
-                  ? "success"
-                  : health.isLoading || ready.isLoading
-                    ? "warning"
-                    : "danger"
-              }
-            >
-              <span className="status-dot" />
-              {serviceReady
-                ? "服务正常"
-                : health.isLoading || ready.isLoading
-                  ? "检查中"
-                  : "服务异常"}
-            </Badge>
-            <IconButton
-              label="账号设置"
-              onClick={() => navigate("/settings?tab=security")}
-            >
-              <CircleUserRound size={18} />
-            </IconButton>
           </div>
         </header>
         <main className="page">
@@ -361,13 +334,13 @@ function Workspaces() {
   return (
     <>
       <PageHeader
-        eyebrow="Workspace / context"
-        title="Workspace"
-        description="管理你可以访问的组织空间。切换后，设备、数据集和导出查询都会隔离在新的上下文中。"
+        eyebrow="工作区"
+        title="工作区"
+        description="管理你可以访问的工作区。切换后，只显示所选工作区内的设备、数据集和导出任务。"
         actions={
           <Button onClick={() => setShowForm(true)}>
             <Building2 size={15} />
-            创建 Workspace
+            创建工作区
           </Button>
         }
       />
@@ -379,14 +352,14 @@ function Workspaces() {
       {showForm && (
         <Panel style={{ marginBottom: 16 } as React.CSSProperties}>
           <div className="panel-header">
-            <h2 className="panel-title">创建组织 Workspace</h2>
+            <h2 className="panel-title">创建组织工作区</h2>
             <IconButton label="关闭" onClick={() => setShowForm(false)}>
               <X size={16} />
             </IconButton>
           </div>
           <div className="panel-body form-grid" style={{ maxWidth: 520 }}>
             <label className="field">
-              <span className="field-label">Workspace 名称</span>
+              <span className="field-label">工作区名称</span>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -419,7 +392,7 @@ function Workspaces() {
         <Panel>
           <StateView
             type="loading"
-            title="正在加载 Workspace"
+            title="正在加载工作区"
             description="正在从服务端恢复可访问的组织空间。"
           />
         </Panel>
@@ -427,7 +400,7 @@ function Workspaces() {
         <Panel>
           <StateView
             type="error"
-            title="Workspace 列表加载失败"
+            title="工作区列表加载失败"
             description={formatApiError(error).message}
             requestId={formatApiError(error).requestId}
             action={
@@ -443,7 +416,7 @@ function Workspaces() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Workspace</th>
+                  <th>工作区</th>
                   <th>类型</th>
                   <th>角色</th>
                   <th>成员状态</th>
@@ -489,7 +462,7 @@ function Workspaces() {
                     </td>
                     <td>
                       {item.id === currentId ? (
-                        <Badge tone="info">当前 Workspace</Badge>
+                        <Badge tone="info">当前工作区</Badge>
                       ) : (
                         <Button
                           variant="secondary"
@@ -506,8 +479,8 @@ function Workspaces() {
             {!workspaces.length && (
               <StateView
                 type="empty"
-                title="没有可用 Workspace"
-                description="创建一个组织 Workspace，或联系管理员加入现有空间。"
+                title="没有可用工作区"
+                description="创建一个组织工作区，或联系管理员加入现有空间。"
               />
             )}
           </div>
@@ -530,6 +503,7 @@ export function PlatformApp() {
       <Routes>
         <Route path="/login" element={<AuthPage />} />
         <Route path="/register" element={<AuthPage register />} />
+        <Route path="/public/devices/:publicSlug" element={<PublicDevicePage />} />
         <Route element={<RequirePlatform />}>
           <Route element={<Shell />}>
             <Route path="/dashboard" element={<DashboardPage />} />
@@ -540,13 +514,20 @@ export function PlatformApp() {
               element={<DeviceCenterDetailPage />}
             />
             <Route path="/device-data" element={<LegacyDeviceDataRedirect />} />
+            <Route path="/data-compare" element={<DataComparisonPage />} />
             <Route path="/datasets" element={<DatasetsPage />} />
+            <Route path="/datasets/new" element={<DatasetEditorPage />} />
+            <Route
+              path="/datasets/:datasetId/edit"
+              element={<DatasetEditorPage />}
+            />
             <Route
               path="/datasets/:datasetId"
               element={<DatasetDetailPage />}
             />
             <Route path="/exports" element={<ExportsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/account" element={<AccountPage />} />
             <Route path="*" element={<RootRedirect />} />
           </Route>
         </Route>

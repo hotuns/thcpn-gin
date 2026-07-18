@@ -108,6 +108,14 @@ type updateTHCPNDeviceConfigRequest struct {
 	ControlJSON json.RawMessage `json:"control_json"`
 }
 
+type updateSamplingProfileRequest struct {
+	Mode             string `json:"mode"`
+	DataMinutes      []int  `json:"data_minutes"`
+	ImageMinute      *int   `json:"image_minute"`
+	ImageHours       []int  `json:"image_hours"`
+	ExpectedConfigID int64  `json:"expected_config_id"`
+}
+
 func NewHandler(service *Service, checker *permission.Checker, auditServices ...*audit.Service) *Handler {
 	var auditService *audit.Service
 	if len(auditServices) > 0 {
@@ -130,6 +138,69 @@ func (h *Handler) LatestTHCPNDeviceAttributes(c *gin.Context) {
 		httpx.WriteAppError(c, err)
 		return
 	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) GetSamplingProfile(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok || !h.authorize(c, "device", deviceID, "device.view") {
+		return
+	}
+	result, err := h.service.GetSamplingProfile(c.Request.Context(), deviceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	if h.checker != nil {
+		decision, checkErr := h.checker.Can(c.Request.Context(), permission.Actor{UserID: actor.UserID}, bindingManageAction, permission.ResourceRef{Type: "device", ID: deviceID})
+		if checkErr != nil {
+			httpx.WriteAppError(c, checkErr)
+			return
+		}
+		result.CanEdit = decision.Allowed
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) UpdateSamplingProfile(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok || !h.authorize(c, "device", deviceID, bindingManageAction) {
+		return
+	}
+	var req updateSamplingProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	previous, _ := h.service.GetSamplingProfile(c.Request.Context(), deviceID)
+	result, err := h.service.UpdateSamplingProfile(c.Request.Context(), SamplingProfileUpdateInput{
+		DeviceID: deviceID, Mode: req.Mode, DataMinutes: req.DataMinutes, ImageMinute: req.ImageMinute,
+		ImageHours: req.ImageHours, ExpectedConfigID: req.ExpectedConfigID, ActorUserID: actor.UserID,
+	})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{ActorType: audit.ActorUser, ActorID: audit.UserActorID(actor.UserID),
+			Action: "device.sampling_profile.update", ResourceType: "device", ResourceID: audit.ResourceID(deviceID),
+			Result: audit.ResultFailure, Reason: apperr.MessageOf(err)}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	reason := fmt.Sprintf("old=%s; new=%s; external_config_id=%d", previous.Summary, result.Summary, result.ExternalConfigID)
+	if !h.record(c, audit.RecordInput{ActorType: audit.ActorUser, ActorID: audit.UserActorID(actor.UserID),
+		Action: "device.sampling_profile.update", ResourceType: "device", ResourceID: audit.ResourceID(deviceID),
+		Result: audit.ResultSuccess, Reason: reason}) {
+		return
+	}
+	result.CanEdit = true
 	c.JSON(http.StatusOK, result)
 }
 

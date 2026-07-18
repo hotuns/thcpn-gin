@@ -562,51 +562,12 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/workspaces/{workspace_id}/interventions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspace_id: components["schemas"]["UUID"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Start a time-limited administrator intervention */
-        post: operations["adminStartWorkspaceIntervention"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/workspaces/{workspace_id}/interventions/{intervention_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspace_id: components["schemas"]["UUID"];
-                intervention_id: components["schemas"]["UUID"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** End an administrator intervention */
-        delete: operations["adminEndWorkspaceIntervention"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/admin/workspaces/{workspace_id}/status": {
         parameters: {
             query?: never;
             header: {
-                /** @description Active intervention owned by the current system administrator for the target Workspace. */
-                "X-Admin-Intervention-ID": components["parameters"]["AdminInterventionID"];
+                /** @description Reason recorded in the audit log for this system administrator operation. */
+                "X-Admin-Reason": components["parameters"]["AdminReason"];
             };
             path: {
                 workspace_id: components["schemas"]["UUID"];
@@ -619,7 +580,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Enable or disable a Workspace during intervention */
+        /** Enable or disable a Workspace */
         patch: operations["adminUpdateWorkspaceStatus"];
         trace?: never;
     };
@@ -627,8 +588,8 @@ export interface paths {
         parameters: {
             query?: never;
             header: {
-                /** @description Active intervention owned by the current system administrator for the target Workspace. */
-                "X-Admin-Intervention-ID": components["parameters"]["AdminInterventionID"];
+                /** @description Reason recorded in the audit log for this system administrator operation. */
+                "X-Admin-Reason": components["parameters"]["AdminReason"];
             };
             path: {
                 workspace_id: components["schemas"]["UUID"];
@@ -1706,6 +1667,128 @@ export interface paths {
         };
         /** Get latest THCPN device attributes */
         get: operations["getLatestTHCPNDeviceAttributes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/sampling-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get the user-facing THCPN sampling profile
+         * @description Requires `device.view`. Returns a structured schedule without exposing the complete device config.
+         */
+        get: operations["getDeviceSamplingProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update only the THCPN sampling and upload schedule
+         * @description Requires `device.configure`. Preserves every config field except the four supported sampling and upload interval keys.
+         */
+        patch: operations["updateDeviceSamplingProfile"];
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/public-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get fixed public access settings for a device
+         * @description Requires `device.configure`.
+         */
+        get: operations["getDevicePublicAccess"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update fixed public access settings
+         * @description Requires `device.configure`. The generated public slug never changes.
+         */
+        patch: operations["updateDevicePublicAccess"];
+        trace?: never;
+    };
+    "/api/v1/public/devices/{public_slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Open a fixed public device page */
+        get: operations["getPublicDevice"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/devices/{public_slug}/unlock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unlock a protected public device for seven days */
+        post: operations["unlockPublicDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/devices/{public_slug}/telemetry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Query the latest 72 hours of public telemetry */
+        get: operations["queryPublicDeviceTelemetry"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/devices/{public_slug}/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List preview-only images from the latest 72 hours */
+        get: operations["listPublicDeviceImages"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3015,23 +3098,6 @@ export interface components {
             last_activity_at?: components["schemas"]["Timestamp"];
             risks: components["schemas"]["WorkspaceGovernanceRisk"][];
         };
-        StartWorkspaceInterventionRequest: {
-            reason: string;
-            /** @enum {integer} */
-            duration_minutes: 15 | 30 | 60;
-        };
-        WorkspaceIntervention: {
-            id: components["schemas"]["UUID"];
-            workspace_id: components["schemas"]["UUID"];
-            admin_id: components["schemas"]["UUID"];
-            admin_name: string;
-            reason: string;
-            expires_at: components["schemas"]["Timestamp"];
-            ended_at?: components["schemas"]["Timestamp"];
-            created_at: components["schemas"]["Timestamp"];
-            /** Format: int64 */
-            remaining_seconds: number;
-        };
         CreateWorkspaceRequest: {
             /** @example 华中农业大学作物生态课题组 */
             name: string;
@@ -3638,6 +3704,65 @@ export interface components {
             latest_config: components["schemas"]["THCPNDeviceConfig"];
             latest_snapshot?: components["schemas"]["DeviceConfigSnapshot"];
         };
+        DevicePublicAccess: {
+            id?: components["schemas"]["UUID"];
+            device_id: components["schemas"]["UUID"];
+            public_slug?: string;
+            enabled: boolean;
+            password_enabled: boolean;
+            updated_by_name?: string;
+            created_at?: components["schemas"]["Timestamp"];
+            updated_at?: components["schemas"]["Timestamp"];
+        };
+        UpdateDevicePublicAccessRequest: {
+            enabled: boolean;
+            password_enabled: boolean;
+            password?: string;
+        };
+        PublicDeviceStream: {
+            id: components["schemas"]["UUID"];
+            code: string;
+            name: string;
+            unit?: string;
+        };
+        PublicDevice: {
+            public_slug: string;
+            name?: string;
+            status?: string;
+            device_type?: string;
+            topology_role?: string;
+            updated_at?: components["schemas"]["Timestamp"];
+            password_required: boolean;
+            access_granted: boolean;
+            telemetry_streams?: components["schemas"]["PublicDeviceStream"][];
+            image_streams?: components["schemas"]["PublicDeviceStream"][];
+        };
+        /** @enum {string} */
+        SamplingProfileMode: "standard" | "low_power" | "high_frequency" | "custom";
+        SamplingProfileResponse: {
+            device_id: components["schemas"]["UUID"];
+            mode: components["schemas"]["SamplingProfileMode"];
+            advanced: boolean;
+            data_minutes: number[];
+            image_minute?: number;
+            image_hours: number[];
+            data_cron: string;
+            image_cron: string;
+            summary: string;
+            /** Format: int64 */
+            external_config_id: number;
+            updated_at?: components["schemas"]["Timestamp"];
+            dispatched_at?: components["schemas"]["Timestamp"];
+            can_edit: boolean;
+        };
+        UpdateSamplingProfileRequest: {
+            mode: components["schemas"]["SamplingProfileMode"];
+            data_minutes?: number[];
+            image_minute?: number;
+            image_hours?: number[];
+            /** Format: int64 */
+            expected_config_id: number;
+        };
         UpdateTHCPNDeviceConfigRequest: {
             data_json: {
                 [key: string]: unknown;
@@ -4181,8 +4306,8 @@ export interface components {
         };
     };
     parameters: {
-        /** @description Active intervention owned by the current system administrator for the target Workspace. */
-        AdminInterventionID: string;
+        /** @description Reason recorded in the audit log for this system administrator operation. */
+        AdminReason: string;
         /** @description Workspace UUID. */
         WorkspaceID: string;
         /** @description Workspace member UUID. */
@@ -4955,66 +5080,12 @@ export interface operations {
             500: components["responses"]["Internal"];
         };
     };
-    adminStartWorkspaceIntervention: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspace_id: components["schemas"]["UUID"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["StartWorkspaceInterventionRequest"];
-            };
-        };
-        responses: {
-            /** @description Intervention started. */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkspaceIntervention"];
-                };
-            };
-            400: components["responses"]["InvalidArgument"];
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-            500: components["responses"]["Internal"];
-        };
-    };
-    adminEndWorkspaceIntervention: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspace_id: components["schemas"]["UUID"];
-                intervention_id: components["schemas"]["UUID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Intervention ended. */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-            500: components["responses"]["Internal"];
-        };
-    };
     adminUpdateWorkspaceStatus: {
         parameters: {
             query?: never;
             header: {
-                /** @description Active intervention owned by the current system administrator for the target Workspace. */
-                "X-Admin-Intervention-ID": components["parameters"]["AdminInterventionID"];
+                /** @description Reason recorded in the audit log for this system administrator operation. */
+                "X-Admin-Reason": components["parameters"]["AdminReason"];
             };
             path: {
                 workspace_id: components["schemas"]["UUID"];
@@ -5051,8 +5122,8 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description Active intervention owned by the current system administrator for the target Workspace. */
-                "X-Admin-Intervention-ID": components["parameters"]["AdminInterventionID"];
+                /** @description Reason recorded in the audit log for this system administrator operation. */
+                "X-Admin-Reason": components["parameters"]["AdminReason"];
             };
             path: {
                 workspace_id: components["schemas"]["UUID"];
@@ -6925,11 +6996,237 @@ export interface operations {
             500: components["responses"]["Internal"];
         };
     };
+    getDeviceSamplingProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current sampling profile. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SamplingProfileResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    updateDeviceSamplingProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSamplingProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description New config version dispatched. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SamplingProfileResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    getDevicePublicAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Public access settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevicePublicAccess"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateDevicePublicAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDevicePublicAccessRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated public access settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevicePublicAccess"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getPublicDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                public_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Public metadata or a password challenge. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicDevice"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    unlockPublicDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                public_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    password: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Device unlocked in this browser. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    queryPublicDeviceTelemetry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                public_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Adaptively sampled public telemetry. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelemetryQueryResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    listPublicDeviceImages: {
+        parameters: {
+            query: {
+                data_stream_id: components["schemas"]["UUID"];
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path: {
+                public_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Public image previews. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
     queryDeviceTelemetry: {
         parameters: {
             query: {
                 start_time: components["schemas"]["Timestamp"];
                 end_time: components["schemas"]["Timestamp"];
+                /** @description Comma-separated telemetry DataStream UUIDs. When omitted, all active telemetry streams on the device are queried. */
+                data_stream_ids?: string;
                 /** @description Maximum raw points returned per series before adaptive sampling is used. */
                 limit?: number;
                 /** @description Scan the complete time range and return raw points when within the limit, otherwise return time-bucket extrema. */

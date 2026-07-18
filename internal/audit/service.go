@@ -219,9 +219,12 @@ func FromRequest(c *gin.Context, input RecordInput) RecordInput {
 			input.ActorAdminID = UserActorID(actor.SystemAdministratorID())
 		}
 	}
-	if input.Reason == "" {
-		if reason, ok := c.Get("admin_intervention_reason"); ok {
-			input.Reason, _ = reason.(string)
+	if reason, ok := c.Get("admin_operation_reason"); ok {
+		operationReason, _ := reason.(string)
+		if input.Reason == "" {
+			input.Reason = operationReason
+		} else if operationReason != "" && operationReason != input.Reason {
+			input.Reason = operationReason + ": " + input.Reason
 		}
 	}
 	input.IP = c.ClientIP()

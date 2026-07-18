@@ -942,63 +942,17 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/Internal" }
-  /api/v1/admin/workspaces/{workspace_id}/interventions:
-    parameters:
-      - name: workspace_id
-        in: path
-        required: true
-        schema: { $ref: "#/components/schemas/UUID" }
-    post:
-      tags: [Admin]
-      operationId: adminStartWorkspaceIntervention
-      summary: Start a time-limited administrator intervention
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/StartWorkspaceInterventionRequest" }
-      responses:
-        "201":
-          description: Intervention started.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/WorkspaceIntervention" }
-        "400": { $ref: "#/components/responses/InvalidArgument" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "500": { $ref: "#/components/responses/Internal" }
-  /api/v1/admin/workspaces/{workspace_id}/interventions/{intervention_id}:
-    parameters:
-      - name: workspace_id
-        in: path
-        required: true
-        schema: { $ref: "#/components/schemas/UUID" }
-      - name: intervention_id
-        in: path
-        required: true
-        schema: { $ref: "#/components/schemas/UUID" }
-    delete:
-      tags: [Admin]
-      operationId: adminEndWorkspaceIntervention
-      summary: End an administrator intervention
-      security: [{ bearerAuth: [] }]
-      responses:
-        "204": { description: Intervention ended. }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "500": { $ref: "#/components/responses/Internal" }
   /api/v1/admin/workspaces/{workspace_id}/status:
     parameters:
       - name: workspace_id
         in: path
         required: true
         schema: { $ref: "#/components/schemas/UUID" }
-      - $ref: "#/components/parameters/AdminInterventionID"
+      - $ref: "#/components/parameters/AdminReason"
     patch:
       tags: [Admin]
       operationId: adminUpdateWorkspaceStatus
-      summary: Enable or disable a Workspace during intervention
+      summary: Enable or disable a Workspace
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -1027,7 +981,7 @@ paths:
         in: path
         required: true
         schema: { $ref: "#/components/schemas/UUID" }
-      - $ref: "#/components/parameters/AdminInterventionID"
+      - $ref: "#/components/parameters/AdminReason"
     post:
       tags: [Admin]
       operationId: adminTransferWorkspaceOwner
@@ -3029,6 +2983,149 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/devices/{device_id}/sampling-profile:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags: [Devices]
+      operationId: getDeviceSamplingProfile
+      summary: Get the user-facing THCPN sampling profile
+      description: Requires `device.view`. Returns a structured schedule without exposing the complete device config.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Current sampling profile.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SamplingProfileResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
+    patch:
+      tags: [Devices]
+      operationId: updateDeviceSamplingProfile
+      summary: Update only the THCPN sampling and upload schedule
+      description: Requires `device.configure`. Preserves every config field except the four supported sampling and upload interval keys.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSamplingProfileRequest" }
+      responses:
+        "200":
+          description: New config version dispatched.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SamplingProfileResponse" }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/devices/{device_id}/public-access:
+    parameters: [{ $ref: "#/components/parameters/DeviceID" }]
+    get:
+      tags: [Devices]
+      operationId: getDevicePublicAccess
+      summary: Get fixed public access settings for a device
+      description: Requires `device.configure`.
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      responses:
+        "200":
+          description: Public access settings.
+          content: { application/json: { schema: { $ref: "#/components/schemas/DevicePublicAccess" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Devices]
+      operationId: updateDevicePublicAccess
+      summary: Update fixed public access settings
+      description: Requires `device.configure`. The generated public slug never changes.
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/UpdateDevicePublicAccessRequest" } } }
+      responses:
+        "200":
+          description: Updated public access settings.
+          content: { application/json: { schema: { $ref: "#/components/schemas/DevicePublicAccess" } } }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/public/devices/{public_slug}:
+    get:
+      tags: [Devices]
+      operationId: getPublicDevice
+      summary: Open a fixed public device page
+      security: []
+      parameters: [{ name: public_slug, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: Public metadata or a password challenge.
+          content: { application/json: { schema: { $ref: "#/components/schemas/PublicDevice" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /api/v1/public/devices/{public_slug}/unlock:
+    post:
+      tags: [Devices]
+      operationId: unlockPublicDevice
+      summary: Unlock a protected public device for seven days
+      security: []
+      parameters: [{ name: public_slug, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties: { password: { type: string, minLength: 8, maxLength: 72 } }
+      responses:
+        "204": { description: Device unlocked in this browser. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /api/v1/public/devices/{public_slug}/telemetry:
+    get:
+      tags: [Telemetry]
+      operationId: queryPublicDeviceTelemetry
+      summary: Query the latest 72 hours of public telemetry
+      security: []
+      parameters: [{ name: public_slug, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: Adaptively sampled public telemetry.
+          content: { application/json: { schema: { $ref: "#/components/schemas/TelemetryQueryResponse" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /api/v1/public/devices/{public_slug}/images:
+    get:
+      tags: [Media]
+      operationId: listPublicDeviceImages
+      summary: List preview-only images from the latest 72 hours
+      security: []
+      parameters:
+        - { name: public_slug, in: path, required: true, schema: { type: string } }
+        - { name: data_stream_id, in: query, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: page_size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 24 } }
+      responses:
+        "200":
+          description: Public image previews.
+          content: { application/json: { schema: { $ref: "#/components/schemas/MediaListResponse" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/v1/devices/{device_id}/telemetry:
     parameters:
       - $ref: "#/components/parameters/DeviceID"
@@ -3054,6 +3151,12 @@ paths:
           required: true
           schema:
             $ref: "#/components/schemas/Timestamp"
+        - name: data_stream_ids
+          in: query
+          required: false
+          description: Comma-separated telemetry DataStream UUIDs. When omitted, all active telemetry streams on the device are queried.
+          schema:
+            type: string
         - name: limit
           in: query
           required: false
@@ -4495,14 +4598,15 @@ components:
       name: X-User-ID
       description: Development-only fallback authentication. Production should disable it.
   parameters:
-    AdminInterventionID:
-      name: X-Admin-Intervention-ID
+    AdminReason:
+      name: X-Admin-Reason
       in: header
       required: true
       schema:
         type: string
-        format: uuid
-      description: Active intervention owned by the current system administrator for the target Workspace.
+        minLength: 5
+        maxLength: 300
+      description: Reason recorded in the audit log for this system administrator operation.
     WorkspaceID:
       name: workspace_id
       in: path
@@ -5757,30 +5861,6 @@ components:
             risks:
               type: array
               items: { $ref: "#/components/schemas/WorkspaceGovernanceRisk" }
-    StartWorkspaceInterventionRequest:
-      type: object
-      required: [reason, duration_minutes]
-      properties:
-        reason:
-          type: string
-          minLength: 5
-          maxLength: 300
-        duration_minutes:
-          type: integer
-          enum: [15, 30, 60]
-    WorkspaceIntervention:
-      type: object
-      required: [id, workspace_id, admin_id, admin_name, reason, expires_at, created_at, remaining_seconds]
-      properties:
-        id: { $ref: "#/components/schemas/UUID" }
-        workspace_id: { $ref: "#/components/schemas/UUID" }
-        admin_id: { $ref: "#/components/schemas/UUID" }
-        admin_name: { type: string }
-        reason: { type: string }
-        expires_at: { $ref: "#/components/schemas/Timestamp" }
-        ended_at: { $ref: "#/components/schemas/Timestamp" }
-        created_at: { $ref: "#/components/schemas/Timestamp" }
-        remaining_seconds: { type: integer, format: int64 }
     CreateWorkspaceRequest:
       type: object
       required:
@@ -7124,6 +7204,90 @@ components:
           $ref: "#/components/schemas/THCPNDeviceConfig"
         latest_snapshot:
           $ref: "#/components/schemas/DeviceConfigSnapshot"
+    DevicePublicAccess:
+      type: object
+      required: [device_id, enabled, password_enabled]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        device_id: { $ref: "#/components/schemas/UUID" }
+        public_slug: { type: string }
+        enabled: { type: boolean }
+        password_enabled: { type: boolean }
+        updated_by_name: { type: string }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+    UpdateDevicePublicAccessRequest:
+      type: object
+      required: [enabled, password_enabled]
+      properties:
+        enabled: { type: boolean }
+        password_enabled: { type: boolean }
+        password: { type: string, minLength: 8, maxLength: 72 }
+    PublicDeviceStream:
+      type: object
+      required: [id, code, name]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        code: { type: string }
+        name: { type: string }
+        unit: { type: string }
+    PublicDevice:
+      type: object
+      required: [public_slug, password_required, access_granted]
+      properties:
+        public_slug: { type: string }
+        name: { type: string }
+        status: { type: string }
+        device_type: { type: string }
+        topology_role: { type: string }
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+        password_required: { type: boolean }
+        access_granted: { type: boolean }
+        telemetry_streams:
+          type: array
+          items: { $ref: "#/components/schemas/PublicDeviceStream" }
+        image_streams:
+          type: array
+          items: { $ref: "#/components/schemas/PublicDeviceStream" }
+    SamplingProfileMode:
+      type: string
+      enum: [standard, low_power, high_frequency, custom]
+    SamplingProfileResponse:
+      type: object
+      required: [device_id, mode, advanced, data_minutes, image_hours, data_cron, image_cron, summary, external_config_id, can_edit]
+      properties:
+        device_id: { $ref: "#/components/schemas/UUID" }
+        mode: { $ref: "#/components/schemas/SamplingProfileMode" }
+        advanced: { type: boolean }
+        data_minutes:
+          type: array
+          items: { type: integer, minimum: 0, maximum: 59 }
+        image_minute: { type: integer, minimum: 0, maximum: 59 }
+        image_hours:
+          type: array
+          items: { type: integer, minimum: 0, maximum: 23 }
+        data_cron: { type: string }
+        image_cron: { type: string }
+        summary: { type: string }
+        external_config_id: { type: integer, format: int64 }
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+        dispatched_at: { $ref: "#/components/schemas/Timestamp" }
+        can_edit: { type: boolean }
+    UpdateSamplingProfileRequest:
+      type: object
+      required: [mode, expected_config_id]
+      properties:
+        mode: { $ref: "#/components/schemas/SamplingProfileMode" }
+        data_minutes:
+          type: array
+          minItems: 1
+          items: { type: integer, minimum: 0, maximum: 59 }
+        image_minute: { type: integer, minimum: 0, maximum: 59 }
+        image_hours:
+          type: array
+          minItems: 1
+          items: { type: integer, minimum: 0, maximum: 23 }
+        expected_config_id: { type: integer, format: int64, minimum: 1 }
     UpdateTHCPNDeviceConfigRequest:
       type: object
       required:

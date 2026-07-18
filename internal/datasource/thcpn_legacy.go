@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"thcpn-gin/internal/apperr"
 )
 
@@ -66,6 +68,18 @@ type thcpnShardTable struct {
 type thcpnTelemetryShardResult struct {
 	Points      []TelemetryPoint
 	SkippedRows int
+}
+
+type thcpnBatchMetric struct {
+	Binding DataStreamBinding
+	Config  thcpnLegacyBindingConfig
+}
+
+type thcpnBatchAccumulator struct {
+	metric    thcpnBatchMetric
+	collector *thcpnAdaptiveTelemetryCollector
+	points    []TelemetryPoint
+	skipped   int
 }
 
 type thcpnTelemetryBucket struct {
@@ -165,6 +179,146 @@ func queryTHCPNAdaptiveTelemetry(ctx context.Context, db *sql.DB, shards []thcpn
 		})
 	}
 	return result, nil
+}
+
+func (r *Runtime) queryThcpnLegacyMySQLTelemetryBatch(ctx context.Context, source DataSource, req TelemetryBatchQuery, metrics []thcpnBatchMetric) (TelemetryBatchResult, error) {
+	result := TelemetryBatchResult{Series: make(map[uuid.UUID]TelemetryResult, len(metrics))}
+	if source.Type != "mysql" {
+		return result, apperr.New(apperr.KindDataSource, "thcpn_legacy_mysql adapter requires mysql data source type")
+	}
+	if len(metrics) == 0 {
+		return result, nil
+	}
+	base := metrics[0].Config
+	db, err := r.openMySQL(ctx, source)
+	if err != nil {
+		return result, err
+	}
+	defer db.Close()
+	shards, err := queryTHCPNShardTables(ctx, db, base, req.Start, req.End)
+	if err != nil {
+		return result, err
+	}
+
+	accumulators := make([]*thcpnBatchAccumulator, 0, len(metrics))
+	for _, metric := range metrics {
+		item := &thcpnBatchAccumulator{metric: metric, points: make([]TelemetryPoint, 0, req.Limit)}
+		if req.Adaptive {
+			item.collector = newTHCPNAdaptiveTelemetryCollector(req.Start, req.End, req.Limit, req.TargetPoints)
+		}
+		accumulators = append(accumulators, item)
+	}
+	for _, shard := range shards {
+		rowsRead, scanErr := scanTHCPNShardTelemetryBatch(ctx, db, shard.Name, base, req.Start, req.End, accumulators)
+		if scanErr != nil {
+			return result, scanErr
+		}
+		result.SourceScans++
+		result.RowsRead += rowsRead
+	}
+	for _, accumulator := range accumulators {
+		var telemetryResult TelemetryResult
+		if req.Adaptive {
+			points, sampled := accumulator.collector.Result()
+			telemetryResult = TelemetryResult{Points: points, SourceCount: accumulator.collector.sourceCount, Sampled: sampled, Complete: true}
+		} else {
+			sort.SliceStable(accumulator.points, func(i, j int) bool { return accumulator.points[i].Timestamp.Before(accumulator.points[j].Timestamp) })
+			if len(accumulator.points) > req.Limit {
+				accumulator.points = accumulator.points[:req.Limit]
+			}
+			telemetryResult = TelemetryResult{Points: accumulator.points, SourceCount: len(accumulator.points), Complete: len(accumulator.points) < req.Limit}
+		}
+		if accumulator.skipped > 0 {
+			telemetryResult.Warnings = append(telemetryResult.Warnings, QueryWarning{Code: "thcpn_config_mismatch", Message: fmt.Sprintf("部分历史数据与当前设备配置不匹配，已跳过 %d 条记录", accumulator.skipped), Count: accumulator.skipped})
+		}
+		result.Series[accumulator.metric.Binding.DataStreamID] = telemetryResult
+	}
+	return result, nil
+}
+
+func scanTHCPNShardTelemetryBatch(ctx context.Context, db *sql.DB, tableName string, cfg thcpnLegacyBindingConfig, start time.Time, end time.Time, accumulators []*thcpnBatchAccumulator) (int, error) {
+	query := fmt.Sprintf(
+		"SELECT %s, %s FROM %s WHERE %s = ? AND %s IS NULL AND %s = ? AND %s >= ? AND %s <= ? ORDER BY %s ASC",
+		quoteMySQLIdentifier(cfg.TimeField), quoteMySQLIdentifier(cfg.DataField), quoteMySQLIdentifier(tableName),
+		quoteMySQLIdentifier(cfg.DeviceIDField), quoteMySQLIdentifier(cfg.DeletedAtField), quoteMySQLIdentifier(cfg.TypeField),
+		quoteMySQLIdentifier(cfg.TimeField), quoteMySQLIdentifier(cfg.TimeField), quoteMySQLIdentifier(cfg.TimeField),
+	)
+	rows, err := db.QueryContext(ctx, query, cfg.ExternalDeviceID, cfg.RowType, start, end)
+	if err != nil {
+		return 0, apperr.Wrap(apperr.KindDataSource, "query thcpn telemetry batch shard", err)
+	}
+	defer rows.Close()
+	rowsRead := 0
+	for rows.Next() {
+		var timestamp time.Time
+		var payload []byte
+		if err := rows.Scan(&timestamp, &payload); err != nil {
+			return rowsRead, apperr.Wrap(apperr.KindDataSource, "scan thcpn telemetry batch row", err)
+		}
+		rowsRead++
+		var values map[string]json.RawMessage
+		if err := json.Unmarshal(payload, &values); err != nil {
+			for _, accumulator := range accumulators {
+				accumulator.skipped++
+			}
+			continue
+		}
+		for _, accumulator := range accumulators {
+			value, ok := parseTHCPNBatchTelemetryValue(values[accumulator.metric.Config.JSONKey])
+			if !ok {
+				accumulator.skipped++
+				continue
+			}
+			point := TelemetryPoint{Timestamp: timestamp, Value: value, Quality: "valid"}
+			if accumulator.collector != nil {
+				accumulator.collector.Add(point)
+			} else if len(accumulator.points) < cap(accumulator.points) {
+				accumulator.points = append(accumulator.points, point)
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return rowsRead, apperr.Wrap(apperr.KindDataSource, "read thcpn telemetry batch rows", err)
+	}
+	return rowsRead, nil
+}
+
+func parseTHCPNBatchTelemetryValue(raw json.RawMessage) (float64, bool) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return 0, false
+	}
+	if raw[0] == '{' {
+		var nested struct {
+			Value json.RawMessage `json:"value"`
+		}
+		if err := json.Unmarshal(raw, &nested); err != nil || len(nested.Value) == 0 {
+			return 0, false
+		}
+		raw = nested.Value
+	}
+	var text string
+	if raw[0] == '"' {
+		if err := json.Unmarshal(raw, &text); err != nil {
+			return 0, false
+		}
+	} else {
+		text = string(raw)
+	}
+	parsed, err := strconv.ParseFloat(strings.TrimSpace(text), 64)
+	if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+		return 0, false
+	}
+	return parsed, true
+}
+
+func supportsTHCPNTelemetryBatch(cfg thcpnLegacyBindingConfig) bool {
+	return cfg.ValuePath == thcpnJSONValuePath(cfg.JSONKey) || cfg.ValuePath == thcpnJSONDirectPath(cfg.JSONKey)
+}
+
+func thcpnTelemetryBatchGroupKey(cfg thcpnLegacyBindingConfig) string {
+	return fmt.Sprintf("%d\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%d",
+		cfg.ExternalDeviceID, cfg.RowType, cfg.TableIndex, cfg.TableNameField, cfg.IndexStartField, cfg.IndexEndField,
+		cfg.DeviceIDField, cfg.DataField, cfg.TimeField+"\x00"+cfg.TypeField+"\x00"+cfg.DeletedAtField, cfg.MaxShardTables)
 }
 
 func newTHCPNAdaptiveTelemetryCollector(start time.Time, end time.Time, rawLimit int, targetPoints int) *thcpnAdaptiveTelemetryCollector {
@@ -509,9 +663,11 @@ func monthlyTHCPNShardTables(start time.Time, end time.Time, maxShardTables int)
 }
 
 func queryTHCPNShardTelemetry(ctx context.Context, db *sql.DB, tableName string, cfg thcpnLegacyBindingConfig, start time.Time, end time.Time, limit int) (thcpnTelemetryShardResult, error) {
+	directValuePath := thcpnJSONDirectPath(cfg.JSONKey)
 	query := fmt.Sprintf(
-		"SELECT %s, JSON_UNQUOTE(JSON_EXTRACT(%s, ?)) FROM %s WHERE %s = ? AND %s IS NULL AND %s = ? AND %s >= ? AND %s <= ? ORDER BY %s ASC LIMIT ?",
+		"SELECT %s, COALESCE(JSON_UNQUOTE(JSON_EXTRACT(%s, ?)), JSON_UNQUOTE(JSON_EXTRACT(%s, ?))) FROM %s WHERE %s = ? AND %s IS NULL AND %s = ? AND %s >= ? AND %s <= ? ORDER BY %s ASC LIMIT ?",
 		quoteMySQLIdentifier(cfg.TimeField),
+		quoteMySQLIdentifier(cfg.DataField),
 		quoteMySQLIdentifier(cfg.DataField),
 		quoteMySQLIdentifier(tableName),
 		quoteMySQLIdentifier(cfg.DeviceIDField),
@@ -521,7 +677,7 @@ func queryTHCPNShardTelemetry(ctx context.Context, db *sql.DB, tableName string,
 		quoteMySQLIdentifier(cfg.TimeField),
 		quoteMySQLIdentifier(cfg.TimeField),
 	)
-	rows, err := db.QueryContext(ctx, query, cfg.ValuePath, cfg.ExternalDeviceID, cfg.RowType, start, end, limit)
+	rows, err := db.QueryContext(ctx, query, cfg.ValuePath, directValuePath, cfg.ExternalDeviceID, cfg.RowType, start, end, limit)
 	if err != nil {
 		return thcpnTelemetryShardResult{}, apperr.Wrap(apperr.KindDataSource, "query thcpn telemetry shard", err)
 	}
@@ -551,9 +707,11 @@ func queryTHCPNShardTelemetry(ctx context.Context, db *sql.DB, tableName string,
 }
 
 func scanTHCPNShardTelemetry(ctx context.Context, db *sql.DB, tableName string, cfg thcpnLegacyBindingConfig, start time.Time, end time.Time, add func(TelemetryPoint)) (int, error) {
+	directValuePath := thcpnJSONDirectPath(cfg.JSONKey)
 	query := fmt.Sprintf(
-		"SELECT %s, JSON_UNQUOTE(JSON_EXTRACT(%s, ?)) FROM %s WHERE %s = ? AND %s IS NULL AND %s = ? AND %s >= ? AND %s <= ? ORDER BY %s ASC",
+		"SELECT %s, COALESCE(JSON_UNQUOTE(JSON_EXTRACT(%s, ?)), JSON_UNQUOTE(JSON_EXTRACT(%s, ?))) FROM %s WHERE %s = ? AND %s IS NULL AND %s = ? AND %s >= ? AND %s <= ? ORDER BY %s ASC",
 		quoteMySQLIdentifier(cfg.TimeField),
+		quoteMySQLIdentifier(cfg.DataField),
 		quoteMySQLIdentifier(cfg.DataField),
 		quoteMySQLIdentifier(tableName),
 		quoteMySQLIdentifier(cfg.DeviceIDField),
@@ -563,7 +721,7 @@ func scanTHCPNShardTelemetry(ctx context.Context, db *sql.DB, tableName string, 
 		quoteMySQLIdentifier(cfg.TimeField),
 		quoteMySQLIdentifier(cfg.TimeField),
 	)
-	rows, err := db.QueryContext(ctx, query, cfg.ValuePath, cfg.ExternalDeviceID, cfg.RowType, start, end)
+	rows, err := db.QueryContext(ctx, query, cfg.ValuePath, directValuePath, cfg.ExternalDeviceID, cfg.RowType, start, end)
 	if err != nil {
 		return 0, apperr.Wrap(apperr.KindDataSource, "query thcpn telemetry shard", err)
 	}
@@ -607,8 +765,9 @@ func parseTHCPNTelemetryValue(raw sql.NullString) (float64, bool) {
 }
 
 func countTHCPNShardMedia(ctx context.Context, db *sql.DB, tableName string, cfg thcpnLegacyBindingConfig, start time.Time, end time.Time) (int, error) {
+	directObjectKeyPath := thcpnJSONDirectPath(cfg.ImageKey)
 	query := fmt.Sprintf(
-		"SELECT COUNT(*) FROM %s WHERE %s = ? AND %s IS NULL AND %s = ? AND %s >= ? AND %s <= ? AND JSON_EXTRACT(%s, ?) IS NOT NULL",
+		"SELECT COUNT(*) FROM %s WHERE %s = ? AND %s IS NULL AND %s = ? AND %s >= ? AND %s <= ? AND COALESCE(JSON_EXTRACT(%s, ?), JSON_EXTRACT(%s, ?)) IS NOT NULL",
 		quoteMySQLIdentifier(tableName),
 		quoteMySQLIdentifier(cfg.DeviceIDField),
 		quoteMySQLIdentifier(cfg.DeletedAtField),
@@ -616,19 +775,22 @@ func countTHCPNShardMedia(ctx context.Context, db *sql.DB, tableName string, cfg
 		quoteMySQLIdentifier(cfg.TimeField),
 		quoteMySQLIdentifier(cfg.TimeField),
 		quoteMySQLIdentifier(cfg.DataField),
+		quoteMySQLIdentifier(cfg.DataField),
 	)
 	var count int
-	if err := db.QueryRowContext(ctx, query, cfg.ExternalDeviceID, cfg.RowType, start, end, cfg.ObjectKeyPath).Scan(&count); err != nil {
+	if err := db.QueryRowContext(ctx, query, cfg.ExternalDeviceID, cfg.RowType, start, end, cfg.ObjectKeyPath, directObjectKeyPath).Scan(&count); err != nil {
 		return 0, apperr.Wrap(apperr.KindDataSource, "count thcpn media shard", err)
 	}
 	return count, nil
 }
 
 func queryTHCPNShardMedia(ctx context.Context, db *sql.DB, tableName string, cfg thcpnLegacyBindingConfig, start time.Time, end time.Time, limit int) ([]MediaRecord, error) {
+	directObjectKeyPath := thcpnJSONDirectPath(cfg.ImageKey)
 	query := fmt.Sprintf(
-		"SELECT CAST(%s AS CHAR), %s, JSON_UNQUOTE(JSON_EXTRACT(%s, ?)) FROM %s WHERE %s = ? AND %s IS NULL AND %s = ? AND %s >= ? AND %s <= ? AND JSON_EXTRACT(%s, ?) IS NOT NULL ORDER BY %s DESC LIMIT ?",
+		"SELECT CAST(%s AS CHAR), %s, COALESCE(JSON_UNQUOTE(JSON_EXTRACT(%s, ?)), JSON_UNQUOTE(JSON_EXTRACT(%s, ?))) FROM %s WHERE %s = ? AND %s IS NULL AND %s = ? AND %s >= ? AND %s <= ? AND COALESCE(JSON_EXTRACT(%s, ?), JSON_EXTRACT(%s, ?)) IS NOT NULL ORDER BY %s DESC LIMIT ?",
 		quoteMySQLIdentifier(cfg.IDField),
 		quoteMySQLIdentifier(cfg.TimeField),
+		quoteMySQLIdentifier(cfg.DataField),
 		quoteMySQLIdentifier(cfg.DataField),
 		quoteMySQLIdentifier(tableName),
 		quoteMySQLIdentifier(cfg.DeviceIDField),
@@ -637,9 +799,10 @@ func queryTHCPNShardMedia(ctx context.Context, db *sql.DB, tableName string, cfg
 		quoteMySQLIdentifier(cfg.TimeField),
 		quoteMySQLIdentifier(cfg.TimeField),
 		quoteMySQLIdentifier(cfg.DataField),
+		quoteMySQLIdentifier(cfg.DataField),
 		quoteMySQLIdentifier(cfg.TimeField),
 	)
-	rows, err := db.QueryContext(ctx, query, cfg.ObjectKeyPath, cfg.ExternalDeviceID, cfg.RowType, start, end, cfg.ObjectKeyPath, limit)
+	rows, err := db.QueryContext(ctx, query, cfg.ObjectKeyPath, directObjectKeyPath, cfg.ExternalDeviceID, cfg.RowType, start, end, cfg.ObjectKeyPath, directObjectKeyPath, limit)
 	if err != nil {
 		return nil, apperr.Wrap(apperr.KindDataSource, "query thcpn media shard", err)
 	}
@@ -680,6 +843,14 @@ func thcpnJSONValuePath(key string) string {
 		return "$." + key + ".value"
 	}
 	return "$." + string(encoded) + ".value"
+}
+
+func thcpnJSONDirectPath(key string) string {
+	encoded, err := json.Marshal(key)
+	if err != nil {
+		return "$." + key
+	}
+	return "$." + string(encoded)
 }
 
 func defaultIdentifier(value string, fallback string) string {

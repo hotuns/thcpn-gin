@@ -39,8 +39,8 @@ function WorkspaceMissing() {
     <Panel>
       <StateView
         type="empty"
-        title="请选择 Workspace"
-        description="当前页面需要一个 Workspace 上下文才能读取业务数据。"
+        title="请选择工作区"
+        description="请先选择工作区，才能读取业务数据。"
       />
     </Panel>
   );
@@ -286,7 +286,7 @@ export function DeviceDataPage({
       <>
         {!embedded && (
           <PageHeader
-            eyebrow="Workspace / telemetry"
+            eyebrow="工作区 / 遥测"
             title="设备数据"
             description="按设备和时间范围查询遥测数据。"
           />
@@ -299,7 +299,7 @@ export function DeviceDataPage({
       <>
         {!embedded && (
           <PageHeader
-            eyebrow="Workspace / camera"
+            eyebrow="工作区 / 相机"
             title={selectedDevice.name}
             description="海康相机实时视频。播放凭证为短期会话，仅在当前页面使用。"
           />
@@ -338,7 +338,7 @@ export function DeviceDataPage({
     <>
       {!embedded && (
         <PageHeader
-          eyebrow="Workspace / telemetry"
+          eyebrow="工作区 / 遥测"
           title="设备数据"
           description="查看设备遥测趋势、明细和采集图片。"
         />
@@ -364,7 +364,7 @@ export function DeviceDataPage({
           <StateView
             type="empty"
             title="没有可查询设备"
-            description="当前 Workspace 尚未分配设备。"
+            description="当前工作区尚未分配设备。"
           />
         </Panel>
       ) : (

@@ -89,7 +89,7 @@ const adminNav = [
   { to: "/admin/sources", label: "数据源", icon: Database },
   { to: "/admin/devices", label: "系统设备", icon: Boxes },
   { to: "/admin/logs", label: "设备日志", icon: FileText },
-  { to: "/admin/workspaces", label: "Workspace 与权限", icon: Users },
+  { to: "/admin/workspaces", label: "工作区与权限", icon: Users },
   { to: "/admin/users", label: "用户管理", icon: UserRound },
   { to: "/admin/metadata", label: "元数据", icon: TableProperties },
   { to: "/admin/settings", label: "系统设置", icon: Settings },
@@ -181,7 +181,7 @@ function AdminShell() {
             Platform Control Plane
           </div>
           <div style={{ marginTop: 5, color: "#9fc0dc", fontSize: 10 }}>
-            Workspace context disabled
+            不使用用户工作区
           </div>
         </div>
         <nav className="nav-group">
@@ -290,7 +290,7 @@ function Forbidden() {
       <StateView
         type="error"
         title="403 · 无权访问系统后台"
-        description="系统后台使用独立的管理员账号登录。Workspace Owner 或普通成员权限不能替代系统管理员身份。"
+        description="系统后台使用独立的管理员账号登录。工作区负责人或普通成员权限不能替代系统管理员身份。"
         action={
           <a href={`${platformUrl}/dashboard`}>
             <Button>
@@ -369,9 +369,9 @@ function AdminOverview() {
   const stat = (query: any) =>
     query.isError ? "—" : (query.data?.items.length ?? 0);
   const failures = [
-    { name: "Workspace", query: workspaces },
-    { name: "Project", query: projects },
-    { name: "Site", query: sites },
+    { name: "工作区", query: workspaces },
+    { name: "项目", query: projects },
+    { name: "站点", query: sites },
     { name: "DataSource", query: sources },
     { name: "设备", query: devices },
   ].filter((item) => item.query.isError);
@@ -380,7 +380,7 @@ function AdminOverview() {
       <PageHeader
         eyebrow="System / overview"
         title="后台总览"
-        description="平台级 Workspace、Project、Site、设备资产与数据源运行入口。"
+        description="平台级工作区、项目、站点、设备资产与数据源运行入口。"
         actions={
           <Badge tone="info">
             <ShieldCheck size={13} />
@@ -393,7 +393,7 @@ function AdminOverview() {
           className={`admin-stat ${workspaces.isError ? "metric-error" : ""}`}
         >
           <Statistic
-            title="Workspace"
+            title="工作区"
             value={stat(workspaces)}
             suffix={workspaces.isError ? "不可用" : "个"}
           />
@@ -402,7 +402,7 @@ function AdminOverview() {
           className={`admin-stat ${projects.isError || sites.isError ? "metric-error" : ""}`}
         >
           <Statistic
-            title="Project / Site"
+            title="项目 / 站点"
             value={`${stat(projects)} / ${stat(sites)}`}
           />
         </Panel>
@@ -465,15 +465,14 @@ function AdminOverview() {
           <div>
             <h2 className="panel-title">控制平面状态</h2>
             <div className="panel-kicker">
-              平台管理不依赖 Workspace Provider
+              平台管理独立于用户工作区
             </div>
           </div>
           <Badge tone="success">已隔离</Badge>
         </div>
         <div className="panel-body">
           <div className="command-note">
-            设备注册、DataSource、DSN、Binding、拓扑、能力、生命周期与分配只在系统后台操作；涉及
-            Workspace 的动作必须显式选择目标 Workspace。
+            设备注册、DataSource、DSN、Binding、拓扑、能力、生命周期与分配只在系统后台操作；涉及工作区的操作必须显式选择目标工作区。
           </div>
         </div>
       </Panel>

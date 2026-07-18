@@ -184,8 +184,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             变成可读的数据。
           </h1>
           <p className="auth-lede">
-            THCPN 面向科研物联网，从设备状态到数据出口，保持每一个 Workspace
-            上下文清楚可追溯。
+            THCPN 面向科研物联网，从设备状态到数据出口，让每个工作区内的设备与数据清楚可追溯。
           </p>
         </div>
       </section>

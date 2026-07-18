@@ -48,6 +48,23 @@ type TelemetryQuery struct {
 	TargetPoints int
 }
 
+type TelemetryBatchQuery struct {
+	Bindings     []DataStreamBinding
+	Start        time.Time
+	End          time.Time
+	Limit        int
+	Adaptive     bool
+	TargetPoints int
+}
+
+type TelemetryBatchResult struct {
+	Series         map[uuid.UUID]TelemetryResult
+	SourceScans    int
+	RowsRead       int
+	ReturnedPoints int
+	SampledSeries  int
+}
+
 type TelemetryResult struct {
 	Points      []TelemetryPoint `json:"points"`
 	Warnings    []QueryWarning   `json:"warnings,omitempty"`

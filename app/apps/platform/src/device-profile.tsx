@@ -125,7 +125,7 @@ export function DeviceProfileTab({
                   {profile.location_source === "device"
                     ? "设备自定义"
                     : profile.location_source === "site"
-                      ? `继承自 Site${profile.site?.name ? ` · ${profile.site.name}` : ""}`
+                      ? `继承自站点${profile.site?.name ? ` · ${profile.site.name}` : ""}`
                       : "未设置"}
                 </Badge>
               </strong>
@@ -324,7 +324,7 @@ function ProfileEditor({ profile, busy, onClose, onSubmit }: {
       <div className="access-editor" role="dialog" aria-modal="true">
         <Panel className="access-editor-panel">
           <div className="panel-header">
-            <div><h2 className="panel-title">编辑设备资料</h2><div className="panel-kicker">清空设备位置后将恢复继承 Site</div></div>
+            <div><h2 className="panel-title">编辑设备资料</h2><div className="panel-kicker">清空设备位置后将恢复继承站点位置</div></div>
             <Button variant="secondary" onClick={onClose}><X size={14} />关闭</Button>
           </div>
           <form className="access-form" onSubmit={submit}>

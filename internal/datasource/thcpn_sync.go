@@ -83,11 +83,12 @@ type THCPNDeviceConfigDetailResponse struct {
 }
 
 type UpdateTHCPNDeviceConfigInput struct {
-	DeviceID    uuid.UUID
-	DataJSON    json.RawMessage
-	ImageJSON   json.RawMessage
-	ControlJSON json.RawMessage
-	ActorUserID uuid.UUID
+	DeviceID         uuid.UUID
+	DataJSON         json.RawMessage
+	ImageJSON        json.RawMessage
+	ControlJSON      json.RawMessage
+	ActorUserID      uuid.UUID
+	ExpectedConfigID int64
 }
 
 type UpdateTHCPNDeviceConfigResponse struct {
@@ -487,11 +488,6 @@ func (s *Service) UpdateTHCPNDeviceConfig(ctx context.Context, input UpdateTHCPN
 	}
 	defer deviceDB.Close()
 
-	previous, err := readLatestTHCPNDeviceConfig(ctx, deviceDB, ref.ExternalDeviceID)
-	if err != nil {
-		return UpdateTHCPNDeviceConfigResponse{}, err
-	}
-
 	mysqlTx, err := deviceDB.BeginTx(ctx, nil)
 	if err != nil {
 		return UpdateTHCPNDeviceConfigResponse{}, apperr.Wrap(apperr.KindDataSource, "begin thcpn config transaction", err)
@@ -502,6 +498,13 @@ func (s *Service) UpdateTHCPNDeviceConfig(ctx context.Context, input UpdateTHCPN
 			_ = mysqlTx.Rollback()
 		}
 	}()
+	previous, err := readLatestTHCPNDeviceConfigForUpdate(ctx, mysqlTx, ref.ExternalDeviceID)
+	if err != nil {
+		return UpdateTHCPNDeviceConfigResponse{}, err
+	}
+	if input.ExpectedConfigID > 0 && previous.ID != input.ExpectedConfigID {
+		return UpdateTHCPNDeviceConfigResponse{}, apperr.New(apperr.KindConflict, "device config has changed; reload and try again")
+	}
 	inserted, err := insertTHCPNDeviceConfig(ctx, mysqlTx, previous, dataJSON, imageJSON, controlJSON)
 	if err != nil {
 		return UpdateTHCPNDeviceConfigResponse{}, err
@@ -1060,6 +1063,25 @@ LIMIT 1`
 			return thcpnExternalConfig{}, apperr.New(apperr.KindNotFound, "thcpn device config not found")
 		}
 		return thcpnExternalConfig{}, apperr.Wrap(apperr.KindDataSource, "read thcpn device config", err)
+	}
+	return row, nil
+}
+
+func readLatestTHCPNDeviceConfigForUpdate(ctx context.Context, db thcpnConfigQuerier, externalDeviceID int64) (thcpnExternalConfig, error) {
+	const query = `
+SELECT id, device_id, data, image, control, CAST(version AS CHAR), CAST(uuid AS CHAR), is_mg, created_at, updated_at
+FROM device_config
+WHERE device_id = ?
+  AND deleted_at IS NULL
+ORDER BY id DESC
+LIMIT 1
+FOR UPDATE`
+	row, err := scanTHCPNDeviceConfig(db.QueryRowContext(ctx, query, externalDeviceID))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return thcpnExternalConfig{}, apperr.New(apperr.KindNotFound, "thcpn device config not found")
+		}
+		return thcpnExternalConfig{}, apperr.Wrap(apperr.KindDataSource, "lock thcpn device config", err)
 	}
 	return row, nil
 }

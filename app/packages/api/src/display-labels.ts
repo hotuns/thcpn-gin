@@ -20,7 +20,7 @@ export const deviceLifecycleOptions = [
 ] as const;
 
 const topologyRoleLabels: Record<string, string> = {
-  standalone: "独立设备",
+  standalone: "标准站",
   gateway: "网关",
   gateway_node: "网关节点",
   camera: "相机",

@@ -39,7 +39,7 @@ run-api:
 run-worker:
 	go run ./cmd/worker
 
-run-all:
+run-all: migrate-up
 	$(MAKE) -j4 run-api run-worker run-platform run-admin
 
 app-install:

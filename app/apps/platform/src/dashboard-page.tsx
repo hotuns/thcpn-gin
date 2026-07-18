@@ -31,7 +31,7 @@ export const countState = (loading: boolean, error: unknown, count?: number) =>
     ? { value: "…", meta: "正在加载" }
     : error
       ? { value: "—", meta: "查询失败" }
-      : { value: String(count ?? 0), meta: "当前 Workspace" };
+      : { value: String(count ?? 0), meta: "当前工作区" };
 
 export function DashboardPage() {
   const { current, currentId, error: workspaceError } = useWorkspace();
@@ -71,14 +71,14 @@ export function DashboardPage() {
     return (
       <>
         <PageHeader
-          eyebrow="Workspace / overview"
+          eyebrow="工作区 / 概览"
           title="总览"
-          description="Workspace 暂时不可用。"
+          description="工作区暂时不可用。"
         />
         <Panel>
           <StateView
             type="error"
-            title="Workspace 加载失败"
+            title="工作区加载失败"
             description={item.message}
             requestId={item.requestId}
           />
@@ -90,22 +90,22 @@ export function DashboardPage() {
     return (
       <>
         <PageHeader
-          eyebrow="Workspace / overview"
+          eyebrow="工作区 / 概览"
           title="总览"
-          description="选择 Workspace 后查看资源运行概览。"
+          description="选择工作区后查看资源运行概览。"
         />
         <Panel>
           <StateView
             type="empty"
-            title="没有可用 Workspace"
-            description="创建组织 Workspace，或联系管理员加入已有空间。"
+            title="没有可用工作区"
+            description="创建组织工作区，或联系管理员加入已有空间。"
           />
         </Panel>
       </>
     );
   const metrics = [
     {
-      label: "Project",
+      label: "项目",
       icon: <Building2 size={16} />,
       ...countState(
         projects.isLoading,
@@ -114,7 +114,7 @@ export function DashboardPage() {
       ),
     },
     {
-      label: "Site",
+      label: "站点",
       icon: <MapPin size={16} />,
       ...countState(sites.isLoading, sites.error, sites.data?.items.length),
     },
@@ -149,9 +149,9 @@ export function DashboardPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Workspace / overview"
+        eyebrow="工作区 / 概览"
         title="总览"
-        description={`正在查看 ${current?.name ?? "当前 Workspace"} 的资源、任务与安全事件。`}
+        description={`正在查看 ${current?.name ?? "当前工作区"} 的资源、任务与安全事件。`}
         actions={
           <Button
             variant="secondary"
@@ -240,7 +240,7 @@ export function DashboardPage() {
           <StateView
             type="loading"
             title="正在加载审计事件"
-            description="正在读取当前 Workspace 的安全记录。"
+            description="正在读取当前工作区的安全记录。"
           />
         ) : audit.error ? (
           <StateView
@@ -297,7 +297,7 @@ export function DashboardPage() {
           <StateView
             type="empty"
             title="暂无审计事件"
-            description="当前 Workspace 还没有可见的敏感操作记录。"
+            description="当前工作区还没有可见的敏感操作记录。"
           />
         )}
       </Panel>
@@ -347,7 +347,7 @@ function DashboardList({
         <StateView
           type="empty"
           title={`暂无${title}`}
-          description="当前 Workspace 暂无相关记录。"
+          description="当前工作区暂无相关记录。"
         />
       )}
     </Panel>

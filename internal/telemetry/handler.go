@@ -3,6 +3,7 @@ package telemetry
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -39,6 +40,12 @@ func (h *Handler) QueryDevice(c *gin.Context) {
 		return
 	}
 	input.DeviceID = &deviceID
+	dataStreamIDs, err := parseDataStreamIDs(c.Query("data_stream_ids"))
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	input.DataStreamIDs = dataStreamIDs
 
 	result, err := h.service.Query(c.Request.Context(), input)
 	if err != nil {
@@ -46,6 +53,27 @@ func (h *Handler) QueryDevice(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+func parseDataStreamIDs(value string) ([]uuid.UUID, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	seen := make(map[uuid.UUID]struct{})
+	result := make([]uuid.UUID, 0)
+	for _, raw := range strings.Split(value, ",") {
+		id, err := uuid.Parse(strings.TrimSpace(raw))
+		if err != nil || id == uuid.Nil {
+			return nil, apperr.New(apperr.KindInvalidArgument, "invalid data_stream_ids")
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	return result, nil
 }
 
 func (h *Handler) QueryDataStream(c *gin.Context) {

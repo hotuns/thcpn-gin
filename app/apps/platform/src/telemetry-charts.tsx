@@ -35,11 +35,13 @@ export function TelemetryCharts({
   startTime,
   endTime,
   compact = false,
+  displayMode,
 }: {
   series: TelemetrySeries[];
   startTime: string;
   endTime: string;
   compact?: boolean;
+  displayMode?: "compare" | "separate";
 }) {
   const available = series.filter((item) =>
     item.points.some((point) => Number.isFinite(point.value)),
@@ -51,7 +53,7 @@ export function TelemetryCharts({
   const visible = compact
     ? available
     : available.filter((item) => !hidden.includes(item.data_stream_id));
-  const activeMode = compact && available.length > 1 ? "compare" : mode;
+  const activeMode = displayMode ?? (compact && available.length > 1 ? "compare" : mode);
   const toggle = (id: string) =>
     setHidden((current) =>
       current.includes(id)

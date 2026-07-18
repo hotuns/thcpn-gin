@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildDatasetPayload, datasetDetailPath } from "./datasets-page";
+import {
+  buildDatasetPayload,
+  datasetDetailPath,
+  datasetEditPath,
+} from "./datasets-page";
 
 const draft = { workspaceId: "w1", projectId: "p1", name: "  Trial A  ", description: "field data", dataType: "telemetry", startTime: "2026-01-01T08:00", endTime: "2026-01-02T08:00", sources: [{ source_type: "device" as const, source_id: "d1" }, { source_type: "data_stream" as const, source_id: "s1" }], status: "active" };
 
@@ -17,5 +21,8 @@ describe("dataset payload", () => {
 
   it("builds a refreshable dataset detail URL", () => {
     expect(datasetDetailPath("dataset/one")).toBe("/datasets/dataset%2Fone");
+    expect(datasetEditPath("dataset/one")).toBe(
+      "/datasets/dataset%2Fone/edit",
+    );
   });
 });

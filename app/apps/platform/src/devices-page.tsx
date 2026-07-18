@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Link,
@@ -10,13 +10,17 @@ import {
 import {
   ChevronDown,
   ChevronRight,
+  Clock3,
   ArrowLeft,
+  Battery,
   Eye,
   Gauge,
   Info,
+  MapPin,
   MoveRight,
   RefreshCw,
   Search,
+  Signal,
   Settings2,
   Trash2,
   Upload,
@@ -35,6 +39,7 @@ import {
   parseTHCPNConfig,
   type Device,
   type JsonRecord,
+  type THCPNLatestAttributesResponse,
   type THCPNConfigFields,
 } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
@@ -45,10 +50,18 @@ import { DeviceDataPage } from "./pages";
 import { TelemetryCharts } from "./telemetry-charts";
 import { DeviceProfileTab } from "./device-profile";
 import { DeviceSharingTab } from "./device-sharing";
+import { SamplingProfilePanel } from "./sampling-profile";
+import { DeviceCombobox } from "./device-combobox";
 
 type DeviceCategory = "gateway" | "gateway_node" | "camera" | "standalone";
 type Category = "all" | Exclude<DeviceCategory, "gateway_node">;
 type Mode = "placement" | "calibration" | "firmware" | "transfer";
+type VitalLevel = "good" | "fair" | "low" | "critical" | "unknown";
+type VitalReading = {
+  level: VitalLevel;
+  valueLabel: string;
+  description: string;
+};
 const text = (input: unknown, fallback: unknown = "—") =>
   input === undefined || input === null || input === ""
     ? String(fallback)
@@ -74,6 +87,79 @@ export const deviceCategory = (
 export const isTopLevelDevice = (
   device: Pick<Device, "topology_role" | "device_type">,
 ) => deviceCategory(device) !== "gateway_node";
+const numericAttributeValue = (
+  attribute?: THCPNLatestAttributesResponse["attributes"][string],
+) => {
+  const value = attribute?.parsed_value ?? attribute?.raw_value;
+  const numeric = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+export const inferSignalReading = (value: number | null): VitalReading => {
+  if (value === null || value < 0)
+    return { level: "unknown", valueLabel: "—", description: "暂无信号数据" };
+  const normalized = Math.min(100, Math.round(value));
+  const level: VitalLevel =
+    normalized >= 70
+      ? "good"
+      : normalized >= 40
+        ? "fair"
+        : normalized >= 20
+          ? "low"
+          : "critical";
+  return {
+    level,
+    valueLabel: `${normalized}%`,
+    description: `信号 ${normalized}%（暂按 70/40/20 分级）`,
+  };
+};
+export const inferBatteryReading = (value: number | null): VitalReading => {
+  if (value === null || value < 0)
+    return { level: "unknown", valueLabel: "—", description: "暂无电量数据" };
+  if (value >= 8 && value <= 16) {
+    const level: VitalLevel =
+      value >= 12.4
+        ? "good"
+        : value >= 12
+          ? "fair"
+          : value >= 11.5
+            ? "low"
+            : "critical";
+    return {
+      level,
+      valueLabel: `${value.toFixed(1)}V`,
+      description: `电池 ${value.toFixed(2)}V（暂按 12V 电池推测）`,
+    };
+  }
+  if (value > 0 && value <= 5.5) {
+    const level: VitalLevel =
+      value >= 3.8
+        ? "good"
+        : value >= 3.55
+          ? "fair"
+          : value >= 3.3
+            ? "low"
+            : "critical";
+    return {
+      level,
+      valueLabel: `${value.toFixed(1)}V`,
+      description: `电池 ${value.toFixed(2)}V（暂按单节锂电池推测）`,
+    };
+  }
+  const normalized = Math.min(100, Math.round(value));
+  const level: VitalLevel =
+    normalized >= 60
+      ? "good"
+      : normalized >= 30
+        ? "fair"
+        : normalized >= 15
+          ? "low"
+          : "critical";
+  return {
+    level,
+    valueLabel: `${normalized}%`,
+    description: `电量 ${normalized}%（暂按 60/30/15 分级）`,
+  };
+};
 export const calibrationPayload = (
   type: string,
   parameters: string,
@@ -159,8 +245,8 @@ export function DevicesPage() {
       <Panel>
         <StateView
           type="empty"
-          title="请选择 Workspace"
-          description="设备列表依赖 Workspace 上下文。"
+          title="请选择工作区"
+          description="请先选择工作区，再查看设备列表。"
         />
       </Panel>
     );
@@ -194,7 +280,7 @@ export function DevicesPage() {
               setSiteId("");
             }}
           >
-            <option value="">全部 Project</option>
+            <option value="">全部项目</option>
             {projects.data?.items.map((item) => (
               <option key={text(item.id)} value={text(item.id)}>
                 {text(item.name)}
@@ -205,7 +291,7 @@ export function DevicesPage() {
             value={siteId}
             onChange={(event) => setSiteId(event.target.value)}
           >
-            <option value="">全部 Site</option>
+            <option value="">全部站点</option>
             {sites.data?.items.map((item) => (
               <option key={text(item.id)} value={text(item.id)}>
                 {text(item.name)}
@@ -223,7 +309,7 @@ export function DevicesPage() {
               { id: "all", label: "全部" },
               { id: "gateway", label: "组网站" },
               { id: "camera", label: "相机" },
-              { id: "standalone", label: "普通设备" },
+              { id: "standalone", label: "标准站" },
             ] as Array<{ id: Category; label: string }>
           ).map((item) => (
             <button
@@ -240,7 +326,7 @@ export function DevicesPage() {
           <StateView
             type="loading"
             title="正在加载设备"
-            description="正在读取当前 Workspace 设备资产。"
+            description="正在读取当前工作区设备资产。"
           />
         ) : query.error ? (
           <StateView
@@ -265,7 +351,7 @@ export function DevicesPage() {
                   <th>设备</th>
                   <th>拓扑</th>
                   <th>生命周期</th>
-                  <th>Site</th>
+                  <th>站点</th>
                   <th>能力</th>
                   <th>操作</th>
                 </tr>
@@ -296,7 +382,7 @@ export function DevicesPage() {
             description={
               keyword || category !== "all" || projectId || siteId
                 ? "请调整搜索或筛选条件。"
-                : "当前 Workspace 尚未分配系统设备。"
+                : "当前工作区尚未分配系统设备。"
             }
           />
         )}
@@ -390,6 +476,7 @@ function DeviceRows({
             {deviceLifecycleLabel(device.lifecycle_status)}
           </Badge>
           <div className="cell-sub">{deviceStatusLabel(device.status)}</div>
+          <DeviceVitals workspaceId={workspaceId} deviceId={device.id} />
         </td>
         <td>{siteName}</td>
         <td>
@@ -425,6 +512,66 @@ function DeviceRows({
         </tr>
       )}
     </>
+  );
+}
+
+function DeviceVitals({
+  workspaceId,
+  deviceId,
+}: {
+  workspaceId: string;
+  deviceId: string;
+}) {
+  const query = useQuery({
+    queryKey: workspaceQueryKey(
+      workspaceId,
+      "device",
+      deviceId,
+      "latest-attributes",
+    ),
+    queryFn: () => api.devices.latestAttributes(deviceId),
+    retry: false,
+  });
+  return (
+    <DeviceVitalIndicators
+      attributes={query.data?.attributes}
+      loading={query.isLoading}
+    />
+  );
+}
+
+function DeviceVitalIndicators({
+  attributes,
+  loading = false,
+}: {
+  attributes?: THCPNLatestAttributesResponse["attributes"];
+  loading?: boolean;
+}) {
+  const battery = inferBatteryReading(
+    loading ? null : numericAttributeValue(attributes?.battery),
+  );
+  const signal = inferSignalReading(
+    loading ? null : numericAttributeValue(attributes?.signal),
+  );
+  return (
+    <div className={`device-vitals ${loading ? "loading" : ""}`}>
+      <span
+        className={`device-vital ${battery.level}`}
+        title={loading ? "正在读取电量" : battery.description}
+        aria-label={loading ? "正在读取电量" : battery.description}
+      >
+        <Battery size={15} aria-hidden="true" />
+        <small>{loading ? "…" : battery.valueLabel}</small>
+      </span>
+      <span
+        className={`device-vital ${signal.level}`}
+        title={loading ? "正在读取信号" : signal.description}
+        aria-label={loading ? "正在读取信号" : signal.description}
+      >
+        <Signal size={15} aria-hidden="true" />
+        <small>{loading ? "…" : signal.valueLabel}</small>
+      </span>
+    </div>
   );
 }
 
@@ -474,95 +621,10 @@ function DeviceQuickSwitcher({
   devices: Device[];
   onSwitch: (deviceId: string) => void;
 }) {
-  const rootRef = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
-  const [keyword, setKeyword] = useState("");
-  const filteredDevices = filterQuickSwitchDevices(devices, keyword);
-  const label = `${device.name} · ${device.serial_no}`;
-
-  useEffect(() => {
-    if (!open) return;
-    const closeOnOutsideClick = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", closeOnOutsideClick);
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("mousedown", closeOnOutsideClick);
-      window.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    setKeyword("");
-    setOpen(false);
-  }, [device.id]);
-
-  const openMenu = () => {
-    setKeyword("");
-    setOpen(true);
-  };
-  const selectDevice = (nextDeviceId: string) => {
-    setOpen(false);
-    setKeyword("");
-    onSwitch(nextDeviceId);
-  };
-
   return (
     <div className="device-quick-switch">
       <span>快捷切换设备</span>
-      <div className="device-quick-switch-control" ref={rootRef}>
-        <div className="device-quick-switch-input">
-          <Search size={14} aria-hidden="true" />
-          <input
-            role="combobox"
-            aria-label="搜索并切换设备"
-            aria-expanded={open}
-            aria-controls="device-quick-switch-options"
-            autoComplete="off"
-            value={open ? keyword : label}
-            placeholder="搜索设备名称、序列号或 ID"
-            onFocus={openMenu}
-            onChange={(event) => {
-              setKeyword(event.target.value);
-              setOpen(true);
-            }}
-          />
-          <ChevronDown
-            size={14}
-            aria-hidden="true"
-            className={open ? "device-quick-switch-chevron open" : "device-quick-switch-chevron"}
-          />
-        </div>
-        {open && (
-          <div
-            id="device-quick-switch-options"
-            className="device-quick-switch-menu"
-            role="listbox"
-          >
-            {filteredDevices.length ? (
-              filteredDevices.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  role="option"
-                  aria-selected={item.id === device.id}
-                  className={item.id === device.id ? "selected" : undefined}
-                  onClick={() => selectDevice(item.id)}
-                >
-                  <span>{item.name}</span>
-                  <small>{item.serial_no}</small>
-                </button>
-              ))
-            ) : (
-              <div className="device-quick-switch-empty">没有匹配的设备</div>
-            )}
-          </div>
-        )}
-      </div>
+      <DeviceCombobox devices={devices} value={device.id} onChange={onSwitch} ariaLabel="搜索并切换设备" />
     </div>
   );
 }
@@ -632,8 +694,8 @@ export function DeviceCenterDetailPage() {
       <Panel>
         <StateView
           type="error"
-          title="设备缺少访问上下文"
-          description="当前设备没有可用的 Workspace 分配或共享授权。"
+          title="设备缺少工作区信息"
+          description="当前设备没有可用的工作区分配或共享授权。"
           action={<Button onClick={() => navigate("/devices")}>返回设备列表</Button>}
         />
       </Panel>
@@ -811,7 +873,6 @@ function DeviceOverview({
   const latestAttributes = useQuery({
     queryKey: workspaceQueryKey(workspaceId, "device", device.id, "latest-attributes"),
     queryFn: () => api.devices.latestAttributes(device.id),
-    enabled: !camera,
   });
   const telemetry = useQuery({
     queryKey: workspaceQueryKey(
@@ -833,26 +894,21 @@ function DeviceOverview({
   const recentSeries = (telemetry.data?.series ?? [])
     .filter((series) => series.points.length)
     .slice(0, 3);
-  const fields = [
-    ["设备类型", deviceTopologyRoleLabel(device.device_type)],
-    ["拓扑角色", deviceTopologyRoleLabel(device.topology_role)],
-    ["Project", project?.name ?? "未设置"],
-    ["Site", site?.name ?? "未设置"],
-    ["创建时间", overviewTime(device.created_at)],
-    ["更新时间", overviewTime(device.updated_at)],
-  ];
+  const placement = [project?.name, site?.name].filter(Boolean).join(" / ");
   return (
     <>
-      <Panel>
-        <div className="device-overview-grid">
-          {fields.map(([label, value]) => (
-            <div key={String(label)}>
-              <span>{String(label)}</span>
-              <strong>{text(value)}</strong>
-            </div>
-          ))}
+      <Panel className="device-overview-summary">
+        <div className="device-overview-meta">
+          <span title={placement || "未设置项目与样地"}>
+            <MapPin size={15} aria-hidden="true" />
+            {placement || "未设置项目与样地"}
+          </span>
+          <span title={`最近更新 ${overviewTime(device.updated_at)}`}>
+            <Clock3 size={15} aria-hidden="true" />
+            {overviewTime(device.updated_at)}
+          </span>
         </div>
-        <div className="device-detail-capabilities">
+        <div className="device-detail-capabilities device-overview-capabilities">
           {device.capabilities.length ? (
             device.capabilities.map((item) => (
               <span key={item} title={item}>
@@ -863,22 +919,10 @@ function DeviceOverview({
             <span className="muted">未声明设备能力</span>
           )}
         </div>
-        {latestAttributes.data?.attributes && Object.keys(latestAttributes.data.attributes).length ? (
-          <div className="device-attribute-grid">
-            {(["battery", "signal", "ext_info"] as const).map((key) => {
-              const item = latestAttributes.data.attributes[key];
-              if (!item) return null;
-              const value = item.parsed_value ?? item.raw_value;
-              return (
-                <div key={key}>
-                  <span>{key === "battery" ? "电池" : key === "signal" ? "信号" : "扩展信息"}</span>
-                  <strong>{typeof value === "object" ? JSON.stringify(value) : text(value)}</strong>
-                  <small>{overviewTime(item.sampled_at)}</small>
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
+        <DeviceVitalIndicators
+          attributes={latestAttributes.data?.attributes}
+          loading={latestAttributes.isLoading}
+        />
       </Panel>
       {(hasTelemetry || hasImages) && (
         <div
@@ -942,7 +986,7 @@ function DeviceOverview({
           <div className="panel-header">
             <div>
               <h2 className="panel-title">网关拓扑</h2>
-              <div className="panel-kicker">当前 Workspace 可见子节点</div>
+              <div className="panel-kicker">当前工作区可见子节点</div>
             </div>
             <Badge tone="neutral">{device.child_count}</Badge>
           </div>
@@ -1056,7 +1100,7 @@ function DeviceActivity({
         <div>
           <h2 className="panel-title">设备操作记录</h2>
           <div className="panel-kicker">
-            最近 500 条 Workspace 审计中的设备相关事件
+            最近 500 条工作区审计中的设备相关事件
           </div>
         </div>
         <Badge tone="neutral">{rows.length}</Badge>
@@ -1151,7 +1195,7 @@ function DeviceConfig({
   ) => Promise<boolean>;
 }) {
   const actions: Array<{ mode: Mode; label: string; show: boolean }> = [
-    { mode: "placement", label: "Project / Site", show: true },
+    { mode: "placement", label: "项目 / 站点", show: true },
     {
       mode: "calibration",
       label: "设备校准",
@@ -1166,12 +1210,13 @@ function DeviceConfig({
   ];
   return (
     <>
+      <SamplingProfilePanel deviceId={device.id} workspaceId={currentWorkspaceId} />
       <Panel>
         <div className="panel-header">
           <div>
-            <h2 className="panel-title">Workspace 配置</h2>
+            <h2 className="panel-title">工作区配置</h2>
             <div className="panel-kicker">
-              按当前账号权限调整设备在 Workspace 中的使用方式
+              按当前账号权限调整设备在工作区中的使用方式
             </div>
           </div>
         </div>
@@ -1215,7 +1260,7 @@ function DeviceConfig({
           <div>
             <h2 className="panel-title">危险操作</h2>
             <div className="panel-kicker">
-              解绑后设备资产保留，但不再属于当前 Workspace
+              解绑后设备资产保留，但不再属于当前工作区
             </div>
           </div>
           <Button
@@ -1427,9 +1472,9 @@ function SystemDeviceConfig({
           </Button>
         </section>
         <section>
-          <h3>Workspace 分配</h3>
+          <h3>工作区分配</h3>
           <label className="field">
-            <span className="field-label">目标 Workspace</span>
+            <span className="field-label">目标工作区</span>
             <select
               value={targetWorkspaceId}
               onChange={(e) => setTargetWorkspaceId(e.target.value)}
@@ -1851,7 +1896,7 @@ function DeviceChildren({
       <StateView
         type="empty"
         title="没有可见子节点"
-        description="当前网关没有同 Workspace 且可访问的子设备。"
+        description="当前网关没有同工作区且可访问的子设备。"
       />
     );
   return (
@@ -1993,7 +2038,7 @@ function DeviceActionForm({
         <div>
           <h2 className="panel-title">
             {mode === "placement"
-              ? "调整 Project / Site"
+              ? "调整项目 / 站点"
               : mode === "calibration"
                 ? "请求设备校准"
                 : mode === "firmware"
@@ -2014,7 +2059,7 @@ function DeviceActionForm({
           {mode === "placement" ? (
             <>
               <label className="field">
-                <span className="field-label">Project</span>
+                <span className="field-label">项目</span>
                 <select
                   value={projectId}
                   onChange={(event) => {
@@ -2031,7 +2076,7 @@ function DeviceActionForm({
                 </select>
               </label>
               <label className="field">
-                <span className="field-label">Site</span>
+                <span className="field-label">站点</span>
                 <select
                   value={siteId}
                   disabled={!projectId}
@@ -2106,7 +2151,7 @@ function DeviceActionForm({
           ) : (
             <>
               <label className="field">
-                <span className="field-label">目标 Workspace</span>
+                <span className="field-label">目标工作区</span>
                 <select
                   required
                   value={targetWorkspaceId}
@@ -2116,7 +2161,7 @@ function DeviceActionForm({
                     setTargetSiteId("");
                   }}
                 >
-                  <option value="">选择 Workspace</option>
+                  <option value="">选择工作区</option>
                   {workspaces
                     .filter((item) => item.id !== currentWorkspaceId)
                     .map((item) => (
@@ -2127,7 +2172,7 @@ function DeviceActionForm({
                 </select>
               </label>
               <label className="field">
-                <span className="field-label">目标 Project</span>
+                <span className="field-label">目标项目</span>
                 <select
                   value={targetProjectId}
                   disabled={!targetWorkspaceId}
@@ -2145,7 +2190,7 @@ function DeviceActionForm({
                 </select>
               </label>
               <label className="field">
-                <span className="field-label">目标 Site</span>
+                <span className="field-label">目标站点</span>
                 <select
                   value={targetSiteId}
                   disabled={!targetProjectId}
@@ -2166,8 +2211,7 @@ function DeviceActionForm({
                   onChange={(event) => setConfirmed(event.target.checked)}
                 />
                 <span>
-                  我确认历史 Dataset 保留在原
-                  Workspace，当前版本不会迁移历史数据集。
+                  我确认历史数据集保留在原工作区，当前版本不会迁移历史数据集。
                 </span>
               </label>
             </>

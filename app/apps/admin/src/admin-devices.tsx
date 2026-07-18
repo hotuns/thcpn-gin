@@ -22,6 +22,7 @@ import {
   deviceStatusLabel,
   deviceStatusOptions,
   deviceTopologyRoleLabel,
+  describeSamplingControl,
   formatApiError,
   type JsonRecord,
 } from "@thcpn/api";
@@ -323,7 +324,7 @@ export function AdminDevicesPage() {
       <PageHeader
         eyebrow="System / devices"
         title="系统设备"
-        description="管理设备身份、Workspace 分配、网关拓扑、生命周期和 THCPN 配置。"
+        description="管理设备身份、工作区分配、网关拓扑、生命周期和 THCPN 配置。"
         actions={
           <Button
             icon={<RefreshCw size={14} />}
@@ -375,7 +376,7 @@ export function AdminDevicesPage() {
             { key: "gateway", label: "网关" },
             { key: "gateway_node", label: "节点" },
             { key: "camera", label: "相机" },
-            { key: "standalone", label: "普通设备" },
+            { key: "standalone", label: "标准站" },
           ].map((item) => (
             <button
               key={item.key}
@@ -540,7 +541,7 @@ function columns(
       ),
     },
     {
-      title: "Workspace",
+      title: "工作区",
       dataIndex: "workspace_id",
       width: 145,
       render: (item: string) =>
@@ -603,8 +604,8 @@ function columns(
           </Button>
           {Boolean(row.workspace_id) && (
             <Popconfirm
-              title="解除 Workspace 分配？"
-              description="设备将不再对该 Workspace 可见。"
+              title="解除工作区分配？"
+              description="设备将不再对该工作区可见。"
               onConfirm={() => void unassign(row)}
             >
               <Button type="link" danger>
@@ -629,6 +630,7 @@ function DeviceForm({
 }) {
   const workspaceId = Form.useWatch("target_workspace_id", form);
   const projectId = Form.useWatch("project_id", form);
+  const controlJSON = Form.useWatch("control_json", form);
   const workspaces = useQuery({
     queryKey: ["admin", "workspaces", "assignment"],
     queryFn: api.workspaces.adminList,
@@ -703,8 +705,8 @@ function DeviceForm({
       <>
         <Form.Item
           name="target_workspace_id"
-          label="目标 Workspace"
-          rules={[{ required: true, message: "请选择 Workspace" }]}
+          label="目标工作区"
+          rules={[{ required: true, message: "请选择工作区" }]}
         >
           <Select
             showSearch
@@ -717,7 +719,7 @@ function DeviceForm({
           />
         </Form.Item>
         <div className="drawer-grid">
-          <Form.Item name="project_id" label="Project">
+          <Form.Item name="project_id" label="项目">
             <Select
               allowClear
               showSearch
@@ -728,7 +730,7 @@ function DeviceForm({
               onChange={() => form.setFieldValue("site_id", undefined)}
             />
           </Form.Item>
-          <Form.Item name="site_id" label="Site">
+          <Form.Item name="site_id" label="站点">
             <Select
               allowClear
               showSearch
@@ -750,7 +752,7 @@ function DeviceForm({
         <Alert
           type="info"
           showIcon
-          title="Project 与 Site 选项会随 Workspace 自动更新"
+          title="项目与站点选项会随工作区自动更新"
         />
       </>
     );
@@ -864,6 +866,7 @@ function DeviceForm({
               validator: (_, current) => validateConfigField(current, "object"),
             },
           ]}
+          extra={`采集策略：${describeSamplingControl(controlJSON)}`}
         >
           <Input.TextArea rows={8} className="code-input" spellCheck={false} />
         </Form.Item>
@@ -896,7 +899,7 @@ function DeviceForm({
           <Input />
         </Form.Item>
         <CameraBindingFields />
-        <Form.Item name="target_workspace_id" label="目标 Workspace">
+        <Form.Item name="target_workspace_id" label="目标工作区">
           <Select
             allowClear
             showSearch
@@ -910,7 +913,7 @@ function DeviceForm({
           />
         </Form.Item>
         <div className="drawer-grid">
-          <Form.Item name="project_id" label="Project">
+          <Form.Item name="project_id" label="项目">
             <Select
               allowClear
               showSearch
@@ -921,7 +924,7 @@ function DeviceForm({
               onChange={() => form.setFieldValue("site_id", undefined)}
             />
           </Form.Item>
-          <Form.Item name="site_id" label="Site">
+          <Form.Item name="site_id" label="站点">
             <Select
               allowClear
               showSearch
@@ -1124,7 +1127,7 @@ function ConfigContext({ detail }: { detail: JsonRecord }) {
       : "—";
   return (
     <section className="config-context">
-      <h3>当前配置上下文</h3>
+      <h3>当前配置范围</h3>
       <div>
         <span>
           <small>外部设备 ID</small>
@@ -1262,7 +1265,7 @@ function drawerTitle(mode: Mode, selected: JsonRecord | null) {
     (
       {
         edit: "编辑资料",
-        assign: "分配 Workspace",
+        assign: "分配工作区",
         child: "添加子节点",
         lifecycle: "更新生命周期",
         capabilities: "设备能力",

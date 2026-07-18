@@ -13,6 +13,7 @@ import {
 import { workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, CopyId, Panel, StateView } from "@thcpn/ui";
 import { externalPermission, permissionsForTemplate } from "./access-control";
+import { DevicePublicAccessPanel } from "./device-public-access";
 
 type Template = { code: string; name: string; permission_codes: string[] };
 const text = (input: unknown, fallback: unknown = "—") =>
@@ -67,9 +68,10 @@ export function DeviceSharingTab({ workspaceId, device }: { workspaceId: string;
   };
   return (
     <>
+      <DevicePublicAccessPanel device={device} />
       <div className="device-sharing-note">
         <KeyRound size={16} />
-        <span>这里只管理直接授予当前设备的访问权限。Workspace、Project、Site 继承权限请在全局访问控制中管理。</span>
+        <span>这里只管理直接授予当前设备的访问权限。工作区、项目、站点继承权限请在全局访问控制中管理。</span>
         <Link to="/settings?tab=access"><Button variant="secondary">全局访问控制</Button></Link>
       </div>
       {feedback && <div className="command-note device-feedback">{feedback}</div>}
@@ -179,5 +181,133 @@ function DeviceShareEditor({ mode, device, templates, permissions, onClose, onCo
       );
     } finally { setBusy(false); }
   };
-  return <div className="access-drawer-layer"><button className="access-drawer-backdrop" aria-label="关闭设备分享编辑" onClick={onClose} /><div className="access-editor" role="dialog" aria-modal="true"><Panel className="access-editor-panel"><div className="panel-header"><div><h2 className="panel-title">{mode === "grant" ? "创建设备授权" : "发送设备邀请"}</h2><div className="panel-kicker">授权范围固定为 {device.name}</div></div><Button variant="secondary" onClick={onClose}><X size={14} />关闭</Button></div><form className="access-form" onSubmit={submit}><div className="access-form-grid"><label className="field"><span className="field-label">识别方式</span><select value={identityType} onChange={(e) => setIdentityType(e.target.value)}>{mode === "grant" && <option value="user_id">用户 ID</option>}<option value="email">邮箱</option><option value="phone">手机号</option></select></label><label className="field field-wide"><span className="field-label">接收人</span><input required value={identity} onChange={(e) => setIdentity(e.target.value)} /></label></div><div className="access-form-grid"><label className="field"><span className="field-label">权限模板</span><select value={template} onChange={(e) => { setTemplate(e.target.value); setSelected(templateDevicePermissions(templates, e.target.value)); }}>{externalTemplates.map((item) => <option key={item.code} value={item.code}>{roleTemplateLabel(item.code, item.name)}</option>)}</select></label><label className="field"><span className="field-label">过期时间</span><input type="datetime-local" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} /></label></div><div className="form-section"><h3>权限点 <span>{selected.length} 项</span></h3><div className="permission-grid">{availablePermissions.map((item) => <label key={item.code} className={selected.includes(item.code) ? "selected" : ""}><input type="checkbox" checked={selected.includes(item.code)} onChange={() => setSelected((current) => current.includes(item.code) ? current.filter((code) => code !== item.code) : [...current, item.code])} /><span><strong>{item.name}</strong><small>{item.code}</small></span></label>)}</div></div>{mode === "grant" && <div className="access-toggles"><label><input type="checkbox" checked={allowReshare} onChange={(e) => { const checked = e.target.checked; setAllowReshare(checked); if (checked) setSelected((current) => Array.from(new Set([...current, "share.view", "share.create", "share.revoke"]))); }} />允许再次分享</label><label><input type="checkbox" checked={allowApi} onChange={(e) => setAllowApi(e.target.checked)} />允许 API 访问</label></div>}<div className="form-actions"><Button variant="secondary" type="button" onClick={onClose}>取消</Button><Button type="submit" disabled={busy || !identity.trim() || !selected.length}>{busy ? "提交中…" : "确认提交"}</Button></div></form></Panel></div></div>;
+  return (
+    <div className="access-drawer-layer">
+      <button
+        className="access-drawer-backdrop"
+        aria-label="关闭设备分享编辑"
+        onClick={onClose}
+      />
+      <div className="access-editor" role="dialog" aria-modal="true">
+        <Panel className="access-editor-panel">
+          <div className="panel-header">
+            <h2 className="panel-title">
+              {mode === "grant" ? "创建设备授权" : "发送设备邀请"}
+            </h2>
+            <Button variant="secondary" onClick={onClose}>
+              <X size={14} />关闭
+            </Button>
+          </div>
+          <form className="access-form" onSubmit={submit}>
+            <div className="form-section">
+              <div className="access-form-grid device-share-fields">
+                <label className="field">
+                  <span className="field-label">识别方式</span>
+                  <select
+                    value={identityType}
+                    onChange={(event) => setIdentityType(event.target.value)}
+                  >
+                    {mode === "grant" && <option value="user_id">用户 ID</option>}
+                    <option value="email">邮箱</option>
+                    <option value="phone">手机号</option>
+                  </select>
+                </label>
+                <label className="field field-wide">
+                  <span className="field-label">接收人</span>
+                  <input
+                    required
+                    value={identity}
+                    onChange={(event) => setIdentity(event.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span className="field-label">权限模板</span>
+                  <select
+                    value={template}
+                    onChange={(event) => {
+                      setTemplate(event.target.value);
+                      setSelected(templateDevicePermissions(templates, event.target.value));
+                    }}
+                  >
+                    {externalTemplates.map((item) => (
+                      <option key={item.code} value={item.code}>
+                        {roleTemplateLabel(item.code, item.name)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span className="field-label">过期时间</span>
+                  <input
+                    type="datetime-local"
+                    value={expiresAt}
+                    onChange={(event) => setExpiresAt(event.target.value)}
+                  />
+                </label>
+              </div>
+            </div>
+            <div className="form-section">
+              <h3>权限点 <span>{selected.length} 项</span></h3>
+              <div className="permission-grid">
+                {availablePermissions.map((item) => (
+                  <label
+                    key={item.code}
+                    className={selected.includes(item.code) ? "selected" : ""}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(item.code)}
+                      onChange={() => setSelected((current) =>
+                        current.includes(item.code)
+                          ? current.filter((code) => code !== item.code)
+                          : [...current, item.code],
+                      )}
+                    />
+                    <span><strong>{item.name}</strong><small>{item.code}</small></span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            {mode === "grant" && (
+              <div className="form-section access-toggles">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={allowReshare}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setAllowReshare(checked);
+                      if (checked) {
+                        setSelected((current) => Array.from(new Set([
+                          ...current,
+                          "share.view",
+                          "share.create",
+                          "share.revoke",
+                        ])));
+                      }
+                    }}
+                  />
+                  允许再次分享
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={allowApi}
+                    onChange={(event) => setAllowApi(event.target.checked)}
+                  />
+                  允许 API 访问
+                </label>
+              </div>
+            )}
+            <div className="form-actions">
+              <Button variant="secondary" type="button" onClick={onClose}>取消</Button>
+              <Button type="submit" disabled={busy || !identity.trim() || !selected.length}>
+                {busy ? "提交中…" : "确认提交"}
+              </Button>
+            </div>
+          </form>
+        </Panel>
+      </div>
+    </div>
+  );
 }

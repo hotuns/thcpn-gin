@@ -20,6 +20,10 @@ type TelemetryRuntime interface {
 	QueryTelemetry(ctx context.Context, source datasource.DataSource, req datasource.TelemetryQuery) (datasource.TelemetryResult, error)
 }
 
+type batchTelemetryRuntime interface {
+	QueryTelemetryBatch(ctx context.Context, source datasource.DataSource, req datasource.TelemetryBatchQuery) (datasource.TelemetryBatchResult, error)
+}
+
 type Service struct {
 	queries     *sqlc.Queries
 	dataSources *datasource.Service
@@ -28,13 +32,14 @@ type Service struct {
 }
 
 type QueryInput struct {
-	DeviceID     *uuid.UUID
-	DataStreamID *uuid.UUID
-	StartTime    time.Time
-	EndTime      time.Time
-	Limit        int
-	Adaptive     bool
-	TargetPoints int
+	DeviceID      *uuid.UUID
+	DataStreamID  *uuid.UUID
+	DataStreamIDs []uuid.UUID
+	StartTime     time.Time
+	EndTime       time.Time
+	Limit         int
+	Adaptive      bool
+	TargetPoints  int
 }
 
 type QueryResult struct {
@@ -104,10 +109,10 @@ func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, err
 	if input.DataStreamID != nil {
 		return s.queryDataStream(ctx, *input.DataStreamID, input.DeviceID, input.StartTime, input.EndTime, limit, input.Adaptive, targetPoints)
 	}
-	return s.queryDevice(ctx, *input.DeviceID, input.StartTime, input.EndTime, limit, input.Adaptive, targetPoints)
+	return s.queryDevice(ctx, *input.DeviceID, input.DataStreamIDs, input.StartTime, input.EndTime, limit, input.Adaptive, targetPoints)
 }
 
-func (s *Service) queryDevice(ctx context.Context, deviceID uuid.UUID, start time.Time, end time.Time, limit int, adaptive bool, targetPoints int) (QueryResult, error) {
+func (s *Service) queryDevice(ctx context.Context, deviceID uuid.UUID, requestedIDs []uuid.UUID, start time.Time, end time.Time, limit int, adaptive bool, targetPoints int) (QueryResult, error) {
 	if deviceID == uuid.Nil {
 		return QueryResult{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
 	}
@@ -119,24 +124,33 @@ func (s *Service) queryDevice(ctx context.Context, deviceID uuid.UUID, start tim
 	if err != nil {
 		return QueryResult{}, apperr.Wrap(apperr.KindInternal, "list data streams", err)
 	}
-
-	result := QueryResult{
-		DeviceID:  device.ID,
-		StartTime: start,
-		EndTime:   end,
-		Limit:     limit,
-		Series:    make([]Series, 0),
+	requested := make(map[uuid.UUID]struct{}, len(requestedIDs))
+	for _, id := range requestedIDs {
+		requested[id] = struct{}{}
 	}
+	filtering := len(requested) > 0
+	selected := make([]sqlc.DataStream, 0, len(streams))
 	for _, stream := range streams {
 		if stream.Type != "telemetry" || stream.Status != "active" {
 			continue
 		}
-		series, err := s.querySeries(ctx, stream, start, end, limit, adaptive, targetPoints)
-		if err != nil {
-			return QueryResult{}, err
+		if filtering {
+			if _, ok := requested[stream.ID]; !ok {
+				continue
+			}
+			delete(requested, stream.ID)
 		}
-		result.Series = append(result.Series, series)
+		selected = append(selected, stream)
 	}
+	if len(requested) > 0 {
+		return QueryResult{}, apperr.New(apperr.KindInvalidArgument, "data_stream_ids contains a stream that is not active telemetry on this device")
+	}
+	result := QueryResult{DeviceID: device.ID, StartTime: start, EndTime: end, Limit: limit, Series: make([]Series, 0, len(selected))}
+	series, err := s.querySeriesBatch(ctx, selected, start, end, limit, adaptive, targetPoints)
+	if err != nil {
+		return QueryResult{}, err
+	}
+	result.Series = append(result.Series, series...)
 	return result, nil
 }
 
@@ -192,6 +206,69 @@ func (s *Service) querySeries(ctx context.Context, stream sqlc.DataStream, start
 		return Series{}, err
 	}
 
+	return seriesFromDatasource(stream, points), nil
+}
+
+func (s *Service) querySeriesBatch(ctx context.Context, streams []sqlc.DataStream, start time.Time, end time.Time, limit int, adaptive bool, targetPoints int) ([]Series, error) {
+	batchRuntime, supportsBatch := s.runtime.(batchTelemetryRuntime)
+	if !supportsBatch {
+		items := make([]Series, 0, len(streams))
+		for _, stream := range streams {
+			series, err := s.querySeries(ctx, stream, start, end, limit, adaptive, targetPoints)
+			if err != nil {
+				return nil, err
+			}
+			items = append(items, series)
+		}
+		return items, nil
+	}
+	type sourceGroup struct {
+		source   datasource.DataSource
+		streams  []sqlc.DataStream
+		bindings []datasource.DataStreamBinding
+	}
+	groups := make(map[uuid.UUID]*sourceGroup)
+	for _, stream := range streams {
+		binding, err := s.dataSources.GetActiveDataStreamBinding(ctx, stream.ID)
+		if err != nil {
+			return nil, err
+		}
+		group := groups[binding.DataSourceID]
+		if group == nil {
+			source, sourceErr := s.dataSources.GetDataSource(ctx, binding.DataSourceID)
+			if sourceErr != nil {
+				return nil, sourceErr
+			}
+			group = &sourceGroup{source: source}
+			groups[binding.DataSourceID] = group
+		}
+		group.streams = append(group.streams, stream)
+		group.bindings = append(group.bindings, binding)
+	}
+	results := make(map[uuid.UUID]datasource.TelemetryResult, len(streams))
+	for _, group := range groups {
+		batch, err := batchRuntime.QueryTelemetryBatch(ctx, group.source, datasource.TelemetryBatchQuery{
+			Bindings: group.bindings, Start: start, End: end, Limit: limit, Adaptive: adaptive, TargetPoints: targetPoints,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for id, result := range batch.Series {
+			results[id] = result
+		}
+	}
+	items := make([]Series, 0, len(streams))
+	for _, stream := range streams {
+		points, ok := results[stream.ID]
+		if !ok {
+			return nil, apperr.New(apperr.KindDataSource, "batch telemetry result is missing a data stream")
+		}
+		items = append(items, seriesFromDatasource(stream, points))
+	}
+	return items, nil
+}
+
+func seriesFromDatasource(stream sqlc.DataStream, points datasource.TelemetryResult) Series {
 	sourceCount := points.SourceCount
 	if sourceCount == 0 && len(points.Points) > 0 {
 		sourceCount = len(points.Points)
@@ -207,7 +284,7 @@ func (s *Service) querySeries(ctx context.Context, stream sqlc.DataStream, start
 		ReturnedCount: len(points.Points),
 		Sampled:       points.Sampled,
 		Complete:      points.Complete,
-	}, nil
+	}
 }
 
 func pointsFromDatasource(points []datasource.TelemetryPoint) []Point {

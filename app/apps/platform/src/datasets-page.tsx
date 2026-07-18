@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
+  ChevronDown,
   Database,
   Download,
   Eye,
@@ -43,6 +44,25 @@ type DatasetDraft = {
   sources: SourceInput[];
   status?: string;
 };
+const datasetTypeLabel = (value: Dataset["data_type"]) =>
+  ({
+    telemetry: "遥测数据",
+    image: "图片",
+    video: "视频",
+    audio: "音频",
+    event: "事件",
+    log: "日志",
+    mixed: "混合数据",
+  })[value] ?? value;
+const datasetStatusLabel = (value: Dataset["status"]) =>
+  ({
+    draft: "草稿",
+    published: "已发布",
+    locked: "已锁定",
+    archived: "已归档",
+  })[value] ?? value;
+const sourceTypeLabel = (value: SourceInput["source_type"]) =>
+  ({ device: "设备", data_stream: "数据指标", file: "文件" })[value] ?? value;
 const localTime = (input: Date | string) => {
   const date = new Date(input);
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
@@ -85,22 +105,18 @@ export const buildDatasetPayload = (
 });
 export const datasetDetailPath = (datasetId: string) =>
   `/datasets/${encodeURIComponent(datasetId)}`;
+export const datasetEditPath = (datasetId: string) =>
+  `${datasetDetailPath(datasetId)}/edit`;
 
 export function DatasetsPage() {
   const { currentId } = useWorkspace();
   const navigate = useNavigate();
   const [projectFilter, setProjectFilter] = useState("");
   const [keyword, setKeyword] = useState("");
-  const [editing, setEditing] = useState<Dataset | null | undefined>(undefined);
   const [feedback, setFeedback] = useState("");
   const projects = useQuery({
     queryKey: workspaceQueryKey(currentId, "projects"),
     queryFn: () => api.projects.list(currentId!),
-    enabled: Boolean(currentId),
-  });
-  const devices = useQuery({
-    queryKey: workspaceQueryKey(currentId, "devices"),
-    queryFn: () => api.devices.list(currentId!),
     enabled: Boolean(currentId),
   });
   const query = useQuery({
@@ -136,15 +152,15 @@ export function DatasetsPage() {
     return (
       <>
         <PageHeader
-          eyebrow="Workspace / datasets"
+          eyebrow="工作区 / 数据集"
           title="数据集"
           description="管理可复用的数据查询定义。"
         />
         <Panel>
           <StateView
             type="empty"
-            title="请选择 Workspace"
-            description="数据集依赖 Workspace 上下文。"
+            title="请选择工作区"
+            description="请先选择工作区，再查看数据集。"
           />
         </Panel>
       </>
@@ -152,7 +168,7 @@ export function DatasetsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Workspace / datasets"
+        eyebrow="工作区 / 数据集"
         title="数据集"
         description="将设备或数据流、时间范围和数据类型保存为可预览、分享与导出的查询定义。"
         actions={
@@ -161,7 +177,7 @@ export function DatasetsPage() {
               <RefreshCw size={14} />
               刷新
             </Button>
-            <Button onClick={() => setEditing(null)}>
+            <Button onClick={() => navigate("/datasets/new")}>
               <Plus size={14} />
               创建数据集
             </Button>
@@ -182,7 +198,7 @@ export function DatasetsPage() {
             value={projectFilter}
             onChange={(event) => setProjectFilter(event.target.value)}
           >
-            <option value="">全部 Project</option>
+            <option value="">全部项目</option>
             {projects.data?.items.map((item) => (
               <option key={String(item.id)} value={String(item.id)}>
                 {String(item.name)}
@@ -231,7 +247,7 @@ export function DatasetsPage() {
                       <div className="cell-sub mono">{dataset.id}</div>
                     </td>
                     <td>
-                      <Badge tone="info">{dataset.data_type}</Badge>
+                      <Badge tone="info">{datasetTypeLabel(dataset.data_type)}</Badge>
                     </td>
                     <td>
                       {displayTime(dataset.time_start)}
@@ -250,7 +266,7 @@ export function DatasetsPage() {
                               : "neutral"
                         }
                       >
-                        {dataset.status}
+                        {datasetStatusLabel(dataset.status)}
                       </Badge>
                     </td>
                     <td>
@@ -266,7 +282,7 @@ export function DatasetsPage() {
                         </Button>
                         <Button
                           variant="secondary"
-                          onClick={() => setEditing(dataset)}
+                          onClick={() => navigate(datasetEditPath(dataset.id))}
                         >
                           <Pencil size={13} />
                           编辑
@@ -320,21 +336,6 @@ export function DatasetsPage() {
           />
         )}
       </Panel>
-      {editing !== undefined && (
-        <DatasetForm
-          key={editing?.id ?? "create"}
-          workspaceId={currentId}
-          dataset={editing}
-          projects={projects.data?.items ?? []}
-          devices={devices.data?.items ?? []}
-          onClose={() => setEditing(undefined)}
-          onSaved={async (action, message) => {
-            const ok = await run(action, message);
-            if (ok) setEditing(undefined);
-            return ok;
-          }}
-        />
-      )}
     </>
   );
 }
@@ -364,7 +365,7 @@ export function DatasetDetailPage() {
       <>
         <PageHeader title="数据集详情" actions={back} />
         <Panel>
-          <StateView type="empty" title="请选择 Workspace" description="数据集详情依赖 Workspace 上下文。" />
+          <StateView type="empty" title="请选择工作区" description="请先选择工作区，再查看数据集详情。" />
         </Panel>
       </>
     );
@@ -395,12 +396,117 @@ export function DatasetDetailPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Workspace / datasets"
+        eyebrow="工作区 / 数据集"
         title={dataset.data.name}
         description={dataset.data.description || "数据集元信息、来源和数据预览"}
-        actions={back}
+        actions={
+          <div className="header-actions">
+            <Button
+              variant="secondary"
+              onClick={() => navigate(datasetEditPath(dataset.data.id))}
+            >
+              <Pencil size={14} />
+              编辑
+            </Button>
+            {back}
+          </div>
+        }
       />
       <DatasetPreview dataset={dataset.data} devices={devices.data?.items ?? []} />
+    </>
+  );
+}
+
+export function DatasetEditorPage() {
+  const { currentId } = useWorkspace();
+  const { datasetId = "" } = useParams();
+  const navigate = useNavigate();
+  const creating = !datasetId;
+  const dataset = useQuery({
+    queryKey: workspaceQueryKey(currentId, "dataset", datasetId),
+    queryFn: () => api.datasets.get(datasetId),
+    enabled: Boolean(currentId && datasetId),
+  });
+  const projects = useQuery({
+    queryKey: workspaceQueryKey(currentId, "projects"),
+    queryFn: () => api.projects.list(currentId!),
+    enabled: Boolean(currentId),
+  });
+  const devices = useQuery({
+    queryKey: workspaceQueryKey(currentId, "devices"),
+    queryFn: () => api.devices.list(currentId!),
+    enabled: Boolean(currentId),
+  });
+  const [feedback, setFeedback] = useState("");
+  const returnPath = datasetId ? datasetDetailPath(datasetId) : "/datasets";
+  const back = (
+    <Button variant="secondary" onClick={() => navigate(returnPath)}>
+      <ArrowLeft size={14} />
+      {datasetId ? "返回详情" : "返回数据集"}
+    </Button>
+  );
+  if (!currentId)
+    return (
+      <>
+        <PageHeader title={creating ? "创建数据集" : "编辑数据集"} actions={back} />
+        <Panel>
+          <StateView type="empty" title="请选择工作区" description="请先选择工作区，再管理数据集。" />
+        </Panel>
+      </>
+    );
+  if (!creating && dataset.isLoading)
+    return (
+      <>
+        <PageHeader title="编辑数据集" actions={back} />
+        <Panel>
+          <StateView type="loading" title="正在加载数据集" description="正在读取数据集定义和数据来源。" />
+        </Panel>
+      </>
+    );
+  if (!creating && (dataset.error || !dataset.data))
+    return (
+      <>
+        <PageHeader title="编辑数据集" actions={back} />
+        <Panel>
+          <StateView
+            type="error"
+            title="数据集加载失败"
+            description={formatApiError(dataset.error).message}
+            requestId={formatApiError(dataset.error).requestId}
+            action={back}
+          />
+        </Panel>
+      </>
+    );
+  return (
+    <>
+      <PageHeader
+        title={creating ? "创建数据集" : dataset.data?.name ?? "编辑数据集"}
+        actions={back}
+      />
+      {feedback && <div className="command-note section-gap">{feedback}</div>}
+      <DatasetForm
+        key={dataset.data?.id ?? "create"}
+        workspaceId={currentId}
+        dataset={dataset.data ?? null}
+        projects={projects.data?.items ?? []}
+        devices={devices.data?.items ?? []}
+        onClose={() => navigate(returnPath)}
+        onSaved={async (action, message) => {
+          setFeedback("");
+          try {
+            const saved = await action();
+            navigate(datasetDetailPath(saved.id), { replace: true });
+            return true;
+          } catch (error) {
+            const item = formatApiError(error);
+            setFeedback(
+              `${message}失败：${item.message}${item.requestId ? ` · request id ${item.requestId}` : ""}`,
+            );
+            return false;
+          }
+        }}
+      />
     </>
   );
 }
@@ -419,7 +525,7 @@ function DatasetForm({
   devices: JsonRecord[];
   onClose: () => void;
   onSaved: (
-    action: () => Promise<unknown>,
+    action: () => Promise<Dataset>,
     message: string,
   ) => Promise<boolean>;
 }) {
@@ -540,13 +646,13 @@ function DatasetForm({
             />
           </label>
           <label className="field">
-            <span className="field-label">Project</span>
+            <span className="field-label">项目</span>
             <select
               value={projectId}
               disabled={Boolean(dataset)}
               onChange={(event) => setProjectId(event.target.value)}
             >
-              <option value="">不关联 Project</option>
+            <option value="">不关联项目</option>
               {projects.map((item) => (
                 <option key={String(item.id)} value={String(item.id)}>
                   {String(item.name)}
@@ -572,7 +678,7 @@ function DatasetForm({
                 "mixed",
               ].map((item) => (
                 <option key={item} value={item}>
-                  {item}
+                  {datasetTypeLabel(item as Dataset["data_type"])}
                 </option>
               ))}
             </select>
@@ -587,7 +693,9 @@ function DatasetForm({
                 }
               >
                 {["draft", "published", "locked", "archived"].map((item) => (
-                  <option key={item}>{item}</option>
+                  <option key={item} value={item}>
+                    {datasetStatusLabel(item as Dataset["status"])}
+                  </option>
                 ))}
               </select>
             </label>
@@ -631,7 +739,7 @@ function DatasetForm({
               }
             >
               <option value="device">整台设备</option>
-              <option value="data_stream">单个数据流</option>
+              <option value="data_stream">单个数据指标</option>
             </select>
             <select
               value={deviceId}
@@ -651,7 +759,7 @@ function DatasetForm({
                 onChange={(event) => setSourceId(event.target.value)}
               >
                 <option value="">
-                  {streams.isLoading ? "正在加载数据流" : "选择数据流"}
+                  {streams.isLoading ? "正在加载数据指标" : "选择数据指标"}
                 </option>
                 {streams.data?.items.map((item) => (
                   <option key={item.id} value={item.id}>
@@ -675,12 +783,13 @@ function DatasetForm({
           {sources.length ? (
             <div className="source-chips">
               {sources.map((source) => (
-                <div key={`${source.source_type}-${source.source_id}`}>
+                <div
+                  key={`${source.source_type}-${source.source_id}`}
+                  title={source.source_id}
+                >
                   <Database size={13} />
                   <SourceName source={source} devices={devices} />
-                  <small>
-                    {source.source_type} · {source.source_id}
-                  </small>
+                  <small>{sourceTypeLabel(source.source_type)}</small>
                   <button
                     type="button"
                     aria-label="移除来源"
@@ -737,7 +846,7 @@ function SourceName({
     const device = devices.find((item) => String(item.id) === source.source_id);
     return (
       <span>
-        {String(device?.name ?? device?.serial_no ?? source.source_id)}
+        {String(device?.name ?? device?.serial_no ?? "未知设备")}
       </span>
     );
   }
@@ -748,7 +857,7 @@ function SourceName({
         ? "正在加载数据流…"
         : stream.data
           ? `${stream.data.name} · ${stream.data.code}`
-          : source.source_id}
+          : "未命名数据指标"}
     </span>
   );
 }
@@ -842,29 +951,52 @@ function DatasetPreview({
         </label>
       </div>}
       <div className="dataset-preview-meta">
+        <div className="dataset-preview-summary">
           <span>
-            <strong>{dataset.data_type}</strong>
-            数据类型
+            <small>数据类型</small>
+            <strong>{datasetTypeLabel(dataset.data_type)}</strong>
           </span>
           <span>
-            <strong>{dataset.sources.length}</strong>
-            数据来源
+            <small>数据来源</small>
+            <strong>{dataset.sources.length} 项</strong>
           </span>
           <span>
-            <strong>{dataset.status}</strong>当前状态
+            <small>当前状态</small>
+            <Badge
+              tone={
+                dataset.status === "locked" || dataset.status === "published"
+                  ? "success"
+                  : "neutral"
+              }
+            >
+              {datasetStatusLabel(dataset.status)}
+            </Badge>
           </span>
-          <div className="source-chips">
+        </div>
+        <details className="dataset-source-details">
+          <summary>
+            <span>
+              <Database size={14} aria-hidden="true" />
+              查看数据来源
+            </span>
+            <ChevronDown size={15} aria-hidden="true" />
+          </summary>
+          <div className="dataset-source-list">
             {dataset.sources.map((source) => (
-              <div key={`${source.source_type}-${source.source_id}`}>
-                <Database size={12} />
-                <SourceName source={source} devices={devices} />
-                <small>
-                  {source.source_type} · {source.source_id}
-                </small>
+              <div
+                key={`${source.source_type}-${source.source_id}`}
+                title={source.source_id}
+              >
+                <Database size={13} aria-hidden="true" />
+                <strong>
+                  <SourceName source={source} devices={devices} />
+                </strong>
+                <small>{sourceTypeLabel(source.source_type)}</small>
               </div>
             ))}
           </div>
-        </div>
+        </details>
+      </div>
       {!previewable ? (
         <StateView
           type="empty"

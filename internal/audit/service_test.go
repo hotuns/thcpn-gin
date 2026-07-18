@@ -64,3 +64,14 @@ func TestFromRequestOmitsSystemAdministratorUserForeignKey(t *testing.T) {
 		t.Fatal("expected system administrator id to be retained")
 	}
 }
+
+func TestFromRequestIncludesAdministratorOperationReason(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("PATCH", "/", nil)
+	c.Set("admin_operation_reason", "修复异常权限范围")
+
+	input := FromRequest(c, RecordInput{Action: "member.role_update", Result: ResultFailure, Reason: "member not found"})
+	if input.Reason != "修复异常权限范围: member not found" {
+		t.Fatalf("unexpected reason %q", input.Reason)
+	}
+}

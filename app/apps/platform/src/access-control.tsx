@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
@@ -48,6 +48,7 @@ export const permissionsForTemplate = (
 
 export function AccessControlTab() {
   const { currentId, current } = useWorkspace();
+  const [params, setParams] = useSearchParams();
   const client = useQueryClient();
   const [formMode, setFormMode] = useState<FormMode | null>(null);
   const [editing, setEditing] = useState<JsonRecord | null>(null);
@@ -124,13 +125,25 @@ export function AccessControlTab() {
       return false;
     }
   };
+  const open = (mode: FormMode, record?: JsonRecord) => {
+    setEditing(record ?? null);
+    setFormMode(mode);
+    setFeedback("");
+  };
+  useEffect(() => {
+    if (!currentId || params.get("action") !== "invite") return;
+    open("invitation");
+    const next = new URLSearchParams(params);
+    next.delete("action");
+    setParams(next, { replace: true });
+  }, [currentId, params, setParams]);
   if (!currentId)
     return (
       <Panel>
         <StateView
           type="empty"
-          title="请选择 Workspace"
-          description="访问控制依赖 Workspace 上下文。"
+          title="请选择工作区"
+          description="请先选择工作区，再管理访问权限。"
         />
       </Panel>
     );
@@ -141,7 +154,7 @@ export function AccessControlTab() {
     group: string;
   }>;
   const resources = {
-    workspace: [{ id: currentId, name: current?.name ?? "当前 Workspace" }],
+    workspace: [{ id: currentId, name: current?.name ?? "当前工作区" }],
     project: projects.data?.items ?? [],
     site: sites.data?.items ?? [],
     device: devices.data?.items ?? [],
@@ -156,11 +169,6 @@ export function AccessControlTab() {
       : predicate
         ? (query.data?.items ?? []).filter(predicate).length
         : (query.data?.items.length ?? 0);
-  const open = (mode: FormMode, record?: JsonRecord) => {
-    setEditing(record ?? null);
-    setFormMode(mode);
-    setFeedback("");
-  };
   return (
     <>
       <div className="access-summary">
@@ -280,7 +288,7 @@ export function AccessControlTab() {
       <div className="section-gap">
         <AccessPanel
           title="授予我的访问"
-          subtitle="其他 Workspace 分享给当前账号的有效资源"
+          subtitle="其他工作区分享给当前账号的有效资源"
           icon={<ShieldCheck size={16} />}
           query={myGrants}
         >

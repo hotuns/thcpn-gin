@@ -6,6 +6,8 @@ import {
   deviceDetailTab,
   filterQuickSwitchDevices,
   firmwarePayload,
+  inferBatteryReading,
+  inferSignalReading,
   isTopLevelDevice,
   legacyDeviceTarget,
 } from "./devices-page";
@@ -45,6 +47,27 @@ describe("device workflow payloads", () => {
         device_type: "gateway",
       }),
     ).toBe(true);
+  });
+
+  it("infers signal quality with provisional percentage thresholds", () => {
+    expect(inferSignalReading(99)).toMatchObject({
+      level: "good",
+      valueLabel: "99%",
+    });
+    expect(inferSignalReading(35).level).toBe("low");
+    expect(inferSignalReading(null).level).toBe("unknown");
+  });
+
+  it("infers common battery voltage and percentage values", () => {
+    expect(inferBatteryReading(12.91)).toMatchObject({
+      level: "good",
+      valueLabel: "12.9V",
+    });
+    expect(inferBatteryReading(3.4).level).toBe("low");
+    expect(inferBatteryReading(25)).toMatchObject({
+      level: "low",
+      valueLabel: "25%",
+    });
   });
 
   it("builds calibration input with optional device parameters", () => {
