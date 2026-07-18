@@ -29,7 +29,12 @@ const (
 	defaultTHCPNMaxShardTables  = 8
 )
 
-var thcpnShardTablePattern = regexp.MustCompile(`^device_data_[0-9]+$`)
+const thcpnMonthlyShardTablePrefix = "device_data_"
+
+var (
+	thcpnShardTablePattern       = regexp.MustCompile(`^device_data_[0-9]+$`)
+	thcpnMonthlyShardCutoverDate = time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+)
 
 type thcpnLegacyBindingConfig struct {
 	ExternalDeviceID int64  `json:"external_device_id"`
@@ -63,6 +68,23 @@ type thcpnTelemetryShardResult struct {
 	SkippedRows int
 }
 
+type thcpnTelemetryBucket struct {
+	Min TelemetryPoint
+	Max TelemetryPoint
+	Set bool
+}
+
+type thcpnAdaptiveTelemetryCollector struct {
+	start       time.Time
+	end         time.Time
+	rawLimit    int
+	rawPoints   []TelemetryPoint
+	buckets     []thcpnTelemetryBucket
+	sourceCount int
+	firstPoint  *TelemetryPoint
+	lastPoint   *TelemetryPoint
+}
+
 func (r *Runtime) queryThcpnLegacyMySQLTelemetry(ctx context.Context, source DataSource, req TelemetryQuery) (TelemetryResult, error) {
 	if source.Type != "mysql" {
 		return TelemetryResult{}, apperr.New(apperr.KindDataSource, "thcpn_legacy_mysql adapter requires mysql data source type")
@@ -84,6 +106,9 @@ func (r *Runtime) queryThcpnLegacyMySQLTelemetry(ctx context.Context, source Dat
 	if err != nil {
 		return TelemetryResult{}, err
 	}
+	if req.Adaptive {
+		return queryTHCPNAdaptiveTelemetry(ctx, db, shards, cfg, req)
+	}
 	points := make([]TelemetryPoint, 0, req.Limit)
 	skippedRows := 0
 	for _, shard := range shards {
@@ -100,7 +125,11 @@ func (r *Runtime) queryThcpnLegacyMySQLTelemetry(ctx context.Context, source Dat
 	if len(points) > req.Limit {
 		points = points[:req.Limit]
 	}
-	result := TelemetryResult{Points: points}
+	result := TelemetryResult{
+		Points:      points,
+		SourceCount: len(points),
+		Complete:    len(points) < req.Limit,
+	}
 	if skippedRows > 0 {
 		result.Warnings = append(result.Warnings, QueryWarning{
 			Code:    "thcpn_config_mismatch",
@@ -109,6 +138,130 @@ func (r *Runtime) queryThcpnLegacyMySQLTelemetry(ctx context.Context, source Dat
 		})
 	}
 	return result, nil
+}
+
+func queryTHCPNAdaptiveTelemetry(ctx context.Context, db *sql.DB, shards []thcpnShardTable, cfg thcpnLegacyBindingConfig, req TelemetryQuery) (TelemetryResult, error) {
+	collector := newTHCPNAdaptiveTelemetryCollector(req.Start, req.End, req.Limit, req.TargetPoints)
+	skippedRows := 0
+	for _, shard := range shards {
+		skipped, err := scanTHCPNShardTelemetry(ctx, db, shard.Name, cfg, req.Start, req.End, collector.Add)
+		if err != nil {
+			return TelemetryResult{}, err
+		}
+		skippedRows += skipped
+	}
+	points, sampled := collector.Result()
+	result := TelemetryResult{
+		Points:      points,
+		SourceCount: collector.sourceCount,
+		Sampled:     sampled,
+		Complete:    true,
+	}
+	if skippedRows > 0 {
+		result.Warnings = append(result.Warnings, QueryWarning{
+			Code:    "thcpn_config_mismatch",
+			Message: fmt.Sprintf("部分历史数据与当前设备配置不匹配，已跳过 %d 条记录", skippedRows),
+			Count:   skippedRows,
+		})
+	}
+	return result, nil
+}
+
+func newTHCPNAdaptiveTelemetryCollector(start time.Time, end time.Time, rawLimit int, targetPoints int) *thcpnAdaptiveTelemetryCollector {
+	if rawLimit <= 0 {
+		rawLimit = 1
+	}
+	if targetPoints < 2 {
+		targetPoints = 2
+	}
+	bucketCount := targetPoints / 2
+	return &thcpnAdaptiveTelemetryCollector{
+		start:     start,
+		end:       end,
+		rawLimit:  rawLimit,
+		rawPoints: make([]TelemetryPoint, 0, rawLimit),
+		buckets:   make([]thcpnTelemetryBucket, bucketCount),
+	}
+}
+
+func (c *thcpnAdaptiveTelemetryCollector) Add(point TelemetryPoint) {
+	c.sourceCount++
+	if c.firstPoint == nil {
+		first := point
+		c.firstPoint = &first
+	}
+	last := point
+	c.lastPoint = &last
+	if c.sourceCount <= c.rawLimit {
+		c.rawPoints = append(c.rawPoints, point)
+	} else if c.rawPoints != nil {
+		c.rawPoints = nil
+	}
+
+	bucketIndex := 0
+	duration := c.end.Sub(c.start)
+	if duration > 0 && len(c.buckets) > 1 {
+		position := float64(point.Timestamp.Sub(c.start)) / float64(duration)
+		bucketIndex = int(position * float64(len(c.buckets)))
+		if bucketIndex < 0 {
+			bucketIndex = 0
+		}
+		if bucketIndex >= len(c.buckets) {
+			bucketIndex = len(c.buckets) - 1
+		}
+	}
+	bucket := &c.buckets[bucketIndex]
+	if !bucket.Set {
+		bucket.Min = point
+		bucket.Max = point
+		bucket.Set = true
+		return
+	}
+	if point.Value < bucket.Min.Value {
+		bucket.Min = point
+	}
+	if point.Value > bucket.Max.Value {
+		bucket.Max = point
+	}
+}
+
+func (c *thcpnAdaptiveTelemetryCollector) Result() ([]TelemetryPoint, bool) {
+	if c.sourceCount <= c.rawLimit {
+		sort.SliceStable(c.rawPoints, func(i, j int) bool {
+			return c.rawPoints[i].Timestamp.Before(c.rawPoints[j].Timestamp)
+		})
+		return c.rawPoints, false
+	}
+	points := make([]TelemetryPoint, 0, len(c.buckets)*2)
+	if c.firstPoint != nil {
+		points = append(points, *c.firstPoint)
+	}
+	for _, bucket := range c.buckets {
+		if !bucket.Set {
+			continue
+		}
+		points = append(points, bucket.Min)
+		if bucket.Max.Timestamp != bucket.Min.Timestamp || bucket.Max.Value != bucket.Min.Value {
+			points = append(points, bucket.Max)
+		}
+	}
+	if c.lastPoint != nil {
+		points = append(points, *c.lastPoint)
+	}
+	sort.SliceStable(points, func(i, j int) bool {
+		return points[i].Timestamp.Before(points[j].Timestamp)
+	})
+	deduped := points[:0]
+	for _, point := range points {
+		if len(deduped) > 0 {
+			previous := deduped[len(deduped)-1]
+			if previous.Timestamp.Equal(point.Timestamp) && previous.Value == point.Value {
+				continue
+			}
+		}
+		deduped = append(deduped, point)
+	}
+	return deduped, true
 }
 
 func (r *Runtime) queryThcpnLegacyMySQLMedia(ctx context.Context, source DataSource, req MediaQuery) (MediaResult, error) {
@@ -273,6 +426,10 @@ func validateTHCPNConfigIdentifiers(cfg thcpnLegacyBindingConfig) error {
 }
 
 func queryTHCPNShardTables(ctx context.Context, db *sql.DB, cfg thcpnLegacyBindingConfig, start time.Time, end time.Time) ([]thcpnShardTable, error) {
+	if useMonthlyTHCPNShards(start) {
+		return monthlyTHCPNShardTables(start, end, cfg.MaxShardTables)
+	}
+
 	query := fmt.Sprintf(
 		"SELECT %s FROM %s WHERE %s <= ? AND %s >= ? ORDER BY %s ASC",
 		quoteMySQLIdentifier(cfg.TableNameField),
@@ -309,6 +466,44 @@ func queryTHCPNShardTables(ctx context.Context, db *sql.DB, cfg thcpnLegacyBindi
 	}
 	if len(shards) > cfg.MaxShardTables {
 		return nil, apperr.New(apperr.KindDataSource, "thcpn query touches too many shard tables")
+	}
+	return shards, nil
+}
+
+func useMonthlyTHCPNShards(start time.Time) bool {
+	year, month, day := start.Date()
+	cutoverYear, cutoverMonth, cutoverDay := thcpnMonthlyShardCutoverDate.Date()
+	if year != cutoverYear {
+		return year > cutoverYear
+	}
+	if month != cutoverMonth {
+		return month > cutoverMonth
+	}
+	return day >= cutoverDay
+}
+
+func monthlyTHCPNShardTables(start time.Time, end time.Time, maxShardTables int) ([]thcpnShardTable, error) {
+	if end.Before(start) {
+		return nil, apperr.New(apperr.KindInvalidArgument, "thcpn shard query end must not be before start")
+	}
+	if maxShardTables <= 0 {
+		maxShardTables = defaultTHCPNMaxShardTables
+	}
+
+	end = end.In(start.Location())
+	month := time.Date(start.Year(), start.Month(), 1, 0, 0, 0, 0, start.Location())
+	lastMonth := time.Date(end.Year(), end.Month(), 1, 0, 0, 0, 0, start.Location())
+	shards := make([]thcpnShardTable, 0)
+	for !month.After(lastMonth) {
+		if len(shards) >= maxShardTables {
+			return nil, apperr.New(apperr.KindDataSource, "thcpn query touches too many shard tables")
+		}
+		tableName := fmt.Sprintf("%s%04d%02d", thcpnMonthlyShardTablePrefix, month.Year(), month.Month())
+		if err := validateTHCPNShardTableName(tableName); err != nil {
+			return nil, err
+		}
+		shards = append(shards, thcpnShardTable{Name: tableName})
+		month = month.AddDate(0, 1, 0)
 	}
 	return shards, nil
 }
@@ -353,6 +548,47 @@ func queryTHCPNShardTelemetry(ctx context.Context, db *sql.DB, tableName string,
 		return thcpnTelemetryShardResult{}, apperr.Wrap(apperr.KindDataSource, "read thcpn telemetry points", err)
 	}
 	return thcpnTelemetryShardResult{Points: points, SkippedRows: skippedRows}, nil
+}
+
+func scanTHCPNShardTelemetry(ctx context.Context, db *sql.DB, tableName string, cfg thcpnLegacyBindingConfig, start time.Time, end time.Time, add func(TelemetryPoint)) (int, error) {
+	query := fmt.Sprintf(
+		"SELECT %s, JSON_UNQUOTE(JSON_EXTRACT(%s, ?)) FROM %s WHERE %s = ? AND %s IS NULL AND %s = ? AND %s >= ? AND %s <= ? ORDER BY %s ASC",
+		quoteMySQLIdentifier(cfg.TimeField),
+		quoteMySQLIdentifier(cfg.DataField),
+		quoteMySQLIdentifier(tableName),
+		quoteMySQLIdentifier(cfg.DeviceIDField),
+		quoteMySQLIdentifier(cfg.DeletedAtField),
+		quoteMySQLIdentifier(cfg.TypeField),
+		quoteMySQLIdentifier(cfg.TimeField),
+		quoteMySQLIdentifier(cfg.TimeField),
+		quoteMySQLIdentifier(cfg.TimeField),
+	)
+	rows, err := db.QueryContext(ctx, query, cfg.ValuePath, cfg.ExternalDeviceID, cfg.RowType, start, end)
+	if err != nil {
+		return 0, apperr.Wrap(apperr.KindDataSource, "query thcpn telemetry shard", err)
+	}
+	defer rows.Close()
+
+	skippedRows := 0
+	for rows.Next() {
+		var point TelemetryPoint
+		var rawValue sql.NullString
+		if err := rows.Scan(&point.Timestamp, &rawValue); err != nil {
+			return 0, apperr.Wrap(apperr.KindDataSource, "scan thcpn telemetry point", err)
+		}
+		value, ok := parseTHCPNTelemetryValue(rawValue)
+		if !ok {
+			skippedRows++
+			continue
+		}
+		point.Value = value
+		point.Quality = "valid"
+		add(point)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, apperr.Wrap(apperr.KindDataSource, "read thcpn telemetry points", err)
+	}
+	return skippedRows, nil
 }
 
 func parseTHCPNTelemetryValue(raw sql.NullString) (float64, bool) {

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { TrendingUp } from "lucide-react";
-import { api, formatApiError } from "@thcpn/api";
+import { api, formatApiError, type TelemetrySeries } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, PageHeader, Panel, StateView } from "@thcpn/ui";
 import {
@@ -14,6 +14,7 @@ import { DataQuickNavigator } from "./data-quick-navigator";
 import {
   DeviceQueryActions,
   querySelectedTelemetry,
+  querySelectedTelemetryRaw,
 } from "./device-query-actions";
 import { TelemetryCharts } from "./telemetry-charts";
 import { TelemetryTable } from "./telemetry-table";
@@ -56,13 +57,15 @@ export function DeviceDataPage({
     dateTimeLocal(new Date(Date.now() - 24 * 60 * 60 * 1000)),
   );
   const [endTime, setEndTime] = useState(() => dateTimeLocal(new Date()));
-  const [limit, setLimit] = useState(500);
   const [selectedStreamIds, setSelectedStreamIds] = useState<string[]>([]);
   const [appliedStartTime, setAppliedStartTime] = useState(startTime);
   const [appliedEndTime, setAppliedEndTime] = useState(endTime);
-  const [appliedLimit, setAppliedLimit] = useState(limit);
   const [appliedStreamIds, setAppliedStreamIds] = useState<string[]>([]);
   const [selectionReadyForDevice, setSelectionReadyForDevice] = useState("");
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailPages, setDetailPages] = useState<TelemetrySeries[][]>([]);
+  const [detailLoadingMore, setDetailLoadingMore] = useState(false);
+  const [detailLoadMoreError, setDetailLoadMoreError] = useState("");
   const devicesQuery = useQuery({
     queryKey: workspaceQueryKey(currentId, "devices"),
     queryFn: () => api.devices.list(currentId!),
@@ -96,6 +99,9 @@ export function DeviceDataPage({
     setSelectedStreamIds([]);
     setAppliedStreamIds([]);
     setSelectionReadyForDevice("");
+    setDetailOpen(false);
+    setDetailPages([]);
+    setDetailLoadMoreError("");
   }, [deviceId]);
   useEffect(() => {
     if (!deviceId || !streamsQuery.isSuccess || selectionReadyForDevice === deviceId)
@@ -116,13 +122,11 @@ export function DeviceDataPage({
       appliedStreamIds.slice().sort().join(",") || "all",
       appliedStartTime,
       appliedEndTime,
-      String(appliedLimit),
     ),
     queryFn: () =>
       querySelectedTelemetry(deviceId, appliedStreamIds, {
         startTime: new Date(appliedStartTime).toISOString(),
         endTime: new Date(appliedEndTime).toISOString(),
-        limit: appliedLimit,
       }),
     enabled: Boolean(
       deviceId &&
@@ -133,15 +137,125 @@ export function DeviceDataPage({
       appliedEndTime,
     ),
   });
+  const detailTelemetryQuery = useQuery({
+    queryKey: workspaceQueryKey(
+      currentId,
+      "device",
+      deviceId,
+      "telemetry-raw",
+      appliedStreamIds.slice().sort().join(",") || "all",
+      appliedStartTime,
+      appliedEndTime,
+      "500",
+    ),
+    queryFn: () =>
+      querySelectedTelemetryRaw(deviceId, appliedStreamIds, {
+        startTime: new Date(appliedStartTime).toISOString(),
+        endTime: new Date(appliedEndTime).toISOString(),
+      }),
+    enabled: Boolean(
+      detailOpen &&
+      deviceId &&
+      selectedDevice &&
+      !isCameraDevice(selectedDevice) &&
+      selectionReadyForDevice === deviceId &&
+      appliedStartTime &&
+      appliedEndTime,
+    ),
+  });
+  useEffect(() => {
+    setDetailPages([]);
+    setDetailLoadMoreError("");
+  }, [appliedEndTime, appliedStartTime, appliedStreamIds]);
+  const detailSeries = useMemo(() => {
+    const merged = new Map<string, TelemetrySeries>();
+    const pages = [detailTelemetryQuery.data?.series ?? [], ...detailPages];
+    pages.forEach((page) => {
+      page.forEach((series) => {
+        const current = merged.get(series.data_stream_id);
+        if (!current) {
+          merged.set(series.data_stream_id, { ...series, points: [...series.points] });
+          return;
+        }
+        const points = [...current.points, ...series.points]
+          .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts))
+          .filter(
+            (point, index, items) =>
+              index === 0 ||
+              point.ts !== items[index - 1].ts ||
+              point.value !== items[index - 1].value,
+          );
+        merged.set(series.data_stream_id, {
+          ...current,
+          ...series,
+          points,
+          source_count: points.length,
+          returned_count: points.length,
+        });
+      });
+    });
+    return [...merged.values()];
+  }, [detailPages, detailTelemetryQuery.data]);
   const points = useMemo(
     () =>
-      (telemetryQuery.data?.series ?? [])
+      detailSeries
         .flatMap((series) =>
           series.points.map((point) => ({ ...point, series })),
         )
         .sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts)),
-    [telemetryQuery.data],
+    [detailSeries],
   );
+  const detailMayHaveMore = detailSeries.some(
+    (series) => !series.complete,
+  );
+  const loadMoreDetails = async () => {
+    const pending = detailSeries.filter(
+      (series) => !series.complete && series.points.length,
+    );
+    if (!pending.length || detailLoadingMore) return;
+    setDetailLoadingMore(true);
+    setDetailLoadMoreError("");
+    try {
+      const nextSeries: TelemetrySeries[] = [];
+      for (let index = 0; index < pending.length; index += 4) {
+        const batch = pending.slice(index, index + 4);
+        const responses = await Promise.all(
+          batch.map((series) => {
+            const cursor = series.points.at(-1)!.ts;
+            return api.telemetry.dataStream(series.data_stream_id, {
+              startTime: cursor,
+              endTime: new Date(appliedEndTime).toISOString(),
+              limit: 500,
+            });
+          }),
+        );
+        responses.forEach((response, responseIndex) => {
+          const current = batch[responseIndex];
+          const cursor = current.points.at(-1)!.ts;
+          if (!response.series.length) {
+            nextSeries.push({ ...current, points: [], returned_count: 0, complete: true });
+            return;
+          }
+          response.series.forEach((series) => {
+            const freshPoints = series.points.filter(
+              (point) => Date.parse(point.ts) > Date.parse(cursor),
+            );
+            nextSeries.push({
+              ...series,
+              points: freshPoints,
+              returned_count: freshPoints.length,
+              complete: series.complete || freshPoints.length === 0,
+            });
+          });
+        });
+      }
+      setDetailPages((current) => [...current, nextSeries]);
+    } catch (error) {
+      setDetailLoadMoreError(formatApiError(error).message);
+    } finally {
+      setDetailLoadingMore(false);
+    }
+  };
   const imageStreams = useMemo(
     () =>
       (streamsQuery.data?.items ?? []).filter(
@@ -159,13 +273,11 @@ export function DeviceDataPage({
   const search = () => {
     setAppliedStartTime(startTime);
     setAppliedEndTime(endTime);
-    setAppliedLimit(limit);
     setAppliedStreamIds(selectedStreamIds);
   };
   const queryDirty =
     startTime !== appliedStartTime ||
     endTime !== appliedEndTime ||
-    limit !== appliedLimit ||
     selectedStreamIds.slice().sort().join(",") !==
       appliedStreamIds.slice().sort().join(",");
   const querying = telemetryQuery.isFetching || streamsQuery.isFetching;
@@ -266,10 +378,8 @@ export function DeviceDataPage({
                 onSelectedChange={setSelectedStreamIds}
                 startTime={startTime}
                 endTime={endTime}
-                limit={limit}
                 onStartTimeChange={setStartTime}
                 onEndTimeChange={setEndTime}
-                onLimitChange={setLimit}
                 onRangeChange={setRange}
                 onSearch={search}
                 dirty={queryDirty}
@@ -316,16 +426,53 @@ export function DeviceDataPage({
           </div>
           <div id="data-section-detail" className="data-page-anchor section-gap">
           <Panel className="telemetry-detail-panel">
-            <details>
+            <details
+              open={detailOpen}
+              onToggle={(event) => setDetailOpen(event.currentTarget.open)}
+            >
               <summary>
                 <div>
                   <h2 className="panel-title">遥测明细</h2>
-                  <div className="panel-kicker">展开查看宽表数据</div>
+                  <div className="panel-kicker">展开后加载原始宽表数据</div>
                 </div>
-                <Badge tone="neutral">{points.length} 条</Badge>
+                <Badge tone="neutral">
+                  {detailOpen ? `${points.length} 条` : "按需加载"}
+                </Badge>
               </summary>
-              {points.length ? (
-                <TelemetryTable points={points} formatTime={formatTime} />
+              {detailTelemetryQuery.isLoading ? (
+                <StateView type="loading" title="正在加载遥测明细" description="正在读取原始数据点。" />
+              ) : detailTelemetryQuery.error ? (
+                <StateView
+                  type="error"
+                  title="明细加载失败"
+                  description={formatApiError(detailTelemetryQuery.error).message}
+                  requestId={formatApiError(detailTelemetryQuery.error).requestId}
+                />
+              ) : points.length ? (
+                <>
+                  {detailMayHaveMore && (
+                    <div className="telemetry-detail-notice">
+                      原始明细按每个指标 500 条分批加载；完整趋势已在上方图表展示。
+                    </div>
+                  )}
+                  <TelemetryTable points={points} formatTime={formatTime} />
+                  {(detailMayHaveMore || detailLoadMoreError) && (
+                    <div className="telemetry-detail-more">
+                      {detailLoadMoreError && (
+                        <span className="form-error">{detailLoadMoreError}</span>
+                      )}
+                      {detailMayHaveMore && (
+                        <Button
+                          variant="secondary"
+                          disabled={detailLoadingMore}
+                          onClick={loadMoreDetails}
+                        >
+                          {detailLoadingMore ? "加载中…" : "加载更多明细"}
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </>
               ) : (
                 <StateView
                   type="empty"

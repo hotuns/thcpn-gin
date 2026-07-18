@@ -129,13 +129,16 @@ type VerifyEmailInput struct {
 }
 
 type LoginResult struct {
-	AccessToken      string      `json:"access_token"`
-	RefreshToken     string      `json:"refresh_token"`
-	TokenType        string      `json:"token_type"`
-	ExpiresIn        int64       `json:"expires_in"`
-	RefreshExpiresIn int64       `json:"refresh_expires_in"`
-	User             UserProfile `json:"user"`
-	Created          bool        `json:"created,omitempty"`
+	AccessToken             string      `json:"access_token"`
+	RefreshToken            string      `json:"refresh_token"`
+	TokenType               string      `json:"token_type"`
+	ExpiresIn               int64       `json:"expires_in"`
+	RefreshExpiresIn        int64       `json:"refresh_expires_in"`
+	User                    UserProfile `json:"user"`
+	Created                 bool        `json:"created,omitempty"`
+	PasswordChangeRequired  bool        `json:"password_change_required,omitempty"`
+	PasswordChangeToken     string      `json:"password_change_token,omitempty"`
+	PasswordChangeExpiresIn int64       `json:"password_change_expires_in,omitempty"`
 }
 
 func NewService(db *pgxpool.Pool, tokens *TokenManager, codeStore *SMSCodeStore, sender smsx.Sender, emailCodeStore *EmailCodeStore, emailSender emailx.Sender, authCfg config.AuthConfig, smsCfg config.SMSConfig, emailCfg config.EmailConfig) *Service {
@@ -559,8 +562,22 @@ func (s *Service) Refresh(ctx context.Context, input RefreshInput) (LoginResult,
 		}
 		return LoginResult{}, apperr.Wrap(apperr.KindInternal, "get refresh user", err)
 	}
+	required, err := s.passwordChangeRequired(ctx, userModel.ID)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	if required {
+		if err := s.queries.RevokeRefreshSession(ctx, session.ID); err != nil {
+			return LoginResult{}, apperr.Wrap(apperr.KindInternal, "revoke password change refresh session", err)
+		}
+		return s.initialPasswordResult(ctx, userModel, false)
+	}
 
-	access, err := s.tokens.Generate(userModel.ID)
+	authVersion, err := s.currentAuthVersion(ctx, userModel.ID)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	access, err := s.tokens.GenerateWithVersion(userModel.ID, authVersion)
 	if err != nil {
 		return LoginResult{}, apperr.Wrap(apperr.KindInternal, "generate access token", err)
 	}
@@ -687,7 +704,18 @@ func (s *Service) loginResult(ctx context.Context, userModel sqlc.User, created 
 	if s.tokens == nil {
 		return LoginResult{}, apperr.New(apperr.KindInternal, "token manager is not configured")
 	}
-	token, err := s.tokens.Generate(userModel.ID)
+	required, err := s.passwordChangeRequired(ctx, userModel.ID)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	if required {
+		return s.initialPasswordResult(ctx, userModel, created)
+	}
+	authVersion, err := s.currentAuthVersion(ctx, userModel.ID)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	token, err := s.tokens.GenerateWithVersion(userModel.ID, authVersion)
 	if err != nil {
 		return LoginResult{}, apperr.Wrap(apperr.KindInternal, "generate access token", err)
 	}
@@ -705,6 +733,14 @@ func (s *Service) loginResult(ctx context.Context, userModel sqlc.User, created 
 		return LoginResult{}, apperr.Wrap(apperr.KindInternal, "create refresh session", err)
 	}
 	return loginResultFromTokens(userModel, token, refreshToken, refreshExpiresIn, created), nil
+}
+
+func (s *Service) currentAuthVersion(ctx context.Context, userID uuid.UUID) (int, error) {
+	var version int
+	if err := s.db.QueryRow(ctx, `SELECT auth_version FROM users WHERE id = $1`, userID).Scan(&version); err != nil {
+		return 0, apperr.Wrap(apperr.KindInternal, "get user auth version", err)
+	}
+	return version, nil
 }
 
 func (s *Service) newRefreshToken() (string, time.Time, int64, error) {

@@ -23,6 +23,8 @@
 .admin-sidebar .account-row { color: white; }
 .admin-sidebar .account-role { color: #a9c1d7; }
 .admin-sidebar .avatar { color: #113352; background: #d1e5fb; }
+.workspace-tabs { margin-inline: 14px; }
+.workspace-tabs .ant-tabs-nav { margin-bottom: 18px; }
 .admin-topbar { background: #fff; }
 .admin-topbar .topbar-context { color: #365675; font-weight: 700; }
 .forbidden { max-width: 620px; margin: 10vh auto; }
@@ -94,3 +96,62 @@
 @media (max-width: 980px) { .admin-device-filters { grid-template-columns: repeat(2,minmax(0,1fr)); } .admin-device-filters .admin-search { width: 100%; grid-column: 1 / -1; } }
 @media (max-width: 680px) { .admin-device-filters { grid-template-columns: 1fr; } .admin-device-filters .admin-search { grid-column: auto; } .drawer-grid, .config-context > div { grid-template-columns: 1fr; } .config-context span { border-right: 0; } .config-context span:nth-last-child(2) { border-bottom: 1px solid var(--soft-line); } }
 @media (max-width: 680px) { .sync-result-metrics, .sync-node-list { grid-template-columns: 1fr; } .sync-result-metrics > div { border-right: 0; border-bottom: 1px solid var(--soft-line); } }
+
+.governance-list { overflow: hidden; }
+.governance-toolbar { display: grid; grid-template-columns: minmax(280px,1fr) repeat(4,minmax(130px,.32fr)) auto; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--soft-line); }
+.governance-primary-link { color: var(--ink); font-weight: 750; text-decoration: none; }
+.governance-list .ant-table-cell { vertical-align: middle; }
+.governance-list .cell-sub.mono { overflow-wrap: anywhere; }
+.governance-primary-link:hover { color: var(--blue); }
+.governance-detail-head { min-height: 68px; display: grid; grid-template-columns: auto minmax(190px,240px) minmax(0,1fr) auto auto; align-items: center; gap: 10px; padding: 10px 14px; background: white; border: 1px solid var(--line); border-radius: 6px; }
+.workspace-governance-switcher { width: 100%; }
+.governance-detail-title { min-width: 0; display: grid; gap: 3px; }
+.governance-detail-title strong { color: var(--ink); font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.governance-detail-title > span { color: var(--muted); font-size: 10px; }
+.governance-detail-panel { margin-top: 12px; overflow: hidden; }
+.governance-detail-panel > .ant-tabs > .ant-tabs-nav { margin: 0; padding: 0 14px; }
+.governance-detail-panel > .ant-tabs > .ant-tabs-content-holder { padding: 14px; }
+.intervention-banner { position: sticky; z-index: 18; top: var(--topbar-h); display: flex; align-items: center; gap: 9px; min-height: 42px; margin: -20px -34px 12px; padding: 6px 34px; color: #7a3c05; background: #fff4d6; border-bottom: 1px solid #e9c576; }
+.intervention-banner > span:not(.intervention-countdown) { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.intervention-countdown { font: 700 12px "IBM Plex Mono", monospace; }
+.intervention-form { margin-top: 18px; }
+.governance-overview { display: grid; gap: 18px; }
+.governance-risk-section h3, .drawer-section-title { margin: 0 0 10px; color: var(--ink); font-size: 12px; }
+.risk-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.tab-toolbar { min-height: 54px; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: -14px -14px 14px; padding: 8px 14px; border-bottom: 1px solid var(--soft-line); }
+.tab-toolbar > .ant-input-affix-wrapper { width: min(420px,100%); }
+.audit-toolbar { justify-content: flex-start; }
+.audit-toolbar > .ant-select { width: 160px; }
+.audit-toolbar > .ant-input { width: 240px; }
+.table-name-button { height: auto !important; display: grid !important; justify-items: start; padding: 0 !important; text-align: left; }
+.table-name-button span { font-weight: 700; }
+.table-name-button small { color: var(--muted); font-size: 10px; }
+.resource-tree-table .ant-table-row-level-1 td:first-child { padding-left: 42px !important; }
+.system-operation-list { display: grid; gap: 0; border: 1px solid var(--line); border-radius: 6px; }
+.system-operation-list > section { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 16px; border-bottom: 1px solid var(--soft-line); }
+.system-operation-list > section > div { display: grid; gap: 5px; }
+.system-operation-list > section strong { color: var(--ink); font-size: 12px; }
+.system-operation-list > section span { color: var(--muted); font-size: 10px; }
+.system-operation-list > .ant-alert { margin: 14px; }
+.admin-user-list-panel { overflow: hidden; }
+.admin-user-toolbar { display: grid; grid-template-columns: minmax(280px, 1fr) repeat(3, minmax(130px, .25fr)) auto; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--soft-line); }
+.admin-user-name { display: grid; gap: 3px; color: var(--ink); text-decoration: none; }
+.admin-user-name strong { font-size: 12px; }
+.admin-user-name span { color: var(--muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; }
+.admin-user-name:hover { color: var(--blue); }
+.admin-user-detail-head { min-height: 72px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 14px; padding: 10px 14px; background: #fff; border: 1px solid var(--line); border-radius: 6px; }
+.admin-user-detail-head > div { min-width: 0; }
+.admin-user-detail-head h1 { margin: 0 0 4px; color: var(--ink); font-size: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-user-detail-head span { color: var(--muted); font-size: 10px; }
+.admin-user-detail-panel { margin-top: 12px; overflow: hidden; }
+.admin-user-detail-panel > .ant-tabs > .ant-tabs-nav { padding: 0 14px; margin: 0; }
+.admin-user-detail-panel > .ant-tabs > .ant-tabs-content-holder { padding: 14px; }
+.admin-user-overview { display: grid; gap: 14px; }
+.admin-user-overview .ant-card .ant-card-body > strong { display: block; color: var(--blue-dark); font: 800 22px/1 "Manrope", sans-serif; }
+.admin-user-overview .ant-card .ant-card-body > span { display: block; margin-top: 5px; color: var(--muted); font-size: 10px; }
+.admin-user-security { min-height: 320px; }
+.temporary-password { margin-top: 18px; padding: 16px; color: var(--blue-dark); background: #f1f7ff; border: 1px dashed #9abbe0; border-radius: 6px; font: 800 22px "IBM Plex Mono", monospace; letter-spacing: 1px; text-align: center; }
+@media (max-width: 1100px) { .admin-user-toolbar { grid-template-columns: minmax(240px,1fr) repeat(2,minmax(130px,.35fr)) auto; } .admin-user-toolbar > :nth-child(4) { grid-column: 2; } }
+@media (max-width: 720px) { .admin-user-toolbar { grid-template-columns: 1fr; } .admin-user-toolbar > :nth-child(4) { grid-column: auto; } .admin-user-detail-head { grid-template-columns: auto 1fr auto; } .admin-user-detail-head > button { grid-column: 1 / -1; justify-self: start; } .admin-user-detail-head > .ant-btn:last-child { grid-column: 3; } }
+@media (max-width: 1180px) { .governance-toolbar { grid-template-columns: minmax(260px,1fr) repeat(2,minmax(130px,.35fr)); } .governance-detail-head { grid-template-columns: auto minmax(180px,220px) 1fr auto; } .governance-detail-head > .ant-btn:last-child { grid-column: 2 / -1; justify-self: end; } }
+@media (max-width: 760px) { .governance-toolbar { grid-template-columns: 1fr 1fr; } .governance-toolbar > .ant-input-affix-wrapper { grid-column: 1 / -1; } .governance-detail-head { grid-template-columns: auto 1fr auto; } .workspace-governance-switcher { grid-column: 1 / -1; grid-row: 2; } .governance-detail-title { grid-column: 1 / -1; grid-row: 3; } .governance-detail-head > .ant-btn:last-child { grid-column: 1 / -1; } .risk-list { grid-template-columns: 1fr; } .tab-toolbar { align-items: stretch; flex-direction: column; } .audit-toolbar > .ant-select, .audit-toolbar > .ant-input { width: 100%; } .intervention-banner { top: var(--topbar-h); margin-inline: -16px; padding-inline: 16px; flex-wrap: wrap; } }

@@ -165,6 +165,34 @@ func TestSignObjectURLReturnsAbsoluteHTTPURL(t *testing.T) {
 	}
 }
 
+func TestNormalizeObjectKeyAcceptsConfiguredOSSURL(t *testing.T) {
+	signer := NewSigner(config.ObjectStoreConfig{
+		Provider: "oss",
+		Endpoint: "https://oss-cn-beijing.aliyuncs.com",
+		Bucket:   "thcpn-logs",
+		Region:   "cn-beijing",
+	}, "test-secret")
+	key, err := signer.NormalizeObjectKey("https://thcpn-logs.oss-cn-beijing.aliyuncs.com/device/log-1.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if key != "device/log-1.log" {
+		t.Fatalf("key = %q", key)
+	}
+}
+
+func TestNormalizeObjectKeyRejectsForeignHost(t *testing.T) {
+	signer := NewSigner(config.ObjectStoreConfig{
+		Provider: "oss",
+		Endpoint: "https://oss-cn-beijing.aliyuncs.com",
+		Bucket:   "thcpn-logs",
+		Region:   "cn-beijing",
+	}, "test-secret")
+	if _, err := signer.NormalizeObjectKey("https://example.com/device/log-1.log"); err == nil {
+		t.Fatal("expected foreign host to be rejected")
+	}
+}
+
 func TestFileStorePut(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(config.ObjectStoreConfig{

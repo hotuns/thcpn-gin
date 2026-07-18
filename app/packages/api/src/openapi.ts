@@ -291,6 +291,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/password/complete-initial": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete the first password change
+         * @description Consumes the one-time token returned after a temporary-password login and issues normal access and refresh tokens.
+         */
+        post: operations["completeInitialPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/refresh": {
         parameters: {
             query?: never;
@@ -515,6 +535,142 @@ export interface paths {
          * @description Requires a valid administrator bearer token. This endpoint does not depend on workspace membership.
          */
         get: operations["adminListWorkspaces"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/workspaces/{workspace_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        /** Get Workspace governance details */
+        get: operations["adminGetWorkspaceGovernance"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/workspaces/{workspace_id}/interventions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start a time-limited administrator intervention */
+        post: operations["adminStartWorkspaceIntervention"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/workspaces/{workspace_id}/interventions/{intervention_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+                intervention_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** End an administrator intervention */
+        delete: operations["adminEndWorkspaceIntervention"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/workspaces/{workspace_id}/status": {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Active intervention owned by the current system administrator for the target Workspace. */
+                "X-Admin-Intervention-ID": components["parameters"]["AdminInterventionID"];
+            };
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Enable or disable a Workspace during intervention */
+        patch: operations["adminUpdateWorkspaceStatus"];
+        trace?: never;
+    };
+    "/api/v1/admin/workspaces/{workspace_id}/transfer-owner": {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Active intervention owned by the current system administrator for the target Workspace. */
+                "X-Admin-Intervention-ID": components["parameters"]["AdminInterventionID"];
+            };
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transfer the Owner of an organization Workspace */
+        post: operations["adminTransferWorkspaceOwner"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/permissions/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List permission templates for governance diagnosis */
+        get: operations["adminPermissionCatalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/audit-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List filtered Workspace audit records for governance */
+        get: operations["adminListWorkspaceAuditLogs"];
         put?: never;
         post?: never;
         delete?: never;
@@ -832,6 +988,88 @@ export interface paths {
          * @description Requires a valid administrator bearer token. Updates asset fields, device type, and final capability codes. Assignment, topology relations, and lifecycle are managed by separate admin actions.
          */
         patch: operations["adminUpdateSystemDeviceAsset"];
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/attributes/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /** Get latest THCPN device attributes */
+        get: operations["adminGetLatestTHCPNDeviceAttributes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /** List THCPN device logs */
+        get: operations["adminListTHCPNDeviceLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/logs/{log_uuid}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+                log_uuid: string;
+            };
+            cookie?: never;
+        };
+        /** Preview a THCPN device log */
+        get: operations["adminPreviewTHCPNDeviceLog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/logs/{log_uuid}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+                log_uuid: string;
+            };
+            cookie?: never;
+        };
+        /** Download a THCPN device log */
+        get: operations["adminDownloadTHCPNDeviceLog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/admin/devices/{device_id}/children": {
@@ -1456,6 +1694,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/devices/{device_id}/attributes/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /** Get latest THCPN device attributes */
+        get: operations["getLatestTHCPNDeviceAttributes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/devices/{device_id}/telemetry": {
         parameters: {
             query?: never;
@@ -2037,6 +2295,198 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List platform users */
+        get: operations["adminListUsers"];
+        put?: never;
+        /** Create a platform user */
+        post: operations["adminCreateUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        /** Get platform user details */
+        get: operations["adminGetUser"];
+        put?: never;
+        post?: never;
+        /** Delete a user when no business blockers exist */
+        delete: operations["adminDeleteUser"];
+        options?: never;
+        head?: never;
+        /** Update user profile */
+        patch: operations["adminUpdateUser"];
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Enable or disable a user */
+        patch: operations["adminUpdateUserStatus"];
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/sessions/revoke-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke all user sessions */
+        post: operations["adminRevokeUserSessions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/unlock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unlock a user account */
+        post: operations["adminUnlockUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/mfa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Reset user MFA */
+        delete: operations["adminResetUserMFA"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/temporary-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate a one-time temporary password */
+        post: operations["adminGenerateTemporaryPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/deletion-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Check user deletion blockers */
+        get: operations["adminCheckUserDeletion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List user Workspace relations */
+        get: operations["adminListUserWorkspaces"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List active user sessions */
+        get: operations["adminListUserSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List user activity and admin operations */
+        get: operations["adminListUserActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2257,6 +2707,136 @@ export interface components {
             /** @example 123456 */
             code: string;
         };
+        CompleteInitialPasswordRequest: {
+            /** @description One-time short-lived token returned after temporary-password login. */
+            password_change_token: string;
+            /** Format: password */
+            password: string;
+        };
+        AdminReasonRequest: {
+            reason: string;
+            confirm_text?: string;
+        };
+        AdminUserStatusRequest: components["schemas"]["AdminReasonRequest"] & {
+            /** @enum {string} */
+            status: "active" | "disabled";
+        };
+        AdminCreateUserRequest: {
+            name: string;
+            email?: components["schemas"]["Email"];
+            phone?: components["schemas"]["Phone"];
+            reason: string;
+        };
+        AdminUpdateUserRequest: components["schemas"]["AdminReasonRequest"] & {
+            name: string;
+            email?: components["schemas"]["Email"];
+            phone?: components["schemas"]["Phone"];
+        };
+        AdminUserSummary: {
+            id: components["schemas"]["UUID"];
+            name: string;
+            phone?: components["schemas"]["Phone"];
+            email?: components["schemas"]["Email"];
+            status: components["schemas"]["UserStatus"];
+            phone_verified_at?: components["schemas"]["Timestamp"];
+            email_verified_at?: components["schemas"]["Timestamp"];
+            last_login_at?: components["schemas"]["Timestamp"];
+            created_at: components["schemas"]["Timestamp"];
+            updated_at: components["schemas"]["Timestamp"];
+            /** Format: int64 */
+            workspace_count: number;
+            /** Format: int64 */
+            owned_workspace_count: number;
+            /** Format: int64 */
+            active_session_count: number;
+            mfa_enabled: boolean;
+            locked: boolean;
+            locked_until?: components["schemas"]["Timestamp"];
+            failed_attempts: number;
+            must_change_password: boolean;
+        };
+        AdminUserDetail: components["schemas"]["AdminUserSummary"] & {
+            auth_version: number;
+        };
+        AdminUserListResponse: {
+            items: components["schemas"]["AdminUserSummary"][];
+            /** Format: int64 */
+            total: number;
+            page: number;
+            page_size: number;
+        };
+        AdminTemporaryPasswordResponse: {
+            user: components["schemas"]["AdminUserDetail"];
+            /** @description Returned only once. Never stored or logged in plaintext. */
+            temporary_password: string;
+        };
+        AdminTemporaryPasswordOnlyResponse: {
+            /** @description Returned only once. */
+            temporary_password: string;
+        };
+        AdminUserWorkspace: {
+            id: components["schemas"]["UUID"];
+            name: string;
+            /** @enum {string} */
+            type: "personal" | "organization";
+            status: string;
+            owner: boolean;
+            role_code: string;
+            role_name: string;
+            joined_at: components["schemas"]["Timestamp"];
+        };
+        AdminUserWorkspaceListResponse: {
+            items: components["schemas"]["AdminUserWorkspace"][];
+        };
+        AdminUserSession: {
+            id: components["schemas"]["UUID"];
+            user_agent?: string;
+            client_ip?: string;
+            expires_at: components["schemas"]["Timestamp"];
+            last_used_at?: components["schemas"]["Timestamp"];
+            created_at: components["schemas"]["Timestamp"];
+        };
+        AdminUserSessionListResponse: {
+            items: components["schemas"]["AdminUserSession"][];
+        };
+        AdminUserActivity: {
+            id: components["schemas"]["UUID"];
+            actor_type: string;
+            actor_name?: string;
+            action: string;
+            resource_type: string;
+            resource_id?: components["schemas"]["UUID"];
+            /** @enum {string} */
+            result: "success" | "failure";
+            reason?: string;
+            request_id?: string;
+            created_at: components["schemas"]["Timestamp"];
+        };
+        AdminUserActivityListResponse: {
+            items: components["schemas"]["AdminUserActivity"][];
+            /** Format: int64 */
+            total: number;
+            page: number;
+            page_size: number;
+        };
+        AdminDeletionCheck: {
+            can_delete: boolean;
+            blockers: {
+                code: string;
+                label: string;
+                /** Format: int64 */
+                count: number;
+                resources?: {
+                    id: components["schemas"]["UUID"];
+                    name: string;
+                    type: string;
+                }[];
+            }[];
+            personal_workspaces_to_clean: {
+                id: components["schemas"]["UUID"];
+                name: string;
+            }[];
+        };
         LoginResponse: {
             /** @description JWT access token. */
             access_token: string;
@@ -2277,6 +2857,12 @@ export interface components {
             user: components["schemas"]["UserProfile"];
             /** @description True when the request created a new user. */
             created?: boolean;
+            /** @description True when the login only returned a short-lived password-change token. */
+            password_change_required?: boolean;
+            /** @description One-time token used by complete-initial password endpoint. */
+            password_change_token?: string;
+            /** Format: int64 */
+            password_change_expires_in?: number;
         };
         AuthSession: {
             id: components["schemas"]["UUID"];
@@ -2389,7 +2975,62 @@ export interface components {
             items: components["schemas"]["WorkspaceWithMembership"][];
         };
         WorkspaceAdminListResponse: {
-            items: components["schemas"]["Workspace"][];
+            items: components["schemas"]["WorkspaceGovernance"][];
+            /** Format: int64 */
+            total: number;
+            page: number;
+            page_size: number;
+        };
+        WorkspaceGovernanceOwner: {
+            id: components["schemas"]["UUID"];
+            name: string;
+            email?: components["schemas"]["Email"];
+            phone?: components["schemas"]["Phone"];
+            status: components["schemas"]["UserStatus"];
+        };
+        WorkspaceGovernanceCounts: {
+            /** Format: int64 */
+            members: number;
+            /** Format: int64 */
+            projects: number;
+            /** Format: int64 */
+            sites: number;
+            /** Format: int64 */
+            devices: number;
+            /** Format: int64 */
+            direct_shares: number;
+            /** Format: int64 */
+            pending_invitations: number;
+        };
+        WorkspaceGovernanceRisk: {
+            /** @enum {string} */
+            code: "owner_unavailable" | "workspace_disabled" | "pending_invitations" | "recent_failures";
+            label: string;
+            /** Format: int64 */
+            count?: number;
+        };
+        WorkspaceGovernance: components["schemas"]["Workspace"] & {
+            owner: components["schemas"]["WorkspaceGovernanceOwner"];
+            counts: components["schemas"]["WorkspaceGovernanceCounts"];
+            last_activity_at?: components["schemas"]["Timestamp"];
+            risks: components["schemas"]["WorkspaceGovernanceRisk"][];
+        };
+        StartWorkspaceInterventionRequest: {
+            reason: string;
+            /** @enum {integer} */
+            duration_minutes: 15 | 30 | 60;
+        };
+        WorkspaceIntervention: {
+            id: components["schemas"]["UUID"];
+            workspace_id: components["schemas"]["UUID"];
+            admin_id: components["schemas"]["UUID"];
+            admin_name: string;
+            reason: string;
+            expires_at: components["schemas"]["Timestamp"];
+            ended_at?: components["schemas"]["Timestamp"];
+            created_at: components["schemas"]["Timestamp"];
+            /** Format: int64 */
+            remaining_seconds: number;
         };
         CreateWorkspaceRequest: {
             /** @example 华中农业大学作物生态课题组 */
@@ -3125,6 +3766,20 @@ export interface components {
             unit?: string;
             points: components["schemas"]["TelemetryPoint"][];
             warnings?: components["schemas"]["QueryWarning"][];
+            /**
+             * Format: int32
+             * @description Number of valid source points found in the requested time range when known.
+             */
+            source_count: number;
+            /**
+             * Format: int32
+             * @description Number of points included in this response.
+             */
+            returned_count: number;
+            /** @description Whether the returned points were reduced for chart rendering. */
+            sampled: boolean;
+            /** @description Whether the full requested time range was scanned. */
+            complete: boolean;
         };
         TelemetryQueryResponse: {
             device_id: components["schemas"]["UUID"];
@@ -3366,8 +4021,51 @@ export interface components {
             scope_id: components["schemas"]["UUID"];
             expires_at?: components["schemas"]["Timestamp"];
         } & (unknown | unknown);
+        THCPNAttributeValue: {
+            raw_value: string;
+            /** @description Numeric value or parsed ext_info JSON when available. */
+            parsed_value?: unknown;
+            sampled_at: components["schemas"]["Timestamp"];
+            source_table: string;
+        };
+        THCPNLatestAttributesResponse: {
+            device_id: components["schemas"]["UUID"];
+            /** Format: int64 */
+            external_device_id: number;
+            attributes: {
+                [key: string]: components["schemas"]["THCPNAttributeValue"];
+            };
+            refreshed_at: components["schemas"]["Timestamp"];
+        };
+        THCPNDeviceLog: {
+            /** Format: int64 */
+            id: number;
+            uuid: string;
+            path: string;
+            file_name: string;
+            /** Format: date */
+            date: string;
+            created_at: components["schemas"]["Timestamp"];
+            updated_at?: components["schemas"]["Timestamp"];
+        };
+        THCPNDeviceLogListResponse: {
+            items: components["schemas"]["THCPNDeviceLog"][];
+            total: number;
+            page: number;
+            page_size: number;
+        };
+        THCPNDeviceLogAccessResponse: {
+            log: components["schemas"]["THCPNDeviceLog"];
+            /** @enum {string} */
+            preview_kind: "text" | "image" | "pdf" | "download";
+            /** Format: uri */
+            url: string;
+            /** @description Text log content returned for text previews so the admin client does not depend on browser inline rendering. */
+            content?: string;
+            expires_at: components["schemas"]["Timestamp"];
+        };
         /** @enum {string} */
-        AuditActorType: "user" | "service_account" | "system" | "anonymous";
+        AuditActorType: "user" | "system_admin" | "service_account" | "system" | "anonymous";
         /** @enum {string} */
         AuditResult: "success" | "failure";
         AuditLog: {
@@ -3375,6 +4073,8 @@ export interface components {
             workspace_id?: components["schemas"]["UUID"];
             actor_type: components["schemas"]["AuditActorType"];
             actor_id?: components["schemas"]["UUID"];
+            actor_admin_id?: components["schemas"]["UUID"];
+            actor_name?: string;
             /**
              * @example auth.password_login
              * @example workspace.create
@@ -3400,6 +4100,10 @@ export interface components {
         };
         AuditLogListResponse: {
             items: components["schemas"]["AuditLog"][];
+            /** Format: int64 */
+            total: number;
+            page: number;
+            page_size: number;
         };
     };
     responses: {
@@ -3477,6 +4181,8 @@ export interface components {
         };
     };
     parameters: {
+        /** @description Active intervention owned by the current system administrator for the target Workspace. */
+        AdminInterventionID: string;
         /** @description Workspace UUID. */
         WorkspaceID: string;
         /** @description Workspace member UUID. */
@@ -3869,6 +4575,33 @@ export interface operations {
             500: components["responses"]["Internal"];
         };
     };
+    completeInitialPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompleteInitialPasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Password changed and normal session issued. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["Internal"];
+        };
+    };
     refreshAuthToken: {
         parameters: {
             query?: never;
@@ -4166,7 +4899,17 @@ export interface operations {
     };
     adminListWorkspaces: {
         parameters: {
-            query?: never;
+            query?: {
+                q?: string;
+                type?: components["schemas"]["WorkspaceType"];
+                organization_type?: components["schemas"]["OrganizationType"];
+                status?: components["schemas"]["WorkspaceStatus"];
+                risk?: "owner_unavailable" | "workspace_disabled" | "pending_invitations" | "recent_failures";
+                sort?: "name" | "members" | "recent_activity" | "created_at";
+                order?: "asc" | "desc";
+                page?: number;
+                page_size?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4184,6 +4927,215 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminGetWorkspaceGovernance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workspace governance details. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceGovernance"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminStartWorkspaceIntervention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartWorkspaceInterventionRequest"];
+            };
+        };
+        responses: {
+            /** @description Intervention started. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceIntervention"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminEndWorkspaceIntervention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+                intervention_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Intervention ended. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminUpdateWorkspaceStatus: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Active intervention owned by the current system administrator for the target Workspace. */
+                "X-Admin-Intervention-ID": components["parameters"]["AdminInterventionID"];
+            };
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    status: components["schemas"]["WorkspaceStatus"];
+                    /** @enum {string} */
+                    confirm_text: "确认";
+                };
+            };
+        };
+        responses: {
+            /** @description Workspace updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceGovernance"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminTransferWorkspaceOwner: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Active intervention owned by the current system administrator for the target Workspace. */
+                "X-Admin-Intervention-ID": components["parameters"]["AdminInterventionID"];
+            };
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    owner_user_id: components["schemas"]["UUID"];
+                    /** @enum {string} */
+                    confirm_text: "转移 Owner";
+                };
+            };
+        };
+        responses: {
+            /** @description Owner transferred. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceGovernance"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminPermissionCatalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Permission catalog. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminListWorkspaceAuditLogs: {
+        parameters: {
+            query: {
+                workspace_id: components["schemas"]["UUID"];
+                page?: number;
+                page_size?: number;
+                action?: string;
+                resource_type?: string;
+                result?: components["schemas"]["AuditResult"];
+                actor_type?: components["schemas"]["AuditActorType"];
+                start?: components["schemas"]["Timestamp"];
+                end?: components["schemas"]["Timestamp"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Filtered audit records. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditLogListResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
             500: components["responses"]["Internal"];
         };
     };
@@ -4672,6 +5624,119 @@ export interface operations {
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminGetLatestTHCPNDeviceAttributes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Latest battery, signal, and ext_info values. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["THCPNLatestAttributesResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminListTHCPNDeviceLogs: {
+        parameters: {
+            query?: {
+                start_date?: string;
+                end_date?: string;
+                keyword?: string;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device log metadata. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["THCPNDeviceLogListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminPreviewTHCPNDeviceLog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+                log_uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Short-lived preview URL and detected preview type. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["THCPNDeviceLogAccessResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminDownloadTHCPNDeviceLog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+                log_uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to a short-lived signed OSS URL. */
+            307: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
             500: components["responses"]["Internal"];
         };
     };
@@ -5833,12 +6898,44 @@ export interface operations {
             500: components["responses"]["Internal"];
         };
     };
+    getLatestTHCPNDeviceAttributes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Latest battery, signal, and ext_info values. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["THCPNLatestAttributesResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
     queryDeviceTelemetry: {
         parameters: {
             query: {
                 start_time: components["schemas"]["Timestamp"];
                 end_time: components["schemas"]["Timestamp"];
+                /** @description Maximum raw points returned per series before adaptive sampling is used. */
                 limit?: number;
+                /** @description Scan the complete time range and return raw points when within the limit, otherwise return time-bucket extrema. */
+                adaptive?: boolean;
+                /** @description Approximate maximum chart points per series in adaptive mode. */
+                target_points?: number;
             };
             header?: never;
             path: {
@@ -6001,7 +7098,12 @@ export interface operations {
             query: {
                 start_time: components["schemas"]["Timestamp"];
                 end_time: components["schemas"]["Timestamp"];
+                /** @description Maximum raw points returned before adaptive sampling is used. */
                 limit?: number;
+                /** @description Scan the complete time range and return raw points when within the limit, otherwise return time-bucket extrema. */
+                adaptive?: boolean;
+                /** @description Approximate maximum chart points in adaptive mode. */
+                target_points?: number;
             };
             header?: never;
             path: {
@@ -6741,6 +7843,354 @@ export interface operations {
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["Internal"];
+        };
+    };
+    adminListUsers: {
+        parameters: {
+            query?: {
+                q?: string;
+                status?: "active" | "disabled";
+                verification?: "verified" | "unverified";
+                mfa?: "enabled" | "disabled";
+                locked?: "locked" | "unlocked";
+                login_status?: "never" | "active";
+                sort?: string;
+                order?: "asc" | "desc";
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description User list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    adminCreateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCreateUserRequest"];
+            };
+        };
+        responses: {
+            /** @description User and one-time temporary password. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminTemporaryPasswordResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    adminGetUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description User details. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserDetail"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminDeleteUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description User deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Conflict"];
+        };
+    };
+    adminUpdateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUpdateUserRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated user. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserDetail"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    adminUpdateUserStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUserStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description Status updated. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidArgument"];
+        };
+    };
+    adminRevokeUserSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description Sessions revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminUnlockUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description Account unlocked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminResetUserMFA: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description MFA reset. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminGenerateTemporaryPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description Temporary password, shown once. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminTemporaryPasswordOnlyResponse"];
+                };
+            };
+        };
+    };
+    adminCheckUserDeletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deletion blockers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminDeletionCheck"];
+                };
+            };
+        };
+    };
+    adminListUserWorkspaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workspace relations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserWorkspaceListResponse"];
+                };
+            };
+        };
+    };
+    adminListUserSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active sessions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserSessionListResponse"];
+                };
+            };
+        };
+    };
+    adminListUserActivity: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description User activity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserActivityListResponse"];
+                };
+            };
         };
     };
 }

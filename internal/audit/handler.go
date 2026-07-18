@@ -2,6 +2,9 @@ package audit
 
 import (
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -37,16 +40,43 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 
-	items, err := h.service.ListByWorkspace(c.Request.Context(), ListInput{
-		WorkspaceID: workspaceID,
-		Limit:       ParseLimit(c.Query("limit")),
+	result, err := h.service.ListPageByWorkspace(c.Request.Context(), ListInput{
+		WorkspaceID:  workspaceID,
+		Limit:        ParseLimit(c.Query("limit")),
+		Page:         parseInt(c.Query("page"), 1),
+		PageSize:     parseInt(c.Query("page_size"), int(ParseLimit(c.Query("limit")))),
+		Action:       c.Query("action"),
+		ResourceType: c.Query("resource_type"),
+		Result:       c.Query("result"),
+		ActorType:    c.Query("actor_type"),
+		Start:        parseOptionalTime(c.Query("start")),
+		End:          parseOptionalTime(c.Query("end")),
 	})
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"items": items})
+	c.JSON(http.StatusOK, result)
+}
+
+func parseInt(value string, fallback int) int {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || parsed < 1 {
+		return fallback
+	}
+	return parsed
+}
+
+func parseOptionalTime(value string) *time.Time {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return nil
+	}
+	return &parsed
 }
 
 func (h *Handler) authorize(c *gin.Context, workspaceID uuid.UUID) bool {

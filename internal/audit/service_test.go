@@ -1,6 +1,12 @@
 package audit
 
-import "testing"
+import (
+	"net/http/httptest"
+	"testing"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+)
 
 func TestParseLimit(t *testing.T) {
 	if ParseLimit("") != 100 {
@@ -28,5 +34,33 @@ func TestNormalizeRecordInputDefaultsActor(t *testing.T) {
 	}
 	if input.Action != "action" || input.ResourceType != "workspace" {
 		t.Fatalf("expected fields to be trimmed: %#v", input)
+	}
+}
+
+type systemAdministratorMarker struct{ id uuid.UUID }
+
+func (systemAdministratorMarker) IsSystemAdministrator() bool            { return true }
+func (actor systemAdministratorMarker) SystemAdministratorID() uuid.UUID { return actor.id }
+
+func TestFromRequestOmitsSystemAdministratorUserForeignKey(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("GET", "/", nil)
+	adminID := uuid.New()
+	c.Set("actor", systemAdministratorMarker{id: adminID})
+	input := FromRequest(c, RecordInput{
+		ActorType: ActorUser,
+		ActorID:   UserActorID(uuid.New()),
+		Action:    "device.log.preview",
+		Result:    ResultSuccess,
+	})
+
+	if input.ActorType != ActorSystemAdmin {
+		t.Fatalf("expected system actor, got %q", input.ActorType)
+	}
+	if input.ActorID != nil {
+		t.Fatal("expected system administrator actor id to be omitted from users foreign key")
+	}
+	if input.ActorAdminID == nil || *input.ActorAdminID != adminID {
+		t.Fatal("expected system administrator id to be retained")
 	}
 }

@@ -53,6 +53,11 @@ type refreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+type completeInitialPasswordRequest struct {
+	PasswordChangeToken string `json:"password_change_token"`
+	Password            string `json:"password"`
+}
+
 type logoutRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
@@ -453,6 +458,45 @@ func (h *Handler) Refresh(c *gin.Context) {
 		return
 	}
 
+	c.JSON(http.StatusOK, result)
+}
+
+// CompleteInitialPassword consumes the one-time password-change token returned
+// when an administrator-created account signs in with its temporary password.
+func (h *Handler) CompleteInitialPassword(c *gin.Context) {
+	var req completeInitialPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	result, err := h.service.CompleteInitialPassword(c.Request.Context(), CompleteInitialPasswordInput{
+		Token:    req.PasswordChangeToken,
+		Password: req.Password,
+		Request:  requestInfo(c),
+	})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{
+			ActorType:    audit.ActorAnonymous,
+			Action:       "auth.initial_password_complete",
+			ResourceType: "auth",
+			Result:       audit.ResultFailure,
+			Reason:       apperr.MessageOf(err),
+		}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(result.User.ID),
+		Action:       "auth.initial_password_complete",
+		ResourceType: "auth",
+		ResourceID:   audit.ResourceID(result.User.ID),
+		Result:       audit.ResultSuccess,
+	}) {
+		return
+	}
 	c.JSON(http.StatusOK, result)
 }
 

@@ -297,7 +297,9 @@ function Roles() {
   );
   const open = (record: JsonRecord) => {
     setEditing(record);
-    form.setFieldsValue({ name: record.name });
+    form.setFieldsValue({
+      name: roleTemplateLabel(value(record.code, ""), value(record.name, "")),
+    });
   };
   const close = () => {
     setEditing(null);

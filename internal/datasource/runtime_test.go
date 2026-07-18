@@ -421,6 +421,90 @@ func TestTHCPNLegacyConfigParsingAndPaths(t *testing.T) {
 	}
 }
 
+func TestTHCPNMonthlyShardRouting(t *testing.T) {
+	cutoverStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	beforeCutover := cutoverStart.Add(-time.Second)
+
+	if !useMonthlyTHCPNShards(cutoverStart) {
+		t.Fatal("expected the cutover date to use monthly shard tables")
+	}
+	if useMonthlyTHCPNShards(beforeCutover) {
+		t.Fatal("expected dates before the cutover to use the shard index")
+	}
+
+	shards, err := monthlyTHCPNShardTables(
+		cutoverStart,
+		time.Date(2026, time.July, 31, 23, 59, 59, 0, time.UTC),
+		defaultTHCPNMaxShardTables,
+	)
+	if err != nil {
+		t.Fatalf("build monthly shard tables: %v", err)
+	}
+	if len(shards) != 1 || shards[0].Name != "device_data_202607" {
+		t.Fatalf("unexpected July shard tables: %#v", shards)
+	}
+}
+
+func TestTHCPNMonthlyShardTablesAcrossMonths(t *testing.T) {
+	shards, err := monthlyTHCPNShardTables(
+		time.Date(2026, time.July, 31, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, time.September, 1, 0, 0, 0, 0, time.UTC),
+		defaultTHCPNMaxShardTables,
+	)
+	if err != nil {
+		t.Fatalf("build monthly shard tables: %v", err)
+	}
+	want := []string{"device_data_202607", "device_data_202608", "device_data_202609"}
+	if len(shards) != len(want) {
+		t.Fatalf("unexpected monthly shard count: got %d, want %d", len(shards), len(want))
+	}
+	for i, shard := range shards {
+		if shard.Name != want[i] {
+			t.Fatalf("unexpected monthly shard at %d: got %q, want %q", i, shard.Name, want[i])
+		}
+	}
+}
+
+func TestTHCPNAdaptiveTelemetryCollectorKeepsRawPointsWithinLimit(t *testing.T) {
+	start := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	collector := newTHCPNAdaptiveTelemetryCollector(start, start.Add(time.Hour), 3, 4)
+	for i, value := range []float64{3, 1, 2} {
+		collector.Add(TelemetryPoint{Timestamp: start.Add(time.Duration(i) * time.Minute), Value: value, Quality: "valid"})
+	}
+	points, sampled := collector.Result()
+	if sampled {
+		t.Fatal("expected raw points below the limit")
+	}
+	if len(points) != 3 || collector.sourceCount != 3 {
+		t.Fatalf("unexpected raw result: points=%d source=%d", len(points), collector.sourceCount)
+	}
+}
+
+func TestTHCPNAdaptiveTelemetryCollectorPreservesBucketExtremes(t *testing.T) {
+	start := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	collector := newTHCPNAdaptiveTelemetryCollector(start, start.Add(time.Hour), 2, 4)
+	values := []float64{5, -10, 30, 8, 2, 20}
+	for i, value := range values {
+		collector.Add(TelemetryPoint{Timestamp: start.Add(time.Duration(i*10) * time.Minute), Value: value, Quality: "valid"})
+	}
+	points, sampled := collector.Result()
+	if !sampled {
+		t.Fatal("expected points above the raw limit to be sampled")
+	}
+	if len(points) > 6 || collector.sourceCount != len(values) {
+		t.Fatalf("unexpected sampled result: points=%d source=%d", len(points), collector.sourceCount)
+	}
+	seenMin := false
+	seenMax := false
+	for _, point := range points {
+		seenMin = seenMin || point.Value == -10
+		seenMax = seenMax || point.Value == 30
+	}
+	if !seenMin || !seenMax {
+		t.Fatalf("expected sampled points to preserve extremes: %#v", points)
+	}
+}
+
 func TestParseTHCPNTelemetryValueSkipsConfigMismatches(t *testing.T) {
 	tests := []struct {
 		name  string

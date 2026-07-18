@@ -225,7 +225,7 @@ func (r *Runtime) queryPostgresTelemetry(ctx context.Context, source DataSource,
 		return TelemetryResult{}, apperr.Wrap(apperr.KindDataSource, "read telemetry points", err)
 	}
 
-	return TelemetryResult{Points: points}, nil
+	return telemetryResultFromLimitedPoints(points, req.Limit), nil
 }
 
 func (r *Runtime) queryMySQLTelemetry(ctx context.Context, source DataSource, req TelemetryQuery) (TelemetryResult, error) {
@@ -261,7 +261,7 @@ func (r *Runtime) queryMySQLTelemetry(ctx context.Context, source DataSource, re
 		return TelemetryResult{}, apperr.Wrap(apperr.KindDataSource, "read telemetry points", err)
 	}
 
-	return TelemetryResult{Points: points}, nil
+	return telemetryResultFromLimitedPoints(points, req.Limit), nil
 }
 
 func (r *Runtime) queryClickHouseTelemetry(ctx context.Context, source DataSource, req TelemetryQuery) (TelemetryResult, error) {
@@ -297,7 +297,15 @@ func (r *Runtime) queryClickHouseTelemetry(ctx context.Context, source DataSourc
 		return TelemetryResult{}, apperr.Wrap(apperr.KindDataSource, "read telemetry points", err)
 	}
 
-	return TelemetryResult{Points: points}, nil
+	return telemetryResultFromLimitedPoints(points, req.Limit), nil
+}
+
+func telemetryResultFromLimitedPoints(points []TelemetryPoint, limit int) TelemetryResult {
+	return TelemetryResult{
+		Points:      points,
+		SourceCount: len(points),
+		Complete:    len(points) < limit,
+	}
 }
 
 type mediaBindingConfig struct {

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { GitBranch, RefreshCw, Search, Settings2, Trash2 } from "lucide-react";
 import {
@@ -38,6 +39,7 @@ type Mode =
   | "child"
   | "lifecycle"
   | "capabilities"
+  | "attributes"
   | "config"
   | "camera"
   | "camera-edit"
@@ -138,6 +140,7 @@ export function AdminDevicesPage() {
     }
     if (next === "capabilities")
       form.setFieldsValue({ capabilities: record.capabilities ?? [] });
+    if (next === "attributes") void loadDetail("attributes", record);
     if (next === "config") {
       form.setFieldsValue({
         data_json: "[]",
@@ -183,7 +186,7 @@ export function AdminDevicesPage() {
     form.resetFields();
   };
   const loadDetail = async (
-    kind: "children" | "lifecycle" | "capabilities" | "config",
+    kind: "children" | "lifecycle" | "capabilities" | "config" | "attributes",
     record = selected,
   ) => {
     if (!record) return;
@@ -199,7 +202,9 @@ export function AdminDevicesPage() {
             ? await api.admin.lifecycle(deviceId)
             : kind === "capabilities"
               ? await api.admin.capabilities(deviceId)
-              : await api.admin.deviceConfig(deviceId);
+              : kind === "config"
+                ? await api.admin.deviceConfig(deviceId)
+                : await api.admin.deviceAttributes(deviceId);
       setDetail(response);
       if (kind === "config")
         form.setFieldsValue(configFieldsFromDetail(response));
@@ -444,7 +449,9 @@ export function AdminDevicesPage() {
         open={Boolean(mode)}
         onClose={close}
         size={620}
-        extra={
+        extra={mode === "attributes" ? (
+          <Button onClick={close}>关闭</Button>
+        ) : (
           <Space>
             <Button onClick={close}>取消</Button>
             <Button
@@ -456,7 +463,7 @@ export function AdminDevicesPage() {
               保存
             </Button>
           </Space>
-        }
+        )}
       >
         <Form form={form} layout="vertical">
           <DeviceForm mode={mode} form={form} devices={allRows} />
@@ -570,8 +577,14 @@ function columns(
           <Button type="link" onClick={() => open("capabilities", row)}>
             能力
           </Button>
+          <Button type="link" onClick={() => open("attributes", row)}>
+            属性
+          </Button>
           <Button type="link" onClick={() => open("config", row)}>
             配置
+          </Button>
+          <Button type="link">
+            <Link to={`/admin/logs?device=${encodeURIComponent(value(row.id, ""))}`}>日志</Link>
           </Button>
           <Button
             type="link"
@@ -921,6 +934,7 @@ function DeviceForm({
         </div>
       </>
     );
+  if (mode === "attributes") return null;
   return (
     <>
       <CameraBindingFields editing />
@@ -1011,7 +1025,7 @@ function StructuredDetail({
   busy: boolean;
   onRemove: (id: string) => void;
 }) {
-  if (busy && (mode === "child" || mode === "lifecycle"))
+  if (busy && (mode === "child" || mode === "lifecycle" || mode === "attributes"))
     return (
       <StateView
         type="loading"
@@ -1069,6 +1083,29 @@ function StructuredDetail({
             description="首次更新生命周期后会在这里形成可追溯记录。"
           />
         )}
+      </section>
+    );
+  }
+  if (mode === "attributes") {
+    const attributes = (record.attributes as JsonRecord) ?? {};
+    return (
+      <section className="drawer-structured-detail">
+        <h3>最新设备属性</h3>
+        {Object.keys(attributes).length ? (
+          <div className="drawer-grid">
+            {Object.entries(attributes).map(([key, item]) => {
+              const attribute = item as JsonRecord;
+              const parsed = attribute.parsed_value ?? attribute.raw_value;
+              return (
+                <div key={key} className="detail-field">
+                  <span>{key === "battery" ? "电池" : key === "signal" ? "信号" : key}</span>
+                  <strong>{typeof parsed === "object" ? JSON.stringify(parsed) : value(parsed)}</strong>
+                  <small>{value(attribute.sampled_at)}</small>
+                </div>
+              );
+            })}
+          </div>
+        ) : <StateView type="empty" title="暂无设备属性" description="THCPN 当前没有返回电池、信号或扩展信息。" />}
       </section>
     );
   }

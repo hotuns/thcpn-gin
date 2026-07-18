@@ -12,6 +12,7 @@ import {
   Boxes,
   ChevronRight,
   Database,
+  FileText,
   Home,
   Settings,
   LogOut,
@@ -21,6 +22,7 @@ import {
   ShieldCheck,
   TableProperties,
   Users,
+  UserRound,
 } from "lucide-react";
 import { Statistic, Space } from "@thcpn/admin-ui";
 import { api, formatApiError } from "@thcpn/api";
@@ -51,9 +53,29 @@ const AdminDevicesPage = lazy(() =>
     default: module.AdminDevicesPage,
   })),
 );
+const AdminLogsPage = lazy(() =>
+  import("./admin-logs").then((module) => ({
+    default: module.AdminLogsPage,
+  })),
+);
 const AdminWorkspacesPage = lazy(() =>
   import("./admin-control").then((module) => ({
     default: module.AdminWorkspacesPage,
+  })),
+);
+const AdminWorkspaceDetailPage = lazy(() =>
+  import("./admin-control").then((module) => ({
+    default: module.AdminWorkspaceDetailPage,
+  })),
+);
+const AdminUsersPage = lazy(() =>
+  import("./admin-users").then((module) => ({
+    default: module.AdminUsersPage,
+  })),
+);
+const AdminUserDetailPage = lazy(() =>
+  import("./admin-users").then((module) => ({
+    default: module.AdminUserDetailPage,
   })),
 );
 const AdminSettingsPage = lazy(() =>
@@ -66,7 +88,9 @@ const adminNav = [
   { to: "/admin", label: "后台总览", icon: Home },
   { to: "/admin/sources", label: "数据源", icon: Database },
   { to: "/admin/devices", label: "系统设备", icon: Boxes },
+  { to: "/admin/logs", label: "设备日志", icon: FileText },
   { to: "/admin/workspaces", label: "Workspace 与权限", icon: Users },
+  { to: "/admin/users", label: "用户管理", icon: UserRound },
   { to: "/admin/metadata", label: "元数据", icon: TableProperties },
   { to: "/admin/settings", label: "系统设置", icon: Settings },
 ];
@@ -465,7 +489,11 @@ function AdminRoot() {
         <Route index element={<AdminOverview />} />
         <Route path="sources" element={<AdminSourcesPage />} />
         <Route path="devices" element={<AdminDevicesPage />} />
+        <Route path="logs" element={<AdminLogsPage />} />
         <Route path="workspaces" element={<AdminWorkspacesPage />} />
+        <Route path="workspaces/:workspaceId" element={<AdminWorkspaceDetailPage />} />
+        <Route path="users" element={<AdminUsersPage />} />
+        <Route path="users/:userId" element={<AdminUserDetailPage />} />
         <Route path="metadata" element={<AdminMetadataPage />} />
         <Route path="settings" element={<AdminSettingsPage />} />
       </Route>

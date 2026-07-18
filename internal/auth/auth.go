@@ -31,6 +31,19 @@ type Actor struct {
 	IsSystemAdmin   bool       `json:"is_system_admin"`
 	PhoneVerifiedAt *time.Time `json:"phone_verified_at,omitempty"`
 	EmailVerifiedAt *time.Time `json:"email_verified_at,omitempty"`
+	AuthVersion     int        `json:"-"`
+}
+
+// IsSystemAdministrator lets cross-cutting concerns identify the separate
+// system administrator identity without importing the auth package back into
+// those packages.
+func (a Actor) IsSystemAdministrator() bool { return a.IsSystemAdmin }
+
+func (a Actor) SystemAdministratorID() uuid.UUID {
+	if !a.IsSystemAdmin {
+		return uuid.Nil
+	}
+	return a.UserID
 }
 
 type ActorLookup interface {
@@ -50,7 +63,7 @@ func Middleware(lookup ActorLookup, configs ...MiddlewareConfig) gin.HandlerFunc
 	}
 
 	return func(c *gin.Context) {
-		userID, err := authenticateRequest(c, cfg)
+		credentials, err := authenticateRequest(c, cfg)
 		if err != nil {
 			httpx.WriteAppError(c, err)
 			c.Abort()
@@ -63,9 +76,14 @@ func Middleware(lookup ActorLookup, configs ...MiddlewareConfig) gin.HandlerFunc
 			return
 		}
 
-		actor, err := lookup.LookupActor(c.Request.Context(), userID)
+		actor, err := lookup.LookupActor(c.Request.Context(), credentials.UserID)
 		if err != nil {
 			httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "user is not active"))
+			c.Abort()
+			return
+		}
+		if credentials.AuthVersion >= 0 && actor.AuthVersion != credentials.AuthVersion {
+			httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "access token has been invalidated"))
 			c.Abort()
 			return
 		}
@@ -75,17 +93,23 @@ func Middleware(lookup ActorLookup, configs ...MiddlewareConfig) gin.HandlerFunc
 	}
 }
 
-func authenticateRequest(c *gin.Context, cfg MiddlewareConfig) (uuid.UUID, error) {
+type authenticationResult struct {
+	UserID      uuid.UUID
+	AuthVersion int
+}
+
+func authenticateRequest(c *gin.Context, cfg MiddlewareConfig) (authenticationResult, error) {
 	authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
 	if authHeader != "" {
 		return authenticateBearer(c.Request.Context(), authHeader, cfg)
 	}
 
 	if cfg.DevUserHeaderEnabled {
-		return authenticateDevUserHeader(c.GetHeader(HeaderUserID))
+		userID, err := authenticateDevUserHeader(c.GetHeader(HeaderUserID))
+		return authenticationResult{UserID: userID, AuthVersion: -1}, err
 	}
 
-	return uuid.Nil, apperr.New(apperr.KindUnauthorized, "missing bearer token")
+	return authenticationResult{}, apperr.New(apperr.KindUnauthorized, "missing bearer token")
 }
 
 func BearerTokenFromHeader(header string) (string, error) {
@@ -96,28 +120,28 @@ func BearerTokenFromHeader(header string) (string, error) {
 	return parts[1], nil
 }
 
-func authenticateBearer(ctx context.Context, header string, cfg MiddlewareConfig) (uuid.UUID, error) {
+func authenticateBearer(ctx context.Context, header string, cfg MiddlewareConfig) (authenticationResult, error) {
 	if cfg.TokenManager == nil {
-		return uuid.Nil, apperr.New(apperr.KindUnauthorized, "token authentication is not configured")
+		return authenticationResult{}, apperr.New(apperr.KindUnauthorized, "token authentication is not configured")
 	}
 	rawToken, err := BearerTokenFromHeader(header)
 	if err != nil {
-		return uuid.Nil, err
+		return authenticationResult{}, err
 	}
-	userID, err := cfg.TokenManager.Parse(rawToken)
+	info, err := cfg.TokenManager.ParseInfo(rawToken)
 	if err != nil {
-		return uuid.Nil, apperr.New(apperr.KindUnauthorized, "invalid bearer token")
+		return authenticationResult{}, apperr.New(apperr.KindUnauthorized, "invalid bearer token")
 	}
 	if cfg.RevocationChecker != nil {
 		revoked, err := cfg.RevocationChecker.IsAccessTokenRevoked(ctx, rawToken)
 		if err != nil {
-			return uuid.Nil, err
+			return authenticationResult{}, err
 		}
 		if revoked {
-			return uuid.Nil, apperr.New(apperr.KindUnauthorized, "access token has been revoked")
+			return authenticationResult{}, apperr.New(apperr.KindUnauthorized, "access token has been revoked")
 		}
 	}
-	return userID, nil
+	return authenticationResult{UserID: info.UserID, AuthVersion: info.AuthVersion}, nil
 }
 
 func authenticateDevUserHeader(rawUserID string) (uuid.UUID, error) {

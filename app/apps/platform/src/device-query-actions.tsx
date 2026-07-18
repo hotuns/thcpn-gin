@@ -2,11 +2,84 @@ import { Check, Search } from "lucide-react";
 import { api, type DataStream, type TelemetryQueryResponse } from "@thcpn/api";
 import { Badge, Button, Panel, StateView } from "@thcpn/ui";
 
-type QueryInput = { startTime: string; endTime: string; limit: number };
+type QueryInput = { startTime: string; endTime: string };
+const totalRawPointBudget = 20_000;
+const totalChartPointBudget = 6_000;
+const telemetryQueryConcurrency = 4;
+
+async function queryTelemetryStreams(
+  streamIds: string[],
+  query: (id: string) => Promise<TelemetryQueryResponse>,
+) {
+  const responses: TelemetryQueryResponse[] = [];
+  for (
+    let index = 0;
+    index < streamIds.length;
+    index += telemetryQueryConcurrency
+  ) {
+    responses.push(
+      ...(await Promise.all(
+        streamIds
+          .slice(index, index + telemetryQueryConcurrency)
+          .map((id) => query(id)),
+      )),
+    );
+  }
+  return responses;
+}
+
 export async function querySelectedTelemetry(
   deviceId: string,
   streamIds: string[],
   input: QueryInput,
+  client = api.telemetry,
+): Promise<TelemetryQueryResponse> {
+  const rawLimit = Math.min(
+    5000,
+    Math.max(
+      500,
+      Math.floor(totalRawPointBudget / Math.max(1, streamIds.length)),
+    ),
+  );
+  const targetPoints = Math.min(
+    1000,
+    Math.max(
+      200,
+      Math.floor(totalChartPointBudget / Math.max(1, streamIds.length)),
+    ),
+  );
+  if (!streamIds.length)
+    return {
+      device_id: deviceId,
+      start_time: input.startTime,
+      end_time: input.endTime,
+      limit: rawLimit,
+      series: [],
+    };
+  const responses = await queryTelemetryStreams(
+    streamIds,
+    (id) =>
+      client.dataStream(id, {
+        ...input,
+        limit: rawLimit,
+        adaptive: true,
+        targetPoints,
+      }),
+  );
+  return {
+    device_id: deviceId,
+    start_time: input.startTime,
+    end_time: input.endTime,
+    limit: rawLimit,
+    series: responses.flatMap((item) => item.series),
+  };
+}
+
+export async function querySelectedTelemetryRaw(
+  deviceId: string,
+  streamIds: string[],
+  input: QueryInput,
+  limit = 500,
   client = api.telemetry,
 ): Promise<TelemetryQueryResponse> {
   if (!streamIds.length)
@@ -14,17 +87,18 @@ export async function querySelectedTelemetry(
       device_id: deviceId,
       start_time: input.startTime,
       end_time: input.endTime,
-      limit: input.limit,
+      limit,
       series: [],
     };
-  const responses = await Promise.all(
-    streamIds.map((id) => client.dataStream(id, input)),
+  const responses = await queryTelemetryStreams(
+    streamIds,
+    (id) => client.dataStream(id, { ...input, limit }),
   );
   return {
     device_id: deviceId,
     start_time: input.startTime,
     end_time: input.endTime,
-    limit: input.limit,
+    limit,
     series: responses.flatMap((item) => item.series),
   };
 }
@@ -35,10 +109,8 @@ export function DeviceQueryActions({
   onSelectedChange,
   startTime,
   endTime,
-  limit,
   onStartTimeChange,
   onEndTimeChange,
-  onLimitChange,
   onRangeChange,
   onSearch,
   dirty,
@@ -49,10 +121,8 @@ export function DeviceQueryActions({
   onSelectedChange: (ids: string[]) => void;
   startTime: string;
   endTime: string;
-  limit: number;
   onStartTimeChange: (value: string) => void;
   onEndTimeChange: (value: string) => void;
-  onLimitChange: (value: number) => void;
   onRangeChange: (hours: number) => void;
   onSearch: () => void;
   dirty: boolean;
@@ -91,16 +161,6 @@ export function DeviceQueryActions({
         <label className="field">
           <span className="field-label">结束时间</span>
           <input type="datetime-local" value={endTime} onChange={(event) => onEndTimeChange(event.target.value)} />
-        </label>
-        <label className="field">
-          <span className="field-label">每项上限</span>
-          <input
-            type="number"
-            min="1"
-            max="5000"
-            value={limit}
-            onChange={(event) => onLimitChange(Math.min(5000, Math.max(1, Number(event.target.value))))}
-          />
         </label>
       </div>
       <div className="range-presets">

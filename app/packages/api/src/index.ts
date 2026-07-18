@@ -31,6 +31,9 @@ export type MediaListResponse = Schema<"MediaListResponse">;
 export type CameraLiveSession = Schema<"CameraLiveSessionResponse">;
 export type Dataset = Schema<"Dataset">;
 export type ExportJob = Schema<"ExportJob">;
+export type THCPNLatestAttributesResponse = Schema<"THCPNLatestAttributesResponse">;
+export type THCPNDeviceLogListResponse = Schema<"THCPNDeviceLogListResponse">;
+export type THCPNDeviceLogAccessResponse = Schema<"THCPNDeviceLogAccessResponse">;
 export type LoginResponse = Schema<"LoginResponse">;
 export type AdminUser = {
   id: string;
@@ -51,7 +54,7 @@ export type AdminLoginResponse = {
 };
 
 export type ApiEnvelope<T> = T & { request_id?: string };
-export type ListResponse<T> = { items: T[] };
+export type ListResponse<T> = { items: T[]; total?: number; page?: number; page_size?: number };
 export type JsonRecord = Record<string, unknown>;
 
 const queryString = (
@@ -69,6 +72,13 @@ const queryString = (
 const jsonRequest = <T>(path: string, method: string, body?: unknown) =>
   request<T>(path, {
     method,
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+
+const interventionRequest = <T>(path: string, method: string, interventionId: string, body?: unknown) =>
+  request<T>(path, {
+    method,
+    headers: { "X-Admin-Intervention-ID": interventionId },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 
@@ -212,7 +222,12 @@ async function request<T>(
 }
 
 async function download(path: string): Promise<Blob> {
-  const response = await fetch(`${baseUrl}${path}`);
+  const headers = new Headers();
+  const storage = isAdminContext() ? adminAuthStorage : authStorage;
+  const tokens = storage.read();
+  if (tokens?.accessToken)
+    headers.set("Authorization", `Bearer ${tokens.accessToken}`);
+  const response = await fetch(`${baseUrl}${path}`, { headers });
   if (!response.ok) {
     await parseResponse(response);
     throw new ApiError("下载失败", response.status);
@@ -275,6 +290,8 @@ export const api = {
       jsonRequest<LoginResponse>("/api/v1/auth/refresh", "POST", {
         refresh_token: refreshToken,
       }),
+    completeInitialPassword: (payload: { password_change_token: string; password: string }) =>
+      jsonRequest<LoginResponse>("/api/v1/auth/password/complete-initial", "POST", payload),
     logout: (refreshToken?: string) =>
       jsonRequest<void>(
         "/api/v1/auth/logout",
@@ -321,8 +338,8 @@ export const api = {
         method: "POST",
         body: JSON.stringify(payload),
       }),
-    adminList: () =>
-      request<ListResponse<JsonRecord>>("/api/v1/admin/workspaces"),
+    adminList: (filters: JsonRecord = {}) =>
+      request<ListResponse<JsonRecord>>(`/api/v1/admin/workspaces${queryString(filters as Record<string, string | number | boolean>)}`),
   },
   projects: {
     list: (workspaceId: string) =>
@@ -402,6 +419,10 @@ export const api = {
     },
     get: (id: string) =>
       request<Device>(`/api/v1/devices/${encodeURIComponent(id)}`),
+    latestAttributes: (id: string) =>
+      request<THCPNLatestAttributesResponse>(
+        `/api/v1/devices/${encodeURIComponent(id)}/attributes/latest`,
+      ),
     update: (id: string, payload: JsonRecord) =>
       jsonRequest<Device>(
         `/api/v1/devices/${encodeURIComponent(id)}`,
@@ -487,23 +508,25 @@ export const api = {
   telemetry: {
     device: (
       deviceId: string,
-      input: { startTime: string; endTime: string; limit?: number },
+      input: { startTime: string; endTime: string; limit?: number; adaptive?: boolean; targetPoints?: number },
     ) => {
       const params = new URLSearchParams({
         start_time: input.startTime,
         end_time: input.endTime,
       });
       if (input.limit) params.set("limit", String(input.limit));
+      if (input.adaptive !== undefined) params.set("adaptive", String(input.adaptive));
+      if (input.targetPoints) params.set("target_points", String(input.targetPoints));
       return request<TelemetryQueryResponse>(
         `/api/v1/devices/${encodeURIComponent(deviceId)}/telemetry?${params}`,
       );
     },
     dataStream: (
       id: string,
-      input: { startTime: string; endTime: string; limit?: number },
+      input: { startTime: string; endTime: string; limit?: number; adaptive?: boolean; targetPoints?: number },
     ) =>
       request<TelemetryQueryResponse>(
-        `/api/v1/data-streams/${encodeURIComponent(id)}/telemetry${queryString({ start_time: input.startTime, end_time: input.endTime, limit: input.limit })}`,
+        `/api/v1/data-streams/${encodeURIComponent(id)}/telemetry${queryString({ start_time: input.startTime, end_time: input.endTime, limit: input.limit, adaptive: input.adaptive, target_points: input.targetPoints })}`,
       ),
     dataset: (
       id: string,
@@ -624,7 +647,16 @@ export const api = {
         `${isAdminContext() ? "/api/v1/admin/audit-logs" : "/api/v1/audit-logs"}${queryString({ workspace_id: workspaceId, limit })}`,
       ),
   },
-  admin: {
+    admin: {
+    workspaces: {
+      list: (filters: JsonRecord = {}) => request<ListResponse<JsonRecord>>(`/api/v1/admin/workspaces${queryString(filters as Record<string, string | number | boolean>)}`),
+      get: (id: string) => request<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(id)}`),
+      startIntervention: (id: string, payload: JsonRecord) => jsonRequest<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(id)}/interventions`, "POST", payload),
+      endIntervention: (id: string, interventionId: string) => request<void>(`/api/v1/admin/workspaces/${encodeURIComponent(id)}/interventions/${encodeURIComponent(interventionId)}`, { method: "DELETE" }),
+      updateStatus: (id: string, interventionId: string, payload: JsonRecord) => interventionRequest<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(id)}/status`, "PATCH", interventionId, payload),
+      transferOwner: (id: string, interventionId: string, payload: JsonRecord) => interventionRequest<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(id)}/transfer-owner`, "POST", interventionId, payload),
+    },
+    permissionsCatalog: () => request<JsonRecord>("/api/v1/admin/permissions/catalog"),
     sources: () =>
       request<ListResponse<Record<string, unknown>>>(
         "/api/v1/admin/data-sources",
@@ -651,6 +683,22 @@ export const api = {
       ),
     devices: () =>
       request<ListResponse<Record<string, unknown>>>("/api/v1/admin/devices"),
+    deviceAttributes: (id: string) =>
+      request<THCPNLatestAttributesResponse>(
+        `/api/v1/admin/devices/${encodeURIComponent(id)}/attributes/latest`,
+      ),
+    deviceLogs: (id: string, input: JsonRecord = {}) =>
+      request<THCPNDeviceLogListResponse>(
+        `/api/v1/admin/devices/${encodeURIComponent(id)}/logs${queryString(input as Record<string, string | number | boolean>)}`,
+      ),
+    deviceLogPreview: (id: string, logUUID: string) =>
+      request<THCPNDeviceLogAccessResponse>(
+        `/api/v1/admin/devices/${encodeURIComponent(id)}/logs/${encodeURIComponent(logUUID)}/preview`,
+      ),
+    deviceLogDownload: (id: string, logUUID: string) =>
+      download(
+        `/api/v1/admin/devices/${encodeURIComponent(id)}/logs/${encodeURIComponent(logUUID)}/download`,
+      ),
     updateDevice: (id: string, payload: JsonRecord) =>
       jsonRequest<JsonRecord>(
         `/api/v1/admin/devices/${encodeURIComponent(id)}`,
@@ -748,26 +796,42 @@ export const api = {
         payload,
       ),
     createProject: (payload: JsonRecord) => jsonRequest<JsonRecord>("/api/v1/admin/projects", "POST", payload),
-    updateProject: (id: string, payload: JsonRecord) => jsonRequest<JsonRecord>(`/api/v1/admin/projects/${encodeURIComponent(id)}`, "PATCH", payload),
+    updateProject: (id: string, interventionId: string, payload: JsonRecord) => interventionRequest<JsonRecord>(`/api/v1/admin/projects/${encodeURIComponent(id)}`, "PATCH", interventionId, payload),
     createSite: (payload: JsonRecord) => jsonRequest<JsonRecord>("/api/v1/admin/sites", "POST", payload),
-    updateSite: (id: string, payload: JsonRecord) => jsonRequest<JsonRecord>(`/api/v1/admin/sites/${encodeURIComponent(id)}`, "PATCH", payload),
+    updateSite: (id: string, interventionId: string, payload: JsonRecord) => interventionRequest<JsonRecord>(`/api/v1/admin/sites/${encodeURIComponent(id)}`, "PATCH", interventionId, payload),
     members: {
       list: (workspaceId: string) => request<ListResponse<JsonRecord>>(`/api/v1/admin/workspaces/${encodeURIComponent(workspaceId)}/members`),
-      add: (workspaceId: string, payload: JsonRecord) => jsonRequest<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(workspaceId)}/members`, "POST", payload),
-      update: (workspaceId: string, memberId: string, payload: JsonRecord) => jsonRequest<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(memberId)}`, "PATCH", payload),
-      remove: (workspaceId: string, memberId: string) => request<void>(`/api/v1/admin/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(memberId)}`, { method: "DELETE" }),
+      add: (workspaceId: string, interventionId: string, payload: JsonRecord) => interventionRequest<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(workspaceId)}/members`, "POST", interventionId, payload),
+      update: (workspaceId: string, memberId: string, interventionId: string, payload: JsonRecord) => interventionRequest<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(memberId)}`, "PATCH", interventionId, payload),
+      remove: (workspaceId: string, memberId: string, interventionId: string) => interventionRequest<void>(`/api/v1/admin/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(memberId)}`, "DELETE", interventionId),
     },
     grants: {
       list: (workspaceId: string) => request<ListResponse<JsonRecord>>(`/api/v1/admin/access-grants${queryString({ workspace_id: workspaceId })}`),
       create: (payload: JsonRecord) => jsonRequest<JsonRecord>("/api/v1/admin/access-grants", "POST", payload),
-      revoke: (id: string) => request<void>(`/api/v1/admin/access-grants/${encodeURIComponent(id)}`, { method: "DELETE" }),
+      revoke: (id: string, interventionId: string) => interventionRequest<void>(`/api/v1/admin/access-grants/${encodeURIComponent(id)}`, "DELETE", interventionId),
     },
     invitations: {
       list: (workspaceId: string) => request<ListResponse<JsonRecord>>(`/api/v1/admin/invitations${queryString({ workspace_id: workspaceId })}`),
       create: (payload: JsonRecord) => jsonRequest<JsonRecord>("/api/v1/admin/invitations", "POST", payload),
-      revoke: (id: string) => request<void>(`/api/v1/admin/invitations/${encodeURIComponent(id)}`, { method: "DELETE" }),
+      revoke: (id: string, interventionId: string) => interventionRequest<void>(`/api/v1/admin/invitations/${encodeURIComponent(id)}`, "DELETE", interventionId),
     },
-    audit: (workspaceId: string, limit = 500) => request<ListResponse<JsonRecord>>(`/api/v1/admin/audit-logs${queryString({ workspace_id: workspaceId, limit })}`),
+    audit: (workspaceId: string, filters: JsonRecord = {}) => request<ListResponse<JsonRecord>>(`/api/v1/admin/audit-logs${queryString({ workspace_id: workspaceId, ...(filters as Record<string, string | number | boolean>) })}`),
+    users: {
+      list: (filters: JsonRecord = {}) => request<ListResponse<JsonRecord>>(`/api/v1/admin/users${queryString(filters as Record<string, string | number | boolean>)}`),
+      get: (id: string) => request<JsonRecord>(`/api/v1/admin/users/${encodeURIComponent(id)}`),
+      create: (payload: JsonRecord) => jsonRequest<JsonRecord>("/api/v1/admin/users", "POST", payload),
+      update: (id: string, payload: JsonRecord) => jsonRequest<JsonRecord>(`/api/v1/admin/users/${encodeURIComponent(id)}`, "PATCH", payload),
+      updateStatus: (id: string, payload: JsonRecord) => jsonRequest<void>(`/api/v1/admin/users/${encodeURIComponent(id)}/status`, "PATCH", payload),
+      revokeAllSessions: (id: string, payload: JsonRecord) => jsonRequest<void>(`/api/v1/admin/users/${encodeURIComponent(id)}/sessions/revoke-all`, "POST", payload),
+      unlock: (id: string, payload: JsonRecord) => jsonRequest<void>(`/api/v1/admin/users/${encodeURIComponent(id)}/unlock`, "POST", payload),
+      resetMFA: (id: string, payload: JsonRecord) => jsonRequest<void>(`/api/v1/admin/users/${encodeURIComponent(id)}/mfa`, "DELETE", payload),
+      temporaryPassword: (id: string, payload: JsonRecord) => jsonRequest<JsonRecord>(`/api/v1/admin/users/${encodeURIComponent(id)}/temporary-password`, "POST", payload),
+      deletionCheck: (id: string) => request<JsonRecord>(`/api/v1/admin/users/${encodeURIComponent(id)}/deletion-check`),
+      workspaces: (id: string) => request<ListResponse<JsonRecord>>(`/api/v1/admin/users/${encodeURIComponent(id)}/workspaces`),
+      sessions: (id: string) => request<ListResponse<JsonRecord>>(`/api/v1/admin/users/${encodeURIComponent(id)}/sessions`),
+      activity: (id: string, filters: JsonRecord = {}) => request<ListResponse<JsonRecord>>(`/api/v1/admin/users/${encodeURIComponent(id)}/activity${queryString(filters as Record<string, string | number | boolean>)}`),
+      remove: (id: string, payload: JsonRecord) => jsonRequest<void>(`/api/v1/admin/users/${encodeURIComponent(id)}`, "DELETE", payload),
+    },
   },
 };
 

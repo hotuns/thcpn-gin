@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Link,
@@ -455,6 +455,118 @@ export const deviceDetailTab = (
 export const legacyDeviceTarget = (device: Device) =>
   `/devices/${encodeURIComponent(device.id)}?tab=${isCameraDevice(device) ? "video" : "data"}`;
 
+export const filterQuickSwitchDevices = (devices: Device[], keyword: string) => {
+  const normalized = keyword.trim().toLowerCase();
+  if (!normalized) return devices;
+  return devices.filter((device) =>
+    [device.name, device.serial_no, device.id]
+      .filter(Boolean)
+      .some((value) => value.toLowerCase().includes(normalized)),
+  );
+};
+
+function DeviceQuickSwitcher({
+  device,
+  devices,
+  onSwitch,
+}: {
+  device: Device;
+  devices: Device[];
+  onSwitch: (deviceId: string) => void;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [keyword, setKeyword] = useState("");
+  const filteredDevices = filterQuickSwitchDevices(devices, keyword);
+  const label = `${device.name} · ${device.serial_no}`;
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    setKeyword("");
+    setOpen(false);
+  }, [device.id]);
+
+  const openMenu = () => {
+    setKeyword("");
+    setOpen(true);
+  };
+  const selectDevice = (nextDeviceId: string) => {
+    setOpen(false);
+    setKeyword("");
+    onSwitch(nextDeviceId);
+  };
+
+  return (
+    <div className="device-quick-switch">
+      <span>快捷切换设备</span>
+      <div className="device-quick-switch-control" ref={rootRef}>
+        <div className="device-quick-switch-input">
+          <Search size={14} aria-hidden="true" />
+          <input
+            role="combobox"
+            aria-label="搜索并切换设备"
+            aria-expanded={open}
+            aria-controls="device-quick-switch-options"
+            autoComplete="off"
+            value={open ? keyword : label}
+            placeholder="搜索设备名称、序列号或 ID"
+            onFocus={openMenu}
+            onChange={(event) => {
+              setKeyword(event.target.value);
+              setOpen(true);
+            }}
+          />
+          <ChevronDown
+            size={14}
+            aria-hidden="true"
+            className={open ? "device-quick-switch-chevron open" : "device-quick-switch-chevron"}
+          />
+        </div>
+        {open && (
+          <div
+            id="device-quick-switch-options"
+            className="device-quick-switch-menu"
+            role="listbox"
+          >
+            {filteredDevices.length ? (
+              filteredDevices.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="option"
+                  aria-selected={item.id === device.id}
+                  className={item.id === device.id ? "selected" : undefined}
+                  onClick={() => selectDevice(item.id)}
+                >
+                  <span>{item.name}</span>
+                  <small>{item.serial_no}</small>
+                </button>
+              ))
+            ) : (
+              <div className="device-quick-switch-empty">没有匹配的设备</div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function DeviceCenterDetailPage() {
   const { deviceId = "" } = useParams();
   const [params, setParams] = useSearchParams();
@@ -467,6 +579,11 @@ export function DeviceCenterDetailPage() {
     enabled: Boolean(deviceId),
   });
   const detailWorkspaceId = detail.data?.workspace_id ?? currentId;
+  const workspaceDevices = useQuery({
+    queryKey: workspaceQueryKey(detailWorkspaceId, "devices", "quick-switch"),
+    queryFn: () => api.devices.list(detailWorkspaceId!),
+    enabled: Boolean(detailWorkspaceId),
+  });
   const projects = useQuery({
     queryKey: workspaceQueryKey(detailWorkspaceId, "projects"),
     queryFn: () => api.projects.list(detailWorkspaceId!),
@@ -523,6 +640,24 @@ export function DeviceCenterDetailPage() {
     );
   const camera = isCameraDevice(device);
   const tab = deviceDetailTab(params.get("tab"), camera);
+  const workspaceDeviceItems = workspaceDevices.data?.items ?? [];
+  const quickSwitchDevices = workspaceDeviceItems.some(
+    (item) => item.id === device.id,
+  )
+    ? workspaceDeviceItems
+    : [device, ...workspaceDeviceItems];
+  const switchDevice = (nextDeviceId: string) => {
+    const nextDevice = quickSwitchDevices.find((item) => item.id === nextDeviceId);
+    let nextTab = tab;
+    if (nextDevice) {
+      const nextCamera = isCameraDevice(nextDevice);
+      if (nextCamera && nextTab === "data") nextTab = "video";
+      if (!nextCamera && nextTab === "video") nextTab = "data";
+    }
+    navigate(
+      `/devices/${encodeURIComponent(nextDeviceId)}?tab=${encodeURIComponent(nextTab)}`,
+    );
+  };
   const run = async (
     action: () => Promise<unknown>,
     message: string,
@@ -566,12 +701,21 @@ export function DeviceCenterDetailPage() {
             )}
           </p>
         </div>
-        <Link to="/devices">
-          <Button variant="secondary">
-            <ArrowLeft size={14} />
-            设备列表
-          </Button>
-        </Link>
+        <div className="device-detail-actions">
+          {quickSwitchDevices.length > 1 && (
+            <DeviceQuickSwitcher
+              device={device}
+              devices={quickSwitchDevices}
+              onSwitch={switchDevice}
+            />
+          )}
+          <Link to="/devices">
+            <Button variant="secondary">
+              <ArrowLeft size={14} />
+              设备列表
+            </Button>
+          </Link>
+        </div>
       </div>
       <div className="device-detail-status">
         <Badge
@@ -664,6 +808,11 @@ function DeviceOverview({
     !camera && device.capabilities.some((item) => item.includes("telemetry"));
   const hasImages =
     !camera && device.capabilities.some((item) => item.includes("image"));
+  const latestAttributes = useQuery({
+    queryKey: workspaceQueryKey(workspaceId, "device", device.id, "latest-attributes"),
+    queryFn: () => api.devices.latestAttributes(device.id),
+    enabled: !camera,
+  });
   const telemetry = useQuery({
     queryKey: workspaceQueryKey(
       workspaceId,
@@ -714,6 +863,22 @@ function DeviceOverview({
             <span className="muted">未声明设备能力</span>
           )}
         </div>
+        {latestAttributes.data?.attributes && Object.keys(latestAttributes.data.attributes).length ? (
+          <div className="device-attribute-grid">
+            {(["battery", "signal", "ext_info"] as const).map((key) => {
+              const item = latestAttributes.data.attributes[key];
+              if (!item) return null;
+              const value = item.parsed_value ?? item.raw_value;
+              return (
+                <div key={key}>
+                  <span>{key === "battery" ? "电池" : key === "signal" ? "信号" : "扩展信息"}</span>
+                  <strong>{typeof value === "object" ? JSON.stringify(value) : text(value)}</strong>
+                  <small>{overviewTime(item.sampled_at)}</small>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
       </Panel>
       {(hasTelemetry || hasImages) && (
         <div

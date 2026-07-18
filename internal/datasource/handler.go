@@ -1,9 +1,16 @@
 package datasource
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -12,6 +19,7 @@ import (
 	"thcpn-gin/internal/audit"
 	"thcpn-gin/internal/auth"
 	"thcpn-gin/internal/httpx"
+	"thcpn-gin/internal/objectstore"
 	"thcpn-gin/internal/permission"
 )
 
@@ -21,9 +29,10 @@ const (
 )
 
 type Handler struct {
-	service *Service
-	checker *permission.Checker
-	audit   *audit.Service
+	service   *Service
+	checker   *permission.Checker
+	audit     *audit.Service
+	logSigner *objectstore.Signer
 }
 
 type createDataSourceRequest struct {
@@ -105,6 +114,211 @@ func NewHandler(service *Service, checker *permission.Checker, auditServices ...
 		auditService = auditServices[0]
 	}
 	return &Handler{service: service, checker: checker, audit: auditService}
+}
+
+func (h *Handler) SetTHCPNLogSigner(signer *objectstore.Signer) {
+	h.logSigner = signer
+}
+
+func (h *Handler) LatestTHCPNDeviceAttributes(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok || !h.authorize(c, "device", deviceID, "device.view") {
+		return
+	}
+	result, err := h.service.LatestTHCPNDeviceAttributes(c.Request.Context(), deviceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminLatestTHCPNDeviceAttributes(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	result, err := h.service.LatestTHCPNDeviceAttributes(c.Request.Context(), deviceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminListTHCPNDeviceLogs(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	start, ok := parseOptionalLogDate(c, "start_date")
+	if !ok {
+		return
+	}
+	end, ok := parseOptionalLogDate(c, "end_date")
+	if !ok {
+		return
+	}
+	page, ok := parseOptionalIntQuery(c, "page")
+	if !ok {
+		return
+	}
+	pageSize, ok := parseOptionalIntQuery(c, "page_size")
+	if !ok {
+		return
+	}
+	result, err := h.service.ListTHCPNDeviceLogs(c.Request.Context(), THCPNDeviceLogListInput{
+		DeviceID: deviceID,
+		Start:    start,
+		End:      end,
+		Keyword:  c.Query("keyword"),
+		Page:     page,
+		PageSize: pageSize,
+	})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminPreviewTHCPNDeviceLog(c *gin.Context) {
+	h.adminTHCPNDeviceLogAccess(c, "preview")
+}
+
+func (h *Handler) AdminDownloadTHCPNDeviceLog(c *gin.Context) {
+	h.adminTHCPNDeviceLogAccess(c, "download")
+}
+
+func (h *Handler) adminTHCPNDeviceLogAccess(c *gin.Context, mode string) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	logItem, err := h.service.GetTHCPNDeviceLog(c.Request.Context(), deviceID, c.Param("log_uuid"))
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if h.logSigner == nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInternal, "thcpn log object store is not configured"))
+		return
+	}
+	key, err := h.logSigner.NormalizeObjectKey(logItem.Path)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	signed, err := h.logSigner.SignObjectURL(key, 15*time.Minute)
+	if err != nil {
+		_ = h.record(c, audit.RecordInput{ActorType: audit.ActorUser, ActorID: audit.UserActorID(actorID(c)), Action: "thcpn.device_log." + mode, ResourceType: "device", ResourceID: audit.ResourceID(deviceID), Result: audit.ResultFailure, Reason: apperr.MessageOf(err)})
+		httpx.WriteAppError(c, err)
+		return
+	}
+	previewKind := logPreviewKind(logItem.Path)
+	var content string
+	if mode == "preview" && previewKind == "text" {
+		content, err = fetchTextLogPreview(c.Request.Context(), signed.URL)
+		if err != nil {
+			_ = h.record(c, audit.RecordInput{ActorType: audit.ActorUser, ActorID: audit.UserActorID(actorID(c)), Action: "thcpn.device_log." + mode, ResourceType: "device", ResourceID: audit.ResourceID(deviceID), Result: audit.ResultFailure, Reason: apperr.MessageOf(err)})
+			httpx.WriteAppError(c, err)
+			return
+		}
+	}
+	if !h.record(c, audit.RecordInput{ActorType: audit.ActorUser, ActorID: audit.UserActorID(actorID(c)), Action: "thcpn.device_log." + mode, ResourceType: "device", ResourceID: audit.ResourceID(deviceID), Result: audit.ResultSuccess, Reason: logItem.UUID}) {
+		return
+	}
+	if mode == "download" {
+		c.Redirect(http.StatusTemporaryRedirect, signed.URL)
+		return
+	}
+	response := gin.H{"log": logItem, "preview_kind": previewKind, "url": signed.URL, "expires_at": signed.ExpiresAt}
+	if previewKind == "text" {
+		response["content"] = content
+	}
+	c.JSON(http.StatusOK, response)
+}
+
+const maxLogPreviewBytes = 2 << 20
+
+func fetchTextLogPreview(ctx context.Context, rawURL string) (string, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return "", apperr.Wrap(apperr.KindInternal, "create log preview request", err)
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return "", apperr.Wrap(apperr.KindInternal, "fetch log preview", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return "", apperr.New(apperr.KindInternal, "log preview object is unavailable")
+	}
+	content, err := io.ReadAll(io.LimitReader(response.Body, maxLogPreviewBytes+1))
+	if err != nil {
+		return "", apperr.Wrap(apperr.KindInternal, "read log preview", err)
+	}
+	if len(content) > maxLogPreviewBytes {
+		return "", apperr.New(apperr.KindInvalidArgument, "log preview is larger than 2 MB")
+	}
+	if !utf8.Valid(content) {
+		return "", apperr.New(apperr.KindInvalidArgument, "log preview is not a text file")
+	}
+	return string(content), nil
+}
+
+func logPreviewKind(value string) string {
+	switch strings.ToLower(filepath.Ext(value)) {
+	case ".log", ".txt", ".json", ".csv", ".xml", ".yaml", ".yml", ".md":
+		return "text"
+	case ".jpg", ".jpeg", ".png", ".webp", ".gif":
+		return "image"
+	case ".pdf":
+		return "pdf"
+	default:
+		return "download"
+	}
+}
+
+func parseOptionalLogDate(c *gin.Context, name string) (time.Time, bool) {
+	value := strings.TrimSpace(c.Query(name))
+	if value == "" {
+		return time.Time{}, true
+	}
+	if parsed, err := time.Parse("2006-01-02", value); err == nil {
+		return parsed, true
+	}
+	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+		return parsed, true
+	}
+	httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid "+name))
+	return time.Time{}, false
+}
+
+func parseOptionalIntQuery(c *gin.Context, name string) (int, bool) {
+	value := strings.TrimSpace(c.Query(name))
+	if value == "" {
+		return 0, true
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid "+name))
+		return 0, false
+	}
+	return parsed, true
+}
+
+func actorID(c *gin.Context) uuid.UUID {
+	actor, ok := auth.ActorFromContext(c)
+	if !ok {
+		return uuid.Nil
+	}
+	// System administrators have their own identity table. The audit schema's
+	// actor_id currently references users, so do not write an admin UUID there.
+	if actor.IsSystemAdmin {
+		return uuid.Nil
+	}
+	return actor.UserID
 }
 
 func (h *Handler) ListDataSources(c *gin.Context) {

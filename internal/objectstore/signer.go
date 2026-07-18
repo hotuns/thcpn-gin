@@ -117,6 +117,41 @@ func (s *Signer) SignObjectURL(objectKey string, ttl time.Duration) (SignedURL, 
 	return SignedURL{URL: u.String(), ExpiresAt: expiresAt}, nil
 }
 
+// NormalizeObjectKey converts a configured OSS URL or an object key into the
+// key accepted by the signer. Absolute URLs are only accepted when they point
+// at this signer's configured endpoint and bucket.
+func (s *Signer) NormalizeObjectKey(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", apperr.New(apperr.KindInvalidArgument, "object key is required")
+	}
+	if !isAbsoluteHTTPURL(raw) {
+		return validateObjectKey(raw)
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil || u.Hostname() == "" {
+		return "", apperr.New(apperr.KindInvalidArgument, "invalid object url")
+	}
+	endpoint, err := url.Parse(strings.TrimSpace(s.cfg.Endpoint))
+	if err != nil || endpoint.Hostname() == "" {
+		return "", apperr.New(apperr.KindInternal, "object store endpoint is required")
+	}
+	host := strings.ToLower(u.Hostname())
+	endpointHost := strings.ToLower(endpoint.Hostname())
+	bucketHost := strings.ToLower(strings.TrimSpace(s.cfg.Bucket) + "." + endpointHost)
+	if host != endpointHost && host != bucketHost {
+		return "", apperr.New(apperr.KindPermissionDenied, "object url host is not allowed")
+	}
+
+	key := strings.TrimPrefix(u.Path, "/")
+	if host == endpointHost {
+		bucket := strings.Trim(strings.TrimSpace(s.cfg.Bucket), "/")
+		key = strings.TrimPrefix(key, bucket+"/")
+	}
+	return validateObjectKey(key)
+}
+
 func presignOSSGetObjectURL(cfg config.ObjectStoreConfig, objectKey string, accessKey string, secretKey string, expiresAt time.Time) (string, error) {
 	if strings.TrimSpace(cfg.Endpoint) == "" {
 		return "", apperr.New(apperr.KindInternal, "object store endpoint is required")

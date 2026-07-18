@@ -179,14 +179,16 @@ function ComparisonChart({
       stats: nextStats,
     };
   }, [series]);
-  const good = series.reduce(
-    (count, item) =>
-      count +
-      item.points.filter((point) => healthyTelemetryQuality(point.quality))
-        .length,
+  const returnedTotal = series.reduce(
+    (count, item) => count + item.points.length,
     0,
   );
-  const total = series.reduce((count, item) => count + item.points.length, 0);
+  const sourceTotal = series.reduce(
+    (count, item) => count + (item.source_count || item.points.length),
+    0,
+  );
+  const sampled = series.some((item) => item.sampled);
+  const complete = series.every((item) => item.complete);
   return (
     <div className="comparison-chart">
       <div className="comparison-summary">
@@ -194,14 +196,15 @@ function ComparisonChart({
           <strong>{series.length}</strong>显示指标
         </span>
         <span>
-          <strong>{total}</strong>数据点
+          <strong>{sourceTotal}</strong>原始点
         </span>
         <span>
-          <strong>{total ? Math.round((good / total) * 100) : 0}%</strong>
-          正常质量
+          <strong>{returnedTotal}</strong>
+          {sampled ? "绘图点" : "数据点"}
         </span>
         <span className="normalization-note">
-          各指标按自身区间归一化，用于比较变化方向
+          {complete ? "完整时间范围" : "数据源可能已截断"} ·
+          各指标按自身区间归一化
         </span>
       </div>
       <div
@@ -344,7 +347,8 @@ function TelemetryChart({
         <div>
           <div className="cell-title">{series.name}</div>
           <div className="cell-sub mono">
-            {series.code} · {source.length} 个数据点
+            {series.code} · {series.source_count || source.length} 个原始点
+            {series.sampled ? ` · ${source.length} 个绘图点` : ""}
           </div>
         </div>
         <div className="chart-latest">
@@ -357,13 +361,14 @@ function TelemetryChart({
           最小 <strong>{numberFormat(min)}</strong>
         </span>
         <span>
-          平均 <strong>{numberFormat(average)}</strong>
+          {series.sampled ? "绘图点均值" : "平均"}{" "}
+          <strong>{numberFormat(average)}</strong>
         </span>
         <span>
           最大 <strong>{numberFormat(max)}</strong>
         </span>
         <span>
-          质量 <strong>{quality}%</strong>
+          {series.sampled ? "绘图点质量" : "质量"} <strong>{quality}%</strong>
         </span>
         <span>
           区间变化{" "}
@@ -484,7 +489,7 @@ function TelemetryChart({
         </span>
         <span>
           <i className="legend-average" />
-          区间平均 {numberFormat(average)}
+          {series.sampled ? "绘图点均值" : "区间平均"} {numberFormat(average)}
         </span>
         {quality < 100 && (
           <span className="quality-alert">

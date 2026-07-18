@@ -18,10 +18,14 @@ describe("domain display labels", () => {
   });
 
   it("translates built-in permission templates and common statuses", () => {
-    expect(roleTemplateLabel("project_manager", "Project manager")).toBe(
+    expect(roleTemplateLabel("project_manager", "Project Manager")).toBe(
       "项目管理员",
     );
     expect(roleTemplateLabel("custom", "Custom")).toBe("自定义权限");
     expect(commonStatusLabel("pending")).toBe("待处理");
+  });
+
+  it("keeps a customized role display name", () => {
+    expect(roleTemplateLabel("admin", "系统管理员")).toBe("系统管理员");
   });
 });

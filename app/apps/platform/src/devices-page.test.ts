@@ -4,6 +4,7 @@ import {
   calibrationPayload,
   deviceCategory,
   deviceDetailTab,
+  filterQuickSwitchDevices,
   firmwarePayload,
   isTopLevelDevice,
   legacyDeviceTarget,
@@ -101,5 +102,15 @@ describe("device workflow payloads", () => {
     expect(legacyDeviceTarget({ ...base, device_type: "camera" })).toBe(
       "/devices/device%2F1?tab=video",
     );
+  });
+
+  it("filters device switch options by name, serial number, or id", () => {
+    const devices = [
+      { id: "device-1", name: "平谷观测站", serial_no: "SN-001" },
+      { id: "device-2", name: "海康相机", serial_no: "CAM-002" },
+    ] as Device[];
+    expect(filterQuickSwitchDevices(devices, "海康").map((item) => item.id)).toEqual(["device-2"]);
+    expect(filterQuickSwitchDevices(devices, "SN-001").map((item) => item.id)).toEqual(["device-1"]);
+    expect(filterQuickSwitchDevices(devices, "device-2").map((item) => item.id)).toEqual(["device-2"]);
   });
 });

@@ -57,6 +57,12 @@ func (r *Runtime) queryHTTPAPITelemetry(ctx context.Context, source DataSource, 
 			result.Points[i].Quality = "valid"
 		}
 	}
+	if result.SourceCount == 0 && len(result.Points) > 0 {
+		result.SourceCount = len(result.Points)
+	}
+	if !result.Sampled && result.SourceCount == len(result.Points) && len(result.Points) < req.Limit {
+		result.Complete = true
+	}
 	return result, nil
 }
 

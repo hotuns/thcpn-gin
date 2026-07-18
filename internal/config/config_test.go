@@ -63,6 +63,25 @@ func TestDefaultConfigIsValid(t *testing.T) {
 	}
 }
 
+func TestApplyEnvFallsBackToPlatformObjectStoreForTHCPNLogs(t *testing.T) {
+	t.Setenv("OBJECT_STORE_ENDPOINT", "https://oss.example.test")
+	t.Setenv("OBJECT_STORE_BUCKET", "shared-logs")
+	t.Setenv("OBJECT_STORE_REGION", "cn-test")
+	t.Setenv("OBJECT_STORE_PUBLIC_URL_PREFIX", "https://shared-logs.oss.example.test")
+	t.Setenv("THCPN_LOG_OSS_ENDPOINT", "")
+	t.Setenv("THCPN_LOG_OSS_BUCKET", "")
+	t.Setenv("THCPN_LOG_OSS_REGION", "")
+	t.Setenv("THCPN_LOG_OSS_PUBLIC_URL_PREFIX", "")
+
+	cfg := Default()
+	applyEnv(&cfg)
+	if cfg.THCPNLogObjectStore.Endpoint != cfg.ObjectStore.Endpoint ||
+		cfg.THCPNLogObjectStore.Bucket != cfg.ObjectStore.Bucket ||
+		cfg.THCPNLogObjectStore.PublicURLPrefix != cfg.ObjectStore.PublicURLPrefix {
+		t.Fatalf("expected THCPN log object store to fall back to platform object store, got %#v", cfg.THCPNLogObjectStore)
+	}
+}
+
 func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("SERVER_ADDR", ":9090")
 	t.Setenv("PLATFORM_DATABASE_DSN", "postgres://example:secret@127.0.0.1:5432/example?sslmode=disable")

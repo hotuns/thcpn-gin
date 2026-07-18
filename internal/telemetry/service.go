@@ -33,6 +33,8 @@ type QueryInput struct {
 	StartTime    time.Time
 	EndTime      time.Time
 	Limit        int
+	Adaptive     bool
+	TargetPoints int
 }
 
 type QueryResult struct {
@@ -44,12 +46,16 @@ type QueryResult struct {
 }
 
 type Series struct {
-	DataStreamID uuid.UUID `json:"data_stream_id"`
-	Code         string    `json:"code"`
-	Name         string    `json:"name"`
-	Unit         *string   `json:"unit,omitempty"`
-	Points       []Point   `json:"points"`
-	Warnings     []Warning `json:"warnings,omitempty"`
+	DataStreamID  uuid.UUID `json:"data_stream_id"`
+	Code          string    `json:"code"`
+	Name          string    `json:"name"`
+	Unit          *string   `json:"unit,omitempty"`
+	Points        []Point   `json:"points"`
+	Warnings      []Warning `json:"warnings,omitempty"`
+	SourceCount   int       `json:"source_count"`
+	ReturnedCount int       `json:"returned_count"`
+	Sampled       bool      `json:"sampled"`
+	Complete      bool      `json:"complete"`
 }
 
 type Point struct {
@@ -87,17 +93,21 @@ func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, err
 	if err != nil {
 		return QueryResult{}, err
 	}
+	targetPoints, err := normalizeTargetPoints(input.TargetPoints, input.Adaptive, s.limits)
+	if err != nil {
+		return QueryResult{}, err
+	}
 	if err := validateTimeRange(input.StartTime, input.EndTime, s.limits); err != nil {
 		return QueryResult{}, err
 	}
 
 	if input.DataStreamID != nil {
-		return s.queryDataStream(ctx, *input.DataStreamID, input.DeviceID, input.StartTime, input.EndTime, limit)
+		return s.queryDataStream(ctx, *input.DataStreamID, input.DeviceID, input.StartTime, input.EndTime, limit, input.Adaptive, targetPoints)
 	}
-	return s.queryDevice(ctx, *input.DeviceID, input.StartTime, input.EndTime, limit)
+	return s.queryDevice(ctx, *input.DeviceID, input.StartTime, input.EndTime, limit, input.Adaptive, targetPoints)
 }
 
-func (s *Service) queryDevice(ctx context.Context, deviceID uuid.UUID, start time.Time, end time.Time, limit int) (QueryResult, error) {
+func (s *Service) queryDevice(ctx context.Context, deviceID uuid.UUID, start time.Time, end time.Time, limit int, adaptive bool, targetPoints int) (QueryResult, error) {
 	if deviceID == uuid.Nil {
 		return QueryResult{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
 	}
@@ -121,7 +131,7 @@ func (s *Service) queryDevice(ctx context.Context, deviceID uuid.UUID, start tim
 		if stream.Type != "telemetry" || stream.Status != "active" {
 			continue
 		}
-		series, err := s.querySeries(ctx, stream, start, end, limit)
+		series, err := s.querySeries(ctx, stream, start, end, limit, adaptive, targetPoints)
 		if err != nil {
 			return QueryResult{}, err
 		}
@@ -130,7 +140,7 @@ func (s *Service) queryDevice(ctx context.Context, deviceID uuid.UUID, start tim
 	return result, nil
 }
 
-func (s *Service) queryDataStream(ctx context.Context, dataStreamID uuid.UUID, deviceID *uuid.UUID, start time.Time, end time.Time, limit int) (QueryResult, error) {
+func (s *Service) queryDataStream(ctx context.Context, dataStreamID uuid.UUID, deviceID *uuid.UUID, start time.Time, end time.Time, limit int, adaptive bool, targetPoints int) (QueryResult, error) {
 	if dataStreamID == uuid.Nil {
 		return QueryResult{}, apperr.New(apperr.KindInvalidArgument, "data stream id is required")
 	}
@@ -148,7 +158,7 @@ func (s *Service) queryDataStream(ctx context.Context, dataStreamID uuid.UUID, d
 		return QueryResult{}, apperr.New(apperr.KindInvalidArgument, "data stream is not active")
 	}
 
-	series, err := s.querySeries(ctx, stream, start, end, limit)
+	series, err := s.querySeries(ctx, stream, start, end, limit, adaptive, targetPoints)
 	if err != nil {
 		return QueryResult{}, err
 	}
@@ -161,7 +171,7 @@ func (s *Service) queryDataStream(ctx context.Context, dataStreamID uuid.UUID, d
 	}, nil
 }
 
-func (s *Service) querySeries(ctx context.Context, stream sqlc.DataStream, start time.Time, end time.Time, limit int) (Series, error) {
+func (s *Service) querySeries(ctx context.Context, stream sqlc.DataStream, start time.Time, end time.Time, limit int, adaptive bool, targetPoints int) (Series, error) {
 	binding, err := s.dataSources.GetActiveDataStreamBinding(ctx, stream.ID)
 	if err != nil {
 		return Series{}, err
@@ -171,22 +181,32 @@ func (s *Service) querySeries(ctx context.Context, stream sqlc.DataStream, start
 		return Series{}, err
 	}
 	points, err := s.runtime.QueryTelemetry(ctx, source, datasource.TelemetryQuery{
-		Binding: binding,
-		Start:   start,
-		End:     end,
-		Limit:   limit,
+		Binding:      binding,
+		Start:        start,
+		End:          end,
+		Limit:        limit,
+		Adaptive:     adaptive,
+		TargetPoints: targetPoints,
 	})
 	if err != nil {
 		return Series{}, err
 	}
 
+	sourceCount := points.SourceCount
+	if sourceCount == 0 && len(points.Points) > 0 {
+		sourceCount = len(points.Points)
+	}
 	return Series{
-		DataStreamID: stream.ID,
-		Code:         stream.Code,
-		Name:         stream.Name,
-		Unit:         stream.Unit,
-		Points:       pointsFromDatasource(points.Points),
-		Warnings:     warningsFromDatasource(points.Warnings),
+		DataStreamID:  stream.ID,
+		Code:          stream.Code,
+		Name:          stream.Name,
+		Unit:          stream.Unit,
+		Points:        pointsFromDatasource(points.Points),
+		Warnings:      warningsFromDatasource(points.Warnings),
+		SourceCount:   sourceCount,
+		ReturnedCount: len(points.Points),
+		Sampled:       points.Sampled,
+		Complete:      points.Complete,
 	}, nil
 }
 
@@ -236,6 +256,23 @@ func normalizeLimit(limit int, limits config.QueryLimitsConfig) (int, error) {
 		return 0, apperr.New(apperr.KindInvalidArgument, "limit exceeds max_points")
 	}
 	return limit, nil
+}
+
+func normalizeTargetPoints(targetPoints int, adaptive bool, limits config.QueryLimitsConfig) (int, error) {
+	if !adaptive {
+		return 0, nil
+	}
+	limits = normalizeLimits(limits)
+	if targetPoints == 0 {
+		return 1000, nil
+	}
+	if targetPoints < 2 {
+		return 0, apperr.New(apperr.KindInvalidArgument, "target_points must be at least 2")
+	}
+	if targetPoints > limits.MaxPoints {
+		return 0, apperr.New(apperr.KindInvalidArgument, "target_points exceeds max_points")
+	}
+	return targetPoints, nil
 }
 
 func validateTimeRange(start time.Time, end time.Time, limits config.QueryLimitsConfig) error {

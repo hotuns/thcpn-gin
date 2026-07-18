@@ -37,6 +37,9 @@ export function AuthPage({ register = false }: { register?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [success, setSuccess] = useState(false);
+  const [initialPasswordToken, setInitialPasswordToken] = useState("");
+  const [initialPassword, setInitialPassword] = useState("");
+  const [initialPasswordConfirm, setInitialPasswordConfirm] = useState("");
   useEffect(() => {
     if (cooldown <= 0) return;
     const timer = window.setInterval(
@@ -50,6 +53,14 @@ export function AuthPage({ register = false }: { register?: boolean }) {
   );
   if (user) return <Navigate to={next ?? "/dashboard"} replace />;
   const finish = (result: Awaited<ReturnType<typeof api.auth.login>>) => {
+    if (result.password_change_required && result.password_change_token) {
+      setInitialPasswordToken(result.password_change_token);
+      setPassword("");
+      setInitialPasswordConfirm("");
+      setMessage("这是一次性临时密码，请先设置新密码。");
+      setSuccess(true);
+      return;
+    }
     signIn(result);
     if (next) navigate(next, { replace: true });
     else navigate("/dashboard", { replace: true });
@@ -58,6 +69,27 @@ export function AuthPage({ register = false }: { register?: boolean }) {
     event.preventDefault();
     setMessage("");
     setSuccess(false);
+    if (initialPasswordToken) {
+      if (!validPassword(initialPassword)) {
+        setMessage("密码需要 8-128 位，并同时包含字母和数字");
+        return;
+      }
+      if (initialPassword !== initialPasswordConfirm) {
+        setMessage("两次输入的密码不一致");
+        return;
+      }
+      setBusy(true);
+      try {
+        finish(await api.auth.completeInitialPassword({ password_change_token: initialPasswordToken, password: initialPassword }));
+        setInitialPasswordToken("");
+      } catch (error) {
+        const value = formatApiError(error);
+        setMessage(`${value.message}${value.requestId ? ` · request id ${value.requestId}` : ""}`);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     if (register && !phone.trim() && !email.trim()) {
       setMessage("请至少填写手机号或邮箱");
       return;
@@ -160,20 +192,24 @@ export function AuthPage({ register = false }: { register?: boolean }) {
       <section className="auth-form-side">
         <div className="auth-card">
           <div className="eyebrow">
-            {register
+            {initialPasswordToken
+              ? "FIRST PASSWORD"
+              : register
               ? "CREATE ACCESS"
               : mfaRequired
                 ? "SECOND FACTOR"
                 : "SECURE SIGN IN"}
           </div>
           <h2 className="auth-heading">
-            {register
+            {initialPasswordToken
+              ? "设置登录密码"
+              : register
               ? "创建访问身份"
               : mfaRequired
                 ? "完成双重验证"
                 : "欢迎回来"}
           </h2>
-          {!register && !mfaRequired && (
+          {!initialPasswordToken && !register && !mfaRequired && (
             <div className="auth-mode">
               <button
                 type="button"
@@ -192,6 +228,13 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             </div>
           )}
           <form className="form-grid" onSubmit={submit}>
+            {initialPasswordToken ? (
+              <>
+                <div className="command-note">临时密码只用于进入首次设置流程，设置完成后旧密码和旧会话都会失效。</div>
+                <label className="field"><span className="field-label">新密码</span><input autoFocus required minLength={8} maxLength={128} type="password" value={initialPassword} onChange={(event) => setInitialPassword(event.target.value)} /></label>
+                <label className="field"><span className="field-label">确认新密码</span><input required type="password" value={initialPasswordConfirm} onChange={(event) => setInitialPasswordConfirm(event.target.value)} /></label>
+              </>
+            ) : <>
             {register && (
               <label className="field">
                 <span className="field-label">姓名</span>
@@ -309,6 +352,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                 />
               </label>
             )}
+            </>}
             {message && (
               <div className={success ? "command-note" : "form-error"}>
                 {message}
@@ -319,7 +363,9 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                 ? "处理中…"
                 : mfaRequired
                   ? "验证并登录"
-                  : register
+                  : initialPasswordToken
+                    ? "保存新密码"
+                    : register
                     ? "创建账户"
                     : "登录控制台"}
               <ArrowRight size={15} />

@@ -177,6 +177,10 @@ func (s *Service) LookupActor(ctx context.Context, id uuid.UUID) (auth.Actor, er
 	if err != nil {
 		return auth.Actor{}, err
 	}
+	var authVersion int
+	if err := s.db.QueryRow(ctx, `SELECT auth_version FROM users WHERE id = $1`, id).Scan(&authVersion); err != nil {
+		return auth.Actor{}, apperr.Wrap(apperr.KindInternal, "get user auth version", err)
+	}
 	return auth.Actor{
 		UserID:          model.ID,
 		Name:            model.Name,
@@ -186,6 +190,7 @@ func (s *Service) LookupActor(ctx context.Context, id uuid.UUID) (auth.Actor, er
 		IsSystemAdmin:   false,
 		PhoneVerifiedAt: model.PhoneVerifiedAt,
 		EmailVerifiedAt: model.EmailVerifiedAt,
+		AuthVersion:     authVersion,
 	}, nil
 }
 

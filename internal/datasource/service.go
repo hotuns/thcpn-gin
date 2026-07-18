@@ -40,15 +40,20 @@ type Adapter interface {
 }
 
 type TelemetryQuery struct {
-	Binding DataStreamBinding
-	Start   time.Time
-	End     time.Time
-	Limit   int
+	Binding      DataStreamBinding
+	Start        time.Time
+	End          time.Time
+	Limit        int
+	Adaptive     bool
+	TargetPoints int
 }
 
 type TelemetryResult struct {
-	Points   []TelemetryPoint `json:"points"`
-	Warnings []QueryWarning   `json:"warnings,omitempty"`
+	Points      []TelemetryPoint `json:"points"`
+	Warnings    []QueryWarning   `json:"warnings,omitempty"`
+	SourceCount int              `json:"source_count"`
+	Sampled     bool             `json:"sampled"`
+	Complete    bool             `json:"complete"`
 }
 
 type TelemetryPoint struct {

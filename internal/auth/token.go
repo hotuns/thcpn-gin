@@ -25,12 +25,14 @@ type TokenPair struct {
 }
 
 type AccessTokenInfo struct {
-	UserID    uuid.UUID
-	ExpiresAt time.Time
+	UserID      uuid.UUID
+	AuthVersion int
+	ExpiresAt   time.Time
 }
 
 type accessClaims struct {
 	jwt.RegisteredClaims
+	AuthVersion int `json:"ver,omitempty"`
 }
 
 func NewTokenManager(secret string, ttl time.Duration) *TokenManager {
@@ -41,6 +43,10 @@ func NewTokenManager(secret string, ttl time.Duration) *TokenManager {
 }
 
 func (m *TokenManager) Generate(userID uuid.UUID) (TokenPair, error) {
+	return m.GenerateWithVersion(userID, 0)
+}
+
+func (m *TokenManager) GenerateWithVersion(userID uuid.UUID, authVersion int) (TokenPair, error) {
 	now := time.Now()
 	expiresAt := now.Add(m.ttl)
 
@@ -50,6 +56,7 @@ func (m *TokenManager) Generate(userID uuid.UUID) (TokenPair, error) {
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 		},
+		AuthVersion: authVersion,
 	})
 
 	signed, err := token.SignedString(m.secret)
@@ -99,7 +106,7 @@ func (m *TokenManager) ParseInfo(accessToken string) (AccessTokenInfo, error) {
 	if err != nil {
 		return AccessTokenInfo{}, err
 	}
-	return AccessTokenInfo{UserID: userID, ExpiresAt: claims.ExpiresAt.Time}, nil
+	return AccessTokenInfo{UserID: userID, AuthVersion: claims.AuthVersion, ExpiresAt: claims.ExpiresAt.Time}, nil
 }
 
 func NewRefreshToken() (string, error) {

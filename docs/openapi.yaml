@@ -24,7 +24,7 @@ tags:
   - name: Workspaces
     description: Workspace management APIs
   - name: Admin
-    description: System administrator APIs for platform-level device source operations
+    description: System administrator APIs for platform governance, users and device source operations
   - name: Members
     description: Workspace member management APIs
   - name: Permissions
@@ -549,6 +549,32 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/auth/password/complete-initial:
+    post:
+      tags:
+        - Auth
+      operationId: completeInitialPassword
+      summary: Complete the first password change
+      description: Consumes the one-time token returned after a temporary-password login and issues normal access and refresh tokens.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteInitialPasswordRequest"
+      responses:
+        "200":
+          description: Password changed and normal session issued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/Internal"
   /api/v1/auth/refresh:
     post:
       tags:
@@ -873,7 +899,16 @@ paths:
       description: Requires a valid administrator bearer token. This endpoint does not depend on workspace membership.
       security:
         - bearerAuth: []
-        - devUserHeader: []
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: type, in: query, schema: { $ref: "#/components/schemas/WorkspaceType" } }
+        - { name: organization_type, in: query, schema: { $ref: "#/components/schemas/OrganizationType" } }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/WorkspaceStatus" } }
+        - { name: risk, in: query, schema: { type: string, enum: [owner_unavailable, workspace_disabled, pending_invitations, recent_failures] } }
+        - { name: sort, in: query, schema: { type: string, enum: [name, members, recent_activity, created_at] } }
+        - { name: order, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: page_size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
       responses:
         "200":
           description: All workspaces visible to system administrators.
@@ -887,6 +922,174 @@ paths:
           $ref: "#/components/responses/PermissionDenied"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/admin/workspaces/{workspace_id}:
+    parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema: { $ref: "#/components/schemas/UUID" }
+    get:
+      tags: [Admin]
+      operationId: adminGetWorkspaceGovernance
+      summary: Get Workspace governance details
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Workspace governance details.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspaceGovernance" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/admin/workspaces/{workspace_id}/interventions:
+    parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema: { $ref: "#/components/schemas/UUID" }
+    post:
+      tags: [Admin]
+      operationId: adminStartWorkspaceIntervention
+      summary: Start a time-limited administrator intervention
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StartWorkspaceInterventionRequest" }
+      responses:
+        "201":
+          description: Intervention started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspaceIntervention" }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/admin/workspaces/{workspace_id}/interventions/{intervention_id}:
+    parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema: { $ref: "#/components/schemas/UUID" }
+      - name: intervention_id
+        in: path
+        required: true
+        schema: { $ref: "#/components/schemas/UUID" }
+    delete:
+      tags: [Admin]
+      operationId: adminEndWorkspaceIntervention
+      summary: End an administrator intervention
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: Intervention ended. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/admin/workspaces/{workspace_id}/status:
+    parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema: { $ref: "#/components/schemas/UUID" }
+      - $ref: "#/components/parameters/AdminInterventionID"
+    patch:
+      tags: [Admin]
+      operationId: adminUpdateWorkspaceStatus
+      summary: Enable or disable a Workspace during intervention
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, confirm_text]
+              properties:
+                status: { $ref: "#/components/schemas/WorkspaceStatus" }
+                confirm_text: { type: string, enum: [确认] }
+      responses:
+        "200":
+          description: Workspace updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspaceGovernance" }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/admin/workspaces/{workspace_id}/transfer-owner:
+    parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema: { $ref: "#/components/schemas/UUID" }
+      - $ref: "#/components/parameters/AdminInterventionID"
+    post:
+      tags: [Admin]
+      operationId: adminTransferWorkspaceOwner
+      summary: Transfer the Owner of an organization Workspace
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [owner_user_id, confirm_text]
+              properties:
+                owner_user_id: { $ref: "#/components/schemas/UUID" }
+                confirm_text: { type: string, enum: [转移 Owner] }
+      responses:
+        "200":
+          description: Owner transferred.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspaceGovernance" }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/admin/permissions/catalog:
+    get:
+      tags: [Admin]
+      operationId: adminPermissionCatalog
+      summary: List permission templates for governance diagnosis
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Permission catalog. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/admin/audit-logs:
+    get:
+      tags: [Admin, AuditLogs]
+      operationId: adminListWorkspaceAuditLogs
+      summary: List filtered Workspace audit records for governance
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: workspace_id, in: query, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: page_size, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: resource_type, in: query, schema: { type: string } }
+        - { name: result, in: query, schema: { $ref: "#/components/schemas/AuditResult" } }
+        - { name: actor_type, in: query, schema: { $ref: "#/components/schemas/AuditActorType" } }
+        - { name: start, in: query, schema: { $ref: "#/components/schemas/Timestamp" } }
+        - { name: end, in: query, schema: { $ref: "#/components/schemas/Timestamp" } }
+      responses:
+        "200":
+          description: Filtered audit records.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditLogListResponse" }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/Internal" }
   /api/v1/admin/projects:
     get:
       tags:
@@ -1439,6 +1642,136 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/devices/{device_id}/attributes/latest:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags:
+        - Admin
+      operationId: adminGetLatestTHCPNDeviceAttributes
+      summary: Get latest THCPN device attributes
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Latest battery, signal, and ext_info values.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/THCPNLatestAttributesResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/devices/{device_id}/logs:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags:
+        - Admin
+      operationId: adminListTHCPNDeviceLogs
+      summary: List THCPN device logs
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: keyword
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Device log metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/THCPNDeviceLogListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/devices/{device_id}/logs/{log_uuid}/preview:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+      - name: log_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Admin
+      operationId: adminPreviewTHCPNDeviceLog
+      summary: Preview a THCPN device log
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Short-lived preview URL and detected preview type.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/THCPNDeviceLogAccessResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/devices/{device_id}/logs/{log_uuid}/download:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+      - name: log_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Admin
+      operationId: adminDownloadTHCPNDeviceLog
+      summary: Download a THCPN device log
+      security:
+        - bearerAuth: []
+      responses:
+        "307":
+          description: Redirect to a short-lived signed OSS URL.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/Internal"
   /api/v1/admin/devices/{device_id}/children:
@@ -2671,6 +3004,31 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/devices/{device_id}/attributes/latest:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags:
+        - Devices
+      operationId: getLatestTHCPNDeviceAttributes
+      summary: Get latest THCPN device attributes
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Latest battery, signal, and ext_info values.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/THCPNLatestAttributesResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
   /api/v1/devices/{device_id}/telemetry:
     parameters:
       - $ref: "#/components/parameters/DeviceID"
@@ -2699,11 +3057,28 @@ paths:
         - name: limit
           in: query
           required: false
+          description: Maximum raw points returned per series before adaptive sampling is used.
           schema:
             type: integer
             minimum: 1
             maximum: 5000
             default: 5000
+        - name: adaptive
+          in: query
+          required: false
+          description: Scan the complete time range and return raw points when within the limit, otherwise return time-bucket extrema.
+          schema:
+            type: boolean
+            default: false
+        - name: target_points
+          in: query
+          required: false
+          description: Approximate maximum chart points per series in adaptive mode.
+          schema:
+            type: integer
+            minimum: 2
+            maximum: 5000
+            default: 1000
       responses:
         "200":
           description: Telemetry series for active telemetry data streams on the device.
@@ -2962,11 +3337,28 @@ paths:
         - name: limit
           in: query
           required: false
+          description: Maximum raw points returned before adaptive sampling is used.
           schema:
             type: integer
             minimum: 1
             maximum: 5000
             default: 5000
+        - name: adaptive
+          in: query
+          required: false
+          description: Scan the complete time range and return raw points when within the limit, otherwise return time-bucket extrema.
+          schema:
+            type: boolean
+            default: false
+        - name: target_points
+          in: query
+          required: false
+          description: Approximate maximum chart points in adaptive mode.
+          schema:
+            type: integer
+            minimum: 2
+            maximum: 5000
+            default: 1000
       responses:
         "200":
           description: Telemetry points for the data stream.
@@ -3858,6 +4250,238 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/admin/users:
+    get:
+      tags:
+        - Admin
+      security:
+        - bearerAuth: []
+      operationId: adminListUsers
+      summary: List platform users
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [active, disabled] } }
+        - { name: verification, in: query, schema: { type: string, enum: [verified, unverified] } }
+        - { name: mfa, in: query, schema: { type: string, enum: [enabled, disabled] } }
+        - { name: locked, in: query, schema: { type: string, enum: [locked, unlocked] } }
+        - { name: login_status, in: query, schema: { type: string, enum: [never, active] } }
+        - { name: sort, in: query, schema: { type: string } }
+        - { name: order, in: query, schema: { type: string, enum: [asc, desc] } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: page_size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200":
+          description: User list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserListResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      operationId: adminCreateUser
+      summary: Create a platform user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCreateUserRequest"
+      responses:
+        "201":
+          description: User and one-time temporary password.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTemporaryPasswordResponse"
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/v1/admin/users/{user_id}:
+    parameters:
+      - { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+    get:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      operationId: adminGetUser
+      summary: Get platform user details
+      responses:
+        "200":
+          description: User details.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUserDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      operationId: adminUpdateUser
+      summary: Update user profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminUpdateUserRequest" }
+      responses:
+        "200":
+          description: Updated user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUserDetail" }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      operationId: adminDeleteUser
+      summary: Delete a user when no business blockers exist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminReasonRequest" }
+      responses:
+        "204": { description: User deleted. }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/v1/admin/users/{user_id}/status:
+    patch:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      operationId: adminUpdateUserStatus
+      summary: Enable or disable a user
+      parameters:
+        - { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminUserStatusRequest" }
+      responses:
+        "204": { description: Status updated. }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+  /api/v1/admin/users/{user_id}/sessions/revoke-all:
+    post:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      operationId: adminRevokeUserSessions
+      summary: Revoke all user sessions
+      parameters:
+        - { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminReasonRequest" }
+      responses:
+        "204": { description: Sessions revoked. }
+  /api/v1/admin/users/{user_id}/unlock:
+    post:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      operationId: adminUnlockUser
+      summary: Unlock a user account
+      parameters:
+        - { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminReasonRequest" }
+      responses:
+        "204": { description: Account unlocked. }
+  /api/v1/admin/users/{user_id}/mfa:
+    delete:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      operationId: adminResetUserMFA
+      summary: Reset user MFA
+      parameters:
+        - { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminReasonRequest" }
+      responses:
+        "204": { description: MFA reset. }
+  /api/v1/admin/users/{user_id}/temporary-password:
+    post:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      operationId: adminGenerateTemporaryPassword
+      summary: Generate a one-time temporary password
+      parameters:
+        - { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminReasonRequest" }
+      responses:
+        "200":
+          description: Temporary password, shown once.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminTemporaryPasswordOnlyResponse" }
+  /api/v1/admin/users/{user_id}/deletion-check:
+    get:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      operationId: adminCheckUserDeletion
+      summary: Check user deletion blockers
+      parameters:
+        - { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+      responses:
+        "200":
+          description: Deletion blockers.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminDeletionCheck" }
+  /api/v1/admin/users/{user_id}/workspaces:
+    get:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      operationId: adminListUserWorkspaces
+      summary: List user Workspace relations
+      parameters:
+        - { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+      responses:
+        "200":
+          description: Workspace relations.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUserWorkspaceListResponse" }
+  /api/v1/admin/users/{user_id}/sessions:
+    get:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      operationId: adminListUserSessions
+      summary: List active user sessions
+      parameters:
+        - { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+      responses:
+        "200":
+          description: Active sessions.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUserSessionListResponse" }
+  /api/v1/admin/users/{user_id}/activity:
+    get:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      operationId: adminListUserActivity
+      summary: List user activity and admin operations
+      parameters:
+        - { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: page_size, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        "200":
+          description: User activity.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUserActivityListResponse" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -3871,6 +4495,14 @@ components:
       name: X-User-ID
       description: Development-only fallback authentication. Production should disable it.
   parameters:
+    AdminInterventionID:
+      name: X-Admin-Intervention-ID
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Active intervention owned by the current system administrator for the target Workspace.
     WorkspaceID:
       name: workspace_id
       in: path
@@ -4579,6 +5211,186 @@ components:
           type: string
           pattern: ^[0-9]{6}$
           example: "123456"
+    CompleteInitialPasswordRequest:
+      type: object
+      required:
+        - password_change_token
+        - password
+      properties:
+        password_change_token:
+          type: string
+          description: One-time short-lived token returned after temporary-password login.
+        password:
+          type: string
+          format: password
+    AdminReasonRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          minLength: 5
+        confirm_text:
+          type: string
+    AdminUserStatusRequest:
+      allOf:
+        - $ref: "#/components/schemas/AdminReasonRequest"
+        - type: object
+          required: [status]
+          properties:
+            status:
+              type: string
+              enum: [active, disabled]
+    AdminCreateUserRequest:
+      type: object
+      required: [name, reason]
+      properties:
+        name: { type: string }
+        email: { $ref: "#/components/schemas/Email" }
+        phone: { $ref: "#/components/schemas/Phone" }
+        reason: { type: string, minLength: 5 }
+    AdminUpdateUserRequest:
+      allOf:
+        - $ref: "#/components/schemas/AdminReasonRequest"
+        - type: object
+          required: [name]
+          properties:
+            name: { type: string }
+            email: { $ref: "#/components/schemas/Email" }
+            phone: { $ref: "#/components/schemas/Phone" }
+    AdminUserSummary:
+      type: object
+      required: [id, name, status, workspace_count, owned_workspace_count, active_session_count, mfa_enabled, locked, failed_attempts, must_change_password, created_at, updated_at]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        name: { type: string }
+        phone: { $ref: "#/components/schemas/Phone" }
+        email: { $ref: "#/components/schemas/Email" }
+        status: { $ref: "#/components/schemas/UserStatus" }
+        phone_verified_at: { $ref: "#/components/schemas/Timestamp" }
+        email_verified_at: { $ref: "#/components/schemas/Timestamp" }
+        last_login_at: { $ref: "#/components/schemas/Timestamp" }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+        workspace_count: { type: integer, format: int64 }
+        owned_workspace_count: { type: integer, format: int64 }
+        active_session_count: { type: integer, format: int64 }
+        mfa_enabled: { type: boolean }
+        locked: { type: boolean }
+        locked_until: { $ref: "#/components/schemas/Timestamp" }
+        failed_attempts: { type: integer }
+        must_change_password: { type: boolean }
+    AdminUserDetail:
+      allOf:
+        - $ref: "#/components/schemas/AdminUserSummary"
+        - type: object
+          required: [auth_version]
+          properties:
+            auth_version: { type: integer }
+    AdminUserListResponse:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/AdminUserSummary" } }
+        total: { type: integer, format: int64 }
+        page: { type: integer }
+        page_size: { type: integer }
+    AdminTemporaryPasswordResponse:
+      type: object
+      required: [user, temporary_password]
+      properties:
+        user: { $ref: "#/components/schemas/AdminUserDetail" }
+        temporary_password: { type: string, description: Returned only once. Never stored or logged in plaintext. }
+    AdminTemporaryPasswordOnlyResponse:
+      type: object
+      required: [temporary_password]
+      properties:
+        temporary_password: { type: string, description: Returned only once. }
+    AdminUserWorkspace:
+      type: object
+      required: [id, name, type, status, owner, role_code, role_name, joined_at]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        name: { type: string }
+        type: { type: string, enum: [personal, organization] }
+        status: { type: string }
+        owner: { type: boolean }
+        role_code: { type: string }
+        role_name: { type: string }
+        joined_at: { $ref: "#/components/schemas/Timestamp" }
+    AdminUserWorkspaceListResponse:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/AdminUserWorkspace" } }
+    AdminUserSession:
+      type: object
+      required: [id, expires_at, created_at]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        user_agent: { type: string }
+        client_ip: { type: string }
+        expires_at: { $ref: "#/components/schemas/Timestamp" }
+        last_used_at: { $ref: "#/components/schemas/Timestamp" }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+    AdminUserSessionListResponse:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/AdminUserSession" } }
+    AdminUserActivity:
+      type: object
+      required: [id, actor_type, action, resource_type, result, created_at]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        actor_type: { type: string }
+        actor_name: { type: string }
+        action: { type: string }
+        resource_type: { type: string }
+        resource_id: { $ref: "#/components/schemas/UUID" }
+        result: { type: string, enum: [success, failure] }
+        reason: { type: string }
+        request_id: { type: string }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+    AdminUserActivityListResponse:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/AdminUserActivity" } }
+        total: { type: integer, format: int64 }
+        page: { type: integer }
+        page_size: { type: integer }
+    AdminDeletionCheck:
+      type: object
+      required: [can_delete, blockers, personal_workspaces_to_clean]
+      properties:
+        can_delete: { type: boolean }
+        blockers:
+          type: array
+          items:
+            type: object
+            required: [code, label, count]
+            properties:
+              code: { type: string }
+              label: { type: string }
+              count: { type: integer, format: int64 }
+              resources:
+                type: array
+                items:
+                  type: object
+                  required: [id, name, type]
+                  properties:
+                    id: { $ref: "#/components/schemas/UUID" }
+                    name: { type: string }
+                    type: { type: string }
+        personal_workspaces_to_clean:
+          type: array
+          items:
+            type: object
+            required: [id, name]
+            properties:
+              id: { $ref: "#/components/schemas/UUID" }
+              name: { type: string }
     LoginResponse:
       type: object
       required:
@@ -4612,6 +5424,15 @@ components:
         created:
           type: boolean
           description: True when the request created a new user.
+        password_change_required:
+          type: boolean
+          description: True when the login only returned a short-lived password-change token.
+        password_change_token:
+          type: string
+          description: One-time token used by complete-initial password endpoint.
+        password_change_expires_in:
+          type: integer
+          format: int64
     AuthSession:
       type: object
       required:
@@ -4885,11 +5706,81 @@ components:
       type: object
       required:
         - items
+        - total
+        - page
+        - page_size
       properties:
         items:
           type: array
           items:
-            $ref: "#/components/schemas/Workspace"
+            $ref: "#/components/schemas/WorkspaceGovernance"
+        total: { type: integer, format: int64 }
+        page: { type: integer }
+        page_size: { type: integer }
+    WorkspaceGovernanceOwner:
+      type: object
+      required: [id, name, status]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        name: { type: string }
+        email: { $ref: "#/components/schemas/Email" }
+        phone: { $ref: "#/components/schemas/Phone" }
+        status: { $ref: "#/components/schemas/UserStatus" }
+    WorkspaceGovernanceCounts:
+      type: object
+      required: [members, projects, sites, devices, direct_shares, pending_invitations]
+      properties:
+        members: { type: integer, format: int64 }
+        projects: { type: integer, format: int64 }
+        sites: { type: integer, format: int64 }
+        devices: { type: integer, format: int64 }
+        direct_shares: { type: integer, format: int64 }
+        pending_invitations: { type: integer, format: int64 }
+    WorkspaceGovernanceRisk:
+      type: object
+      required: [code, label]
+      properties:
+        code:
+          type: string
+          enum: [owner_unavailable, workspace_disabled, pending_invitations, recent_failures]
+        label: { type: string }
+        count: { type: integer, format: int64 }
+    WorkspaceGovernance:
+      allOf:
+        - $ref: "#/components/schemas/Workspace"
+        - type: object
+          required: [owner, counts, risks]
+          properties:
+            owner: { $ref: "#/components/schemas/WorkspaceGovernanceOwner" }
+            counts: { $ref: "#/components/schemas/WorkspaceGovernanceCounts" }
+            last_activity_at: { $ref: "#/components/schemas/Timestamp" }
+            risks:
+              type: array
+              items: { $ref: "#/components/schemas/WorkspaceGovernanceRisk" }
+    StartWorkspaceInterventionRequest:
+      type: object
+      required: [reason, duration_minutes]
+      properties:
+        reason:
+          type: string
+          minLength: 5
+          maxLength: 300
+        duration_minutes:
+          type: integer
+          enum: [15, 30, 60]
+    WorkspaceIntervention:
+      type: object
+      required: [id, workspace_id, admin_id, admin_name, reason, expires_at, created_at, remaining_seconds]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        workspace_id: { $ref: "#/components/schemas/UUID" }
+        admin_id: { $ref: "#/components/schemas/UUID" }
+        admin_name: { type: string }
+        reason: { type: string }
+        expires_at: { $ref: "#/components/schemas/Timestamp" }
+        ended_at: { $ref: "#/components/schemas/Timestamp" }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+        remaining_seconds: { type: integer, format: int64 }
     CreateWorkspaceRequest:
       type: object
       required:
@@ -6552,6 +7443,10 @@ components:
         - code
         - name
         - points
+        - source_count
+        - returned_count
+        - sampled
+        - complete
       properties:
         data_stream_id:
           $ref: "#/components/schemas/UUID"
@@ -6569,6 +7464,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/QueryWarning"
+        source_count:
+          type: integer
+          format: int32
+          description: Number of valid source points found in the requested time range when known.
+        returned_count:
+          type: integer
+          format: int32
+          description: Number of points included in this response.
+        sampled:
+          type: boolean
+          description: Whether the returned points were reduced for chart rendering.
+        complete:
+          type: boolean
+          description: Whether the full requested time range was scanned.
     TelemetryQueryResponse:
       type: object
       required:
@@ -7158,10 +8067,114 @@ components:
           $ref: "#/components/schemas/UUID"
         expires_at:
           $ref: "#/components/schemas/Timestamp"
+    THCPNAttributeValue:
+      type: object
+      required:
+        - raw_value
+        - sampled_at
+        - source_table
+      properties:
+        raw_value:
+          type: string
+        parsed_value:
+          description: Numeric value or parsed ext_info JSON when available.
+        sampled_at:
+          $ref: "#/components/schemas/Timestamp"
+        source_table:
+          type: string
+    THCPNLatestAttributesResponse:
+      type: object
+      required:
+        - device_id
+        - external_device_id
+        - attributes
+        - refreshed_at
+      properties:
+        device_id:
+          $ref: "#/components/schemas/UUID"
+        external_device_id:
+          type: integer
+          format: int64
+        attributes:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/THCPNAttributeValue"
+        refreshed_at:
+          $ref: "#/components/schemas/Timestamp"
+    THCPNDeviceLog:
+      type: object
+      required:
+        - id
+        - uuid
+        - path
+        - file_name
+        - date
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        uuid:
+          type: string
+        path:
+          type: string
+        file_name:
+          type: string
+        date:
+          type: string
+          format: date
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    THCPNDeviceLogListResponse:
+      type: object
+      required:
+        - items
+        - total
+        - page
+        - page_size
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/THCPNDeviceLog"
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+    THCPNDeviceLogAccessResponse:
+      type: object
+      required:
+        - log
+        - preview_kind
+        - url
+        - expires_at
+      properties:
+        log:
+          $ref: "#/components/schemas/THCPNDeviceLog"
+        preview_kind:
+          type: string
+          enum:
+            - text
+            - image
+            - pdf
+            - download
+        url:
+          type: string
+          format: uri
+        content:
+          type: string
+          description: Text log content returned for text previews so the admin client does not depend on browser inline rendering.
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
     AuditActorType:
       type: string
       enum:
         - user
+        - system_admin
         - service_account
         - system
         - anonymous
@@ -7188,6 +8201,10 @@ components:
           $ref: "#/components/schemas/AuditActorType"
         actor_id:
           $ref: "#/components/schemas/UUID"
+        actor_admin_id:
+          $ref: "#/components/schemas/UUID"
+        actor_name:
+          type: string
         action:
           type: string
           examples:
@@ -7221,8 +8238,14 @@ components:
       type: object
       required:
         - items
+        - total
+        - page
+        - page_size
       properties:
         items:
           type: array
           items:
             $ref: "#/components/schemas/AuditLog"
+        total: { type: integer, format: int64 }
+        page: { type: integer }
+        page_size: { type: integer }

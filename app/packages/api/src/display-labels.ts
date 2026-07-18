@@ -52,6 +52,20 @@ const roleTemplateLabels: Record<string, string> = {
   custom: "自定义权限",
 };
 
+const roleTemplateDefaultNames: Record<string, string> = {
+  owner: "Owner",
+  admin: "Admin",
+  project_manager: "Project Manager",
+  site_operator: "Site Operator",
+  data_manager: "Data Manager",
+  researcher: "Researcher",
+  viewer: "Viewer",
+  shared_viewer: "Shared Viewer",
+  shared_downloader: "Shared Downloader",
+  service_engineer: "Service Engineer",
+  custom: "Custom",
+};
+
 const commonStatusLabels: Record<string, string> = {
   active: "有效",
   disabled: "停用",
@@ -87,8 +101,14 @@ export const deviceTopologyRoleLabel = (value?: string) =>
 export const deviceCapabilityLabel = (value?: string) =>
   label(deviceCapabilityLabels, value, "扩展能力");
 
-export const roleTemplateLabel = (code?: string, fallbackName?: string) =>
-  label(roleTemplateLabels, code, fallbackName);
+export const roleTemplateLabel = (code?: string, fallbackName?: string) => {
+  const name = fallbackName?.trim();
+  const defaultName = code ? roleTemplateDefaultNames[code] : undefined;
+  if (name && (!defaultName || name.toLowerCase() !== defaultName.toLowerCase())) {
+    return name;
+  }
+  return label(roleTemplateLabels, code, name);
+};
 
 export const commonStatusLabel = (value?: string) =>
   label(commonStatusLabels, value);

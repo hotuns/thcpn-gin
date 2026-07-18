@@ -1,135 +1,278 @@
-// Ant Design's table render callbacks are intentionally dynamic because the admin API returns extensible JSON records.
+// Governance records contain extensible permission and resource metadata.
 // @ts-nocheck
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   Alert,
+  App as AntApp,
   Button,
   Card,
+  Descriptions,
   Drawer,
   Form,
   Input,
   InputNumber,
+  Modal,
   Popconfirm,
+  Segmented,
   Select,
   Space,
   Table,
   Tabs,
   Tag,
+  Tooltip,
 } from "@thcpn/admin-ui";
-import {
-  api,
-  formatApiError,
-  type JsonRecord,
-  type WorkspaceMember,
-} from "@thcpn/api";
+import { api, formatApiError, type JsonRecord } from "@thcpn/api";
 import { Badge, PageHeader, Panel, StateView } from "@thcpn/ui";
 import {
-  BookOpen,
-  FolderKanban,
-  KeyRound,
-  Plus,
+  ArrowLeft,
+  Copy,
+  Edit3,
+  ExternalLink,
   RefreshCw,
   Search,
+  ShieldAlert,
   ShieldCheck,
-  UserRound,
-  Users,
+  UserPlus,
 } from "lucide-react";
 
-const text = (value: unknown, fallback = "—") =>
-  value === undefined || value === null || value === "" ? fallback : String(value);
-const time = (value: unknown) =>
-  value
-    ? new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(String(value)))
-    : "—";
-const workspaceType = (value: unknown) =>
-  ({ personal: "个人", organization: "组织" })[String(value)] ?? text(value);
-const statusLabel = (value: unknown) =>
-  ({ active: "启用", disabled: "停用", archived: "已归档", removed: "已移除", pending: "待处理", revoked: "已撤销", expired: "已过期" })[String(value)] ?? text(value);
+const text = (value: unknown, fallback = "—") => value === undefined || value === null || value === "" ? fallback : String(value);
+const shortId = (value: unknown) => text(value).slice(0, 8);
+const time = (value: unknown) => value ? new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(String(value))) : "—";
+const statusLabel = (value: unknown) => ({ active: "启用", disabled: "停用", archived: "已归档", removed: "已移除", pending: "待处理", revoked: "已撤销", expired: "已过期", success: "成功", failure: "失败" })[String(value)] ?? text(value);
+const typeLabel = (value: unknown) => ({ personal: "个人", organization: "组织" })[String(value)] ?? text(value);
+const orgLabel = (value: unknown) => ({ lab: "实验室", institution: "机构", company: "企业", government: "政府", service_provider: "服务商", other: "其他" })[String(value)] ?? text(value);
+const scopeLabel = (value: unknown) => ({ workspace: "Workspace", project: "项目", site: "站点", device: "设备", dataset: "数据集" })[String(value)] ?? text(value);
+const actionLabel = (value: unknown) => ({ "workspace.intervention.start": "开启管理员介入", "workspace.intervention.end": "结束管理员介入", "workspace.status.update": "修改 Workspace 状态", "workspace.owner.transfer": "转移 Owner", "member.add": "添加成员", "member.role_update": "调整成员权限", "member.remove": "移除成员", "project.update": "修改项目", "site.update": "修改站点", "access_grant.revoke": "撤销共享", "invitation.revoke": "撤销邀请" })[String(value)] ?? text(value);
 
 function ErrorState({ error, title }: { error: unknown; title: string }) {
   const detail = formatApiError(error);
   return <StateView type="error" title={title} description={detail.message} requestId={detail.requestId} />;
 }
 
-type WorkspaceRow = JsonRecord & { id: string; name: string };
+function CopyID({ value }: { value: string }) {
+  const { message } = AntApp.useApp();
+  return <Tooltip title="复制 ID"><Button type="text" size="small" icon={<Copy size={13} />} onClick={() => { void navigator.clipboard.writeText(value); void message.success("ID 已复制"); }} /></Tooltip>;
+}
+
+function riskTags(risks: JsonRecord[] = []) {
+  if (!risks.length) return <Tag color="green">无风险</Tag>;
+  return <Space size={[4, 4]} wrap>{risks.map((risk) => <Tag key={text(risk.code)} color={risk.code === "workspace_disabled" || risk.code === "owner_unavailable" ? "red" : "gold"}>{text(risk.label)}{risk.count ? ` ${risk.count}` : ""}</Tag>)}</Space>;
+}
 
 export function AdminWorkspacesPage() {
-  const query = useQuery({ queryKey: ["admin", "workspaces"], queryFn: api.workspaces.adminList });
-  const [keyword, setKeyword] = useState("");
-  const [selectedId, setSelectedId] = useState<string>();
-  const rows = useMemo(() => (query.data?.items ?? []).filter((item) => `${text(item.name)} ${text(item.id)}`.toLowerCase().includes(keyword.toLowerCase())), [keyword, query.data]);
-  const selected = rows.find((item) => String(item.id) === selectedId) ?? rows[0];
-  return (
-    <>
-      <PageHeader eyebrow="System / resources" title="Workspace 与权限" description="先选择目标 Workspace，再管理成员、项目、站点、共享授权和审计记录。后台操作始终显式携带 Workspace。" actions={<Space><Badge tone="info"><ShieldCheck size={13} />系统范围</Badge><Button icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>刷新</Button></Space>} />
-      <Panel>
-        <div className="admin-list-toolbar">
-          <div className="admin-search"><Search size={15} /><input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索 Workspace 名称或 ID" /></div>
-          <Badge tone="info">{rows.length} 个 Workspace</Badge>
-        </div>
-        {query.isLoading ? <StateView type="loading" title="正在加载 Workspace" description="正在读取平台范围内的 Workspace。" /> : query.error ? <ErrorState error={query.error} title="Workspace 加载失败" /> : !rows.length ? <StateView type="empty" title="暂无 Workspace" description="当前系统没有可管理的 Workspace。" /> : <Table rowKey="id" dataSource={rows as any} rowClassName={(record) => String(record.id) === String(selected?.id) ? "admin-selected-row" : ""} onRow={(record) => ({ onClick: () => setSelectedId(String(record.id)) })} columns={[{ title: "Workspace", dataIndex: "name", render: (_, record) => <div><div className="cell-title">{text(record.name)}</div><div className="cell-sub mono">{text(record.id)}</div></div> }, { title: "类型", dataIndex: "type", width: 100, render: workspaceType }, { title: "组织类型", dataIndex: "organization_type", width: 130, render: text }, { title: "状态", dataIndex: "status", width: 100, render: (value) => <Tag color={value === "active" ? "green" : "default"}>{statusLabel(value)}</Tag> }, { title: "创建时间", dataIndex: "created_at", width: 180, render: time }, { title: "操作", width: 100, render: (_, record) => <Button type="link" onClick={() => setSelectedId(String(record.id))}>管理</Button> }] as any} pagination={{ pageSize: 10, showSizeChanger: false }} scroll={{ x: 760 }} />}
-      </Panel>
-      {selected ? <WorkspaceControl workspace={selected as WorkspaceRow} /> : null}
-    </>
-  );
+  const [params, setParams] = useSearchParams();
+  const [keyword, setKeyword] = useState(params.get("q") ?? "");
+  const filters = {
+    q: params.get("q") ?? undefined,
+    type: params.get("type") ?? undefined,
+    organization_type: params.get("organization_type") ?? undefined,
+    status: params.get("status") ?? undefined,
+    risk: params.get("risk") ?? undefined,
+    sort: params.get("sort") ?? "recent_activity",
+    order: params.get("order") ?? "desc",
+    page: Number(params.get("page") ?? 1),
+    page_size: Number(params.get("page_size") ?? 20),
+  };
+  const query = useQuery({ queryKey: ["admin", "workspaces", filters], queryFn: () => api.admin.workspaces.list(filters), placeholderData: (previous) => previous });
+  const update = (values: Record<string, unknown>) => {
+    const next = new URLSearchParams(params);
+    Object.entries(values).forEach(([key, value]) => value === undefined || value === "" ? next.delete(key) : next.set(key, String(value)));
+    if (!("page" in values)) next.set("page", "1");
+    setParams(next, { replace: true });
+  };
+  const listSearch = params.toString();
+  return <Panel className="governance-list">
+    <div className="governance-toolbar">
+      <Input value={keyword} prefix={<Search size={15} />} allowClear placeholder="搜索名称、Owner 或 Workspace ID" onChange={(event) => setKeyword(event.target.value)} onPressEnter={() => update({ q: keyword })} />
+      <Select allowClear value={filters.type} placeholder="全部类型" options={[{ value: "personal", label: "个人" }, { value: "organization", label: "组织" }]} onChange={(value) => update({ type: value })} />
+      <Select allowClear value={filters.organization_type} placeholder="全部组织类型" options={["lab", "institution", "company", "government", "service_provider", "other"].map((value) => ({ value, label: orgLabel(value) }))} onChange={(value) => update({ organization_type: value })} />
+      <Select allowClear value={filters.status} placeholder="全部状态" options={[{ value: "active", label: "启用" }, { value: "disabled", label: "停用" }]} onChange={(value) => update({ status: value })} />
+      <Select allowClear value={filters.risk} placeholder="全部风险" options={[{ value: "owner_unavailable", label: "Owner 异常" }, { value: "workspace_disabled", label: "Workspace 停用" }, { value: "pending_invitations", label: "待处理邀请" }, { value: "recent_failures", label: "近期失败操作" }]} onChange={(value) => update({ risk: value })} />
+      <Button icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>刷新</Button>
+    </div>
+    {query.isLoading ? <StateView type="loading" title="正在加载 Workspace" description="正在汇总治理信息。" /> : query.error ? <ErrorState error={query.error} title="Workspace 加载失败" /> : <Table rowKey="id" dataSource={query.data?.items ?? []} scroll={{ x: 1120 }} pagination={{ current: filters.page, pageSize: filters.page_size, total: query.data?.total ?? 0, showSizeChanger: true, showTotal: (total) => `共 ${total} 个`, onChange: (page, pageSize) => update({ page, page_size: pageSize }) }} onChange={(_, __, sorter) => update({ sort: sorter.field ?? "recent_activity", order: sorter.order === "ascend" ? "asc" : "desc", page: 1 })} columns={[
+      { title: "Workspace", dataIndex: "name", width: 270, sorter: true, render: (_, item) => <div><Link className="governance-primary-link" to={`/admin/workspaces/${item.id}?tab=overview&from=${encodeURIComponent(listSearch)}`}>{text(item.name)}</Link><div className="cell-sub mono">{text(item.id)}</div></div> },
+      { title: "Owner", dataIndex: ["owner", "name"], width: 190, render: (_, item) => <div><div className="cell-title">{text(item.owner?.name)}</div><div className="cell-sub">{text(item.owner?.email, text(item.owner?.phone))}</div></div> },
+      { title: "类型", dataIndex: "type", width: 90, render: (value, item) => <div>{typeLabel(value)}<div className="cell-sub">{value === "organization" ? orgLabel(item.organization_type) : ""}</div></div> },
+      { title: "成员", dataIndex: ["counts", "members"], width: 88, sorter: true },
+      { title: "资源", width: 160, render: (_, item) => <span>{item.counts?.projects ?? 0} 项目 / {item.counts?.sites ?? 0} 站点<br/><span className="cell-sub">{item.counts?.devices ?? 0} 台设备</span></span> },
+      { title: "直接共享", dataIndex: ["counts", "direct_shares"], width: 104 },
+      { title: "状态", dataIndex: "status", width: 82, render: (value) => <Tag color={value === "active" ? "green" : "red"}>{statusLabel(value)}</Tag> },
+      { title: "风险", dataIndex: "risks", width: 210, render: riskTags },
+      { title: "最近活动", dataIndex: "last_activity_at", width: 170, sorter: true, render: time },
+    ]} />}
+  </Panel>;
 }
 
-function WorkspaceControl({ workspace }: { workspace: WorkspaceRow }) {
-  const [tab, setTab] = useState("members");
-  return <Panel className="section-gap"><div className="panel-header"><div><h2 className="panel-title">{text(workspace.name)}</h2><div className="panel-kicker mono">{text(workspace.id)}</div></div><Badge tone={workspace.status === "active" ? "success" : "warning"}>{statusLabel(workspace.status)}</Badge></div><Tabs activeKey={tab} onChange={setTab} items={[{ key: "members", label: <span><Users size={14} /> 成员与用户</span>, children: <Members workspaceId={String(workspace.id)} /> }, { key: "projects", label: <span><FolderKanban size={14} /> 项目</span>, children: <Projects workspaceId={String(workspace.id)} /> }, { key: "sites", label: <span><BookOpen size={14} /> 站点</span>, children: <Sites workspaceId={String(workspace.id)} /> }, { key: "sharing", label: <span><KeyRound size={14} /> 共享与邀请</span>, children: <Sharing workspaceId={String(workspace.id)} /> }, { key: "audit", label: <span><ShieldCheck size={14} /> 审计</span>, children: <Audit workspaceId={String(workspace.id)} /> }]} /></Panel>;
+type InterventionState = { id: string; reason: string; expires_at: string } | null;
+
+const readIntervention = (workspaceId: string): InterventionState => {
+  try {
+    const raw = sessionStorage.getItem(`thcpn:intervention:${workspaceId}`);
+    const value = raw ? JSON.parse(raw) : null;
+    return value && new Date(value.expires_at).getTime() > Date.now() ? value : null;
+  } catch {
+    return null;
+  }
+};
+
+export function AdminWorkspaceDetailPage() {
+  const { workspaceId = "" } = useParams();
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const queryClient = useQueryClient();
+  const { message } = AntApp.useApp();
+  const workspace = useQuery({ queryKey: ["admin", "workspace", workspaceId], queryFn: () => api.admin.workspaces.get(workspaceId), enabled: Boolean(workspaceId) });
+  const switcher = useQuery({ queryKey: ["admin", "workspace-switcher"], queryFn: () => api.admin.workspaces.list({ page_size: 100, sort: "name", order: "asc" }) });
+  const [intervention, setIntervention] = useState<InterventionState>(() => readIntervention(workspaceId));
+  const [remaining, setRemaining] = useState(0);
+  const [interventionOpen, setInterventionOpen] = useState(false);
+  const [interventionBusy, setInterventionBusy] = useState(false);
+  const [interventionForm] = Form.useForm();
+  const tab = params.get("tab") ?? "overview";
+  const back = `/admin/workspaces${params.get("from") ? `?${params.get("from")}` : ""}`;
+  useEffect(() => setIntervention(readIntervention(workspaceId)), [workspaceId]);
+  useEffect(() => {
+    if (!intervention) { setRemaining(0); return; }
+    const tick = () => { const seconds = Math.max(0, Math.floor((new Date(intervention.expires_at).getTime() - Date.now()) / 1000)); setRemaining(seconds); if (!seconds) { sessionStorage.removeItem(`thcpn:intervention:${workspaceId}`); setIntervention(null); } };
+    tick(); const timer = window.setInterval(tick, 1000); return () => window.clearInterval(timer);
+  }, [intervention, workspaceId]);
+  const setTab = (value: string) => { const next = new URLSearchParams(params); next.set("tab", value); setParams(next, { replace: true }); };
+  const start = async () => { setInterventionBusy(true); try { const values = await interventionForm.validateFields(); const result = await api.admin.workspaces.startIntervention(workspaceId, values); const state = { id: text(result.id), reason: text(result.reason), expires_at: text(result.expires_at) }; sessionStorage.setItem(`thcpn:intervention:${workspaceId}`, JSON.stringify(state)); setIntervention(state); setInterventionOpen(false); interventionForm.resetFields(); void message.success("管理员介入已开启"); } catch (error) { if (!(error as any)?.errorFields) void message.error(formatApiError(error).message); } finally { setInterventionBusy(false); } };
+  const end = async () => { if (!intervention) return; try { await api.admin.workspaces.endIntervention(workspaceId, intervention.id); } catch (error) { void message.error(formatApiError(error).message); } finally { sessionStorage.removeItem(`thcpn:intervention:${workspaceId}`); setIntervention(null); } };
+  const switchWorkspace = async (id: string) => { if (intervention) await end(); navigate(`/admin/workspaces/${id}?tab=overview&from=${encodeURIComponent(params.get("from") ?? "")}`); };
+  if (workspace.isLoading) return <StateView type="loading" title="正在加载 Workspace" description="正在读取治理详情。" />;
+  if (workspace.error) return <ErrorState error={workspace.error} title="Workspace 加载失败" />;
+  const item = workspace.data;
+  const context = { workspaceId, intervention, refresh: async () => { await queryClient.invalidateQueries({ queryKey: ["admin", "workspace", workspaceId] }); } };
+  return <>
+    {intervention && <div className="intervention-banner"><ShieldAlert size={16} /><strong>管理员介入中</strong><span>{intervention.reason}</span><span className="intervention-countdown">{Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, "0")}</span><Button size="small" danger onClick={() => void end()}>结束介入</Button></div>}
+    <div className="governance-detail-head">
+      <Button type="text" icon={<ArrowLeft size={15} />} onClick={() => navigate(back)}>返回列表</Button>
+      <Select showSearch optionFilterProp="label" value={workspaceId} className="workspace-governance-switcher" options={(switcher.data?.items ?? []).map((entry) => ({ value: text(entry.id), label: text(entry.name) }))} onChange={(id) => void switchWorkspace(id)} />
+      <div className="governance-detail-title"><strong>{text(item.name)}</strong><span>{typeLabel(item.type)} Workspace · {text(item.owner?.name)} · <span className="mono">{text(item.id)}</span><CopyID value={text(item.id)} /></span></div>
+      <Tag color={item.status === "active" ? "green" : "red"}>{statusLabel(item.status)}</Tag>
+      {!intervention && <Button type="primary" icon={<ShieldCheck size={14} />} onClick={() => setInterventionOpen(true)}>开启管理员介入</Button>}
+    </div>
+    <Panel className="governance-detail-panel">
+      <Tabs activeKey={tab} onChange={setTab} items={[
+        { key: "overview", label: "概览", children: <Overview workspace={item} /> },
+        { key: "members", label: "成员与权限", children: <Members {...context} /> },
+        { key: "resources", label: "资源层级", children: <Resources {...context} /> },
+        { key: "sharing", label: "共享与邀请", children: <Sharing {...context} /> },
+        { key: "audit", label: "审计记录", children: <Audit workspaceId={workspaceId} /> },
+        { key: "system", label: "系统操作", children: <SystemOperations workspace={item} {...context} /> },
+      ]} />
+    </Panel>
+    <Modal title="开启管理员介入" open={interventionOpen} okText="开启介入" cancelText="取消" confirmLoading={interventionBusy} onOk={() => void start()} onCancel={() => setInterventionOpen(false)}><Alert type="warning" showIcon message="介入期间的修改将以系统管理员身份记录，并保留原因和 request ID。" /><Form form={interventionForm} layout="vertical" initialValues={{ duration_minutes: 30 }} className="intervention-form"><Form.Item name="reason" label="介入原因" rules={[{ required: true, min: 5, message: "请填写至少 5 个字符的具体原因" }]}><Input.TextArea rows={3} maxLength={300} showCount placeholder="例如：修复错误的成员权限范围" /></Form.Item><Form.Item name="duration_minutes" label="有效时间"><Segmented block options={[{ value: 15, label: "15 分钟" }, { value: 30, label: "30 分钟" }, { value: 60, label: "60 分钟" }]} /></Form.Item></Form></Modal>
+  </>;
 }
 
-function Members({ workspaceId }: { workspaceId: string }) {
-  const client = useQueryClient();
-  const query = useQuery({ queryKey: ["admin", "members", workspaceId], queryFn: () => api.members.list(workspaceId) });
-  const catalog = useQuery({ queryKey: ["admin", "permissions"], queryFn: api.permissions.catalog });
-  const [keyword, setKeyword] = useState("");
-  const [editing, setEditing] = useState<WorkspaceMember | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [feedback, setFeedback] = useState("");
-  const [form] = Form.useForm();
-  const templates = ((catalog.data?.templates as JsonRecord[] | undefined) ?? []).map((item) => ({ value: text(item.code, "viewer"), label: `${text(item.name)} (${text(item.code)})`, permissions: (item.permission_codes as string[] | undefined) ?? [] }));
-  const permissions = ((catalog.data?.permissions as JsonRecord[] | undefined) ?? []).map((item) => ({ value: text(item.code), label: `${text(item.name)} (${text(item.code)})` }));
-  const rows: any[] = (query.data?.items ?? []).filter((item) => { const user = (item as any).user ?? {}; return `${text(user.name)} ${text(user.email)} ${text(user.phone)} ${text(user.id)}`.toLowerCase().includes(keyword.toLowerCase()); });
-  const openCreate = () => { form.setFieldsValue({ template_code: templates[0]?.value ?? "viewer", permission_codes: templates[0]?.permissions ?? [] }); setCreating(true); setEditing(null); };
-  const openEdit = (item: WorkspaceMember) => { form.setFieldsValue({ template_code: item.template_code, permission_codes: item.permission_codes }); setEditing(item); setCreating(false); };
-  const close = () => { setCreating(false); setEditing(null); form.resetFields(); };
-  const submit = async () => { setBusy(true); setFeedback(""); try { const values = await form.validateFields(); if (editing) await api.members.update(workspaceId, String(editing.id), values); else await api.members.add(workspaceId, values); setFeedback(editing ? "成员权限已更新" : "成员已添加"); close(); await client.invalidateQueries({ queryKey: ["admin", "members", workspaceId] }); } catch (error) { if ((error as any)?.errorFields) return; const detail = formatApiError(error); setFeedback(`${detail.message}${detail.requestId ? ` · request id ${detail.requestId}` : ""}`); } finally { setBusy(false); } };
-  const remove = async (item: WorkspaceMember) => { try { await api.members.remove(workspaceId, String(item.id)); setFeedback("成员已移除"); await client.invalidateQueries({ queryKey: ["admin", "members", workspaceId] }); } catch (error) { const detail = formatApiError(error); setFeedback(`${detail.message}${detail.requestId ? ` · request id ${detail.requestId}` : ""}`); } };
-  return <><div className="admin-list-toolbar"><div className="admin-search"><Search size={15} /><input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索姓名、邮箱、手机号或 ID" /></div><Space><Button icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>刷新</Button><Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>添加成员</Button></Space></div>{feedback && <div className="admin-feedback">{feedback}</div>}{query.isLoading ? <StateView type="loading" title="正在加载成员" description="正在读取 Workspace 成员和权限。" /> : query.error ? <ErrorState error={query.error} title="成员加载失败" /> : <Table rowKey="id" dataSource={rows} columns={[{ title: "用户", render: (_, item) => <div><div className="cell-title">{text(item.user?.name)}</div><div className="cell-sub">{text(item.user?.email, text(item.user?.phone, text(item.user?.id)))}</div></div> }, { title: "权限模板", width: 180, render: (_, item) => <div><Tag color="blue">{text(item.template_name, text(item.template_code))}</Tag><div className="cell-sub mono">{text(item.template_code)}</div></div> }, { title: "范围", width: 120, render: (_, item) => `${text(item.scope_type)} / ${text(item.scope_id).slice(0, 8)}` }, { title: "状态", width: 100, render: (value, item) => <Tag color={item.status === "active" ? "green" : "default"}>{statusLabel(item.status)}</Tag> }, { title: "加入时间", width: 180, render: (_, item) => time(item.joined_at) }, { title: "操作", width: 150, render: (_, item) => <Space size={2}><Button type="link" onClick={() => openEdit(item)}>编辑</Button><Popconfirm title="移除这个成员？" description="移除后将失去该 Workspace 的成员权限。" onConfirm={() => void remove(item)}><Button type="link" danger>移除</Button></Popconfirm></Space> }]} pagination={{ pageSize: 8, showSizeChanger: false }} scroll={{ x: 850 }} />}{(creating || editing) && <Drawer title={editing ? "编辑成员权限" : "添加 Workspace 成员"} open onClose={close} size={460} extra={<Space><Button onClick={close}>取消</Button><Button type="primary" loading={busy} onClick={() => void submit()}>保存</Button></Space>}><Form form={form} layout="vertical">{!editing && <><Form.Item name="email" label="邮箱（与手机号二选一）"><Input placeholder="user@example.com" /></Form.Item><Form.Item name="phone" label="手机号"><Input placeholder="13800000000" /></Form.Item><Form.Item name="user_id" label="已注册用户 ID"><Input className="code-input" placeholder="已有用户可直接填写 UUID" /></Form.Item></>}<Form.Item name="template_code" label="权限模板"><Select options={templates} onChange={(value) => { const template = templates.find((item) => item.value === value); form.setFieldValue("permission_codes", template?.permissions ?? []); }} /></Form.Item><Form.Item name="permission_codes" label="实际权限" rules={[{ required: true, message: "至少选择一项权限" }]}><Select mode="multiple" options={permissions} placeholder="选择权限" /></Form.Item></Form><div className="drawer-note"><UserRound size={15} />模板只是预填充，实际授权以权限列表为准。系统管理员后台不改变系统管理员身份，只管理 Workspace 访问关系。</div></Drawer>}</>;
+function Overview({ workspace }: { workspace: JsonRecord }) {
+  const counts = workspace.counts ?? {};
+  return <div className="governance-overview"><Descriptions size="small" bordered column={{ xs: 1, sm: 2, lg: 3 }} items={[
+    { key: "type", label: "类型", children: `${typeLabel(workspace.type)}${workspace.organization_type ? ` / ${orgLabel(workspace.organization_type)}` : ""}` },
+    { key: "owner", label: "Owner", children: <div>{text(workspace.owner?.name)}<div className="cell-sub">{text(workspace.owner?.email, text(workspace.owner?.phone))}</div></div> },
+    { key: "status", label: "状态", children: <Tag color={workspace.status === "active" ? "green" : "red"}>{statusLabel(workspace.status)}</Tag> },
+    { key: "members", label: "成员", children: `${counts.members ?? 0} 人` },
+    { key: "resources", label: "资源", children: `${counts.projects ?? 0} 项目 / ${counts.sites ?? 0} 站点 / ${counts.devices ?? 0} 设备` },
+    { key: "sharing", label: "外部协作", children: `${counts.direct_shares ?? 0} 直接共享 / ${counts.pending_invitations ?? 0} 待处理邀请` },
+    { key: "created", label: "创建时间", children: time(workspace.created_at) },
+    { key: "updated", label: "更新时间", children: time(workspace.updated_at) },
+    { key: "activity", label: "最近活动", children: time(workspace.last_activity_at) },
+  ]} /><section className="governance-risk-section"><h3>风险诊断</h3>{workspace.risks?.length ? <div className="risk-list">{workspace.risks.map((risk) => <Alert key={risk.code} type={risk.code === "workspace_disabled" || risk.code === "owner_unavailable" ? "error" : "warning"} showIcon message={risk.label} description={risk.count ? `涉及 ${risk.count} 条记录` : undefined} />)}</div> : <Alert type="success" showIcon message="当前未发现需要系统管理员处理的风险" />}</section></div>;
 }
 
-function Projects({ workspaceId }: { workspaceId: string }) {
-  const client = useQueryClient();
-  const query = useQuery({ queryKey: ["admin", "projects", workspaceId], queryFn: () => api.projects.adminList(workspaceId) });
-  const [editing, setEditing] = useState<JsonRecord | null>(null); const [creating, setCreating] = useState(false); const [busy, setBusy] = useState(false); const [feedback, setFeedback] = useState(""); const [form] = Form.useForm();
-  const openCreate = () => { form.setFieldsValue({ name: "", description: "" }); setCreating(true); setEditing(null); }; const openEdit = (item: JsonRecord) => { form.setFieldsValue({ name: item.name, description: item.description, status: item.status }); setEditing(item); setCreating(false); }; const close = () => { setCreating(false); setEditing(null); form.resetFields(); };
-  const submit = async () => { setBusy(true); setFeedback(""); try { const values = await form.validateFields(); if (editing) await api.projects.update(text(editing.id), values); else await api.projects.create({ workspace_id: workspaceId, ...values }); setFeedback(editing ? "项目已更新" : "项目已创建"); close(); await client.invalidateQueries({ queryKey: ["admin", "projects", workspaceId] }); } catch (error) { if ((error as any)?.errorFields) return; const detail = formatApiError(error); setFeedback(`${detail.message}${detail.requestId ? ` · request id ${detail.requestId}` : ""}`); } finally { setBusy(false); } };
-  return <><div className="admin-list-toolbar"><span className="cell-sub">项目是设备、站点和权限的业务分组。</span><Space><Button icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>刷新</Button><Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新建项目</Button></Space></div>{feedback && <div className="admin-feedback">{feedback}</div>}{query.isLoading ? <StateView type="loading" title="正在加载项目" description="正在读取目标 Workspace 的项目。" /> : query.error ? <ErrorState error={query.error} title="项目加载失败" /> : <Table rowKey="id" dataSource={query.data?.items ?? []} columns={[{ title: "项目", render: (_, item) => <div><div className="cell-title">{text(item.name)}</div><div className="cell-sub">{text(item.description)}</div></div> }, { title: "状态", width: 120, render: (value) => <Tag color={value === "active" ? "green" : "default"}>{statusLabel(value)}</Tag> }, { title: "更新时间", width: 180, render: (_, item) => time(item.updated_at) }, { title: "操作", width: 90, render: (_, item) => <Button type="link" onClick={() => openEdit(item)}>编辑</Button> }]} pagination={{ pageSize: 8, showSizeChanger: false }} scroll={{ x: 600 }} />}{(creating || editing) && <Drawer title={editing ? "编辑项目" : "新建项目"} open onClose={close} size={420} extra={<Space><Button onClick={close}>取消</Button><Button type="primary" loading={busy} onClick={() => void submit()}>保存</Button></Space>}><Form form={form} layout="vertical"><Form.Item name="name" label="项目名称" rules={[{ required: true, message: "请输入项目名称" }]}><Input /></Form.Item><Form.Item name="description" label="说明"><Input.TextArea rows={4} /></Form.Item>{editing && <Form.Item name="status" label="状态"><Select options={[{ value: "active", label: "启用" }, { value: "archived", label: "归档" }]} /></Form.Item>}</Form></Drawer>}</>;
+function Members({ workspaceId, intervention }: { workspaceId: string; intervention: InterventionState }) {
+  const client = useQueryClient(); const { message } = AntApp.useApp();
+  const query = useQuery({ queryKey: ["admin", "members", workspaceId], queryFn: () => api.admin.members.list(workspaceId) });
+  const catalog = useQuery({ queryKey: ["admin", "permissions"], queryFn: api.admin.permissionsCatalog });
+  const [keyword, setKeyword] = useState(""); const [selected, setSelected] = useState<JsonRecord | null>(null); const [editing, setEditing] = useState<JsonRecord | null>(null); const [creating, setCreating] = useState(false); const [form] = Form.useForm();
+  const rows = (query.data?.items ?? []).filter((item) => `${text(item.user?.name)} ${text(item.user?.email)} ${text(item.user?.phone)} ${text(item.template_name)} ${text(item.scope_type)}`.toLowerCase().includes(keyword.toLowerCase()));
+  const templates = (catalog.data?.templates ?? []).map((entry) => ({ value: text(entry.code), label: text(entry.name), permissions: entry.permission_codes ?? [] }));
+  const permissions = (catalog.data?.permissions ?? []).map((entry) => ({ value: text(entry.code), label: text(entry.name) }));
+  const openEdit = (item: JsonRecord) => { setEditing(item); setCreating(false); form.setFieldsValue({ template_code: item.template_code, permission_codes: item.permission_codes, scope_type: item.scope_type, scope_id: item.scope_id }); };
+  const openCreate = () => { setCreating(true); setEditing(null); form.setFieldsValue({ template_code: "viewer", permission_codes: templates.find((entry) => entry.value === "viewer")?.permissions ?? [], scope_type: "workspace", scope_id: workspaceId }); };
+  const close = () => { setEditing(null); setCreating(false); form.resetFields(); };
+  const save = async () => { if (!intervention) return; try { const values = await form.validateFields(); if (editing) await api.admin.members.update(workspaceId, text(editing.id), intervention.id, values); else await api.admin.members.add(workspaceId, intervention.id, values); close(); await client.invalidateQueries({ queryKey: ["admin", "members", workspaceId] }); void message.success(editing ? "成员权限已更新" : "成员已添加"); } catch (error) { if (!(error as any)?.errorFields) void message.error(formatApiError(error).message); } };
+  const remove = async (item: JsonRecord) => { if (!intervention) return; try { await api.admin.members.remove(workspaceId, text(item.id), intervention.id); await client.invalidateQueries({ queryKey: ["admin", "members", workspaceId] }); void message.success("成员已移除"); } catch (error) { void message.error(formatApiError(error).message); } };
+  return <><div className="tab-toolbar"><Input value={keyword} prefix={<Search size={14} />} allowClear placeholder="搜索用户、模板或范围" onChange={(e) => setKeyword(e.target.value)} />{intervention && <Button type="primary" icon={<UserPlus size={14} />} onClick={openCreate}>添加成员</Button>}</div>{query.isLoading ? <StateView type="loading" title="正在加载成员" description="正在读取成员权限。" /> : query.error ? <ErrorState error={query.error} title="成员加载失败" /> : <Table rowKey="id" dataSource={rows} scroll={{ x: 880 }} pagination={{ pageSize: 12 }} columns={[
+    { title: "用户", render: (_, item) => <Button type="link" className="table-name-button" onClick={() => setSelected(item)}><span>{text(item.user?.name)}</span><small>{text(item.user?.email, text(item.user?.phone))}</small></Button> },
+    { title: "权限模板", width: 150, render: (_, item) => <Tag color="blue">{text(item.template_name, item.template_code)}</Tag> },
+    { title: "资源范围", width: 200, render: (_, item) => <div>{scopeLabel(item.scope_type)}<div className="cell-sub mono">{shortId(item.scope_id)}</div></div> },
+    { title: "权限数", width: 90, render: (_, item) => item.permission_codes?.length ?? 0 },
+    { title: "状态", width: 90, render: (_, item) => <Tag color={item.status === "active" ? "green" : "default"}>{statusLabel(item.status)}</Tag> },
+    { title: "加入时间", width: 170, render: (_, item) => time(item.joined_at) },
+    ...(intervention ? [{ title: "操作", width: 130, fixed: "right", render: (_, item) => <Space size={0}><Button type="link" onClick={() => openEdit(item)}>调整</Button><Popconfirm title="移除成员？" onConfirm={() => void remove(item)}><Button type="link" danger>移除</Button></Popconfirm></Space> }] : []),
+  ]} />}
+  <Drawer title="成员权限详情" open={Boolean(selected)} onClose={() => setSelected(null)} size={480}>{selected && <><Descriptions column={1} size="small" bordered items={[{ key: "user", label: "用户", children: text(selected.user?.name) }, { key: "template", label: "权限模板", children: text(selected.template_name, selected.template_code) }, { key: "scope", label: "资源范围", children: `${scopeLabel(selected.scope_type)} / ${text(selected.scope_id)}` }, { key: "status", label: "状态", children: statusLabel(selected.status) }]} /><h3 className="drawer-section-title">实际权限</h3><Space wrap>{(selected.permission_codes ?? []).map((code) => <Tag key={code}>{permissions.find((entry) => entry.value === code)?.label ?? code}</Tag>)}</Space></>}</Drawer>
+  <Drawer title={editing ? "调整成员权限" : "添加成员"} open={Boolean(editing || creating)} onClose={close} size={500} extra={<Space><Button onClick={close}>取消</Button><Button type="primary" onClick={() => void save()}>保存</Button></Space>}><Form form={form} layout="vertical">{creating && <><Form.Item name="email" label="邮箱"><Input /></Form.Item><Form.Item name="phone" label="手机号"><Input /></Form.Item><Form.Item name="user_id" label="已注册用户 ID"><Input /></Form.Item></>}<Form.Item name="template_code" label="权限模板"><Select options={templates} onChange={(value) => form.setFieldValue("permission_codes", templates.find((entry) => entry.value === value)?.permissions ?? [])} /></Form.Item><Form.Item name="permission_codes" label="实际权限" rules={[{ required: true, message: "至少选择一项权限" }]}><Select mode="multiple" options={permissions} /></Form.Item><Form.Item name="scope_type" label="资源范围"><Select options={["workspace", "project", "site", "device", "dataset"].map((value) => ({ value, label: scopeLabel(value) }))} /></Form.Item><Form.Item name="scope_id" label="范围 ID"><Input /></Form.Item></Form></Drawer></>;
 }
 
-function Sites({ workspaceId }: { workspaceId: string }) {
-  const client = useQueryClient(); const projects = useQuery({ queryKey: ["admin", "projects", workspaceId], queryFn: () => api.projects.adminList(workspaceId) }); const query = useQuery({ queryKey: ["admin", "sites", workspaceId], queryFn: () => api.sites.adminList(workspaceId) });
-  const [editing, setEditing] = useState<JsonRecord | null>(null); const [creating, setCreating] = useState(false); const [busy, setBusy] = useState(false); const [feedback, setFeedback] = useState(""); const [form] = Form.useForm(); const projectOptions = (projects.data?.items ?? []).map((item) => ({ value: text(item.id), label: text(item.name) })); const openCreate = () => { form.setFieldsValue({ project_id: projectOptions[0]?.value, name: "", description: "", location_text: "" }); setCreating(true); setEditing(null); }; const openEdit = (item: JsonRecord) => { form.setFieldsValue({ project_id: item.project_id, name: item.name, description: item.description, location_text: item.location_text, latitude: item.latitude, longitude: item.longitude, status: item.status }); setEditing(item); setCreating(false); }; const close = () => { setCreating(false); setEditing(null); form.resetFields(); };
-  const submit = async () => { setBusy(true); setFeedback(""); try { const values = await form.validateFields(); if (editing) { const { project_id: _projectId, ...payload } = values; await api.sites.update(text(editing.id), payload); } else await api.sites.create({ workspace_id: workspaceId, ...values }); setFeedback(editing ? "站点已更新" : "站点已创建"); close(); await client.invalidateQueries({ queryKey: ["admin", "sites", workspaceId] }); } catch (error) { if ((error as any)?.errorFields) return; const detail = formatApiError(error); setFeedback(`${detail.message}${detail.requestId ? ` · request id ${detail.requestId}` : ""}`); } finally { setBusy(false); } };
-  return <><div className="admin-list-toolbar"><span className="cell-sub">站点包含地址和经纬度，可作为设备位置上下文。</span><Space><Button icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>刷新</Button><Button type="primary" icon={<Plus size={14} />} onClick={openCreate} disabled={!projectOptions.length}>新建站点</Button></Space></div>{feedback && <div className="admin-feedback">{feedback}</div>}{query.isLoading ? <StateView type="loading" title="正在加载站点" description="正在读取目标 Workspace 的站点。" /> : query.error ? <ErrorState error={query.error} title="站点加载失败" /> : <Table rowKey="id" dataSource={query.data?.items ?? []} columns={[{ title: "站点", render: (_, item) => <div><div className="cell-title">{text(item.name)}</div><div className="cell-sub">{text(item.location_text)}</div></div> }, { title: "Project", dataIndex: "project_id", width: 180, render: (value) => <span className="mono">{text(value).slice(0, 8)}</span> }, { title: "坐标", width: 190, render: (_, item) => item.latitude == null || item.longitude == null ? "—" : `${item.latitude}, ${item.longitude}` }, { title: "状态", width: 100, render: (value) => <Tag color={value === "active" ? "green" : "default"}>{statusLabel(value)}</Tag> }, { title: "操作", width: 90, render: (_, item) => <Button type="link" onClick={() => openEdit(item)}>编辑</Button> }]} pagination={{ pageSize: 8, showSizeChanger: false }} scroll={{ x: 700 }} />}{(creating || editing) && <Drawer title={editing ? "编辑站点" : "新建站点"} open onClose={close} size={460} extra={<Space><Button onClick={close}>取消</Button><Button type="primary" loading={busy} onClick={() => void submit()}>保存</Button></Space>}><Form form={form} layout="vertical"><Form.Item name="project_id" label="所属项目" rules={[{ required: true, message: "请选择项目" }]}><Select options={projectOptions} disabled={Boolean(editing)} /></Form.Item><Form.Item name="name" label="站点名称" rules={[{ required: true, message: "请输入站点名称" }]}><Input /></Form.Item><Form.Item name="location_text" label="地址"><Input /></Form.Item><div className="drawer-grid"><Form.Item name="latitude" label="纬度"><InputNumber min={-90} max={90} style={{ width: "100%" }} /></Form.Item><Form.Item name="longitude" label="经度"><InputNumber min={-180} max={180} style={{ width: "100%" }} /></Form.Item></div><Form.Item name="description" label="说明"><Input.TextArea rows={3} /></Form.Item>{editing && <Form.Item name="status" label="状态"><Select options={[{ value: "active", label: "启用" }, { value: "archived", label: "归档" }]} /></Form.Item>}</Form></Drawer>}</>;
+function Resources({ workspaceId, intervention }: { workspaceId: string; intervention: InterventionState }) {
+  const client = useQueryClient(); const { message } = AntApp.useApp(); const [editing, setEditing] = useState<JsonRecord | null>(null); const [form] = Form.useForm();
+  const projects = useQuery({ queryKey: ["admin", "projects", workspaceId], queryFn: () => api.projects.adminList(workspaceId) });
+  const sites = useQuery({ queryKey: ["admin", "sites", workspaceId], queryFn: () => api.sites.adminList(workspaceId) });
+  const rows = (projects.data?.items ?? []).map((project) => ({ ...project, kind: "project", key: `project-${project.id}`, children: (sites.data?.items ?? []).filter((site) => site.project_id === project.id).map((site) => ({ ...site, kind: "site", key: `site-${site.id}` })) }));
+  const open = (item) => { setEditing(item); form.setFieldsValue(item); };
+  const save = async () => { if (!intervention || !editing) return; try { const values = await form.validateFields(); if (editing.kind === "project") await api.admin.updateProject(text(editing.id), intervention.id, { name: values.name, description: values.description, status: values.status }); else await api.admin.updateSite(text(editing.id), intervention.id, { name: values.name, description: values.description, location_text: values.location_text, latitude: values.latitude, longitude: values.longitude, status: values.status }); setEditing(null); await Promise.all([client.invalidateQueries({ queryKey: ["admin", "projects", workspaceId] }), client.invalidateQueries({ queryKey: ["admin", "sites", workspaceId] })]); void message.success("资源信息已更新"); } catch (error) { if (!(error as any)?.errorFields) void message.error(formatApiError(error).message); } };
+  if (projects.isLoading || sites.isLoading) return <StateView type="loading" title="正在加载资源层级" description="正在汇总 Project 和 Site。" />;
+  if (projects.error || sites.error) return <ErrorState error={projects.error ?? sites.error} title="资源层级加载失败" />;
+  return <><Alert type="info" showIcon message="Project 与 Site 在这里用于诊断层级关系；日常创建仍由 Workspace 管理者在用户平台完成。" /><Table className="resource-tree-table" rowKey="key" dataSource={rows} pagination={false} expandable={{ defaultExpandAllRows: true }} columns={[
+    { title: "资源", render: (_, item) => <div><div className="cell-title">{text(item.name)}</div><div className="cell-sub mono">{text(item.id)}</div></div> },
+    { title: "类型", width: 100, render: (_, item) => item.kind === "project" ? "项目" : "站点" },
+    { title: "位置 / 说明", render: (_, item) => text(item.location_text, item.description) },
+    { title: "下级数量", width: 100, render: (_, item) => item.kind === "project" ? `${item.children?.length ?? 0} 站点` : "—" },
+    { title: "状态", width: 90, render: (_, item) => <Tag color={item.status === "active" ? "green" : "default"}>{statusLabel(item.status)}</Tag> },
+    ...(intervention ? [{ title: "操作", width: 90, render: (_, item) => <Button type="link" icon={<Edit3 size={13} />} onClick={() => open(item)}>修复</Button> }] : []),
+  ]} /><Drawer title={`修复${editing?.kind === "project" ? "项目" : "站点"}资料`} open={Boolean(editing)} onClose={() => setEditing(null)} size={460} extra={<Button type="primary" onClick={() => void save()}>保存</Button>}><Form form={form} layout="vertical"><Form.Item name="name" label="名称" rules={[{ required: true }]}><Input /></Form.Item>{editing?.kind === "site" && <><Form.Item name="location_text" label="地址"><Input /></Form.Item><div className="drawer-grid"><Form.Item name="latitude" label="纬度"><InputNumber min={-90} max={90} style={{ width: "100%" }} /></Form.Item><Form.Item name="longitude" label="经度"><InputNumber min={-180} max={180} style={{ width: "100%" }} /></Form.Item></div></>}<Form.Item name="description" label="说明"><Input.TextArea rows={3} /></Form.Item><Form.Item name="status" label="状态"><Select options={[{ value: "active", label: "启用" }, { value: "archived", label: "归档" }]} /></Form.Item></Form></Drawer></>;
 }
 
-function Sharing({ workspaceId }: { workspaceId: string }) {
-  const client = useQueryClient(); const grants = useQuery({ queryKey: ["admin", "grants", workspaceId], queryFn: () => api.accessGrants.list(workspaceId) }); const invitations = useQuery({ queryKey: ["admin", "invitations", workspaceId], queryFn: () => api.invitations.list(workspaceId) }); const catalog = useQuery({ queryKey: ["admin", "permissions"], queryFn: api.permissions.catalog }); const [mode, setMode] = useState<"grant" | "invitation" | null>(null); const [busy, setBusy] = useState(false); const [feedback, setFeedback] = useState(""); const [form] = Form.useForm(); const templates = ((catalog.data?.templates as JsonRecord[] | undefined) ?? []).map((item) => ({ value: text(item.code), label: text(item.name), permissions: (item.permission_codes as string[] | undefined) ?? [] })); const permissions = ((catalog.data?.permissions as JsonRecord[] | undefined) ?? []).map((item) => ({ value: text(item.code), label: `${text(item.name)} (${text(item.code)})` })); const rows = [...(grants.data?.items ?? []).map((item) => ({ ...item, record_type: "授权", target: text(item.subject?.name, text(item.subject?.email, text(item.subject?.phone))) })), ...(invitations.data?.items ?? []).map((item) => ({ ...item, record_type: "邀请", target: text(item.invitee_email, text(item.invitee_phone)) }))]; const open = (next: "grant" | "invitation") => { form.setFieldsValue({ scope_type: "workspace", scope_id: workspaceId, template_code: templates[0]?.value, permission_codes: templates[0]?.permissions }); setMode(next); }; const close = () => { setMode(null); form.resetFields(); }; const submit = async () => { setBusy(true); setFeedback(""); try { const values = await form.validateFields(); if (mode === "grant") await api.accessGrants.create(values); else await api.invitations.create(values); setFeedback(mode === "grant" ? "共享授权已创建" : "邀请已创建"); close(); await Promise.all([client.invalidateQueries({ queryKey: ["admin", "grants", workspaceId] }), client.invalidateQueries({ queryKey: ["admin", "invitations", workspaceId] })]); } catch (error) { if ((error as any)?.errorFields) return; const detail = formatApiError(error); setFeedback(`${detail.message}${detail.requestId ? ` · request id ${detail.requestId}` : ""}`); } finally { setBusy(false); } }; const revoke = async (item: JsonRecord) => { try { if (item.record_type === "授权") await api.accessGrants.revoke(text(item.id)); else await api.invitations.revoke(text(item.id)); setFeedback(`${item.record_type}已撤销`); await Promise.all([client.invalidateQueries({ queryKey: ["admin", "grants", workspaceId] }), client.invalidateQueries({ queryKey: ["admin", "invitations", workspaceId] })]); } catch (error) { const detail = formatApiError(error); setFeedback(`${detail.message}${detail.requestId ? ` · request id ${detail.requestId}` : ""}`); } };
-  return <><Alert type="info" showIcon message="这里管理直接分享和待处理邀请。Workspace、Project、Site 的继承权限不会重复出现在直接分享列表中。" /><div className="admin-list-toolbar"><span className="cell-sub">授权与邀请共用同一套权限模板和撤销规则。</span><Space><Button icon={<RefreshCw size={14} />} onClick={() => void Promise.all([grants.refetch(), invitations.refetch()])}>刷新</Button><Button onClick={() => open("invitation")}>发出邀请</Button><Button type="primary" icon={<Plus size={14} />} onClick={() => open("grant")}>创建授权</Button></Space></div>{feedback && <div className="admin-feedback">{feedback}</div>}{grants.isLoading || invitations.isLoading ? <StateView type="loading" title="正在加载共享记录" description="正在读取授权和邀请。" /> : grants.error || invitations.error ? <ErrorState error={grants.error ?? invitations.error} title="共享记录加载失败" /> : <Table rowKey={(item) => `${item.record_type}-${item.id}`} dataSource={rows} columns={[{ title: "类型", dataIndex: "record_type", width: 100, render: (value) => <Tag color={value === "授权" ? "blue" : "gold"}>{value}</Tag> }, { title: "接收者", dataIndex: "target", render: (value, item) => <div><div className="cell-title">{value}</div><div className="cell-sub mono">{text(item.id)}</div></div> }, { title: "范围", width: 140, render: (_, item) => `${text(item.scope_type)} / ${text(item.scope_id).slice(0, 8)}` }, { title: "权限", render: (_, item) => <span>{((item.permission_codes as string[] | undefined) ?? []).slice(0, 4).join("、") || "—"}</span> }, { title: "状态", width: 100, render: (value) => <Tag color={value === "active" || value === "pending" ? "green" : "default"}>{statusLabel(value)}</Tag> }, { title: "操作", width: 100, render: (_, item) => <Popconfirm title={`撤销${item.record_type}？`} onConfirm={() => void revoke(item)}><Button type="link" danger>撤销</Button></Popconfirm> }]} pagination={{ pageSize: 8, showSizeChanger: false }} scroll={{ x: 850 }} />}{mode && <Drawer title={mode === "grant" ? "创建直接授权" : "发出邀请"} open onClose={close} size={460} extra={<Space><Button onClick={close}>取消</Button><Button type="primary" loading={busy} onClick={() => void submit()}>保存</Button></Space>}><Form form={form} layout="vertical">{mode === "grant" ? <Form.Item name="subject_user_id" label="用户 ID" rules={[{ required: true, message: "请输入已注册用户 ID" }]}><Input className="code-input" /></Form.Item> : <><Form.Item name="email" label="邮箱"><Input /></Form.Item><Form.Item name="phone" label="手机号"><Input /></Form.Item></>}<Form.Item name="scope_type" label="授权范围"><Select options={[{ value: "workspace", label: "Workspace" }, { value: "project", label: "Project" }, { value: "site", label: "Site" }, { value: "device", label: "设备" }]} /></Form.Item><Form.Item name="scope_id" label="范围 ID" rules={[{ required: true, message: "请输入范围 ID" }]}><Input className="code-input" /></Form.Item><Form.Item name="template_code" label="权限模板"><Select options={templates} onChange={(value) => { const template = templates.find((item) => item.value === value); form.setFieldValue("permission_codes", template?.permissions ?? []); }} /></Form.Item><Form.Item name="permission_codes" label="实际权限" rules={[{ required: true, message: "至少选择一项权限" }]}><Select mode="multiple" options={permissions} /></Form.Item></Form></Drawer>}</>;
+function Sharing({ workspaceId, intervention }: { workspaceId: string; intervention: InterventionState }) {
+  const client = useQueryClient(); const { message } = AntApp.useApp(); const [mode, setMode] = useState("grants");
+  const grants = useQuery({ queryKey: ["admin", "grants", workspaceId], queryFn: () => api.admin.grants.list(workspaceId) });
+  const invitations = useQuery({ queryKey: ["admin", "invitations", workspaceId], queryFn: () => api.admin.invitations.list(workspaceId) });
+  const query = mode === "grants" ? grants : invitations; const rows = query.data?.items ?? [];
+  const revoke = async (item) => { if (!intervention) return; try { if (mode === "grants") await api.admin.grants.revoke(text(item.id), intervention.id); else await api.admin.invitations.revoke(text(item.id), intervention.id); await client.invalidateQueries({ queryKey: ["admin", mode === "grants" ? "grants" : "invitations", workspaceId] }); void message.success(mode === "grants" ? "共享已撤销" : "邀请已撤销"); } catch (error) { void message.error(formatApiError(error).message); } };
+  return <><Alert type="info" showIcon message="后台用于检查和必要时撤销异常关系；创建共享与邀请仍由 Workspace 管理者完成。" /><div className="tab-toolbar"><Segmented value={mode} onChange={setMode} options={[{ value: "grants", label: `直接授权 ${grants.data?.items?.length ?? 0}` }, { value: "invitations", label: `待接受邀请 ${invitations.data?.items?.length ?? 0}` }]} /><Button icon={<RefreshCw size={14} />} onClick={() => void Promise.all([grants.refetch(), invitations.refetch()])}>刷新</Button></div>{query.isLoading ? <StateView type="loading" title="正在加载共享关系" description="正在读取授权和邀请。" /> : query.error ? <ErrorState error={query.error} title="共享关系加载失败" /> : <Table rowKey="id" dataSource={rows} pagination={{ pageSize: 12 }} columns={[
+    { title: "接收人", render: (_, item) => <div><div className="cell-title">{mode === "grants" ? text(item.subject?.name, item.subject?.email) : text(item.invitee_email, item.invitee_phone)}</div><div className="cell-sub mono">{text(item.id)}</div></div> },
+    { title: "具体资源", render: (_, item) => <div>{scopeLabel(item.scope_type)}<div className="cell-sub mono">{text(item.scope_id)}</div></div> },
+    { title: "权限", render: (_, item) => (item.permission_codes ?? []).slice(0, 5).join("、") || "—" },
+    { title: "有效期", width: 170, render: (_, item) => item.expires_at ? time(item.expires_at) : "长期" },
+    { title: "再次分享", width: 90, render: (_, item) => item.allow_reshare ? "允许" : "不允许" },
+    { title: "状态", width: 90, render: (_, item) => <Tag color={item.status === "active" || item.status === "pending" ? "green" : "default"}>{statusLabel(item.status)}</Tag> },
+    ...(intervention ? [{ title: "操作", width: 90, render: (_, item) => <Popconfirm title={`撤销这条${mode === "grants" ? "授权" : "邀请"}？`} onConfirm={() => void revoke(item)}><Button type="link" danger>撤销</Button></Popconfirm> }] : []),
+  ]} />}</>;
 }
 
 function Audit({ workspaceId }: { workspaceId: string }) {
-  const query = useQuery({ queryKey: ["admin", "audit", workspaceId], queryFn: () => api.audit.list(workspaceId, 500) });
-  return <>{query.isLoading ? <StateView type="loading" title="正在加载审计记录" description="正在读取最近 500 条 Workspace 操作记录。" /> : query.error ? <ErrorState error={query.error} title="审计记录加载失败" /> : <Table rowKey="id" dataSource={query.data?.items ?? []} columns={[{ title: "时间", dataIndex: "created_at", width: 180, render: time }, { title: "操作", dataIndex: "action", width: 180, render: text }, { title: "资源", width: 180, render: (_, item) => <div><div>{text(item.resource_type)}</div><div className="cell-sub mono">{text(item.resource_id)}</div></div> }, { title: "结果", dataIndex: "result", width: 100, render: (value) => <Tag color={value === "success" ? "green" : "red"}>{value === "success" ? "成功" : statusLabel(value)}</Tag> }, { title: "原因 / request ID", render: (_, item) => <div><div>{text(item.reason)}</div><div className="cell-sub mono">{text(item.request_id)}</div></div> }]} pagination={{ pageSize: 12, showSizeChanger: true, showTotal: (total) => `共 ${total} 条` }} scroll={{ x: 780 }} />}</>;
+  const [filters, setFilters] = useState({ page: 1, page_size: 20, result: "", actor_type: "", action: "" }); const [selected, setSelected] = useState<JsonRecord | null>(null);
+  const query = useQuery({ queryKey: ["admin", "audit", workspaceId, filters], queryFn: () => api.admin.audit(workspaceId, filters), placeholderData: (previous) => previous });
+  return <><div className="tab-toolbar audit-toolbar"><Select allowClear placeholder="全部结果" value={filters.result || undefined} options={[{ value: "success", label: "成功" }, { value: "failure", label: "失败" }]} onChange={(value) => setFilters({ ...filters, result: value ?? "", page: 1 })} /><Select allowClear placeholder="全部操作者" value={filters.actor_type || undefined} options={[{ value: "system_admin", label: "系统管理员" }, { value: "user", label: "Workspace 用户" }, { value: "system", label: "系统" }]} onChange={(value) => setFilters({ ...filters, actor_type: value ?? "", page: 1 })} /><Input placeholder="精确操作类型" value={filters.action} onChange={(e) => setFilters({ ...filters, action: e.target.value, page: 1 })} /></div>{query.isLoading ? <StateView type="loading" title="正在加载审计记录" description="正在读取治理操作。" /> : query.error ? <ErrorState error={query.error} title="审计记录加载失败" /> : <Table rowKey="id" dataSource={query.data?.items ?? []} pagination={{ current: filters.page, pageSize: filters.page_size, total: query.data?.total ?? 0, showSizeChanger: true, onChange: (page, pageSize) => setFilters({ ...filters, page, page_size: pageSize }) }} onRow={(item) => ({ onClick: () => setSelected(item) })} columns={[
+    { title: "时间", dataIndex: "created_at", width: 170, render: time },
+    { title: "操作者", width: 170, render: (_, item) => <div><div>{text(item.actor_name, item.actor_type === "system_admin" ? "系统管理员" : item.actor_type)}</div><div className="cell-sub">{item.actor_type === "system_admin" ? "系统管理员" : "Workspace 用户"}</div></div> },
+    { title: "操作", dataIndex: "action", render: (value) => <div>{actionLabel(value)}<div className="cell-sub mono">{text(value)}</div></div> },
+    { title: "资源", width: 170, render: (_, item) => <div>{scopeLabel(item.resource_type)}<div className="cell-sub mono">{shortId(item.resource_id)}</div></div> },
+    { title: "结果", dataIndex: "result", width: 86, render: (value) => <Tag color={value === "success" ? "green" : "red"}>{statusLabel(value)}</Tag> },
+    { title: "原因", dataIndex: "reason", ellipsis: true },
+  ]} />}
+  <Drawer title="审计详情" open={Boolean(selected)} onClose={() => setSelected(null)} size={520}>{selected && <Descriptions column={1} size="small" bordered items={[{ key: "time", label: "时间", children: time(selected.created_at) }, { key: "actor", label: "操作者", children: text(selected.actor_name, selected.actor_type) }, { key: "action", label: "操作", children: `${actionLabel(selected.action)} (${text(selected.action)})` }, { key: "resource", label: "资源", children: `${text(selected.resource_type)} / ${text(selected.resource_id)}` }, { key: "result", label: "结果", children: statusLabel(selected.result) }, { key: "reason", label: "原因", children: text(selected.reason) }, { key: "request", label: "Request ID", children: <span className="mono">{text(selected.request_id)}</span> }]} />}</Drawer></>;
+}
+
+function SystemOperations({ workspace, workspaceId, intervention, refresh }: { workspace: JsonRecord; workspaceId: string; intervention: InterventionState; refresh: () => Promise<void> }) {
+  const { message } = AntApp.useApp(); const members = useQuery({ queryKey: ["admin", "members", workspaceId], queryFn: () => api.admin.members.list(workspaceId) }); const [statusOpen, setStatusOpen] = useState(false); const [ownerOpen, setOwnerOpen] = useState(false); const [confirmText, setConfirmText] = useState(""); const [ownerId, setOwnerId] = useState("");
+  const changeStatus = async () => { if (!intervention) return; try { await api.admin.workspaces.updateStatus(workspaceId, intervention.id, { status: workspace.status === "active" ? "disabled" : "active", confirm_text: confirmText }); setStatusOpen(false); setConfirmText(""); await refresh(); void message.success("Workspace 状态已更新"); } catch (error) { void message.error(formatApiError(error).message); } };
+  const transfer = async () => { if (!intervention) return; try { await api.admin.workspaces.transferOwner(workspaceId, intervention.id, { owner_user_id: ownerId, confirm_text: confirmText }); setOwnerOpen(false); setConfirmText(""); await refresh(); void message.success("Owner 已转移"); } catch (error) { void message.error(formatApiError(error).message); } };
+  return <div className="system-operation-list"><section><div><strong>{workspace.status === "active" ? "停用 Workspace" : "恢复 Workspace"}</strong><span>{workspace.status === "active" ? "阻止用户继续使用该 Workspace；数据不会删除。" : "恢复成员对 Workspace 的正常访问。"}</span></div><Button danger={workspace.status === "active"} disabled={!intervention} onClick={() => setStatusOpen(true)}>{workspace.status === "active" ? "停用" : "恢复"}</Button></section><section><div><strong>转移 Owner</strong><span>{workspace.type === "personal" ? "个人 Workspace 的 Owner 不可转移。" : "仅可转移给当前 Workspace 的启用成员。"}</span></div><Button disabled={!intervention || workspace.type !== "organization"} onClick={() => setOwnerOpen(true)}>转移 Owner</Button></section>{!intervention && <Alert type="info" showIcon message="系统操作默认只读。填写介入原因并开启管理员介入后才可执行。" />}
+  <Modal title={workspace.status === "active" ? "停用 Workspace" : "恢复 Workspace"} open={statusOpen} onCancel={() => setStatusOpen(false)} okButtonProps={{ danger: workspace.status === "active", disabled: confirmText !== "确认" }} okText="确认执行" onOk={() => void changeStatus()}><p>请输入“确认”以继续。</p><Input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} /></Modal>
+  <Modal title="转移 Workspace Owner" open={ownerOpen} onCancel={() => setOwnerOpen(false)} okButtonProps={{ disabled: confirmText !== "转移 Owner" || !ownerId }} okText="确认转移" onOk={() => void transfer()}><Form layout="vertical"><Form.Item label="新 Owner"><Select showSearch optionFilterProp="label" value={ownerId || undefined} options={(members.data?.items ?? []).filter((item) => item.status === "active" && item.user?.id !== workspace.owner?.id).map((item) => ({ value: text(item.user?.id), label: `${text(item.user?.name)} · ${text(item.user?.email, item.user?.phone)}` }))} onChange={setOwnerId} /></Form.Item><Form.Item label="输入“转移 Owner”确认"><Input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} /></Form.Item></Form></Modal></div>;
 }
 
 export function AdminSettingsPage() {
   const health = useQuery({ queryKey: ["admin", "settings", "health"], queryFn: api.health, refetchInterval: 30_000 });
   const ready = useQuery({ queryKey: ["admin", "settings", "ready"], queryFn: api.ready, refetchInterval: 30_000 });
-  const catalog = useQuery({ queryKey: ["admin", "permissions"], queryFn: api.permissions.catalog });
-  return <><PageHeader eyebrow="System / settings" title="系统设置" description="查看服务依赖、权限目录和系统元数据。高风险连接配置与设备系统配置分别在数据源和系统设备页面操作。" actions={<Button icon={<RefreshCw size={14} />} onClick={() => { void health.refetch(); void ready.refetch(); void catalog.refetch(); }}>刷新状态</Button>} /><div className="grid grid-3"><Card title="API 服务" extra={<Tag color={health.isError ? "red" : "green"}>{health.isLoading ? "检查中" : health.isError ? "异常" : "正常"}</Tag>}><p>{health.isError ? formatApiError(health.error).message : "健康检查通过"}</p></Card><Card title="数据库与依赖" extra={<Tag color={ready.isError ? "red" : "green"}>{ready.isLoading ? "检查中" : ready.isError ? "异常" : "正常"}</Tag>}><p>{ready.isError ? formatApiError(ready.error).message : "就绪检查通过"}</p></Card><Card title="权限目录" extra={<Tag color={catalog.isError ? "red" : "blue"}>{catalog.isError ? "不可用" : `${catalog.data?.permissions?.length ?? 0} 项`}</Tag>}><p>成员、分享和邀请共用这套权限定义。</p></Card></div><Panel className="section-gap"><div className="panel-header"><div><h2 className="panel-title">管理边界</h2><div className="panel-kicker">系统管理员专属</div></div></div><div className="panel-body"><Alert type="info" showIcon message="用户身份本身由注册与认证流程维护；本后台管理用户在 Workspace 内的成员权限、资源分享和邀请，不暴露密码、DSN 或原始 SQL。" /></div></Panel></>;
+  const catalog = useQuery({ queryKey: ["admin", "permissions"], queryFn: api.admin.permissionsCatalog });
+  return <><PageHeader eyebrow="System / settings" title="系统设置" description="查看服务依赖、权限目录和系统元数据。" actions={<Button icon={<RefreshCw size={14} />} onClick={() => { void health.refetch(); void ready.refetch(); void catalog.refetch(); }}>刷新状态</Button>} /><div className="grid grid-3"><Card title="API 服务" extra={<Tag color={health.isError ? "red" : "green"}>{health.isLoading ? "检查中" : health.isError ? "异常" : "正常"}</Tag>}><p>{health.isError ? formatApiError(health.error).message : "健康检查通过"}</p></Card><Card title="数据库与依赖" extra={<Tag color={ready.isError ? "red" : "green"}>{ready.isLoading ? "检查中" : ready.isError ? "异常" : "正常"}</Tag>}><p>{ready.isError ? formatApiError(ready.error).message : "就绪检查通过"}</p></Card><Card title="权限目录" extra={<Tag color={catalog.isError ? "red" : "blue"}>{catalog.isError ? "不可用" : `${catalog.data?.permissions?.length ?? 0} 项`}</Tag>}><p>成员、分享和邀请共用这套权限定义。</p></Card></div></>;
 }

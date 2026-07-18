@@ -2,31 +2,31 @@ package audit
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"thcpn-gin/internal/apperr"
-	"thcpn-gin/internal/db/sqlc"
 	"thcpn-gin/internal/httpx"
 )
 
 const (
-	ActorAnonymous = "anonymous"
-	ActorSystem    = "system"
-	ActorUser      = "user"
+	ActorAnonymous   = "anonymous"
+	ActorSystem      = "system"
+	ActorSystemAdmin = "system_admin"
+	ActorUser        = "user"
 
 	ResultFailure = "failure"
 	ResultSuccess = "success"
 )
 
 type Service struct {
-	queries *sqlc.Queries
+	db *pgxpool.Pool
 }
 
 type Log struct {
@@ -34,6 +34,8 @@ type Log struct {
 	WorkspaceID  *uuid.UUID `json:"workspace_id,omitempty"`
 	ActorType    string     `json:"actor_type"`
 	ActorID      *uuid.UUID `json:"actor_id,omitempty"`
+	ActorAdminID *uuid.UUID `json:"actor_admin_id,omitempty"`
+	ActorName    *string    `json:"actor_name,omitempty"`
 	Action       string     `json:"action"`
 	ResourceType string     `json:"resource_type"`
 	ResourceID   *uuid.UUID `json:"resource_id,omitempty"`
@@ -49,6 +51,7 @@ type RecordInput struct {
 	WorkspaceID  *uuid.UUID
 	ActorType    string
 	ActorID      *uuid.UUID
+	ActorAdminID *uuid.UUID
 	Action       string
 	ResourceType string
 	ResourceID   *uuid.UUID
@@ -60,16 +63,31 @@ type RecordInput struct {
 }
 
 type ListInput struct {
-	WorkspaceID uuid.UUID
-	Limit       int32
+	WorkspaceID  uuid.UUID
+	Limit        int32
+	Page         int
+	PageSize     int
+	Action       string
+	ResourceType string
+	Result       string
+	ActorType    string
+	Start        *time.Time
+	End          *time.Time
+}
+
+type ListResult struct {
+	Items    []Log `json:"items"`
+	Total    int64 `json:"total"`
+	Page     int   `json:"page"`
+	PageSize int   `json:"page_size"`
 }
 
 func NewService(db *pgxpool.Pool) *Service {
-	return &Service{queries: sqlc.New(db)}
+	return &Service{db: db}
 }
 
 func (s *Service) Record(ctx context.Context, input RecordInput) (Log, error) {
-	if s == nil || s.queries == nil {
+	if s == nil || s.db == nil {
 		return Log{}, apperr.New(apperr.KindInternal, "audit service is not configured")
 	}
 	input = normalizeRecordInput(input)
@@ -83,53 +101,129 @@ func (s *Service) Record(ctx context.Context, input RecordInput) (Log, error) {
 		return Log{}, apperr.New(apperr.KindInvalidArgument, "audit result must be success or failure")
 	}
 
-	row, err := s.queries.CreateAuditLog(ctx, sqlc.CreateAuditLogParams{
-		WorkspaceID:  input.WorkspaceID,
-		ActorType:    input.ActorType,
-		ActorID:      input.ActorID,
-		Action:       input.Action,
-		ResourceType: input.ResourceType,
-		ResourceID:   input.ResourceID,
-		Result:       input.Result,
-		Reason:       nullableTrimmedString(input.Reason),
-		Ip:           nullableTrimmedString(input.IP),
-		UserAgent:    nullableTrimmedString(input.UserAgent),
-		RequestID:    nullableTrimmedString(input.RequestID),
-	})
+	row := s.db.QueryRow(ctx, `
+		INSERT INTO audit_logs (
+			workspace_id, actor_type, actor_id, actor_admin_id, action,
+			resource_type, resource_id, result, reason, ip, user_agent, request_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		RETURNING id, workspace_id, actor_type, actor_id, actor_admin_id, action,
+			resource_type, resource_id, result, reason, ip, user_agent, request_id, created_at
+	`, input.WorkspaceID, input.ActorType, input.ActorID, input.ActorAdminID, input.Action,
+		input.ResourceType, input.ResourceID, input.Result, nullableTrimmedString(input.Reason),
+		nullableTrimmedString(input.IP), nullableTrimmedString(input.UserAgent), nullableTrimmedString(input.RequestID))
+	var result Log
+	err := row.Scan(&result.ID, &result.WorkspaceID, &result.ActorType, &result.ActorID, &result.ActorAdminID,
+		&result.Action, &result.ResourceType, &result.ResourceID, &result.Result, &result.Reason,
+		&result.IP, &result.UserAgent, &result.RequestID, &result.CreatedAt)
 	if err != nil {
 		return Log{}, apperr.Wrap(apperr.KindInternal, "write audit log", err)
 	}
-	return fromSQL(row), nil
+	return result, nil
 }
 
 func (s *Service) ListByWorkspace(ctx context.Context, input ListInput) ([]Log, error) {
+	result, err := s.ListPageByWorkspace(ctx, input)
+	return result.Items, err
+}
+
+func (s *Service) ListPageByWorkspace(ctx context.Context, input ListInput) (ListResult, error) {
 	if input.WorkspaceID == uuid.Nil {
-		return nil, apperr.New(apperr.KindInvalidArgument, "workspace id is required")
+		return ListResult{}, apperr.New(apperr.KindInvalidArgument, "workspace id is required")
 	}
-	limit := input.Limit
-	if limit <= 0 {
-		limit = 100
+	page := input.Page
+	if page < 1 {
+		page = 1
 	}
-	if limit > 500 {
-		limit = 500
+	pageSize := input.PageSize
+	if pageSize <= 0 {
+		pageSize = int(input.Limit)
+	}
+	if pageSize <= 0 {
+		pageSize = 100
+	}
+	if pageSize > 500 {
+		pageSize = 500
 	}
 
-	rows, err := s.queries.ListAuditLogsByWorkspace(ctx, sqlc.ListAuditLogsByWorkspaceParams{
-		WorkspaceID: &input.WorkspaceID,
-		Limit:       limit,
-	})
+	conditions := []string{"a.workspace_id = $1"}
+	args := []any{input.WorkspaceID}
+	add := func(condition string, value any) {
+		args = append(args, value)
+		conditions = append(conditions, fmt.Sprintf(condition, len(args)))
+	}
+	if value := strings.TrimSpace(input.Action); value != "" {
+		add("a.action = $%d", value)
+	}
+	if value := strings.TrimSpace(input.ResourceType); value != "" {
+		add("a.resource_type = $%d", value)
+	}
+	if value := strings.TrimSpace(input.Result); value != "" {
+		add("a.result = $%d", value)
+	}
+	if value := strings.TrimSpace(input.ActorType); value != "" {
+		add("a.actor_type = $%d", value)
+	}
+	if input.Start != nil {
+		add("a.created_at >= $%d", *input.Start)
+	}
+	if input.End != nil {
+		add("a.created_at < $%d", *input.End)
+	}
+	where := strings.Join(conditions, " AND ")
+	var total int64
+	if err := s.db.QueryRow(ctx, "SELECT count(*) FROM audit_logs a WHERE "+where, args...).Scan(&total); err != nil {
+		return ListResult{}, apperr.Wrap(apperr.KindInternal, "count audit logs", err)
+	}
+	args = append(args, pageSize, (page-1)*pageSize)
+	query := fmt.Sprintf(`
+		SELECT a.id, a.workspace_id, a.actor_type, a.actor_id, a.actor_admin_id,
+			COALESCE(sa.name, u.name), a.action, a.resource_type, a.resource_id,
+			a.result, a.reason, a.ip, a.user_agent, a.request_id, a.created_at
+		FROM audit_logs a
+		LEFT JOIN users u ON u.id = a.actor_id
+		LEFT JOIN system_admins sa ON sa.id = a.actor_admin_id
+		WHERE %s
+		ORDER BY a.created_at DESC, a.id DESC
+		LIMIT $%d OFFSET $%d
+	`, where, len(args)-1, len(args))
+	rows, err := s.db.Query(ctx, query, args...)
 	if err != nil {
-		return nil, apperr.Wrap(apperr.KindInternal, "list audit logs", err)
+		return ListResult{}, apperr.Wrap(apperr.KindInternal, "list audit logs", err)
 	}
+	defer rows.Close()
 
-	items := make([]Log, 0, len(rows))
-	for _, row := range rows {
-		items = append(items, fromSQL(row))
+	items := make([]Log, 0, pageSize)
+	for rows.Next() {
+		var item Log
+		if err := rows.Scan(&item.ID, &item.WorkspaceID, &item.ActorType, &item.ActorID, &item.ActorAdminID,
+			&item.ActorName, &item.Action, &item.ResourceType, &item.ResourceID, &item.Result,
+			&item.Reason, &item.IP, &item.UserAgent, &item.RequestID, &item.CreatedAt); err != nil {
+			return ListResult{}, apperr.Wrap(apperr.KindInternal, "scan audit log", err)
+		}
+		items = append(items, item)
 	}
-	return items, nil
+	if err := rows.Err(); err != nil {
+		return ListResult{}, apperr.Wrap(apperr.KindInternal, "list audit logs", err)
+	}
+	return ListResult{Items: items, Total: total, Page: page, PageSize: pageSize}, nil
 }
 
 func FromRequest(c *gin.Context, input RecordInput) RecordInput {
+	if value, ok := c.Get("actor"); ok {
+		if actor, ok := value.(interface {
+			IsSystemAdministrator() bool
+			SystemAdministratorID() uuid.UUID
+		}); ok && actor.IsSystemAdministrator() {
+			input.ActorType = ActorSystemAdmin
+			input.ActorID = nil
+			input.ActorAdminID = UserActorID(actor.SystemAdministratorID())
+		}
+	}
+	if input.Reason == "" {
+		if reason, ok := c.Get("admin_intervention_reason"); ok {
+			input.Reason, _ = reason.(string)
+		}
+	}
 	input.IP = c.ClientIP()
 	input.UserAgent = c.Request.UserAgent()
 	input.RequestID = httpx.RequestIDFromContext(c)
@@ -189,35 +283,10 @@ func normalizeRecordInput(input RecordInput) RecordInput {
 	return input
 }
 
-func fromSQL(model sqlc.AuditLog) Log {
-	return Log{
-		ID:           model.ID,
-		WorkspaceID:  model.WorkspaceID,
-		ActorType:    model.ActorType,
-		ActorID:      model.ActorID,
-		Action:       model.Action,
-		ResourceType: model.ResourceType,
-		ResourceID:   model.ResourceID,
-		Result:       model.Result,
-		Reason:       model.Reason,
-		IP:           model.Ip,
-		UserAgent:    model.UserAgent,
-		RequestID:    model.RequestID,
-		CreatedAt:    pgTime(model.CreatedAt),
-	}
-}
-
 func nullableTrimmedString(value string) *string {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
 		return nil
 	}
 	return &trimmed
-}
-
-func pgTime(value pgtype.Timestamptz) time.Time {
-	if !value.Valid {
-		return time.Time{}
-	}
-	return value.Time
 }

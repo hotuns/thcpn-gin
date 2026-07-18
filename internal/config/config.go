@@ -13,18 +13,19 @@ import (
 )
 
 type Config struct {
-	Server      ServerConfig      `yaml:"server"`
-	Logger      LoggerConfig      `yaml:"logger"`
-	Database    DatabaseConfig    `yaml:"database"`
-	Redis       RedisConfig       `yaml:"redis"`
-	Auth        AuthConfig        `yaml:"auth"`
-	SMS         SMSConfig         `yaml:"sms"`
-	Email       EmailConfig       `yaml:"email"`
-	ObjectStore ObjectStoreConfig `yaml:"object_store"`
-	QueryLimits QueryLimitsConfig `yaml:"query_limits"`
-	Export      ExportConfig      `yaml:"export"`
-	Tracing     TracingConfig     `yaml:"tracing"`
-	Ezviz       EzvizConfig       `yaml:"ezviz"`
+	Server              ServerConfig      `yaml:"server"`
+	Logger              LoggerConfig      `yaml:"logger"`
+	Database            DatabaseConfig    `yaml:"database"`
+	Redis               RedisConfig       `yaml:"redis"`
+	Auth                AuthConfig        `yaml:"auth"`
+	SMS                 SMSConfig         `yaml:"sms"`
+	Email               EmailConfig       `yaml:"email"`
+	ObjectStore         ObjectStoreConfig `yaml:"object_store"`
+	THCPNLogObjectStore ObjectStoreConfig `yaml:"thcpn_log_object_store"`
+	QueryLimits         QueryLimitsConfig `yaml:"query_limits"`
+	Export              ExportConfig      `yaml:"export"`
+	Tracing             TracingConfig     `yaml:"tracing"`
+	Ezviz               EzvizConfig       `yaml:"ezviz"`
 }
 
 type ServerConfig struct {
@@ -193,6 +194,14 @@ func Default() Config {
 			PublicURLPrefix: "",
 			AccessKeyEnv:    "OBJECT_STORE_ACCESS_KEY",
 			SecretKeyEnv:    "OBJECT_STORE_SECRET_KEY",
+		},
+		THCPNLogObjectStore: ObjectStoreConfig{
+			Provider:     "oss",
+			Endpoint:     "",
+			Bucket:       "",
+			Region:       "",
+			AccessKeyEnv: "THCPN_LOG_OSS_ACCESS_KEY_ID",
+			SecretKeyEnv: "THCPN_LOG_OSS_ACCESS_KEY_SECRET",
 		},
 		QueryLimits: QueryLimitsConfig{
 			MaxHistoryDays:   31,
@@ -565,6 +574,28 @@ func applyEnv(cfg *Config) {
 	}
 	if value := strings.TrimSpace(os.Getenv("OBJECT_STORE_PUBLIC_URL_PREFIX")); value != "" {
 		cfg.ObjectStore.PublicURLPrefix = value
+	}
+	if value := strings.TrimSpace(os.Getenv("THCPN_LOG_OSS_PROVIDER")); value != "" {
+		cfg.THCPNLogObjectStore.Provider = value
+	}
+	if value := strings.TrimSpace(os.Getenv("THCPN_LOG_OSS_ENDPOINT")); value != "" {
+		cfg.THCPNLogObjectStore.Endpoint = value
+	}
+	if value := strings.TrimSpace(os.Getenv("THCPN_LOG_OSS_BUCKET")); value != "" {
+		cfg.THCPNLogObjectStore.Bucket = value
+	}
+	if value := strings.TrimSpace(os.Getenv("THCPN_LOG_OSS_REGION")); value != "" {
+		cfg.THCPNLogObjectStore.Region = value
+	}
+	if value := strings.TrimSpace(os.Getenv("THCPN_LOG_OSS_PUBLIC_URL_PREFIX")); value != "" {
+		cfg.THCPNLogObjectStore.PublicURLPrefix = value
+	}
+	if strings.TrimSpace(cfg.THCPNLogObjectStore.Endpoint) == "" &&
+		strings.TrimSpace(cfg.THCPNLogObjectStore.Bucket) == "" &&
+		strings.TrimSpace(cfg.THCPNLogObjectStore.PublicURLPrefix) == "" {
+		// Keep existing deployments working when logs live in the same OSS
+		// bucket as platform media and no dedicated log store is configured.
+		cfg.THCPNLogObjectStore = cfg.ObjectStore
 	}
 	if value := strings.TrimSpace(os.Getenv("EXPORT_FILE_TTL_HOURS")); value != "" {
 		if hours, err := strconv.Atoi(value); err == nil {

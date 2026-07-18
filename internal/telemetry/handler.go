@@ -84,10 +84,20 @@ func parseQuery(c *gin.Context) (QueryInput, bool) {
 	if !ok {
 		return QueryInput{}, false
 	}
+	adaptive, ok := parseOptionalBoolQuery(c, "adaptive")
+	if !ok {
+		return QueryInput{}, false
+	}
+	targetPoints, ok := parseOptionalIntQuery(c, "target_points")
+	if !ok {
+		return QueryInput{}, false
+	}
 	return QueryInput{
-		StartTime: start,
-		EndTime:   end,
-		Limit:     limit,
+		StartTime:    start,
+		EndTime:      end,
+		Limit:        limit,
+		Adaptive:     adaptive,
+		TargetPoints: targetPoints,
 	}, true
 }
 
@@ -114,6 +124,19 @@ func parseOptionalIntQuery(c *gin.Context, name string) (int, bool) {
 	if err != nil {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid "+name))
 		return 0, false
+	}
+	return parsed, true
+}
+
+func parseOptionalBoolQuery(c *gin.Context, name string) (bool, bool) {
+	value := c.Query(name)
+	if value == "" {
+		return false, true
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid "+name))
+		return false, false
 	}
 	return parsed, true
 }

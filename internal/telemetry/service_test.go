@@ -39,3 +39,17 @@ func TestNormalizeLimit(t *testing.T) {
 		t.Fatalf("expected max points error, got %v", err)
 	}
 }
+
+func TestNormalizeTargetPoints(t *testing.T) {
+	limits := config.QueryLimitsConfig{MaxPoints: 5000}
+	target, err := normalizeTargetPoints(0, true, limits)
+	if err != nil || target != 1000 {
+		t.Fatalf("expected adaptive default target, got target=%d err=%v", target, err)
+	}
+	if target, err := normalizeTargetPoints(1000, false, limits); err != nil || target != 0 {
+		t.Fatalf("expected non-adaptive target to be ignored, got target=%d err=%v", target, err)
+	}
+	if _, err := normalizeTargetPoints(5001, true, limits); apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected target point limit error, got %v", err)
+	}
+}
