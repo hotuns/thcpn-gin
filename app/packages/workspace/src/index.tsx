@@ -46,7 +46,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     },
     loading: query.isLoading,
     error: query.error,
-    refresh: async () => { await query.refetch(); }
+    refresh: async () => { await queryClient.invalidateQueries({ queryKey: ["workspaces"] }); }
   }), [currentId, query.data, query.error, query.isLoading, queryClient, workspaces]);
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;

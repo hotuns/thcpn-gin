@@ -1,13 +1,15 @@
 import { useSearchParams } from "react-router-dom";
-import { Mail, Phone, UserRound } from "lucide-react";
-import { commonStatusLabel } from "@thcpn/api";
+import { useState, type FormEvent } from "react";
+import { Mail, Moon, Pencil, Phone, Sun, UserRound, X } from "lucide-react";
+import { api, commonStatusLabel, formatApiError } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
-import { Badge, CopyId, PageHeader, Panel } from "@thcpn/ui";
+import { Badge, Button, CopyId, PageHeader, Panel } from "@thcpn/ui";
+import { useLocale, useTheme, type ThemeMode } from "@thcpn/i18n";
 import { SecurityTab } from "./security-tab";
 
 const formatTime = (input?: string) =>
   input
-    ? new Intl.DateTimeFormat("zh-CN", {
+    ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", {
         dateStyle: "medium",
         timeStyle: "short",
       }).format(new Date(input))
@@ -15,13 +17,14 @@ const formatTime = (input?: string) =>
 
 export function AccountPage() {
   const [params, setParams] = useSearchParams();
-  const tab = params.get("tab") === "security" ? "security" : "profile";
+  const tab = params.get("tab") === "security" ? "security" : params.get("tab") === "preferences" ? "preferences" : "profile";
+  const { t } = useLocale();
   return (
     <>
       <PageHeader
-        eyebrow="账户"
-        title="账户中心"
-        description="查看个人身份资料并管理登录安全。"
+        eyebrow={t("platform:navigation.account")}
+        title={t("platform:navigation.account")}
+        description={t("preferences")}
       />
       <div className="settings-tabs account-tabs">
         <button
@@ -38,57 +41,67 @@ export function AccountPage() {
         >
           账号安全
         </button>
+        <button type="button" className={tab === "preferences" ? "active" : ""} onClick={() => setParams({ tab: "preferences" })}>
+          {t("preferences")}
+        </button>
       </div>
-      {tab === "security" ? <SecurityTab /> : <AccountProfile />}
+      {tab === "security" ? <SecurityTab /> : tab === "preferences" ? <PreferencesTab /> : <AccountProfile />}
     </>
   );
 }
 
+function PreferencesTab() {
+  const { locale, setLocale, t } = useLocale();
+  const { theme, setTheme } = useTheme();
+  const themeOptions: Array<{ value: ThemeMode; label: string; icon: typeof Sun }> = [
+    { value: "system", label: t("themeSystem"), icon: Sun },
+    { value: "light", label: t("themeLight"), icon: Sun },
+    { value: "dark", label: t("themeDark"), icon: Moon },
+  ];
+  return <Panel className="preferences-panel">
+    <div className="preference-list">
+      <div className="preference-row">
+        <div><strong>{t("language")}</strong><small>{t("languageDescription")}</small></div>
+        <select aria-label={t("language")} value={locale} onChange={(event) => void setLocale(event.target.value as "zh-CN" | "en-US")}>
+          <option value="zh-CN">{t("chinese")}</option>
+          <option value="en-US">{t("english")}</option>
+        </select>
+      </div>
+      <div className="preference-row">
+        <div><strong>{t("appearance")}</strong><small>{t("appearanceDescription")}</small></div>
+        <select aria-label={t("theme")} value={theme} onChange={(event) => setTheme(event.target.value as ThemeMode)}>
+          {themeOptions.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+        </select>
+      </div>
+    </div>
+  </Panel>;
+}
+
 function AccountProfile() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState("");
   if (!user) return null;
+  const save = async (event: FormEvent) => {
+    event.preventDefault(); setBusy(true); setFeedback("");
+    try { await api.me.update({ name }); await refreshUser(); setEditing(false); setFeedback("账户名称已更新"); }
+    catch (error) { const item = formatApiError(error); setFeedback(`${item.message}${item.requestId ? ` · request id ${item.requestId}` : ""}`); }
+    finally { setBusy(false); }
+  };
   return (
-    <Panel className="account-profile-panel">
-      <div className="account-profile-hero">
-        <div className="account-profile-avatar">
-          <UserRound size={24} aria-hidden="true" />
-        </div>
-        <div>
-          <h2>{user.name}</h2>
-          <p>{user.email ?? user.phone ?? "未设置联系方式"}</p>
-        </div>
-        <Badge tone={user.status === "active" ? "success" : "warning"}>
-          {commonStatusLabel(user.status)}
-        </Badge>
+    <Panel className="preferences-panel account-profile-panel">
+      <div className="preference-list">
+        <div className="preference-row account-profile-summary"><div><strong><UserRound size={15} />账户名称</strong><small>用于展示和账户识别</small></div><div className="preference-value"><span>{user.name}</span><Button variant="secondary" onClick={() => { setName(user.name); setEditing(true); }}><Pencil size={13} />编辑</Button></div></div>
+        <div className="preference-row"><div><strong><Mail size={15} />邮箱</strong><small>登录和安全通知邮箱</small></div><div className="preference-value"><span>{user.email ?? "未设置"}</span><Badge tone={user.email_verified_at ? "success" : "warning"}>{user.email_verified_at ? "已验证" : "未验证"}</Badge></div></div>
+        <div className="preference-row"><div><strong><Phone size={15} />手机号</strong><small>登录手机号</small></div><div className="preference-value"><span>{user.phone ?? "未设置"}</span><Badge tone={user.phone_verified_at ? "success" : "warning"}>{user.phone_verified_at ? "已验证" : "未验证"}</Badge></div></div>
+        <div className="preference-row"><div><strong>账户状态</strong><small>当前账户可用状态</small></div><Badge tone={user.status === "active" ? "success" : "warning"}>{commonStatusLabel(user.status)}</Badge></div>
+        <div className="preference-row"><div><strong>最近登录</strong><small>{formatTime(user.last_login_at)}</small></div></div>
+        <div className="preference-row"><div><strong>用户 ID</strong><small>系统分配的唯一标识</small></div><CopyId value={user.id} /></div>
       </div>
-      <div className="account-profile-grid">
-        <div>
-          <span>邮箱</span>
-          <strong>
-            <Mail size={14} aria-hidden="true" />
-            {user.email ?? "未设置"}
-          </strong>
-          <small>{user.email_verified_at ? "已验证" : "未验证"}</small>
-        </div>
-        <div>
-          <span>手机号</span>
-          <strong>
-            <Phone size={14} aria-hidden="true" />
-            {user.phone ?? "未设置"}
-          </strong>
-          <small>{user.phone_verified_at ? "已验证" : "未验证"}</small>
-        </div>
-        <div>
-          <span>最近登录</span>
-          <strong>{formatTime(user.last_login_at)}</strong>
-        </div>
-        <div>
-          <span>用户 ID</span>
-          <strong>
-            <CopyId value={user.id} />
-          </strong>
-        </div>
-      </div>
+      {feedback && <div className="command-note section-gap">{feedback}</div>}
+      {editing && <div className="modal-layer"><button className="modal-backdrop" aria-label="关闭编辑" onClick={() => setEditing(false)} /><div className="modal-card account-editor" role="dialog" aria-modal="true"><div className="panel-header"><h2 className="panel-title">编辑账户名称</h2><Button variant="secondary" onClick={() => setEditing(false)}><X size={14} />关闭</Button></div><form className="panel-body security-form" onSubmit={save}><label className="field"><span className="field-label">名称</span><input required maxLength={100} value={name} onChange={(event) => setName(event.target.value)} /></label><div className="form-actions"><Button type="button" variant="secondary" onClick={() => setEditing(false)}>取消</Button><Button type="submit" disabled={busy || !name.trim()}>{busy ? "保存中…" : "保存"}</Button></div></form></div></div>}
     </Panel>
   );
 }

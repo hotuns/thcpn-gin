@@ -66,6 +66,11 @@ type mfaCodeRequest struct {
 	Code string `json:"code"`
 }
 
+type changePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
 func NewHandler(service *Service, auditServices ...*audit.Service) *Handler {
 	var auditService *audit.Service
 	if len(auditServices) > 0 {
@@ -597,6 +602,31 @@ func (h *Handler) RevokeSession(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) ChangePassword(c *gin.Context) {
+	actor, ok := ActorFromContext(c)
+	if !ok {
+		httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "missing authenticated user"))
+		return
+	}
+	var req changePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	err := h.service.ChangePassword(c.Request.Context(), ChangePasswordInput{UserID: actor.UserID, CurrentPassword: req.CurrentPassword, NewPassword: req.NewPassword})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{ActorType: audit.ActorUser, ActorID: audit.UserActorID(actor.UserID), Action: "auth.password_change", ResourceType: "auth", ResourceID: audit.ResourceID(actor.UserID), Result: audit.ResultFailure, Reason: apperr.MessageOf(err)}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{ActorType: audit.ActorUser, ActorID: audit.UserActorID(actor.UserID), Action: "auth.password_change", ResourceType: "auth", ResourceID: audit.ResourceID(actor.UserID), Result: audit.ResultSuccess}) {
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"signed_out": true})
 }
 
 func (h *Handler) record(c *gin.Context, input audit.RecordInput) bool {

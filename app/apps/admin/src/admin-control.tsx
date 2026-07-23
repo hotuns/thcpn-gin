@@ -37,7 +37,7 @@ import {
 
 const text = (value: unknown, fallback = "—") => value === undefined || value === null || value === "" ? fallback : String(value);
 const shortId = (value: unknown) => text(value).slice(0, 8);
-const time = (value: unknown) => value ? new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(String(value))) : "—";
+const time = (value: unknown) => value ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(String(value))) : "—";
 const statusLabel = (value: unknown) => ({ active: "启用", disabled: "停用", archived: "已归档", removed: "已移除", pending: "待处理", revoked: "已撤销", expired: "已过期", success: "成功", failure: "失败" })[String(value)] ?? text(value);
 const typeLabel = (value: unknown) => ({ personal: "个人", organization: "组织" })[String(value)] ?? text(value);
 const orgLabel = (value: unknown) => ({ lab: "实验室", institution: "机构", company: "企业", government: "政府", service_provider: "服务商", other: "其他" })[String(value)] ?? text(value);

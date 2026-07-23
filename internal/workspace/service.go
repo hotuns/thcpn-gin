@@ -60,6 +60,12 @@ type CreateOrganizationInput struct {
 	OwnerUserID      uuid.UUID
 }
 
+type UpdateNameInput struct {
+	WorkspaceID uuid.UUID
+	UserID      uuid.UUID
+	Name        string
+}
+
 func NewService(db *pgxpool.Pool) *Service {
 	return &Service{
 		db:      db,
@@ -167,6 +173,36 @@ func (s *Service) ListForUser(ctx context.Context, userID uuid.UUID) ([]Workspac
 		})
 	}
 	return items, nil
+}
+
+func (s *Service) UpdateName(ctx context.Context, input UpdateNameInput) (WorkspaceWithMembership, error) {
+	name := strings.TrimSpace(input.Name)
+	if input.WorkspaceID == uuid.Nil || input.UserID == uuid.Nil {
+		return WorkspaceWithMembership{}, apperr.New(apperr.KindInvalidArgument, "workspace and user are required")
+	}
+	if name == "" {
+		return WorkspaceWithMembership{}, apperr.New(apperr.KindInvalidArgument, "workspace name is required")
+	}
+	if len([]rune(name)) > 120 {
+		return WorkspaceWithMembership{}, apperr.New(apperr.KindInvalidArgument, "workspace name is too long")
+	}
+	result, err := s.db.Exec(ctx, `UPDATE workspaces SET name = $2, updated_at = now() WHERE id = $1 AND status = 'active'`, input.WorkspaceID, name)
+	if err != nil {
+		return WorkspaceWithMembership{}, apperr.Wrap(apperr.KindInternal, "update workspace name", err)
+	}
+	if result.RowsAffected() == 0 {
+		return WorkspaceWithMembership{}, apperr.New(apperr.KindNotFound, "workspace not found")
+	}
+	items, err := s.ListForUser(ctx, input.UserID)
+	if err != nil {
+		return WorkspaceWithMembership{}, err
+	}
+	for _, item := range items {
+		if item.Workspace.ID == input.WorkspaceID {
+			return item, nil
+		}
+	}
+	return WorkspaceWithMembership{}, apperr.New(apperr.KindPermissionDenied, "workspace access denied")
 }
 
 func (s *Service) ListAll(ctx context.Context) ([]Workspace, error) {

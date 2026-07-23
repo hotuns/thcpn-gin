@@ -35,6 +35,9 @@ export type ExportJob = Schema<"ExportJob">;
 export type THCPNLatestAttributesResponse = Schema<"THCPNLatestAttributesResponse">;
 export type THCPNDeviceLogListResponse = Schema<"THCPNDeviceLogListResponse">;
 export type THCPNDeviceLogAccessResponse = Schema<"THCPNDeviceLogAccessResponse">;
+export type THCPNSensorTemplate = Schema<"THCPNSensorTemplate">;
+export type THCPNSensorMetric = Schema<"THCPNSensorMetric">;
+export type THCPNSensorTemplateListResponse = Schema<"THCPNSensorTemplateListResponse">;
 export type SamplingProfile = Schema<"SamplingProfileResponse">;
 export type UpdateSamplingProfile = Schema<"UpdateSamplingProfileRequest">;
 export type DevicePublicAccess = Schema<"DevicePublicAccess">;
@@ -90,6 +93,7 @@ const adminReasonRequest = <T>(path: string, method: string, reason: string, bod
 
 export class ApiError extends Error {
   readonly status: number;
+  readonly code?: string;
   readonly requestId?: string;
   readonly details?: unknown;
 
@@ -98,10 +102,12 @@ export class ApiError extends Error {
     status: number,
     requestId?: string,
     details?: unknown,
+    code?: string,
   ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
     this.requestId = requestId;
     this.details = details;
   }
@@ -168,8 +174,9 @@ const parseResponse = async (response: Response) => {
     throw new ApiError(
       String(message),
       response.status,
-      body?.request_id ?? requestId,
+      body?.error?.request_id ?? body?.request_id ?? requestId,
       body,
+      body?.error?.code ?? body?.code,
     );
   }
   return { body, requestId };
@@ -252,14 +259,28 @@ async function download(path: string): Promise<Blob> {
 
 export const formatApiError = (error: unknown) => {
   if (error instanceof ApiError) {
+    const messages: Record<string, { zh: string; en: string }> = {
+      invalid_argument: { zh: "请求参数不正确", en: "Invalid request parameters" },
+      unauthorized: { zh: "登录状态已失效", en: "Your session has expired" },
+      permission_denied: { zh: "没有执行此操作的权限", en: "You do not have permission for this action" },
+      not_found: { zh: "请求的资源不存在", en: "The requested resource was not found" },
+      conflict: { zh: "数据已经发生变化，请刷新后重试", en: "The data has changed. Refresh and try again" },
+      rate_limited: { zh: "操作过于频繁，请稍后重试", en: "Too many requests. Try again later" },
+      data_source: { zh: "数据源暂时不可用", en: "The data source is temporarily unavailable" },
+      internal: { zh: "服务暂时不可用", en: "The service is temporarily unavailable" },
+    };
+    const localized = error.code ? messages[error.code.toLowerCase()] : undefined;
+    const english = typeof document !== "undefined" && document.documentElement.lang === "en-US";
     return {
-      message: error.message,
+      message: localized ? localized[english ? "en" : "zh"] : error.message,
+      code: error.code,
       requestId: error.requestId,
       status: error.status,
     };
   }
   return {
     message: error instanceof Error ? error.message : "网络连接失败",
+    code: undefined,
     requestId: undefined,
     status: 0,
   };
@@ -307,6 +328,8 @@ export const api = {
       }),
     completeInitialPassword: (payload: { password_change_token: string; password: string }) =>
       jsonRequest<LoginResponse>("/api/v1/auth/password/complete-initial", "POST", payload),
+    changePassword: (payload: { current_password: string; new_password: string }) =>
+      jsonRequest<{ signed_out: boolean }>("/api/v1/auth/password/change", "POST", payload),
     logout: (refreshToken?: string) =>
       jsonRequest<void>(
         "/api/v1/auth/logout",
@@ -344,7 +367,13 @@ export const api = {
       request<void>("/api/v1/admin/auth/logout", { method: "POST", body: JSON.stringify({ refresh_token: refreshToken ?? "" }) }, false),
     me: () => request<{ admin: AdminUser }>("/api/v1/admin/me"),
   },
-  me: () => request<{ user: User }>("/api/v1/me"),
+  me: Object.assign(
+    () => request<{ user: User }>("/api/v1/me"),
+    {
+      get: () => request<{ user: User }>("/api/v1/me"),
+      update: (payload: { name: string }) => jsonRequest<{ user: User }>("/api/v1/me", "PATCH", payload),
+    },
+  ),
   workspaces: {
     list: () =>
       request<ListResponse<WorkspaceWithMembership>>("/api/v1/workspaces"),
@@ -353,6 +382,8 @@ export const api = {
         method: "POST",
         body: JSON.stringify(payload),
       }),
+    update: (workspaceId: string, payload: { name: string }) =>
+      jsonRequest<WorkspaceWithMembership>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}`, "PATCH", payload),
     adminList: (filters: JsonRecord = {}) =>
       request<ListResponse<JsonRecord>>(`/api/v1/admin/workspaces${queryString(filters as Record<string, string | number | boolean>)}`),
   },
@@ -726,6 +757,12 @@ export const api = {
         "POST",
         payload,
       ),
+    syncAllDevices: (id: string) =>
+      jsonRequest<JsonRecord>(
+        `/api/v1/admin/data-sources/${encodeURIComponent(id)}/thcpn-standard-station/devices/sync-all`,
+        "POST",
+        {},
+      ),
     syncGateway: (id: string, payload: JsonRecord) =>
       jsonRequest<JsonRecord>(
         `/api/v1/admin/data-sources/${encodeURIComponent(id)}/thcpn-standard-station/gateways`,
@@ -750,6 +787,19 @@ export const api = {
       download(
         `/api/v1/admin/devices/${encodeURIComponent(id)}/logs/${encodeURIComponent(logUUID)}/download`,
       ),
+    platformLogs: (input: JsonRecord = {}) =>
+      request<ListResponse<JsonRecord>>(
+        `/api/v1/admin/platform-logs${queryString(input as Record<string, string | number | boolean>)}`,
+      ),
+    platformLog: (id: string | number) =>
+      request<JsonRecord>(`/api/v1/admin/platform-logs/${encodeURIComponent(String(id))}`),
+    platformLogPolicy: () => request<JsonRecord>("/api/v1/admin/platform-logs/policy"),
+    rebuildPlatformLogIndex: () =>
+      jsonRequest<JsonRecord>("/api/v1/admin/platform-logs/index/rebuild", "POST", {}),
+    exportPlatformLogs: (input: JsonRecord = {}) =>
+      download(`/api/v1/admin/platform-logs/export${queryString(input as Record<string, string | number | boolean>)}`),
+    platformLogFiles: () => request<ListResponse<JsonRecord>>("/api/v1/admin/platform-logs/files"),
+    downloadPlatformLogFile: (name: string) => download(`/api/v1/admin/platform-logs/files/${encodeURIComponent(name)}/download`),
     updateDevice: (id: string, payload: JsonRecord) =>
       jsonRequest<JsonRecord>(
         `/api/v1/admin/devices/${encodeURIComponent(id)}`,
@@ -774,6 +824,10 @@ export const api = {
     deviceConfig: (id: string) =>
       request<JsonRecord>(
         `/api/v1/admin/devices/${encodeURIComponent(id)}/thcpn-config`,
+      ),
+    sensorTemplates: (id: string, input: JsonRecord = {}) =>
+      request<THCPNSensorTemplateListResponse>(
+        `/api/v1/admin/devices/${encodeURIComponent(id)}/sensor-templates${queryString(input as Record<string, string | number | boolean>)}`,
       ),
     updateDeviceConfig: (id: string, payload: JsonRecord) =>
       jsonRequest<JsonRecord>(

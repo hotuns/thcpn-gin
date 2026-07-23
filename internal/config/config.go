@@ -33,8 +33,13 @@ type ServerConfig struct {
 }
 
 type LoggerConfig struct {
-	Level  string `yaml:"level"`
-	Format string `yaml:"format"`
+	Level          string `yaml:"level"`
+	Format         string `yaml:"format"`
+	Directory      string `yaml:"directory"`
+	RetentionDays  int    `yaml:"retention_days"`
+	MaxTotalSizeMB int64  `yaml:"max_total_size_mb"`
+	MaxFileSizeMB  int64  `yaml:"max_file_size_mb"`
+	SQLiteIndex    bool   `yaml:"sqlite_index"`
 }
 
 type DatabaseConfig struct {
@@ -136,8 +141,13 @@ func Default() Config {
 			Addr: ":8080",
 		},
 		Logger: LoggerConfig{
-			Level:  "info",
-			Format: "json",
+			Level:          "info",
+			Format:         "json",
+			Directory:      "var/log/thcpn",
+			RetentionDays:  30,
+			MaxTotalSizeMB: 5120,
+			MaxFileSizeMB:  100,
+			SQLiteIndex:    true,
 		},
 		Database: DatabaseConfig{
 			PlatformDSNEnv: "PLATFORM_DATABASE_DSN",
@@ -296,6 +306,9 @@ func (cfg Config) Validate() error {
 	if strings.TrimSpace(cfg.Server.Addr) == "" {
 		return errors.New("server.addr is required")
 	}
+	if cfg.Logger.RetentionDays <= 0 || cfg.Logger.MaxTotalSizeMB <= 0 || cfg.Logger.MaxFileSizeMB <= 0 {
+		return errors.New("logger retention and size limits must be greater than 0")
+	}
 	if strings.TrimSpace(cfg.Database.PlatformDSN) == "" {
 		return errors.New("database.platform_dsn is required")
 	}
@@ -422,6 +435,29 @@ func (cfg Config) Validate() error {
 func applyEnv(cfg *Config) {
 	if value := strings.TrimSpace(os.Getenv("SERVER_ADDR")); value != "" {
 		cfg.Server.Addr = value
+	}
+	if value := strings.TrimSpace(os.Getenv("LOGGER_DIRECTORY")); value != "" {
+		cfg.Logger.Directory = value
+	}
+	if value := strings.TrimSpace(os.Getenv("LOGGER_RETENTION_DAYS")); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil {
+			cfg.Logger.RetentionDays = parsed
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("LOGGER_MAX_TOTAL_SIZE_MB")); value != "" {
+		if parsed, err := strconv.ParseInt(value, 10, 64); err == nil {
+			cfg.Logger.MaxTotalSizeMB = parsed
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("LOGGER_MAX_FILE_SIZE_MB")); value != "" {
+		if parsed, err := strconv.ParseInt(value, 10, 64); err == nil {
+			cfg.Logger.MaxFileSizeMB = parsed
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("LOGGER_SQLITE_INDEX")); value != "" {
+		if parsed, err := strconv.ParseBool(value); err == nil {
+			cfg.Logger.SQLiteIndex = parsed
+		}
 	}
 
 	dsnEnv := strings.TrimSpace(cfg.Database.PlatformDSNEnv)

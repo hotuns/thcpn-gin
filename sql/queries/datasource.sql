@@ -37,9 +37,10 @@ INSERT INTO data_stream_bindings (
     value_field,
     payload_type,
     adapter_config_json,
-    created_by
+    created_by,
+    created_by_type
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 RETURNING id, data_stream_id, data_source_id, adapter_code, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at;
 
 -- name: GetDataStreamBinding :one

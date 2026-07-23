@@ -16,11 +16,8 @@ import {
   UserPlus,
   UserRound,
 } from "lucide-react";
-import {
-  roleTemplateLabel,
-  type AccessibleWorkspace,
-  type User,
-} from "@thcpn/api";
+import { type AccessibleWorkspace, type User } from "@thcpn/api";
+import { domainLabels, useLocale } from "@thcpn/i18n";
 
 export const canManageWorkspace = (workspace: AccessibleWorkspace | null) =>
   ["owner", "admin"].includes(workspace?.membership.role.code ?? "");
@@ -77,6 +74,8 @@ export function WorkspaceMenu({
   onSwitch: (workspaceId: string) => void;
   onNavigate: () => void;
 }) {
+  const { t } = useLocale();
+  const labels = domainLabels(t);
   const container = useRef<HTMLDivElement>(null);
   const [keyword, setKeyword] = useState("");
   const filtered = useMemo(
@@ -98,11 +97,11 @@ export function WorkspaceMenu({
         onClick={onToggle}
       >
         <span className="workspace-trigger-copy">
-          <span className="workspace-label">当前工作区</span>
-          <strong>{loading ? "载入工作区…" : current?.name ?? "暂无可用工作区"}</strong>
+          <span className="workspace-label">{t("platform:workspace.current")}</span>
+          <strong>{loading ? t("platform:workspace.loading") : current?.name ?? t("platform:workspace.none")}</strong>
           {current && (
             <small>
-              {roleTemplateLabel(
+              {labels.role(
                 current.membership.role.code,
                 current.membership.role.name,
               )}
@@ -116,7 +115,7 @@ export function WorkspaceMenu({
           className="sidebar-popover workspace-popover"
           id="workspace-switcher-card"
           role="dialog"
-          aria-label="切换工作区"
+          aria-label={t("platform:workspace.switch")}
         >
           {workspaces.length > 5 && (
             <label className="workspace-search">
@@ -125,8 +124,8 @@ export function WorkspaceMenu({
                 autoFocus
                 value={keyword}
                 onChange={(event) => setKeyword(event.target.value)}
-                placeholder="搜索工作区"
-                aria-label="搜索工作区"
+                placeholder={t("platform:workspace.search")}
+                aria-label={t("platform:workspace.search")}
               />
             </label>
           )}
@@ -146,7 +145,7 @@ export function WorkspaceMenu({
                   <span>
                     <strong>{workspace.name}</strong>
                     <small>
-                      {roleTemplateLabel(
+                      {labels.role(
                         workspace.membership.role.code,
                         workspace.membership.role.name,
                       )}
@@ -157,21 +156,21 @@ export function WorkspaceMenu({
               );
             })}
             {!filtered.length && (
-              <div className="workspace-search-empty">没有匹配的工作区</div>
+              <div className="workspace-search-empty">{t("platform:workspace.noMatch")}</div>
             )}
           </div>
           {canManageWorkspace(current) && (
             <div className="sidebar-popover-actions">
               <Link to="/settings?tab=resources" onClick={onNavigate}>
                 <Settings size={15} aria-hidden="true" />
-                工作区设置
+                {t("platform:navigation.settings")}
               </Link>
               <Link
                 to="/settings?tab=access&action=invite"
                 onClick={onNavigate}
               >
                 <UserPlus size={15} aria-hidden="true" />
-                邀请用户
+                {t("platform:workspace.invite")}
               </Link>
             </div>
           )}
@@ -196,6 +195,7 @@ export function AccountMenu({
   onNavigate: () => void;
   onSignOut: () => Promise<void>;
 }) {
+  const { t } = useLocale();
   const container = useRef<HTMLDivElement>(null);
   usePopoverDismiss(open, onClose, container);
   return (
@@ -204,7 +204,11 @@ export function AccountMenu({
         <div className="sidebar-popover account-popover" role="menu">
           <Link to="/account?tab=profile" role="menuitem" onClick={onNavigate}>
             <UserRound size={15} aria-hidden="true" />
-            账户中心
+            {t("platform:navigation.account")}
+          </Link>
+          <Link to="/account?tab=preferences" role="menuitem" onClick={onNavigate}>
+            <Settings size={15} aria-hidden="true" />
+            {t("preferences")}
           </Link>
           <button
             type="button"
@@ -213,7 +217,7 @@ export function AccountMenu({
             onClick={() => void onSignOut()}
           >
             <LogOut size={15} aria-hidden="true" />
-            退出登录
+            {t("platform:navigation.logout")}
           </button>
         </div>
       )}
@@ -221,7 +225,7 @@ export function AccountMenu({
         type="button"
         className={`account-row account-trigger ${open ? "open" : ""}`}
         aria-expanded={open}
-        aria-label="打开账户菜单"
+        aria-label={t("platform:account.openMenu")}
         onClick={onToggle}
       >
         <span className="avatar">{(user?.name ?? "U").slice(0, 1)}</span>

@@ -113,6 +113,12 @@ type LogoutInput struct {
 	UserID       uuid.UUID
 }
 
+type ChangePasswordInput struct {
+	UserID          uuid.UUID
+	CurrentPassword string
+	NewPassword     string
+}
+
 type ListSessionsInput struct {
 	UserID uuid.UUID
 }
@@ -391,6 +397,50 @@ func (s *Service) LoginWithPassword(ctx context.Context, input PasswordLoginInpu
 		return LoginResult{}, apperr.Wrap(apperr.KindInternal, "update password login user", err)
 	}
 	return s.loginResult(ctx, userModel, false, input.Request)
+}
+
+func (s *Service) ChangePassword(ctx context.Context, input ChangePasswordInput) error {
+	if input.UserID == uuid.Nil {
+		return apperr.New(apperr.KindInvalidArgument, "user id is required")
+	}
+	if strings.TrimSpace(input.CurrentPassword) == "" {
+		return apperr.New(apperr.KindInvalidArgument, "current password is required")
+	}
+	if err := ValidatePassword(input.NewPassword, s.authCfg.Password); err != nil {
+		return err
+	}
+	credential, err := s.queries.GetUserCredential(ctx, input.UserID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apperr.New(apperr.KindUnauthorized, "current password is incorrect")
+		}
+		return apperr.Wrap(apperr.KindInternal, "get user credential", err)
+	}
+	if !CheckPassword(credential.PasswordHash, input.CurrentPassword) {
+		return apperr.New(apperr.KindUnauthorized, "current password is incorrect")
+	}
+	passwordHash, err := HashPassword(input.NewPassword)
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "hash password", err)
+	}
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "begin password change", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `UPDATE user_credentials SET password_hash = $2, password_updated_at = now(), failed_attempts = 0, locked_until = NULL, updated_at = now(), must_change_password = false WHERE user_id = $1`, input.UserID, passwordHash); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "update password", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE users SET auth_version = auth_version + 1, updated_at = now() WHERE id = $1`, input.UserID); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "invalidate user tokens", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE auth_refresh_sessions SET revoked_at = now(), updated_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, input.UserID); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "revoke user sessions", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "commit password change", err)
+	}
+	return nil
 }
 
 func (s *Service) createSMSUser(ctx context.Context, name string, phone string) (sqlc.User, error) {
@@ -829,9 +879,9 @@ func normalizeIdentifier(identifier string) (string, error) {
 
 func personalWorkspaceName(name string) string {
 	if strings.TrimSpace(name) == "" {
-		return "Personal Workspace"
+		return "用户的工作区"
 	}
-	return strings.TrimSpace(name) + " Personal Workspace"
+	return strings.TrimSpace(name) + "的工作区"
 }
 
 func pgTimePtr(value pgtype.Timestamptz) *time.Time {

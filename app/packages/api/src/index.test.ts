@@ -40,6 +40,16 @@ describe("API authentication and errors", () => {
     catch (error) { expect(formatApiError(error)).toEqual({ message: "service unavailable", requestId: "req-123", status: 503 }); }
   });
 
+  it("localizes uppercase backend error codes", () => {
+    document.documentElement.lang = "zh-CN";
+    expect(formatApiError(new ApiError("public device request limit exceeded", 429, "req-rate", undefined, "RATE_LIMITED"))).toEqual({
+      message: "操作过于频繁，请稍后重试",
+      code: "RATE_LIMITED",
+      requestId: "req-rate",
+      status: 429,
+    });
+  });
+
   it("uses the documented POST method when unbinding a device", async () => {
     const fetchMock = vi.fn().mockResolvedValue(response(204, undefined));
     vi.stubGlobal("fetch", fetchMock);
@@ -80,5 +90,14 @@ describe("API authentication and errors", () => {
     const init = fetchMock.mock.calls[0][1];
     expect(init.body).toBeInstanceOf(FormData);
     expect((init.headers as Headers).has("Content-Type")).toBe(false);
+  });
+
+  it("uses the full-sync endpoint without manual device metadata", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response(200, { total: 0, synced: 0, created: 0, updated: 0, failed: 0 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await api.admin.syncAllDevices("source-1");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/admin/data-sources/source-1/thcpn-standard-station/devices/sync-all");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({});
   });
 });

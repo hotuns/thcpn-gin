@@ -222,8 +222,8 @@ func (q *Queries) UpdateDataStream(ctx context.Context, arg UpdateDataStreamPara
 }
 
 const upsertDataStreamFromSync = `-- name: UpsertDataStreamFromSync :one
-INSERT INTO data_streams (device_id, code, name, type, unit, status, created_by)
-VALUES ($1, $2, $3, $4, $5, 'active', $6)
+INSERT INTO data_streams (device_id, code, name, type, unit, status, created_by, created_by_type)
+VALUES ($1, $2, $3, $4, $5, 'active', $6, 'system_admin')
 ON CONFLICT (device_id, code)
 DO UPDATE SET
     name = EXCLUDED.name,

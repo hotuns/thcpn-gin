@@ -5,12 +5,12 @@ describe("THCPN config form", () => {
   it("extracts only editable fields from the detail response", () => {
     const fields = configFieldsFromDetail({ device_id: "device-1", latest_config: { id: 9, data_json: [{ key: "temp" }], image_json: [], control_json: { relay: true } }, latest_snapshot: { id: "snapshot-1" } });
     expect(JSON.parse(fields.data_json)).toEqual([{ key: "temp" }]);
-    expect(parseTHCPNConfig(fields)).toEqual({ data_json: [{ key: "temp" }], image_json: [], control_json: { relay: true } });
+    expect(parseTHCPNConfig(fields)).toEqual({ data_json: [{ key: "temp" }], image_json: [], control_json: { relay: true }, expected_config_id: 9 });
   });
 
   it("rejects data and image objects and control arrays", () => {
-    expect(() => parseTHCPNConfig({ data_json: "{}", image_json: "[]", control_json: "{}" })).toThrow("data_json");
-    expect(() => parseTHCPNConfig({ data_json: "[]", image_json: "{}", control_json: "{}" })).toThrow("image_json");
-    expect(() => parseTHCPNConfig({ data_json: "[]", image_json: "[]", control_json: "[]" })).toThrow("control_json");
+    expect(() => parseTHCPNConfig({ data_json: "{}", image_json: "[]", control_json: "{}", expected_config_id: 1 })).toThrow("data_json");
+    expect(() => parseTHCPNConfig({ data_json: "[]", image_json: "{}", control_json: "{}", expected_config_id: 1 })).toThrow("image_json");
+    expect(() => parseTHCPNConfig({ data_json: "[]", image_json: "[]", control_json: "[]", expected_config_id: 1 })).toThrow("control_json");
   });
 });

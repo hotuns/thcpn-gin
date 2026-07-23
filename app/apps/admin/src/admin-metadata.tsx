@@ -27,7 +27,7 @@ const value = (input: unknown, fallback = "—") =>
     : String(input);
 const formatTime = (input: unknown) =>
   input
-    ? new Intl.DateTimeFormat("zh-CN", {
+    ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", {
         dateStyle: "medium",
         timeStyle: "short",
       }).format(new Date(String(input)))

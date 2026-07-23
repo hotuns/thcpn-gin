@@ -328,6 +328,7 @@ function ProfileEditor({ profile, busy, onClose, onSubmit }: {
             <Button variant="secondary" onClick={onClose}><X size={14} />关闭</Button>
           </div>
           <form className="access-form" onSubmit={submit}>
+            <div className="form-section access-profile-fields">
             <label className="field"><span className="field-label">设备描述</span><textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={5} /></label>
             <label className="field"><span className="field-label">地址</span><input value={locationText} onChange={(e) => setLocationText(e.target.value)} /></label>
             <div className="access-form-grid">
@@ -335,6 +336,7 @@ function ProfileEditor({ profile, busy, onClose, onSubmit }: {
               <label className="field"><span className="field-label">经度</span><input type="number" min="-180" max="180" step="any" value={longitude} onChange={(e) => setLongitude(e.target.value)} /></label>
             </div>
             {coordinatesInvalid && <div className="form-error">经纬度必须同时填写或同时清空。</div>}
+            </div>
             <div className="form-actions"><Button variant="secondary" type="button" onClick={onClose}>取消</Button><Button type="submit" disabled={busy || coordinatesInvalid}>{busy ? "保存中…" : "保存资料"}</Button></div>
           </form>
         </Panel>

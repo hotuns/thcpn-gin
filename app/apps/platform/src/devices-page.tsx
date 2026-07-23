@@ -68,7 +68,7 @@ const text = (input: unknown, fallback: unknown = "—") =>
     : String(input);
 const overviewTime = (input?: string) =>
   input
-    ? new Intl.DateTimeFormat("zh-CN", {
+    ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", {
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
@@ -1163,7 +1163,7 @@ function DeviceActivity({
 
 const formatDate = (input: unknown) =>
   input
-    ? new Intl.DateTimeFormat("zh-CN", {
+    ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", {
         dateStyle: "medium",
         timeStyle: "short",
       }).format(new Date(String(input)))
@@ -1320,6 +1320,7 @@ function SystemDeviceConfig({
     data_json: "[]",
     image_json: "[]",
     control_json: "{}",
+    expected_config_id: 0,
   });
   const [localError, setLocalError] = useState("");
   useEffect(() => {
@@ -1372,7 +1373,7 @@ function SystemDeviceConfig({
             >
               {deviceStatusOptions.map((item) => (
                 <option key={item.value} value={item.value}>
-                  {item.label}
+                  {deviceStatusLabel(item.value)}
                 </option>
               ))}
             </select>
@@ -1404,7 +1405,7 @@ function SystemDeviceConfig({
             >
               {deviceLifecycleOptions.map((item) => (
                 <option key={item.value} value={item.value}>
-                  {item.label}
+                  {deviceLifecycleLabel(item.value)}
                 </option>
               ))}
             </select>

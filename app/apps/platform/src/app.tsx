@@ -46,6 +46,7 @@ import {
   StateView,
 } from "@thcpn/ui";
 import { AccountMenu, WorkspaceMenu } from "./shell-menus";
+import { useLocale } from "@thcpn/i18n";
 const DevicesPage = lazy(() =>
   import("./devices-page").then((module) => ({ default: module.DevicesPage })),
 );
@@ -104,25 +105,26 @@ const navGroups = [
   {
     label: "运行",
     items: [
-      { to: "/dashboard", label: "总览", icon: Gauge },
-      { to: "/devices", label: "设备", icon: Boxes },
+      { to: "/dashboard", key: "overview", icon: Gauge },
+      { to: "/devices", key: "devices", icon: Boxes },
     ],
   },
   {
     label: "数据",
     items: [
-      { to: "/data-compare", label: "数据对比", icon: BarChart3 },
-      { to: "/datasets", label: "数据集", icon: Table2 },
-      { to: "/exports", label: "导出任务", icon: Download },
+      { to: "/data-compare", key: "compare", icon: BarChart3 },
+      { to: "/datasets", key: "datasets", icon: Table2 },
+      { to: "/exports", key: "exports", icon: Download },
     ],
   },
   {
     label: "管理",
-    items: [{ to: "/workspaces", label: "工作区", icon: Building2 }],
+    items: [{ to: "/workspaces", key: "workspaces", icon: Building2 }],
   },
 ];
 
 function Shell() {
+  const { t } = useLocale();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem("thcpn:sidebar-collapsed") === "true",
@@ -135,11 +137,11 @@ function Shell() {
   const location = useLocation();
   const routeLabel =
     location.pathname === "/devices"
-      ? "设备"
+      ? t("platform:navigation.devices")
       : location.pathname.startsWith("/devices/")
         ? "设备详情"
       : location.pathname === "/datasets"
-          ? "数据集"
+          ? t("platform:navigation.datasets")
           : location.pathname === "/datasets/new"
             ? "创建数据集"
             : location.pathname.endsWith("/edit")
@@ -147,17 +149,17 @@ function Shell() {
               : location.pathname.startsWith("/datasets/")
                 ? "数据集详情"
           : location.pathname === "/data-compare"
-            ? "数据对比"
+            ? t("platform:navigation.compare")
           : location.pathname === "/exports"
-            ? "导出任务"
+            ? t("platform:navigation.exports")
             : location.pathname === "/workspaces"
-              ? "工作区"
+              ? t("platform:navigation.workspaces")
             : location.pathname === "/settings"
-                ? "工作区设置"
+                ? t("platform:navigation.settings")
                 : location.pathname === "/account"
-                  ? "账户中心"
+                  ? t("platform:navigation.account")
                 : location.pathname === "/dashboard"
-                  ? "总览"
+                  ? t("platform:navigation.overview")
                   : "";
   useEffect(() => {
     setMobileOpen(false);
@@ -185,7 +187,7 @@ function Shell() {
         <button
           type="button"
           className="mobile-drawer-backdrop"
-          aria-label="关闭导航"
+          aria-label={t("closeNavigation")}
           onClick={() => setMobileOpen(false)}
         />
       )}
@@ -240,7 +242,7 @@ function Shell() {
                     }
                   >
                     <Icon size={16} />
-                    {item.label}
+                    {t(`platform:navigation.${item.key}`)}
                   </NavLink>
                 );
               })}
@@ -283,7 +285,7 @@ function Shell() {
             <MobileMenuButton onClick={() => setMobileOpen(true)} />
             <div className="topbar-context">
               <span className="mono">THCPN / </span>
-              {workspace.current?.name ?? "工作区控制台"}
+              {workspace.current?.name ?? t("platform:navigation.workspaces")}
               {routeLabel && (
                 <>
                   <span className="breadcrumb-separator">/</span>

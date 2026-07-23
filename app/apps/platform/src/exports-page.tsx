@@ -8,7 +8,7 @@ import { Badge, Button, PageHeader, Panel, StateView } from "@thcpn/ui";
 type ResourceType = "device" | "data_stream" | "dataset" | "media";
 type ExportDraft = { resourceType: ResourceType; resourceId: string; exportType: string; startTime: string; endTime: string; limit: number; mediaType: string; expiresAt: string };
 const localTime = (input: Date | string) => { const date = new Date(input); return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16); };
-const displayTime = (input?: string) => input ? new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(input)) : "—";
+const displayTime = (input?: string) => input ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(input)) : "—";
 export const exportTypesFor = (resource: ResourceType) => resource === "dataset" ? ["dataset_zip"] : resource === "media" ? ["media_zip"] : ["telemetry_csv", "telemetry_excel", "media_zip"];
 export const buildExportPayload = (draft: ExportDraft): JsonRecord => ({ resource_type: draft.resourceType, resource_id: draft.resourceId, export_type: draft.exportType, ...(draft.exportType !== "dataset_zip" ? { start_time: new Date(draft.startTime).toISOString(), end_time: new Date(draft.endTime).toISOString(), limit: draft.limit } : {}), ...(draft.exportType === "media_zip" && draft.mediaType ? { request_config: { media_type: draft.mediaType } } : {}), ...(draft.expiresAt ? { expires_at: new Date(draft.expiresAt).toISOString() } : {}) });
 export const canDownloadExport = (job: Pick<ExportJob, "status" | "expires_at">, now = Date.now()) => job.status === "success" && Date.parse(job.expires_at) > now;

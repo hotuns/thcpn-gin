@@ -311,6 +311,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/password/change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change the current user's password */
+        post: operations["changeCurrentPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/refresh": {
         parameters: {
             query?: never;
@@ -430,7 +447,8 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update the current user's profile */
+        patch: operations["updateMe"];
         trace?: never;
     };
     "/api/v1/workspaces": {
@@ -443,6 +461,22 @@ export interface paths {
         /** List workspaces for current user */
         get: operations["listWorkspaces"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
         /**
          * Create organization workspace
          * @description Creates an organization workspace. The current user becomes Owner.
@@ -452,7 +486,11 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update a workspace name
+         * @description Requires the `workspace.manage` permission.
+         */
+        patch: operations["updateWorkspaceName"];
         trace?: never;
     };
     "/api/v1/admin/auth/password/login": {
@@ -640,6 +678,125 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/platform-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List indexed platform runtime logs */
+        get: operations["adminListPlatformLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/platform-logs/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export up to 100,000 filtered platform logs as NDJSON */
+        get: operations["adminExportPlatformLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/platform-logs/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the active platform log retention policy and usage */
+        get: operations["adminGetPlatformLogPolicy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/platform-logs/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List raw rolling JSONL files */
+        get: operations["adminListPlatformLogFiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/platform-logs/files/{file_name}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download one raw rolling JSONL file */
+        get: operations["adminDownloadPlatformLogFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/platform-logs/{log_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one indexed platform runtime log */
+        get: operations["adminGetPlatformLog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/platform-logs/index/rebuild": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rebuild the local SQLite index from raw JSONL files */
+        post: operations["adminRebuildPlatformLogIndex"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/projects": {
         parameters: {
             query?: never;
@@ -741,9 +898,32 @@ export interface paths {
         put?: never;
         /**
          * Sync a THCPN standard station device into the system asset registry
-         * @description Requires a valid administrator bearer token. Uses a system-level THCPN MySQL DataSource to read the external device and latest config, then creates or updates platform Device, DeviceSourceRef, DeviceConfigSnapshot, DataStreams and DataStreamBindings. `target_workspace_id` is optional; when omitted, the Device remains an unassigned system asset until an admin assigns it through the system device asset APIs.
+         * @description Requires a valid administrator bearer token. Uses a system-level THCPN MySQL DataSource to read the external device and latest config, then creates or updates platform Device, DeviceSourceRef, DeviceConfigSnapshot, DataStreams and DataStreamBindings. The platform reads device metadata from the external row and keeps the synchronized asset unassigned until an admin assigns it through the system device asset APIs.
          */
         post: operations["adminSyncTHCPNStandardStationDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/thcpn-standard-station/devices/sync-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync all THCPN devices from the external devices table
+         * @description Requires a valid administrator bearer token. Reads all non-deleted rows from the external THCPN MySQL `devices` table. Each device is synchronized independently and the response reports partial failures. Devices remain unassigned to a Workspace.
+         */
+        post: operations["adminSyncAllTHCPNDevices"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1105,6 +1285,29 @@ export interface paths {
          * @description Requires a valid administrator bearer token. Inserts a new row into the THCPN legacy `device_config` table, then applies the config to platform config snapshots, data streams and bindings.
          */
         post: operations["adminUpdateTHCPNDeviceConfig"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/sensor-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List THCPN sensor templates for a device data source
+         * @description Requires a valid administrator bearer token. Reads templates only from the active THCPN data source bound to the selected device.
+         */
+        get: operations["adminListTHCPNSensorTemplates"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2796,6 +2999,12 @@ export interface components {
             /** Format: password */
             password: string;
         };
+        ChangePasswordRequest: {
+            /** Format: password */
+            current_password: string;
+            /** Format: password */
+            new_password: string;
+        };
         AdminReasonRequest: {
             reason: string;
             confirm_text?: string;
@@ -3574,21 +3783,27 @@ export interface components {
             status?: components["schemas"]["DataSourceStatus"];
         };
         SyncTHCPNStandardStationRequest: {
-            /** @description Optional Workspace assignment target. Omit it to sync the device as an unassigned system asset. */
-            target_workspace_id?: components["schemas"]["UUID"];
             /**
              * Format: int64
-             * @description External THCPN `devices.id`.
+             * @description The only required input. This is the external THCPN `devices.id`; name, serial number and product are read from the external device or generated by the platform.
              */
             external_device_id: number;
-            project_id?: components["schemas"]["UUID"];
-            site_id?: components["schemas"]["UUID"];
-            /** @description Optional platform product identifier. Defaults to `thcpn_standard_station`. */
-            product_id?: string;
-            /** @description Optional platform serial number override. Defaults to external `sn`, `uuid`, then `thcpn-{id}`. */
-            serial_no?: string;
-            /** @description Optional platform device name override. Defaults to external `devices.name`. */
-            name?: string;
+        };
+        SyncAllTHCPNDevicesResult: {
+            data_source_id: components["schemas"]["UUID"];
+            /** @description Number of non-deleted rows discovered in the external devices table. */
+            total: number;
+            synced: number;
+            created: number;
+            updated: number;
+            /** @description Devices imported from the external devices table without a device_config row yet. */
+            unconfigured?: number;
+            failed: number;
+            failures?: {
+                /** Format: int64 */
+                external_device_id: number;
+                error: string;
+            }[];
         };
         SyncTHCPNGatewayRequest: {
             /** @description Optional Workspace assignment target. Omit it to sync the gateway and nodes as unassigned system assets. */
@@ -3704,6 +3919,47 @@ export interface components {
             latest_config: components["schemas"]["THCPNDeviceConfig"];
             latest_snapshot?: components["schemas"]["DeviceConfigSnapshot"];
         };
+        THCPNSensorMetric: {
+            key: string;
+            name?: string;
+            type?: string;
+            unit?: string;
+            index?: unknown;
+            min?: unknown;
+            max?: unknown;
+            decode?: string;
+            raw: {
+                [key: string]: unknown;
+            };
+        };
+        THCPNSensorTemplate: {
+            /** Format: int64 */
+            id: number;
+            sensor_type: string;
+            description?: string;
+            port?: string;
+            /** Format: int64 */
+            port_num: number;
+            driver?: string;
+            port_nums: number[];
+            params: {
+                [key: string]: unknown;
+            };
+            metrics: components["schemas"]["THCPNSensorMetric"][];
+            config_entry: {
+                [key: string]: unknown;
+            };
+            valid: boolean;
+            warnings?: components["schemas"]["QueryWarning"][];
+            created_at?: components["schemas"]["Timestamp"];
+            updated_at?: components["schemas"]["Timestamp"];
+        };
+        THCPNSensorTemplateListResponse: {
+            items: components["schemas"]["THCPNSensorTemplate"][];
+            total: number;
+            page: number;
+            page_size: number;
+        };
         DevicePublicAccess: {
             id?: components["schemas"]["UUID"];
             device_id: components["schemas"]["UUID"];
@@ -3773,6 +4029,8 @@ export interface components {
             control_json: {
                 [key: string]: unknown;
             };
+            /** Format: int64 */
+            expected_config_id: number;
         };
         UpdateTHCPNDeviceConfigResponse: {
             device_id: components["schemas"]["UUID"];
@@ -4727,6 +4985,35 @@ export interface operations {
             500: components["responses"]["Internal"];
         };
     };
+    changeCurrentPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Password changed; all sessions are invalidated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        signed_out: boolean;
+                    };
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["Internal"];
+        };
+    };
     refreshAuthToken: {
         parameters: {
             query?: never;
@@ -4876,6 +5163,35 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    updateMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated current user. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["Internal"];
+        };
+    };
     listWorkspaces: {
         parameters: {
             query?: never;
@@ -4923,6 +5239,38 @@ export interface operations {
             400: components["responses"]["InvalidArgument"];
             401: components["responses"]["Unauthorized"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    updateWorkspaceName: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated workspace and membership. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceWithMembership"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
             500: components["responses"]["Internal"];
         };
     };
@@ -5210,6 +5558,157 @@ export interface operations {
             500: components["responses"]["Internal"];
         };
     };
+    adminListPlatformLogs: {
+        parameters: {
+            query?: {
+                start?: components["schemas"]["Timestamp"];
+                end?: components["schemas"]["Timestamp"];
+                level?: "DEBUG" | "INFO" | "WARN" | "ERROR";
+                service?: "api" | "worker";
+                actor_id?: string;
+                workspace_id?: string;
+                request_id?: string;
+                path?: string;
+                status?: number;
+                keyword?: string;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Platform runtime log page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminExportPlatformLogs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description NDJSON log export */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-ndjson": string;
+                };
+            };
+        };
+    };
+    adminGetPlatformLogPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active runtime log policy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminListPlatformLogFiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Raw log files. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminDownloadPlatformLogFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Raw JSONL file. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminGetPlatformLog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                log_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Platform runtime log. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminRebuildPlatformLogIndex: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Index rebuilt. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            500: components["responses"]["Internal"];
+        };
+    };
     adminListProjects: {
         parameters: {
             query: {
@@ -5378,6 +5877,38 @@ export interface operations {
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminSyncAllTHCPNDevices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description Full THCPN device synchronization completed, possibly with per-device failures. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncAllTHCPNDevicesResult"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
             500: components["responses"]["Internal"];
         };
     };
@@ -5950,6 +6481,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UpdateTHCPNDeviceConfigResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminListTHCPNSensorTemplates: {
+        parameters: {
+            query?: {
+                q?: string;
+                port?: string;
+                driver?: string;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sensor templates from the device's active THCPN data source. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["THCPNSensorTemplateListResponse"];
                 };
             };
             400: components["responses"]["InvalidArgument"];

@@ -73,6 +73,11 @@ type RegisterResult struct {
 	Membership Membership `json:"membership"`
 }
 
+type UpdateProfileInput struct {
+	UserID uuid.UUID
+	Name   string
+}
+
 func NewService(db *pgxpool.Pool) *Service {
 	return &Service{
 		db:      db,
@@ -172,6 +177,27 @@ func (s *Service) GetActiveUser(ctx context.Context, id uuid.UUID) (User, error)
 	return userFromSQL(model), nil
 }
 
+func (s *Service) UpdateProfile(ctx context.Context, input UpdateProfileInput) (User, error) {
+	name := strings.TrimSpace(input.Name)
+	if input.UserID == uuid.Nil {
+		return User{}, apperr.New(apperr.KindInvalidArgument, "user id is required")
+	}
+	if name == "" {
+		return User{}, apperr.New(apperr.KindInvalidArgument, "name is required")
+	}
+	if len([]rune(name)) > 100 {
+		return User{}, apperr.New(apperr.KindInvalidArgument, "name is too long")
+	}
+	result, err := s.db.Exec(ctx, `UPDATE users SET name = $2, updated_at = now() WHERE id = $1 AND status = 'active'`, input.UserID, name)
+	if err != nil {
+		return User{}, apperr.Wrap(apperr.KindInternal, "update user profile", err)
+	}
+	if result.RowsAffected() == 0 {
+		return User{}, apperr.New(apperr.KindNotFound, "user not found")
+	}
+	return s.GetActiveUser(ctx, input.UserID)
+}
+
 func (s *Service) LookupActor(ctx context.Context, id uuid.UUID) (auth.Actor, error) {
 	model, err := s.GetActiveUser(ctx, id)
 	if err != nil {
@@ -204,9 +230,9 @@ func optionalString(value string) *string {
 
 func personalWorkspaceName(name string) string {
 	if strings.TrimSpace(name) == "" {
-		return "Personal Workspace"
+		return "用户的工作区"
 	}
-	return strings.TrimSpace(name) + " Personal Workspace"
+	return strings.TrimSpace(name) + "的工作区"
 }
 
 func userFromSQL(model sqlc.User) User {

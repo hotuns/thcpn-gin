@@ -8,7 +8,7 @@ import { PageHeader, Panel, StateView } from "@thcpn/ui";
 import { ArrowLeft, Copy, KeyRound, LockKeyhole, Plus, RefreshCw, Settings2, ShieldCheck, UserRound, UserX } from "lucide-react";
 
 const text = (value, fallback = "—") => value === undefined || value === null || value === "" ? fallback : String(value);
-const time = (value) => value ? new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "—";
+const time = (value) => value ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "—";
 const statusLabel = (value) => ({ active: "启用", disabled: "停用" }[value] ?? text(value));
 const statusColor = (value) => value === "active" ? "green" : "default";
 const detailTabs = ["overview", "workspaces", "security", "activity"];

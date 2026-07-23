@@ -12,7 +12,7 @@ import { Badge, Button, Panel, StateView } from "@thcpn/ui";
 import { workspaceQueryKey } from "@thcpn/workspace";
 
 const displayTime = (input: string) =>
-  new Intl.DateTimeFormat("zh-CN", {
+  new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", {
     dateStyle: "medium",
     timeStyle: "medium",
   }).format(new Date(input));

@@ -265,3 +265,25 @@ func TestSyncTHCPNGatewayRequiresDatabaseForValidInput(t *testing.T) {
 		t.Fatalf("expected internal error for missing database, got %v", err)
 	}
 }
+
+func TestPlatformTHCPNDeviceType(t *testing.T) {
+	if got := platformTHCPNDeviceType("10"); got != "gateway" {
+		t.Fatalf("expected external type 10 to map to gateway, got %q", got)
+	}
+	for _, value := range []string{"", "0", "1", "19", " gateway "} {
+		if got := platformTHCPNDeviceType(value); got != "standalone" {
+			t.Fatalf("expected external type %q to map to standalone, got %q", value, got)
+		}
+	}
+}
+
+func TestSyncAllTHCPNDevicesRequiresDatabaseForValidInput(t *testing.T) {
+	service := NewService(nil)
+	_, err := service.SyncAllTHCPNDevices(context.Background(), SyncAllTHCPNDevicesInput{
+		DataSourceID: uuid.New(),
+		ActorUserID:  uuid.New(),
+	})
+	if apperr.KindOf(err) != apperr.KindInternal {
+		t.Fatalf("expected internal error for missing database, got %v", err)
+	}
+}

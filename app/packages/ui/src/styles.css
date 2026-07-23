@@ -27,6 +27,28 @@
   --shadow: 0 12px 32px rgba(24, 49, 73, 0.07);
 }
 
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #e8eef5;
+  --muted: #9aaabd;
+  --line: #334454;
+  --soft-line: #293847;
+  --canvas: #111a23;
+  --panel: #18232e;
+  --blue: #68a5ff;
+  --blue-dark: #9bc5ff;
+  --blue-soft: #1b3658;
+  --green: #62c48b;
+  --green-soft: #173a2a;
+  --orange: #e7ad5f;
+  --orange-soft: #3d2d18;
+  --red: #f08d95;
+  --red-soft: #43252b;
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.24);
+  color: var(--ink);
+  background: var(--canvas);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -34,6 +56,13 @@ body {
   margin: 0;
   min-width: 320px;
   background: var(--canvas);
+}
+:root[data-theme="dark"] body,
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] textarea {
+  color: var(--ink);
+  background-color: var(--canvas);
 }
 button,
 input,
@@ -843,3 +872,32 @@ a {
     background: rgba(23, 33, 43, 0.35);
   }
 }
+.language-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  color: var(--muted);
+  background: #edf2f7;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.language-switcher > svg { margin: 0 4px; }
+.language-switcher button {
+  min-width: 38px;
+  height: 28px;
+  padding: 0 8px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.language-switcher button.active {
+  color: var(--blue);
+  background: white;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+.language-switcher.compact { width: 100%; }
+.language-switcher.compact button { flex: 1; }

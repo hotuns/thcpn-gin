@@ -46,5 +46,7 @@ func (l *limiter) allow(ctx context.Context, key string, maximum int64, window t
 	return item.count <= maximum
 }
 
-func requestLimitKey(slug, ip string) string  { return fmt.Sprintf("request:%s:%s", slug, ip) }
+func requestLimitKey(slug, ip, bucket string) string {
+	return fmt.Sprintf("request:%s:%s:%s", bucket, slug, ip)
+}
 func passwordLimitKey(slug, ip string) string { return fmt.Sprintf("password:%s:%s", slug, ip) }

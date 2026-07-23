@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -29,6 +30,11 @@ type SyncTHCPNStandardStationInput struct {
 	SerialNo          string
 	Name              string
 	ActorUserID       uuid.UUID
+}
+
+type SyncAllTHCPNDevicesInput struct {
+	DataSourceID uuid.UUID
+	ActorUserID  uuid.UUID
 }
 
 type SyncTHCPNGatewayInput struct {
@@ -59,6 +65,27 @@ type THCPNGatewaySyncResult struct {
 	Relations        []DeviceRelation                 `json:"relations"`
 	RemovedRelations []DeviceRelation                 `json:"removed_relations,omitempty"`
 	Warnings         []QueryWarning                   `json:"warnings,omitempty"`
+}
+
+type THCPNDeviceSyncFailure struct {
+	ExternalDeviceID int64  `json:"external_device_id"`
+	Error            string `json:"error"`
+}
+
+type THCPNAllDevicesSyncResult struct {
+	DataSourceID uuid.UUID                `json:"data_source_id"`
+	Total        int                      `json:"total"`
+	Synced       int                      `json:"synced"`
+	Created      int                      `json:"created"`
+	Updated      int                      `json:"updated"`
+	Unconfigured int                      `json:"unconfigured"`
+	Failed       int                      `json:"failed"`
+	Failures     []THCPNDeviceSyncFailure `json:"failures,omitempty"`
+}
+
+type thcpnExternalDeviceIndex struct {
+	ID         int64
+	DeviceType string
 }
 
 type THCPNDeviceConfig struct {
@@ -102,6 +129,15 @@ type UpdateTHCPNDeviceConfigResponse struct {
 	DisabledDataStreams []SyncedDataStream   `json:"disabled_data_streams,omitempty"`
 	DisabledBindings    []DataStreamBinding  `json:"disabled_bindings,omitempty"`
 	Warnings            []QueryWarning       `json:"warnings,omitempty"`
+	Audit               THCPNConfigAudit     `json:"-"`
+}
+
+type THCPNConfigAudit struct {
+	PreviousConfigID int64
+	ChangedSections  []string
+	SensorCount      int
+	MetricCount      int
+	ImageCount       int
 }
 
 type SyncedDevice struct {
@@ -295,6 +331,137 @@ func (s *Service) SyncTHCPNStandardStation(ctx context.Context, input SyncTHCPNS
 	return result, nil
 }
 
+// SyncAllTHCPNDevices imports every non-deleted row from the source devices
+// table. Each device is committed independently so one incomplete external
+// configuration does not roll back the rest of the import.
+func (s *Service) SyncAllTHCPNDevices(ctx context.Context, input SyncAllTHCPNDevicesInput) (THCPNAllDevicesSyncResult, error) {
+	if input.ActorUserID == uuid.Nil {
+		return THCPNAllDevicesSyncResult{}, apperr.New(apperr.KindInvalidArgument, "actor user id is required")
+	}
+	if s.db == nil {
+		return THCPNAllDevicesSyncResult{}, apperr.New(apperr.KindInternal, "database is not configured")
+	}
+	source, err := s.loadTHCPNSyncDataSource(ctx, input.DataSourceID)
+	if err != nil {
+		return THCPNAllDevicesSyncResult{}, err
+	}
+	deviceDB, err := NewRuntime(nil).openMySQL(ctx, dataSourceFromSQL(source))
+	if err != nil {
+		return THCPNAllDevicesSyncResult{}, err
+	}
+	defer deviceDB.Close()
+
+	externalDevices, err := readAllTHCPNExternalDevices(ctx, deviceDB)
+	if err != nil {
+		return THCPNAllDevicesSyncResult{}, err
+	}
+	result := THCPNAllDevicesSyncResult{
+		DataSourceID: input.DataSourceID,
+		Total:        len(externalDevices),
+		Failures:     make([]THCPNDeviceSyncFailure, 0),
+	}
+	for _, externalDevice := range externalDevices {
+		externalDeviceID := externalDevice.ID
+		if err := ctx.Err(); err != nil {
+			return THCPNAllDevicesSyncResult{}, apperr.Wrap(apperr.KindInternal, "thcpn full sync canceled", err)
+		}
+		_, lookupErr := s.queries.GetDeviceSourceRefByExternal(ctx, sqlc.GetDeviceSourceRefByExternalParams{
+			DataSourceID: input.DataSourceID, AdapterCode: AdapterTHCPNLegacy, ExternalDeviceID: externalDeviceID,
+		})
+		existed := lookupErr == nil
+		if lookupErr != nil && !errors.Is(lookupErr, pgx.ErrNoRows) {
+			result.Failed++
+			result.Failures = append(result.Failures, THCPNDeviceSyncFailure{ExternalDeviceID: externalDeviceID, Error: apperr.MessageOf(lookupErr)})
+			continue
+		}
+		// A row in devices is still a valid platform asset when the external
+		// database has not created device_config for it yet. Import its metadata
+		// and source reference, then expose it as unconfigured instead of losing
+		// it from the full synchronization.
+		if _, configErr := readLatestTHCPNDeviceConfig(ctx, deviceDB, externalDeviceID); apperr.KindOf(configErr) == apperr.KindNotFound {
+			tx, txErr := s.db.BeginTx(ctx, pgx.TxOptions{})
+			if txErr != nil {
+				return THCPNAllDevicesSyncResult{}, apperr.Wrap(apperr.KindInternal, "begin thcpn metadata sync transaction", txErr)
+			}
+			q := s.queries.WithTx(tx)
+			_, _, metadataErr := s.syncTHCPNDeviceMetadata(ctx, q, source, deviceDB, externalDeviceID, platformTHCPNDeviceType(externalDevice.DeviceType), input.ActorUserID)
+			if metadataErr == nil {
+				metadataErr = tx.Commit(ctx)
+			} else {
+				_ = tx.Rollback(ctx)
+			}
+			if metadataErr != nil {
+				result.Failed++
+				result.Failures = append(result.Failures, THCPNDeviceSyncFailure{ExternalDeviceID: externalDeviceID, Error: apperr.MessageOf(metadataErr)})
+				continue
+			}
+			result.Synced++
+			result.Unconfigured++
+			if existed {
+				result.Updated++
+			} else {
+				result.Created++
+			}
+			continue
+		}
+
+		tx, txErr := s.db.BeginTx(ctx, pgx.TxOptions{})
+		if txErr != nil {
+			return THCPNAllDevicesSyncResult{}, apperr.Wrap(apperr.KindInternal, "begin thcpn full sync transaction", txErr)
+		}
+		q := s.queries.WithTx(tx)
+		_, syncErr := s.syncTHCPNDevice(ctx, q, source, deviceDB, thcpnDeviceSyncInput{
+			ExternalDeviceID: externalDeviceID,
+			DeviceType:       platformTHCPNDeviceType(externalDevice.DeviceType),
+			ActorUserID:      input.ActorUserID,
+		})
+		if syncErr == nil {
+			syncErr = tx.Commit(ctx)
+		} else {
+			_ = tx.Rollback(ctx)
+		}
+		if syncErr != nil {
+			result.Failed++
+			result.Failures = append(result.Failures, THCPNDeviceSyncFailure{ExternalDeviceID: externalDeviceID, Error: apperr.MessageOf(syncErr)})
+			continue
+		}
+		result.Synced++
+		if existed {
+			result.Updated++
+		} else {
+			result.Created++
+		}
+	}
+	return result, nil
+}
+
+func (s *Service) syncTHCPNDeviceMetadata(ctx context.Context, q *sqlc.Queries, source sqlc.DataSource, deviceDB *sql.DB, externalDeviceID int64, deviceType string, actorUserID uuid.UUID) (sqlc.Device, bool, error) {
+	externalDevice, err := readTHCPNExternalDevice(ctx, deviceDB, externalDeviceID)
+	if err != nil {
+		return sqlc.Device{}, false, err
+	}
+	deviceRow, _, created, err := s.upsertTHCPNPlatformDevice(ctx, q, source, thcpnDeviceSyncInput{
+		ExternalDeviceID: externalDeviceID,
+		DeviceType:       deviceType,
+		ActorUserID:      actorUserID,
+	}, externalDevice)
+	if err != nil {
+		return sqlc.Device{}, false, err
+	}
+	if _, err := q.UpsertDeviceSourceRef(ctx, sqlc.UpsertDeviceSourceRefParams{
+		DeviceID:           deviceRow.ID,
+		DataSourceID:       source.ID,
+		AdapterCode:        AdapterTHCPNLegacy,
+		ExternalDeviceID:   externalDeviceID,
+		ExternalSn:         externalDevice.SN,
+		ExternalUuid:       externalDevice.UUID,
+		ExternalDeviceType: externalDevice.DeviceType,
+	}); err != nil {
+		return sqlc.Device{}, false, mapWriteError(err, "upsert device source ref")
+	}
+	return deviceRow, created, nil
+}
+
 func (s *Service) SyncTHCPNGateway(ctx context.Context, input SyncTHCPNGatewayInput) (THCPNGatewaySyncResult, error) {
 	gatewayInput, err := validateTHCPNGatewaySyncInput(input)
 	if err != nil {
@@ -459,6 +626,9 @@ func (s *Service) UpdateTHCPNDeviceConfig(ctx context.Context, input UpdateTHCPN
 	if input.ActorUserID == uuid.Nil {
 		return UpdateTHCPNDeviceConfigResponse{}, apperr.New(apperr.KindInvalidArgument, "actor user id is required")
 	}
+	if input.ExpectedConfigID <= 0 {
+		return UpdateTHCPNDeviceConfigResponse{}, apperr.New(apperr.KindInvalidArgument, "expected_config_id is required")
+	}
 	dataJSON, err := normalizeTHCPNConfigArrayJSON(input.DataJSON, "data_json")
 	if err != nil {
 		return UpdateTHCPNDeviceConfigResponse{}, err
@@ -502,9 +672,10 @@ func (s *Service) UpdateTHCPNDeviceConfig(ctx context.Context, input UpdateTHCPN
 	if err != nil {
 		return UpdateTHCPNDeviceConfigResponse{}, err
 	}
-	if input.ExpectedConfigID > 0 && previous.ID != input.ExpectedConfigID {
+	if previous.ID != input.ExpectedConfigID {
 		return UpdateTHCPNDeviceConfigResponse{}, apperr.New(apperr.KindConflict, "device config has changed; reload and try again")
 	}
+	auditSummary := summarizeTHCPNConfigChange(previous, dataJSON, imageJSON, controlJSON)
 	inserted, err := insertTHCPNDeviceConfig(ctx, mysqlTx, previous, dataJSON, imageJSON, controlJSON)
 	if err != nil {
 		return UpdateTHCPNDeviceConfigResponse{}, err
@@ -549,7 +720,43 @@ func (s *Service) UpdateTHCPNDeviceConfig(ctx context.Context, input UpdateTHCPN
 		Bindings:            applied.Bindings,
 		DisabledDataStreams: applied.DisabledStreams,
 		DisabledBindings:    applied.DisabledBindings,
+		Audit:               auditSummary,
 	}, nil
+}
+
+func summarizeTHCPNConfigChange(previous thcpnExternalConfig, dataJSON, imageJSON, controlJSON json.RawMessage) THCPNConfigAudit {
+	result := THCPNConfigAudit{PreviousConfigID: previous.ID}
+	if !jsonSemanticallyEqual(previous.Data, dataJSON) {
+		result.ChangedSections = append(result.ChangedSections, "data_json")
+	}
+	if !jsonSemanticallyEqual(previous.Image, imageJSON) {
+		result.ChangedSections = append(result.ChangedSections, "image_json")
+	}
+	if !jsonSemanticallyEqual(previous.Control, controlJSON) {
+		result.ChangedSections = append(result.ChangedSections, "control_json")
+	}
+	var sensors []map[string]any
+	if json.Unmarshal(dataJSON, &sensors) == nil {
+		result.SensorCount = len(sensors)
+		for _, sensor := range sensors {
+			params, _ := sensor["params"].(map[string]any)
+			contents, _ := params["contents"].([]any)
+			result.MetricCount += len(contents)
+		}
+	}
+	var images []any
+	if json.Unmarshal(imageJSON, &images) == nil {
+		result.ImageCount = len(images)
+	}
+	return result
+}
+
+func jsonSemanticallyEqual(left, right json.RawMessage) bool {
+	var leftValue, rightValue any
+	if json.Unmarshal(left, &leftValue) != nil || json.Unmarshal(right, &rightValue) != nil {
+		return false
+	}
+	return reflect.DeepEqual(leftValue, rightValue)
 }
 
 func (s *Service) loadTHCPNSyncDataSource(ctx context.Context, dataSourceID uuid.UUID) (sqlc.DataSource, error) {
@@ -1049,6 +1256,42 @@ LIMIT 1`
 	return row, nil
 }
 
+func readAllTHCPNExternalDevices(ctx context.Context, db *sql.DB) ([]thcpnExternalDeviceIndex, error) {
+	const query = `
+SELECT id, CAST(device_type AS CHAR)
+FROM devices
+WHERE deleted_at IS NULL
+ORDER BY id ASC`
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindDataSource, "read thcpn external devices", err)
+	}
+	defer rows.Close()
+	devices := make([]thcpnExternalDeviceIndex, 0)
+	for rows.Next() {
+		var device thcpnExternalDeviceIndex
+		var deviceType sql.NullString
+		if err := rows.Scan(&device.ID, &deviceType); err != nil {
+			return nil, apperr.Wrap(apperr.KindDataSource, "scan thcpn external device", err)
+		}
+		device.DeviceType = deviceType.String
+		if device.ID > 0 {
+			devices = append(devices, device)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, apperr.Wrap(apperr.KindDataSource, "read thcpn external devices", err)
+	}
+	return devices, nil
+}
+
+func platformTHCPNDeviceType(externalType string) string {
+	if strings.TrimSpace(externalType) == "10" {
+		return "gateway"
+	}
+	return "standalone"
+}
+
 func readLatestTHCPNDeviceConfig(ctx context.Context, db thcpnConfigQuerier, externalDeviceID int64) (thcpnExternalConfig, error) {
 	const query = `
 SELECT id, device_id, data, image, control, CAST(version AS CHAR), CAST(uuid AS CHAR), is_mg, created_at, updated_at
@@ -1360,6 +1603,7 @@ func upsertTHCPNDataStreamBinding(ctx context.Context, q *sqlc.Queries, sourceID
 		PayloadType:       normalized.PayloadType,
 		AdapterConfigJson: normalized.AdapterConfigJSON,
 		CreatedBy:         actorUserID,
+		CreatedByType:     "system_admin",
 	})
 	if err != nil {
 		return DataStreamBinding{}, mapWriteError(err, "create thcpn data stream binding")

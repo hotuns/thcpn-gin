@@ -49,3 +49,25 @@ func TestGeneratedSlugsAreOpaqueAndUnique(t *testing.T) {
 		t.Fatalf("unexpected slugs %q %q", first, second)
 	}
 }
+
+func TestPublicRequestLimitsAreSeparatedByEndpoint(t *testing.T) {
+	tests := []struct {
+		route   string
+		bucket  string
+		maximum int64
+	}{
+		{"/api/v1/public/devices/:public_slug", "metadata", 120},
+		{"/api/v1/public/devices/:public_slug/telemetry", "telemetry", 60},
+		{"/api/v1/public/devices/:public_slug/images", "images", 240},
+		{"/api/v1/public/devices/:public_slug/unlock", "unlock", 60},
+	}
+	for _, test := range tests {
+		bucket, maximum := publicRequestLimit(test.route)
+		if bucket != test.bucket || maximum != test.maximum {
+			t.Fatalf("route %s: got %s/%d, want %s/%d", test.route, bucket, maximum, test.bucket, test.maximum)
+		}
+	}
+	if requestLimitKey("slug", "127.0.0.1", "images") == requestLimitKey("slug", "127.0.0.1", "metadata") {
+		t.Fatal("endpoint buckets must use independent limiter keys")
+	}
+}

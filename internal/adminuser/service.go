@@ -676,7 +676,7 @@ func normalizePage(page, size int) (int, int) {
 	return page, size
 }
 func normalizeEmail(value string) string       { return strings.ToLower(strings.TrimSpace(value)) }
-func personalWorkspaceName(name string) string { return name + "的个人工作区" }
+func personalWorkspaceName(name string) string { return name + "的工作区" }
 func mapUniqueError(err error) error {
 	if strings.Contains(strings.ToLower(err.Error()), "unique") {
 		return apperr.New(apperr.KindConflict, "email or phone is already in use")

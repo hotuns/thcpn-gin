@@ -26,7 +26,7 @@ const dateTimeLocal = (date: Date) => {
 
 const formatTime = (value?: string) =>
   value
-    ? new Intl.DateTimeFormat("zh-CN", {
+    ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", {
         month: "2-digit",
         day: "2-digit",
         hour: "2-digit",

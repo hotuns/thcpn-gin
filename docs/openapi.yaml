@@ -575,6 +575,36 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/auth/password/change:
+    post:
+      tags: [Auth]
+      operationId: changeCurrentPassword
+      summary: Change the current user's password
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "200":
+          description: Password changed; all sessions are invalidated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [signed_out]
+                properties:
+                  signed_out: { type: boolean }
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/Internal"
   /api/v1/auth/refresh:
     post:
       tags:
@@ -755,6 +785,35 @@ paths:
                       status: active
         "401":
           $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [Auth]
+      operationId: updateMe
+      summary: Update the current user's profile
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+      responses:
+        "200":
+          description: Updated current user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/Internal"
   /api/v1/workspaces:
     get:
       tags:
@@ -773,6 +832,45 @@ paths:
                 $ref: "#/components/schemas/WorkspaceListResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/workspaces/{workspace_id}:
+    patch:
+      tags: [Workspaces]
+      operationId: updateWorkspaceName
+      summary: Update a workspace name
+      description: Requires the `workspace.manage` permission.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - name: workspace_id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/UUID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 120 }
+      responses:
+        "200":
+          description: Updated workspace and membership.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceWithMembership"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
         "500":
           $ref: "#/components/responses/Internal"
     post:
@@ -1044,6 +1142,75 @@ paths:
         "400": { $ref: "#/components/responses/InvalidArgument" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/admin/platform-logs:
+    get:
+      tags: [Admin]
+      operationId: adminListPlatformLogs
+      summary: List indexed platform runtime logs
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: start, in: query, schema: { $ref: "#/components/schemas/Timestamp" } }
+        - { name: end, in: query, schema: { $ref: "#/components/schemas/Timestamp" } }
+        - { name: level, in: query, schema: { type: string, enum: [DEBUG, INFO, WARN, ERROR] } }
+        - { name: service, in: query, schema: { type: string, enum: [api, worker] } }
+        - { name: actor_id, in: query, schema: { type: string } }
+        - { name: workspace_id, in: query, schema: { type: string } }
+        - { name: request_id, in: query, schema: { type: string } }
+        - { name: path, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: integer } }
+        - { name: keyword, in: query, schema: { type: string, maxLength: 200 } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: page_size, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+      responses:
+        "200": { description: Platform runtime log page. }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/admin/platform-logs/export:
+    get:
+      tags: [Admin]
+      operationId: adminExportPlatformLogs
+      summary: Export up to 100,000 filtered platform logs as NDJSON
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: NDJSON log export, content: { application/x-ndjson: { schema: { type: string, format: binary } } } }
+  /api/v1/admin/platform-logs/policy:
+    get:
+      tags: [Admin]
+      operationId: adminGetPlatformLogPolicy
+      summary: Get the active platform log retention policy and usage
+      security: [{ bearerAuth: [] }]
+      responses: { "200": { description: Active runtime log policy. } }
+  /api/v1/admin/platform-logs/files:
+    get:
+      tags: [Admin]
+      operationId: adminListPlatformLogFiles
+      summary: List raw rolling JSONL files
+      security: [{ bearerAuth: [] }]
+      responses: { "200": { description: Raw log files. } }
+  /api/v1/admin/platform-logs/files/{file_name}/download:
+    get:
+      tags: [Admin]
+      operationId: adminDownloadPlatformLogFile
+      summary: Download one raw rolling JSONL file
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: file_name, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: Raw JSONL file. }, "404": { $ref: "#/components/responses/NotFound" } }
+  /api/v1/admin/platform-logs/{log_id}:
+    get:
+      tags: [Admin]
+      operationId: adminGetPlatformLog
+      summary: Get one indexed platform runtime log
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: log_id, in: path, required: true, schema: { type: integer, format: int64 } }]
+      responses: { "200": { description: Platform runtime log. }, "404": { $ref: "#/components/responses/NotFound" } }
+  /api/v1/admin/platform-logs/index/rebuild:
+    post:
+      tags: [Admin]
+      operationId: adminRebuildPlatformLogIndex
+      summary: Rebuild the local SQLite index from raw JSONL files
+      security: [{ bearerAuth: [] }]
+      responses: { "200": { description: Index rebuilt. }, "500": { $ref: "#/components/responses/Internal" } }
   /api/v1/admin/projects:
     get:
       tags:
@@ -1214,8 +1381,8 @@ paths:
       description: >
         Requires a valid administrator bearer token. Uses a system-level THCPN MySQL DataSource to read the external
         device and latest config, then creates or updates platform Device, DeviceSourceRef, DeviceConfigSnapshot,
-        DataStreams and DataStreamBindings. `target_workspace_id` is optional; when omitted, the Device remains
-        an unassigned system asset until an admin assigns it through the system device asset APIs.
+        DataStreams and DataStreamBindings. The platform reads device metadata from the external row and keeps the
+        synchronized asset unassigned until an admin assigns it through the system device asset APIs.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1242,6 +1409,45 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/data-sources/{data_source_id}/thcpn-standard-station/devices/sync-all:
+    parameters:
+      - $ref: "#/components/parameters/DataSourceID"
+    post:
+      tags:
+        - Admin
+      operationId: adminSyncAllTHCPNDevices
+      summary: Sync all THCPN devices from the external devices table
+      description: >
+        Requires a valid administrator bearer token. Reads all non-deleted rows from the external THCPN MySQL
+        `devices` table. Each device is synchronized independently and the response reports partial failures.
+        Devices remain unassigned to a Workspace.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        "200":
+          description: Full THCPN device synchronization completed, possibly with per-device failures.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncAllTHCPNDevicesResult"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/Internal"
   /api/v1/admin/data-sources/{data_source_id}/thcpn-standard-station/gateways:
@@ -1872,6 +2078,53 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UpdateTHCPNDeviceConfigResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/devices/{device_id}/sensor-templates:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags:
+        - Admin
+      operationId: adminListTHCPNSensorTemplates
+      summary: List THCPN sensor templates for a device data source
+      description: Requires a valid administrator bearer token. Reads templates only from the active THCPN data source bound to the selected device.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: port
+          in: query
+          schema: { type: string }
+        - name: driver
+          in: query
+          schema: { type: string }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: page_size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Sensor templates from the device's active THCPN data source.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/THCPNSensorTemplateListResponse"
         "400":
           $ref: "#/components/responses/InvalidArgument"
         "401":
@@ -5327,6 +5580,12 @@ components:
         password:
           type: string
           format: password
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password: { type: string, format: password }
+        new_password: { type: string, format: password, minLength: 8, maxLength: 128 }
     AdminReasonRequest:
       type: object
       required: [reason]
@@ -6942,27 +7201,50 @@ components:
       required:
         - external_device_id
       properties:
-        target_workspace_id:
-          $ref: "#/components/schemas/UUID"
-          description: Optional Workspace assignment target. Omit it to sync the device as an unassigned system asset.
         external_device_id:
           type: integer
           format: int64
           minimum: 1
-          description: External THCPN `devices.id`.
-        project_id:
+          description: The only required input. This is the external THCPN `devices.id`; name, serial number and product are read from the external device or generated by the platform.
+    SyncAllTHCPNDevicesResult:
+      type: object
+      required:
+        - data_source_id
+        - total
+        - synced
+        - created
+        - updated
+        - failed
+      properties:
+        data_source_id:
           $ref: "#/components/schemas/UUID"
-        site_id:
-          $ref: "#/components/schemas/UUID"
-        product_id:
-          type: string
-          description: Optional platform product identifier. Defaults to `thcpn_standard_station`.
-        serial_no:
-          type: string
-          description: Optional platform serial number override. Defaults to external `sn`, `uuid`, then `thcpn-{id}`.
-        name:
-          type: string
-          description: Optional platform device name override. Defaults to external `devices.name`.
+        total:
+          type: integer
+          description: Number of non-deleted rows discovered in the external devices table.
+        synced:
+          type: integer
+        created:
+          type: integer
+        updated:
+          type: integer
+        unconfigured:
+          type: integer
+          description: Devices imported from the external devices table without a device_config row yet.
+        failed:
+          type: integer
+        failures:
+          type: array
+          items:
+            type: object
+            required:
+              - external_device_id
+              - error
+            properties:
+              external_device_id:
+                type: integer
+                format: int64
+              error:
+                type: string
     SyncTHCPNGatewayRequest:
       type: object
       required:
@@ -7204,6 +7486,59 @@ components:
           $ref: "#/components/schemas/THCPNDeviceConfig"
         latest_snapshot:
           $ref: "#/components/schemas/DeviceConfigSnapshot"
+    THCPNSensorMetric:
+      type: object
+      required: [key, raw]
+      properties:
+        key: { type: string }
+        name: { type: string }
+        type: { type: string }
+        unit: { type: string }
+        index: {}
+        min: {}
+        max: {}
+        decode: { type: string }
+        raw:
+          type: object
+          additionalProperties: true
+    THCPNSensorTemplate:
+      type: object
+      required: [id, sensor_type, port_num, port_nums, params, metrics, config_entry, valid]
+      properties:
+        id: { type: integer, format: int64 }
+        sensor_type: { type: string }
+        description: { type: string }
+        port: { type: string }
+        port_num: { type: integer, format: int64 }
+        driver: { type: string }
+        port_nums:
+          type: array
+          items: { type: integer }
+        params:
+          type: object
+          additionalProperties: true
+        metrics:
+          type: array
+          items: { $ref: "#/components/schemas/THCPNSensorMetric" }
+        config_entry:
+          type: object
+          additionalProperties: true
+        valid: { type: boolean }
+        warnings:
+          type: array
+          items: { $ref: "#/components/schemas/QueryWarning" }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+    THCPNSensorTemplateListResponse:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/THCPNSensorTemplate" }
+        total: { type: integer }
+        page: { type: integer }
+        page_size: { type: integer }
     DevicePublicAccess:
       type: object
       required: [device_id, enabled, password_enabled]
@@ -7294,6 +7629,7 @@ components:
         - data_json
         - image_json
         - control_json
+        - expected_config_id
       properties:
         data_json:
           type: array
@@ -7308,6 +7644,10 @@ components:
         control_json:
           type: object
           additionalProperties: true
+        expected_config_id:
+          type: integer
+          format: int64
+          minimum: 1
     UpdateTHCPNDeviceConfigResponse:
       type: object
       required:

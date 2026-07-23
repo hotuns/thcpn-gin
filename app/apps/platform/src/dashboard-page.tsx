@@ -19,7 +19,7 @@ const text = (input: unknown, fallback: unknown = "—") =>
     : String(input);
 const displayTime = (input: unknown) =>
   input
-    ? new Intl.DateTimeFormat("zh-CN", {
+    ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", {
         month: "2-digit",
         day: "2-digit",
         hour: "2-digit",

@@ -103,9 +103,10 @@ type syncTHCPNGatewayRequest struct {
 }
 
 type updateTHCPNDeviceConfigRequest struct {
-	DataJSON    json.RawMessage `json:"data_json"`
-	ImageJSON   json.RawMessage `json:"image_json"`
-	ControlJSON json.RawMessage `json:"control_json"`
+	DataJSON         json.RawMessage `json:"data_json"`
+	ImageJSON        json.RawMessage `json:"image_json"`
+	ControlJSON      json.RawMessage `json:"control_json"`
+	ExpectedConfigID int64           `json:"expected_config_id" binding:"required,min=1"`
 }
 
 type updateSamplingProfileRequest struct {
@@ -518,6 +519,46 @@ func (h *Handler) AdminSyncTHCPNStandardStation(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+func (h *Handler) AdminSyncAllTHCPNDevices(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	dataSourceID, ok := parseUUIDParam(c, "data_source_id")
+	if !ok {
+		return
+	}
+	// Accept an optional empty JSON object so clients can consistently submit
+	// POST requests without inventing assignment or metadata fields.
+	if c.Request.Body != nil {
+		var body json.RawMessage
+		if err := c.ShouldBindJSON(&body); err != nil && err != io.EOF {
+			httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+			return
+		}
+	}
+	result, err := h.service.SyncAllTHCPNDevices(c.Request.Context(), SyncAllTHCPNDevicesInput{
+		DataSourceID: dataSourceID,
+		ActorUserID:  actor.UserID,
+	})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		ActorType:    audit.ActorUser,
+		ActorID:      audit.UserActorID(actor.UserID),
+		Action:       "thcpn.devices.full_sync",
+		ResourceType: "data_source",
+		ResourceID:   audit.ResourceID(dataSourceID),
+		Result:       audit.ResultSuccess,
+		Reason:       fmt.Sprintf("total=%d; synced=%d; created=%d; updated=%d; unconfigured=%d; failed=%d", result.Total, result.Synced, result.Created, result.Updated, result.Unconfigured, result.Failed),
+	}) {
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
 func (h *Handler) AdminSyncTHCPNGateway(c *gin.Context) {
 	actor, ok := actorFromContext(c)
 	if !ok {
@@ -625,6 +666,29 @@ func (h *Handler) AdminGetTHCPNDeviceConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+func (h *Handler) AdminListTHCPNSensorTemplates(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	page, ok := parseOptionalIntQuery(c, "page")
+	if !ok {
+		return
+	}
+	pageSize, ok := parseOptionalIntQuery(c, "page_size")
+	if !ok {
+		return
+	}
+	result, err := h.service.ListTHCPNSensorTemplates(c.Request.Context(), THCPNSensorTemplateListInput{
+		DeviceID: deviceID, Search: c.Query("q"), Port: c.Query("port"), Driver: c.Query("driver"), Page: page, PageSize: pageSize,
+	})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
 func (h *Handler) AdminUpdateTHCPNDeviceConfig(c *gin.Context) {
 	actor, ok := actorFromContext(c)
 	if !ok {
@@ -640,11 +704,8 @@ func (h *Handler) AdminUpdateTHCPNDeviceConfig(c *gin.Context) {
 		return
 	}
 	result, err := h.service.UpdateTHCPNDeviceConfig(c.Request.Context(), UpdateTHCPNDeviceConfigInput{
-		DeviceID:    deviceID,
-		DataJSON:    req.DataJSON,
-		ImageJSON:   req.ImageJSON,
-		ControlJSON: req.ControlJSON,
-		ActorUserID: actor.UserID,
+		DeviceID: deviceID, DataJSON: req.DataJSON, ImageJSON: req.ImageJSON, ControlJSON: req.ControlJSON,
+		ExpectedConfigID: req.ExpectedConfigID, ActorUserID: actor.UserID,
 	})
 	if err != nil {
 		if !h.record(c, audit.RecordInput{
@@ -668,7 +729,15 @@ func (h *Handler) AdminUpdateTHCPNDeviceConfig(c *gin.Context) {
 		ResourceType: "device",
 		ResourceID:   audit.ResourceID(deviceID),
 		Result:       audit.ResultSuccess,
-		Reason:       "external_config_id=" + fmt.Sprint(result.Config.ID),
+		Reason: fmt.Sprintf(
+			"old_config_id=%d; new_config_id=%d; sections=%s; sensors=%d; metrics=%d; images=%d",
+			result.Audit.PreviousConfigID,
+			result.Config.ID,
+			strings.Join(result.Audit.ChangedSections, ","),
+			result.Audit.SensorCount,
+			result.Audit.MetricCount,
+			result.Audit.ImageCount,
+		),
 	}) {
 		return
 	}

@@ -21,9 +21,10 @@ import {
 } from "@thcpn/api";
 import { Badge, Button, Panel, StateView } from "@thcpn/ui";
 import { workspaceQueryKey } from "@thcpn/workspace";
+import { useLocale } from "@thcpn/i18n";
 
 const displayTime = (input: string) =>
-  new Intl.DateTimeFormat("zh-CN", {
+  new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", {
     dateStyle: "medium",
     timeStyle: "medium",
   }).format(new Date(input));
@@ -492,6 +493,7 @@ function MediaCard({
 }
 
 export function CameraLive({ device }: { device: Device }) {
+  const { locale } = useLocale();
   const containerId = `ezviz-${useId().replaceAll(":", "")}`;
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<{ stop?: () => Promise<unknown> | unknown } | null>(
@@ -533,6 +535,7 @@ export function CameraLive({ device }: { device: Device }) {
           url: session.url,
           staticPath: "/ezuikit_static",
           template: playerTemplate,
+          language: locale === "zh-CN" ? "zh" : "en",
           width,
           height: Math.round((width * 9) / 16),
           autoplay: true,
@@ -556,7 +559,7 @@ export function CameraLive({ device }: { device: Device }) {
         containerRef.current?.replaceChildren();
       }
     };
-  }, [containerId, playerTemplate, session]);
+  }, [containerId, locale, playerTemplate, session]);
   const create = async () => {
     setBusy(true);
     setError("");

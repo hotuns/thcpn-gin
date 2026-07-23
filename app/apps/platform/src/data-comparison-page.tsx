@@ -86,10 +86,10 @@ const createDraft = (deviceId = ""): ComparisonDraft => ({
 });
 
 const formatNumber = (value: number) =>
-  new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 3 }).format(value);
+  new Intl.NumberFormat(document.documentElement.lang || "zh-CN", { maximumFractionDigits: 3 }).format(value);
 
 const formatTime = (value: string) =>
-  new Intl.DateTimeFormat("zh-CN", {
+  new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -378,6 +378,6 @@ function ComparisonStatistics({ items }: { items: { config: ComparisonDraft; dev
   return <div className="table-wrap"><table className="data-table comparison-table"><thead><tr><th>对比项</th><th>时间范围</th><th>数据量</th><th>最新值</th><th>平均值</th><th>最小 / 最大</th><th>质量</th></tr></thead><tbody>{items.map((item, index) => {
     const stats = comparisonStatistic(item.series);
     const unit = item.series?.unit ? ` ${item.series.unit}` : "";
-    return <tr key={item.config.id}><td><div className="comparison-table-title"><i style={{ background: colors[index % colors.length] }} /><div><strong>{item.device?.name ?? item.config.deviceId}</strong><small>{item.series?.name ?? "数据要素"}</small></div></div></td><td>{formatTime(item.config.startTime)}<small>至 {formatTime(item.config.endTime)}</small></td>{item.query.isLoading ? <td colSpan={5}>正在加载…</td> : item.query.error ? <td colSpan={5} className="comparison-query-error">{formatApiError(item.query.error).message}</td> : stats ? <><td>{stats.count.toLocaleString("zh-CN")}</td><td>{formatNumber(stats.latest)}{unit}</td><td>{formatNumber(stats.average)}{unit}</td><td>{formatNumber(stats.min)} / {formatNumber(stats.max)}{unit}</td><td><Badge tone={stats.quality >= 90 ? "success" : stats.quality >= 60 ? "warning" : "danger"}>{stats.quality}%</Badge></td></> : <td colSpan={5}>暂无数据</td>}</tr>;
+    return <tr key={item.config.id}><td><div className="comparison-table-title"><i style={{ background: colors[index % colors.length] }} /><div><strong>{item.device?.name ?? item.config.deviceId}</strong><small>{item.series?.name ?? "数据要素"}</small></div></div></td><td>{formatTime(item.config.startTime)}<small>至 {formatTime(item.config.endTime)}</small></td>{item.query.isLoading ? <td colSpan={5}>正在加载…</td> : item.query.error ? <td colSpan={5} className="comparison-query-error">{formatApiError(item.query.error).message}</td> : stats ? <><td>{stats.count.toLocaleString(document.documentElement.lang || "zh-CN")}</td><td>{formatNumber(stats.latest)}{unit}</td><td>{formatNumber(stats.average)}{unit}</td><td>{formatNumber(stats.min)} / {formatNumber(stats.max)}{unit}</td><td><Badge tone={stats.quality >= 90 ? "success" : stats.quality >= 60 ? "warning" : "danger"}>{stats.quality}%</Badge></td></> : <td colSpan={5}>暂无数据</td>}</tr>;
   })}</tbody></table></div>;
 }

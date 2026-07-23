@@ -1,19 +1,24 @@
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { GitBranch, RefreshCw, Search, Settings2, Trash2 } from "lucide-react";
+import type { FormInstance } from "antd";
+import { Activity, Battery, FileJson, GitBranch, Pencil, Radio, RefreshCw, Search, Settings2, Trash2 } from "lucide-react";
 import {
   Alert,
   Button,
+  Descriptions,
   Drawer,
+  Empty,
   Form,
   Input,
   InputNumber,
+  Modal,
   Popconfirm,
   Select,
   Space,
   Table,
   Tag,
+  Tabs,
 } from "@thcpn/admin-ui";
 import {
   api,
@@ -30,9 +35,11 @@ import { Badge, PageHeader, Panel, StateView } from "@thcpn/ui";
 import {
   configFieldsFromDetail,
   parseTHCPNConfig,
-  validateConfigField,
   type THCPNConfigFields,
 } from "./thcpn-config";
+import { THCPNVisualConfigEditor } from "./thcpn-config-editor";
+import { configChangeSummary, configDraftFromDetail, duplicateSensorWarnings, parseAdvancedConfig, validateVisualConfig } from "./thcpn-config-model";
+import { DeviceLogsPanel } from "./device-logs-panel";
 
 type Mode =
   | "edit"
@@ -45,51 +52,77 @@ type Mode =
   | "camera"
   | "camera-edit"
   | null;
-const value = (input: unknown, fallback = "—") =>
+const value = (input: unknown, fallback: unknown = "—"): string =>
   input === undefined || input === null || input === ""
-    ? fallback
+    ? String(fallback)
     : String(input);
 
 export function AdminDevicesPage() {
+  const { deviceId } = useParams();
   const query = useQuery({
     queryKey: ["admin", "devices"],
     queryFn: api.admin.devices,
+  });
+  const detailAttributesQuery = useQuery({
+    queryKey: ["admin", "device", deviceId, "attributes"],
+    queryFn: () => api.admin.deviceAttributes(deviceId!),
+    enabled: Boolean(deviceId),
+  });
+  const detailChildrenQuery = useQuery({
+    queryKey: ["admin", "device", deviceId, "children"],
+    queryFn: () => api.admin.deviceChildren(deviceId!),
+    enabled: Boolean(deviceId),
+  });
+  const detailLifecycleQuery = useQuery({
+    queryKey: ["admin", "device", deviceId, "lifecycle"],
+    queryFn: () => api.admin.lifecycle(deviceId!),
+    enabled: Boolean(deviceId),
+  });
+  const detailConfigQuery = useQuery({
+    queryKey: ["admin", "device", deviceId, "config"],
+    queryFn: () => api.admin.deviceConfig(deviceId!),
+    enabled: Boolean(deviceId),
   });
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState("");
   const [lifecycle, setLifecycle] = useState("");
   const [assignment, setAssignment] = useState("");
   const [category, setCategory] = useState("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [selected, setSelected] = useState<JsonRecord | null>(null);
   const [mode, setMode] = useState<Mode>(null);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [detail, setDetail] = useState<unknown>(null);
+  const [configConflict, setConfigConflict] = useState(false);
   const [configResult, setConfigResult] = useState<{
     deviceName: string;
     response: JsonRecord;
   } | null>(null);
   const [children, setChildren] = useState<Record<string, JsonRecord[]>>({});
-  const [form] = Form.useForm();
+  const [form] = Form.useForm<Record<string, any>>();
   const allRows = query.data?.items ?? [];
   const categoryOf = (item: JsonRecord) =>
     value(item.topology_role || item.device_type, "standalone");
+  const topLevelRows = useMemo(
+    () => allRows.filter((item) => categoryOf(item) !== "gateway_node"),
+    [allRows],
+  );
   const counts = useMemo(
     () => ({
-      all: allRows.length,
-      gateway: allRows.filter((item) => categoryOf(item) === "gateway").length,
-      gateway_node: allRows.filter(
-        (item) => categoryOf(item) === "gateway_node",
-      ).length,
-      camera: allRows.filter((item) => categoryOf(item) === "camera").length,
-      standalone: allRows.filter((item) => categoryOf(item) === "standalone")
+      all: topLevelRows.length,
+      gateway: topLevelRows.filter((item) => categoryOf(item) === "gateway").length,
+      camera: topLevelRows.filter((item) => categoryOf(item) === "camera").length,
+      standalone: topLevelRows.filter((item) => categoryOf(item) === "standalone")
         .length,
     }),
-    [allRows],
+    [topLevelRows],
   );
   const rows = useMemo(
     () =>
-      allRows.filter((item) => {
+      topLevelRows.filter((item) => {
         const searchable =
           `${value(item.name)} ${value(item.serial_no)} ${value(item.id)}`
             .toLowerCase()
@@ -105,9 +138,78 @@ export function AdminDevicesPage() {
           (category === "all" || categoryOf(item) === category)
         );
       }),
-    [allRows, keyword, status, lifecycle, assignment, category],
+    [topLevelRows, keyword, status, lifecycle, assignment, category],
   );
   const id = value(selected?.id, "");
+
+  useEffect(() => {
+    setPage(1);
+  }, [keyword, status, lifecycle, assignment, category]);
+
+  useEffect(() => {
+    const lastPage = Math.max(1, Math.ceil(rows.length / pageSize));
+    if (page > lastPage) setPage(lastPage);
+  }, [page, pageSize, rows.length]);
+
+  const selectedRows = useMemo(() => {
+    const keys = new Set(selectedRowKeys.map(String));
+    return topLevelRows.filter((item) => keys.has(value(item.id, "")));
+  }, [selectedRowKeys, topLevelRows]);
+
+  const runBatch = async (
+    action: "activate" | "disable" | "unassign",
+  ) => {
+    const candidates =
+      action === "unassign"
+        ? selectedRows.filter((item) => Boolean(item.workspace_id))
+        : selectedRows;
+    if (!candidates.length) {
+      setFeedback(
+        action === "unassign" ? "选中的设备均未分配工作区" : "请先选择设备",
+      );
+      return;
+    }
+    const actionLabel =
+      action === "activate" ? "启用" : action === "disable" ? "停用" : "解除分配";
+    Modal.confirm({
+      title: `批量${actionLabel}设备`,
+      content: `将处理 ${candidates.length} 台设备。各设备独立提交，单条失败不会中断其他设备。`,
+      okText: `确认${actionLabel}`,
+      cancelText: "取消",
+      okButtonProps: { danger: action !== "activate" },
+      onOk: async () => {
+        setBusy(true);
+        setFeedback("");
+        try {
+          const results = await Promise.allSettled(
+            candidates.map((item) => {
+              const deviceID = value(item.id, "");
+              return action === "unassign"
+                ? api.admin.unassignDevice(deviceID)
+                : api.admin.updateDevice(deviceID, {
+                    status: action === "activate" ? "active" : "disabled",
+                  });
+            }),
+          );
+          const failedKeys = results.flatMap((result, index) =>
+            result.status === "rejected"
+              ? [value(candidates[index]?.id, "")]
+              : [],
+          );
+          const succeeded = results.length - failedKeys.length;
+          setFeedback(
+            failedKeys.length
+              ? `批量${actionLabel}完成：成功 ${succeeded} 台，失败 ${failedKeys.length} 台`
+              : `已批量${actionLabel} ${succeeded} 台设备`,
+          );
+          setSelectedRowKeys(failedKeys);
+          await query.refetch();
+        } finally {
+          setBusy(false);
+        }
+      },
+    });
+  };
 
   const open = (next: Exclude<Mode, null>, record: JsonRecord) => {
     setSelected(record);
@@ -147,7 +249,9 @@ export function AdminDevicesPage() {
         data_json: "[]",
         image_json: "[]",
         control_json: "{}",
+        expected_config_id: 0,
       });
+      setConfigConflict(false);
       void loadDetail("config", record);
     }
     if (next === "camera")
@@ -180,6 +284,12 @@ export function AdminDevicesPage() {
         })
         .catch(showError);
     }
+  };
+  const openCameraCreate = () => {
+    setSelected(null);
+    setMode("camera");
+    setDetail(null);
+    form.setFieldsValue({ name: "", serial_no: "", device_serial: "", channel_no: 1, default_quality: "standard", is_encrypted: false, validate_code_secret_ref: "", target_workspace_id: undefined, project_id: undefined, site_id: undefined });
   };
   const close = () => {
     setMode(null);
@@ -222,13 +332,6 @@ export function AdminDevicesPage() {
     );
   };
   const submit = async () => {
-    if (
-      mode === "config" &&
-      !window.confirm(
-        "确认写入 THCPN 外部设备库并刷新平台 DataStream 与 Binding？",
-      )
-    )
-      return;
     setBusy(true);
     setFeedback("");
     try {
@@ -243,10 +346,16 @@ export function AdminDevicesPage() {
           capabilities: fields.capabilities ?? [],
         });
       if (mode === "config") {
-        const response = await api.admin.updateDeviceConfig(
-          id,
-          parseTHCPNConfig(fields as THCPNConfigFields),
-        );
+        const payload = parseTHCPNConfig(fields as THCPNConfigFields);
+        const after = parseAdvancedConfig({ data: fields.data_json, image: fields.image_json, control: fields.control_json }, fields.expected_config_id);
+        const validation = validateVisualConfig(after);
+        if (validation.length) throw new Error(validation.join("；"));
+        const before = configDraftFromDetail((detail ?? {}) as JsonRecord);
+        const summary = configChangeSummary(before, after);
+        const warnings = duplicateSensorWarnings(after.sensors);
+        const confirmed = await confirmConfigSave(summary, warnings);
+        if (!confirmed) { setBusy(false); return; }
+        const response = await api.admin.updateDeviceConfig(id, payload);
         setConfigResult({ deviceName: value(selected?.name, id), response });
       }
       if (mode === "camera") await api.admin.createCamera(fields);
@@ -257,11 +366,19 @@ export function AdminDevicesPage() {
           delete next[id];
           return next;
         });
+      const completedMode = mode;
       setFeedback("操作已完成");
       close();
       await query.refetch();
+      if (completedMode === "config") await detailConfigQuery.refetch();
     } catch (error) {
-      if (!(error as any)?.errorFields) showError(error);
+      if (!(error as any)?.errorFields) {
+        const formatted = formatApiError(error);
+        if (mode === "config" && formatted.status === 409) {
+          setConfigConflict(true);
+          setFeedback("源数据库配置已被其他操作更新。当前草稿已保留，请复制草稿后重新加载最新配置。");
+        } else showError(error);
+      }
     } finally {
       setBusy(false);
     }
@@ -319,20 +436,36 @@ export function AdminDevicesPage() {
     }
   };
 
+  const managementOverlays = (
+    <>
+      {configResult ? <ConfigApplyResult result={configResult} onClose={() => setConfigResult(null)} /> : null}
+      <Drawer title={drawerTitle(mode, selected)} open={Boolean(mode)} onClose={close} size={mode === "config" ? 1180 : 620} extra={mode === "attributes" ? <Button onClick={close}>关闭</Button> : <Space><Button onClick={close}>取消</Button><Button type="primary" danger={mode === "config"} loading={busy} onClick={() => void submit()}>保存</Button></Space>}>
+        {mode === "config" && configConflict ? <Alert className="config-conflict-alert" type="warning" showIcon title="源配置已变化，当前草稿尚未保存" description="复制草稿后重新加载最新配置；系统不会强制覆盖其他操作写入的版本。" action={<Space orientation="vertical"><Button size="small" onClick={() => void navigator.clipboard.writeText(JSON.stringify(parseTHCPNConfig(form.getFieldsValue() as THCPNConfigFields), null, 2))}>复制草稿</Button><Button size="small" type="primary" onClick={() => { setConfigConflict(false); void loadDetail("config", selected); }}>重新加载</Button></Space>} /> : null}
+        <Form form={form} layout="vertical"><DeviceForm mode={mode} form={form} devices={allRows} deviceId={id} /></Form>
+        <StructuredDetail mode={mode} detail={detail} busy={busy} onRemove={(childId) => selected && void removeChild(value(selected.id, ""), childId)} />
+        {mode === "config" && detail ? <ConfigContext detail={detail as JsonRecord} /> : null}
+        <div className="drawer-note"><Settings2 size={15} />{mode === "config" ? "高级配置会写入外部设备库，并刷新平台数据流与绑定。提交前请确认 JSON 结构。" : "所有操作都作用于标题中显示的当前设备；完成后设备列表会自动刷新。"}</div>
+      </Drawer>
+    </>
+  );
+
+  if (deviceId) {
+    const device = allRows.find((item) => value(item.id, "") === deviceId);
+    if (query.isLoading) return <StateView type="loading" title="正在加载设备详情" description="正在读取系统设备资产。" />;
+    if (query.error) return <StateView type="error" title="设备详情加载失败" description={formatApiError(query.error).message} requestId={formatApiError(query.error).requestId} />;
+    if (!device) return <StateView type="empty" title="设备不存在" description="该设备可能已被删除或尚未同步。" action={<Button><Link to="/admin/devices">返回设备列表</Link></Button>} />;
+    const isCamera = categoryOf(device) === "camera";
+    const refreshDetail = () => void Promise.all([query.refetch(), detailAttributesQuery.refetch(), detailChildrenQuery.refetch(), detailLifecycleQuery.refetch(), detailConfigQuery.refetch()]);
+    return <><PageHeader eyebrow="System / devices / detail" title={value(device.name, "未命名设备")} description={`${value(device.serial_no, device.id)} · ${deviceTopologyRoleLabel(categoryOf(device))}`} actions={<Space><Button><Link to="/admin/devices">返回列表</Link></Button><Button type="primary" icon={<Pencil size={14} />} onClick={() => open("edit", device)}>编辑资料</Button><Button icon={<RefreshCw size={14} />} onClick={refreshDetail}>刷新</Button></Space>} />{feedback && <div className="admin-feedback section-gap">{feedback}</div>}<DeviceDetailPanel device={device} isCamera={isCamera} attributes={detailAttributesQuery.data as unknown as JsonRecord | undefined} attributesLoading={detailAttributesQuery.isLoading} attributesError={detailAttributesQuery.error} childrenData={detailChildrenQuery.data as unknown as JsonRecord | undefined} childrenLoading={detailChildrenQuery.isLoading} childrenError={detailChildrenQuery.error} lifecycleData={detailLifecycleQuery.data as JsonRecord | undefined} lifecycleLoading={detailLifecycleQuery.isLoading} lifecycleError={detailLifecycleQuery.error} configData={detailConfigQuery.data as JsonRecord | undefined} configLoading={detailConfigQuery.isLoading} configError={detailConfigQuery.error} onOpen={(next) => open(next, device)} onUnassign={() => void unassign(device)} />{managementOverlays}</>;
+  }
+
   return (
     <>
       <PageHeader
         eyebrow="System / devices"
         title="系统设备"
         description="管理设备身份、工作区分配、网关拓扑、生命周期和 THCPN 配置。"
-        actions={
-          <Button
-            icon={<RefreshCw size={14} />}
-            onClick={() => void query.refetch()}
-          >
-            刷新
-          </Button>
-        }
+        actions={<Space><Button type="primary" onClick={openCameraCreate}>创建相机</Button><Button icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>刷新</Button></Space>}
       />
       <Panel>
         <div className="admin-device-filters">
@@ -349,14 +482,14 @@ export function AdminDevicesPage() {
             placeholder="资产状态"
             value={status || undefined}
             onChange={(item) => setStatus(item ?? "")}
-            options={deviceStatusOptions.map((item) => ({ ...item }))}
+            options={deviceStatusOptions.map((item) => ({ value: item.value, label: deviceStatusLabel(item.value) }))}
           />
           <Select
             allowClear
             placeholder="生命周期"
             value={lifecycle || undefined}
             onChange={(item) => setLifecycle(item ?? "")}
-            options={deviceLifecycleOptions.map((item) => ({ ...item }))}
+            options={deviceLifecycleOptions.map((item) => ({ value: item.value, label: deviceLifecycleLabel(item.value) }))}
           />
           <Select
             allowClear
@@ -374,7 +507,6 @@ export function AdminDevicesPage() {
           {[
             { key: "all", label: "全部" },
             { key: "gateway", label: "网关" },
-            { key: "gateway_node", label: "节点" },
             { key: "camera", label: "相机" },
             { key: "standalone", label: "标准站" },
           ].map((item) => (
@@ -388,6 +520,17 @@ export function AdminDevicesPage() {
             </button>
           ))}
         </div>
+        {selectedRowKeys.length ? (
+          <div className="admin-device-batch-toolbar">
+            <strong>已选择 {selectedRowKeys.length} 台</strong>
+            <Space wrap>
+              <Button loading={busy} onClick={() => void runBatch("activate")}>批量启用</Button>
+              <Button danger loading={busy} onClick={() => void runBatch("disable")}>批量停用</Button>
+              <Button loading={busy} onClick={() => void runBatch("unassign")}>解除分配</Button>
+              <Button type="text" disabled={busy} onClick={() => setSelectedRowKeys([])}>清空选择</Button>
+            </Space>
+          </div>
+        ) : null}
         {feedback && <div className="admin-feedback">{feedback}</div>}
         {query.isLoading ? (
           <StateView
@@ -406,10 +549,15 @@ export function AdminDevicesPage() {
           <Table
             rowKey="id"
             dataSource={rows}
+            rowSelection={{
+              selectedRowKeys,
+              preserveSelectedRowKeys: true,
+              onChange: setSelectedRowKeys,
+            }}
             rowClassName={(record) =>
               record.id === selected?.id ? "admin-selected-row" : ""
             }
-            columns={columns(open, unassign)}
+            columns={columns()}
             expandable={{
               rowExpandable: (record) => categoryOf(record) === "gateway",
               onExpand: (expanded, record) =>
@@ -424,7 +572,19 @@ export function AdminDevicesPage() {
                 />
               ),
             }}
-            pagination={{ pageSize: 12, showSizeChanger: false }}
+            pagination={{
+              current: page,
+              pageSize,
+              total: rows.length,
+              showSizeChanger: true,
+              showQuickJumper: true,
+              pageSizeOptions: [20, 50, 100],
+              showTotal: (total, range) => `${range[0]}-${range[1]} / 共 ${total} 台`,
+              onChange: (nextPage, nextPageSize) => {
+                setPageSize(nextPageSize);
+                setPage(nextPageSize !== pageSize ? 1 : nextPage);
+              },
+            }}
             scroll={{ x: 1080 }}
           />
         ) : (
@@ -439,69 +599,174 @@ export function AdminDevicesPage() {
           />
         )}
       </Panel>
-      {configResult ? (
-        <ConfigApplyResult
-          result={configResult}
-          onClose={() => setConfigResult(null)}
-        />
-      ) : null}
-      <Drawer
-        title={drawerTitle(mode, selected)}
-        open={Boolean(mode)}
-        onClose={close}
-        size={620}
-        extra={mode === "attributes" ? (
-          <Button onClick={close}>关闭</Button>
-        ) : (
-          <Space>
-            <Button onClick={close}>取消</Button>
-            <Button
-              type="primary"
-              danger={mode === "config"}
-              loading={busy}
-              onClick={() => void submit()}
-            >
-              保存
-            </Button>
-          </Space>
-        )}
-      >
-        <Form form={form} layout="vertical">
-          <DeviceForm mode={mode} form={form} devices={allRows} />
-        </Form>
-        <StructuredDetail
-          mode={mode}
-          detail={detail}
-          busy={busy}
-          onRemove={(childId) =>
-            selected && void removeChild(value(selected.id, ""), childId)
-          }
-        />
-        {mode === "config" && detail ? (
-          <ConfigContext detail={detail as JsonRecord} />
-        ) : null}
-        <div className="drawer-note">
-          <Settings2 size={15} />
-          {mode === "config"
-            ? "高级配置会写入外部设备库，并刷新平台数据流与绑定。提交前请确认 JSON 结构。"
-            : "所有操作都作用于标题中显示的当前设备；完成后设备列表会自动刷新。"}
-        </div>
-      </Drawer>
+      {managementOverlays}
     </>
   );
 }
 
-function columns(
-  open: (mode: Exclude<Mode, null>, row: JsonRecord) => void,
-  unassign: (row: JsonRecord) => Promise<void>,
-) {
+type DetailQueryProps = {
+  data?: JsonRecord;
+  loading: boolean;
+  error: unknown;
+};
+
+function confirmConfigSave(summary: ReturnType<typeof configChangeSummary>, warnings: string[]) {
+  const changes = [
+    summary.sensorsAdded ? `新增 ${summary.sensorsAdded} 个传感器` : "",
+    summary.sensorsRemoved ? `删除 ${summary.sensorsRemoved} 个传感器` : "",
+    summary.metricsChanged ? (summary.metricsBefore !== summary.metricsAfter ? `指标 ${summary.metricsBefore} → ${summary.metricsAfter}` : "指标定义已修改") : "",
+    summary.imagesAdded ? `新增 ${summary.imagesAdded} 个图片通道` : "",
+    summary.imagesRemoved ? `删除 ${summary.imagesRemoved} 个图片通道` : "",
+    summary.controlChanged ? "控制策略已修改" : "",
+  ].filter(Boolean);
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (value: boolean) => { if (!settled) { settled = true; resolve(value); } };
+    Modal.confirm({
+      title: "保存并下发设备配置？",
+      width: 560,
+      okText: "保存并下发",
+      cancelText: "继续编辑",
+      okButtonProps: { danger: summary.sensorsRemoved > 0 || summary.imagesRemoved > 0 },
+      content: <div className="config-save-summary"><p>{changes.length ? changes.join("；") : "配置内容已修改"}</p>{warnings.length ? <Alert type="warning" showIcon title="共享总线存在重复命令" description={warnings.join("；")} /> : null}<p>系统会写入 THCPN 外部设备库，并同步 DataStream 与 Binding。</p></div>,
+      onOk: () => finish(true),
+      onCancel: () => finish(false),
+      afterClose: () => finish(false),
+    });
+  });
+}
+
+function DeviceDetailPanel({
+  device,
+  isCamera,
+  attributes,
+  attributesLoading,
+  attributesError,
+  childrenData,
+  childrenLoading,
+  childrenError,
+  lifecycleData,
+  lifecycleLoading,
+  lifecycleError,
+  configData,
+  configLoading,
+  configError,
+  onOpen,
+  onUnassign,
+}: {
+  device: JsonRecord;
+  isCamera: boolean;
+  attributes?: JsonRecord;
+  attributesLoading: boolean;
+  attributesError: unknown;
+  childrenData?: JsonRecord;
+  childrenLoading: boolean;
+  childrenError: unknown;
+  lifecycleData?: JsonRecord;
+  lifecycleLoading: boolean;
+  lifecycleError: unknown;
+  configData?: JsonRecord;
+  configLoading: boolean;
+  configError: unknown;
+  onOpen: (mode: Exclude<Mode, null>) => void;
+  onUnassign: () => void;
+}) {
+  const children = (childrenData?.items as JsonRecord[] | undefined) ?? [];
+  const events = (lifecycleData?.events as JsonRecord[] | undefined) ?? [];
+  const capabilities = Array.isArray(device.capabilities) ? device.capabilities.map(String) : [];
+  const latestConfig = (configData?.latest_config ?? {}) as JsonRecord;
+  const snapshot = (configData?.latest_snapshot ?? {}) as JsonRecord;
+  const attributeItems = Object.entries((attributes?.attributes ?? {}) as JsonRecord);
+  const date = (input: unknown) => input ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(String(input))) : "—";
+  const inlineError = (error: unknown, title: string) => error ? <Alert type="warning" showIcon title={title} description={formatApiError(error).message} /> : null;
+  const queryLoading = ({ loading, data, error }: DetailQueryProps) => loading && !data && !error;
+  const overview = <div className="admin-device-detail-content">
+    <section className="admin-detail-section">
+      <div className="admin-detail-section-head"><div><h2>设备资料</h2><span>系统设备的身份与资产状态</span></div><Button icon={<Pencil size={14} />} onClick={() => onOpen("edit")}>编辑</Button></div>
+      <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }} items={[
+        { key: "serial", label: "序列号", children: <span className="mono">{value(device.serial_no)}</span> },
+        { key: "product", label: "产品 ID", children: value(device.product_id) },
+        { key: "type", label: "设备类型", children: deviceTopologyRoleLabel(value(device.device_type, "")) },
+        { key: "id", label: "设备 ID", span: 2, children: <span className="mono admin-break-value">{value(device.id)}</span> },
+        { key: "status", label: "资产状态", children: <Tag color={device.status === "active" ? "green" : "default"}>{deviceStatusLabel(value(device.status, ""))}</Tag> },
+        { key: "created", label: "创建时间", children: date(device.created_at) },
+        { key: "updated", label: "更新时间", children: date(device.updated_at) },
+        { key: "activated", label: "激活时间", children: date(device.activated_at) },
+      ]} />
+    </section>
+    <section className="admin-detail-section">
+      <div className="admin-detail-section-head"><div><h2>分配关系</h2><span>设备当前所属的工作区与资源位置</span></div><Space><Button onClick={() => onOpen("assign")}>调整分配</Button>{Boolean(device.workspace_id) && <Popconfirm title="解除工作区分配？" description="设备将不再对该工作区可见。" onConfirm={onUnassign}><Button danger>解除分配</Button></Popconfirm>}</Space></div>
+      <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }} items={[
+        { key: "workspace", label: "工作区", children: device.workspace_id ? <span className="mono admin-break-value">{value(device.workspace_id)}</span> : <Tag>未分配</Tag> },
+        { key: "project", label: "项目", children: value(device.project_id, "未设置") },
+        { key: "site", label: "样地", children: value(device.site_id, "未设置") },
+        { key: "assigned", label: "分配时间", children: date(device.assigned_at) },
+        { key: "assignedBy", label: "分配人", span: 2, children: value(device.assigned_by) },
+      ]} />
+    </section>
+    <section className="admin-detail-section">
+      <div className="admin-detail-section-head"><div><h2>生命周期</h2><span>当前阶段与最近一次状态变更</span></div><Button icon={<Activity size={14} />} onClick={() => onOpen("lifecycle")}>更新状态</Button></div>
+      {inlineError(lifecycleError, "生命周期历史加载失败")}
+      <Descriptions bordered size="small" column={{ xs: 1, sm: 3 }} items={[
+        { key: "lifecycle", label: "当前阶段", children: <Tag color="blue">{deviceLifecycleLabel(value(device.lifecycle_status, ""))}</Tag> },
+        { key: "lifecycleAt", label: "状态更新时间", children: date(device.lifecycle_updated_at) },
+        { key: "eventCount", label: "历史记录", children: queryLoading({ loading: lifecycleLoading, data: lifecycleData, error: lifecycleError }) ? "加载中…" : `${events.length} 条` },
+      ]} />
+      {events.length ? <div className="admin-latest-event"><strong>{events[0].from_status ? `${deviceLifecycleLabel(value(events[0].from_status, ""))} → ` : ""}{deviceLifecycleLabel(value(events[0].to_status, ""))}</strong><span>{date(events[0].occurred_at)}{events[0].note ? ` · ${value(events[0].note)}` : ""}</span></div> : null}
+    </section>
+    {isCamera ? <section className="admin-detail-section"><div className="admin-detail-section-head"><div><h2>相机绑定</h2><span>管理当前相机的萤石云通道和清晰度</span></div><Button onClick={() => onOpen("camera-edit")}>编辑绑定</Button></div></section> : null}
+  </div>;
+  const topology = <div className="admin-device-detail-content">
+    <section className="admin-detail-section">
+      <div className="admin-detail-section-head"><div><h2>拓扑关系</h2><span>{deviceTopologyRoleLabel(value(device.topology_role, ""))} · {children.length} 个子节点</span></div><Button icon={<GitBranch size={14} />} onClick={() => onOpen("child")}>管理拓扑</Button></div>
+      {inlineError(childrenError, "拓扑信息加载失败")}
+      {queryLoading({ loading: childrenLoading, data: childrenData, error: childrenError }) ? <div className="admin-inline-loading">正在加载拓扑…</div> : children.length ? <Table rowKey={(item) => value(((item.device ?? item) as JsonRecord).id)} size="small" pagination={false} dataSource={children} columns={[
+        { title: "节点", render: (_, item) => { const child = (item.device ?? item) as JsonRecord; return <div><strong>{value(child.name, "未命名节点")}</strong><div className="cell-sub mono">{value(child.serial_no, child.id)}</div></div>; } },
+        { title: "状态", width: 110, render: (_, item) => { const child = (item.device ?? item) as JsonRecord; return <Tag color={child.status === "active" ? "green" : "default"}>{deviceStatusLabel(value(child.status, ""))}</Tag>; } },
+        { title: "分配", width: 110, render: (_, item) => { const child = (item.device ?? item) as JsonRecord; return child.workspace_id ? <Tag color="blue">已分配</Tag> : <Tag>未分配</Tag>; } },
+      ]} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前设备没有子节点" />}
+    </section>
+    <section className="admin-detail-section">
+      <div className="admin-detail-section-head"><div><h2>设备能力</h2><span>能力决定平台可提供的数据与控制功能</span></div><Button onClick={() => onOpen("capabilities")}>编辑能力</Button></div>
+      <div className="admin-capability-list">{capabilities.length ? capabilities.map((capability) => <Tag key={capability} color="blue">{capability}</Tag>) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未配置设备能力" />}</div>
+    </section>
+  </div>;
+  const configuration = <div className="admin-device-detail-content">
+    <section className="admin-detail-section">
+      <div className="admin-detail-section-head"><div><h2>THCPN 配置</h2><span>源库最新配置与平台同步快照</span></div><Button type="primary" icon={<FileJson size={14} />} onClick={() => onOpen("config")}>编辑完整配置</Button></div>
+      {inlineError(configError, "设备配置加载失败")}
+      {queryLoading({ loading: configLoading, data: configData, error: configError }) ? <div className="admin-inline-loading">正在加载配置…</div> : configData ? <><Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 4 }} items={[
+        { key: "external", label: "外部设备 ID", children: value(configData.external_device_id) },
+        { key: "version", label: "配置版本", children: value(latestConfig.version, latestConfig.id) },
+        { key: "sourceTime", label: "源库更新时间", children: date(latestConfig.updated_at ?? latestConfig.created_at) },
+        { key: "syncTime", label: "平台同步时间", children: date(snapshot.synced_at) },
+        { key: "dataCount", label: "数据指标", children: `${Array.isArray(latestConfig.data_json) ? latestConfig.data_json.length : 0} 项` },
+        { key: "imageCount", label: "图片类型", children: `${Array.isArray(latestConfig.image_json) ? latestConfig.image_json.length : 0} 项` },
+        { key: "sampling", label: "采集策略", span: 2, children: describeSamplingControl(latestConfig.control_json) },
+      ]} />{latestConfig.id && snapshot.external_config_id && String(latestConfig.id) !== String(snapshot.external_config_id) ? <Alert className="admin-config-warning" type="warning" showIcon title="源配置与平台快照不一致" description="源数据库配置已变化，平台数据流和绑定可能尚未同步。" /> : null}</> : null}
+    </section>
+    <section className="admin-detail-section">
+      <div className="admin-detail-section-head"><div><h2>最新设备属性</h2><span>来自源数据库的电池、信号和扩展信息</span></div><Button onClick={() => onOpen("attributes")}>查看原始属性</Button></div>
+      {inlineError(attributesError, "设备属性加载失败")}
+      {queryLoading({ loading: attributesLoading, data: attributes, error: attributesError }) ? <div className="admin-inline-loading">正在加载设备属性…</div> : attributeItems.length ? <div className="admin-attribute-grid">{attributeItems.map(([key, raw]) => { const item = raw as JsonRecord; const parsed = item.parsed_value ?? item.raw_value; const Icon = key === "battery" ? Battery : key === "signal" ? Radio : Settings2; return <div key={key}><Icon size={17} /><span>{key === "battery" ? "电池" : key === "signal" ? "信号" : key}</span><strong>{typeof parsed === "object" ? JSON.stringify(parsed) : value(parsed)}</strong><small>{date(item.sampled_at)}</small></div>; })}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无设备属性" />}
+    </section>
+  </div>;
+  return <Panel className="admin-device-detail"><div className="admin-device-detail-summary"><div><span>设备 ID</span><strong className="mono">{value(device.id)}</strong></div><div><span>生命周期</span><Tag color="blue">{deviceLifecycleLabel(value(device.lifecycle_status, ""))}</Tag></div><div><span>分配状态</span><strong>{device.workspace_id ? "已分配" : "未分配"}</strong></div><div><span>资产状态</span><Tag color={device.status === "active" ? "green" : "default"}>{deviceStatusLabel(value(device.status, ""))}</Tag></div></div><Tabs className="admin-device-detail-tabs" items={[
+    { key: "overview", label: "概览", children: overview },
+    { key: "topology", label: "拓扑与能力", children: topology },
+    { key: "configuration", label: "配置与属性", children: configuration },
+    { key: "logs", label: "设备日志", children: <DeviceLogsPanel deviceId={value(device.id, "")} deviceName={value(device.name, "未命名设备")} /> },
+  ]} /></Panel>;
+}
+
+function columns() {
   return [
     {
       title: "设备",
       dataIndex: "name",
       render: (_: unknown, row: JsonRecord) => (
         <div>
-          <div className="cell-title">{value(row.name, "未命名设备")}</div>
+          <div className="cell-title"><Link to={`/admin/devices/${encodeURIComponent(value(row.id, ""))}`}>{value(row.name, "未命名设备")}</Link></div>
           <div className="cell-sub mono">
             {value(row.serial_no, value(row.id))}
           </div>
@@ -559,61 +824,10 @@ function columns(
     },
     {
       title: "操作",
-      width: 360,
+      width: 100,
       fixed: "right" as const,
       render: (_: unknown, row: JsonRecord) => (
-        <Space size={0} wrap>
-          <Button type="link" onClick={() => open("edit", row)}>
-            资料
-          </Button>
-          <Button type="link" onClick={() => open("assign", row)}>
-            分配
-          </Button>
-          <Button type="link" onClick={() => open("child", row)}>
-            拓扑
-          </Button>
-          <Button type="link" onClick={() => open("lifecycle", row)}>
-            生命周期
-          </Button>
-          <Button type="link" onClick={() => open("capabilities", row)}>
-            能力
-          </Button>
-          <Button type="link" onClick={() => open("attributes", row)}>
-            属性
-          </Button>
-          <Button type="link" onClick={() => open("config", row)}>
-            配置
-          </Button>
-          <Button type="link">
-            <Link to={`/admin/logs?device=${encodeURIComponent(value(row.id, ""))}`}>日志</Link>
-          </Button>
-          <Button
-            type="link"
-            onClick={() =>
-              open(
-                row.device_type === "camera" || row.topology_role === "camera"
-                  ? "camera-edit"
-                  : "camera",
-                row,
-              )
-            }
-          >
-            {row.device_type === "camera" || row.topology_role === "camera"
-              ? "相机绑定"
-              : "建相机"}
-          </Button>
-          {Boolean(row.workspace_id) && (
-            <Popconfirm
-              title="解除工作区分配？"
-              description="设备将不再对该工作区可见。"
-              onConfirm={() => void unassign(row)}
-            >
-              <Button type="link" danger>
-                解除
-              </Button>
-            </Popconfirm>
-          )}
-        </Space>
+        <Button type="link"><Link to={`/admin/devices/${encodeURIComponent(value(row.id, ""))}`}>详情</Link></Button>
       ),
     },
   ];
@@ -623,14 +837,15 @@ function DeviceForm({
   mode,
   form,
   devices,
+  deviceId,
 }: {
   mode: Mode;
-  form: ReturnType<typeof Form.useForm>[0];
+  form: FormInstance<any>;
   devices: JsonRecord[];
+  deviceId: string;
 }) {
   const workspaceId = Form.useWatch("target_workspace_id", form);
   const projectId = Form.useWatch("project_id", form);
-  const controlJSON = Form.useWatch("control_json", form);
   const workspaces = useQuery({
     queryKey: ["admin", "workspaces", "assignment"],
     queryFn: api.workspaces.adminList,
@@ -694,7 +909,7 @@ function DeviceForm({
           </Form.Item>
           <Form.Item name="status" label="资产状态">
             <Select
-              options={deviceStatusOptions.map((item) => ({ ...item }))}
+              options={deviceStatusOptions.map((item) => ({ value: item.value, label: deviceStatusLabel(item.value) }))}
             />
           </Form.Item>
         </div>
@@ -790,7 +1005,7 @@ function DeviceForm({
           rules={[{ required: true }]}
         >
           <Select
-            options={deviceLifecycleOptions.map((item) => ({ ...item }))}
+            options={deviceLifecycleOptions.map((item) => ({ value: item.value, label: deviceLifecycleLabel(item.value) }))}
           />
         </Form.Item>
         <Form.Item name="note" label="变更说明">
@@ -828,48 +1043,12 @@ function DeviceForm({
     return (
       <>
         <Alert
-          type="warning"
+          type="info"
           showIcon
-          title="将创建新的外部配置版本"
-          description="只编辑以下三个配置字段。保存后系统会写入外部设备库，并重新生成平台数据流和绑定。"
+          title="可视化设备配置"
+          description="保存会创建新的外部配置版本，并重新生成平台数据流和绑定。未知厂商字段会原样保留。"
         />
-        <Form.Item
-          name="data_json"
-          label="数据通道 · data_json"
-          rules={[
-            { required: true },
-            {
-              validator: (_, current) => validateConfigField(current, "array"),
-            },
-          ]}
-        >
-          <Input.TextArea rows={10} className="code-input" spellCheck={false} />
-        </Form.Item>
-        <Form.Item
-          name="image_json"
-          label="图片通道 · image_json"
-          rules={[
-            { required: true },
-            {
-              validator: (_, current) => validateConfigField(current, "array"),
-            },
-          ]}
-        >
-          <Input.TextArea rows={8} className="code-input" spellCheck={false} />
-        </Form.Item>
-        <Form.Item
-          name="control_json"
-          label="控制配置 · control_json"
-          rules={[
-            { required: true },
-            {
-              validator: (_, current) => validateConfigField(current, "object"),
-            },
-          ]}
-          extra={`采集策略：${describeSamplingControl(controlJSON)}`}
-        >
-          <Input.TextArea rows={8} className="code-input" spellCheck={false} />
-        </Form.Item>
+        <THCPNVisualConfigEditor deviceId={deviceId} form={form} />
       </>
     );
   if (mode === "camera")
@@ -1068,7 +1247,7 @@ function StructuredDetail({
                   </strong>
                   <span>
                     {event.occurred_at
-                      ? new Intl.DateTimeFormat("zh-CN", {
+                      ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", {
                           dateStyle: "medium",
                           timeStyle: "short",
                         }).format(new Date(value(event.occurred_at)))
@@ -1120,7 +1299,7 @@ function ConfigContext({ detail }: { detail: JsonRecord }) {
   const snapshot = (detail.latest_snapshot ?? {}) as JsonRecord;
   const time = (input: unknown) =>
     input
-      ? new Intl.DateTimeFormat("zh-CN", {
+      ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", {
           dateStyle: "medium",
           timeStyle: "short",
         }).format(new Date(String(input)))
@@ -1260,6 +1439,7 @@ function CameraBindingFields({ editing = false }: { editing?: boolean }) {
 }
 
 function drawerTitle(mode: Mode, selected: JsonRecord | null) {
+  if (mode === "camera" && !selected) return "创建相机";
   const name = value(selected?.name, "设备");
   return (
     (

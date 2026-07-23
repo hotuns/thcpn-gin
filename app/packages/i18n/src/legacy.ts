@@ -1,0 +1,29 @@
+export const legacyEnglish: Record<string, string> = {
+  "运行": "Operations", "数据": "Data", "管理": "Management", "主导航": "Main navigation", "后台导航": "Admin navigation", "收起侧栏": "Collapse sidebar", "展开侧栏": "Expand sidebar", "总览": "Overview", "设备": "Devices", "设备详情": "Device details", "数据对比": "Data comparison", "数据集": "Datasets", "数据集详情": "Dataset details", "创建数据集": "Create dataset", "编辑数据集": "Edit dataset", "导出任务": "Export jobs", "工作区": "Workspace", "工作区设置": "Workspace settings", "账户中心": "Account", "账户资料": "Profile", "账号安全": "Account security",
+  "概览": "Overview", "实时视频": "Live video", "资料": "Profile", "配置": "Configuration", "分享": "Sharing", "操作记录": "Activity", "设备列表": "Device list", "返回设备列表": "Back to devices", "全局访问控制": "Global access control", "快捷切换设备": "Quick device switch", "搜索名称、序列号或 ID": "Search name, serial number or ID", "全部项目": "All projects", "全部站点": "All sites", "全部样地": "All sites", "全部": "All", "组网站": "Gateway stations", "相机": "Cameras", "标准站": "Stations", "拓扑": "Topology", "生命周期": "Lifecycle", "能力": "Capabilities", "操作": "Actions", "状态": "Status", "名称": "Name", "类型": "Type", "创建时间": "Created", "更新时间": "Updated", "未设置": "Not set",
+  "查询条件": "Query conditions", "开始时间": "Start time", "结束时间": "End time", "快捷范围": "Quick ranges", "数据指标": "Metrics", "已选": "Selected", "清空": "Clear", "遥测趋势": "Telemetry trends", "遥测明细": "Telemetry details", "设备图片": "Device images", "搜索": "Search", "刷新": "Refresh", "查看": "View", "编辑": "Edit", "删除": "Delete", "取消": "Cancel", "确认": "Confirm", "保存": "Save", "创建": "Create", "关闭": "Close", "复制": "Copy", "下载": "Download", "打印": "Print", "重试": "Retry", "加载更多": "Load more", "暂无数据": "No data", "正在加载…": "Loading…", "处理中…": "Processing…", "保存中…": "Saving…",
+  "项目": "Projects", "样地": "Sites", "站点": "Sites", "成员": "Members", "资源": "Resources", "直接共享": "Direct shares", "基础资料": "General", "访问控制": "Access control", "审计日志": "Audit log", "成员权限": "Member permissions", "资源分享": "Resource sharing", "待接受邀请": "Pending invitations", "分享给我": "Shared with me", "成员与用户": "Members and users", "资源层级": "Resource hierarchy", "共享与邀请": "Sharing and invitations", "审计记录": "Audit records", "系统操作": "System operations", "直接授权": "Direct grants", "发送邀请": "Send invitation", "创建授权": "Create grant", "权限模板": "Permission template", "接收人": "Recipient", "有效期": "Expiration", "允许再次分享": "Allow resharing", "允许 API 访问": "Allow API access", "撤销": "Revoke",
+  "数据来源": "Data sources", "来源": "Source", "时间范围": "Time range", "查看详情": "View details", "数据类型": "Data type", "当前状态": "Current status", "数据预览": "Data preview", "返回数据集": "Back to datasets", "新建数据集": "New dataset", "数据集名称": "Dataset name", "每序列上限": "Per-series limit", "导出": "Export", "新建导出": "New export", "任务状态": "Job status", "文件": "File",
+  "系统范围": "System scope", "后台总览": "Admin overview", "数据源": "Data sources", "THCPN 数据源": "THCPN data sources", "连接配置与设备同步": "Connection configuration and device synchronization", "系统设备": "System devices", "拓扑、分配与生命周期": "Topology, assignments and lifecycle", "控制平面状态": "Control plane status", "设备日志": "Device logs", "工作区与权限": "Workspace governance", "用户管理": "Users", "元数据": "Metadata", "系统设置": "System settings", "返回用户平台": "Back to platform", "返回平台": "Back to platform", "系统管理员": "System administrator", "平台管理": "Platform management", "成员数": "Members", "最近活动": "Recent activity", "风险": "Risk", "所有者": "Owner", "管理员": "Administrator", "启用": "Enabled", "停用": "Disabled", "在线运行": "Online", "维护中": "Maintenance", "成功": "Success", "失败": "Failed", "正常": "Normal", "异常": "Abnormal", "待处理": "Pending", "已接受": "Accepted", "已撤销": "Revoked", "已过期": "Expired",
+  "邮箱": "Email", "手机号": "Phone", "密码": "Password", "姓名": "Name", "用户": "User", "创建用户": "Create user", "角色": "Role", "加入时间": "Joined", "注册时间": "Registered", "最近登录": "Last sign-in", "账号状态": "Account status", "登录安全": "Sign-in security", "活动会话": "Active sessions", "双重验证": "Two-factor authentication", "已验证": "Verified", "未验证": "Not verified", "退出登录": "Sign out", "设备能力": "Device capabilities", "系统角色": "System roles", "新增能力": "Add capability", "排序": "Order",
+  "公开访问": "Public access", "固定公开地址": "Permanent public URL", "已公开": "Public", "未公开": "Private", "密码保护": "Password protection", "设置": "Settings", "二维码": "QR code", "更新于": "Updated", "创建设备授权": "Create device grant", "识别方式": "Identity method", "用户 ID": "User ID", "搜索并切换设备": "Search and switch device", "关闭后地址仍会保留，重新开启无需更换设备二维码。": "The URL is retained when public access is disabled, so the device QR code does not need to change.", "这里只管理直接授予当前设备的访问权限。工作区、项目、站点继承权限请在全局访问控制中管理。": "Manage only access granted directly to this device here. Manage inherited workspace, project and site access in Global access control.", "暂无直接授权": "No direct grants", "当前设备还没有单独分享给其他用户。": "This device has not been shared directly with another user.", "已注册用户的设备级访问": "Device-level access for registered users", "暂无待接受邀请": "No pending invitations", "当前设备没有等待接受的邀请。": "This device has no pending invitations.", "通过邮箱或手机号邀请": "Invite by email or phone",
+  "最近数据": "Recent data", "最近图片": "Recent images", "查看全部": "View all", "最小": "Min", "平均": "Average", "最大": "Max", "质量": "Quality", "区间变化": "Range change", "实时值": "Latest", "区间平均": "Range average", "综合趋势": "Combined", "分指标": "By metric"
+};
+
+export const translateLegacyText = (value: string) => {
+  const exact = legacyEnglish[value];
+  if (exact) return exact;
+  const countPatterns: Array<[RegExp, (match: RegExpMatchArray) => string]> = [
+    [/^(\d+) 项指标$/, (m) => `${m[1]} metrics`],
+    [/^(\d+) 种图片$/, (m) => `${m[1]} image types`],
+    [/^(\d+) 张$/, (m) => `${m[1]} images`],
+    [/^(\d+) 条$/, (m) => `${m[1]} records`],
+    [/^共 (\d+) 条$/, (m) => `${m[1]} records`],
+    [/^更新于 (.+) · (.+)$/, (m) => `Updated ${m[1]} · ${m[2]}`],
+  ];
+  for (const [pattern, replacement] of countPatterns) {
+    const match = value.match(pattern);
+    if (match) return replacement(match);
+  }
+  return value;
+};

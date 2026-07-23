@@ -1,8 +1,8 @@
 const label = (
-  labels: Record<string, string>,
+  labels: Record<string, { zh: string; en: string }>,
   value?: string,
   fallback?: string,
-) => (value ? (labels[value] ?? fallback ?? value) : (fallback ?? "—"));
+) => (value ? (labels[value]?.[typeof document !== "undefined" && document.documentElement.lang === "en-US" ? "en" : "zh"] ?? fallback ?? value) : (fallback ?? "—"));
 
 export const deviceStatusOptions = [
   { value: "active", label: "启用" },
@@ -19,37 +19,37 @@ export const deviceLifecycleOptions = [
   { value: "retired", label: "已退役" },
 ] as const;
 
-const topologyRoleLabels: Record<string, string> = {
-  standalone: "标准站",
-  gateway: "网关",
-  gateway_node: "网关节点",
-  camera: "相机",
+const topologyRoleLabels = {
+  standalone: { zh: "标准站", en: "Station" },
+  gateway: { zh: "网关", en: "Gateway" },
+  gateway_node: { zh: "网关节点", en: "Gateway node" },
+  camera: { zh: "相机", en: "Camera" },
 };
 
-const deviceCapabilityLabels: Record<string, string> = {
-  telemetry: "遥测数据",
-  image_capture: "图片采集",
-  video_stream: "实时视频",
-  ptz_control: "云台控制",
-  remote_command: "远程控制",
-  configurable: "参数配置",
-  calibratable: "设备校准",
-  firmware_update: "固件升级",
-  edge_storage: "边缘存储",
+const deviceCapabilityLabels = {
+  telemetry: { zh: "遥测数据", en: "Telemetry" },
+  image_capture: { zh: "图片采集", en: "Image capture" },
+  video_stream: { zh: "实时视频", en: "Live video" },
+  ptz_control: { zh: "云台控制", en: "PTZ control" },
+  remote_command: { zh: "远程控制", en: "Remote control" },
+  configurable: { zh: "参数配置", en: "Configuration" },
+  calibratable: { zh: "设备校准", en: "Calibration" },
+  firmware_update: { zh: "固件升级", en: "Firmware update" },
+  edge_storage: { zh: "边缘存储", en: "Edge storage" },
 };
 
-const roleTemplateLabels: Record<string, string> = {
-  owner: "所有者",
-  admin: "管理员",
-  project_manager: "项目管理员",
-  site_operator: "站点运维人员",
-  data_manager: "数据管理员",
-  researcher: "研究人员",
-  viewer: "查看者",
-  shared_viewer: "共享查看者",
-  shared_downloader: "共享下载者",
-  service_engineer: "服务工程师",
-  custom: "自定义权限",
+const roleTemplateLabels = {
+  owner: { zh: "所有者", en: "Owner" },
+  admin: { zh: "管理员", en: "Administrator" },
+  project_manager: { zh: "项目管理员", en: "Project manager" },
+  site_operator: { zh: "站点运维人员", en: "Site operator" },
+  data_manager: { zh: "数据管理员", en: "Data manager" },
+  researcher: { zh: "研究人员", en: "Researcher" },
+  viewer: { zh: "查看者", en: "Viewer" },
+  shared_viewer: { zh: "共享查看者", en: "Shared viewer" },
+  shared_downloader: { zh: "共享下载者", en: "Shared downloader" },
+  service_engineer: { zh: "服务工程师", en: "Service engineer" },
+  custom: { zh: "自定义权限", en: "Custom permissions" },
 };
 
 const roleTemplateDefaultNames: Record<string, string> = {
@@ -66,40 +66,21 @@ const roleTemplateDefaultNames: Record<string, string> = {
   custom: "Custom",
 };
 
-const commonStatusLabels: Record<string, string> = {
-  active: "有效",
-  disabled: "停用",
-  retired: "已退役",
-  pending: "待处理",
-  accepted: "已接受",
-  revoked: "已撤销",
-  expired: "已过期",
-  archived: "已归档",
-  success: "成功",
-  failed: "失败",
+const commonStatusLabels = {
+  active: { zh: "有效", en: "Active" }, disabled: { zh: "停用", en: "Disabled" }, retired: { zh: "已退役", en: "Retired" }, pending: { zh: "待处理", en: "Pending" }, accepted: { zh: "已接受", en: "Accepted" }, revoked: { zh: "已撤销", en: "Revoked" }, expired: { zh: "已过期", en: "Expired" }, archived: { zh: "已归档", en: "Archived" }, success: { zh: "成功", en: "Success" }, failed: { zh: "失败", en: "Failed" },
 };
 
 export const deviceStatusLabel = (value?: string) =>
-  label(
-    Object.fromEntries(
-      deviceStatusOptions.map((item) => [item.value, item.label]),
-    ),
-    value,
-  );
+  label({ active: { zh: "启用", en: "Enabled" }, disabled: { zh: "停用", en: "Disabled" }, retired: { zh: "已退役", en: "Retired" } }, value);
 
 export const deviceLifecycleLabel = (value?: string) =>
-  label(
-    Object.fromEntries(
-      deviceLifecycleOptions.map((item) => [item.value, item.label]),
-    ),
-    value,
-  );
+  label({ inbound: { zh: "待入库", en: "Pending intake" }, installed: { zh: "已安装", en: "Installed" }, online: { zh: "在线运行", en: "Online" }, maintenance: { zh: "维护中", en: "Maintenance" }, repairing: { zh: "维修中", en: "Repairing" }, retired: { zh: "已退役", en: "Retired" } }, value);
 
 export const deviceTopologyRoleLabel = (value?: string) =>
   label(topologyRoleLabels, value);
 
 export const deviceCapabilityLabel = (value?: string) =>
-  label(deviceCapabilityLabels, value, "扩展能力");
+  label(deviceCapabilityLabels, value, typeof document !== "undefined" && document.documentElement.lang === "en-US" ? "Extended capability" : "扩展能力");
 
 export const roleTemplateLabel = (code?: string, fallbackName?: string) => {
   const name = fallbackName?.trim();

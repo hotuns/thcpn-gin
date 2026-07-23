@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { Navigate, useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, adminAuthClearedEvent, adminAuthStorage, authClearedEvent, authStorage, type AdminUser, type User } from "@thcpn/api";
+import { useLocale } from "@thcpn/i18n";
 
 type AuthContextValue = {
   user: User | null;
@@ -24,7 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
-    api.me().then(({ user: currentUser }) => setUser(currentUser)).catch(() => {
+    api.me.get().then(({ user: currentUser }) => setUser(currentUser)).catch(() => {
       authStorage.clear();
       setUser(null);
     }).finally(() => setLoading(false));
@@ -44,7 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(tokens.user);
     },
     refreshUser: async () => {
-      const { user: currentUser } = await api.me();
+      const { user: currentUser } = await api.me.get();
       setUser(currentUser);
     },
     signOut: async () => {
@@ -68,8 +69,9 @@ export function useAuth() {
 
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
+  const { t } = useLocale();
   const location = useLocation();
-  if (loading) return <div className="app-loading">正在恢复会话…</div>;
+  if (loading) return <div className="app-loading">{t("sessionRestoring")}</div>;
   if (!user) {
     const target = `${location.pathname}${location.search}${location.hash}`;
     return <Navigate to={`/login?next=${encodeURIComponent(target)}`} replace />;

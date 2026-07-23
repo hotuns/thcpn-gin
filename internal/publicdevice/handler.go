@@ -250,7 +250,8 @@ func (h *Handler) resolveAuthorized(c *gin.Context) (Publication, PublicDevice, 
 
 func (h *Handler) resolvePublic(c *gin.Context) (Publication, PublicDevice, bool) {
 	slug := strings.TrimSpace(c.Param("public_slug"))
-	if slug == "" || !h.limiter.allow(c.Request.Context(), requestLimitKey(slug, c.ClientIP()), 60, time.Minute) {
+	bucket, maximum := publicRequestLimit(c.FullPath())
+	if slug == "" || !h.limiter.allow(c.Request.Context(), requestLimitKey(slug, c.ClientIP(), bucket), maximum, time.Minute) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindRateLimited, "public device request limit exceeded"))
 		return Publication{}, PublicDevice{}, false
 	}
@@ -260,6 +261,19 @@ func (h *Handler) resolvePublic(c *gin.Context) (Publication, PublicDevice, bool
 		return Publication{}, PublicDevice{}, false
 	}
 	return publication, device, true
+}
+
+func publicRequestLimit(route string) (string, int64) {
+	switch route {
+	case "/api/v1/public/devices/:public_slug/telemetry":
+		return "telemetry", 60
+	case "/api/v1/public/devices/:public_slug/images":
+		return "images", 240
+	case "/api/v1/public/devices/:public_slug/unlock":
+		return "unlock", 60
+	default:
+		return "metadata", 120
+	}
 }
 
 func (h *Handler) hasSession(c *gin.Context, publication Publication) bool {

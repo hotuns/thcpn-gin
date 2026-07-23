@@ -14,15 +14,25 @@
 .admin-login-error { padding: 10px 12px; color: #a12c26; background: #fff1ef; border: 1px solid #f4c7c1; border-radius: 5px; font-size: 11px; }
 .admin-sidebar .brand-name, .admin-sidebar .brand-sub { color: white; }
 .admin-sidebar .brand-sub { color: #a7c1d8; }
-.admin-sidebar .nav-title { color: #7798b8; }
-.admin-sidebar .nav-item { color: #c2d4e5; }
-.admin-sidebar .nav-item:hover { color: white; background: #1c466e; }
-.admin-sidebar .nav-item.active { color: white; background: #1f62a3; }
-.admin-sidebar .status-strip { border-color: #2c5375; }
-.admin-sidebar .status-line { color: #b1c7da; }
-.admin-sidebar .account-row { color: white; }
-.admin-sidebar .account-role { color: #a9c1d7; }
-.admin-sidebar .avatar { color: #113352; background: #d1e5fb; }
+.admin-sidebar { gap: 18px; padding-inline: 12px; }
+.admin-sidebar .sidebar-brand-row { padding-inline: 4px; }
+.admin-navigation.ant-menu { flex: 1; min-height: 0; overflow-y: auto; background: transparent; border-inline-end: 0 !important; }
+.admin-navigation.ant-menu-dark .ant-menu-item-group-title { padding: 13px 12px 5px; color: #7798b8; font: 700 10px/1.2 "IBM Plex Mono", monospace; letter-spacing: 0; text-transform: uppercase; }
+.admin-navigation.ant-menu-dark .ant-menu-item { height: 38px; margin: 2px 0; padding-inline: 12px !important; color: #c2d4e5; border-radius: 6px; font-size: 12px; font-weight: 600; }
+.admin-navigation.ant-menu-dark .ant-menu-item:hover { color: #fff; background: #1c466e; }
+.admin-navigation.ant-menu-dark .ant-menu-item-selected { color: #fff; background: #1f62a3; }
+.admin-navigation .ant-menu-item-icon { min-width: 16px; }
+.admin-sidebar .sidebar-footer { gap: 8px; padding-top: 12px; border-top: 1px solid #2c5375; }
+.admin-account-trigger { width: 100%; min-height: 52px; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 8px; color: #fff; background: transparent; border: 0; border-radius: 6px; text-align: left; cursor: pointer; }
+.admin-account-trigger:hover, .admin-account-trigger:focus-visible { background: #1c466e; outline: 0; }
+.admin-account-trigger .ant-avatar { color: #113352; background: #d1e5fb; font-size: 12px; font-weight: 800; }
+.admin-account-trigger > span:not(.ant-avatar) { min-width: 0; display: grid; gap: 3px; }
+.admin-account-trigger strong, .admin-account-trigger small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-account-trigger strong { font-size: 12px; }
+.admin-account-trigger small { color: #a9c1d7; font-size: 10px; }
+.admin-account-identity { min-width: 190px; display: grid; gap: 3px; }
+.admin-account-identity strong { color: var(--ink); font-size: 12px; }
+.admin-account-identity span { color: var(--muted); font-size: 10px; }
 .workspace-tabs { margin-inline: 14px; }
 .workspace-tabs .ant-tabs-nav { margin-bottom: 18px; }
 .admin-topbar { background: #fff; }
@@ -50,6 +60,42 @@
 .admin-device-categories button strong { min-width: 20px; padding: 2px 5px; color: var(--muted); background: #eef2f5; border-radius: 10px; font: 700 9px "IBM Plex Mono", monospace; }
 .admin-device-categories button.active { color: var(--blue-dark); background: #eef6ff; border-color: #c9def5; }
 .admin-device-categories button.active strong { color: white; background: var(--blue); }
+.admin-device-batch-toolbar { min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; background: #f3f8fe; border-bottom: 1px solid #cfe0f2; }
+.admin-device-batch-toolbar > strong { color: var(--blue-dark); font-size: 12px; white-space: nowrap; }
+.admin-device-detail { overflow: hidden; }
+.admin-device-detail-summary { display: grid; grid-template-columns: 1.4fr repeat(3,minmax(130px,.7fr)); border-bottom: 1px solid var(--soft-line); }
+.admin-device-detail-summary > div { min-width: 0; display: grid; gap: 6px; padding: 16px 18px; border-right: 1px solid var(--soft-line); }
+.admin-device-detail-summary > div:last-child { border-right: 0; }
+.admin-device-detail-summary span { color: var(--muted); font-size: 10px; }
+.admin-device-detail-summary strong { overflow: hidden; color: var(--ink); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.admin-device-detail-tabs > .ant-tabs-nav { margin: 0; padding: 0 18px; }
+.admin-device-detail-tabs > .ant-tabs-content-holder { background: var(--panel); }
+.admin-device-detail-content { display: grid; gap: 0; }
+.admin-detail-section { padding: 20px; border-bottom: 1px solid var(--soft-line); }
+.admin-detail-section:last-child { border-bottom: 0; }
+.admin-detail-section-head { min-height: 38px; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.admin-detail-section-head > div { min-width: 0; display: grid; gap: 4px; }
+.admin-detail-section h2 { margin: 0; color: var(--ink); font-size: 13px; line-height: 1.4; }
+.admin-detail-section-head > div > span, .admin-log-entry > div > span { color: var(--muted); font-size: 10px; line-height: 1.5; }
+.admin-detail-section .ant-descriptions-item-label { width: 126px; color: var(--muted); font-size: 10px; }
+.admin-detail-section .ant-descriptions-item-content { color: var(--ink-soft); font-size: 11px; }
+.admin-break-value { overflow-wrap: anywhere; }
+.admin-inline-loading { min-height: 88px; display: grid; place-items: center; color: var(--muted); font-size: 11px; }
+.admin-latest-event { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 10px 12px; background: #f7fafc; border: 1px solid var(--soft-line); border-radius: 6px; }
+.admin-latest-event strong { color: var(--ink); font-size: 11px; }
+.admin-latest-event span { color: var(--muted); font-size: 10px; }
+.admin-capability-list { min-height: 52px; display: flex; align-items: flex-start; flex-wrap: wrap; gap: 7px; }
+.admin-capability-list > .ant-empty { width: 100%; }
+.admin-config-warning { margin-top: 12px; }
+.admin-attribute-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.admin-attribute-grid > div { min-width: 0; display: grid; grid-template-columns: auto 1fr; gap: 5px 8px; padding: 14px; border-right: 1px solid var(--soft-line); }
+.admin-attribute-grid > div:last-child { border-right: 0; }
+.admin-attribute-grid svg { grid-row: 1 / 3; align-self: center; color: var(--blue); }
+.admin-attribute-grid span { color: var(--muted); font-size: 10px; }
+.admin-attribute-grid strong { min-width: 0; color: var(--ink); font-size: 13px; overflow-wrap: anywhere; }
+.admin-attribute-grid small { grid-column: 1 / -1; color: var(--muted); font-size: 9px; }
+.admin-log-entry { min-height: 130px; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.admin-log-entry > div { display: grid; gap: 5px; }
 .admin-child-list { display: grid; background: #f8fbff; }
 .admin-child-list > div { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--soft-line); }
 .admin-child-list > div:last-child { border-bottom: 0; }
@@ -79,6 +125,53 @@
 .config-context span:nth-last-child(-n+2) { border-bottom: 0; }
 .config-context small { color: var(--muted); font-size: 9px; }
 .config-context strong { color: var(--ink-soft); font: 600 10px/1.45 "IBM Plex Mono", monospace; overflow-wrap: anywhere; }
+.visual-config-editor { margin-top: 14px; }
+.visual-config-editor > .ant-alert, .config-conflict-alert { margin-bottom: 12px; }
+.visual-config-editor > .ant-tabs > .ant-tabs-nav { margin-bottom: 0; }
+.visual-config-editor > .ant-tabs > .ant-tabs-content-holder { border: 1px solid var(--line); border-top: 0; }
+.visual-config-section { min-height: 420px; }
+.visual-config-toolbar { min-height: 66px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border-bottom: 1px solid var(--soft-line); }
+.visual-config-toolbar > div, .visual-subsection-head > div { display: grid; gap: 4px; }
+.visual-config-toolbar strong, .visual-subsection-head strong { color: var(--ink); font-size: 12px; }
+.visual-config-toolbar span, .visual-subsection-head span { color: var(--muted); font-size: 10px; }
+.visual-config-section > .ant-empty { margin-top: 92px; }
+.sensor-metric-tags { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.sensor-metric-tags > span { margin-right: 3px; color: var(--muted); font-size: 10px; }
+.sensor-catalog-toolbar { display: grid; grid-template-columns: minmax(280px,1fr) 150px 170px; gap: 8px; margin-bottom: 12px; }
+.config-form-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.config-form-grid-3 { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.config-form-grid-4 { grid-template-columns: repeat(4,minmax(0,1fr)); }
+.visual-subsection-head { min-height: 42px; display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
+.metric-editor-list { display: grid; gap: 8px; }
+.metric-editor-row { display: grid; grid-template-columns: 28px minmax(0,1fr) auto; align-items: start; gap: 8px; padding: 10px; background: #f8fafc; border: 1px solid var(--soft-line); border-radius: 6px; }
+.metric-editor-index { width: 24px; height: 24px; display: grid; place-items: center; color: var(--blue-dark); background: #e8f2ff; border-radius: 4px; font: 700 10px "IBM Plex Mono", monospace; }
+.metric-editor-fields { display: grid; grid-template-columns: repeat(4,minmax(90px,1fr)); gap: 0 8px; }
+.metric-editor-fields .ant-form-item { margin-bottom: 8px; }
+.metric-editor-fields .ant-form-item-label { padding-bottom: 3px; }
+.config-preserve-note { margin-top: 14px; }
+.schedule-editor-list { display: grid; }
+.schedule-editor-row { min-height: 88px; display: grid; grid-template-columns: minmax(150px,.55fr) minmax(210px,1fr) minmax(210px,1fr) 120px; align-items: end; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--soft-line); }
+.schedule-editor-row > div:first-child { align-self: center; display: grid; gap: 4px; }
+.schedule-editor-row strong { color: var(--ink); font-size: 11px; }
+.schedule-editor-row span { color: var(--muted); font-size: 9px; }
+.schedule-editor-row label { min-width: 0; display: grid; gap: 5px; }
+.schedule-editor-row label > .ant-select { width: 100%; }
+.schedule-editor-row.advanced { grid-template-columns: minmax(150px,.55fr) 1fr auto; align-items: center; }
+.control-extra-list { padding: 0 14px 14px; }
+.typed-extra-editor { margin-top: 10px; }
+.typed-extra-editor > .ant-empty { margin: 8px 0 14px; }
+.typed-extra-list { overflow: hidden; border: 1px solid var(--soft-line); border-radius: 6px; }
+.typed-extra-list > div { min-height: 44px; display: grid; grid-template-columns: minmax(130px,.6fr) auto minmax(180px,1fr) auto; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--soft-line); }
+.typed-extra-list > div:last-child { border-bottom: 0; }
+.typed-extra-list code { color: var(--ink); font: 600 10px/1.4 "IBM Plex Mono", monospace; overflow-wrap: anywhere; }
+.typed-extra-list > div > span { max-height: 42px; overflow: hidden; color: var(--muted); font: 10px/1.4 "IBM Plex Mono", monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.typed-extra-form { display: grid; gap: 14px; }
+.typed-extra-form label { display: grid; gap: 6px; }
+.typed-extra-form label > span { color: var(--ink-soft); font-size: 11px; }
+.advanced-config-fields { padding: 14px; }
+.advanced-config-fields > .ant-alert { margin-bottom: 14px; }
+.config-save-summary { display: grid; gap: 10px; }
+.config-save-summary p { margin: 0; color: var(--ink-soft); font-size: 11px; line-height: 1.65; }
 .sync-result { animation: admin-panel-enter 180ms ease-out; }
 .sync-result-metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); border-top: 1px solid var(--soft-line); border-bottom: 1px solid var(--soft-line); }
 .sync-result-metrics > div { display: flex; align-items: baseline; gap: 8px; padding: 14px 18px; border-right: 1px solid var(--soft-line); }
@@ -93,9 +186,12 @@
 @keyframes admin-panel-enter { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 680px) { .admin-list-toolbar { align-items: stretch; flex-direction: column; } .admin-search { width: 100%; } }
 @media (max-width: 680px) { .admin-shortcuts { grid-template-columns: 1fr; } }
-@media (max-width: 980px) { .admin-device-filters { grid-template-columns: repeat(2,minmax(0,1fr)); } .admin-device-filters .admin-search { width: 100%; grid-column: 1 / -1; } }
-@media (max-width: 680px) { .admin-device-filters { grid-template-columns: 1fr; } .admin-device-filters .admin-search { grid-column: auto; } .drawer-grid, .config-context > div { grid-template-columns: 1fr; } .config-context span { border-right: 0; } .config-context span:nth-last-child(2) { border-bottom: 1px solid var(--soft-line); } }
+@media (max-width: 980px) { .admin-device-filters { grid-template-columns: repeat(2,minmax(0,1fr)); } .admin-device-filters .admin-search { width: 100%; grid-column: 1 / -1; } .admin-device-detail-summary { grid-template-columns: repeat(2,minmax(0,1fr)); } .admin-device-detail-summary > div:nth-child(2) { border-right: 0; } .admin-attribute-grid { grid-template-columns: 1fr 1fr; } .admin-attribute-grid > div:nth-child(2) { border-right: 0; } .admin-attribute-grid > div:nth-child(n+3) { border-top: 1px solid var(--soft-line); } }
+@media (max-width: 680px) { .admin-device-filters { grid-template-columns: 1fr; } .admin-device-filters .admin-search { grid-column: auto; } .drawer-grid, .config-context > div { grid-template-columns: 1fr; } .config-context span { border-right: 0; } .config-context span:nth-last-child(2) { border-bottom: 1px solid var(--soft-line); } .admin-device-detail-summary { grid-template-columns: 1fr; } .admin-device-detail-summary > div { border-right: 0; } .admin-device-detail-tabs > .ant-tabs-nav { padding: 0 12px; } .admin-detail-section { padding: 16px 12px; } .admin-detail-section-head, .admin-log-entry { align-items: stretch; flex-direction: column; } .admin-detail-section-head .ant-space { width: 100%; flex-wrap: wrap; } .admin-attribute-grid { grid-template-columns: 1fr; } .admin-attribute-grid > div { border-right: 0; border-top: 1px solid var(--soft-line); } .admin-attribute-grid > div:first-child { border-top: 0; } .admin-latest-event { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 680px) { .admin-device-batch-toolbar { align-items: flex-start; flex-direction: column; } }
 @media (max-width: 680px) { .sync-result-metrics, .sync-node-list { grid-template-columns: 1fr; } .sync-result-metrics > div { border-right: 0; border-bottom: 1px solid var(--soft-line); } }
+@media (max-width: 900px) { .config-form-grid-4, .metric-editor-fields { grid-template-columns: repeat(2,minmax(0,1fr)); } .schedule-editor-row { grid-template-columns: 1fr 1fr; } .schedule-editor-row > div:first-child { grid-column: 1 / -1; } .schedule-range-mode { width: 100%; } }
+@media (max-width: 680px) { .visual-config-toolbar { align-items: stretch; flex-direction: column; } .sensor-catalog-toolbar, .config-form-grid, .config-form-grid-3, .config-form-grid-4, .metric-editor-fields, .schedule-editor-row, .schedule-editor-row.advanced { grid-template-columns: 1fr; } .metric-editor-row { grid-template-columns: 24px minmax(0,1fr); } .metric-editor-row > .ant-space { grid-column: 2; flex-direction: row; } .schedule-editor-row > div:first-child { grid-column: auto; } .typed-extra-list > div { grid-template-columns: 1fr auto; } .typed-extra-list > div > span { grid-column: 1 / -1; } }
 
 .governance-list { overflow: hidden; }
 .governance-toolbar { display: grid; grid-template-columns: minmax(280px,1fr) repeat(4,minmax(130px,.32fr)) auto; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--soft-line); }
@@ -119,6 +215,16 @@
 .audit-toolbar { justify-content: flex-start; }
 .audit-toolbar > .ant-select { width: 160px; }
 .audit-toolbar > .ant-input { width: 240px; }
+.platform-log-policy { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+.platform-log-policy .panel { display: flex; align-items: center; gap: 14px; padding: 14px 16px; }
+.platform-log-policy .panel > div { display: grid; gap: 3px; flex: 1; }
+.platform-log-policy span, .platform-log-policy small { color: var(--muted); }
+.platform-log-panel { padding: 16px; overflow: hidden; }
+.platform-log-filters { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.platform-log-filters .admin-search { grid-column: span 3; }
+.platform-log-json { margin: 0; max-height: 70vh; overflow: auto; padding: 18px; background: #111827; color: #d1fae5; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; line-height: 1.6; }
+@media (max-width: 900px) { .platform-log-policy { grid-template-columns: 1fr; } .platform-log-filters { grid-template-columns: 1fr 1fr; } .platform-log-filters .admin-search { grid-column: 1 / -1; } }
+@media (max-width: 560px) { .platform-log-filters { grid-template-columns: 1fr; } }
 .table-name-button { height: auto !important; display: grid !important; justify-items: start; padding: 0 !important; text-align: left; }
 .table-name-button span { font-weight: 700; }
 .table-name-button small { color: var(--muted); font-size: 10px; }
@@ -151,3 +257,26 @@
 @media (max-width: 720px) { .admin-user-toolbar { grid-template-columns: 1fr; } .admin-user-toolbar > :nth-child(4) { grid-column: auto; } .admin-user-detail-head { grid-template-columns: auto 1fr auto; } .admin-user-detail-head > button { grid-column: 1 / -1; justify-self: start; } .admin-user-detail-head > .ant-btn:last-child { grid-column: 3; } }
 @media (max-width: 1180px) { .governance-toolbar { grid-template-columns: minmax(260px,1fr) repeat(2,minmax(130px,.35fr)); } .governance-detail-head { grid-template-columns: auto minmax(180px,220px) 1fr auto; } .governance-detail-head > .ant-btn:last-child { grid-column: 2 / -1; justify-self: end; } }
 @media (max-width: 760px) { .governance-toolbar { grid-template-columns: 1fr 1fr; } .governance-toolbar > .ant-input-affix-wrapper { grid-column: 1 / -1; } .governance-detail-head { grid-template-columns: auto 1fr auto; } .workspace-governance-switcher { grid-column: 1 / -1; grid-row: 2; } .governance-detail-title { grid-column: 1 / -1; grid-row: 3; } .governance-detail-head > .ant-btn:last-child { grid-column: 1 / -1; } .risk-list { grid-template-columns: 1fr; } .tab-toolbar { align-items: stretch; flex-direction: column; } .audit-toolbar > .ant-select, .audit-toolbar > .ant-input { width: 100%; } }
+.admin-auth-language {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 112px;
+}
+
+:root[data-theme="dark"] .admin-auth-page,
+:root[data-theme="dark"] .admin-main,
+:root[data-theme="dark"] .admin-topbar {
+  background: var(--canvas);
+}
+:root[data-theme="dark"] .admin-auth-panel,
+:root[data-theme="dark"] .admin-shortcuts a,
+:root[data-theme="dark"] .admin-user-detail-head {
+  background: var(--panel);
+}
+:root[data-theme="dark"] .admin-search,
+:root[data-theme="dark"] .admin-child-list,
+:root[data-theme="dark"] .drawer-structured-detail > h3,
+:root[data-theme="dark"] .config-context h3 {
+  background: #121c26;
+}

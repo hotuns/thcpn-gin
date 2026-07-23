@@ -4,6 +4,7 @@ import { ArrowRight, KeyRound, MessageSquareText } from "lucide-react";
 import { api, formatApiError } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
 import { Brand, Button } from "@thcpn/ui";
+import { LanguageSwitcher, useLocale } from "@thcpn/i18n";
 
 export const validPassword = (value: string) =>
   value.length >= 8 &&
@@ -20,6 +21,7 @@ export const platformNextPath = (value: string | null) =>
     : null;
 
 export function AuthPage({ register = false }: { register?: boolean }) {
+  const { t } = useLocale();
   const { user, signIn } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -57,7 +59,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
       setInitialPasswordToken(result.password_change_token);
       setPassword("");
       setInitialPasswordConfirm("");
-      setMessage("这是一次性临时密码，请先设置新密码。");
+      setMessage(t("platform:auth.temporaryNotice"));
       setSuccess(true);
       return;
     }
@@ -71,11 +73,11 @@ export function AuthPage({ register = false }: { register?: boolean }) {
     setSuccess(false);
     if (initialPasswordToken) {
       if (!validPassword(initialPassword)) {
-        setMessage("密码需要 8-128 位，并同时包含字母和数字");
+        setMessage(t("platform:auth.passwordRule"));
         return;
       }
       if (initialPassword !== initialPasswordConfirm) {
-        setMessage("两次输入的密码不一致");
+        setMessage(t("platform:auth.passwordMismatch"));
         return;
       }
       setBusy(true);
@@ -91,19 +93,19 @@ export function AuthPage({ register = false }: { register?: boolean }) {
       return;
     }
     if (register && !phone.trim() && !email.trim()) {
-      setMessage("请至少填写手机号或邮箱");
+      setMessage(t("platform:auth.contactRequired"));
       return;
     }
     if (register && !validPassword(password)) {
-      setMessage("密码需要 8-128 位，并同时包含字母和数字");
+      setMessage(t("platform:auth.passwordRule"));
       return;
     }
     if (register && password !== passwordConfirm) {
-      setMessage("两次输入的密码不一致");
+      setMessage(t("platform:auth.passwordMismatch"));
       return;
     }
     if (mfaRequired && !/^\d{6}$/.test(mfaCode)) {
-      setMessage("请输入身份验证器中的 6 位动态验证码");
+      setMessage(t("platform:auth.mfaRequired"));
       return;
     }
     setBusy(true);
@@ -152,7 +154,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
       const result = await api.auth.smsSend({ phone: phone.trim() });
       setCooldown(result.cooldown_seconds);
       setMessage(
-        `验证码已发送，${Math.ceil(result.expires_in / 60)} 分钟内有效`,
+        t("platform:auth.codeSent", { minutes: Math.ceil(result.expires_in / 60) }),
       );
       setSuccess(true);
     } catch (error) {
@@ -174,17 +176,16 @@ export function AuthPage({ register = false }: { register?: boolean }) {
     <div className="auth-layout">
       <section className="auth-visual">
         <Brand />
+        <div className="auth-language"><LanguageSwitcher compact /></div>
         <div className="auth-copy">
           <div className="eyebrow" style={{ color: "#a7d0ff" }}>
             PRECISION CONSOLE
           </div>
           <h1 className="auth-title">
-            把设备现场，
-            <br />
-            变成可读的数据。
+            {t("platform:auth.hero")}
           </h1>
           <p className="auth-lede">
-            THCPN 面向科研物联网，从设备状态到数据出口，让每个工作区内的设备与数据清楚可追溯。
+            {t("platform:auth.heroCopy")}
           </p>
         </div>
       </section>
@@ -201,12 +202,12 @@ export function AuthPage({ register = false }: { register?: boolean }) {
           </div>
           <h2 className="auth-heading">
             {initialPasswordToken
-              ? "设置登录密码"
+              ? t("platform:auth.setupPassword")
               : register
-              ? "创建访问身份"
+              ? t("platform:auth.createIdentity")
               : mfaRequired
-                ? "完成双重验证"
-                : "欢迎回来"}
+                ? t("platform:auth.completeMfa")
+                : t("platform:auth.welcome")}
           </h2>
           {!initialPasswordToken && !register && !mfaRequired && (
             <div className="auth-mode">
@@ -215,28 +216,28 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                 className={mode === "password" ? "active" : ""}
                 onClick={() => switchMode("password")}
               >
-                密码登录
+                {t("platform:auth.passwordLogin")}
               </button>
               <button
                 type="button"
                 className={mode === "sms" ? "active" : ""}
                 onClick={() => switchMode("sms")}
               >
-                短信登录
+                {t("platform:auth.smsLogin")}
               </button>
             </div>
           )}
           <form className="form-grid" onSubmit={submit}>
             {initialPasswordToken ? (
               <>
-                <div className="command-note">临时密码只用于进入首次设置流程，设置完成后旧密码和旧会话都会失效。</div>
-                <label className="field"><span className="field-label">新密码</span><input autoFocus required minLength={8} maxLength={128} type="password" value={initialPassword} onChange={(event) => setInitialPassword(event.target.value)} /></label>
-                <label className="field"><span className="field-label">确认新密码</span><input required type="password" value={initialPasswordConfirm} onChange={(event) => setInitialPasswordConfirm(event.target.value)} /></label>
+                <div className="command-note">{t("platform:auth.temporaryHelp")}</div>
+                <label className="field"><span className="field-label">{t("platform:auth.newPassword")}</span><input autoFocus required minLength={8} maxLength={128} type="password" value={initialPassword} onChange={(event) => setInitialPassword(event.target.value)} /></label>
+                <label className="field"><span className="field-label">{t("platform:auth.confirmNewPassword")}</span><input required type="password" value={initialPasswordConfirm} onChange={(event) => setInitialPasswordConfirm(event.target.value)} /></label>
               </>
             ) : <>
             {register && (
               <label className="field">
-                <span className="field-label">姓名</span>
+                <span className="field-label">{t("platform:auth.name")}</span>
                 <input
                   required
                   value={name}
@@ -248,7 +249,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
               <>
                 <label className="field">
                   <span className="field-label">
-                    手机号 <span className="muted">（与邮箱至少填一项）</span>
+                    {t("platform:auth.phone")} <span className="muted">({t("platform:auth.contactHint")})</span>
                   </span>
                   <input
                     value={phone}
@@ -256,7 +257,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                   />
                 </label>
                 <label className="field">
-                  <span className="field-label">邮箱</span>
+                  <span className="field-label">{t("platform:auth.email")}</span>
                   <input
                     type="email"
                     value={email}
@@ -267,7 +268,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             ) : mode === "sms" ? (
               <>
                 <label className="field">
-                  <span className="field-label">手机号</span>
+                  <span className="field-label">{t("platform:auth.phone")}</span>
                   <input
                     required
                     value={phone}
@@ -276,7 +277,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                 </label>
                 <div className="sms-row">
                   <label className="field">
-                    <span className="field-label">短信验证码</span>
+                    <span className="field-label">{t("platform:auth.smsCode")}</span>
                     <input
                       required
                       inputMode="numeric"
@@ -294,13 +295,13 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                     onClick={() => void sendSms()}
                   >
                     <MessageSquareText size={14} />
-                    {cooldown > 0 ? `${cooldown}s` : "发送"}
+                    {cooldown > 0 ? `${cooldown}s` : t("platform:auth.send")}
                   </Button>
                 </div>
               </>
             ) : (
               <label className="field">
-                <span className="field-label">手机号或邮箱</span>
+                <span className="field-label">{t("platform:auth.phoneOrEmail")}</span>
                 <input
                   required
                   value={identifier}
@@ -310,7 +311,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             )}
             {(register || mode === "password") && (
               <label className="field">
-                <span className="field-label">密码</span>
+                <span className="field-label">{t("platform:auth.password")}</span>
                 <input
                   required
                   minLength={8}
@@ -323,7 +324,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             )}
             {register && (
               <label className="field">
-                <span className="field-label">确认密码</span>
+                <span className="field-label">{t("platform:auth.confirmPassword")}</span>
                 <input
                   required
                   type="password"
@@ -336,7 +337,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
               <label className="field mfa-challenge">
                 <span className="field-label">
                   <KeyRound size={13} />
-                  动态验证码
+                  {t("platform:auth.mfaCode")}
                 </span>
                 <input
                   autoFocus
@@ -359,14 +360,14 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             )}
             <Button type="submit" disabled={busy}>
               {busy
-                ? "处理中…"
+                ? t("platform:auth.processing")
                 : mfaRequired
-                  ? "验证并登录"
+                  ? t("platform:auth.verifyLogin")
                   : initialPasswordToken
-                    ? "保存新密码"
+                    ? t("platform:auth.savePassword")
                     : register
-                    ? "创建账户"
-                    : "登录控制台"}
+                    ? t("platform:auth.register")
+                    : t("platform:auth.loginConsole")}
               <ArrowRight size={15} />
             </Button>
             {mfaRequired && (
@@ -379,14 +380,14 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                   setMessage("");
                 }}
               >
-                返回修改登录信息
+                {t("platform:auth.backCredentials")}
               </Button>
             )}
           </form>
           <div className="auth-form-footer">
-            <span>{register ? "已有账号？" : "还没有账号？"}</span>
+            <span>{register ? t("platform:auth.hasAccount") : t("platform:auth.noAccount")}</span>
             <Link className="link" to={register ? "/login" : "/register"}>
-              {register ? "返回登录" : "创建账户"}
+              {register ? t("platform:auth.backLogin") : t("platform:auth.register")}
             </Link>
           </div>
         </div>

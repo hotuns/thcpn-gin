@@ -12,16 +12,22 @@ import (
 	"thcpn-gin/internal/audit"
 	"thcpn-gin/internal/auth"
 	"thcpn-gin/internal/httpx"
+	"thcpn-gin/internal/permission"
 )
 
 type Handler struct {
 	service *Service
 	audit   *audit.Service
+	checker *permission.Checker
 }
 
 type createWorkspaceRequest struct {
 	Name             string `json:"name"`
 	OrganizationType string `json:"organization_type"`
+}
+
+type updateWorkspaceNameRequest struct {
+	Name string `json:"name"`
 }
 
 type workspaceStatusRequest struct {
@@ -42,6 +48,12 @@ func NewHandler(service *Service, auditServices ...*audit.Service) *Handler {
 	return &Handler{service: service, audit: auditService}
 }
 
+func NewHandlerWithChecker(service *Service, checker *permission.Checker, auditServices ...*audit.Service) *Handler {
+	h := NewHandler(service, auditServices...)
+	h.checker = checker
+	return h
+}
+
 func (h *Handler) List(c *gin.Context) {
 	actor, ok := auth.ActorFromContext(c)
 	if !ok {
@@ -58,6 +70,50 @@ func (h *Handler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"items": items,
 	})
+}
+
+func (h *Handler) UpdateName(c *gin.Context) {
+	actor, ok := auth.ActorFromContext(c)
+	if !ok {
+		httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "missing authenticated user"))
+		return
+	}
+	workspaceID, ok := parseUUIDParam(c, "workspace_id")
+	if !ok {
+		return
+	}
+	if actor.IsSystemAdmin { /* system admins use the governance endpoints */
+	} else if h.checker == nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInternal, "permission checker is not configured"))
+		return
+	} else {
+		decision, err := h.checker.Can(c.Request.Context(), permission.Actor{UserID: actor.UserID}, "workspace.manage", permission.ResourceRef{Type: "workspace", ID: workspaceID})
+		if err != nil {
+			httpx.WriteAppError(c, err)
+			return
+		}
+		if !decision.Allowed {
+			httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "permission denied"))
+			return
+		}
+	}
+	var req updateWorkspaceNameRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	result, err := h.service.UpdateName(c.Request.Context(), UpdateNameInput{WorkspaceID: workspaceID, UserID: actor.UserID, Name: req.Name})
+	if err != nil {
+		if !h.record(c, audit.RecordInput{WorkspaceID: audit.WorkspaceID(workspaceID), ActorType: audit.ActorUser, ActorID: audit.UserActorID(actor.UserID), Action: "workspace.name.update", ResourceType: "workspace", ResourceID: audit.ResourceID(workspaceID), Result: audit.ResultFailure, Reason: apperr.MessageOf(err)}) {
+			return
+		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{WorkspaceID: audit.WorkspaceID(workspaceID), ActorType: audit.ActorUser, ActorID: audit.UserActorID(actor.UserID), Action: "workspace.name.update", ResourceType: "workspace", ResourceID: audit.ResourceID(workspaceID), Result: audit.ResultSuccess}) {
+		return
+	}
+	c.JSON(http.StatusOK, result)
 }
 
 func (h *Handler) AdminList(c *gin.Context) {

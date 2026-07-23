@@ -31,7 +31,13 @@ func run() int {
 		return 1
 	}
 
-	log := logger.New(cfg.Logger.Level, cfg.Logger.Format)
+	log, platformLogs, logErr := logger.NewManaged(cfg.Logger.Level, cfg.Logger.Format, "api", cfg.Logger)
+	if logErr != nil {
+		log.Warn("platform log file unavailable; using stdout", slog.Any("error", logErr))
+	}
+	if platformLogs != nil {
+		defer platformLogs.Close()
+	}
 	shutdownTracing, err := tracing.Init(ctx, cfg.Tracing, log)
 	if err != nil {
 		log.Error("initialize tracing", slog.Any("error", err))
@@ -64,10 +70,11 @@ func run() int {
 	}()
 
 	router, err := app.NewRouter(app.Dependencies{
-		Logger:   log,
-		Postgres: pg,
-		Redis:    redisClient,
-		Config:   cfg,
+		Logger:       log,
+		Postgres:     pg,
+		Redis:        redisClient,
+		Config:       cfg,
+		PlatformLogs: platformLogs,
 	})
 	if err != nil {
 		log.Error("initialize api router", slog.Any("error", err))

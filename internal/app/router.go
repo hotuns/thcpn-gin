@@ -35,6 +35,7 @@ import (
 	"thcpn-gin/internal/member"
 	"thcpn-gin/internal/objectstore"
 	"thcpn-gin/internal/permission"
+	"thcpn-gin/internal/platformlog"
 	"thcpn-gin/internal/project"
 	"thcpn-gin/internal/publicdevice"
 	"thcpn-gin/internal/site"
@@ -46,10 +47,11 @@ import (
 )
 
 type Dependencies struct {
-	Logger   *slog.Logger
-	Postgres *pgxpool.Pool
-	Redis    *redis.Client
-	Config   config.Config
+	Logger       *slog.Logger
+	Postgres     *pgxpool.Pool
+	Redis        *redis.Client
+	Config       config.Config
+	PlatformLogs *platformlog.Store
 }
 
 type statusResponse struct {
@@ -94,6 +96,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	permissionChecker := permission.NewChecker(sqlc.New(deps.Postgres))
 	permissionCatalogService := permission.NewCatalogService(deps.Postgres)
 	auditService := audit.NewService(deps.Postgres)
+	platformLogHandler := platformlog.NewHandler(deps.PlatformLogs, auditService)
 	memberService := member.NewService(deps.Postgres)
 	accessGrantService := accessgrant.NewService(deps.Postgres)
 	projectService := project.NewService(deps.Postgres)
@@ -135,8 +138,8 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authHandler := auth.NewHandler(authService, auditService)
 	adminUserHandler := adminuser.NewHandler(adminUserService, auditService)
 	adminAuthHandler := adminauth.NewHandler(adminAuthService)
-	userHandler := user.NewHandler(userService)
-	workspaceHandler := workspace.NewHandler(workspaceService, auditService)
+	userHandler := user.NewHandler(userService, auditService)
+	workspaceHandler := workspace.NewHandlerWithChecker(workspaceService, permissionChecker, auditService)
 	memberHandler := member.NewHandler(memberService, permissionChecker, auditService)
 	accessGrantHandler := accessgrant.NewHandler(accessGrantService, permissionChecker, auditService)
 	permissionCatalogHandler := permission.NewCatalogHandler(permissionCatalogService)
@@ -206,8 +209,11 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.POST("/auth/mfa/totp/enable", authHandler.EnableTOTP)
 	authed.DELETE("/auth/mfa/totp", authHandler.DisableTOTP)
 	authed.GET("/me", userHandler.Me)
+	authed.PATCH("/me", userHandler.UpdateMe)
+	authed.POST("/auth/password/change", authHandler.ChangePassword)
 	authed.GET("/workspaces", workspaceHandler.List)
 	authed.POST("/workspaces", workspaceHandler.Create)
+	authed.PATCH("/workspaces/:workspace_id", workspaceHandler.UpdateName)
 	authed.GET("/permissions/catalog", permissionCatalogHandler.Catalog)
 	admin := api.Group("/admin")
 	admin.Use(adminauth.Middleware(adminTokenManager, adminAuthService))
@@ -250,6 +256,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.PATCH("/devices/:device_id/capabilities", deviceHandler.AdminUpdateCapabilities)
 	admin.GET("/devices/:device_id/thcpn-config", dataSourceHandler.AdminGetTHCPNDeviceConfig)
 	admin.POST("/devices/:device_id/thcpn-config", dataSourceHandler.AdminUpdateTHCPNDeviceConfig)
+	admin.GET("/devices/:device_id/sensor-templates", dataSourceHandler.AdminListTHCPNSensorTemplates)
 	admin.GET("/devices/:device_id/attributes/latest", dataSourceHandler.AdminLatestTHCPNDeviceAttributes)
 	admin.GET("/devices/:device_id/logs", dataSourceHandler.AdminListTHCPNDeviceLogs)
 	admin.GET("/devices/:device_id/logs/:log_uuid/preview", dataSourceHandler.AdminPreviewTHCPNDeviceLog)
@@ -262,6 +269,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.POST("/data-sources", dataSourceHandler.AdminCreateDataSource)
 	admin.PATCH("/data-sources/:data_source_id", dataSourceHandler.AdminUpdateDataSource)
 	admin.POST("/data-sources/:data_source_id/thcpn-standard-station/devices", dataSourceHandler.AdminSyncTHCPNStandardStation)
+	admin.POST("/data-sources/:data_source_id/thcpn-standard-station/devices/sync-all", dataSourceHandler.AdminSyncAllTHCPNDevices)
 	admin.POST("/data-sources/:data_source_id/thcpn-standard-station/gateways", dataSourceHandler.AdminSyncTHCPNGateway)
 	admin.GET("/workspaces/:workspace_id/members", memberHandler.List)
 	admin.POST("/workspaces/:workspace_id/members", workspaceHandler.RequireAdminReason(), memberHandler.Add)
@@ -274,6 +282,13 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.POST("/invitations", workspaceHandler.TenantManagedOperation)
 	admin.DELETE("/invitations/:invitation_id", workspaceHandler.RequireAdminReason(), accessGrantHandler.RevokeInvitation)
 	admin.GET("/audit-logs", auditHandler.List)
+	admin.GET("/platform-logs", platformLogHandler.List)
+	admin.GET("/platform-logs/export", platformLogHandler.Export)
+	admin.GET("/platform-logs/policy", platformLogHandler.Policy)
+	admin.GET("/platform-logs/files", platformLogHandler.Files)
+	admin.GET("/platform-logs/files/:file_name/download", platformLogHandler.DownloadFile)
+	admin.GET("/platform-logs/:log_id", platformLogHandler.Get)
+	admin.POST("/platform-logs/index/rebuild", platformLogHandler.Rebuild)
 	admin.POST("/projects", workspaceHandler.TenantManagedOperation)
 	admin.PATCH("/projects/:project_id", workspaceHandler.RequireAdminReason(), projectHandler.Update)
 	admin.POST("/sites", workspaceHandler.TenantManagedOperation)

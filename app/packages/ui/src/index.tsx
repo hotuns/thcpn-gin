@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from "react";
 import { AlertTriangle, Check, Copy, Database, FileWarning, Inbox, Menu, RefreshCw, Server, ShieldAlert, X } from "lucide-react";
 import { cn } from "./utils";
+import { useLocale } from "@thcpn/i18n";
 
 export { cn } from "./utils";
 
@@ -25,8 +26,9 @@ export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?:
 }
 
 export function StateView({ type, title, description, action, requestId }: { type: "empty" | "error" | "loading"; title: string; description: string; action?: ReactNode; requestId?: string }) {
+  const { t } = useLocale();
   const Icon = type === "empty" ? Inbox : type === "error" ? FileWarning : RefreshCw;
-  return <div className={`${type}-state`}><div className="state-icon"><Icon size={18} className={type === "loading" ? "spin" : undefined} /></div><h3 className="state-title">{title}</h3><p className="state-copy">{description}</p>{requestId && <div className="error-detail">request id: {requestId}</div>}{action && <div style={{ marginTop: 16 }}>{action}</div>}</div>;
+  return <div className={`${type}-state`}><div className="state-icon"><Icon size={18} className={type === "loading" ? "spin" : undefined} /></div><h3 className="state-title">{title}</h3><p className="state-copy">{description}</p>{requestId && <div className="error-detail">{t("requestId", { id: requestId })}</div>}{action && <div style={{ marginTop: 16 }}>{action}</div>}</div>;
 }
 
 export function ServiceStatus({ health, ready, onRefresh }: { health: "ok" | "error" | "loading"; ready: "ok" | "error" | "loading"; onRefresh: () => void }) {
@@ -35,16 +37,17 @@ export function ServiceStatus({ health, ready, onRefresh }: { health: "ok" | "er
 }
 
 export function CopyId({ value }: { value: string }) {
+  const { t } = useLocale();
   const copy = async () => { await navigator.clipboard?.writeText(value); };
-  return <button className="mono" onClick={copy} title="复制 ID" style={{ color: "var(--blue)", background: "none", border: 0, padding: 0 }}>{value.slice(0, 8)}… <Copy size={11} style={{ verticalAlign: "-2px" }} /></button>;
+  return <button className="mono" onClick={copy} title={t("copyId")} style={{ color: "var(--blue)", background: "none", border: 0, padding: 0 }}>{value.slice(0, 8)}… <Copy size={11} style={{ verticalAlign: "-2px" }} /></button>;
 }
 
 export function Brand({ admin = false }: { admin?: boolean }) {
   return <div className="brand"><div className="brand-mark"><Database size={17} /></div><div><div className="brand-name">THCPN</div><div className="brand-sub">{admin ? "SYSTEM CONTROL" : "RESEARCH NETWORK"}</div></div></div>;
 }
 
-export function MobileMenuButton({ onClick }: { onClick: () => void }) { return <IconButton label="打开导航" className="mobile-menu" onClick={onClick}><Menu size={18} /></IconButton>; }
-export function CloseButton({ onClick }: { onClick: () => void }) { return <IconButton label="关闭导航" onClick={onClick}><X size={18} /></IconButton>; }
+export function MobileMenuButton({ onClick }: { onClick: () => void }) { const { t } = useLocale(); return <IconButton label={t("openNavigation")} className="mobile-menu" onClick={onClick}><Menu size={18} /></IconButton>; }
+export function CloseButton({ onClick }: { onClick: () => void }) { const { t } = useLocale(); return <IconButton label={t("closeNavigation")} onClick={onClick}><X size={18} /></IconButton>; }
 export function PermissionIcon() { return <ShieldAlert size={18} />; }
 export function WarningIcon() { return <AlertTriangle size={18} />; }
 export function SuccessIcon() { return <Check size={18} />; }

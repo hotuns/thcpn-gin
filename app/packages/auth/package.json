@@ -4,5 +4,5 @@
   "type": "module",
   "exports": { ".": "./src/index.tsx" },
   "scripts": { "typecheck": "tsc -p tsconfig.json", "build": "tsc -p tsconfig.json" },
-  "dependencies": { "@tanstack/react-query": "^5.90.16", "@thcpn/api": "*", "react": "^19.2.7", "react-router-dom": "^7.18.1" }
+  "dependencies": { "@tanstack/react-query": "^5.90.16", "@thcpn/api": "*", "@thcpn/i18n": "*", "react": "^19.2.7", "react-router-dom": "^7.18.1" }
 }

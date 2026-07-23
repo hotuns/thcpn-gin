@@ -13,6 +13,7 @@
     "@tanstack/react-table": "^8.21.3",
     "@thcpn/api": "*",
     "@thcpn/auth": "*",
+    "@thcpn/i18n": "*",
     "@thcpn/ui": "*",
     "@thcpn/workspace": "*",
     "ezuikit-js": "^9.0.12",

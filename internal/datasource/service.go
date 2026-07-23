@@ -337,6 +337,7 @@ func (s *Service) CreateDataStreamBinding(ctx context.Context, input CreateDataS
 		PayloadType:       params.PayloadType,
 		AdapterConfigJson: params.AdapterConfigJSON,
 		CreatedBy:         input.ActorUserID,
+		CreatedByType:     "user",
 	})
 	if err != nil {
 		return DataStreamBinding{}, mapWriteError(err, "create data stream binding")

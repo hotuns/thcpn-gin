@@ -13,20 +13,9 @@ import {
 } from "recharts";
 import { ChartNoAxesCombined, PanelsTopLeft } from "lucide-react";
 import type { TelemetrySeries } from "@thcpn/api";
+import { useLocale } from "@thcpn/i18n";
 
 const chartColors = ["#1769e0", "#16845b", "#d36b12", "#b13e4a", "#6a5ab5"];
-const numberFormat = (value: number) =>
-  new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
-const formatTime = (value?: string) =>
-  value
-    ? new Intl.DateTimeFormat("zh-CN", {
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      }).format(new Date(value))
-    : "—";
 export const healthyTelemetryQuality = (quality?: string) =>
   ["good", "valid", "ok"].includes((quality ?? "").toLowerCase());
 
@@ -43,6 +32,7 @@ export function TelemetryCharts({
   compact?: boolean;
   displayMode?: "compare" | "separate";
 }) {
+  const { t } = useLocale();
   const available = series.filter((item) =>
     item.points.some((point) => Number.isFinite(point.value)),
   );
@@ -65,7 +55,7 @@ export function TelemetryCharts({
     <div className={`telemetry-visualization ${compact ? "compact" : ""}`}>
       {!compact && (
         <div className="chart-toolbar">
-          <div className="chart-mode" aria-label="图表显示方式">
+        <div className="chart-mode" aria-label={t("platform:telemetry.displayMode")}>
             <button
               type="button"
               className={mode === "compare" ? "active" : ""}
@@ -73,7 +63,7 @@ export function TelemetryCharts({
               disabled={available.length < 2}
             >
               <ChartNoAxesCombined size={13} />
-              叠加对比
+              {t("platform:telemetry.compare")}
             </button>
             <button
               type="button"
@@ -81,10 +71,10 @@ export function TelemetryCharts({
               onClick={() => setMode("separate")}
             >
               <PanelsTopLeft size={13} />
-              分指标
+              {t("platform:telemetry.separate")}
             </button>
           </div>
-          <div className="chart-series-toggles" aria-label="显示的数据指标">
+          <div className="chart-series-toggles" aria-label={t("platform:telemetry.visibleMetrics")}>
             {available.map((item, index) => (
               <button
                 type="button"
@@ -129,7 +119,7 @@ export function TelemetryCharts({
       )}
       {!compact && !visible.length && (
         <div className="chart-all-hidden">
-          已隐藏全部指标，点击上方图例恢复显示。
+          {t("platform:telemetry.allHidden")}
         </div>
       )}
     </div>
@@ -147,6 +137,7 @@ function ComparisonChart({
   startTime: string;
   endTime: string;
 }) {
+  const { t, formatNumber, formatDateTime } = useLocale();
   const { data, stats } = useMemo(() => {
     const nextStats = new Map<string, { min: number; max: number }>();
     series.forEach((item) => {
@@ -195,24 +186,23 @@ function ComparisonChart({
     <div className="comparison-chart">
       <div className="comparison-summary">
         <span>
-          <strong>{series.length}</strong>显示指标
+          <strong>{series.length}</strong>{t("platform:telemetry.metricCount")}
         </span>
         <span>
-          <strong>{sourceTotal}</strong>原始点
+          <strong>{sourceTotal}</strong>{t("platform:telemetry.sourcePoints")}
         </span>
         <span>
           <strong>{returnedTotal}</strong>
-          {sampled ? "绘图点" : "数据点"}
+          {sampled ? t("platform:telemetry.chartPoints") : t("platform:telemetry.dataPoints")}
         </span>
         <span className="normalization-note">
-          {complete ? "完整时间范围" : "数据源可能已截断"} ·
-          各指标按自身区间归一化
+          {complete ? t("platform:telemetry.complete") : t("platform:telemetry.truncated")} · {t("platform:telemetry.normalized")}
         </span>
       </div>
       <div
         className="comparison-canvas"
         role="img"
-        aria-label="多指标归一化趋势对比"
+        aria-label={t("platform:telemetry.normalizedChart")}
       >
         <ResponsiveContainer width="100%" height="100%">
           <LineChart
@@ -229,7 +219,7 @@ function ComparisonChart({
               dataKey="time"
               domain={[Date.parse(startTime), Date.parse(endTime)]}
               tickFormatter={(value) =>
-                formatTime(new Date(value).toISOString()).slice(0, 11)
+                formatDateTime(new Date(value), { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
               }
               minTickGap={54}
               tickLine={false}
@@ -245,7 +235,7 @@ function ComparisonChart({
             />
             <Tooltip
               labelFormatter={(value) =>
-                formatTime(new Date(Number(value)).toISOString())
+                formatDateTime(new Date(Number(value)), { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
               }
               formatter={(_value, name, item) => {
                 const current = series.find(
@@ -254,7 +244,7 @@ function ComparisonChart({
                 const raw = item.payload[`${name}:raw`];
                 const quality = item.payload[`${name}:quality`];
                 return [
-                  `${numberFormat(Number(raw))}${current?.unit ? ` ${current.unit}` : ""} · ${healthyTelemetryQuality(String(quality)) ? "正常" : quality}`,
+                  `${formatNumber(Number(raw), { maximumFractionDigits: 2 })}${current?.unit ? ` ${current.unit}` : ""} · ${healthyTelemetryQuality(String(quality)) ? t("platform:telemetry.normal") : quality}`,
                   current?.name ?? String(name),
                 ];
               }}
@@ -296,7 +286,7 @@ function ComparisonChart({
               />
               <strong>{item.name}</strong>
               {itemStats
-                ? `${numberFormat(itemStats.min)}–${numberFormat(itemStats.max)} ${item.unit}`
+                ? `${formatNumber(itemStats.min, { maximumFractionDigits: 2 })}–${formatNumber(itemStats.max, { maximumFractionDigits: 2 })} ${item.unit}`
                 : "—"}
             </span>
           );
@@ -317,6 +307,7 @@ function TelemetryChart({
   startTime: string;
   endTime: string;
 }) {
+  const { t, formatNumber, formatDateTime } = useLocale();
   const source = series.points
     .filter(
       (point) =>
@@ -349,36 +340,35 @@ function TelemetryChart({
         <div>
           <div className="cell-title">{series.name}</div>
           <div className="cell-sub mono">
-            {series.code} · {series.source_count || source.length} 个原始点
-            {series.sampled ? ` · ${source.length} 个绘图点` : ""}
+            {series.code} · {series.source_count || source.length} {t("platform:telemetry.sourcePoints")}
+            {series.sampled ? ` · ${source.length} ${t("platform:telemetry.chartPoints")}` : ""}
           </div>
         </div>
         <div className="chart-latest">
-          <strong>{latest ? numberFormat(latest.value) : "—"}</strong>
+          <strong>{latest ? formatNumber(latest.value, { maximumFractionDigits: 2 }) : "—"}</strong>
           <span>{series.unit}</span>
         </div>
       </header>
       <div className="chart-stats">
         <span>
-          最小 <strong>{numberFormat(min)}</strong>
+          {t("platform:telemetry.minimum")} <strong>{formatNumber(min, { maximumFractionDigits: 2 })}</strong>
         </span>
         <span>
-          {series.sampled ? "绘图点均值" : "平均"}{" "}
-          <strong>{numberFormat(average)}</strong>
+          {t("platform:telemetry.average")}{" "}<strong>{formatNumber(average, { maximumFractionDigits: 2 })}</strong>
         </span>
         <span>
-          最大 <strong>{numberFormat(max)}</strong>
+          {t("platform:telemetry.maximum")} <strong>{formatNumber(max, { maximumFractionDigits: 2 })}</strong>
         </span>
         <span>
-          {series.sampled ? "绘图点质量" : "质量"} <strong>{quality}%</strong>
+          {t("platform:telemetry.quality")} <strong>{quality}%</strong>
         </span>
         <span>
-          区间变化{" "}
+          {t("platform:telemetry.change")}{" "}
           <strong
             className={change > 0 ? "trend-up" : change < 0 ? "trend-down" : ""}
           >
             {change > 0 ? "+" : ""}
-            {numberFormat(change)}
+            {formatNumber(change, { maximumFractionDigits: 2 })}
             {changePercent === null
               ? ""
               : ` (${changePercent > 0 ? "+" : ""}${changePercent.toFixed(1)}%)`}
@@ -388,7 +378,7 @@ function TelemetryChart({
       <div
         className="chart-canvas"
         role="img"
-        aria-label={`${series.name}时间序列趋势`}
+        aria-label={t("platform:telemetry.trend", { name: series.name })}
       >
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
@@ -421,7 +411,7 @@ function TelemetryChart({
               dataKey="time"
               domain={[Date.parse(startTime), Date.parse(endTime)]}
               tickFormatter={(value) =>
-                formatTime(new Date(value).toISOString()).slice(0, 11)
+                formatDateTime(new Date(value), { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
               }
               minTickGap={48}
               tickLine={false}
@@ -429,7 +419,7 @@ function TelemetryChart({
             />
             <YAxis
               domain={[min - domainPadding, max + domainPadding]}
-              tickFormatter={numberFormat}
+              tickFormatter={(value) => formatNumber(value, { maximumFractionDigits: 2 })}
               width={48}
               tickLine={false}
               axisLine={false}
@@ -447,13 +437,13 @@ function TelemetryChart({
                 strokeDasharray: "3 3",
               }}
               labelFormatter={(value) =>
-                formatTime(new Date(Number(value)).toISOString())
+                formatDateTime(new Date(Number(value)), { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
               }
               formatter={(value, _name, item) => [
-                `${numberFormat(Number(value))}${series.unit ? ` ${series.unit}` : ""}`,
+                `${formatNumber(Number(value), { maximumFractionDigits: 2 })}${series.unit ? ` ${series.unit}` : ""}`,
                 healthyTelemetryQuality(item.payload.quality)
-                  ? "正常"
-                  : `质量：${item.payload.quality}`,
+                  ? t("platform:telemetry.normal")
+                  : `${t("platform:telemetry.quality")}: ${item.payload.quality}`,
               ]}
               contentStyle={{
                 border: "1px solid var(--line)",
@@ -487,15 +477,15 @@ function TelemetryChart({
       <div className="chart-legend">
         <span>
           <i className="legend-line" />
-          实时值
+          {t("platform:telemetry.realtime")}
         </span>
         <span>
           <i className="legend-average" />
-          {series.sampled ? "绘图点均值" : "区间平均"} {numberFormat(average)}
+          {t("platform:telemetry.rangeAverage")} {formatNumber(average, { maximumFractionDigits: 2 })}
         </span>
         {quality < 100 && (
           <span className="quality-alert">
-            {source.length - good} 个非正常质量点
+            {t("platform:telemetry.abnormalPoints", { count: source.length - good })}
           </span>
         )}
       </div>

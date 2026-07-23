@@ -6,7 +6,7 @@ import { api, formatApiError, type Device, type DevicePublicAccess } from "@thcp
 import { Badge, Button, Panel, StateView } from "@thcpn/ui";
 
 const formatTime = (value?: string) => value
-  ? new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
+  ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
   : "—";
 
 export function DevicePublicAccessPanel({ device }: { device: Device }) {

@@ -22,7 +22,7 @@ const text = (input: unknown, fallback: unknown = "—") =>
     : String(input);
 const formatTime = (input: unknown) =>
   input
-    ? new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(String(input)))
+    ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(String(input)))
     : "长期有效";
 const deviceSharePermission = (code: string) =>
   ["device.", "media.", "telemetry.", "share.", "service_access."].some(

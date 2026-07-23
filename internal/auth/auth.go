@@ -46,6 +46,15 @@ func (a Actor) SystemAdministratorID() uuid.UUID {
 	return a.UserID
 }
 
+func (a Actor) LogActorType() string {
+	if a.IsSystemAdmin {
+		return "system_admin"
+	}
+	return "user"
+}
+func (a Actor) LogActorID() string   { return a.UserID.String() }
+func (a Actor) LogActorName() string { return a.Name }
+
 type ActorLookup interface {
 	LookupActor(ctx context.Context, id uuid.UUID) (Actor, error)
 }

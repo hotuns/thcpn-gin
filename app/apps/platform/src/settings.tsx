@@ -54,7 +54,7 @@ export function SettingsPage() {
 }
 
 function ResourcesTab() {
-  const { currentId } = useWorkspace();
+  const { currentId, current, refresh: refreshWorkspaces } = useWorkspace();
   const client = useQueryClient();
   const projects = useQuery({
     queryKey: workspaceQueryKey(currentId, "projects"),
@@ -71,6 +71,7 @@ function ResourcesTab() {
     record?: JsonRecord;
   } | null>(null);
   const [message, setMessage] = useState("");
+  const [editingWorkspace, setEditingWorkspace] = useState(false);
   const showError = (error: unknown) => {
     const item = formatApiError(error);
     setMessage(
@@ -103,6 +104,16 @@ function ResourcesTab() {
       return false;
     }
   };
+  const saveWorkspaceName = async (name: string) => {
+    if (!currentId) return false;
+    try {
+      await api.workspaces.update(currentId, { name });
+      await refreshWorkspaces();
+      setEditingWorkspace(false);
+      setMessage("工作区名称已更新");
+      return true;
+    } catch (error) { showError(error); return false; }
+  };
   if (!currentId)
     return (
       <Panel>
@@ -115,7 +126,9 @@ function ResourcesTab() {
     );
   return (
     <>
-      <div className="grid grid-2">
+      <div className="workspace-resource-layout">
+      {current && <Panel className="workspace-settings-summary"><div className="workspace-setting-row"><div><strong>工作区名称</strong><small>名称会显示在工作区切换器和相关页面中</small></div><div className="workspace-setting-value"><span title={current.name}>{current.name}</span><Button variant="secondary" onClick={() => setEditingWorkspace(true)}><Pencil size={13} />编辑</Button></div></div></Panel>}
+      <div className="grid grid-2 workspace-resource-grid">
         <Panel>
           <div className="panel-header">
             <div>
@@ -169,6 +182,7 @@ function ResourcesTab() {
           />
         </Panel>
       </div>
+      </div>
       {resourceDialog && (
         <ResourceFormDialog
           key={`${resourceDialog.kind}-${text(resourceDialog.record?.id, "new")}`}
@@ -181,9 +195,18 @@ function ResourcesTab() {
           }
         />
       )}
+      {editingWorkspace && current && <WorkspaceNameDialog name={current.name} onClose={() => setEditingWorkspace(false)} onSave={saveWorkspaceName} />}
       {message && <div className="command-note section-gap">{message}</div>}
     </>
   );
+}
+
+function WorkspaceNameDialog({ name: initialName, onClose, onSave }: { name: string; onClose: () => void; onSave: (name: string) => Promise<boolean> }) {
+  const [name, setName] = useState(initialName);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === "Escape" && !busy) onClose(); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [busy, onClose]);
+  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await onSave(name.trim()); } finally { setBusy(false); } };
+  return <div className="resource-dialog-layer"><button type="button" className="resource-dialog-backdrop" aria-label="关闭工作区名称编辑" onClick={() => !busy && onClose()} /><div className="resource-dialog-shell" role="dialog" aria-modal="true"><Panel className="resource-dialog"><div className="panel-header"><h2 className="panel-title">编辑工作区名称</h2><Button variant="secondary" onClick={onClose} disabled={busy}><X size={14} />关闭</Button></div><form className="resource-dialog-form" onSubmit={submit}><label className="field"><span className="field-label">名称</span><input autoFocus required maxLength={120} value={name} onChange={(event) => setName(event.target.value)} /></label><div className="form-actions"><Button type="button" variant="secondary" onClick={onClose}>取消</Button><Button type="submit" disabled={busy || !name.trim()}>{busy ? "保存中…" : "保存"}</Button></div></form></Panel></div></div>;
 }
 
 function ResourceRows({
@@ -739,7 +762,7 @@ const actorTypeLabel = (type: string) =>
   })[type] ?? type;
 const formatAuditTime = (value: unknown) =>
   value
-    ? new Intl.DateTimeFormat("zh-CN", {
+    ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", {
         dateStyle: "short",
         timeStyle: "medium",
       }).format(new Date(String(value)))

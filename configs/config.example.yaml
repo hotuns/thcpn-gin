@@ -4,6 +4,11 @@ server:
 logger:
   level: "info"
   format: "json"
+  directory: "var/log/thcpn"
+  retention_days: 30
+  max_total_size_mb: 5120
+  max_file_size_mb: 100
+  sqlite_index: true
 
 database:
   platform_dsn_env: "PLATFORM_DATABASE_DSN"

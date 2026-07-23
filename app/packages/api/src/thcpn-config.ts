@@ -4,6 +4,7 @@ export type THCPNConfigFields = {
   data_json: string;
   image_json: string;
   control_json: string;
+  expected_config_id: number;
 };
 
 const pretty = (value: unknown, fallback: unknown) =>
@@ -15,6 +16,7 @@ export function configFieldsFromDetail(detail: JsonRecord): THCPNConfigFields {
     data_json: pretty(latest.data_json, []),
     image_json: pretty(latest.image_json, []),
     control_json: pretty(latest.control_json, {}),
+    expected_config_id: Number(latest.id ?? 0),
   };
 }
 
@@ -26,7 +28,9 @@ export function parseTHCPNConfig(fields: THCPNConfigFields): JsonRecord {
   if (!Array.isArray(image)) throw new Error("image_json 必须是 JSON 数组");
   if (!control || Array.isArray(control) || typeof control !== "object")
     throw new Error("control_json 必须是 JSON 对象");
-  return { data_json: data, image_json: image, control_json: control };
+  if (!Number.isInteger(fields.expected_config_id) || fields.expected_config_id <= 0)
+    throw new Error("缺少源配置版本，请重新加载");
+  return { data_json: data, image_json: image, control_json: control, expected_config_id: fields.expected_config_id };
 }
 
 export function validateConfigField(

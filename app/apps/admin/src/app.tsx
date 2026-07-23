@@ -3,28 +3,31 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Link,
   Navigate,
-  NavLink,
   Outlet,
   Route,
   Routes,
+  useLocation,
+  useNavigate,
 } from "react-router-dom";
 import {
   Boxes,
+  ChevronDown,
   ChevronRight,
   Database,
+  ExternalLink,
   FileText,
   Home,
+  Languages,
   Settings,
   LogOut,
-  Menu,
+  Menu as MenuIcon,
   PanelLeftClose,
   PanelLeftOpen,
   ShieldCheck,
   TableProperties,
-  Users,
   UserRound,
 } from "lucide-react";
-import { Statistic, Space } from "@thcpn/admin-ui";
+import { Avatar, Dropdown, Menu, Statistic, Space, Tooltip, type MenuProps } from "antd";
 import { api, formatApiError } from "@thcpn/api";
 import { useAdminAuth } from "@thcpn/auth";
 import {
@@ -35,9 +38,9 @@ import {
   IconButton,
   PageHeader,
   Panel,
-  ServiceStatus,
   StateView,
 } from "@thcpn/ui";
+import { LanguageSwitcher, useLocale } from "@thcpn/i18n";
 const AdminMetadataPage = lazy(() =>
   import("./admin-metadata").then((module) => ({
     default: module.AdminMetadataPage,
@@ -85,37 +88,69 @@ const AdminSettingsPage = lazy(() =>
 );
 
 const adminNav = [
-  { to: "/admin", label: "后台总览", icon: Home },
-  { to: "/admin/sources", label: "数据源", icon: Database },
-  { to: "/admin/devices", label: "系统设备", icon: Boxes },
-  { to: "/admin/logs", label: "设备日志", icon: FileText },
-  { to: "/admin/workspaces", label: "工作区与权限", icon: Users },
-  { to: "/admin/users", label: "用户管理", icon: UserRound },
-  { to: "/admin/metadata", label: "元数据", icon: TableProperties },
-  { to: "/admin/settings", label: "系统设置", icon: Settings },
-];
+  { to: "/admin", key: "overview", icon: Home, group: "overview" },
+  { to: "/admin/sources", key: "sources", icon: Database, group: "assets" },
+  { to: "/admin/devices", key: "devices", icon: Boxes, group: "assets" },
+  { to: "/admin/logs", key: "logs", icon: FileText, group: "system" },
+  { to: "/admin/users", key: "users", icon: UserRound, group: "platform" },
+  { to: "/admin/metadata", key: "metadata", icon: TableProperties, group: "platform" },
+  { to: "/admin/settings", key: "settings", icon: Settings, group: "system" },
+] as const;
 const platformUrl =
   (import.meta.env.VITE_PLATFORM_URL as string | undefined) ??
   "http://127.0.0.1:5173";
 
 function AdminShell() {
+  const { locale, setLocale, t } = useLocale();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem("thcpn:sidebar-collapsed") === "true",
   );
   const { admin: user, signOut } = useAdminAuth();
-  const health = useQuery({
-    queryKey: ["admin-health"],
-    queryFn: api.health,
-    refetchInterval: 30_000,
-  });
-  const ready = useQuery({
-    queryKey: ["admin-ready"],
-    queryFn: api.ready,
-    refetchInterval: 30_000,
-  });
-  const status = (query: typeof health) =>
-    query.isLoading ? "loading" : query.isError ? "error" : "ok";
+  const selectedNav = adminNav.find((item) =>
+    item.to === "/admin"
+      ? location.pathname === "/admin"
+      : location.pathname.startsWith(item.to),
+  );
+  const selectedKey = selectedNav?.to ?? "";
+  const groupedItems: MenuProps["items"] = [
+    {
+      type: "group",
+      label: t("admin:navigationGroups.overview"),
+      children: adminNav.filter((item) => item.group === "overview").map((item) => ({ key: item.to, icon: <item.icon size={16} />, label: t(`admin:navigation.${item.key}`) })),
+    },
+    {
+      type: "group",
+      label: t("admin:navigationGroups.assets"),
+      children: adminNav.filter((item) => item.group === "assets").map((item) => ({ key: item.to, icon: <item.icon size={16} />, label: t(`admin:navigation.${item.key}`) })),
+    },
+    {
+      type: "group",
+      label: t("admin:navigationGroups.platform"),
+      children: adminNav.filter((item) => item.group === "platform").map((item) => ({ key: item.to, icon: <item.icon size={16} />, label: t(`admin:navigation.${item.key}`) })),
+    },
+    {
+      type: "group",
+      label: t("admin:navigationGroups.system"),
+      children: adminNav.filter((item) => item.group === "system").map((item) => ({ key: item.to, icon: <item.icon size={16} />, label: t(`admin:navigation.${item.key}`) })),
+    },
+  ];
+  const accountItems: MenuProps["items"] = [
+    { key: "identity", label: <div className="admin-account-identity"><strong>{user?.name ?? t("admin:administrator")}</strong><span>{user?.email ?? t("admin:administrator")}</span></div>, disabled: true },
+    { type: "divider" },
+    { key: "zh-CN", icon: <Languages size={15} />, label: t("chinese"), extra: locale === "zh-CN" ? "✓" : undefined },
+    { key: "en-US", icon: <Languages size={15} />, label: "English", extra: locale === "en-US" ? "✓" : undefined },
+    { type: "divider" },
+    { key: "platform", icon: <ExternalLink size={15} />, label: t("admin:navigation.backPlatform") },
+    { key: "logout", danger: true, icon: <LogOut size={15} />, label: t("platform:navigation.logout") },
+  ];
+  const handleAccountAction: MenuProps["onClick"] = ({ key }) => {
+    if (key === "zh-CN" || key === "en-US") void setLocale(key);
+    if (key === "platform") window.location.assign(`${platformUrl}/dashboard`);
+    if (key === "logout") void signOut();
+  };
   useEffect(() => {
     localStorage.setItem(
       "thcpn:sidebar-collapsed",
@@ -142,7 +177,7 @@ function AdminShell() {
           <button
             type="button"
             className="mobile-drawer-backdrop"
-            aria-label="关闭导航"
+            aria-label={t("closeNavigation")}
             onClick={() => setMobileOpen(false)}
           />
         )}
@@ -165,75 +200,25 @@ function AdminShell() {
             <CloseButton onClick={() => setMobileOpen(false)} />
           </div>
         </div>
-        <div
-          className="workspace-switcher"
-          style={{
-            color: "#dbeafa",
-            background: "#1a466f",
-            borderColor: "#2a608e",
+        <Menu
+          className="admin-navigation"
+          theme="dark"
+          mode="inline"
+          items={groupedItems}
+          selectedKeys={selectedKey ? [selectedKey] : []}
+          onClick={({ key }) => {
+            navigate(key);
+            setMobileOpen(false);
           }}
-        >
-          <div className="workspace-label" style={{ color: "#dbeafa" }}>
-            <span>系统范围</span>
-            <ShieldCheck size={12} />
-          </div>
-          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700 }}>
-            Platform Control Plane
-          </div>
-          <div style={{ marginTop: 5, color: "#9fc0dc", fontSize: 10 }}>
-            不使用用户工作区
-          </div>
-        </div>
-        <nav className="nav-group">
-          <div className="nav-title">SYSTEM</div>
-          {adminNav.map((item) => {
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === "/admin"}
-                onClick={() => setMobileOpen(false)}
-                className={({ isActive }) =>
-                  `nav-item ${isActive ? "active" : ""}`
-                }
-              >
-                <Icon size={16} />
-                {item.label}
-              </NavLink>
-            );
-          })}
-        </nav>
+        />
         <div className="sidebar-footer">
-          <ServiceStatus
-            health={status(health)}
-            ready={status(ready)}
-            onRefresh={() => {
-              void health.refetch();
-              void ready.refetch();
-            }}
-          />
-          <a
-            className="admin-link"
-            style={{ color: "#b8d5f1" }}
-            href={`${platformUrl}/dashboard`}
-          >
-            <ChevronRight
-              size={13}
-              style={{ verticalAlign: "-2px", marginRight: 5 }}
-            />
-            返回用户平台
-          </a>
-          <div className="account-row">
-            <div className="avatar">{(user?.name ?? "A").slice(0, 1)}</div>
-            <div className="account-name">
-              <div>{user?.name ?? "系统管理员"}</div>
-              <div className="account-role">系统管理员</div>
-            </div>
-            <IconButton label="退出登录" onClick={() => void signOut()}>
-              <LogOut size={15} />
-            </IconButton>
-          </div>
+          <Dropdown menu={{ items: accountItems, onClick: handleAccountAction }} trigger={["click"]} placement="topLeft">
+            <button type="button" className="admin-account-trigger" aria-label={t("admin:accountMenu")}>
+              <Avatar size={32}>{(user?.name ?? "A").slice(0, 1).toUpperCase()}</Avatar>
+              <span><strong>{user?.name ?? t("admin:administrator")}</strong><small>{t("admin:administrator")}</small></span>
+              <ChevronDown size={15} />
+            </button>
+          </Dropdown>
         </div>
       </aside>
       <div className="main-area">
@@ -252,20 +237,20 @@ function AdminShell() {
               className="mobile-menu"
               onClick={() => setMobileOpen(true)}
             >
-              <Menu size={18} />
+              <MenuIcon size={18} />
             </IconButton>
             <div className="topbar-context">
-              <span className="mono">THCPN / SYSTEM / </span>平台管理
+              <span>{t("admin:title")}</span>
+              <span className="breadcrumb-separator">/</span>
+              <strong>{selectedNav ? t(`admin:navigation.${selectedNav.key}`) : t("admin:title")}</strong>
             </div>
           </div>
           <Space>
-            <Badge tone="info">SYSTEM SCOPE</Badge>
-            <IconButton
-              label="返回平台"
-              onClick={() => window.location.assign(`${platformUrl}/dashboard`)}
-            >
-              <ChevronRight size={18} />
-            </IconButton>
+            <Tooltip title={t("admin:navigation.backPlatform")}>
+              <IconButton label={t("admin:navigation.backPlatform")} onClick={() => window.location.assign(`${platformUrl}/dashboard`)}>
+                <ExternalLink size={17} />
+              </IconButton>
+            </Tooltip>
           </Space>
         </header>
         <main className="page">
@@ -318,20 +303,21 @@ function AdminGuard() {
 }
 
 function AdminLoginPage() {
+  const { t } = useLocale();
   const { admin, loading, signIn } = useAdminAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  if (loading) return <div className="app-loading">正在检查管理员会话…</div>;
-  if (admin) { window.location.assign("/admin"); return <div className="app-loading">正在进入后台…</div>; }
+  if (loading) return <div className="app-loading">{t("admin:auth.checking")}</div>;
+  if (admin) { window.location.assign("/admin"); return <div className="app-loading">{t("admin:auth.entering")}</div>; }
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setBusy(true); setError("");
     try { signIn(await api.adminAuth.login({ email, password })); window.location.assign("/admin"); }
     catch (reason) { setError(formatApiError(reason).message); }
     finally { setBusy(false); }
   };
-  return <main className="admin-auth-page"><section className="admin-auth-panel"><div className="brand-mark"><ShieldCheck size={20} /></div><div className="eyebrow">THCPN / SYSTEM CONTROL</div><h1>管理员登录</h1><p>使用独立的系统管理员账号进入平台管理后台。</p><form onSubmit={submit}><label>管理员邮箱<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required /></label><label>密码<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></label>{error && <div className="admin-login-error">{error}</div>}<button type="submit" disabled={busy}>{busy ? "登录中…" : "登录后台"}</button></form><a href={`${platformUrl}/login`}>返回用户平台登录</a></section></main>;
+  return <main className="admin-auth-page"><div className="admin-auth-language"><LanguageSwitcher compact /></div><section className="admin-auth-panel"><div className="brand-mark"><ShieldCheck size={20} /></div><div className="eyebrow">THCPN / SYSTEM CONTROL</div><h1>{t("admin:auth.title")}</h1><p>{t("admin:auth.copy")}</p><form onSubmit={submit}><label>{t("admin:auth.email")}<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required /></label><label>{t("admin:auth.password")}<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></label>{error && <div className="admin-login-error">{error}</div>}<button type="submit" disabled={busy}>{busy ? t("admin:auth.signingIn") : t("admin:auth.submit")}</button></form><a href={`${platformUrl}/login`}>{t("admin:auth.back")}</a></section></main>;
 }
 
 async function listAllAdminResources(kind: "projects" | "sites") {
@@ -488,6 +474,7 @@ function AdminRoot() {
         <Route index element={<AdminOverview />} />
         <Route path="sources" element={<AdminSourcesPage />} />
         <Route path="devices" element={<AdminDevicesPage />} />
+        <Route path="devices/:deviceId" element={<AdminDevicesPage />} />
         <Route path="logs" element={<AdminLogsPage />} />
         <Route path="workspaces" element={<AdminWorkspacesPage />} />
         <Route path="workspaces/:workspaceId" element={<AdminWorkspaceDetailPage />} />

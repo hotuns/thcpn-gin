@@ -6,7 +6,6 @@ import {
   Plus,
   RefreshCw,
   Search,
-  ServerCog,
 } from "lucide-react";
 import {
   Button,
@@ -14,6 +13,7 @@ import {
   Form,
   Input,
   InputNumber,
+  Modal,
   Select,
   Space,
   Table,
@@ -27,7 +27,7 @@ const string = (input: unknown, fallback: unknown = "—"): string =>
     ? String(fallback)
     : String(input);
 type Mode = "create" | "edit" | "station" | "gateway" | null;
-const formatTime = (input: unknown) => input ? new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(String(input))) : "—";
+const formatTime = (input: unknown) => input ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(String(input))) : "—";
 const validateSecretRef = (_: unknown, input: unknown) => {
   const value = String(input ?? "").trim();
   if (!/^[a-z][a-z0-9+.-]*:(?:\/\/)?\S+$/i.test(value)) return Promise.reject(new Error("请输入 Secret 引用，例如 env:THCPN_MYSQL_DSN"));
@@ -46,6 +46,8 @@ export function AdminSourcesPage() {
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [syncResult, setSyncResult] = useState<JsonRecord | null>(null);
+  const [fullSyncSource, setFullSyncSource] = useState<JsonRecord | null>(null);
+  const [fullSyncBusy, setFullSyncBusy] = useState(false);
   const [form] = Form.useForm();
   const rows = useMemo(
     () =>
@@ -76,12 +78,6 @@ export function AdminSourcesPage() {
     else if (next === "station")
       form.setFieldsValue({
         external_device_id: undefined,
-        target_workspace_id: "",
-        project_id: "",
-        site_id: "",
-        product_id: "",
-        serial_no: "",
-        name: "",
       });
     else
       form.setFieldsValue({
@@ -91,6 +87,24 @@ export function AdminSourcesPage() {
         site_id: "",
         assign_nodes: false,
       });
+  };
+  const syncAll = async () => {
+    if (!fullSyncSource) return;
+    setFullSyncBusy(true);
+    setFeedback("");
+    setSyncResult(null);
+    try {
+      const response = await api.admin.syncAllDevices(string(fullSyncSource.id));
+      setSyncResult(response);
+      setFullSyncSource(null);
+      setFeedback("全量同步已完成");
+      await query.refetch();
+    } catch (error) {
+      const detail = formatApiError(error);
+      setFeedback(`${detail.message}${detail.requestId ? ` · request id ${detail.requestId}` : ""}`);
+    } finally {
+      setFullSyncBusy(false);
+    }
   };
   const close = () => {
     setMode(null);
@@ -228,7 +242,7 @@ export function AdminSourcesPage() {
               { title: "创建时间", dataIndex: "created_at", width: 180, render: formatTime },
               {
                 title: "操作",
-                width: 260,
+                width: 360,
                 render: (_, record: JsonRecord) => (
                   <Space size={2}>
                     <Button type="link" onClick={() => open("edit", record)}>
@@ -240,6 +254,13 @@ export function AdminSourcesPage() {
                       onClick={() => open("station", record)}
                     >
                       同步设备
+                    </Button>
+                    <Button
+                      type="link"
+                      disabled={record.type !== "mysql"}
+                      onClick={() => setFullSyncSource(record)}
+                    >
+                      全量同步
                     </Button>
                     <Button
                       type="link"
@@ -263,7 +284,19 @@ export function AdminSourcesPage() {
           />
         )}
       </Panel>
-      {syncResult && <SyncResultSummary result={syncResult} />}
+      {syncResult && (syncResult.total !== undefined ? <FullSyncSummary result={syncResult} /> : <SyncResultSummary result={syncResult} />)}
+      <Modal
+        title={`全量同步设备 · ${string(fullSyncSource?.name)}`}
+        open={Boolean(fullSyncSource)}
+        confirmLoading={fullSyncBusy}
+        okText="开始全量同步"
+        cancelText="取消"
+        onOk={() => void syncAll()}
+        onCancel={() => { if (!fullSyncBusy) setFullSyncSource(null); }}
+      >
+        <p>将读取该数据源外部 <code>devices</code> 表中所有未删除设备，并同步名称、序列号、配置、DataStream 和绑定。</p>
+        <p>设备不会自动分配到工作区；已经同步的设备将更新，缺少配置的设备会单独记录失败原因。</p>
+      </Modal>
       <Drawer
         title={drawerTitle(mode, selected)}
         open={Boolean(mode)}
@@ -282,7 +315,7 @@ export function AdminSourcesPage() {
           {mode === "create" || mode === "edit" ? (
             <SourceFields editing={mode === "edit"} />
           ) : mode === "station" ? (
-            <StationFields form={form} />
+            <StationFields />
           ) : (
             <GatewayFields form={form} />
           )}
@@ -320,6 +353,27 @@ function SyncResultSummary({ result }: { result: JsonRecord }) {
   const relations = (result.relations as JsonRecord[] | undefined) ?? [];
   const warnings = (result.warnings as Array<{ code?: string; message?: string }> | undefined) ?? [];
   return <Panel className="section-gap sync-result"><div className="panel-header"><div><h2 className="panel-title">最近同步结果</h2><div className="panel-kicker">{string(device?.name, "设备同步")} · {string(device?.serial_no, device?.id)}</div></div><Tag color={warnings.length ? "orange" : "green"}>{warnings.length ? `${warnings.length} 条警告` : "同步成功"}</Tag></div><div className="sync-result-metrics"><div><strong>{nodes.length || 1}</strong><span>{nodes.length ? "节点" : "设备"}</span></div><div><strong>{streams.length + nodeStreams}</strong><span>DataStream</span></div><div><strong>{bindings.length + nodeBindings}</strong><span>Binding</span></div><div><strong>{relations.length}</strong><span>拓扑关系</span></div></div>{nodes.length ? <div className="sync-node-list">{nodes.slice(0, 8).map((node, index) => { const item = node.device as JsonRecord | undefined; return <div key={string(item?.id, index)}><span>{string(item?.name)}</span><code>{string(item?.serial_no, item?.id)}</code></div>; })}</div> : null}{warnings.length ? <div className="sync-warnings">{warnings.map((warning, index) => <div key={`${warning.code}-${index}`}><strong>{warning.code ?? "warning"}</strong><span>{warning.message ?? "同步过程中返回警告"}</span></div>)}</div> : null}</Panel>;
+}
+
+function FullSyncSummary({ result }: { result: JsonRecord }) {
+  const failures = (result.failures as Array<{ external_device_id?: number; error?: string }> | undefined) ?? [];
+  return (
+    <Panel className="section-gap sync-result">
+      <div className="panel-header">
+        <div><h2 className="panel-title">最近全量同步结果</h2><div className="panel-kicker">已处理外部 devices 表中的设备</div></div>
+        <Tag color={Number(result.failed ?? 0) ? "orange" : "green"}>{Number(result.failed ?? 0) ? "部分完成" : "同步成功"}</Tag>
+      </div>
+      <div className="sync-result-metrics">
+        <div><strong>{string(result.total, 0)}</strong><span>发现设备</span></div>
+        <div><strong>{string(result.synced, 0)}</strong><span>已同步</span></div>
+        <div><strong>{string(result.created, 0)}</strong><span>新增</span></div>
+        <div><strong>{string(result.updated, 0)}</strong><span>更新</span></div>
+        <div><strong>{string(result.unconfigured, 0)}</strong><span>无配置</span></div>
+        <div><strong>{string(result.failed, 0)}</strong><span>失败</span></div>
+      </div>
+      {failures.length ? <div className="sync-warnings">{failures.slice(0, 20).map((failure, index) => <div key={`${failure.external_device_id}-${index}`}><strong>外部设备 {failure.external_device_id}</strong><span>{failure.error ?? "同步失败"}</span></div>)}</div> : null}
+    </Panel>
+  );
 }
 
 function drawerTitle(mode: Mode, selected: JsonRecord | null) {
@@ -389,7 +443,7 @@ function PlacementFields({ form }: { form: ReturnType<typeof Form.useForm>[0] })
     </>
   );
 }
-function StationFields({ form }: { form: ReturnType<typeof Form.useForm>[0] }) {
+function StationFields() {
   return (
     <>
       <Form.Item
@@ -399,18 +453,7 @@ function StationFields({ form }: { form: ReturnType<typeof Form.useForm>[0] }) {
       >
         <InputNumber min={1} precision={0} style={{ width: "100%" }} />
       </Form.Item>
-      <PlacementFields form={form} />
-      <div className="drawer-grid">
-        <Form.Item name="product_id" label="产品 ID">
-          <Input />
-        </Form.Item>
-        <Form.Item name="serial_no" label="序列号">
-          <Input />
-        </Form.Item>
-      </div>
-      <Form.Item name="name" label="设备名称">
-        <Input />
-      </Form.Item>
+      <div className="drawer-note">名称、序列号和产品 ID 将优先读取外部设备；缺失时由平台自动生成。同步不会自动分配工作区。</div>
     </>
   );
 }
