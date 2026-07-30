@@ -372,7 +372,7 @@ func isMediaStreamType(value string) bool {
 
 func normalizeLimits(limits config.QueryLimitsConfig) config.QueryLimitsConfig {
 	if limits.MaxHistoryDays <= 0 {
-		limits.MaxHistoryDays = 31
+		limits.MaxHistoryDays = 366
 	}
 	if limits.MaxMediaPageSize <= 0 {
 		limits.MaxMediaPageSize = 100

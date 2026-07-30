@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// 用户在工作区资源上的授权记录，支持作用域、期限、转授权和委派链。
 type AccessGrant struct {
 	ID             uuid.UUID          `json:"id"`
 	WorkspaceID    uuid.UUID          `json:"workspace_id"`
@@ -28,34 +29,32 @@ type AccessGrant struct {
 	ParentGrantID  *uuid.UUID         `json:"parent_grant_id"`
 }
 
+// 单条资源授权对应的显式权限集合。
 type AccessGrantPermission struct {
 	AccessGrantID uuid.UUID `json:"access_grant_id"`
 	PermissionID  uuid.UUID `json:"permission_id"`
 }
 
-type AppMetadatum struct {
-	Key       string             `json:"key"`
-	Value     string             `json:"value"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
-}
-
+// 统一不可变操作日志，记录普通用户或系统管理员的动作、资源、结果和 request ID。
 type AuditLog struct {
-	ID           uuid.UUID          `json:"id"`
-	WorkspaceID  *uuid.UUID         `json:"workspace_id"`
-	ActorType    string             `json:"actor_type"`
-	ActorID      *uuid.UUID         `json:"actor_id"`
-	Action       string             `json:"action"`
-	ResourceType string             `json:"resource_type"`
-	ResourceID   *uuid.UUID         `json:"resource_id"`
-	Result       string             `json:"result"`
-	Reason       *string            `json:"reason"`
-	Ip           *string            `json:"ip"`
-	UserAgent    *string            `json:"user_agent"`
+	ID           uuid.UUID  `json:"id"`
+	WorkspaceID  *uuid.UUID `json:"workspace_id"`
+	ActorType    string     `json:"actor_type"`
+	ActorID      *uuid.UUID `json:"actor_id"`
+	Action       string     `json:"action"`
+	ResourceType string     `json:"resource_type"`
+	ResourceID   *uuid.UUID `json:"resource_id"`
+	Result       string     `json:"result"`
+	Reason       *string    `json:"reason"`
+	Ip           *string    `json:"ip"`
+	UserAgent    *string    `json:"user_agent"`
+	// 关联 HTTP 请求和服务日志的 request ID。
 	RequestID    *string            `json:"request_id"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	ActorAdminID *uuid.UUID         `json:"actor_admin_id"`
 }
 
+// 已主动撤销但尚未自然过期的普通用户访问令牌哈希。
 type AuthAccessTokenBlacklist struct {
 	TokenHash string             `json:"token_hash"`
 	UserID    uuid.UUID          `json:"user_id"`
@@ -64,6 +63,17 @@ type AuthAccessTokenBlacklist struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
+// 找回或修改密码使用的一次性短期会话。
+type AuthPasswordChangeSession struct {
+	ID        uuid.UUID          `json:"id"`
+	UserID    uuid.UUID          `json:"user_id"`
+	TokenHash string             `json:"token_hash"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	UsedAt    pgtype.Timestamptz `json:"used_at"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+// 普通用户刷新令牌会话，用于多端登录、续期和单会话撤销。
 type AuthRefreshSession struct {
 	ID               uuid.UUID          `json:"id"`
 	UserID           uuid.UUID          `json:"user_id"`
@@ -77,6 +87,7 @@ type AuthRefreshSession struct {
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 }
 
+// 相机设备与第三方视频服务的绑定，不保存供应商应用密钥正文。
 type CameraBinding struct {
 	ID                    uuid.UUID          `json:"id"`
 	DeviceID              uuid.UUID          `json:"device_id"`
@@ -91,10 +102,23 @@ type CameraBinding struct {
 	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
 }
 
+// 查询时计算的数据流公式定义。设备和启用状态来自 data_streams，公式依赖在读取时解析，计算结果不持久化。
+type ComputedDataStream struct {
+	DataStreamID uuid.UUID `json:"data_stream_id"`
+	// 安全公式，可引用 stream.<code> 和 meta.<key>。
+	Formula   string             `json:"formula"`
+	CreatedBy uuid.UUID          `json:"created_by"`
+	UpdatedBy uuid.UUID          `json:"updated_by"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+// 管理员维护的外部数据源实例，只保存 DSN 密钥引用，不保存明文连接密钥。
 type DataSource struct {
-	ID           uuid.UUID          `json:"id"`
-	Name         string             `json:"name"`
-	Type         string             `json:"type"`
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+	Type string    `json:"type"`
+	// 外部 DSN 的环境变量或密钥系统引用，不是明文 DSN。
 	DsnSecretRef string             `json:"dsn_secret_ref"`
 	Status       string             `json:"status"`
 	CreatedBy    uuid.UUID          `json:"created_by"`
@@ -102,39 +126,49 @@ type DataSource struct {
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
+// 设备数据通道目录，包括源库原始通道和查询时计算通道。
 type DataStream struct {
-	ID        uuid.UUID          `json:"id"`
-	DeviceID  uuid.UUID          `json:"device_id"`
-	Code      string             `json:"code"`
-	Name      string             `json:"name"`
-	Type      string             `json:"type"`
-	Unit      *string            `json:"unit"`
-	Status    string             `json:"status"`
+	ID       uuid.UUID `json:"id"`
+	DeviceID uuid.UUID `json:"device_id"`
+	// 设备内稳定的数据指标或图片通道 code。
+	Code   string  `json:"code"`
+	Name   string  `json:"name"`
+	Type   string  `json:"type"`
+	Unit   *string `json:"unit"`
+	Status string  `json:"status"`
+	// Audit actor identifier; interpret together with created_by_type. This is not resource ownership.
 	CreatedBy uuid.UUID          `json:"created_by"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	// 创建主体类型，区分用户创建和系统同步。
+	CreatedByType string `json:"created_by_type"`
 }
 
+// 原始数据流到外部数据源的读取规则和适配器配置；计算数据流没有源绑定。
 type DataStreamBinding struct {
-	ID                uuid.UUID          `json:"id"`
-	DataStreamID      uuid.UUID          `json:"data_stream_id"`
-	DataSourceID      uuid.UUID          `json:"data_source_id"`
-	DatabaseName      *string            `json:"database_name"`
-	SchemaName        *string            `json:"schema_name"`
-	TableName         *string            `json:"table_name"`
-	DeviceKeyField    *string            `json:"device_key_field"`
-	DeviceKeyValue    *string            `json:"device_key_value"`
-	TimeField         *string            `json:"time_field"`
-	ValueField        *string            `json:"value_field"`
-	PayloadType       string             `json:"payload_type"`
-	AdapterConfigJson []byte             `json:"adapter_config_json"`
-	Status            string             `json:"status"`
-	CreatedBy         uuid.UUID          `json:"created_by"`
-	CreatedAt         pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
-	AdapterCode       string             `json:"adapter_code"`
+	ID             uuid.UUID `json:"id"`
+	DataStreamID   uuid.UUID `json:"data_stream_id"`
+	DataSourceID   uuid.UUID `json:"data_source_id"`
+	DatabaseName   *string   `json:"database_name"`
+	SchemaName     *string   `json:"schema_name"`
+	TableName      *string   `json:"table_name"`
+	DeviceKeyField *string   `json:"device_key_field"`
+	DeviceKeyValue *string   `json:"device_key_value"`
+	TimeField      *string   `json:"time_field"`
+	ValueField     *string   `json:"value_field"`
+	PayloadType    string    `json:"payload_type"`
+	// 适配器专用读取配置，不存储遥测结果。
+	AdapterConfigJson []byte `json:"adapter_config_json"`
+	Status            string `json:"status"`
+	// Audit actor identifier; interpret together with created_by_type. This is not resource ownership.
+	CreatedBy     uuid.UUID          `json:"created_by"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	AdapterCode   string             `json:"adapter_code"`
+	CreatedByType string             `json:"created_by_type"`
 }
 
+// 工作区内可复用的数据分析定义，保存来源和时间范围，不复制原始遥测数据。
 type Dataset struct {
 	ID          uuid.UUID          `json:"id"`
 	WorkspaceID uuid.UUID          `json:"workspace_id"`
@@ -150,6 +184,7 @@ type Dataset struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
+// 数据集包含的设备、数据流或文件来源。
 type DatasetSource struct {
 	ID         uuid.UUID          `json:"id"`
 	DatasetID  uuid.UUID          `json:"dataset_id"`
@@ -158,34 +193,42 @@ type DatasetSource struct {
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
 
+// 平台设备主表，只保存稳定身份、类型和业务生命周期，不缓存源库实时运行属性或设备位置。
 type Device struct {
-	ID                 uuid.UUID          `json:"id"`
-	ProductID          *string            `json:"product_id"`
-	SerialNo           string             `json:"serial_no"`
-	Name               string             `json:"name"`
-	Status             string             `json:"status"`
-	ActivatedAt        pgtype.Timestamptz `json:"activated_at"`
-	CreatedAt          pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	ID        uuid.UUID `json:"id"`
+	ProductID *string   `json:"product_id"`
+	// 平台唯一设备序列号。
+	SerialNo    string             `json:"serial_no"`
+	Name        string             `json:"name"`
+	Status      string             `json:"status"`
+	ActivatedAt pgtype.Timestamptz `json:"activated_at"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	// 设备入库、待认领、服役和退役等业务生命周期状态。
 	LifecycleStatus    string             `json:"lifecycle_status"`
 	LifecycleUpdatedAt pgtype.Timestamptz `json:"lifecycle_updated_at"`
-	DeviceType         string             `json:"device_type"`
+	// 平台设备类型，例如 gateway、node、camera 或 standalone。
+	DeviceType string `json:"device_type"`
 }
 
+// 物理设备到工作区、项目和站点的当前或历史分配记录；同一设备仅允许一条有效分配。
 type DeviceAssignment struct {
-	ID           uuid.UUID          `json:"id"`
-	DeviceID     uuid.UUID          `json:"device_id"`
-	WorkspaceID  uuid.UUID          `json:"workspace_id"`
-	ProjectID    *uuid.UUID         `json:"project_id"`
-	SiteID       *uuid.UUID         `json:"site_id"`
-	Status       string             `json:"status"`
-	AssignedBy   *uuid.UUID         `json:"assigned_by"`
-	AssignedAt   pgtype.Timestamptz `json:"assigned_at"`
-	UnassignedAt pgtype.Timestamptz `json:"unassigned_at"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	ID          uuid.UUID  `json:"id"`
+	DeviceID    uuid.UUID  `json:"device_id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	ProjectID   *uuid.UUID `json:"project_id"`
+	SiteID      *uuid.UUID `json:"site_id"`
+	Status      string     `json:"status"`
+	// Audit actor identifier; interpret together with assigned_by_type.
+	AssignedBy     *uuid.UUID         `json:"assigned_by"`
+	AssignedAt     pgtype.Timestamptz `json:"assigned_at"`
+	UnassignedAt   pgtype.Timestamptz `json:"unassigned_at"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	AssignedByType string             `json:"assigned_by_type"`
 }
 
+// 设备与能力字典的多对多关系。
 type DeviceCapability struct {
 	ID             uuid.UUID          `json:"id"`
 	DeviceID       uuid.UUID          `json:"device_id"`
@@ -193,6 +236,7 @@ type DeviceCapability struct {
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }
 
+// 平台支持的设备能力字典。
 type DeviceCapabilityDefinition struct {
 	Code      string             `json:"code"`
 	Name      string             `json:"name"`
@@ -202,6 +246,34 @@ type DeviceCapabilityDefinition struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+// 设备永久铭牌和手工认领码凭据，匹配值保存哈希，可打印值加密保存。
+type DeviceClaimCredential struct {
+	DeviceID uuid.UUID `json:"device_id"`
+	// 永久二维码认领 token 的哈希，用于安全匹配。
+	ClaimSlugHash string `json:"claim_slug_hash"`
+	// 永久二维码认领 token 的密文，用于管理员再次打印铭牌。
+	ClaimSlugCiphertext  []byte             `json:"claim_slug_ciphertext"`
+	ClaimSlugNonce       []byte             `json:"claim_slug_nonce"`
+	ManualCodeHash       string             `json:"manual_code_hash"`
+	ManualCodeCiphertext []byte             `json:"manual_code_ciphertext"`
+	ManualCodeNonce      []byte             `json:"manual_code_nonce"`
+	PrintedAt            pgtype.Timestamptz `json:"printed_at"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+}
+
+// 成功设备认领的幂等记录，关联操作者、设备、工作区和最终分配。
+type DeviceClaimRequest struct {
+	ID             uuid.UUID          `json:"id"`
+	UserID         uuid.UUID          `json:"user_id"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	DeviceID       uuid.UUID          `json:"device_id"`
+	WorkspaceID    uuid.UUID          `json:"workspace_id"`
+	AssignmentID   uuid.UUID          `json:"assignment_id"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+// 从 THCPN 源库同步的设备配置快照，用于配置管理、版本冲突检查和数据通道应用。
 type DeviceConfigSnapshot struct {
 	ID               uuid.UUID          `json:"id"`
 	DeviceID         uuid.UUID          `json:"device_id"`
@@ -219,6 +291,28 @@ type DeviceConfigSnapshot struct {
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 }
 
+// 设备级环境分类覆盖和业务标签，不保存源库实时海拔。
+type DeviceEnvironmentProfile struct {
+	DeviceID         uuid.UUID          `json:"device_id"`
+	EcosystemTermID  *uuid.UUID         `json:"ecosystem_term_id"`
+	ManagementTermID *uuid.UUID         `json:"management_term_id"`
+	DeploymentTermID *uuid.UUID         `json:"deployment_term_id"`
+	CommissionedYear pgtype.Int4        `json:"commissioned_year"`
+	ResearchTags     []string           `json:"research_tags"`
+	OverriddenFields []string           `json:"overridden_fields"`
+	UpdatedBy        *uuid.UUID         `json:"updated_by"`
+	UpdatedActorType string             `json:"updated_actor_type"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
+// 设备与多值环境分类词条的关系。
+type DeviceEnvironmentTerm struct {
+	DeviceID uuid.UUID `json:"device_id"`
+	TermID   uuid.UUID `json:"term_id"`
+}
+
+// 设备生命周期状态变更日志。
 type DeviceLifecycleEvent struct {
 	ID          uuid.UUID          `json:"id"`
 	DeviceID    uuid.UUID          `json:"device_id"`
@@ -230,6 +324,25 @@ type DeviceLifecycleEvent struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
+// 物理设备的业务元数据，支持数字、文本和布尔值，可供查询时计算公式引用。
+type DeviceMetadatum struct {
+	ID       uuid.UUID `json:"id"`
+	DeviceID uuid.UUID `json:"device_id"`
+	// 公式引用使用的稳定 key，格式为字母开头的字母数字下划线。
+	Key  string `json:"key"`
+	Name string `json:"name"`
+	// 元数据类型：number、string 或 boolean。
+	ValueType string `json:"value_type"`
+	// 与 value_type 一致的当前值，不记录历史版本。
+	ValueJson []byte             `json:"value_json"`
+	Unit      *string            `json:"unit"`
+	CreatedBy uuid.UUID          `json:"created_by"`
+	UpdatedBy uuid.UUID          `json:"updated_by"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+// 用户发起的设备配置或控制操作任务及其执行状态。
 type DeviceOperation struct {
 	ID            uuid.UUID          `json:"id"`
 	WorkspaceID   uuid.UUID          `json:"workspace_id"`
@@ -242,17 +355,17 @@ type DeviceOperation struct {
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 }
 
+// 平台维护的设备业务资料，目前保存描述和文字地址，不保存实时经纬度。
 type DeviceProfile struct {
 	DeviceID     uuid.UUID          `json:"device_id"`
 	Description  *string            `json:"description"`
 	LocationText *string            `json:"location_text"`
-	Latitude     pgtype.Float8      `json:"latitude"`
-	Longitude    pgtype.Float8      `json:"longitude"`
 	UpdatedBy    *uuid.UUID         `json:"updated_by"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
+// 设备资料图片元数据，图片二进制存储在对象存储。
 type DeviceProfileImage struct {
 	ID               uuid.UUID          `json:"id"`
 	DeviceID         uuid.UUID          `json:"device_id"`
@@ -270,6 +383,23 @@ type DeviceProfileImage struct {
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 }
 
+// 设备永久公开地址、启用状态、密码哈希和公开会话版本。
+type DevicePublication struct {
+	ID       uuid.UUID `json:"id"`
+	DeviceID uuid.UUID `json:"device_id"`
+	// 首次公开时生成且永久固定的高熵随机地址标识。
+	PublicSlug   string  `json:"public_slug"`
+	Enabled      bool    `json:"enabled"`
+	PasswordHash *string `json:"password_hash"`
+	// 公开访问会话版本；密码或公开状态变化时递增以使旧会话失效。
+	AccessVersion int32              `json:"access_version"`
+	CreatedBy     uuid.UUID          `json:"created_by"`
+	UpdatedBy     uuid.UUID          `json:"updated_by"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+// 设备父子拓扑关系，主要用于网关和节点以及节点权限继承。
 type DeviceRelation struct {
 	ID                     uuid.UUID          `json:"id"`
 	ParentDeviceID         uuid.UUID          `json:"parent_device_id"`
@@ -284,21 +414,37 @@ type DeviceRelation struct {
 	UpdatedAt              pgtype.Timestamptz `json:"updated_at"`
 }
 
+// 平台设备到外部设备的稳定映射，只保存数据源、适配器和外部设备 ID。
 type DeviceSourceRef struct {
-	ID                 uuid.UUID          `json:"id"`
-	DeviceID           uuid.UUID          `json:"device_id"`
-	DataSourceID       uuid.UUID          `json:"data_source_id"`
-	AdapterCode        string             `json:"adapter_code"`
-	ExternalDeviceID   int64              `json:"external_device_id"`
-	ExternalSn         *string            `json:"external_sn"`
-	ExternalUuid       *string            `json:"external_uuid"`
-	ExternalDeviceType *string            `json:"external_device_type"`
-	Status             string             `json:"status"`
-	SyncedAt           pgtype.Timestamptz `json:"synced_at"`
-	CreatedAt          pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	ID           uuid.UUID `json:"id"`
+	DeviceID     uuid.UUID `json:"device_id"`
+	DataSourceID uuid.UUID `json:"data_source_id"`
+	AdapterCode  string    `json:"adapter_code"`
+	// 设备在对应外部数据源中的数值 ID。
+	ExternalDeviceID int64  `json:"external_device_id"`
+	Status           string `json:"status"`
+	// 最近一次确认该映射或同步设备主记录的时间。
+	SyncedAt  pgtype.Timestamptz `json:"synced_at"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+// 设备生态环境、观测对象、用途、管理方式和部署方式的中英文分类字典。
+type DeviceTaxonomyTerm struct {
+	ID            uuid.UUID          `json:"id"`
+	Kind          string             `json:"kind"`
+	Code          string             `json:"code"`
+	NameZh        string             `json:"name_zh"`
+	NameEn        string             `json:"name_en"`
+	ParentID      *uuid.UUID         `json:"parent_id"`
+	Status        string             `json:"status"`
+	SortOrder     int32              `json:"sort_order"`
+	SystemDefined bool               `json:"system_defined"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+// 异步数据导出任务及结果对象、状态、错误和下载有效期。
 type ExportJob struct {
 	ID                uuid.UUID          `json:"id"`
 	WorkspaceID       uuid.UUID          `json:"workspace_id"`
@@ -317,6 +463,7 @@ type ExportJob struct {
 	RequestConfigJson []byte             `json:"request_config_json"`
 }
 
+// 待接受的工作区或资源邀请，包含邀请对象、作用域、权限模板和期限。
 type Invitation struct {
 	ID            uuid.UUID          `json:"id"`
 	WorkspaceID   uuid.UUID          `json:"workspace_id"`
@@ -334,11 +481,13 @@ type Invitation struct {
 	ParentGrantID *uuid.UUID         `json:"parent_grant_id"`
 }
 
+// 邀请接受后应授予的显式权限集合。
 type InvitationPermission struct {
 	InvitationID uuid.UUID `json:"invitation_id"`
 	PermissionID uuid.UUID `json:"permission_id"`
 }
 
+// 稳定权限字典，按资源类型和动作定义权限 code。
 type Permission struct {
 	ID           uuid.UUID `json:"id"`
 	Code         string    `json:"code"`
@@ -347,6 +496,7 @@ type Permission struct {
 	Action       string    `json:"action"`
 }
 
+// 工作区下的项目主数据。
 type Project struct {
 	ID          uuid.UUID          `json:"id"`
 	WorkspaceID uuid.UUID          `json:"workspace_id"`
@@ -358,6 +508,7 @@ type Project struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
+// 系统角色和工作区自定义角色定义。
 type Role struct {
 	ID           uuid.UUID          `json:"id"`
 	WorkspaceID  *uuid.UUID         `json:"workspace_id"`
@@ -368,26 +519,52 @@ type Role struct {
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
+// 角色与权限的多对多关系。
 type RolePermission struct {
 	RoleID       uuid.UUID `json:"role_id"`
 	PermissionID uuid.UUID `json:"permission_id"`
 }
 
+// 项目下的业务站点；站点经纬度是人工维护的业务位置，可作为设备地图回退位置。
 type Site struct {
-	ID           uuid.UUID          `json:"id"`
-	WorkspaceID  uuid.UUID          `json:"workspace_id"`
-	ProjectID    uuid.UUID          `json:"project_id"`
-	Name         string             `json:"name"`
-	Description  *string            `json:"description"`
-	LocationText *string            `json:"location_text"`
-	Latitude     pgtype.Float8      `json:"latitude"`
-	Longitude    pgtype.Float8      `json:"longitude"`
-	Status       string             `json:"status"`
-	CreatedBy    uuid.UUID          `json:"created_by"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	ID           uuid.UUID `json:"id"`
+	WorkspaceID  uuid.UUID `json:"workspace_id"`
+	ProjectID    uuid.UUID `json:"project_id"`
+	Name         string    `json:"name"`
+	Description  *string   `json:"description"`
+	LocationText *string   `json:"location_text"`
+	// 人工维护的业务站点纬度，不是设备实时上报纬度。
+	Latitude pgtype.Float8 `json:"latitude"`
+	// 人工维护的业务站点经度，不是设备实时上报经度。
+	Longitude pgtype.Float8      `json:"longitude"`
+	Status    string             `json:"status"`
+	CreatedBy uuid.UUID          `json:"created_by"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+// 站点级单值环境分类及业务属性，供设备继承。
+type SiteEnvironmentProfile struct {
+	SiteID           uuid.UUID          `json:"site_id"`
+	EcosystemTermID  *uuid.UUID         `json:"ecosystem_term_id"`
+	ManagementTermID *uuid.UUID         `json:"management_term_id"`
+	DeploymentTermID *uuid.UUID         `json:"deployment_term_id"`
+	AltitudeM        pgtype.Float8      `json:"altitude_m"`
+	CommissionedYear pgtype.Int4        `json:"commissioned_year"`
+	ResearchTags     []string           `json:"research_tags"`
+	UpdatedBy        *uuid.UUID         `json:"updated_by"`
+	UpdatedActorType string             `json:"updated_actor_type"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
+// 站点与多值环境分类词条的关系。
+type SiteEnvironmentTerm struct {
+	SiteID uuid.UUID `json:"site_id"`
+	TermID uuid.UUID `json:"term_id"`
+}
+
+// 系统管理员独立账号，与普通用户和工作区成员身份隔离。
 type SystemAdmin struct {
 	ID             uuid.UUID          `json:"id"`
 	Name           string             `json:"name"`
@@ -401,6 +578,7 @@ type SystemAdmin struct {
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 }
 
+// 系统管理员刷新令牌会话，与普通用户会话隔离。
 type SystemAdminRefreshSession struct {
 	ID               uuid.UUID          `json:"id"`
 	AdminID          uuid.UUID          `json:"admin_id"`
@@ -414,6 +592,7 @@ type SystemAdminRefreshSession struct {
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 }
 
+// 平台普通用户主表，保存身份、联系方式、账号状态和认证版本，不保存密码正文。
 type User struct {
 	ID              uuid.UUID          `json:"id"`
 	Name            string             `json:"name"`
@@ -425,18 +604,22 @@ type User struct {
 	PhoneVerifiedAt pgtype.Timestamptz `json:"phone_verified_at"`
 	EmailVerifiedAt pgtype.Timestamptz `json:"email_verified_at"`
 	LastLoginAt     pgtype.Timestamptz `json:"last_login_at"`
+	AuthVersion     int32              `json:"auth_version"`
 }
 
+// 普通用户密码凭据和登录锁定状态，一名用户一条记录。
 type UserCredential struct {
-	UserID            uuid.UUID          `json:"user_id"`
-	PasswordHash      string             `json:"password_hash"`
-	PasswordUpdatedAt pgtype.Timestamptz `json:"password_updated_at"`
-	FailedAttempts    int32              `json:"failed_attempts"`
-	LockedUntil       pgtype.Timestamptz `json:"locked_until"`
-	CreatedAt         pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	UserID             uuid.UUID          `json:"user_id"`
+	PasswordHash       string             `json:"password_hash"`
+	PasswordUpdatedAt  pgtype.Timestamptz `json:"password_updated_at"`
+	FailedAttempts     int32              `json:"failed_attempts"`
+	LockedUntil        pgtype.Timestamptz `json:"locked_until"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	MustChangePassword bool               `json:"must_change_password"`
 }
 
+// 普通用户 TOTP 多因素认证配置，密钥以密文保存。
 type UserMfaTotp struct {
 	UserID           uuid.UUID          `json:"user_id"`
 	SecretCiphertext []byte             `json:"secret_ciphertext"`
@@ -447,6 +630,7 @@ type UserMfaTotp struct {
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 }
 
+// 平台租户边界，保存工作区名称、类型、所有者和状态。
 type Workspace struct {
 	ID               uuid.UUID          `json:"id"`
 	Type             string             `json:"type"`
@@ -458,6 +642,7 @@ type Workspace struct {
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 }
 
+// 用户加入工作区的成员关系，包含角色、权限模板和资源作用域。
 type WorkspaceMember struct {
 	ID           uuid.UUID          `json:"id"`
 	WorkspaceID  uuid.UUID          `json:"workspace_id"`
@@ -472,6 +657,7 @@ type WorkspaceMember struct {
 	TemplateCode string             `json:"template_code"`
 }
 
+// 工作区成员最终拥有的显式权限集合。
 type WorkspaceMemberPermission struct {
 	MemberID     uuid.UUID `json:"member_id"`
 	PermissionID uuid.UUID `json:"permission_id"`

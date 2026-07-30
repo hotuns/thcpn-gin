@@ -37,11 +37,11 @@ func TestSensorMetricsFromHCD6818Params(t *testing.T) {
 }
 
 func TestBuildSensorTemplateWhere(t *testing.T) {
-	where, args := buildSensorTemplateWhere(THCPNSensorTemplateListInput{Search: "HCD", Port: "485", Driver: "modbusrtu"})
-	if where != " WHERE deleted_at IS NULL AND (sensor_type LIKE ? OR description LIKE ? OR sensor LIKE ?) AND port = ? AND sensor = ?" {
+	where, args := buildSensorTemplateWhere(THCPNSensorTemplateListInput{Search: "HCD", Port: "485", Driver: "modbusrtu", Status: "active"})
+	if where != " WHERE (sensor_type ILIKE $1 OR COALESCE(description, '') ILIKE $2 OR COALESCE(driver, '') ILIKE $3) AND port = $4 AND driver = $5 AND status = $6" {
 		t.Fatalf("unexpected where: %s", where)
 	}
-	if len(args) != 5 || args[0] != "%HCD%" || args[4] != "modbusrtu" {
+	if len(args) != 6 || args[0] != "%HCD%" || args[4] != "modbusrtu" || args[5] != "active" {
 		t.Fatalf("unexpected args: %#v", args)
 	}
 }

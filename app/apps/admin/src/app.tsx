@@ -11,19 +11,23 @@ import {
 } from "react-router-dom";
 import {
   Boxes,
+  Cpu,
   ChevronDown,
   ChevronRight,
   Database,
   ExternalLink,
   FileText,
   Home,
+  MapPinned,
   Languages,
   Settings,
   LogOut,
   Menu as MenuIcon,
+  Moon,
   PanelLeftClose,
   PanelLeftOpen,
   ShieldCheck,
+  Sun,
   TableProperties,
   UserRound,
 } from "lucide-react";
@@ -40,7 +44,7 @@ import {
   Panel,
   StateView,
 } from "@thcpn/ui";
-import { LanguageSwitcher, useLocale } from "@thcpn/i18n";
+import { LanguageSwitcher, useLocale, useTheme } from "@thcpn/i18n";
 const AdminMetadataPage = lazy(() =>
   import("./admin-metadata").then((module) => ({
     default: module.AdminMetadataPage,
@@ -49,6 +53,11 @@ const AdminMetadataPage = lazy(() =>
 const AdminSourcesPage = lazy(() =>
   import("./admin-sources").then((module) => ({
     default: module.AdminSourcesPage,
+  })),
+);
+const AdminSensorsPage = lazy(() =>
+  import("./admin-sensors").then((module) => ({
+    default: module.AdminSensorsPage,
   })),
 );
 const AdminDevicesPage = lazy(() =>
@@ -61,6 +70,7 @@ const AdminLogsPage = lazy(() =>
     default: module.AdminLogsPage,
   })),
 );
+const AdminDeviceInsightsPage = lazy(() => import("./admin-device-insights").then((module) => ({ default: module.AdminDeviceInsightsPage })));
 const AdminWorkspacesPage = lazy(() =>
   import("./admin-control").then((module) => ({
     default: module.AdminWorkspacesPage,
@@ -91,6 +101,8 @@ const adminNav = [
   { to: "/admin", key: "overview", icon: Home, group: "overview" },
   { to: "/admin/sources", key: "sources", icon: Database, group: "assets" },
   { to: "/admin/devices", key: "devices", icon: Boxes, group: "assets" },
+  { to: "/admin/sensors", key: "sensors", icon: Cpu, group: "assets" },
+  { to: "/admin/device-map", key: "deviceMap", icon: MapPinned, group: "assets" },
   { to: "/admin/logs", key: "logs", icon: FileText, group: "system" },
   { to: "/admin/users", key: "users", icon: UserRound, group: "platform" },
   { to: "/admin/metadata", key: "metadata", icon: TableProperties, group: "platform" },
@@ -102,6 +114,7 @@ const platformUrl =
 
 function AdminShell() {
   const { locale, setLocale, t } = useLocale();
+  const { resolvedTheme, setTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -246,6 +259,14 @@ function AdminShell() {
             </div>
           </div>
           <Space>
+            <Tooltip title={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")}>
+              <IconButton
+                label={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")}
+                onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+              >
+                {resolvedTheme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+              </IconButton>
+            </Tooltip>
             <Tooltip title={t("admin:navigation.backPlatform")}>
               <IconButton label={t("admin:navigation.backPlatform")} onClick={() => window.location.assign(`${platformUrl}/dashboard`)}>
                 <ExternalLink size={17} />
@@ -304,6 +325,7 @@ function AdminGuard() {
 
 function AdminLoginPage() {
   const { t } = useLocale();
+  const { resolvedTheme, setTheme } = useTheme();
   const { admin, loading, signIn } = useAdminAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -317,7 +339,7 @@ function AdminLoginPage() {
     catch (reason) { setError(formatApiError(reason).message); }
     finally { setBusy(false); }
   };
-  return <main className="admin-auth-page"><div className="admin-auth-language"><LanguageSwitcher compact /></div><section className="admin-auth-panel"><div className="brand-mark"><ShieldCheck size={20} /></div><div className="eyebrow">THCPN / SYSTEM CONTROL</div><h1>{t("admin:auth.title")}</h1><p>{t("admin:auth.copy")}</p><form onSubmit={submit}><label>{t("admin:auth.email")}<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required /></label><label>{t("admin:auth.password")}<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></label>{error && <div className="admin-login-error">{error}</div>}<button type="submit" disabled={busy}>{busy ? t("admin:auth.signingIn") : t("admin:auth.submit")}</button></form><a href={`${platformUrl}/login`}>{t("admin:auth.back")}</a></section></main>;
+  return <main className="admin-auth-page"><div className="admin-auth-actions"><LanguageSwitcher compact /><Tooltip title={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")}><IconButton label={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")} onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>{resolvedTheme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</IconButton></Tooltip></div><section className="admin-auth-panel"><div className="brand-mark"><ShieldCheck size={20} /></div><div className="eyebrow">THCPN / SYSTEM CONTROL</div><h1>{t("admin:auth.title")}</h1><p>{t("admin:auth.copy")}</p><form onSubmit={submit}><label>{t("admin:auth.email")}<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required /></label><label>{t("admin:auth.password")}<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></label>{error && <div className="admin-login-error">{error}</div>}<button type="submit" disabled={busy}>{busy ? t("admin:auth.signingIn") : t("admin:auth.submit")}</button></form><a href={`${platformUrl}/login`}>{t("admin:auth.back")}</a></section></main>;
 }
 
 async function listAllAdminResources(kind: "projects" | "sites") {
@@ -475,6 +497,8 @@ function AdminRoot() {
         <Route path="sources" element={<AdminSourcesPage />} />
         <Route path="devices" element={<AdminDevicesPage />} />
         <Route path="devices/:deviceId" element={<AdminDevicesPage />} />
+        <Route path="sensors" element={<AdminSensorsPage />} />
+        <Route path="device-map" element={<AdminDeviceInsightsPage />} />
         <Route path="logs" element={<AdminLogsPage />} />
         <Route path="workspaces" element={<AdminWorkspacesPage />} />
         <Route path="workspaces/:workspaceId" element={<AdminWorkspaceDetailPage />} />

@@ -77,7 +77,6 @@ type assignDeviceRequest struct {
 	TargetWorkspaceID string `json:"target_workspace_id"`
 	ProjectID         string `json:"project_id"`
 	SiteID            string `json:"site_id"`
-	AssignChildren    bool   `json:"assign_children"`
 }
 
 type addDeviceChildRequest struct {
@@ -634,25 +633,11 @@ func (h *Handler) AdminAssign(c *gin.Context) {
 		TargetWorkspaceID: targetWorkspaceID,
 		ProjectID:         projectID,
 		SiteID:            siteID,
-		AssignChildren:    req.AssignChildren,
 		ActorUserID:       actor.UserID,
 	})
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
-	}
-	if req.AssignChildren {
-		if !h.record(c, audit.RecordInput{
-			WorkspaceID:  audit.WorkspaceID(workspaceIDValue(result.WorkspaceID)),
-			ActorType:    audit.ActorUser,
-			ActorID:      audit.UserActorID(actor.UserID),
-			Action:       "device.assignment.cascade_gateway_nodes",
-			ResourceType: "device",
-			ResourceID:   audit.ResourceID(result.ID),
-			Result:       audit.ResultSuccess,
-		}) {
-			return
-		}
 	}
 	c.JSON(http.StatusOK, result)
 }

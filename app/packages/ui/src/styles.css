@@ -15,6 +15,10 @@
   --soft-line: #e9eef2;
   --canvas: #f4f7fa;
   --panel: #ffffff;
+  --control: #ffffff;
+  --surface-muted: #f8fafc;
+  --surface-subtle: #edf2f6;
+  --surface-selected: #eef6ff;
   --blue: #1769e0;
   --blue-dark: #0d4fb3;
   --blue-soft: #eaf2ff;
@@ -35,6 +39,10 @@
   --soft-line: #293847;
   --canvas: #111a23;
   --panel: #18232e;
+  --control: #121c26;
+  --surface-muted: #1d2a36;
+  --surface-subtle: #22313e;
+  --surface-selected: #1b3658;
   --blue: #68a5ff;
   --blue-dark: #9bc5ff;
   --blue-soft: #1b3658;
@@ -388,14 +396,14 @@ a {
   background: var(--blue-dark);
 }
 .btn-secondary {
-  color: #4c5e6c;
-  background: white;
+  color: var(--muted);
+  background: var(--control);
   border-color: var(--line);
 }
 .btn-secondary:hover {
   color: var(--ink);
-  border-color: #b7c5d0;
-  background: #f8fafc;
+  border-color: var(--blue);
+  background: var(--surface-muted);
 }
 .btn-ghost {
   color: var(--muted);
@@ -403,7 +411,7 @@ a {
 }
 .btn-ghost:hover {
   color: var(--ink);
-  background: #edf2f6;
+  background: var(--surface-subtle);
 }
 .btn-danger {
   color: var(--red);
@@ -423,7 +431,7 @@ a {
 }
 .icon-btn:hover {
   color: var(--ink);
-  background: #edf2f6;
+  background: var(--surface-subtle);
   border-color: var(--line);
 }
 .grid {
@@ -499,8 +507,8 @@ a {
 }
 .data-table th {
   padding: 11px 20px;
-  color: #81909e;
-  background: #fafcfd;
+  color: var(--muted);
+  background: var(--surface-muted);
   border-bottom: 1px solid var(--line);
   font:
     700 10px/1.2 "IBM Plex Mono",
@@ -511,7 +519,7 @@ a {
 }
 .data-table td {
   padding: 15px 20px;
-  color: #445562;
+  color: var(--ink);
   border-bottom: 1px solid var(--soft-line);
   vertical-align: middle;
 }
@@ -519,7 +527,7 @@ a {
   border-bottom: 0;
 }
 .data-table tr:hover td {
-  background: #fbfdff;
+  background: var(--surface-muted);
 }
 .cell-title {
   color: var(--ink);
@@ -557,8 +565,8 @@ a {
   background: var(--red-soft);
 }
 .badge.neutral {
-  color: #667785;
-  background: #eef2f5;
+  color: var(--muted);
+  background: var(--surface-subtle);
 }
 .empty-state,
 .error-state,
@@ -618,7 +626,7 @@ a {
   min-height: 42px;
   padding: 0 12px;
   color: var(--ink);
-  background: #fff;
+  background: var(--control);
   border: 1px solid var(--line);
   border-radius: 6px;
   outline: none;
@@ -878,7 +886,7 @@ a {
   gap: 3px;
   padding: 3px;
   color: var(--muted);
-  background: #edf2f7;
+  background: var(--surface-subtle);
   border: 1px solid var(--line);
   border-radius: 6px;
 }
@@ -896,7 +904,7 @@ a {
 }
 .language-switcher button.active {
   color: var(--blue);
-  background: white;
+  background: var(--control);
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
 }
 .language-switcher.compact { width: 100%; }

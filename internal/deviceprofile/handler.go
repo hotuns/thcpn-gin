@@ -22,10 +22,8 @@ type Handler struct {
 	audit   *audit.Service
 }
 type updateProfileRequest struct {
-	Description  *string  `json:"description"`
-	LocationText *string  `json:"location_text"`
-	Latitude     *float64 `json:"latitude"`
-	Longitude    *float64 `json:"longitude"`
+	Description  *string `json:"description"`
+	LocationText *string `json:"location_text"`
 }
 type updateImageRequest struct {
 	Caption *string `json:"caption"`
@@ -68,7 +66,7 @@ func (h *Handler) Update(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
-	result, err := h.service.Update(c.Request.Context(), UpdateProfileInput{DeviceID: deviceID, Description: req.Description, LocationText: req.LocationText, Latitude: req.Latitude, Longitude: req.Longitude, ActorUserID: actor.UserID})
+	result, err := h.service.Update(c.Request.Context(), UpdateProfileInput{DeviceID: deviceID, Description: req.Description, LocationText: req.LocationText, ActorUserID: actor.UserID})
 	if err != nil {
 		h.record(c, actor.UserID, deviceID, "device.profile.update", audit.ResultFailure, apperr.MessageOf(err))
 		httpx.WriteAppError(c, err)

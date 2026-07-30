@@ -25,6 +25,7 @@ const (
 	AdapterGenericMedia   = "generic_media"
 	AdapterHTTPAPI        = "http_api"
 	AdapterTHCPNLegacy    = "thcpn_legacy_mysql"
+	AdapterTHCPNCamera    = "thcpn_legacy_camera"
 )
 
 type Service struct {
@@ -142,7 +143,7 @@ type CreateDataSourceInput struct {
 	Name         string
 	Type         string
 	DsnSecretRef string
-	ActorUserID  uuid.UUID
+	ActorAdminID uuid.UUID
 }
 
 type UpdateDataSourceInput struct {
@@ -193,8 +194,8 @@ func (s *Service) CreateDataSource(ctx context.Context, input CreateDataSourceIn
 	name := strings.TrimSpace(input.Name)
 	sourceType := strings.TrimSpace(input.Type)
 	dsnSecretRef := strings.TrimSpace(input.DsnSecretRef)
-	if input.ActorUserID == uuid.Nil {
-		return DataSource{}, apperr.New(apperr.KindInvalidArgument, "actor user id is required")
+	if input.ActorAdminID == uuid.Nil {
+		return DataSource{}, apperr.New(apperr.KindInvalidArgument, "actor admin id is required")
 	}
 	if name == "" {
 		return DataSource{}, apperr.New(apperr.KindInvalidArgument, "data source name is required")
@@ -210,7 +211,7 @@ func (s *Service) CreateDataSource(ctx context.Context, input CreateDataSourceIn
 		Name:         name,
 		Type:         sourceType,
 		DsnSecretRef: dsnSecretRef,
-		CreatedBy:    input.ActorUserID,
+		CreatedBy:    input.ActorAdminID,
 	})
 	if err != nil {
 		return DataSource{}, mapWriteError(err, "create data source")
@@ -810,7 +811,7 @@ func dataSourceFromSQL(model sqlc.DataSource) DataSource {
 	}
 }
 
-func bindingFromCreateRow(model sqlc.CreateDataStreamBindingRow) DataStreamBinding {
+func bindingFromCreateRow(model sqlc.DataStreamBinding) DataStreamBinding {
 	return DataStreamBinding{
 		ID:                model.ID,
 		DataStreamID:      model.DataStreamID,
@@ -832,7 +833,7 @@ func bindingFromCreateRow(model sqlc.CreateDataStreamBindingRow) DataStreamBindi
 	}
 }
 
-func bindingFromGetRow(model sqlc.GetDataStreamBindingRow) DataStreamBinding {
+func bindingFromGetRow(model sqlc.DataStreamBinding) DataStreamBinding {
 	return DataStreamBinding{
 		ID:                model.ID,
 		DataStreamID:      model.DataStreamID,
@@ -854,7 +855,7 @@ func bindingFromGetRow(model sqlc.GetDataStreamBindingRow) DataStreamBinding {
 	}
 }
 
-func bindingFromActiveRow(model sqlc.GetActiveDataStreamBindingRow) DataStreamBinding {
+func bindingFromActiveRow(model sqlc.DataStreamBinding) DataStreamBinding {
 	return DataStreamBinding{
 		ID:                model.ID,
 		DataStreamID:      model.DataStreamID,
@@ -876,7 +877,7 @@ func bindingFromActiveRow(model sqlc.GetActiveDataStreamBindingRow) DataStreamBi
 	}
 }
 
-func bindingFromListRow(model sqlc.ListDataStreamBindingsByDataStreamRow) DataStreamBinding {
+func bindingFromListRow(model sqlc.DataStreamBinding) DataStreamBinding {
 	return DataStreamBinding{
 		ID:                model.ID,
 		DataStreamID:      model.DataStreamID,
@@ -898,7 +899,7 @@ func bindingFromListRow(model sqlc.ListDataStreamBindingsByDataStreamRow) DataSt
 	}
 }
 
-func bindingFromUpdateRow(model sqlc.UpdateDataStreamBindingRow) DataStreamBinding {
+func bindingFromUpdateRow(model sqlc.DataStreamBinding) DataStreamBinding {
 	return DataStreamBinding{
 		ID:                model.ID,
 		DataStreamID:      model.DataStreamID,
@@ -920,7 +921,7 @@ func bindingFromUpdateRow(model sqlc.UpdateDataStreamBindingRow) DataStreamBindi
 	}
 }
 
-func bindingFromDisableMissingTHCPNRow(model sqlc.DisableMissingTHCPNDataStreamBindingsRow) DataStreamBinding {
+func bindingFromDisableMissingTHCPNRow(model sqlc.DataStreamBinding) DataStreamBinding {
 	return DataStreamBinding{
 		ID:                model.ID,
 		DataStreamID:      model.DataStreamID,

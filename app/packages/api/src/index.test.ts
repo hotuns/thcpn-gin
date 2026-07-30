@@ -50,6 +50,25 @@ describe("API authentication and errors", () => {
     });
   });
 
+  it("shows backend validation details instead of hiding them", () => {
+    expect(
+      formatApiError(
+        new ApiError(
+          "time range cannot exceed 366 days",
+          400,
+          "req-range",
+          undefined,
+          "INVALID_ARGUMENT",
+        ),
+      ),
+    ).toEqual({
+      message: "time range cannot exceed 366 days",
+      code: "INVALID_ARGUMENT",
+      requestId: "req-range",
+      status: 400,
+    });
+  });
+
   it("uses the documented POST method when unbinding a device", async () => {
     const fetchMock = vi.fn().mockResolvedValue(response(204, undefined));
     vi.stubGlobal("fetch", fetchMock);

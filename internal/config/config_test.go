@@ -61,6 +61,9 @@ func TestDefaultConfigIsValid(t *testing.T) {
 	if cfg.Ezviz.OpenAPIDomain != "https://open.ys7.com" {
 		t.Fatalf("expected default ezviz open api domain, got %q", cfg.Ezviz.OpenAPIDomain)
 	}
+	if cfg.QueryLimits.MaxHistoryDays != 366 {
+		t.Fatalf("expected 366 query history days, got %d", cfg.QueryLimits.MaxHistoryDays)
+	}
 }
 
 func TestApplyEnvFallsBackToPlatformObjectStoreForTHCPNLogs(t *testing.T) {

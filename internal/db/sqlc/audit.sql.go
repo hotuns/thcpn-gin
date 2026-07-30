@@ -26,7 +26,7 @@ INSERT INTO audit_logs (
     request_id
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-RETURNING id, workspace_id, actor_type, actor_id, action, resource_type, resource_id, result, reason, ip, user_agent, request_id, created_at
+RETURNING id, workspace_id, actor_type, actor_id, action, resource_type, resource_id, result, reason, ip, user_agent, request_id, created_at, actor_admin_id
 `
 
 type CreateAuditLogParams struct {
@@ -72,12 +72,13 @@ func (q *Queries) CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) 
 		&i.UserAgent,
 		&i.RequestID,
 		&i.CreatedAt,
+		&i.ActorAdminID,
 	)
 	return i, err
 }
 
 const listAuditLogsByWorkspace = `-- name: ListAuditLogsByWorkspace :many
-SELECT id, workspace_id, actor_type, actor_id, action, resource_type, resource_id, result, reason, ip, user_agent, request_id, created_at
+SELECT id, workspace_id, actor_type, actor_id, action, resource_type, resource_id, result, reason, ip, user_agent, request_id, created_at, actor_admin_id
 FROM audit_logs
 WHERE workspace_id = $1
 ORDER BY created_at DESC, id DESC
@@ -112,6 +113,7 @@ func (q *Queries) ListAuditLogsByWorkspace(ctx context.Context, arg ListAuditLog
 			&i.UserAgent,
 			&i.RequestID,
 			&i.CreatedAt,
+			&i.ActorAdminID,
 		); err != nil {
 			return nil, err
 		}

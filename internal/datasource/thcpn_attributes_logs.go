@@ -40,6 +40,7 @@ type THCPNAttributeValue struct {
 type THCPNLatestAttributesResponse struct {
 	DeviceID         uuid.UUID                      `json:"device_id"`
 	ExternalDeviceID int64                          `json:"external_device_id"`
+	SourceDevice     THCPNExternalDeviceMetadata    `json:"source_device"`
 	Attributes       map[string]THCPNAttributeValue `json:"attributes"`
 	RefreshedAt      time.Time                      `json:"refreshed_at"`
 }
@@ -76,6 +77,10 @@ func (s *Service) LatestTHCPNDeviceAttributes(ctx context.Context, deviceID uuid
 		return THCPNLatestAttributesResponse{}, err
 	}
 	defer db.Close()
+	sourceDevice, err := readTHCPNExternalDevice(ctx, db, ref.ExternalDeviceID)
+	if err != nil {
+		return THCPNLatestAttributesResponse{}, err
+	}
 
 	tables, err := existingTHCPNTables(ctx, db, thcpnAttributeTablePrefix)
 	if err != nil {
@@ -103,6 +108,7 @@ func (s *Service) LatestTHCPNDeviceAttributes(ctx context.Context, deviceID uuid
 	return THCPNLatestAttributesResponse{
 		DeviceID:         deviceID,
 		ExternalDeviceID: ref.ExternalDeviceID,
+		SourceDevice:     sourceDevice.THCPNExternalDeviceMetadata,
 		Attributes:       attributes,
 		RefreshedAt:      time.Now().UTC(),
 	}, nil

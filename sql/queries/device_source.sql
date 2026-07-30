@@ -4,33 +4,27 @@ INSERT INTO device_source_refs (
     data_source_id,
     adapter_code,
     external_device_id,
-    external_sn,
-    external_uuid,
-    external_device_type,
     status,
     synced_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', now())
+VALUES ($1, $2, $3, $4, 'active', now())
 ON CONFLICT (data_source_id, adapter_code, external_device_id)
 DO UPDATE SET
     device_id = EXCLUDED.device_id,
-    external_sn = EXCLUDED.external_sn,
-    external_uuid = EXCLUDED.external_uuid,
-    external_device_type = EXCLUDED.external_device_type,
     status = 'active',
     synced_at = now(),
     updated_at = now()
-RETURNING id, device_id, data_source_id, adapter_code, external_device_id, external_sn, external_uuid, external_device_type, status, synced_at, created_at, updated_at;
+RETURNING id, device_id, data_source_id, adapter_code, external_device_id, status, synced_at, created_at, updated_at;
 
 -- name: GetDeviceSourceRefByExternal :one
-SELECT id, device_id, data_source_id, adapter_code, external_device_id, external_sn, external_uuid, external_device_type, status, synced_at, created_at, updated_at
+SELECT id, device_id, data_source_id, adapter_code, external_device_id, status, synced_at, created_at, updated_at
 FROM device_source_refs
 WHERE data_source_id = $1
   AND adapter_code = $2
   AND external_device_id = $3;
 
 -- name: GetDeviceSourceRefByDevice :one
-SELECT id, device_id, data_source_id, adapter_code, external_device_id, external_sn, external_uuid, external_device_type, status, synced_at, created_at, updated_at
+SELECT id, device_id, data_source_id, adapter_code, external_device_id, status, synced_at, created_at, updated_at
 FROM device_source_refs
 WHERE device_id = $1
   AND status = 'active'
@@ -38,7 +32,7 @@ ORDER BY synced_at DESC, id DESC
 LIMIT 1;
 
 -- name: GetActiveTHCPNDeviceSourceRefByDevice :one
-SELECT id, device_id, data_source_id, adapter_code, external_device_id, external_sn, external_uuid, external_device_type, status, synced_at, created_at, updated_at
+SELECT id, device_id, data_source_id, adapter_code, external_device_id, status, synced_at, created_at, updated_at
 FROM device_source_refs
 WHERE device_id = $1
   AND adapter_code = 'thcpn_legacy_mysql'

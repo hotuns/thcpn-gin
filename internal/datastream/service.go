@@ -18,7 +18,15 @@ import (
 
 type Service struct {
 	queries *sqlc.Queries
+	db      *pgxpool.Pool
 }
+
+const listComputedDataStreamIDsByDeviceQuery = `
+	SELECT cds.data_stream_id
+	FROM computed_data_streams cds
+	JOIN data_streams ds ON ds.id = cds.data_stream_id
+	WHERE ds.device_id = $1
+`
 
 type DataStream struct {
 	ID        uuid.UUID `json:"id"`
@@ -31,6 +39,7 @@ type DataStream struct {
 	CreatedBy uuid.UUID `json:"created_by"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	Computed  bool      `json:"computed"`
 }
 
 type CreateInput struct {
@@ -52,7 +61,7 @@ type UpdateInput struct {
 }
 
 func NewService(db *pgxpool.Pool) *Service {
-	return &Service{queries: sqlc.New(db)}
+	return &Service{queries: sqlc.New(db), db: db}
 }
 
 func (s *Service) WorkspaceForDevice(ctx context.Context, deviceID uuid.UUID) (uuid.UUID, error) {
@@ -88,12 +97,12 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (DataStream, er
 	}
 
 	created, err := s.queries.CreateDataStream(ctx, sqlc.CreateDataStreamParams{
-		DeviceID:    input.DeviceID,
-		Code:        code,
-		Name:        name,
-		Type:        streamType,
-		Unit:        nullableTrimmedString(input.Unit),
-		CreatedBy:   input.ActorUserID,
+		DeviceID:  input.DeviceID,
+		Code:      code,
+		Name:      name,
+		Type:      streamType,
+		Unit:      nullableTrimmedString(input.Unit),
+		CreatedBy: input.ActorUserID,
 	})
 	if err != nil {
 		return DataStream{}, mapWriteError(err, "create data stream")
@@ -112,7 +121,11 @@ func (s *Service) Get(ctx context.Context, dataStreamID uuid.UUID) (DataStream, 
 		return DataStream{}, mapNotFoundOrInternal(err, "data stream not found")
 	}
 
-	return fromSQL(row), nil
+	result := fromSQL(row)
+	if err := s.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM computed_data_streams WHERE data_stream_id=$1)`, dataStreamID).Scan(&result.Computed); err != nil {
+		return DataStream{}, apperr.Wrap(apperr.KindInternal, "read data stream kind", err)
+	}
+	return result, nil
 }
 
 func (s *Service) ListByDevice(ctx context.Context, deviceID uuid.UUID) ([]DataStream, error) {
@@ -125,9 +138,25 @@ func (s *Service) ListByDevice(ctx context.Context, deviceID uuid.UUID) ([]DataS
 		return nil, apperr.Wrap(apperr.KindInternal, "list data streams", err)
 	}
 
+	computed := map[uuid.UUID]struct{}{}
+	computedRows, err := s.db.Query(ctx, listComputedDataStreamIDsByDeviceQuery, deviceID)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindInternal, "list computed data stream ids", err)
+	}
+	for computedRows.Next() {
+		var id uuid.UUID
+		if err := computedRows.Scan(&id); err != nil {
+			computedRows.Close()
+			return nil, apperr.Wrap(apperr.KindInternal, "scan computed data stream id", err)
+		}
+		computed[id] = struct{}{}
+	}
+	computedRows.Close()
 	items := make([]DataStream, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, fromSQL(row))
+		item := fromSQL(row)
+		_, item.Computed = computed[item.ID]
+		items = append(items, item)
 	}
 	return items, nil
 }

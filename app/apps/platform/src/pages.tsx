@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
-import { TrendingUp } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Database, GitCompareArrows } from "lucide-react";
 import { api, formatApiError, type TelemetrySeries } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, PageHeader, Panel, StateView } from "@thcpn/ui";
@@ -18,6 +18,8 @@ import {
 } from "./device-query-actions";
 import { TelemetryCharts } from "./telemetry-charts";
 import { TelemetryTable } from "./telemetry-table";
+import { dataComparisonPath, datasetCreatePath } from "./data-workflow";
+import { ComputedStreamsPanel } from "./device-computed-data";
 
 const dateTimeLocal = (date: Date) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
@@ -51,6 +53,7 @@ export function DeviceDataPage({
   embedded = false,
 }: { deviceId?: string; embedded?: boolean } = {}) {
   const { currentId } = useWorkspace();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [deviceId, setDeviceId] = useState(fixedDeviceId ?? "");
   const [startTime, setStartTime] = useState(() =>
@@ -384,8 +387,17 @@ export function DeviceDataPage({
                 onSearch={search}
                 dirty={queryDirty}
                 searching={querying}
+                loading={streamsQuery.isLoading}
+                error={streamsQuery.error}
               />
             </div>
+          )}
+          {selectedDevice && currentId && (
+            <ComputedStreamsPanel
+              workspaceId={currentId}
+              deviceId={selectedDevice.id}
+              streams={streamsQuery.data?.items ?? []}
+            />
           )}
           <div id="data-section-trend" className="data-page-anchor section-gap">
           <Panel>
@@ -396,7 +408,46 @@ export function DeviceDataPage({
                   各指标独立量程，共享所选时间范围
                 </div>
               </div>
-              <TrendingUp size={16} className="muted" />
+              <div className="header-actions data-workflow-actions">
+                <Button
+                  variant="secondary"
+                  disabled={!deviceId || !appliedStreamIds.length}
+                  onClick={() =>
+                    navigate(
+                      dataComparisonPath(
+                        appliedStreamIds.map((streamId) => ({
+                          deviceId,
+                          streamId,
+                        })),
+                        appliedStartTime,
+                        appliedEndTime,
+                      ),
+                    )
+                  }
+                >
+                  <GitCompareArrows size={14} />
+                  {appliedStreamIds.length > 8
+                    ? "加入对比（前 8 项）"
+                    : "加入对比"}
+                </Button>
+                <Button
+                  variant="secondary"
+                  disabled={!appliedStreamIds.length}
+                  onClick={() =>
+                    navigate(
+                      datasetCreatePath({
+                        sourceIds: appliedStreamIds,
+                        startTime: appliedStartTime,
+                        endTime: appliedEndTime,
+                        name: `${selectedDevice?.name ?? "设备"}遥测数据`,
+                      }),
+                    )
+                  }
+                >
+                  <Database size={14} />
+                  保存为数据集
+                </Button>
+              </div>
             </div>
             {telemetryQuery.isLoading ? (
               <TelemetryLoading />

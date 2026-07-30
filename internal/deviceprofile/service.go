@@ -29,10 +29,18 @@ const (
 )
 
 type Service struct {
-	db     *pgxpool.Pool
-	store  objectstore.Store
-	signer *objectstore.Signer
+	db             *pgxpool.Pool
+	store          objectstore.Store
+	signer         *objectstore.Signer
+	locationLoader LocationLoader
 }
+
+type SourceLocation struct {
+	Latitude  *float64
+	Longitude *float64
+}
+
+type LocationLoader func(context.Context, uuid.UUID) (SourceLocation, bool, error)
 
 type Profile struct {
 	DeviceID          uuid.UUID      `json:"device_id"`
@@ -83,8 +91,6 @@ type UpdateProfileInput struct {
 	DeviceID     uuid.UUID
 	Description  *string
 	LocationText *string
-	Latitude     *float64
-	Longitude    *float64
 	ActorUserID  uuid.UUID
 }
 
@@ -101,8 +107,12 @@ type UpdateImageInput struct {
 	IsCover  *bool
 }
 
-func NewService(db *pgxpool.Pool, store objectstore.Store, signer *objectstore.Signer) *Service {
-	return &Service{db: db, store: store, signer: signer}
+func NewService(db *pgxpool.Pool, store objectstore.Store, signer *objectstore.Signer, loaders ...LocationLoader) *Service {
+	service := &Service{db: db, store: store, signer: signer}
+	if len(loaders) > 0 {
+		service.locationLoader = loaders[0]
+	}
+	return service
 }
 
 func (s *Service) Get(ctx context.Context, deviceID uuid.UUID) (Profile, error) {
@@ -124,15 +134,6 @@ func (s *Service) Update(ctx context.Context, input UpdateProfileInput) (Profile
 	if input.DeviceID == uuid.Nil || input.ActorUserID == uuid.Nil {
 		return Profile{}, apperr.New(apperr.KindInvalidArgument, "device id and actor user id are required")
 	}
-	if (input.Latitude == nil) != (input.Longitude == nil) {
-		return Profile{}, apperr.New(apperr.KindInvalidArgument, "latitude and longitude must be provided together")
-	}
-	if input.Latitude != nil && (*input.Latitude < -90 || *input.Latitude > 90) {
-		return Profile{}, apperr.New(apperr.KindInvalidArgument, "latitude must be between -90 and 90")
-	}
-	if input.Longitude != nil && (*input.Longitude < -180 || *input.Longitude > 180) {
-		return Profile{}, apperr.New(apperr.KindInvalidArgument, "longitude must be between -180 and 180")
-	}
 	q := sqlc.New(s.db)
 	if _, err := q.GetDevice(ctx, input.DeviceID); err != nil {
 		return Profile{}, mapNotFound(err, "device not found")
@@ -141,7 +142,7 @@ func (s *Service) Update(ctx context.Context, input UpdateProfileInput) (Profile
 	locationText := cleanOptional(input.LocationText)
 	row, err := q.UpsertDeviceProfile(ctx, sqlc.UpsertDeviceProfileParams{
 		DeviceID: input.DeviceID, Description: description, LocationText: locationText,
-		Latitude: pgFloat8(input.Latitude), Longitude: pgFloat8(input.Longitude), UpdatedBy: &input.ActorUserID,
+		UpdatedBy: &input.ActorUserID,
 	})
 	if err != nil {
 		return Profile{}, apperr.Wrap(apperr.KindInternal, "update device profile", err)
@@ -327,24 +328,33 @@ func (s *Service) buildProfile(ctx context.Context, q *sqlc.Queries, deviceID uu
 	if model != nil {
 		result.Description = model.Description
 		result.LocationText = model.LocationText
-		result.Latitude = float64Ptr(model.Latitude)
-		result.Longitude = float64Ptr(model.Longitude)
 		result.UpdatedBy = model.UpdatedBy
 		result.CreatedAt = timePtr(model.CreatedAt)
 		result.UpdatedAt = timePtr(model.UpdatedAt)
 	}
-	customLocation := result.LocationText != nil || result.Latitude != nil || result.Longitude != nil
-	if customLocation {
-		result.LocationSource = "device"
-		result.EffectiveLocation = &Location{LocationText: result.LocationText, Latitude: result.Latitude, Longitude: result.Longitude}
-	} else {
+	if s.locationLoader != nil {
+		location, found, err := s.locationLoader(ctx, deviceID)
+		if err != nil {
+			return Profile{}, err
+		}
+		if found && location.Latitude != nil && location.Longitude != nil {
+			result.Latitude, result.Longitude = location.Latitude, location.Longitude
+			result.LocationSource = "source"
+			result.EffectiveLocation = &Location{LocationText: result.LocationText, Latitude: location.Latitude, Longitude: location.Longitude}
+		}
+	}
+	if result.EffectiveLocation == nil {
 		site, err := q.GetDeviceProfileSite(ctx, deviceID)
 		if err == nil {
 			result.Site = &SiteSummary{ID: site.ID, Name: site.Name}
 			lat, lng := float64Ptr(site.Latitude), float64Ptr(site.Longitude)
 			if site.LocationText != nil || lat != nil || lng != nil {
 				result.LocationSource = "site"
-				result.EffectiveLocation = &Location{LocationText: site.LocationText, Latitude: lat, Longitude: lng}
+				locationText := result.LocationText
+				if locationText == nil {
+					locationText = site.LocationText
+				}
+				result.EffectiveLocation = &Location{LocationText: locationText, Latitude: lat, Longitude: lng}
 			}
 		} else if !errors.Is(err, pgx.ErrNoRows) {
 			return Profile{}, apperr.Wrap(apperr.KindInternal, "get device profile site", err)
@@ -384,12 +394,6 @@ func cleanOptional(value *string) *string {
 		return nil
 	}
 	return &v
-}
-func pgFloat8(value *float64) pgtype.Float8 {
-	if value == nil {
-		return pgtype.Float8{}
-	}
-	return pgtype.Float8{Float64: *value, Valid: true}
 }
 func float64Ptr(value pgtype.Float8) *float64 {
 	if !value.Valid {

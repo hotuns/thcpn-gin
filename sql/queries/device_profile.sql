@@ -1,19 +1,17 @@
 -- name: GetDeviceProfile :one
-SELECT device_id, description, location_text, latitude, longitude, updated_by, created_at, updated_at
+SELECT device_id, description, location_text, updated_by, created_at, updated_at
 FROM device_profiles
 WHERE device_id = $1;
 
 -- name: UpsertDeviceProfile :one
-INSERT INTO device_profiles (device_id, description, location_text, latitude, longitude, updated_by)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO device_profiles (device_id, description, location_text, updated_by)
+VALUES ($1, $2, $3, $4)
 ON CONFLICT (device_id) DO UPDATE
 SET description = EXCLUDED.description,
     location_text = EXCLUDED.location_text,
-    latitude = EXCLUDED.latitude,
-    longitude = EXCLUDED.longitude,
     updated_by = EXCLUDED.updated_by,
     updated_at = now()
-RETURNING device_id, description, location_text, latitude, longitude, updated_by, created_at, updated_at;
+RETURNING device_id, description, location_text, updated_by, created_at, updated_at;
 
 -- name: GetDeviceProfileSite :one
 SELECT s.id, s.name, s.location_text, s.latitude, s.longitude

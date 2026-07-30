@@ -1,10 +1,10 @@
 -- name: CreateUserCredential :one
 INSERT INTO user_credentials (user_id, password_hash)
 VALUES ($1, $2)
-RETURNING user_id, password_hash, password_updated_at, failed_attempts, locked_until, created_at, updated_at;
+RETURNING user_id, password_hash, password_updated_at, failed_attempts, locked_until, created_at, updated_at, must_change_password;
 
 -- name: GetUserCredential :one
-SELECT user_id, password_hash, password_updated_at, failed_attempts, locked_until, created_at, updated_at
+SELECT user_id, password_hash, password_updated_at, failed_attempts, locked_until, created_at, updated_at, must_change_password
 FROM user_credentials
 WHERE user_id = $1;
 
@@ -14,7 +14,7 @@ SET failed_attempts = $2,
     locked_until = $3,
     updated_at = now()
 WHERE user_id = $1
-RETURNING user_id, password_hash, password_updated_at, failed_attempts, locked_until, created_at, updated_at;
+RETURNING user_id, password_hash, password_updated_at, failed_attempts, locked_until, created_at, updated_at, must_change_password;
 
 -- name: ResetUserCredentialFailure :one
 UPDATE user_credentials
@@ -22,16 +22,16 @@ SET failed_attempts = 0,
     locked_until = NULL,
     updated_at = now()
 WHERE user_id = $1
-RETURNING user_id, password_hash, password_updated_at, failed_attempts, locked_until, created_at, updated_at;
+RETURNING user_id, password_hash, password_updated_at, failed_attempts, locked_until, created_at, updated_at, must_change_password;
 
 -- name: FindActiveUserByIdentifier :one
-SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at
+SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version
 FROM users
 WHERE status = 'active'
   AND (phone = sqlc.arg(identifier) OR email = sqlc.arg(identifier));
 
 -- name: FindActiveUserByPhoneForAuth :one
-SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at
+SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version
 FROM users
 WHERE status = 'active'
   AND phone = sqlc.arg(phone);
@@ -41,7 +41,7 @@ UPDATE users
 SET last_login_at = now(),
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at;
+RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version;
 
 -- name: UpdateUserPhoneVerifiedAndLogin :one
 UPDATE users
@@ -49,7 +49,7 @@ SET phone_verified_at = COALESCE(phone_verified_at, now()),
     last_login_at = now(),
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at;
+RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version;
 
 -- name: UpdateUserEmailVerified :one
 UPDATE users
@@ -58,7 +58,7 @@ SET email_verified_at = COALESCE(email_verified_at, now()),
 WHERE id = $1
   AND email = $2
   AND status = 'active'
-RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at;
+RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version;
 
 -- name: CreateRefreshSession :one
 INSERT INTO auth_refresh_sessions (user_id, refresh_token_hash, user_agent, client_ip, expires_at)

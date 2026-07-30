@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"thcpn-gin/internal/accessgrant"
+	"thcpn-gin/internal/computedstream"
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/datasource"
 	"thcpn-gin/internal/db"
@@ -17,6 +18,7 @@ import (
 	"thcpn-gin/internal/logger"
 	"thcpn-gin/internal/objectstore"
 	"thcpn-gin/internal/task"
+	"thcpn-gin/internal/telemetry"
 	"thcpn-gin/internal/tracing"
 )
 
@@ -72,13 +74,17 @@ func run() int {
 		}
 	}()
 
+	dataSourceService := datasource.NewService(pg)
+	computedStreamService := computedstream.NewService(pg)
+	telemetryService := telemetry.NewService(pg, dataSourceService, datasource.NewRuntime(nil), cfg.QueryLimits, computedStreamService)
 	processor := export.NewProcessor(
 		pg,
-		datasource.NewService(pg),
+		dataSourceService,
 		datasource.NewRuntime(nil),
 		objectstore.NewStore(cfg.ObjectStore),
 		cfg.Export,
 		log,
+		telemetryService,
 	)
 	accessGrantService := accessgrant.NewService(pg)
 

@@ -37,7 +37,7 @@ export function TelemetryCharts({
     item.points.some((point) => Number.isFinite(point.value)),
   );
   const [mode, setMode] = useState<"compare" | "separate">(
-    available.length > 1 ? "compare" : "separate",
+    "separate",
   );
   const [hidden, setHidden] = useState<string[]>([]);
   const visible = compact

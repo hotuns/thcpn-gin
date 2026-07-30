@@ -14,7 +14,7 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (name, phone, email)
 VALUES ($1, $2, $3)
-RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at
+RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version
 `
 
 type CreateUserParams struct {
@@ -37,12 +37,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.PhoneVerifiedAt,
 		&i.EmailVerifiedAt,
 		&i.LastLoginAt,
+		&i.AuthVersion,
 	)
 	return i, err
 }
 
 const findActiveUserByEmail = `-- name: FindActiveUserByEmail :one
-SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at
+SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version
 FROM users
 WHERE email = $1 AND status = 'active'
 `
@@ -61,12 +62,13 @@ func (q *Queries) FindActiveUserByEmail(ctx context.Context, email *string) (Use
 		&i.PhoneVerifiedAt,
 		&i.EmailVerifiedAt,
 		&i.LastLoginAt,
+		&i.AuthVersion,
 	)
 	return i, err
 }
 
 const findActiveUserByPhone = `-- name: FindActiveUserByPhone :one
-SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at
+SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version
 FROM users
 WHERE phone = $1 AND status = 'active'
 `
@@ -85,12 +87,13 @@ func (q *Queries) FindActiveUserByPhone(ctx context.Context, phone *string) (Use
 		&i.PhoneVerifiedAt,
 		&i.EmailVerifiedAt,
 		&i.LastLoginAt,
+		&i.AuthVersion,
 	)
 	return i, err
 }
 
 const getActiveUser = `-- name: GetActiveUser :one
-SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at
+SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version
 FROM users
 WHERE id = $1 AND status = 'active'
 `
@@ -109,12 +112,13 @@ func (q *Queries) GetActiveUser(ctx context.Context, id uuid.UUID) (User, error)
 		&i.PhoneVerifiedAt,
 		&i.EmailVerifiedAt,
 		&i.LastLoginAt,
+		&i.AuthVersion,
 	)
 	return i, err
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at
+SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version
 FROM users
 WHERE id = $1
 `
@@ -133,6 +137,7 @@ func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.PhoneVerifiedAt,
 		&i.EmailVerifiedAt,
 		&i.LastLoginAt,
+		&i.AuthVersion,
 	)
 	return i, err
 }

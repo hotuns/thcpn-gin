@@ -199,14 +199,13 @@ func TestValidateTHCPNDeviceSyncInput(t *testing.T) {
 	}
 }
 
-func TestValidateTHCPNGatewaySyncInputRequiresTargetWhenAssigningNodes(t *testing.T) {
+func TestValidateTHCPNGatewaySyncInputDoesNotRequireAssignment(t *testing.T) {
 	_, err := validateTHCPNGatewaySyncInput(SyncTHCPNGatewayInput{
 		ExternalGatewayID: 9001,
-		AssignNodes:       true,
 		ActorUserID:       uuid.New(),
 	})
-	if apperr.KindOf(err) != apperr.KindInvalidArgument {
-		t.Fatalf("expected invalid argument, got %v", err)
+	if err != nil {
+		t.Fatalf("expected system asset sync input to be valid, got %v", err)
 	}
 }
 
@@ -246,8 +245,6 @@ func TestSyncTHCPNGatewayValidatesInputBeforeDatabase(t *testing.T) {
 
 	_, err := service.SyncTHCPNGateway(context.Background(), SyncTHCPNGatewayInput{
 		ExternalGatewayID: 9001,
-		AssignNodes:       true,
-		ActorUserID:       uuid.New(),
 	})
 	if apperr.KindOf(err) != apperr.KindInvalidArgument {
 		t.Fatalf("expected invalid argument before database access, got %v", err)
@@ -267,12 +264,44 @@ func TestSyncTHCPNGatewayRequiresDatabaseForValidInput(t *testing.T) {
 }
 
 func TestPlatformTHCPNDeviceType(t *testing.T) {
-	if got := platformTHCPNDeviceType("10"); got != "gateway" {
-		t.Fatalf("expected external type 10 to map to gateway, got %q", got)
+	tests := []struct {
+		value string
+		want  string
+	}{
+		{value: "", want: "standalone"},
+		{value: "0", want: "standalone"},
+		{value: "9", want: "standalone"},
+		{value: "10", want: "gateway"},
+		{value: "11", want: "gateway_node"},
+		{value: "19", want: "gateway_node"},
+		{value: " gateway ", want: "standalone"},
 	}
-	for _, value := range []string{"", "0", "1", "19", " gateway "} {
-		if got := platformTHCPNDeviceType(value); got != "standalone" {
-			t.Fatalf("expected external type %q to map to standalone, got %q", value, got)
+	for _, tt := range tests {
+		if got := platformTHCPNDeviceType(tt.value); got != tt.want {
+			t.Fatalf("expected external type %q to map to %q, got %q", tt.value, tt.want, got)
+		}
+	}
+}
+
+func TestSyncedTHCPNDeviceTypeUsesGatewayTopology(t *testing.T) {
+	topology := []thcpnGatewayTopology{
+		{GatewayID: 10, NodeIDs: []int64{11, 12}},
+	}
+	gateways, nodes := indexTHCPNTopology(topology)
+	tests := []struct {
+		id           int64
+		externalType string
+		want         string
+	}{
+		{id: 10, want: "gateway"},
+		{id: 11, externalType: "10", want: "gateway_node"},
+		{id: 20, externalType: "10", want: "gateway"},
+		{id: 21, externalType: "1", want: "standalone"},
+	}
+	for _, tt := range tests {
+		got := syncedTHCPNDeviceType(thcpnExternalDeviceIndex{ID: tt.id, DeviceType: tt.externalType}, gateways, nodes)
+		if got != tt.want {
+			t.Fatalf("device %d: expected %q, got %q", tt.id, tt.want, got)
 		}
 	}
 }

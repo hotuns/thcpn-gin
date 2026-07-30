@@ -13,6 +13,7 @@
     "@tanstack/react-table": "^8.21.3",
     "@thcpn/api": "*",
     "@thcpn/auth": "*",
+    "@thcpn/device-map": "*",
     "@thcpn/i18n": "*",
     "@thcpn/ui": "*",
     "@thcpn/workspace": "*",

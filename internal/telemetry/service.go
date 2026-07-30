@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/computedstream"
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/datasource"
 	"thcpn-gin/internal/db/sqlc"
@@ -29,6 +31,7 @@ type Service struct {
 	dataSources *datasource.Service
 	runtime     TelemetryRuntime
 	limits      config.QueryLimitsConfig
+	computed    *computedstream.Service
 }
 
 type QueryInput struct {
@@ -75,18 +78,23 @@ type Warning struct {
 	Count   int    `json:"count,omitempty"`
 }
 
-func NewService(db *pgxpool.Pool, dataSources *datasource.Service, runtime TelemetryRuntime, limits config.QueryLimitsConfig) *Service {
+func NewService(db *pgxpool.Pool, dataSources *datasource.Service, runtime TelemetryRuntime, limits config.QueryLimitsConfig, computedServices ...*computedstream.Service) *Service {
 	if dataSources == nil {
 		dataSources = datasource.NewService(db)
 	}
 	if runtime == nil {
 		runtime = datasource.NewRuntime(nil)
 	}
+	var computedService *computedstream.Service
+	if len(computedServices) > 0 {
+		computedService = computedServices[0]
+	}
 	return &Service{
 		queries:     sqlc.New(db),
 		dataSources: dataSources,
 		runtime:     runtime,
 		limits:      normalizeLimits(limits),
+		computed:    computedService,
 	}
 }
 
@@ -110,6 +118,24 @@ func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, err
 		return s.queryDataStream(ctx, *input.DataStreamID, input.DeviceID, input.StartTime, input.EndTime, limit, input.Adaptive, targetPoints)
 	}
 	return s.queryDevice(ctx, *input.DeviceID, input.DataStreamIDs, input.StartTime, input.EndTime, limit, input.Adaptive, targetPoints)
+}
+
+// QueryInternal is used by trusted background jobs that already enforce their
+// own row and time limits.
+func (s *Service) QueryInternal(ctx context.Context, input QueryInput) (QueryResult, error) {
+	if input.DeviceID == nil && input.DataStreamID == nil {
+		return QueryResult{}, apperr.New(apperr.KindInvalidArgument, "device_id or data_stream_id is required")
+	}
+	if input.Limit <= 0 {
+		return QueryResult{}, apperr.New(apperr.KindInvalidArgument, "limit must be greater than 0")
+	}
+	if input.StartTime.IsZero() || !input.EndTime.After(input.StartTime) {
+		return QueryResult{}, apperr.New(apperr.KindInvalidArgument, "valid start_time and end_time are required")
+	}
+	if input.DataStreamID != nil {
+		return s.queryDataStream(ctx, *input.DataStreamID, input.DeviceID, input.StartTime, input.EndTime, input.Limit, false, 0)
+	}
+	return s.queryDevice(ctx, *input.DeviceID, input.DataStreamIDs, input.StartTime, input.EndTime, input.Limit, false, 0)
 }
 
 func (s *Service) queryDevice(ctx context.Context, deviceID uuid.UUID, requestedIDs []uuid.UUID, start time.Time, end time.Time, limit int, adaptive bool, targetPoints int) (QueryResult, error) {
@@ -146,7 +172,7 @@ func (s *Service) queryDevice(ctx context.Context, deviceID uuid.UUID, requested
 		return QueryResult{}, apperr.New(apperr.KindInvalidArgument, "data_stream_ids contains a stream that is not active telemetry on this device")
 	}
 	result := QueryResult{DeviceID: device.ID, StartTime: start, EndTime: end, Limit: limit, Series: make([]Series, 0, len(selected))}
-	series, err := s.querySeriesBatch(ctx, selected, start, end, limit, adaptive, targetPoints)
+	series, err := s.querySelectedSeries(ctx, selected, streams, start, end, limit, adaptive, targetPoints)
 	if err != nil {
 		return QueryResult{}, err
 	}
@@ -171,6 +197,17 @@ func (s *Service) queryDataStream(ctx context.Context, dataStreamID uuid.UUID, d
 	if stream.Status != "active" {
 		return QueryResult{}, apperr.New(apperr.KindInvalidArgument, "data stream is not active")
 	}
+	if s.computed != nil {
+		if definition, found, definitionErr := s.computed.Definition(ctx, stream.ID); definitionErr != nil {
+			return QueryResult{}, definitionErr
+		} else if found {
+			series, computedErr := s.queryComputedSeries(ctx, definition, start, end, limit, adaptive, targetPoints)
+			if computedErr != nil {
+				return QueryResult{}, computedErr
+			}
+			return QueryResult{DeviceID: stream.DeviceID, StartTime: start, EndTime: end, Limit: limit, Series: []Series{series}}, nil
+		}
+	}
 
 	series, err := s.querySeries(ctx, stream, start, end, limit, adaptive, targetPoints)
 	if err != nil {
@@ -183,6 +220,153 @@ func (s *Service) queryDataStream(ctx context.Context, dataStreamID uuid.UUID, d
 		Limit:     limit,
 		Series:    []Series{series},
 	}, nil
+}
+
+func (s *Service) querySelectedSeries(ctx context.Context, selected, all []sqlc.DataStream, start time.Time, end time.Time, limit int, adaptive bool, targetPoints int) ([]Series, error) {
+	if s.computed == nil {
+		return s.querySeriesBatch(ctx, selected, start, end, limit, adaptive, targetPoints)
+	}
+	definitions, err := s.computed.DefinitionMap(ctx, selectedDeviceID(selected, all))
+	if err != nil {
+		return nil, err
+	}
+	rawSelected := make([]sqlc.DataStream, 0, len(selected))
+	for _, stream := range selected {
+		if _, computed := definitions[stream.ID]; !computed {
+			rawSelected = append(rawSelected, stream)
+		}
+	}
+	rawSeries, err := s.querySeriesBatch(ctx, rawSelected, start, end, limit, adaptive, targetPoints)
+	if err != nil {
+		return nil, err
+	}
+	rawByID := make(map[uuid.UUID]Series, len(rawSeries))
+	for _, series := range rawSeries {
+		rawByID[series.DataStreamID] = series
+	}
+	result := make([]Series, 0, len(selected))
+	for _, stream := range selected {
+		definition, computed := definitions[stream.ID]
+		if !computed {
+			result = append(result, rawByID[stream.ID])
+			continue
+		}
+		series, err := s.queryComputedSeriesWithStreams(ctx, definition, all, start, end, limit, adaptive, targetPoints)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, series)
+	}
+	return result, nil
+}
+
+func selectedDeviceID(selected, all []sqlc.DataStream) uuid.UUID {
+	if len(selected) > 0 {
+		return selected[0].DeviceID
+	}
+	if len(all) > 0 {
+		return all[0].DeviceID
+	}
+	return uuid.Nil
+}
+
+func (s *Service) queryComputedSeries(ctx context.Context, definition computedstream.Definition, start time.Time, end time.Time, limit int, adaptive bool, targetPoints int) (Series, error) {
+	streams, err := s.queries.ListDataStreamsByDevice(ctx, definition.DeviceID)
+	if err != nil {
+		return Series{}, apperr.Wrap(apperr.KindInternal, "list computed stream dependencies", err)
+	}
+	return s.queryComputedSeriesWithStreams(ctx, definition, streams, start, end, limit, adaptive, targetPoints)
+}
+
+func (s *Service) queryComputedSeriesWithStreams(ctx context.Context, definition computedstream.Definition, streams []sqlc.DataStream, start time.Time, end time.Time, limit int, adaptive bool, targetPoints int) (Series, error) {
+	byCode := make(map[string]sqlc.DataStream, len(streams))
+	for _, stream := range streams {
+		byCode[stream.Code] = stream
+	}
+	dependencies := make([]sqlc.DataStream, 0, len(definition.ReferencedStreamCodes))
+	for _, code := range definition.ReferencedStreamCodes {
+		stream, ok := byCode[code]
+		if !ok {
+			return Series{}, apperr.New(apperr.KindInvalidArgument, "computed stream dependency is missing: "+code)
+		}
+		dependencies = append(dependencies, stream)
+	}
+	dependencySeries, err := s.querySeriesBatch(ctx, dependencies, start, end, limit, false, 0)
+	if err != nil {
+		return Series{}, err
+	}
+	metadata, err := s.computed.NumericMetadata(ctx, definition.DeviceID)
+	if err != nil {
+		return Series{}, err
+	}
+	expression, err := s.computed.CompileDefinition(definition)
+	if err != nil {
+		return Series{}, apperr.New(apperr.KindInvalidArgument, "computed stream formula is invalid")
+	}
+	pointsByCode := make(map[string]map[int64]Point, len(dependencySeries))
+	for _, series := range dependencySeries {
+		values := make(map[int64]Point, len(series.Points))
+		for _, point := range series.Points {
+			values[point.Timestamp.UnixNano()] = point
+		}
+		pointsByCode[series.Code] = values
+	}
+	primary := dependencySeries[0]
+	points := make([]Point, 0, len(primary.Points))
+	missing, invalid := 0, 0
+	for _, primaryPoint := range primary.Points {
+		values := make(map[string]float64, len(dependencySeries))
+		complete := true
+		for _, series := range dependencySeries {
+			point, ok := pointsByCode[series.Code][primaryPoint.Timestamp.UnixNano()]
+			if !ok {
+				complete = false
+				break
+			}
+			values[series.Code] = point.Value
+		}
+		if !complete {
+			missing++
+			continue
+		}
+		value, evaluateErr := expression.Evaluate(values, metadata)
+		if evaluateErr != nil {
+			invalid++
+			continue
+		}
+		points = append(points, Point{Timestamp: primaryPoint.Timestamp, Value: value, Quality: "calculated"})
+	}
+	sourceCount := len(points)
+	if adaptive && targetPoints > 1 && len(points) > targetPoints {
+		points = evenlySamplePoints(points, targetPoints)
+	}
+	if len(points) > limit {
+		points = points[len(points)-limit:]
+	}
+	warnings := make([]Warning, 0, 2)
+	if missing > 0 {
+		warnings = append(warnings, Warning{Code: "computed_input_missing", Message: "computed points skipped because an input was missing", Count: missing})
+	}
+	if invalid > 0 {
+		warnings = append(warnings, Warning{Code: "computed_evaluation_failed", Message: "computed points skipped because evaluation failed", Count: invalid})
+	}
+	return Series{
+		DataStreamID: definition.DataStreamID, Code: definition.Code, Name: definition.Name, Unit: definition.Unit,
+		Points: points, Warnings: warnings, SourceCount: sourceCount, ReturnedCount: len(points),
+		Sampled: len(points) < sourceCount, Complete: missing == 0 && invalid == 0,
+	}, nil
+}
+
+func evenlySamplePoints(points []Point, target int) []Point {
+	if target >= len(points) {
+		return points
+	}
+	result := make([]Point, 0, target)
+	for index := 0; index < target; index++ {
+		sourceIndex := index * (len(points) - 1) / (target - 1)
+		result = append(result, points[sourceIndex])
+	}
+	return result
 }
 
 func (s *Service) querySeries(ctx context.Context, stream sqlc.DataStream, start time.Time, end time.Time, limit int, adaptive bool, targetPoints int) (Series, error) {
@@ -313,7 +497,7 @@ func warningsFromDatasource(warnings []datasource.QueryWarning) []Warning {
 
 func normalizeLimits(limits config.QueryLimitsConfig) config.QueryLimitsConfig {
 	if limits.MaxHistoryDays <= 0 {
-		limits.MaxHistoryDays = 31
+		limits.MaxHistoryDays = 366
 	}
 	if limits.MaxPoints <= 0 {
 		limits.MaxPoints = 5000
@@ -365,7 +549,10 @@ func validateTimeRange(start time.Time, end time.Time, limits config.QueryLimits
 	}
 	maxRange := time.Duration(limits.MaxHistoryDays) * 24 * time.Hour
 	if end.Sub(start) > maxRange {
-		return apperr.New(apperr.KindInvalidArgument, "time range exceeds max_history_days")
+		return apperr.New(
+			apperr.KindInvalidArgument,
+			fmt.Sprintf("time range cannot exceed %d days", limits.MaxHistoryDays),
+		)
 	}
 	return nil
 }

@@ -1,14 +1,20 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PhotoSlider } from "react-photo-view";
 import {
   ArrowDown,
   ArrowUp,
   ExternalLink,
+  FileText,
+  FolderKanban,
   ImagePlus,
+  Leaf,
   MapPin,
+  MapPinned,
   Pencil,
   Star,
+  Tags,
+  Target,
   Trash2,
   X,
 } from "lucide-react";
@@ -16,12 +22,15 @@ import {
   api,
   formatApiError,
   type Device,
+  type DeviceEnvironment,
+  type DeviceTaxonomyTerm,
   type DeviceProfileImage,
   type JsonRecord,
 } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, Panel, StateView } from "@thcpn/ui";
 import { renderPhotoToolbar } from "./device-media";
+import { DeviceMetadataPanel } from "./device-computed-data";
 
 const value = (input: unknown, fallback = "—") =>
   input === undefined || input === null || input === ""
@@ -31,12 +40,17 @@ const value = (input: unknown, fallback = "—") =>
 export function DeviceProfileTab({
   workspaceId,
   device,
+  projects,
+  sites,
 }: {
   workspaceId: string;
   device: Device;
+  projects: JsonRecord[];
+  sites: JsonRecord[];
 }) {
   const client = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const [placementEditing, setPlacementEditing] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(-1);
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
@@ -50,8 +64,16 @@ export function DeviceProfileTab({
     queryKey,
     queryFn: () => api.devices.profile(device.id),
   });
+  const environmentQuery = useQuery({ queryKey: workspaceQueryKey(workspaceId,"device",device.id,"environment"), queryFn:()=>api.devices.environment(device.id) });
+  const taxonomyQuery = useQuery({ queryKey:["device-taxonomy"], queryFn:api.devices.taxonomy });
   const refresh = async () => {
-    await client.invalidateQueries({ queryKey });
+    await Promise.all([
+      client.invalidateQueries({ queryKey }),
+      client.invalidateQueries({ queryKey: ["device", device.id, "detail"] }),
+      client.invalidateQueries({ queryKey: workspaceQueryKey(workspaceId, "devices") }),
+      client.invalidateQueries({queryKey:workspaceQueryKey(workspaceId,"device",device.id,"environment")}),
+      client.invalidateQueries({queryKey:workspaceQueryKey(workspaceId,"device-map")}),
+    ]);
   };
   const run = async (action: () => Promise<unknown>, message: string) => {
     setFeedback("");
@@ -97,6 +119,7 @@ export function DeviceProfileTab({
   const images = profile.images ?? [];
   const latitude = location?.latitude;
   const longitude = location?.longitude;
+  const projectName = projects.find((item) => String(item.id) === device.project_id)?.name;
   return (
     <>
       {feedback && <div className="command-note device-feedback">{feedback}</div>}
@@ -105,7 +128,7 @@ export function DeviceProfileTab({
           <div className="panel-header compact-panel-header">
             <div>
               <h2 className="panel-title">设备资料</h2>
-              <div className="panel-kicker">设备自有信息与安装位置</div>
+              <div className="panel-kicker">归属、位置与观测信息</div>
             </div>
             {profile.can_configure && (
               <Button variant="secondary" onClick={() => setEditing(true)}>
@@ -114,50 +137,88 @@ export function DeviceProfileTab({
               </Button>
             )}
           </div>
-          <div className="device-profile-description">
-            {profile.description || "尚未填写设备描述。"}
+          <div className="device-profile-summary">
+            <span>设备描述</span>
+            <p className={profile.description ? "" : "is-empty"}>
+              {profile.description || "尚未填写设备描述"}
+            </p>
           </div>
-          <div className="device-profile-fields">
-            <div>
-              <span>位置来源</span>
-              <strong>
+          <div className="device-profile-content">
+            <section className="device-profile-group device-profile-placement">
+              <div className="device-profile-group-heading">
+                <div>
+                  <MapPinned size={16} />
+                  <h3>归属与位置</h3>
+                </div>
+                {profile.can_configure ? (
+                  <button
+                    className="device-profile-group-action"
+                    type="button"
+                    onClick={() => setPlacementEditing(true)}
+                  >
+                    <Pencil size={13} />
+                    调整归属
+                  </button>
+                ) : null}
+              </div>
+              <div className="device-profile-placement-grid">
+                <ProfileDatum
+                  icon={<FolderKanban size={15} />}
+                  label="所属项目"
+                  value={value(projectName, "未分配")}
+                />
+                <ProfileDatum
+                  icon={<MapPin size={15} />}
+                  label="所属站点"
+                  value={profile.site?.name ?? "未分配"}
+                />
+                <ProfileDatum
+                  className="device-profile-datum-wide"
+                  label="地址"
+                  value={value(location?.location_text, "未设置")}
+                />
+                <ProfileDatum
+                  label="纬度"
+                  value={value(latitude)}
+                  mono
+                />
+                <ProfileDatum
+                  label="经度"
+                  value={value(longitude)}
+                  mono
+                />
+              </div>
+              <div className="device-profile-location-source">
+                <span>位置来源</span>
                 <Badge tone={profile.location_source === "device" ? "info" : "neutral"}>
                   {profile.location_source === "device"
-                    ? "设备自定义"
+                    ? "设备实时上报"
                     : profile.location_source === "site"
                       ? `继承自站点${profile.site?.name ? ` · ${profile.site.name}` : ""}`
                       : "未设置"}
                 </Badge>
-              </strong>
-            </div>
-            <div>
-              <span>地址</span>
-              <strong>{value(location?.location_text)}</strong>
-            </div>
-            <div>
-              <span>纬度</span>
-              <strong className="mono">{value(latitude)}</strong>
-            </div>
-            <div>
-              <span>经度</span>
-              <strong className="mono">{value(longitude)}</strong>
-            </div>
+              </div>
+              {latitude !== undefined && longitude !== undefined ? (
+                <a
+                  className="device-location-link"
+                  href={`https://api.map.baidu.com/marker?location=${latitude},${longitude}&title=${encodeURIComponent(device.name)}&content=${encodeURIComponent(location?.location_text || device.name)}&output=html&coord_type=wgs84&src=webapp.thcpn.research-network`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <MapPin size={16} />
+                  <span>
+                    在百度地图打开
+                    <small>{latitude}, {longitude}</small>
+                  </span>
+                  <ExternalLink size={14} />
+                </a>
+              ) : null}
+            </section>
+            <EnvironmentOverview
+              environment={environmentQuery.data}
+              loading={environmentQuery.isLoading}
+            />
           </div>
-          {latitude !== undefined && longitude !== undefined ? (
-            <a
-              className="device-location-link"
-              href={`https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=16/${latitude}/${longitude}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <MapPin size={16} />
-              <span>
-                在地图中查看
-                <small>{latitude}, {longitude}</small>
-              </span>
-              <ExternalLink size={14} />
-            </a>
-          ) : null}
         </Panel>
         <Panel className="device-profile-gallery">
           <div className="panel-header compact-panel-header">
@@ -254,6 +315,13 @@ export function DeviceProfileTab({
           )}
         </Panel>
       </div>
+      <div className="section-gap">
+        <DeviceMetadataPanel
+          workspaceId={workspaceId}
+          deviceId={device.id}
+          canConfigure={profile.can_configure}
+        />
+      </div>
       <PhotoSlider
         visible={previewIndex >= 0}
         onClose={() => setPreviewIndex(-1)}
@@ -277,46 +345,231 @@ export function DeviceProfileTab({
       {editing && (
         <ProfileEditor
           profile={profile}
+          environment={environmentQuery.data}
+          terms={taxonomyQuery.data?.items ?? []}
           busy={busy}
           onClose={() => setEditing(false)}
-          onSubmit={async (payload) => {
+          onSubmit={async (payload, environmentPayload) => {
             const success = await run(
-              () => api.devices.updateProfile(device.id, payload),
+              () => Promise.all([api.devices.updateProfile(device.id, payload), api.devices.updateEnvironment(device.id, environmentPayload)]),
               "设备资料已更新",
             );
             if (success) setEditing(false);
           }}
         />
       )}
+      {placementEditing ? (
+        <PlacementEditor
+          device={device}
+          projects={projects}
+          sites={sites}
+          busy={busy}
+          onClose={() => setPlacementEditing(false)}
+          onSubmit={async (projectId, siteId) => {
+            const success = await run(
+              () => api.devices.update(device.id, {
+                project_id: projectId || null,
+                site_id: siteId || null,
+              }),
+              "设备归属已更新",
+            );
+            if (success) setPlacementEditing(false);
+          }}
+        />
+      ) : null}
     </>
   );
 }
 
-function ProfileEditor({ profile, busy, onClose, onSubmit }: {
-  profile: Awaited<ReturnType<typeof api.devices.profile>>;
+function ProfileDatum({ icon, label, value: datumValue, mono = false, className = "" }: {
+  icon?: ReactNode;
+  label: string;
+  value: string;
+  mono?: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={`device-profile-datum ${className}`}>
+      <span>{icon}{label}</span>
+      <strong className={mono ? "mono" : ""}>{datumValue}</strong>
+    </div>
+  );
+}
+
+function TaxonomyTags({ values, empty = "未设置" }: { values: string[]; empty?: string }) {
+  if (!values.length) return <span className="device-profile-empty-value">{empty}</span>;
+  return <div className="device-profile-tag-list">{values.map((item) => <span key={item}>{item}</span>)}</div>;
+}
+
+function EnvironmentOverview({ environment, loading }: { environment?: DeviceEnvironment; loading: boolean }) {
+  const values = environment?.effective;
+  return (
+    <section className="device-profile-group device-profile-observation">
+      <div className="device-profile-group-heading">
+        <Leaf size={16} />
+        <h3>观测分类</h3>
+      </div>
+      {loading ? (
+        <div className="device-profile-observation-loading">正在加载观测分类…</div>
+      ) : (
+        <>
+          <div className="device-profile-ecosystem">
+            <span>生态类型</span>
+            <strong>{values?.ecosystem?.name_zh ?? "未分类"}</strong>
+          </div>
+          <div className="device-profile-taxonomy-row">
+            <span><Target size={14} />观测对象</span>
+            <TaxonomyTags values={values?.observation_objects.map((term) => term.name_zh) ?? []} />
+          </div>
+          <div className="device-profile-taxonomy-row">
+            <span><Tags size={14} />观测用途</span>
+            <TaxonomyTags values={values?.purposes.map((term) => term.name_zh) ?? []} />
+          </div>
+          <div className="device-profile-observation-meta">
+            <ProfileDatum
+              label="管理方式"
+              value={values?.management?.name_zh ?? "未设置"}
+            />
+            <ProfileDatum
+              label="部署环境"
+              value={values?.deployment?.name_zh ?? "未设置"}
+            />
+            <ProfileDatum
+              label="海拔"
+              value={values?.altitude_m !== undefined ? `${values.altitude_m} m` : "未设置"}
+            />
+            <ProfileDatum
+              label="投运年份"
+              value={values?.commissioned_year ? String(values.commissioned_year) : "未设置"}
+            />
+          </div>
+          {values?.research_tags?.length ? (
+            <div className="device-profile-taxonomy-row device-profile-research-tags">
+              <span>研究标签</span>
+              <TaxonomyTags values={values.research_tags} />
+            </div>
+          ) : null}
+        </>
+      )}
+    </section>
+  );
+}
+
+function PlacementEditor({ device, projects, sites, busy, onClose, onSubmit }: {
+  device: Device;
+  projects: JsonRecord[];
+  sites: JsonRecord[];
   busy: boolean;
   onClose: () => void;
-  onSubmit: (payload: JsonRecord) => Promise<void>;
+  onSubmit: (projectId: string, siteId: string) => Promise<void>;
 }) {
-  const [description, setDescription] = useState(profile.description ?? "");
-  const [locationText, setLocationText] = useState(profile.location_text ?? "");
-  const [latitude, setLatitude] = useState(profile.latitude?.toString() ?? "");
-  const [longitude, setLongitude] = useState(profile.longitude?.toString() ?? "");
+  const [projectId, setProjectId] = useState(device.project_id ?? "");
+  const [siteId, setSiteId] = useState(device.site_id ?? "");
+  const availableSites = sites.filter(
+    (item) => !projectId || String(item.project_id) === projectId,
+  );
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = previous; };
   }, []);
-  const coordinatesInvalid = Boolean(latitude) !== Boolean(longitude);
+  return (
+    <div className="access-drawer-layer">
+      <button className="access-drawer-backdrop" aria-label="关闭设备归属编辑" onClick={onClose} />
+      <div className="access-editor device-placement-editor" role="dialog" aria-modal="true">
+        <Panel className="access-editor-panel">
+          <div className="panel-header">
+            <div>
+              <h2 className="panel-title">调整设备归属</h2>
+              <div className="panel-kicker">{device.name} · {device.serial_no}</div>
+            </div>
+            <Button variant="secondary" onClick={onClose}><X size={14} />关闭</Button>
+          </div>
+          <form
+            className="access-form device-placement-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void onSubmit(projectId, siteId);
+            }}
+          >
+            <div className="form-section access-profile-fields">
+              <label className="field profile-editor-field">
+                <span className="field-label">所属项目</span>
+                <select
+                  value={projectId}
+                  onChange={(event) => {
+                    setProjectId(event.target.value);
+                    setSiteId("");
+                  }}
+                >
+                  <option value="">不分配项目</option>
+                  {projects.map((item) => (
+                    <option key={String(item.id)} value={String(item.id)}>
+                      {String(item.name)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field profile-editor-field">
+                <span className="field-label">所属站点</span>
+                <select
+                  value={siteId}
+                  disabled={!projectId}
+                  onChange={(event) => setSiteId(event.target.value)}
+                >
+                  <option value="">不分配站点</option>
+                  {availableSites.map((item) => (
+                    <option key={String(item.id)} value={String(item.id)}>
+                      {String(item.name)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="form-actions">
+              <Button variant="secondary" type="button" onClick={onClose}>取消</Button>
+              <Button type="submit" disabled={busy}>{busy ? "保存中…" : "保存归属"}</Button>
+            </div>
+          </form>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function ProfileEditor({ profile, environment, terms, busy, onClose, onSubmit }: {
+  profile: Awaited<ReturnType<typeof api.devices.profile>>;
+  environment?: DeviceEnvironment;
+  terms: DeviceTaxonomyTerm[];
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (payload: JsonRecord, environmentPayload: JsonRecord) => Promise<void>;
+}) {
+  const [description, setDescription] = useState(profile.description ?? "");
+  const [locationText, setLocationText] = useState(profile.location_text ?? "");
+  const direct=environment?.direct;
+  const effective=environment?.effective;
+  const [overrides,setOverrides]=useState(()=>new Set((environment?.overridden_fields??[]).filter((field)=>field!=="altitude_m")));
+  const [ecosystem,setEcosystem]=useState(direct?.ecosystem?.id??effective?.ecosystem?.id??"");
+  const [observations,setObservations]=useState(direct?.observation_objects.map((term)=>term.id)??effective?.observation_objects.map((term)=>term.id)??[]);
+  const [purposes,setPurposes]=useState(direct?.purposes.map((term)=>term.id)??effective?.purposes.map((term)=>term.id)??[]);
+  const [management,setManagement]=useState(direct?.management?.id??effective?.management?.id??"");
+  const [deployment,setDeployment]=useState(direct?.deployment?.id??effective?.deployment?.id??"");
+  const [year,setYear]=useState(String(direct?.commissioned_year??effective?.commissioned_year??""));
+  const [tags,setTags]=useState((direct?.research_tags??effective?.research_tags??[]).join(", "));
+  const byKind=(kind:string)=>terms.filter((term)=>term.kind===kind&&term.status==="active");
+  const toggle=(field:string)=>setOverrides((current)=>{const next=new Set(current);if(next.has(field))next.delete(field);else next.add(field);return next});
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previous; };
+  }, []);
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (coordinatesInvalid) return;
     void onSubmit({
       description: description.trim() || null,
       location_text: locationText.trim() || null,
-      latitude: latitude ? Number(latitude) : null,
-      longitude: longitude ? Number(longitude) : null,
-    });
+    },{ecosystem_term_id:ecosystem||null,observation_object_ids:observations,purpose_ids:purposes,management_term_id:management||null,deployment_term_id:deployment||null,commissioned_year:year?Number(year):null,research_tags:tags.split(",").map((value)=>value.trim()).filter(Boolean),overridden_fields:Array.from(overrides)});
   };
   return (
     <div className="access-drawer-layer">
@@ -324,25 +577,56 @@ function ProfileEditor({ profile, busy, onClose, onSubmit }: {
       <div className="access-editor" role="dialog" aria-modal="true">
         <Panel className="access-editor-panel">
           <div className="panel-header">
-            <div><h2 className="panel-title">编辑设备资料</h2><div className="panel-kicker">清空设备位置后将恢复继承站点位置</div></div>
+            <div><h2 className="panel-title">编辑设备资料</h2><div className="panel-kicker">经纬度由设备源库实时提供</div></div>
             <Button variant="secondary" onClick={onClose}><X size={14} />关闭</Button>
           </div>
           <form className="access-form" onSubmit={submit}>
             <div className="form-section access-profile-fields">
-            <label className="field"><span className="field-label">设备描述</span><textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={5} /></label>
-            <label className="field"><span className="field-label">地址</span><input value={locationText} onChange={(e) => setLocationText(e.target.value)} /></label>
-            <div className="access-form-grid">
-              <label className="field"><span className="field-label">纬度</span><input type="number" min="-90" max="90" step="any" value={latitude} onChange={(e) => setLatitude(e.target.value)} /></label>
-              <label className="field"><span className="field-label">经度</span><input type="number" min="-180" max="180" step="any" value={longitude} onChange={(e) => setLongitude(e.target.value)} /></label>
+              <div className="profile-editor-section-head">
+                <span><FileText size={16} /></span>
+                <div><h3>基础资料</h3><p>补充便于识别和检索的设备信息</p></div>
+              </div>
+              <label className="field profile-editor-field">
+                <span className="field-label">设备描述 <small>{description.length}/500</small></span>
+                <textarea maxLength={500} value={description} onChange={(e) => setDescription(e.target.value)} rows={4} placeholder="说明设备的安装环境、观测任务或维护备注" />
+                <span className="field-hint">仅工作区成员可见，不会写回设备源库。</span>
+              </label>
+              <label className="field profile-editor-field">
+                <span className="field-label">地址或位置说明</span>
+                <div className="profile-editor-input-with-icon"><MapPin size={15} /><input value={locationText} onChange={(e) => setLocationText(e.target.value)} placeholder="例如：北京森林站东侧样地" /></div>
+              </label>
+              <div className="profile-editor-source-note"><MapPin size={15} /><span>经纬度由设备实时上报，地图和详情页直接读取 THCPN 源库；这里仅维护便于理解的位置文字。</span></div>
             </div>
-            {coordinatesInvalid && <div className="form-error">经纬度必须同时填写或同时清空。</div>}
+            <div className="form-section environment-form-section">
+              <div className="profile-editor-section-head">
+                <span><Tags size={16} /></span>
+                <div><h3>观测分类</h3><p>用于地图筛选、统计分析和设备归类</p></div>
+              </div>
+              <div className="profile-editor-inheritance-note">开启“设备覆盖”后使用当前设备设置；关闭后继续继承网关或站点。</div>
+              <EnvironmentField label="生态类型" field="ecosystem" overrides={overrides} toggle={toggle}><select disabled={!overrides.has("ecosystem")} value={ecosystem} onChange={(event)=>setEcosystem(event.target.value)}><option value="">未设置</option>{byKind("ecosystem").map((term)=><option key={term.id} value={term.id}>{term.name_zh}</option>)}</select></EnvironmentField>
+              <EnvironmentMultiField label="观测对象" field="observation_objects" overrides={overrides} toggle={toggle} options={byKind("observation_object")} value={observations} onChange={setObservations} />
+              <EnvironmentMultiField label="观测用途" field="purposes" overrides={overrides} toggle={toggle} options={byKind("purpose")} value={purposes} onChange={setPurposes} />
+              <div className="access-form-grid"><EnvironmentField label="管理方式" field="management" overrides={overrides} toggle={toggle}><select disabled={!overrides.has("management")} value={management} onChange={(event)=>setManagement(event.target.value)}><option value="">未设置</option>{byKind("management").map((term)=><option key={term.id} value={term.id}>{term.name_zh}</option>)}</select></EnvironmentField><EnvironmentField label="部署环境" field="deployment" overrides={overrides} toggle={toggle}><select disabled={!overrides.has("deployment")} value={deployment} onChange={(event)=>setDeployment(event.target.value)}><option value="">未设置</option>{byKind("deployment").map((term)=><option key={term.id} value={term.id}>{term.name_zh}</option>)}</select></EnvironmentField></div>
+              <EnvironmentField label="投运年份" field="commissioned_year" overrides={overrides} toggle={toggle}><input type="number" min="1900" max="2200" disabled={!overrides.has("commissioned_year")} value={year} onChange={(event)=>setYear(event.target.value)}/></EnvironmentField>
+              <EnvironmentField label="研究标签（逗号分隔）" field="research_tags" overrides={overrides} toggle={toggle}><input disabled={!overrides.has("research_tags")} value={tags} onChange={(event)=>setTags(event.target.value)}/></EnvironmentField>
             </div>
-            <div className="form-actions"><Button variant="secondary" type="button" onClick={onClose}>取消</Button><Button type="submit" disabled={busy || coordinatesInvalid}>{busy ? "保存中…" : "保存资料"}</Button></div>
+            <div className="form-actions"><Button variant="secondary" type="button" onClick={onClose}>取消</Button><Button type="submit" disabled={busy}>{busy ? "保存中…" : "保存资料"}</Button></div>
           </form>
         </Panel>
       </div>
     </div>
   );
+}
+
+function EnvironmentField({label,field,overrides,toggle,children}:{label:string;field:string;overrides:Set<string>;toggle:(field:string)=>void;children:ReactNode}) {
+  const enabled=overrides.has(field);
+  return <div className={`field environment-field ${enabled?"is-overridden":""}`}><div className="field-label"><span>{label}</span><label className="environment-override"><input type="checkbox" checked={enabled} onChange={()=>toggle(field)}/><i aria-hidden="true"/><b>设备覆盖</b></label></div>{children}</div>;
+}
+
+function EnvironmentMultiField({label,field,overrides,toggle,options,value,onChange}:{label:string;field:string;overrides:Set<string>;toggle:(field:string)=>void;options:DeviceTaxonomyTerm[];value:string[];onChange:(value:string[])=>void}) {
+  const enabled=overrides.has(field);
+  const change=(id:string,checked:boolean)=>onChange(checked?Array.from(new Set([...value,id])):value.filter((item)=>item!==id));
+  return <div className={`field environment-field environment-multi-field ${enabled?"is-overridden":""}`}><span className="field-label">{label}<label className="environment-override"><input type="checkbox" checked={enabled} onChange={()=>toggle(field)}/><i aria-hidden="true"/><b>设备覆盖</b></label></span><div className="taxonomy-choice-grid" aria-disabled={!enabled}>{options.map((term)=><label key={term.id} className={value.includes(term.id)?"selected":""}><input type="checkbox" disabled={!enabled} checked={value.includes(term.id)} onChange={(event)=>change(term.id,event.target.checked)}/><span>{term.name_zh}</span></label>)}</div>{!options.length&&<span className="field-hint">暂无可用分类选项</span>}</div>;
 }
 
 async function moveImage(

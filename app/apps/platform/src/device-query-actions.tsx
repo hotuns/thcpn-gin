@@ -1,5 +1,10 @@
 import { Check, Search } from "lucide-react";
-import { api, type DataStream, type TelemetryQueryResponse } from "@thcpn/api";
+import {
+  api,
+  formatApiError,
+  type DataStream,
+  type TelemetryQueryResponse,
+} from "@thcpn/api";
 import { Badge, Button, Panel, StateView } from "@thcpn/ui";
 
 type QueryInput = { startTime: string; endTime: string };
@@ -105,6 +110,8 @@ export function DeviceQueryActions({
   onSearch,
   dirty,
   searching,
+  loading,
+  error,
 }: {
   streams: DataStream[];
   selected: string[];
@@ -117,6 +124,8 @@ export function DeviceQueryActions({
   onSearch: () => void;
   dirty: boolean;
   searching: boolean;
+  loading?: boolean;
+  error?: unknown;
 }) {
   const telemetryStreams = streams.filter(
     (item) => item.type === "telemetry" && item.status === "active",
@@ -156,9 +165,8 @@ export function DeviceQueryActions({
       <div className="range-presets">
         <span>快捷范围</span>
         {[
-          { label: "1 小时", hours: 1 },
           { label: "6 小时", hours: 6 },
-          { label: "24 小时", hours: 24 },
+          { label: "3 天", hours: 72 },
           { label: "7 天", hours: 168 },
         ].map((item) => (
           <button key={item.hours} type="button" onClick={() => onRangeChange(item.hours)}>
@@ -188,7 +196,20 @@ export function DeviceQueryActions({
           </Button>
         </div>
       </div>
-      {telemetryStreams.length ? (
+      {loading ? (
+        <StateView
+          type="loading"
+          title="正在加载遥测指标"
+          description="正在读取设备可查询的数据指标。"
+        />
+      ) : error ? (
+        <StateView
+          type="error"
+          title="遥测指标加载失败"
+          description={formatApiError(error).message}
+          requestId={formatApiError(error).requestId}
+        />
+      ) : telemetryStreams.length ? (
         <div className="stream-check-grid">
           {telemetryStreams.map((stream) => (
             <button
@@ -198,7 +219,10 @@ export function DeviceQueryActions({
               onClick={() => toggle(stream.id)}
             >
               <span className="stream-check">{selected.includes(stream.id) && <Check size={12} />}</span>
-              <span><strong>{stream.name}</strong><small>{stream.unit || "无单位"}</small></span>
+              <span>
+                <strong>{stream.computed && <i className="stream-fx">fx</i>}{stream.name}</strong>
+                <small>{stream.unit || "无单位"}</small>
+              </span>
             </button>
           ))}
         </div>

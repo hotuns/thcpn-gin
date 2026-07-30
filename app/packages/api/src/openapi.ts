@@ -921,7 +921,7 @@ export interface paths {
         put?: never;
         /**
          * Sync all THCPN devices from the external devices table
-         * @description Requires a valid administrator bearer token. Reads all non-deleted rows from the external THCPN MySQL `devices` table. Each device is synchronized independently and the response reports partial failures. Devices remain unassigned to a Workspace.
+         * @description Requires a valid administrator bearer token. Reads all non-deleted rows from the external THCPN MySQL `devices` and `cameras` tables plus active `gate_node` topology. Each asset is synchronized independently and the response reports partial failures. Devices and cameras remain unassigned to a Workspace.
          */
         post: operations["adminSyncAllTHCPNDevices"];
         delete?: never;
@@ -944,9 +944,32 @@ export interface paths {
         put?: never;
         /**
          * Sync a THCPN gateway topology into the system asset registry
-         * @description Requires a valid administrator bearer token. Reads `gate_node` for the external gateway, synchronizes the gateway and node devices as independent platform Devices, and stores gateway-node relations. Node assignment is explicit and only runs when `assign_nodes` is true.
+         * @description Requires a valid administrator bearer token. Reads `gate_node` for the external gateway, synchronizes the gateway and node devices as independent system assets, and stores gateway-node relations. Synchronization never assigns the gateway or nodes to a Workspace.
          */
         post: operations["adminSyncTHCPNGateway"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/thcpn-standard-station/cameras": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync one camera from the external THCPN cameras table
+         * @description Reads one non-deleted cameras row and synchronizes an unassigned camera Device, Ezviz camera binding and stable source reference.
+         */
+        post: operations["adminSyncTHCPNCamera"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1018,6 +1041,58 @@ export interface paths {
          * @description Requires a valid administrator bearer token.
          */
         post: operations["adminCreateDeviceCapabilityDefinition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/metadata/device-taxonomy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all device classification terms */
+        get: operations["adminListDeviceTaxonomy"];
+        put?: never;
+        /** Create or update a classification term */
+        post: operations["adminUpsertDeviceTaxonomy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/device-map": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all system devices for the map */
+        get: operations["adminListDeviceMap"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/environment/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bulk replace device environment attributes */
+        post: operations["adminBulkUpdateDeviceEnvironment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1106,6 +1181,44 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/runtime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read current source-owned fields for system devices */
+        get: operations["adminGetTHCPNDeviceRuntime"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/environment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /** Get direct and inherited device classification */
+        get: operations["adminGetDeviceEnvironment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update device classification overrides */
+        patch: operations["adminUpdateDeviceEnvironment"];
         trace?: never;
     };
     "/api/v1/admin/devices/{device_id}": {
@@ -1302,13 +1415,72 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List THCPN sensor templates for a device data source
-         * @description Requires a valid administrator bearer token. Reads templates only from the active THCPN data source bound to the selected device.
+         * List active platform sensor templates for a device
+         * @description Requires a valid administrator bearer token. Reads the platform template catalog and adapts config entries to the selected device.
          */
         get: operations["adminListTHCPNSensorTemplates"];
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/sensor-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List platform sensor templates */
+        get: operations["adminListSensorTemplates"];
+        put?: never;
+        /** Create a platform sensor template */
+        post: operations["adminCreateSensorTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/sensor-templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: number;
+            };
+            cookie?: never;
+        };
+        /** Get a platform sensor template */
+        get: operations["adminGetSensorTemplate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/sensor-templates/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace a platform sensor template */
+        put: operations["adminUpdateSensorTemplate"];
+        /**
+         * Import sensor templates from a THCPN data source
+         * @description Explicit one-time import from the source sensors table. Existing equivalent platform templates are skipped.
+         */
+        post: operations["adminImportSensorTemplates"];
+        /** Delete a platform sensor template */
+        delete: operations["adminDeleteSensorTemplate"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1366,6 +1538,117 @@ export interface paths {
          * @description Requires a valid administrator bearer token. Replaces the final effective capability set for this device.
          */
         patch: operations["adminUpdateDeviceCapabilities"];
+        trace?: never;
+    };
+    "/api/v1/device-claims/{claim_slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Open a permanent device claim link */
+        get: operations["getDeviceClaimEntry"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/device-claims/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve a permanent device credential */
+        post: operations["resolveDeviceClaim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/device-claims/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Atomically assign a device to a Workspace
+         * @description Requires `device.bind` in the target Workspace.
+         */
+        post: operations["claimDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/device-claims/ensure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create permanent credentials for all eligible devices */
+        post: operations["adminEnsureDeviceClaimCredentials"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/claim-credential": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /** Get the permanent device plate credential */
+        get: operations["adminGetDeviceClaimCredential"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/claim-credential/printed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record that a permanent plate was printed */
+        post: operations["adminMarkDeviceClaimCredentialPrinted"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/admin/devices/{device_id}/assignment": {
@@ -1578,6 +1861,27 @@ export interface paths {
         patch: operations["updateSite"];
         trace?: never;
     };
+    "/api/v1/sites/{site_id}/environment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Site UUID. */
+                site_id: components["parameters"]["SiteID"];
+            };
+            cookie?: never;
+        };
+        /** Get site classification defaults */
+        get: operations["getSiteEnvironment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update site classification defaults */
+        patch: operations["updateSiteEnvironment"];
+        trace?: never;
+    };
     "/api/v1/devices": {
         parameters: {
             query?: never;
@@ -1590,6 +1894,23 @@ export interface paths {
          * @description Requires `device.view` permission in the target workspace. `project_id` and `site_id` may narrow the list.
          */
         get: operations["listDevices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/runtime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read current source-owned fields for visible devices */
+        get: operations["getTHCPNDeviceRuntime"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1670,9 +1991,64 @@ export interface paths {
         head?: never;
         /**
          * Update device-owned profile
-         * @description Requires `device.configure`. Latitude and longitude must be supplied together.
+         * @description Requires `device.configure`. Source-managed coordinates are read-only.
          */
         patch: operations["updateDeviceProfile"];
+        trace?: never;
+    };
+    "/api/v1/device-taxonomy/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List active device classification terms */
+        get: operations["listDeviceTaxonomy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/device-map": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List authorized devices with effective locations and classifications */
+        get: operations["listDeviceMap"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/environment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /** Get direct and inherited device classification */
+        get: operations["getDeviceEnvironment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update device classification overrides */
+        patch: operations["updateDeviceEnvironment"];
         trace?: never;
     };
     "/api/v1/devices/{device_id}/profile/images": {
@@ -1741,6 +2117,111 @@ export interface paths {
         head?: never;
         /** Update image caption or cover state */
         patch: operations["updateDeviceProfileImage"];
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List device metadata
+         * @description Requires `device.view`. Metadata belongs to the physical device and is available to computed telemetry formulas.
+         */
+        get: operations["listDeviceMetadata"];
+        /**
+         * Replace device metadata
+         * @description Requires `device.configure`. The complete metadata collection is replaced atomically.
+         */
+        put: operations["replaceDeviceMetadata"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/computed-streams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List computed telemetry streams
+         * @description Requires `device.view`.
+         */
+        get: operations["listComputedDataStreams"];
+        put?: never;
+        /**
+         * Create a computed telemetry stream
+         * @description Requires `device.configure`. Formulas may reference raw telemetry streams and numeric metadata from the same device.
+         */
+        post: operations["createComputedDataStream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/computed-streams/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate and preview a computed telemetry formula
+         * @description Requires `device.configure`.
+         */
+        post: operations["previewComputedDataStream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/computed-streams/{data_stream_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+                data_stream_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a computed telemetry stream
+         * @description Requires `device.configure`.
+         */
+        delete: operations["deleteComputedDataStream"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a computed telemetry stream
+         * @description Requires `device.configure`.
+         */
+        patch: operations["updateComputedDataStream"];
         trace?: never;
     };
     "/api/v1/devices/{device_id}/camera/live-session": {
@@ -3461,6 +3942,40 @@ export interface components {
             created_at: components["schemas"]["Timestamp"];
             updated_at: components["schemas"]["Timestamp"];
         };
+        ResolveDeviceClaimRequest: {
+            claim_slug?: string;
+            serial_no?: string;
+            code?: string;
+        };
+        ClaimDeviceRequest: components["schemas"]["ResolveDeviceClaimRequest"] & {
+            workspace_id: components["schemas"]["UUID"];
+            project_id?: components["schemas"]["UUID"];
+            site_id?: components["schemas"]["UUID"];
+        };
+        DeviceClaimCredential: {
+            device_id: components["schemas"]["UUID"];
+            device_name: string;
+            device_type: components["schemas"]["DeviceTopologyRole"];
+            serial_no: string;
+            claim_slug?: string;
+            claim_path?: string;
+            manual_code?: string;
+            printed_at?: components["schemas"]["Timestamp"];
+            created_at: components["schemas"]["Timestamp"];
+            /** Format: int64 */
+            child_count: number;
+            is_assigned: boolean;
+            is_claimable: boolean;
+        };
+        DeviceClaimResult: {
+            device_id: components["schemas"]["UUID"];
+            assignment_id: components["schemas"]["UUID"];
+            workspace_id: components["schemas"]["UUID"];
+            device_name: string;
+            device_type: components["schemas"]["DeviceTopologyRole"];
+            /** Format: int64 */
+            child_count: number;
+        };
         DeviceListResponse: {
             items: components["schemas"]["Device"][];
         };
@@ -3498,6 +4013,96 @@ export interface components {
         DeviceProfileImageListResponse: {
             items: components["schemas"]["DeviceProfileImage"][];
         };
+        DeviceTaxonomyTerm: {
+            id: components["schemas"]["UUID"];
+            /** @enum {string} */
+            kind: "ecosystem" | "observation_object" | "purpose" | "management" | "deployment";
+            code: string;
+            name_zh: string;
+            name_en: string;
+            parent_id?: components["schemas"]["UUID"];
+            /** @enum {string} */
+            status: "active" | "inactive";
+            sort_order: number;
+            system_defined: boolean;
+        };
+        DeviceTaxonomyListResponse: {
+            items: components["schemas"]["DeviceTaxonomyTerm"][];
+        };
+        DeviceEnvironmentValues: {
+            ecosystem?: components["schemas"]["DeviceTaxonomyTerm"];
+            observation_objects: components["schemas"]["DeviceTaxonomyTerm"][];
+            purposes: components["schemas"]["DeviceTaxonomyTerm"][];
+            management?: components["schemas"]["DeviceTaxonomyTerm"];
+            deployment?: components["schemas"]["DeviceTaxonomyTerm"];
+            /** Format: double */
+            altitude_m?: number;
+            commissioned_year?: number;
+            research_tags: string[];
+        };
+        DeviceEnvironment: {
+            device_id: components["schemas"]["UUID"];
+            direct: components["schemas"]["DeviceEnvironmentValues"];
+            effective: components["schemas"]["DeviceEnvironmentValues"];
+            overridden_fields: string[];
+            sources: {
+                [key: string]: string;
+            };
+            parent_device_id?: components["schemas"]["UUID"];
+            site_id?: components["schemas"]["UUID"];
+            updated_at?: components["schemas"]["Timestamp"];
+        };
+        SiteEnvironment: {
+            site_id: components["schemas"]["UUID"];
+            values: components["schemas"]["DeviceEnvironmentValues"];
+            updated_at?: components["schemas"]["Timestamp"];
+        };
+        UpdateSiteEnvironmentRequest: {
+            ecosystem_term_id?: components["schemas"]["UUID"];
+            observation_object_ids?: components["schemas"]["UUID"][];
+            purpose_ids?: components["schemas"]["UUID"][];
+            management_term_id?: components["schemas"]["UUID"];
+            deployment_term_id?: components["schemas"]["UUID"];
+            /** Format: double */
+            altitude_m?: number;
+            commissioned_year?: number;
+            research_tags?: string[];
+        };
+        UpdateDeviceEnvironmentRequest: {
+            ecosystem_term_id?: components["schemas"]["UUID"];
+            observation_object_ids?: components["schemas"]["UUID"][];
+            purpose_ids?: components["schemas"]["UUID"][];
+            management_term_id?: components["schemas"]["UUID"];
+            deployment_term_id?: components["schemas"]["UUID"];
+            commissioned_year?: number;
+            research_tags?: string[];
+            overridden_fields: string[];
+        };
+        DeviceMapItem: {
+            device_id: components["schemas"]["UUID"];
+            name: string;
+            serial_no: string;
+            device_type: string;
+            status: string;
+            workspace_id?: components["schemas"]["UUID"];
+            site_id?: components["schemas"]["UUID"];
+            /** Format: double */
+            latitude?: number;
+            /** Format: double */
+            longitude?: number;
+            /** @enum {string} */
+            location_source: "device" | "site" | "gateway" | "none";
+            /** Format: int64 */
+            child_count: number;
+            environment: components["schemas"]["DeviceEnvironmentValues"];
+        };
+        DeviceMapResponse: {
+            items: components["schemas"]["DeviceMapItem"][];
+            total: number;
+            located: number;
+            unlocated: number;
+            unclassified: number;
+        };
         DeviceProfile: {
             device_id: components["schemas"]["UUID"];
             description?: string;
@@ -3519,10 +4124,6 @@ export interface components {
         UpdateDeviceProfileRequest: {
             description?: string | null;
             location_text?: string | null;
-            /** Format: double */
-            latitude?: number | null;
-            /** Format: double */
-            longitude?: number | null;
         };
         /** @enum {string} */
         CameraProvider: "ezviz";
@@ -3734,13 +4335,8 @@ export interface components {
             target_workspace_id: components["schemas"]["UUID"];
             project_id?: components["schemas"]["UUID"];
             site_id?: components["schemas"]["UUID"];
-            /**
-             * @description When true, gateway child nodes are explicitly assigned to the same Workspace, Project and Site.
-             * @default false
-             */
-            assign_children: boolean;
         };
-        /** @description System-level device data channel generated by system sync. Workspace permission is resolved through the parent device active assignment. */
+        /** @description Device data channel. Raw channels are generated by source synchronization; computed channels are evaluated at query time. Workspace permission is resolved through the parent device active assignment. */
         DataStream: {
             id: components["schemas"]["UUID"];
             device_id: components["schemas"]["UUID"];
@@ -3749,12 +4345,87 @@ export interface components {
             type: components["schemas"]["DataStreamType"];
             unit?: string;
             status: components["schemas"]["DataStreamStatus"];
+            /** @description Whether this channel is generated from a device formula at query time. */
+            computed: boolean;
             created_by: components["schemas"]["UUID"];
             created_at: components["schemas"]["Timestamp"];
             updated_at: components["schemas"]["Timestamp"];
         };
         DataStreamListResponse: {
             items: components["schemas"]["DataStream"][];
+        };
+        DeviceMetadata: {
+            id: components["schemas"]["UUID"];
+            device_id: components["schemas"]["UUID"];
+            key: string;
+            name: string;
+            /** @enum {string} */
+            value_type: "number" | "string" | "boolean";
+            /** @description Typed value matching `value_type`. */
+            value: number | string | boolean;
+            unit?: string;
+            created_at: components["schemas"]["Timestamp"];
+            updated_at: components["schemas"]["Timestamp"];
+        };
+        DeviceMetadataInput: {
+            key: string;
+            name: string;
+            /** @enum {string} */
+            value_type: "number" | "string" | "boolean";
+            value: number | string | boolean;
+            unit?: string;
+        };
+        DeviceMetadataListResponse: {
+            items: components["schemas"]["DeviceMetadata"][];
+        };
+        ReplaceDeviceMetadataRequest: {
+            items: components["schemas"]["DeviceMetadataInput"][];
+        };
+        ComputedDataStream: {
+            data_stream_id: components["schemas"]["UUID"];
+            device_id: components["schemas"]["UUID"];
+            code: string;
+            name: string;
+            unit?: string;
+            status: components["schemas"]["DataStreamStatus"];
+            formula: string;
+            referenced_stream_codes: string[];
+            referenced_metadata_keys: string[];
+            enabled: boolean;
+            created_at: components["schemas"]["Timestamp"];
+            updated_at: components["schemas"]["Timestamp"];
+        };
+        ComputedDataStreamListResponse: {
+            items: components["schemas"]["ComputedDataStream"][];
+        };
+        CreateComputedDataStreamRequest: {
+            code: string;
+            name: string;
+            unit?: string;
+            formula: string;
+            /** @default true */
+            enabled: boolean;
+        };
+        UpdateComputedDataStreamRequest: {
+            code?: string;
+            name?: string;
+            unit?: string;
+            formula?: string;
+            enabled?: boolean;
+        };
+        PreviewComputedDataStreamRequest: {
+            formula: string;
+            streams: {
+                [key: string]: number;
+            };
+            metadata?: {
+                [key: string]: number;
+            };
+        };
+        PreviewComputedDataStreamResponse: {
+            value: number;
+            referenced_stream_codes: string[];
+            referenced_metadata_keys: string[];
         };
         /** @description System-level device source instance managed through admin APIs. Workspace users cannot view or modify DataSource, DSN, adapter, table fields or raw SQL. */
         DataSource: {
@@ -3799,33 +4470,46 @@ export interface components {
             /** @description Devices imported from the external devices table without a device_config row yet. */
             unconfigured?: number;
             failed: number;
+            /** @description Number of active gateway-node relations synchronized. */
+            relations: number;
+            /** @description Number of gateway topology groups that could not be synchronized. */
+            topology_failed: number;
+            cameras_total: number;
+            cameras_synced: number;
+            cameras_failed: number;
             failures?: {
                 /** Format: int64 */
                 external_device_id: number;
+                resource_type?: string;
                 error: string;
             }[];
         };
+        SyncTHCPNCameraRequest: {
+            /** Format: int64 */
+            external_camera_id: number;
+        };
+        THCPNCameraSyncResult: {
+            device: components["schemas"]["SyncedDevice"];
+            source_ref: components["schemas"]["DeviceSourceRef"];
+            external_camera: {
+                /** Format: int64 */
+                id: number;
+                device_serial: string;
+                name: string;
+                channel: number;
+                poster: string;
+                /** Format: date-time */
+                created_at?: string;
+                /** Format: date-time */
+                updated_at?: string;
+            };
+        };
         SyncTHCPNGatewayRequest: {
-            /** @description Optional Workspace assignment target. Omit it to sync the gateway and nodes as unassigned system assets. */
-            target_workspace_id?: components["schemas"]["UUID"];
             /**
              * Format: int64
              * @description External THCPN gateway `devices.id`.
              */
             external_gateway_id: number;
-            project_id?: components["schemas"]["UUID"];
-            site_id?: components["schemas"]["UUID"];
-            /**
-             * @description When true, node devices are assigned to the same target Workspace, Project and Site.
-             * @default false
-             */
-            assign_nodes: boolean;
-            /** @description Optional platform product identifier for the gateway. Defaults to `thcpn_standard_station`. */
-            product_id?: string;
-            /** @description Optional platform serial number override for the gateway. */
-            serial_no?: string;
-            /** @description Optional platform device name override for the gateway. */
-            name?: string;
         };
         SyncedDevice: {
             id: components["schemas"]["UUID"];
@@ -3859,9 +4543,6 @@ export interface components {
             adapter_code: components["schemas"]["DataStreamBindingAdapterCode"];
             /** Format: int64 */
             external_device_id: number;
-            external_sn?: string;
-            external_uuid?: string;
-            external_device_type?: string;
             status: components["schemas"]["DataStreamBindingStatus"];
             synced_at: components["schemas"]["Timestamp"];
             created_at: components["schemas"]["Timestamp"];
@@ -3945,6 +4626,8 @@ export interface components {
             params: {
                 [key: string]: unknown;
             };
+            /** @enum {string} */
+            status: "active" | "disabled";
             metrics: components["schemas"]["THCPNSensorMetric"][];
             config_entry: {
                 [key: string]: unknown;
@@ -3953,6 +4636,20 @@ export interface components {
             warnings?: components["schemas"]["QueryWarning"][];
             created_at?: components["schemas"]["Timestamp"];
             updated_at?: components["schemas"]["Timestamp"];
+        };
+        SensorTemplateRequest: {
+            sensor_type: string;
+            description?: string;
+            port?: string;
+            /** Format: int64 */
+            port_num: number;
+            driver?: string;
+            port_nums: number[];
+            params: {
+                [key: string]: unknown;
+            };
+            /** @enum {string} */
+            status: "active" | "disabled";
         };
         THCPNSensorTemplateListResponse: {
             items: components["schemas"]["THCPNSensorTemplate"][];
@@ -4415,9 +5112,41 @@ export interface components {
             device_id: components["schemas"]["UUID"];
             /** Format: int64 */
             external_device_id: number;
+            source_device: components["schemas"]["THCPNSourceDeviceRuntime"];
             attributes: {
                 [key: string]: components["schemas"]["THCPNAttributeValue"];
             };
+            refreshed_at: components["schemas"]["Timestamp"];
+        };
+        THCPNSourceDeviceRuntime: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            iccid?: string;
+            version?: string;
+            status?: string;
+            device_type?: string;
+            /** Format: int64 */
+            active?: number;
+            sn?: string;
+            uuid?: string;
+            current_device_version?: string;
+            /** Format: double */
+            lat?: number;
+            /** Format: double */
+            lon?: number;
+            /** Format: double */
+            alt?: number;
+            created_at?: components["schemas"]["Timestamp"];
+            updated_at?: components["schemas"]["Timestamp"];
+        };
+        THCPNDeviceRuntimeFailure: {
+            device_id: components["schemas"]["UUID"];
+            error: string;
+        };
+        THCPNDeviceRuntimeBatchResponse: {
+            items: components["schemas"]["THCPNLatestAttributesResponse"][];
+            failures: components["schemas"]["THCPNDeviceRuntimeFailure"][];
             refreshed_at: components["schemas"]["Timestamp"];
         };
         THCPNDeviceLog: {
@@ -5945,6 +6674,38 @@ export interface operations {
             500: components["responses"]["Internal"];
         };
     };
+    adminSyncTHCPNCamera: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncTHCPNCameraRequest"];
+            };
+        };
+        responses: {
+            /** @description THCPN camera synchronized. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["THCPNCameraSyncResult"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
     adminCreateCamera: {
         parameters: {
             query?: never;
@@ -6088,6 +6849,94 @@ export interface operations {
             500: components["responses"]["Internal"];
         };
     };
+    adminListDeviceTaxonomy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Taxonomy catalog. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceTaxonomyListResponse"];
+                };
+            };
+        };
+    };
+    adminUpsertDeviceTaxonomy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceTaxonomyTerm"];
+            };
+        };
+        responses: {
+            /** @description Saved term. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceTaxonomyTerm"];
+                };
+            };
+        };
+    };
+    adminListDeviceMap: {
+        parameters: {
+            query?: {
+                include_children?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description System device map. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceMapResponse"];
+                };
+            };
+        };
+    };
+    adminBulkUpdateDeviceEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description Per-device update result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     adminUpdateDeviceCapabilityDefinition: {
         parameters: {
             query?: never;
@@ -6194,6 +7043,83 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["PermissionDenied"];
             500: components["responses"]["Internal"];
+        };
+    };
+    adminGetTHCPNDeviceRuntime: {
+        parameters: {
+            query: {
+                /** @description Comma-separated platform device UUIDs, up to 200. */
+                device_ids: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current THCPN device rows and latest runtime attributes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["THCPNDeviceRuntimeBatchResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminGetDeviceEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Effective environment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceEnvironment"];
+                };
+            };
+        };
+    };
+    adminUpdateDeviceEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDeviceEnvironmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated environment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceEnvironment"];
+                };
+            };
         };
     };
     adminUpdateSystemDeviceAsset: {
@@ -6509,7 +7435,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Sensor templates from the device's active THCPN data source. */
+            /** @description Active sensor templates from the platform catalog. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6523,6 +7449,163 @@ export interface operations {
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["Internal"];
+        };
+    };
+    adminListSensorTemplates: {
+        parameters: {
+            query?: {
+                q?: string;
+                port?: string;
+                driver?: string;
+                status?: "active" | "disabled";
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Platform sensor template catalog. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["THCPNSensorTemplateListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminCreateSensorTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SensorTemplateRequest"];
+            };
+        };
+        responses: {
+            /** @description Created sensor template. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["THCPNSensorTemplate"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminGetSensorTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sensor template. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["THCPNSensorTemplate"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminUpdateSensorTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SensorTemplateRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated sensor template. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["THCPNSensorTemplate"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminImportSensorTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    data_source_id: components["schemas"]["UUID"];
+                };
+            };
+        };
+        responses: {
+            /** @description Import result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        imported: number;
+                        skipped: number;
+                        invalid: number;
+                    };
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminDeleteSensorTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     adminGetDeviceLifecycle: {
@@ -6641,6 +7724,154 @@ export interface operations {
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["Internal"];
+        };
+    };
+    getDeviceClaimEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                claim_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Login is required before resolving device information. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        login_required: boolean;
+                    };
+                };
+            };
+        };
+    };
+    resolveDeviceClaim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveDeviceClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Minimal claimable device information. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceClaimCredential"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    claimDevice: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimDeviceRequest"];
+            };
+        };
+        responses: {
+            /** @description Device claimed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceClaimResult"];
+                };
+            };
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    adminEnsureDeviceClaimCredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Credentials ensured. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: int64 */
+                        created: number;
+                    };
+                };
+            };
+        };
+    };
+    adminGetDeviceClaimCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Permanent credential. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceClaimCredential"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminMarkDeviceClaimCredentialPrinted: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Print time recorded. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     adminAssignSystemDevice: {
@@ -7080,6 +8311,56 @@ export interface operations {
             500: components["responses"]["Internal"];
         };
     };
+    getSiteEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Site UUID. */
+                site_id: components["parameters"]["SiteID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Site defaults. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteEnvironment"];
+                };
+            };
+        };
+    };
+    updateSiteEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Site UUID. */
+                site_id: components["parameters"]["SiteID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSiteEnvironmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated site defaults. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteEnvironment"];
+                };
+            };
+        };
+    };
     listDevices: {
         parameters: {
             query: {
@@ -7100,6 +8381,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeviceListResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    getTHCPNDeviceRuntime: {
+        parameters: {
+            query: {
+                /** @description Comma-separated platform device UUIDs, up to 200. Every device requires device.view. */
+                device_ids: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current THCPN device rows and latest runtime attributes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["THCPNDeviceRuntimeBatchResponse"];
                 };
             };
             400: components["responses"]["InvalidArgument"];
@@ -7256,6 +8564,99 @@ export interface operations {
             500: components["responses"]["Internal"];
         };
     };
+    listDeviceTaxonomy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active taxonomy catalog. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceTaxonomyListResponse"];
+                };
+            };
+        };
+    };
+    listDeviceMap: {
+        parameters: {
+            query: {
+                workspace_id: components["schemas"]["UUID"];
+                include_children?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Permission-filtered device map. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceMapResponse"];
+                };
+            };
+        };
+    };
+    getDeviceEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Effective environment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceEnvironment"];
+                };
+            };
+        };
+    };
+    updateDeviceEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDeviceEnvironmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated environment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceEnvironment"];
+                };
+            };
+        };
+    };
     uploadDeviceProfileImages: {
         parameters: {
             query?: never;
@@ -7381,6 +8782,218 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    listDeviceMetadata: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device metadata. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceMetadataListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    replaceDeviceMetadata: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplaceDeviceMetadataRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated device metadata. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceMetadataListResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    listComputedDataStreams: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Computed telemetry stream definitions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComputedDataStreamListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    createComputedDataStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateComputedDataStreamRequest"];
+            };
+        };
+        responses: {
+            /** @description Created computed telemetry stream. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComputedDataStream"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    previewComputedDataStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewComputedDataStreamRequest"];
+            };
+        };
+        responses: {
+            /** @description Formula preview result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewComputedDataStreamResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    deleteComputedDataStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+                data_stream_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Computed telemetry stream deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    updateComputedDataStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+                data_stream_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateComputedDataStreamRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated computed telemetry stream. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComputedDataStream"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["Internal"];
         };
     };

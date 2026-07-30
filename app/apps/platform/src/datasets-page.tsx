@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   ChevronDown,
   Database,
   Download,
   Eye,
+  GitCompareArrows,
   Pencil,
   Plus,
   RefreshCw,
@@ -21,9 +22,10 @@ import {
   type TelemetrySeries,
 } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, PageHeader, Panel, StateView } from "@thcpn/ui";
+import { Badge, Button, IconButton, PageHeader, Panel, StateView } from "@thcpn/ui";
 import { TelemetryCharts } from "./telemetry-charts";
 import { TelemetryTable } from "./telemetry-table";
+import { dataComparisonPath } from "./data-workflow";
 
 type SourceInput = {
   source_type: Dataset["sources"][number]["source_type"];
@@ -43,6 +45,12 @@ type DatasetDraft = {
   endTime: string;
   sources: SourceInput[];
   status?: string;
+};
+type DatasetPrefill = {
+  name: string;
+  startTime: string;
+  endTime: string;
+  sources: SourceInput[];
 };
 const datasetTypeLabel = (value: Dataset["data_type"]) =>
   ({
@@ -280,15 +288,14 @@ export function DatasetsPage() {
                           <Eye size={13} />
                           查看详情
                         </Button>
-                        <Button
-                          variant="secondary"
+                        <IconButton
+                          label="编辑数据集"
                           onClick={() => navigate(datasetEditPath(dataset.id))}
                         >
                           <Pencil size={13} />
-                          编辑
-                        </Button>
-                        <Button
-                          variant="secondary"
+                        </IconButton>
+                        <IconButton
+                          label="导出数据集"
                           onClick={() =>
                             void run(
                               () =>
@@ -300,10 +307,10 @@ export function DatasetsPage() {
                           }
                         >
                           <Download size={13} />
-                          导出
-                        </Button>
-                        <Button
-                          variant="danger"
+                        </IconButton>
+                        <IconButton
+                          label="删除数据集"
+                          className="dataset-delete-action"
                           onClick={() =>
                             window.confirm(
                               `确认删除数据集“${dataset.name}”？`,
@@ -315,8 +322,7 @@ export function DatasetsPage() {
                           }
                         >
                           <Trash2 size={13} />
-                          删除
-                        </Button>
+                        </IconButton>
                       </div>
                     </td>
                   </tr>
@@ -344,6 +350,7 @@ export function DatasetDetailPage() {
   const { currentId } = useWorkspace();
   const { datasetId = "" } = useParams();
   const navigate = useNavigate();
+  const [actionError, setActionError] = useState("");
   const dataset = useQuery({
     queryKey: workspaceQueryKey(currentId, "dataset", datasetId),
     queryFn: () => api.datasets.get(datasetId),
@@ -354,6 +361,44 @@ export function DatasetDetailPage() {
     queryFn: () => api.devices.list(currentId!),
     enabled: Boolean(currentId),
   });
+  const comparableSources = (dataset.data?.sources ?? [])
+    .filter((source) => source.source_type !== "file")
+    .slice(0, 8);
+  const comparisonSources = useQueries({
+    queries: comparableSources.map((source) => ({
+      queryKey: workspaceQueryKey(
+        currentId,
+        "dataset-comparison-source",
+        source.source_type,
+        source.source_id,
+      ),
+      queryFn: async () => {
+        if (source.source_type === "data_stream") {
+          return [await api.dataStreams.get(source.source_id)];
+        }
+        const response = await api.dataStreams.list(source.source_id);
+        return response.items.filter(
+          (stream) => stream.type === "telemetry" && stream.status === "active",
+        );
+      },
+      enabled: Boolean(currentId && dataset.data),
+      staleTime: 60_000,
+    })),
+  });
+  const comparisonSeeds = comparisonSources
+    .flatMap((query) => query.data ?? [])
+    .map((stream) => ({
+      deviceId: stream.device_id,
+      streamId: stream.id,
+    }))
+    .filter(
+      (seed, index, items) =>
+        items.findIndex((item) => item.streamId === seed.streamId) === index,
+    )
+    .slice(0, 8);
+  const comparisonLoading = comparisonSources.some(
+    (query) => query.isLoading || query.isFetching,
+  );
   const back = (
     <Button variant="secondary" onClick={() => navigate("/datasets")}>
       <ArrowLeft size={14} />
@@ -401,6 +446,44 @@ export function DatasetDetailPage() {
         description={dataset.data.description || "数据集元信息、来源和数据预览"}
         actions={
           <div className="header-actions">
+            {["telemetry", "mixed"].includes(dataset.data.data_type) && (
+              <Button
+                variant="secondary"
+                disabled={comparisonLoading || !comparisonSeeds.length}
+                onClick={() =>
+                  navigate(
+                    dataComparisonPath(
+                      comparisonSeeds,
+                      localTime(dataset.data.time_start),
+                      localTime(dataset.data.time_end),
+                    ),
+                  )
+                }
+              >
+                <GitCompareArrows size={14} />
+                {comparisonLoading ? "准备对比…" : "在数据对比中打开"}
+              </Button>
+            )}
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                setActionError("");
+                try {
+                  await api.datasets.export(dataset.data.id, {
+                    export_type: "dataset_zip",
+                  });
+                  navigate("/exports");
+                } catch (error) {
+                  const item = formatApiError(error);
+                  setActionError(
+                    `创建导出任务失败：${item.message}${item.requestId ? ` · request id ${item.requestId}` : ""}`,
+                  );
+                }
+              }}
+            >
+              <Download size={14} />
+              导出
+            </Button>
             <Button
               variant="secondary"
               onClick={() => navigate(datasetEditPath(dataset.data.id))}
@@ -412,6 +495,7 @@ export function DatasetDetailPage() {
           </div>
         }
       />
+      {actionError && <div className="command-note section-gap">{actionError}</div>}
       <DatasetPreview dataset={dataset.data} devices={devices.data?.items ?? []} />
     </>
   );
@@ -421,7 +505,34 @@ export function DatasetEditorPage() {
   const { currentId } = useWorkspace();
   const { datasetId = "" } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const creating = !datasetId;
+  const prefill = useMemo<DatasetPrefill | undefined>(() => {
+    if (!creating) return undefined;
+    const sources = (searchParams.get("sources") ?? "")
+      .split(",")
+      .map((sourceId) => sourceId.trim())
+      .filter(Boolean)
+      .slice(0, 32)
+      .map((sourceId) => ({
+        source_type: "data_stream" as const,
+        source_id: sourceId,
+      }));
+    const start = searchParams.get("start");
+    const end = searchParams.get("end");
+    return {
+      name: searchParams.get("name") ?? "",
+      startTime:
+        start && Number.isFinite(Date.parse(start))
+          ? localTime(start)
+          : localTime(new Date(Date.now() - 86_400_000)),
+      endTime:
+        end && Number.isFinite(Date.parse(end))
+          ? localTime(end)
+          : localTime(new Date()),
+      sources,
+    };
+  }, [creating, searchParams]);
   const dataset = useQuery({
     queryKey: workspaceQueryKey(currentId, "dataset", datasetId),
     queryFn: () => api.datasets.get(datasetId),
@@ -486,9 +597,10 @@ export function DatasetEditorPage() {
       />
       {feedback && <div className="command-note section-gap">{feedback}</div>}
       <DatasetForm
-        key={dataset.data?.id ?? "create"}
+        key={dataset.data?.id ?? (searchParams.toString() || "create")}
         workspaceId={currentId}
         dataset={dataset.data ?? null}
+        prefill={prefill}
         projects={projects.data?.items ?? []}
         devices={devices.data?.items ?? []}
         onClose={() => navigate(returnPath)}
@@ -514,6 +626,7 @@ export function DatasetEditorPage() {
 function DatasetForm({
   workspaceId,
   dataset,
+  prefill,
   projects,
   devices,
   onClose,
@@ -521,6 +634,7 @@ function DatasetForm({
 }: {
   workspaceId: string;
   dataset: Dataset | null;
+  prefill?: DatasetPrefill;
   projects: JsonRecord[];
   devices: JsonRecord[];
   onClose: () => void;
@@ -529,17 +643,21 @@ function DatasetForm({
     message: string,
   ) => Promise<boolean>;
 }) {
-  const [name, setName] = useState(dataset?.name ?? "");
+  const [name, setName] = useState(dataset?.name ?? prefill?.name ?? "");
   const [description, setDescription] = useState(dataset?.description ?? "");
   const [projectId, setProjectId] = useState(dataset?.project_id ?? "");
   const [dataType, setDataType] = useState<Dataset["data_type"]>(
     dataset?.data_type ?? "telemetry",
   );
   const [startTime, setStartTime] = useState(
-    localTime(dataset?.time_start ?? new Date(Date.now() - 86_400_000)),
+    dataset
+      ? localTime(dataset.time_start)
+      : prefill?.startTime ?? localTime(new Date(Date.now() - 86_400_000)),
   );
   const [endTime, setEndTime] = useState(
-    localTime(dataset?.time_end ?? new Date()),
+    dataset
+      ? localTime(dataset.time_end)
+      : prefill?.endTime ?? localTime(new Date()),
   );
   const [status, setStatus] = useState<Dataset["status"]>(
     dataset?.status ?? "draft",
@@ -549,7 +667,7 @@ function DatasetForm({
       dataset?.sources.map((item) => ({
         source_type: item.source_type,
         source_id: item.source_id,
-      })) ?? [],
+      })) ?? prefill?.sources ?? [],
   );
   const [sourceType, setSourceType] = useState<AddableSourceType>("device");
   const [deviceId, setDeviceId] = useState("");
@@ -627,7 +745,9 @@ function DatasetForm({
             {dataset ? "编辑数据集" : "创建数据集"}
           </h2>
           <div className="panel-kicker">
-            选择可访问资源，不需要填写数据表或查询语句
+            {prefill?.sources.length
+              ? `已带入 ${prefill.sources.length} 个数据指标和查询时间，可继续调整`
+              : "选择可访问资源，不需要填写数据表或查询语句"}
           </div>
         </div>
         <Button variant="secondary" onClick={onClose}>
@@ -842,22 +962,48 @@ function SourceName({
     enabled: source.source_type === "data_stream",
     staleTime: 60_000,
   });
+  const listedDevice = devices.find(
+    (item) => String(item.id) === stream.data?.device_id,
+  );
+  const streamDevice = useQuery({
+    queryKey: ["device", stream.data?.device_id, "dataset-source-name"],
+    queryFn: () => api.devices.get(stream.data!.device_id),
+    enabled: Boolean(
+      source.source_type === "data_stream" &&
+        stream.data?.device_id &&
+        !listedDevice,
+    ),
+    staleTime: 60_000,
+  });
   if (source.source_type === "device") {
     const device = devices.find((item) => String(item.id) === source.source_id);
     return (
-      <span>
+      <span className="dataset-source-identity">
         {String(device?.name ?? device?.serial_no ?? "未知设备")}
       </span>
     );
   }
-  if (source.source_type === "file") return <span>文件来源</span>;
+  if (source.source_type === "file")
+    return <span className="dataset-source-identity">文件来源</span>;
+  if (stream.isLoading)
+    return <span className="dataset-source-identity">正在加载数据来源…</span>;
+  if (!stream.data)
+    return <span className="dataset-source-identity">未命名数据指标</span>;
+  const device = listedDevice ?? streamDevice.data;
+  const deviceName = String(
+    device?.name ?? device?.serial_no ?? "未知设备",
+  );
+  const serialNumber = device?.serial_no ? String(device.serial_no) : "";
   return (
-    <span>
-      {stream.isLoading
-        ? "正在加载数据流…"
-        : stream.data
-          ? `${stream.data.name} · ${stream.data.code}`
-          : "未命名数据指标"}
+    <span className="dataset-source-identity">
+      <strong>
+        {deviceName}
+        {serialNumber ? ` · ${serialNumber}` : ""}
+      </strong>
+      <small>
+        {stream.data.computed ? "fx · " : ""}
+        {stream.data.name} · {stream.data.code}
+      </small>
     </span>
   );
 }
@@ -988,9 +1134,7 @@ function DatasetPreview({
                 title={source.source_id}
               >
                 <Database size={13} aria-hidden="true" />
-                <strong>
-                  <SourceName source={source} devices={devices} />
-                </strong>
+                <SourceName source={source} devices={devices} />
                 <small>{sourceTypeLabel(source.source_type)}</small>
               </div>
             ))}

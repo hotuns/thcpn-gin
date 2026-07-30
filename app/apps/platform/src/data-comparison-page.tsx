@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   CartesianGrid,
   Line,
@@ -9,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { CopyPlus, Plus, Search, Trash2 } from "lucide-react";
+import { ChartNoAxesCombined, Clock3, CopyPlus, Database, PanelsTopLeft, Percent, Plus, Search, Trash2 } from "lucide-react";
 import {
   api,
   formatApiError,
@@ -20,6 +21,11 @@ import {
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, PageHeader, Panel, StateView } from "@thcpn/ui";
 import { DeviceCombobox } from "./device-combobox";
+import {
+  datasetCreatePath,
+  encodeComparisonSeeds,
+  parseComparisonSeeds,
+} from "./data-workflow";
 
 const colors = ["#1769e0", "#16845b", "#d36b12", "#b13e4a", "#6a5ab5", "#00859b", "#9a6b18", "#6b7280"];
 const MAX_COMPARISONS = 8;
@@ -85,6 +91,26 @@ const createDraft = (deviceId = ""): ComparisonDraft => ({
   endTime: dateTimeLocal(new Date()),
 });
 
+const validLocalTime = (value: string | null, fallback: string) => {
+  if (!value || !Number.isFinite(Date.parse(value))) return fallback;
+  return dateTimeLocal(new Date(value));
+};
+
+function createInitialDrafts(searchParams: URLSearchParams) {
+  const seeds = parseComparisonSeeds(searchParams.get("items"));
+  if (!seeds.length) return [createDraft()];
+  const fallback = createDraft();
+  const startTime = validLocalTime(searchParams.get("start"), fallback.startTime);
+  const endTime = validLocalTime(searchParams.get("end"), fallback.endTime);
+  return seeds.map((seed) => ({
+    id: crypto.randomUUID(),
+    deviceId: seed.deviceId,
+    streamId: seed.streamId,
+    startTime: validLocalTime(seed.startTime ?? null, startTime),
+    endTime: validLocalTime(seed.endTime ?? null, endTime),
+  }));
+}
+
 const formatNumber = (value: number) =>
   new Intl.NumberFormat(document.documentElement.lang || "zh-CN", { maximumFractionDigits: 3 }).format(value);
 
@@ -94,6 +120,16 @@ const formatTime = (value: string) =>
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+  }).format(new Date(value));
+
+const formatExactTime = (value: number | string) =>
+  new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
   }).format(new Date(value));
 
 export function comparisonStatistic(series?: TelemetrySeries): ComparisonStatistic | null {
@@ -116,16 +152,25 @@ export function comparisonStatistic(series?: TelemetrySeries): ComparisonStatist
 
 export function DataComparisonPage() {
   const { currentId } = useWorkspace();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [initialDrafts] = useState(() => createInitialDrafts(searchParams));
+  const seeded = initialDrafts.some((item) => item.streamId);
+  const previousWorkspaceId = useRef(currentId);
   const devicesQuery = useQuery({
     queryKey: workspaceQueryKey(currentId, "devices", "comparison"),
     queryFn: () => api.devices.list(currentId!),
     enabled: Boolean(currentId),
   });
   const devices = devicesQuery.data?.items ?? [];
-  const [drafts, setDrafts] = useState<ComparisonDraft[]>(() => [createDraft()]);
-  const [applied, setApplied] = useState<ComparisonDraft[]>([]);
+  const [drafts, setDrafts] = useState<ComparisonDraft[]>(initialDrafts);
+  const [applied, setApplied] = useState<ComparisonDraft[]>(
+    seeded ? initialDrafts : [],
+  );
   const [validationError, setValidationError] = useState("");
   const [searchVersion, setSearchVersion] = useState(0);
+  const [chartMode, setChartMode] = useState<"raw" | "minmax" | "zscore">("raw");
+  const [timeAlignment, setTimeAlignment] = useState<"time" | "progress">("time");
   const dirty = applied.length > 0 && JSON.stringify(drafts) !== JSON.stringify(applied);
 
   useEffect(() => {
@@ -134,6 +179,8 @@ export function DataComparisonPage() {
   }, [devices, drafts]);
 
   useEffect(() => {
+    if (previousWorkspaceId.current === currentId) return;
+    previousWorkspaceId.current = currentId;
     setApplied([]);
     setValidationError("");
   }, [currentId]);
@@ -151,7 +198,18 @@ export function DataComparisonPage() {
       return;
     }
     setValidationError("");
-    setApplied(drafts.map((item) => ({ ...item })));
+    const next = drafts.map((item) => ({ ...item }));
+    setApplied(next);
+    setSearchParams({
+      items: encodeComparisonSeeds(
+        next.map(({ deviceId, streamId, startTime, endTime }) => ({
+          deviceId,
+          streamId,
+          startTime,
+          endTime,
+        })),
+      ),
+    }, { replace: true });
     setSearchVersion((current) => current + 1);
   };
 
@@ -195,6 +253,16 @@ export function DataComparisonPage() {
   });
   const successful = compared.filter((item) => item.series?.points.length);
   const loading = results.some((result) => result.isLoading || result.isFetching);
+  const datasetStart = applied.length
+    ? applied.reduce((value, item) =>
+        Date.parse(item.startTime) < Date.parse(value) ? item.startTime : value,
+      applied[0].startTime)
+    : "";
+  const datasetEnd = applied.length
+    ? applied.reduce((value, item) =>
+        Date.parse(item.endTime) > Date.parse(value) ? item.endTime : value,
+      applied[0].endTime)
+    : "";
 
   if (!currentId) return <Panel><StateView type="empty" title="请选择工作区" description="选择工作区后可以读取设备数据。" /></Panel>;
 
@@ -245,11 +313,58 @@ export function DataComparisonPage() {
       {applied.length ? (
         <>
           <Panel className="section-gap comparison-result-panel">
-            <div className="panel-header"><h2 className="panel-title">趋势对比</h2><Badge tone="info">{successful.length} / {applied.length} 项</Badge></div>
+            <div className="panel-header">
+              <div>
+                <h2 className="panel-title">
+                  {chartMode === "raw"
+                    ? "原始值对比"
+                    : chartMode === "minmax"
+                      ? "Min-Max 趋势对比"
+                      : "Z-score 偏离对比"}
+                </h2>
+                <div className="panel-kicker">
+                  {chartMode === "raw"
+                    ? "不同单位使用独立 Y 轴，相同单位共用量程"
+                    : chartMode === "minmax"
+                      ? "各序列按当前查询范围缩放到 0–1，用于比较曲线形态"
+                      : "各序列转换为距自身均值的标准差倍数，用于比较异常程度"}
+                </div>
+              </div>
+              <div className="header-actions">
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    navigate(
+                      datasetCreatePath({
+                        sourceIds: [...new Set(applied.map((item) => item.streamId))],
+                        startTime: datasetStart,
+                        endTime: datasetEnd,
+                        name: `数据对比 ${dateTimeLocal(new Date()).slice(0, 10)}`,
+                      }),
+                    )
+                  }
+                >
+                  <Database size={14} />
+                  保存为数据集
+                </Button>
+                <div className="chart-mode" aria-label="对比图表模式">
+                  <button type="button" className={chartMode === "raw" ? "active" : ""} onClick={() => setChartMode("raw")}><PanelsTopLeft size={13} />原始值</button>
+                  <button type="button" className={chartMode === "minmax" ? "active" : ""} onClick={() => setChartMode("minmax")}><ChartNoAxesCombined size={13} />Min-Max</button>
+                  <button type="button" className={chartMode === "zscore" ? "active" : ""} onClick={() => setChartMode("zscore")}><ChartNoAxesCombined size={13} />Z-score</button>
+                </div>
+                <div className="chart-mode" aria-label="时间轴对齐方式">
+                  <button type="button" className={timeAlignment === "time" ? "active" : ""} onClick={() => setTimeAlignment("time")}><Clock3 size={13} />实际时间</button>
+                  <button type="button" className={timeAlignment === "progress" ? "active" : ""} onClick={() => setTimeAlignment("progress")}><Percent size={13} />进度对齐</button>
+                </div>
+                <Badge tone="info">{successful.length} / {applied.length} 项</Badge>
+              </div>
+            </div>
             {loading && !successful.length ? (
               <StateView type="loading" title="正在加载对比数据" description="各对比项正在并行查询。" />
             ) : successful.length ? (
-              <RelativeComparisonChart items={successful.map((item) => ({ config: item.config, device: item.device, series: item.series! }))} />
+              chartMode === "raw"
+                ? <MultiAxisComparisonChart alignment={timeAlignment} items={successful.map((item) => ({ config: item.config, device: item.device, series: item.series! }))} />
+                : <RelativeComparisonChart alignment={timeAlignment} method={chartMode} items={successful.map((item) => ({ config: item.config, device: item.device, series: item.series! }))} />
             ) : (
               <StateView type="empty" title="当前条件没有可对比的数据" description="可以调整设备、数据要素或时间范围后重新搜索。" />
             )}
@@ -313,7 +428,11 @@ function ComparisonCondition({
         <span className="field-label">数据要素</span>
         <select value={value.streamId} disabled={streams.isLoading || !metrics.length} onChange={(event) => onChange({ streamId: event.target.value })}>
           <option value="">{streams.isLoading ? "加载中…" : metrics.length ? "选择要素" : "无可用要素"}</option>
-          {metrics.map((item) => <option key={item.id} value={item.id}>{item.name}{item.unit ? `（${item.unit}）` : ""}</option>)}
+          {metrics.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.computed ? "fx · " : ""}{item.name}{item.unit ? `（${item.unit}）` : ""}
+            </option>
+          ))}
         </select>
       </label>
       <label className="comparison-field">
@@ -334,7 +453,78 @@ function ComparisonCondition({
   );
 }
 
-function RelativeComparisonChart({ items }: { items: { config: ComparisonDraft; device?: Device; series: TelemetrySeries }[] }) {
+function MultiAxisComparisonChart({ items, alignment }: { items: { config: ComparisonDraft; device?: Device; series: TelemetrySeries }[]; alignment: "time" | "progress" }) {
+  const { data, units } = useMemo(() => {
+    const byUnit = new Map<string, typeof items>();
+    const rows = new Map<number, Record<string, number>>();
+    items.forEach((item) => {
+      const unit = item.series.unit?.trim() || "无单位";
+      byUnit.set(unit, [...(byUnit.get(unit) ?? []), item]);
+      const start = Date.parse(item.config.startTime);
+      const end = Date.parse(item.config.endTime);
+      item.series.points.forEach((point) => {
+        const timestamp = Date.parse(point.ts);
+        if (!Number.isFinite(timestamp) || !Number.isFinite(point.value)) return;
+        const progress = Math.max(0, Math.min(100, ((timestamp - start) / (end - start)) * 100));
+        const x = alignment === "progress" ? Math.round(progress * 5) / 5 : timestamp;
+        const row = rows.get(x) ?? { x };
+        row[item.config.id] = point.value;
+        row[`${item.config.id}:time`] = timestamp;
+        rows.set(x, row);
+      });
+    });
+    return {
+      data: [...rows.values()].sort((a, b) => a.x - b.x),
+      units: [...byUnit.entries()].map(([unit, entries]) => ({ unit, entries })),
+    };
+  }, [alignment, items]);
+
+  return <div className="relative-comparison">
+    <ComparisonLegend items={items} />
+    <div className="multi-axis-comparison-chart">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data} margin={{ top: 12, right: 10, bottom: 8, left: 10 }}>
+          <CartesianGrid stroke="#e5edf3" strokeDasharray="3 4" vertical={false} />
+          <XAxis
+            dataKey="x"
+            type="number"
+            domain={alignment === "progress" ? [0, 100] : ["dataMin", "dataMax"]}
+            tickFormatter={(value) => alignment === "progress" ? `${value}%` : formatTime(new Date(Number(value)).toISOString())}
+            minTickGap={48}
+            tick={{ fontSize: 10 }}
+          />
+          {units.map((group, index) => {
+            const firstItem = group.entries[0];
+            const color = colors[items.indexOf(firstItem) % colors.length];
+            return <YAxis
+              key={group.unit}
+              yAxisId={group.unit}
+              orientation={index % 2 ? "right" : "left"}
+              tick={{ fontSize: 9, fill: color }}
+              tickLine={false}
+              axisLine={{ stroke: color }}
+              width={52}
+              tickFormatter={(value) => formatNumber(Number(value))}
+              label={{ value: group.unit, angle: -90, position: index % 2 ? "insideRight" : "insideLeft", fill: color, fontSize: 9 }}
+            />;
+          })}
+          <Tooltip content={<ComparisonTooltip items={items} mode="raw" />} />
+          {items.map((item, index) => {
+            const unit = item.series.unit?.trim() || "无单位";
+            return <Line key={item.config.id} yAxisId={unit} type="monotone" dataKey={item.config.id} name={item.config.id} stroke={colors[index % colors.length]} strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />;
+          })}
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+    <div className="comparison-axis-note">
+      {alignment === "progress"
+        ? "横轴按各自时间范围映射为 0–100%；纵轴保留原始值，不同单位使用独立 Y 轴。"
+        : "横轴使用真实采样时间；纵轴保留原始值，不同单位使用独立 Y 轴。"}
+    </div>
+  </div>;
+}
+
+function RelativeComparisonChart({ items, method, alignment }: { items: { config: ComparisonDraft; device?: Device; series: TelemetrySeries }[]; method: "minmax" | "zscore"; alignment: "time" | "progress" }) {
   const data = useMemo(() => {
     const rows = new Map<number, Record<string, number>>();
     items.forEach((item) => {
@@ -342,36 +532,125 @@ function RelativeComparisonChart({ items }: { items: { config: ComparisonDraft; 
       const min = Math.min(...values);
       const max = Math.max(...values);
       const span = max - min;
+      const mean = values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
+      const deviation = Math.sqrt(
+        values.reduce((sum, value) => sum + (value - mean) ** 2, 0) /
+          Math.max(1, values.length),
+      );
       const start = Date.parse(item.config.startTime);
       const end = Date.parse(item.config.endTime);
       item.series.points.forEach((point) => {
         const timestamp = Date.parse(point.ts);
         if (!Number.isFinite(timestamp) || !Number.isFinite(point.value)) return;
         const progress = Math.max(0, Math.min(100, ((timestamp - start) / (end - start)) * 100));
-        const bucket = Math.round(progress * 5) / 5;
-        const row = rows.get(bucket) ?? { progress: bucket };
-        row[item.config.id] = span ? ((point.value - min) / span) * 100 : 50;
-        rows.set(bucket, row);
+        const x = alignment === "progress" ? Math.round(progress * 5) / 5 : timestamp;
+        const row = rows.get(x) ?? { x };
+        row[item.config.id] =
+          method === "minmax"
+            ? span
+              ? (point.value - min) / span
+              : 0.5
+            : deviation
+              ? (point.value - mean) / deviation
+              : 0;
+        row[`${item.config.id}:raw`] = point.value;
+        row[`${item.config.id}:time`] = timestamp;
+        rows.set(x, row);
       });
     });
-    return [...rows.values()].sort((a, b) => a.progress - b.progress);
-  }, [items]);
+    return [...rows.values()].sort((a, b) => a.x - b.x);
+  }, [alignment, items, method]);
 
   return <div className="relative-comparison">
-    <div className="comparison-legend">{items.map((item, index) => <div key={item.config.id}><i style={{ background: colors[index % colors.length] }} /><span><strong>{item.device?.name ?? "设备"}</strong> · {item.series.name}</span><small>{formatTime(item.config.startTime)} 至 {formatTime(item.config.endTime)}</small></div>)}</div>
+    <ComparisonLegend items={items} />
     <div className="relative-comparison-chart">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 12, right: 18, bottom: 8, left: 0 }}>
           <CartesianGrid stroke="#e5edf3" strokeDasharray="3 4" vertical={false} />
-          <XAxis dataKey="progress" type="number" domain={[0, 100]} tickFormatter={(value) => `${value}%`} tick={{ fontSize: 10 }} />
-          <YAxis domain={[0, 100]} tickFormatter={(value) => `${value}%`} tick={{ fontSize: 10 }} width={42} />
-          <Tooltip labelFormatter={(value) => `时间进度 ${formatNumber(Number(value))}%`} formatter={(value, name) => [`${formatNumber(Number(value))}%`, String(name)]} />
-          {items.map((item, index) => <Line key={item.config.id} type="monotone" dataKey={item.config.id} name={`${item.device?.name ?? "设备"} · ${item.series.name}`} stroke={colors[index % colors.length]} strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />)}
+          <XAxis
+            dataKey="x"
+            type="number"
+            domain={alignment === "progress" ? [0, 100] : ["dataMin", "dataMax"]}
+            tickFormatter={(value) => alignment === "progress" ? `${value}%` : formatTime(new Date(Number(value)).toISOString())}
+            minTickGap={48}
+            tick={{ fontSize: 10 }}
+          />
+          <YAxis domain={method === "minmax" ? [0, 1] : ["auto", "auto"]} tickFormatter={(value) => formatNumber(Number(value))} tick={{ fontSize: 10 }} width={48} />
+          <Tooltip content={<ComparisonTooltip items={items} mode={method} />} />
+          {items.map((item, index) => <Line key={item.config.id} type="monotone" dataKey={item.config.id} name={item.config.id} stroke={colors[index % colors.length]} strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />)}
         </LineChart>
       </ResponsiveContainer>
     </div>
-    <div className="comparison-axis-note">横轴按各自时间范围的进度对齐，纵轴按各序列最小值至最大值归一化。</div>
+    <div className="comparison-axis-note">
+      {method === "minmax"
+        ? "Min-Max = (原始值 − 最小值) / (最大值 − 最小值)，参数按当前查询范围计算。"
+        : "Z-score = (原始值 − 均值) / 标准差，0 表示序列均值，正负值表示偏离方向。"}
+      {alignment === "progress" ? " 横轴按观测进度对齐。" : " 横轴保留真实采样时间。"}
+    </div>
   </div>;
+}
+
+function ComparisonTooltip({
+  active,
+  payload,
+  items,
+  mode,
+}: {
+  active?: boolean;
+  payload?: Array<{
+    color?: string;
+    dataKey?: string | number;
+    value?: number;
+    payload?: Record<string, number>;
+  }>;
+  items: { config: ComparisonDraft; device?: Device; series: TelemetrySeries }[];
+  mode: "raw" | "minmax" | "zscore";
+}) {
+  if (!active || !payload?.length) return null;
+  const entries = payload
+    .map((entry) => {
+      const id = String(entry.dataKey ?? "");
+      const item = items.find((candidate) => candidate.config.id === id);
+      const time = entry.payload?.[`${id}:time`];
+      if (!item || !Number.isFinite(time)) return null;
+      return {
+        entry,
+        item,
+        time: Number(time),
+        raw:
+          mode === "raw"
+            ? Number(entry.value)
+            : Number(entry.payload?.[`${id}:raw`]),
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+  if (!entries.length) return null;
+  return (
+    <div className="comparison-tooltip">
+      <strong>采样时间</strong>
+      {entries.map(({ entry, item, time, raw }) => (
+        <div key={item.config.id}>
+          <i style={{ background: entry.color }} />
+          <span>
+            <b>{item.device?.name ?? "设备"} · {item.series.name}</b>
+            <small>{formatExactTime(time)}</small>
+          </span>
+          <em>
+            {formatNumber(raw)}{item.series.unit ? ` ${item.series.unit}` : ""}
+            {mode !== "raw" && (
+              <small>
+                {mode === "minmax" ? "Min-Max" : "Z-score"} {formatNumber(Number(entry.value))}
+              </small>
+            )}
+          </em>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ComparisonLegend({ items }: { items: { config: ComparisonDraft; device?: Device; series: TelemetrySeries }[] }) {
+  return <div className="comparison-legend">{items.map((item, index) => <div key={item.config.id}><i style={{ background: colors[index % colors.length] }} /><span><strong>{item.device?.name ?? "设备"}</strong> · {item.series.name}</span><small>{formatTime(item.config.startTime)} 至 {formatTime(item.config.endTime)}</small></div>)}</div>;
 }
 
 function ComparisonStatistics({ items }: { items: { config: ComparisonDraft; device?: Device; query: { isLoading: boolean; error: unknown }; series?: TelemetrySeries }[] }) {

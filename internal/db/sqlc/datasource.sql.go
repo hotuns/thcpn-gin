@@ -9,7 +9,6 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createDataSource = `-- name: CreateDataSource :one
@@ -64,7 +63,7 @@ INSERT INTO data_stream_bindings (
     created_by_type
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-RETURNING id, data_stream_id, data_source_id, adapter_code, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at
+RETURNING id, data_stream_id, data_source_id, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at, adapter_code, created_by_type
 `
 
 type CreateDataStreamBindingParams struct {
@@ -84,27 +83,7 @@ type CreateDataStreamBindingParams struct {
 	CreatedByType     string    `json:"created_by_type"`
 }
 
-type CreateDataStreamBindingRow struct {
-	ID                uuid.UUID          `json:"id"`
-	DataStreamID      uuid.UUID          `json:"data_stream_id"`
-	DataSourceID      uuid.UUID          `json:"data_source_id"`
-	AdapterCode       string             `json:"adapter_code"`
-	DatabaseName      *string            `json:"database_name"`
-	SchemaName        *string            `json:"schema_name"`
-	TableName         *string            `json:"table_name"`
-	DeviceKeyField    *string            `json:"device_key_field"`
-	DeviceKeyValue    *string            `json:"device_key_value"`
-	TimeField         *string            `json:"time_field"`
-	ValueField        *string            `json:"value_field"`
-	PayloadType       string             `json:"payload_type"`
-	AdapterConfigJson []byte             `json:"adapter_config_json"`
-	Status            string             `json:"status"`
-	CreatedBy         uuid.UUID          `json:"created_by"`
-	CreatedAt         pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
-}
-
-func (q *Queries) CreateDataStreamBinding(ctx context.Context, arg CreateDataStreamBindingParams) (CreateDataStreamBindingRow, error) {
+func (q *Queries) CreateDataStreamBinding(ctx context.Context, arg CreateDataStreamBindingParams) (DataStreamBinding, error) {
 	row := q.db.QueryRow(ctx, createDataStreamBinding,
 		arg.DataStreamID,
 		arg.DataSourceID,
@@ -121,12 +100,11 @@ func (q *Queries) CreateDataStreamBinding(ctx context.Context, arg CreateDataStr
 		arg.CreatedBy,
 		arg.CreatedByType,
 	)
-	var i CreateDataStreamBindingRow
+	var i DataStreamBinding
 	err := row.Scan(
 		&i.ID,
 		&i.DataStreamID,
 		&i.DataSourceID,
-		&i.AdapterCode,
 		&i.DatabaseName,
 		&i.SchemaName,
 		&i.TableName,
@@ -140,6 +118,8 @@ func (q *Queries) CreateDataStreamBinding(ctx context.Context, arg CreateDataStr
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AdapterCode,
+		&i.CreatedByType,
 	)
 	return i, err
 }
@@ -156,7 +136,7 @@ WHERE ds.id = dsb.data_stream_id
   AND dsb.status = 'active'
   AND (dsb.adapter_config_json->>'external_device_id')::bigint = $3::bigint
   AND NOT (ds.code = ANY($4::text[]))
-RETURNING dsb.id, dsb.data_stream_id, dsb.data_source_id, dsb.adapter_code, dsb.database_name, dsb.schema_name, dsb.table_name, dsb.device_key_field, dsb.device_key_value, dsb.time_field, dsb.value_field, dsb.payload_type, dsb.adapter_config_json, dsb.status, dsb.created_by, dsb.created_at, dsb.updated_at
+RETURNING dsb.id, dsb.data_stream_id, dsb.data_source_id, dsb.database_name, dsb.schema_name, dsb.table_name, dsb.device_key_field, dsb.device_key_value, dsb.time_field, dsb.value_field, dsb.payload_type, dsb.adapter_config_json, dsb.status, dsb.created_by, dsb.created_at, dsb.updated_at, dsb.adapter_code, dsb.created_by_type
 `
 
 type DisableMissingTHCPNDataStreamBindingsParams struct {
@@ -166,27 +146,7 @@ type DisableMissingTHCPNDataStreamBindingsParams struct {
 	ActiveCodes      []string  `json:"active_codes"`
 }
 
-type DisableMissingTHCPNDataStreamBindingsRow struct {
-	ID                uuid.UUID          `json:"id"`
-	DataStreamID      uuid.UUID          `json:"data_stream_id"`
-	DataSourceID      uuid.UUID          `json:"data_source_id"`
-	AdapterCode       string             `json:"adapter_code"`
-	DatabaseName      *string            `json:"database_name"`
-	SchemaName        *string            `json:"schema_name"`
-	TableName         *string            `json:"table_name"`
-	DeviceKeyField    *string            `json:"device_key_field"`
-	DeviceKeyValue    *string            `json:"device_key_value"`
-	TimeField         *string            `json:"time_field"`
-	ValueField        *string            `json:"value_field"`
-	PayloadType       string             `json:"payload_type"`
-	AdapterConfigJson []byte             `json:"adapter_config_json"`
-	Status            string             `json:"status"`
-	CreatedBy         uuid.UUID          `json:"created_by"`
-	CreatedAt         pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
-}
-
-func (q *Queries) DisableMissingTHCPNDataStreamBindings(ctx context.Context, arg DisableMissingTHCPNDataStreamBindingsParams) ([]DisableMissingTHCPNDataStreamBindingsRow, error) {
+func (q *Queries) DisableMissingTHCPNDataStreamBindings(ctx context.Context, arg DisableMissingTHCPNDataStreamBindingsParams) ([]DataStreamBinding, error) {
 	rows, err := q.db.Query(ctx, disableMissingTHCPNDataStreamBindings,
 		arg.DeviceID,
 		arg.DataSourceID,
@@ -197,14 +157,13 @@ func (q *Queries) DisableMissingTHCPNDataStreamBindings(ctx context.Context, arg
 		return nil, err
 	}
 	defer rows.Close()
-	items := []DisableMissingTHCPNDataStreamBindingsRow{}
+	items := []DataStreamBinding{}
 	for rows.Next() {
-		var i DisableMissingTHCPNDataStreamBindingsRow
+		var i DataStreamBinding
 		if err := rows.Scan(
 			&i.ID,
 			&i.DataStreamID,
 			&i.DataSourceID,
-			&i.AdapterCode,
 			&i.DatabaseName,
 			&i.SchemaName,
 			&i.TableName,
@@ -218,6 +177,8 @@ func (q *Queries) DisableMissingTHCPNDataStreamBindings(ctx context.Context, arg
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AdapterCode,
+			&i.CreatedByType,
 		); err != nil {
 			return nil, err
 		}
@@ -230,7 +191,7 @@ func (q *Queries) DisableMissingTHCPNDataStreamBindings(ctx context.Context, arg
 }
 
 const getActiveDataStreamBinding = `-- name: GetActiveDataStreamBinding :one
-SELECT id, data_stream_id, data_source_id, adapter_code, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at
+SELECT id, data_stream_id, data_source_id, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at, adapter_code, created_by_type
 FROM data_stream_bindings
 WHERE data_stream_id = $1
   AND status = 'active'
@@ -238,34 +199,13 @@ ORDER BY created_at DESC, id DESC
 LIMIT 1
 `
 
-type GetActiveDataStreamBindingRow struct {
-	ID                uuid.UUID          `json:"id"`
-	DataStreamID      uuid.UUID          `json:"data_stream_id"`
-	DataSourceID      uuid.UUID          `json:"data_source_id"`
-	AdapterCode       string             `json:"adapter_code"`
-	DatabaseName      *string            `json:"database_name"`
-	SchemaName        *string            `json:"schema_name"`
-	TableName         *string            `json:"table_name"`
-	DeviceKeyField    *string            `json:"device_key_field"`
-	DeviceKeyValue    *string            `json:"device_key_value"`
-	TimeField         *string            `json:"time_field"`
-	ValueField        *string            `json:"value_field"`
-	PayloadType       string             `json:"payload_type"`
-	AdapterConfigJson []byte             `json:"adapter_config_json"`
-	Status            string             `json:"status"`
-	CreatedBy         uuid.UUID          `json:"created_by"`
-	CreatedAt         pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
-}
-
-func (q *Queries) GetActiveDataStreamBinding(ctx context.Context, dataStreamID uuid.UUID) (GetActiveDataStreamBindingRow, error) {
+func (q *Queries) GetActiveDataStreamBinding(ctx context.Context, dataStreamID uuid.UUID) (DataStreamBinding, error) {
 	row := q.db.QueryRow(ctx, getActiveDataStreamBinding, dataStreamID)
-	var i GetActiveDataStreamBindingRow
+	var i DataStreamBinding
 	err := row.Scan(
 		&i.ID,
 		&i.DataStreamID,
 		&i.DataSourceID,
-		&i.AdapterCode,
 		&i.DatabaseName,
 		&i.SchemaName,
 		&i.TableName,
@@ -279,6 +219,8 @@ func (q *Queries) GetActiveDataStreamBinding(ctx context.Context, dataStreamID u
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AdapterCode,
+		&i.CreatedByType,
 	)
 	return i, err
 }
@@ -306,39 +248,18 @@ func (q *Queries) GetDataSource(ctx context.Context, id uuid.UUID) (DataSource, 
 }
 
 const getDataStreamBinding = `-- name: GetDataStreamBinding :one
-SELECT id, data_stream_id, data_source_id, adapter_code, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at
+SELECT id, data_stream_id, data_source_id, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at, adapter_code, created_by_type
 FROM data_stream_bindings
 WHERE id = $1
 `
 
-type GetDataStreamBindingRow struct {
-	ID                uuid.UUID          `json:"id"`
-	DataStreamID      uuid.UUID          `json:"data_stream_id"`
-	DataSourceID      uuid.UUID          `json:"data_source_id"`
-	AdapterCode       string             `json:"adapter_code"`
-	DatabaseName      *string            `json:"database_name"`
-	SchemaName        *string            `json:"schema_name"`
-	TableName         *string            `json:"table_name"`
-	DeviceKeyField    *string            `json:"device_key_field"`
-	DeviceKeyValue    *string            `json:"device_key_value"`
-	TimeField         *string            `json:"time_field"`
-	ValueField        *string            `json:"value_field"`
-	PayloadType       string             `json:"payload_type"`
-	AdapterConfigJson []byte             `json:"adapter_config_json"`
-	Status            string             `json:"status"`
-	CreatedBy         uuid.UUID          `json:"created_by"`
-	CreatedAt         pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
-}
-
-func (q *Queries) GetDataStreamBinding(ctx context.Context, id uuid.UUID) (GetDataStreamBindingRow, error) {
+func (q *Queries) GetDataStreamBinding(ctx context.Context, id uuid.UUID) (DataStreamBinding, error) {
 	row := q.db.QueryRow(ctx, getDataStreamBinding, id)
-	var i GetDataStreamBindingRow
+	var i DataStreamBinding
 	err := row.Scan(
 		&i.ID,
 		&i.DataStreamID,
 		&i.DataSourceID,
-		&i.AdapterCode,
 		&i.DatabaseName,
 		&i.SchemaName,
 		&i.TableName,
@@ -352,6 +273,8 @@ func (q *Queries) GetDataStreamBinding(ctx context.Context, id uuid.UUID) (GetDa
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AdapterCode,
+		&i.CreatedByType,
 	)
 	return i, err
 }
@@ -392,46 +315,25 @@ func (q *Queries) ListDataSources(ctx context.Context) ([]DataSource, error) {
 }
 
 const listDataStreamBindingsByDataStream = `-- name: ListDataStreamBindingsByDataStream :many
-SELECT id, data_stream_id, data_source_id, adapter_code, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at
+SELECT id, data_stream_id, data_source_id, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at, adapter_code, created_by_type
 FROM data_stream_bindings
 WHERE data_stream_id = $1
 ORDER BY created_at DESC, id DESC
 `
 
-type ListDataStreamBindingsByDataStreamRow struct {
-	ID                uuid.UUID          `json:"id"`
-	DataStreamID      uuid.UUID          `json:"data_stream_id"`
-	DataSourceID      uuid.UUID          `json:"data_source_id"`
-	AdapterCode       string             `json:"adapter_code"`
-	DatabaseName      *string            `json:"database_name"`
-	SchemaName        *string            `json:"schema_name"`
-	TableName         *string            `json:"table_name"`
-	DeviceKeyField    *string            `json:"device_key_field"`
-	DeviceKeyValue    *string            `json:"device_key_value"`
-	TimeField         *string            `json:"time_field"`
-	ValueField        *string            `json:"value_field"`
-	PayloadType       string             `json:"payload_type"`
-	AdapterConfigJson []byte             `json:"adapter_config_json"`
-	Status            string             `json:"status"`
-	CreatedBy         uuid.UUID          `json:"created_by"`
-	CreatedAt         pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
-}
-
-func (q *Queries) ListDataStreamBindingsByDataStream(ctx context.Context, dataStreamID uuid.UUID) ([]ListDataStreamBindingsByDataStreamRow, error) {
+func (q *Queries) ListDataStreamBindingsByDataStream(ctx context.Context, dataStreamID uuid.UUID) ([]DataStreamBinding, error) {
 	rows, err := q.db.Query(ctx, listDataStreamBindingsByDataStream, dataStreamID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListDataStreamBindingsByDataStreamRow{}
+	items := []DataStreamBinding{}
 	for rows.Next() {
-		var i ListDataStreamBindingsByDataStreamRow
+		var i DataStreamBinding
 		if err := rows.Scan(
 			&i.ID,
 			&i.DataStreamID,
 			&i.DataSourceID,
-			&i.AdapterCode,
 			&i.DatabaseName,
 			&i.SchemaName,
 			&i.TableName,
@@ -445,6 +347,8 @@ func (q *Queries) ListDataStreamBindingsByDataStream(ctx context.Context, dataSt
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AdapterCode,
+			&i.CreatedByType,
 		); err != nil {
 			return nil, err
 		}
@@ -513,7 +417,7 @@ SET data_source_id = $2,
     status = $13,
     updated_at = now()
 WHERE id = $1
-RETURNING id, data_stream_id, data_source_id, adapter_code, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at
+RETURNING id, data_stream_id, data_source_id, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at, adapter_code, created_by_type
 `
 
 type UpdateDataStreamBindingParams struct {
@@ -532,27 +436,7 @@ type UpdateDataStreamBindingParams struct {
 	Status            string    `json:"status"`
 }
 
-type UpdateDataStreamBindingRow struct {
-	ID                uuid.UUID          `json:"id"`
-	DataStreamID      uuid.UUID          `json:"data_stream_id"`
-	DataSourceID      uuid.UUID          `json:"data_source_id"`
-	AdapterCode       string             `json:"adapter_code"`
-	DatabaseName      *string            `json:"database_name"`
-	SchemaName        *string            `json:"schema_name"`
-	TableName         *string            `json:"table_name"`
-	DeviceKeyField    *string            `json:"device_key_field"`
-	DeviceKeyValue    *string            `json:"device_key_value"`
-	TimeField         *string            `json:"time_field"`
-	ValueField        *string            `json:"value_field"`
-	PayloadType       string             `json:"payload_type"`
-	AdapterConfigJson []byte             `json:"adapter_config_json"`
-	Status            string             `json:"status"`
-	CreatedBy         uuid.UUID          `json:"created_by"`
-	CreatedAt         pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
-}
-
-func (q *Queries) UpdateDataStreamBinding(ctx context.Context, arg UpdateDataStreamBindingParams) (UpdateDataStreamBindingRow, error) {
+func (q *Queries) UpdateDataStreamBinding(ctx context.Context, arg UpdateDataStreamBindingParams) (DataStreamBinding, error) {
 	row := q.db.QueryRow(ctx, updateDataStreamBinding,
 		arg.ID,
 		arg.DataSourceID,
@@ -568,12 +452,11 @@ func (q *Queries) UpdateDataStreamBinding(ctx context.Context, arg UpdateDataStr
 		arg.AdapterConfigJson,
 		arg.Status,
 	)
-	var i UpdateDataStreamBindingRow
+	var i DataStreamBinding
 	err := row.Scan(
 		&i.ID,
 		&i.DataStreamID,
 		&i.DataSourceID,
-		&i.AdapterCode,
 		&i.DatabaseName,
 		&i.SchemaName,
 		&i.TableName,
@@ -587,6 +470,8 @@ func (q *Queries) UpdateDataStreamBinding(ctx context.Context, arg UpdateDataStr
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AdapterCode,
+		&i.CreatedByType,
 	)
 	return i, err
 }

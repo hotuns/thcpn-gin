@@ -128,7 +128,7 @@ func (q *Queries) DeleteDeviceProfileImage(ctx context.Context, arg DeleteDevice
 }
 
 const getDeviceProfile = `-- name: GetDeviceProfile :one
-SELECT device_id, description, location_text, latitude, longitude, updated_by, created_at, updated_at
+SELECT device_id, description, location_text, updated_by, created_at, updated_at
 FROM device_profiles
 WHERE device_id = $1
 `
@@ -140,8 +140,6 @@ func (q *Queries) GetDeviceProfile(ctx context.Context, deviceID uuid.UUID) (Dev
 		&i.DeviceID,
 		&i.Description,
 		&i.LocationText,
-		&i.Latitude,
-		&i.Longitude,
 		&i.UpdatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -346,25 +344,21 @@ func (q *Queries) UpdateDeviceProfileImage(ctx context.Context, arg UpdateDevice
 }
 
 const upsertDeviceProfile = `-- name: UpsertDeviceProfile :one
-INSERT INTO device_profiles (device_id, description, location_text, latitude, longitude, updated_by)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO device_profiles (device_id, description, location_text, updated_by)
+VALUES ($1, $2, $3, $4)
 ON CONFLICT (device_id) DO UPDATE
 SET description = EXCLUDED.description,
     location_text = EXCLUDED.location_text,
-    latitude = EXCLUDED.latitude,
-    longitude = EXCLUDED.longitude,
     updated_by = EXCLUDED.updated_by,
     updated_at = now()
-RETURNING device_id, description, location_text, latitude, longitude, updated_by, created_at, updated_at
+RETURNING device_id, description, location_text, updated_by, created_at, updated_at
 `
 
 type UpsertDeviceProfileParams struct {
-	DeviceID     uuid.UUID     `json:"device_id"`
-	Description  *string       `json:"description"`
-	LocationText *string       `json:"location_text"`
-	Latitude     pgtype.Float8 `json:"latitude"`
-	Longitude    pgtype.Float8 `json:"longitude"`
-	UpdatedBy    *uuid.UUID    `json:"updated_by"`
+	DeviceID     uuid.UUID  `json:"device_id"`
+	Description  *string    `json:"description"`
+	LocationText *string    `json:"location_text"`
+	UpdatedBy    *uuid.UUID `json:"updated_by"`
 }
 
 func (q *Queries) UpsertDeviceProfile(ctx context.Context, arg UpsertDeviceProfileParams) (DeviceProfile, error) {
@@ -372,8 +366,6 @@ func (q *Queries) UpsertDeviceProfile(ctx context.Context, arg UpsertDeviceProfi
 		arg.DeviceID,
 		arg.Description,
 		arg.LocationText,
-		arg.Latitude,
-		arg.Longitude,
 		arg.UpdatedBy,
 	)
 	var i DeviceProfile
@@ -381,8 +373,6 @@ func (q *Queries) UpsertDeviceProfile(ctx context.Context, arg UpsertDeviceProfi
 		&i.DeviceID,
 		&i.Description,
 		&i.LocationText,
-		&i.Latitude,
-		&i.Longitude,
 		&i.UpdatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,

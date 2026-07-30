@@ -74,7 +74,7 @@ function SensorList({ deviceId, draft, updateDraft }: { deviceId: string; draft:
     updateDraft(next);
   };
   return <div className="visual-config-section">
-    <div className="visual-config-toolbar"><div><strong>数据传感器</strong><span>从源库模板添加，也可编辑当前设备的全部实例参数</span></div><Button type="primary" icon={<Plus size={14} />} onClick={() => setCatalogOpen(true)}>添加传感器</Button></div>
+    <div className="visual-config-toolbar"><div><strong>数据传感器</strong><span>从平台模板添加，也可编辑当前设备的全部实例参数</span></div><Button type="primary" icon={<Plus size={14} />} onClick={() => setCatalogOpen(true)}>添加传感器</Button></div>
     {draft.sensors.length ? <Table rowKey={(item) => String(draft.sensors.indexOf(item))} size="small" pagination={false} dataSource={draft.sensors} scroll={{ x: 840 }} columns={[
       { title: "传感器", render: (_, item) => <div><strong>{text(item.sensorType, "未命名型号")}</strong><div className="cell-sub">{text(item.description, "无说明")}</div></div> },
       { title: "连接", width: 150, render: (_, item) => <div>{text(item.port)} / {text(item.port_num)}<div className="cell-sub">{text(item.sensor, "未知驱动")}</div></div> },
@@ -91,11 +91,11 @@ function SensorCatalogModal({ deviceId, open, onClose, onAdd }: { deviceId: stri
   const [port, setPort] = useState<string | undefined>();
   const [driver, setDriver] = useState<string | undefined>();
   const [page, setPage] = useState(1);
-  const query = useQuery({ queryKey: ["admin", "device", deviceId, "sensor-templates", q, port, driver, page], queryFn: () => api.admin.sensorTemplates(deviceId, { q, port: port ?? "", driver: driver ?? "", page, page_size: 12 }), enabled: open });
+  const query = useQuery({ queryKey: ["admin", "device", deviceId, "sensor-templates", q, port, driver, page], queryFn: () => api.admin.sensorTemplates(deviceId, { q, port: port ?? "", driver: driver ?? "", status: "active", page, page_size: 12 }), enabled: open });
   const items = ((query.data?.items ?? []) as JsonRecord[]);
   const ports = Array.from(new Set(items.map((item) => text(item.port, "")).filter(Boolean)));
   const drivers = Array.from(new Set(items.map((item) => text(item.driver, "")).filter(Boolean)));
-  return <Modal title="从源库添加传感器" open={open} onCancel={onClose} footer={null} width={920} destroyOnHidden>
+  return <Modal title="从平台模板添加传感器" open={open} onCancel={onClose} footer={null} width={920} destroyOnHidden>
     <div className="sensor-catalog-toolbar"><Input.Search allowClear placeholder="搜索型号、说明或驱动" value={q} onChange={(event) => { setQ(event.target.value); setPage(1); }} /><Select allowClear placeholder="全部端口" value={port} options={ports.map((value) => ({ value, label: value }))} onChange={(value) => { setPort(value); setPage(1); }} /><Select allowClear placeholder="全部驱动" value={driver} options={drivers.map((value) => ({ value, label: value }))} onChange={(value) => { setDriver(value); setPage(1); }} /></div>
     {query.error ? <Alert type="error" showIcon title="传感器模板加载失败" description={formatApiError(query.error).message} /> : <Table rowKey="id" loading={query.isLoading} size="small" dataSource={items} pagination={{ current: page, pageSize: 12, total: Number(query.data?.total ?? 0), showSizeChanger: false, onChange: setPage }} columns={[
       { title: "型号", render: (_, item) => <div><strong>{text(item.sensor_type)}</strong><div className="cell-sub">{text(item.description, "无说明")}</div></div> },
@@ -108,6 +108,8 @@ function SensorCatalogModal({ deviceId, open, onClose, onAdd }: { deviceId: stri
 
 function SensorEditorModal({ value, open, onClose, onSave }: { value: JsonRecord | null; open: boolean; onClose: () => void; onSave: (value: JsonRecord) => void }) {
   const [form] = Form.useForm<JsonRecord>();
+  const portNums = Form.useWatch("port_nums", { form, preserve: true });
+  const portNum = Form.useWatch("port_num", form);
   const [topExtras, setTopExtras] = useState<JsonRecord>({});
   const [paramExtras, setParamExtras] = useState<JsonRecord>({});
   const initialize = () => {
@@ -128,7 +130,7 @@ function SensorEditorModal({ value, open, onClose, onSave }: { value: JsonRecord
   return <Modal title={`编辑传感器 · ${text(value?.sensorType, "新实例")}`} open={open} onCancel={onClose} width={980} destroyOnHidden okText="保存实例" onOk={() => void save()} afterOpenChange={(opened) => opened && initialize()}>
     <Form form={form} layout="vertical" preserve>
       <div className="config-form-grid config-form-grid-4"><Form.Item name="sensorType" label="传感器型号" rules={[{ required: true }]}><Input /></Form.Item><Form.Item name="description" label="实例说明"><Input /></Form.Item><Form.Item name="sensor_type" label="设备适配类型"><Input /></Form.Item><Form.Item name="id" label="模板 ID"><InputNumber style={{ width: "100%" }} /></Form.Item></div>
-      <div className="config-form-grid config-form-grid-4"><Form.Item name="sensor" label="驱动" rules={[{ required: true }]}><Input /></Form.Item><Form.Item name="port" label="端口" rules={[{ required: true }]}><Input /></Form.Item><Form.Item name="port_num" label="端口编号" rules={[{ required: true }]}><InputNumber precision={0} style={{ width: "100%" }} /></Form.Item><Form.Item name="port_nums" label="可选端口"><Select mode="tags" tokenSeparators={[","]} /></Form.Item></div>
+      <div className="config-form-grid config-form-grid-3"><Form.Item name="sensor" label="驱动" rules={[{ required: true }]}><Input /></Form.Item><Form.Item name="port" label="端口" rules={[{ required: true }]}><Input /></Form.Item><Form.Item name="port_num" label="端口编号" extra={Array.isArray(portNums) && portNums.length ? "候选值来自模板 port_nums" : undefined} rules={[{ required: true }]}>{Array.isArray(portNums) && portNums.length ? <Select showSearch options={portNumberOptions(portNums, portNum)} /> : <InputNumber precision={0} style={{ width: "100%" }} />}</Form.Item></div>
       <div className="config-form-grid config-form-grid-3"><Form.Item name={["params", "command"]} label="协议命令"><Input className="code-input" /></Form.Item><Form.Item name={["params", "wait_time"]} label="等待时间"><InputNumber min={0} style={{ width: "100%" }} /></Form.Item><Form.Item name="created_at" label="模板创建时间"><Input /></Form.Item></div>
       <div className="visual-subsection-head"><div><strong>数据指标</strong><span>配置读取 key、名称、单位、范围和解码规则</span></div></div>
       <Form.List name={["params", "contents"]}>{(fields, { add, remove, move }) => <div className="metric-editor-list">{fields.map((field, index) => <div className="metric-editor-row" key={field.key}><div className="metric-editor-index">{index + 1}</div><div className="metric-editor-fields"><Form.Item name={[field.name, "key"]} label="Key" rules={[{ required: true }]}><Input /></Form.Item><Form.Item name={[field.name, "info", "name"]} label="名称"><Input /></Form.Item><Form.Item name={[field.name, "info", "type"]} label="类型"><Input /></Form.Item><Form.Item name={[field.name, "info", "unit"]} label="单位"><Input /></Form.Item><Form.Item name={[field.name, "info", "index"]} label="索引"><InputNumber precision={0} style={{ width: "100%" }} /></Form.Item><Form.Item name={[field.name, "info", "min"]} label="最小值"><InputNumber style={{ width: "100%" }} /></Form.Item><Form.Item name={[field.name, "info", "max"]} label="最大值"><InputNumber style={{ width: "100%" }} /></Form.Item><Form.Item name={[field.name, "decode"]} label="Decode"><Input className="code-input" /></Form.Item></div><Space orientation="vertical" size={0}><Button type="text" icon={<ChevronUp size={13} />} disabled={index === 0} onClick={() => move(index, index - 1)} /><Button type="text" icon={<ChevronDown size={13} />} disabled={index === fields.length - 1} onClick={() => move(index, index + 1)} /><Button type="text" danger icon={<Trash2 size={13} />} onClick={() => remove(index)} /></Space></div>)}<Button block type="dashed" icon={<Plus size={14} />} onClick={() => add({ key: "", info: { name: "", type: "", unit: "", index: fields.length }, decode: "" })}>添加指标</Button></div>}</Form.List>
@@ -155,6 +157,8 @@ function ImageList({ draft, updateDraft }: { draft: THCPNConfigDraft; updateDraf
 
 function ImageEditorModal({ value, open, onClose, onSave }: { value: JsonRecord | null; open: boolean; onClose: () => void; onSave: (value: JsonRecord) => void }) {
   const [form] = Form.useForm<JsonRecord>();
+  const portNums = Form.useWatch("port_nums", { form, preserve: true });
+  const portNum = Form.useWatch("port_num", form);
   const [extras, setExtras] = useState<JsonRecord>({});
   const initialize = () => {
     const initial = cloneConfigValue(value ?? { port: "http", port_nums: [] });
@@ -169,7 +173,7 @@ function ImageEditorModal({ value, open, onClose, onSave }: { value: JsonRecord 
     onSave({ ...extras, ...fields, port_nums: ports });
   };
   return <Modal title={value && Object.keys(value).length ? `编辑图片通道 · ${text(value.key)}` : "添加图片通道"} open={open} onCancel={onClose} destroyOnHidden okText="保存通道" onOk={() => void save()} afterOpenChange={(opened) => opened && initialize()}>
-    <Form form={form} layout="vertical" preserve><div className="config-form-grid"><Form.Item name="key" label="数据 Key" rules={[{ required: true }]}><Input placeholder="例如 key1" /></Form.Item><Form.Item name="name" label="显示名称" rules={[{ required: true }]}><Input /></Form.Item></div><Form.Item name="desc" label="说明"><Input /></Form.Item><div className="config-form-grid config-form-grid-3"><Form.Item name="port" label="端口" rules={[{ required: true }]}><Input /></Form.Item><Form.Item name="port_num" label="端口编号" rules={[{ required: true }]}><InputNumber precision={0} style={{ width: "100%" }} /></Form.Item><Form.Item name="sensorType" label="相机类型"><Input /></Form.Item></div><Form.Item name="port_nums" label="可选端口"><Select mode="tags" tokenSeparators={[","]} /></Form.Item><TypedKeyValueEditor title="图片通道扩展字段" value={extras} reservedKeys={["key", "name", "desc", "port", "port_num", "port_nums", "sensorType"]} onChange={setExtras} /><Alert type="info" showIcon title="高级 JSON 可继续维护完整原文。" /></Form>
+    <Form form={form} layout="vertical" preserve><div className="config-form-grid"><Form.Item name="key" label="数据 Key" rules={[{ required: true }]}><Input placeholder="例如 key1" /></Form.Item><Form.Item name="name" label="显示名称" rules={[{ required: true }]}><Input /></Form.Item></div><Form.Item name="desc" label="说明"><Input /></Form.Item><div className="config-form-grid config-form-grid-3"><Form.Item name="port" label="端口" rules={[{ required: true }]}><Input /></Form.Item><Form.Item name="port_num" label="端口编号" extra={Array.isArray(portNums) && portNums.length ? "候选值来自模板 port_nums" : undefined} rules={[{ required: true }]}>{Array.isArray(portNums) && portNums.length ? <Select showSearch options={portNumberOptions(portNums, portNum)} /> : <InputNumber precision={0} style={{ width: "100%" }} />}</Form.Item><Form.Item name="sensorType" label="相机类型"><Input /></Form.Item></div><TypedKeyValueEditor title="图片通道扩展字段" value={extras} reservedKeys={["key", "name", "desc", "port", "port_num", "port_nums", "sensorType"]} onChange={setExtras} /><Alert type="info" showIcon title="高级 JSON 可继续维护完整原文。" /></Form>
   </Modal>;
 }
 
@@ -253,6 +257,12 @@ function omitKeys(value: JsonRecord, keys: readonly string[]): JsonRecord {
 function normalizeNumberValue(value: unknown) {
   const number = Number(value);
   return Number.isInteger(number) && String(value).trim() !== "" ? number : value;
+}
+
+function portNumberOptions(values: unknown[], current: unknown) {
+  const candidates = [...values];
+  if (current !== undefined && current !== null && current !== "" && !candidates.some((item) => String(item) === String(current))) candidates.unshift(current);
+  return candidates.map(normalizeNumberValue).filter((item, index, items) => items.findIndex((candidate) => String(candidate) === String(item)) === index).map((item) => ({ value: item, label: String(item) }));
 }
 
 function ScheduleEditor({ label, value, onChange }: { label: string; value: unknown; onChange: (value: string) => void }) {

@@ -214,7 +214,7 @@ func Default() Config {
 			SecretKeyEnv: "THCPN_LOG_OSS_ACCESS_KEY_SECRET",
 		},
 		QueryLimits: QueryLimitsConfig{
-			MaxHistoryDays:   31,
+			MaxHistoryDays:   366,
 			MaxPoints:        5000,
 			MaxMediaPageSize: 100,
 		},

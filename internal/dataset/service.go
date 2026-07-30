@@ -16,6 +16,7 @@ import (
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/datasource"
 	"thcpn-gin/internal/db/sqlc"
+	telemetrysvc "thcpn-gin/internal/telemetry"
 )
 
 type Service struct {
@@ -24,6 +25,7 @@ type Service struct {
 	dataSources *datasource.Service
 	runtime     TelemetryRuntime
 	limits      config.QueryLimitsConfig
+	telemetry   *telemetrysvc.Service
 }
 
 type TelemetryRuntime interface {
@@ -34,6 +36,7 @@ type QueryDependencies struct {
 	DataSources *datasource.Service
 	Runtime     TelemetryRuntime
 	Limits      config.QueryLimitsConfig
+	Telemetry   *telemetrysvc.Service
 }
 
 type Dataset struct {
@@ -150,6 +153,7 @@ func NewService(db *pgxpool.Pool, queryDeps ...QueryDependencies) *Service {
 		dataSources: deps.DataSources,
 		runtime:     deps.Runtime,
 		limits:      normalizeQueryLimits(deps.Limits),
+		telemetry:   deps.Telemetry,
 	}
 }
 
@@ -444,6 +448,35 @@ func (s *Service) Delete(ctx context.Context, datasetID uuid.UUID) (Dataset, err
 }
 
 func (s *Service) queryTelemetrySource(ctx context.Context, source sqlc.DatasetSource, start time.Time, end time.Time, limit int) ([]TelemetrySeries, error) {
+	if s.telemetry != nil && (source.SourceType == "device" || source.SourceType == "data_stream") {
+		input := telemetrysvc.QueryInput{StartTime: start, EndTime: end, Limit: limit}
+		if source.SourceType == "device" {
+			input.DeviceID = &source.SourceID
+		} else {
+			input.DataStreamID = &source.SourceID
+		}
+		result, err := s.telemetry.Query(ctx, input)
+		if err != nil {
+			return nil, err
+		}
+		items := make([]TelemetrySeries, 0, len(result.Series))
+		for _, series := range result.Series {
+			points := make([]TelemetryPoint, 0, len(series.Points))
+			for _, point := range series.Points {
+				points = append(points, TelemetryPoint{Timestamp: point.Timestamp, Value: point.Value, Quality: point.Quality})
+			}
+			warnings := make([]Warning, 0, len(series.Warnings))
+			for _, warning := range series.Warnings {
+				warnings = append(warnings, Warning{Code: warning.Code, Message: warning.Message, Count: warning.Count})
+			}
+			items = append(items, TelemetrySeries{
+				SourceType: source.SourceType, SourceID: source.SourceID,
+				DataStreamID: series.DataStreamID, DeviceID: result.DeviceID,
+				Code: series.Code, Name: series.Name, Unit: series.Unit, Points: points, Warnings: warnings,
+			})
+		}
+		return items, nil
+	}
 	switch source.SourceType {
 	case "device":
 		device, err := s.queries.GetDevice(ctx, source.SourceID)
@@ -669,7 +702,7 @@ func validateTimeRange(start time.Time, end time.Time) error {
 
 func normalizeQueryLimits(limits config.QueryLimitsConfig) config.QueryLimitsConfig {
 	if limits.MaxHistoryDays <= 0 {
-		limits.MaxHistoryDays = 31
+		limits.MaxHistoryDays = 366
 	}
 	if limits.MaxPoints <= 0 {
 		limits.MaxPoints = 5000

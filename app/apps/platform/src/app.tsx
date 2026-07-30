@@ -7,6 +7,7 @@ import {
   Route,
   Routes,
   useLocation,
+  useNavigate,
 } from "react-router-dom";
 import {
   BarChart3,
@@ -15,6 +16,7 @@ import {
   Download,
   Gauge,
   Home,
+  MapPinned,
   PanelLeftClose,
   PanelLeftOpen,
   SlidersHorizontal,
@@ -50,6 +52,10 @@ import { useLocale } from "@thcpn/i18n";
 const DevicesPage = lazy(() =>
   import("./devices-page").then((module) => ({ default: module.DevicesPage })),
 );
+const DeviceClaimPage = lazy(() =>
+  import("./device-claim-page").then((module) => ({ default: module.DeviceClaimPage })),
+);
+const DeviceMapPage = lazy(() => import("./device-map-page").then((module) => ({ default: module.DeviceMapPage })));
 const DeviceCenterDetailPage = lazy(() =>
   import("./devices-page").then((module) => ({
     default: module.DeviceCenterDetailPage,
@@ -107,6 +113,7 @@ const navGroups = [
     items: [
       { to: "/dashboard", key: "overview", icon: Gauge },
       { to: "/devices", key: "devices", icon: Boxes },
+      { to: "/device-map", key: "deviceMap", icon: MapPinned },
     ],
   },
   {
@@ -136,7 +143,9 @@ function Shell() {
   const workspace = useWorkspace();
   const location = useLocation();
   const routeLabel =
-    location.pathname === "/devices"
+    location.pathname === "/device-map"
+      ? t("platform:navigation.deviceMap")
+      : location.pathname === "/devices"
       ? t("platform:navigation.devices")
       : location.pathname.startsWith("/devices/")
         ? "设备详情"
@@ -306,11 +315,16 @@ function Shell() {
 function Workspaces() {
   const { workspaces, currentId, setCurrentId, loading, error, refresh } =
     useWorkspace();
+  const navigate = useNavigate();
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [type, setType] = useState("lab");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const manageWorkspace = (workspaceId: string) => {
+    if (workspaceId !== currentId) setCurrentId(workspaceId);
+    navigate("/settings?tab=resources");
+  };
   const submit = async () => {
     if (!name.trim() || busy) return;
     setBusy(true);
@@ -463,16 +477,22 @@ function Workspaces() {
                       </Badge>
                     </td>
                     <td>
-                      {item.id === currentId ? (
-                        <Badge tone="info">当前工作区</Badge>
-                      ) : (
-                        <Button
-                          variant="secondary"
-                          onClick={() => setCurrentId(item.id)}
-                        >
-                          切换
+                      <div className="workspace-list-actions">
+                        {item.id === currentId ? (
+                          <Badge tone="info">当前工作区</Badge>
+                        ) : (
+                          <Button
+                            variant="secondary"
+                            onClick={() => setCurrentId(item.id)}
+                          >
+                            切换
+                          </Button>
+                        )}
+                        <Button onClick={() => manageWorkspace(item.id)}>
+                          <SlidersHorizontal size={14} />
+                          管理
                         </Button>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -511,6 +531,9 @@ export function PlatformApp() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/workspaces" element={<Workspaces />} />
             <Route path="/devices" element={<DevicesPage />} />
+            <Route path="/device-map" element={<DeviceMapPage />} />
+            <Route path="/claim" element={<DeviceClaimPage />} />
+            <Route path="/claim/:claimSlug" element={<DeviceClaimPage />} />
             <Route
               path="/devices/:deviceId"
               element={<DeviceCenterDetailPage />}

@@ -57,14 +57,14 @@ export function AdminLogsPage() {
         <Button type="primary" icon={<Search size={14} />} onClick={search}>查询</Button>
       </div>
       {feedback && <div className="admin-feedback">{feedback}</div>}
-      {query.isLoading ? <StateView type="loading" title="正在加载平台日志" description="正在查询本地日志索引。" /> : query.error ? <StateView type="error" title="平台日志加载失败" description={formatApiError(query.error).message} requestId={formatApiError(query.error).requestId} /> : <Table rowKey="id" dataSource={query.data?.items ?? []} pagination={{ current: page, pageSize: 100, total: query.data?.total ?? 0, showSizeChanger: false, onChange: setPage }} scroll={{ x: 1180 }} columns={[
-        { title: "时间", dataIndex: "timestamp", width: 190, render: displayTime },
-        { title: "级别", dataIndex: "level", width: 90, render: (value) => <Tag color={levelColor(value)}>{text(value)}</Tag> },
-        { title: "服务", dataIndex: "service", width: 90, render: (value) => <Tag>{text(value).toUpperCase()}</Tag> },
+      {query.isLoading ? <StateView type="loading" title="正在加载平台日志" description="正在查询本地日志索引。" /> : query.error ? <StateView type="error" title="平台日志加载失败" description={formatApiError(query.error).message} requestId={formatApiError(query.error).requestId} /> : <Table className="platform-log-table" size="small" rowKey="id" dataSource={query.data?.items ?? []} pagination={{ current: page, pageSize: 100, total: query.data?.total ?? 0, showSizeChanger: false, onChange: setPage }} scroll={{ x: 1080 }} columns={[
+        { title: "时间", dataIndex: "timestamp", width: 176, render: displayTime },
+        { title: "级别", dataIndex: "level", width: 72, render: (value) => <Tag color={levelColor(value)}>{text(value)}</Tag> },
+        { title: "服务", dataIndex: "service", width: 72, render: (value) => <Tag>{text(value).toUpperCase()}</Tag> },
         { title: "消息", dataIndex: "message", ellipsis: true, render: (value, item) => <div><strong>{text(value)}</strong><div className="cell-sub mono">{text(item.path, text(item.request_id, ""))}</div></div> },
-        { title: "用户", width: 190, render: (_, item) => <div>{text(item.actor_name, text(item.actor_type))}<div className="cell-sub mono">{text(item.actor_id, "匿名")}</div></div> },
-        { title: "状态", dataIndex: "status", width: 80, render: (value) => value ? <Tag color={Number(value) >= 500 ? "red" : Number(value) >= 400 ? "orange" : "green"}>{text(value)}</Tag> : "—" },
-        { title: "操作", width: 80, render: (_, item) => <Button type="link" icon={<Eye size={14} />} onClick={() => setSelected(item)}>详情</Button> },
+        { title: "用户", width: 172, render: (_, item) => <div>{text(item.actor_name, text(item.actor_type))}<div className="cell-sub mono">{text(item.actor_id, "匿名")}</div></div> },
+        { title: "状态", dataIndex: "status", width: 64, render: (value) => value ? <Tag color={Number(value) >= 500 ? "red" : Number(value) >= 400 ? "orange" : "green"}>{text(value)}</Tag> : "—" },
+        { title: "操作", width: 64, render: (_, item) => <Button type="link" size="small" icon={<Eye size={13} />} onClick={() => setSelected(item)}>详情</Button> },
       ]} />}
     </Panel>
     <Modal title="平台日志详情" open={Boolean(selected)} onCancel={() => setSelected(null)} footer={null} width={900} destroyOnHidden><pre className="platform-log-json">{JSON.stringify(selected, null, 2)}</pre></Modal>

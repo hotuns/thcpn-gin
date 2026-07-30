@@ -1,6 +1,0 @@
-DROP TABLE IF EXISTS workspace_members;
-DROP TABLE IF EXISTS role_permissions;
-DROP TABLE IF EXISTS permissions;
-DROP TABLE IF EXISTS roles;
-DROP TABLE IF EXISTS workspaces;
-DROP TABLE IF EXISTS users;

@@ -26,12 +26,12 @@ const string = (input: unknown, fallback: unknown = "—"): string =>
   input === undefined || input === null || input === ""
     ? String(fallback)
     : String(input);
-type Mode = "create" | "edit" | "station" | "gateway" | null;
+type Mode = "create" | "edit" | "station" | "gateway" | "camera" | null;
 const formatTime = (input: unknown) => input ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(String(input))) : "—";
 const validateSecretRef = (_: unknown, input: unknown) => {
   const value = String(input ?? "").trim();
-  if (!/^[a-z][a-z0-9+.-]*:(?:\/\/)?\S+$/i.test(value)) return Promise.reject(new Error("请输入 Secret 引用，例如 env:THCPN_MYSQL_DSN"));
-  if (/^(mysql|postgres|postgresql|clickhouse|http|https):\/\//i.test(value)) return Promise.reject(new Error("不能填写明文 DSN 或连接地址，请使用 Secret 引用"));
+  if (!/^env:[A-Za-z_][A-Za-z0-9_]*$/.test(value))
+    return Promise.reject(new Error("请输入环境变量引用，例如 env:THCPN_MYSQL_DSN"));
   return Promise.resolve();
 };
 
@@ -66,7 +66,7 @@ export function AdminSourcesPage() {
       form.setFieldsValue({
         name: "",
         type: "mysql",
-        dsn_secret_ref: "env://",
+        dsn_secret_ref: "env:",
       });
     else if (next === "edit")
       form.setFieldsValue({
@@ -79,13 +79,13 @@ export function AdminSourcesPage() {
       form.setFieldsValue({
         external_device_id: undefined,
       });
-    else
+    else if (next === "gateway")
       form.setFieldsValue({
         external_gateway_id: undefined,
-        target_workspace_id: "",
-        project_id: "",
-        site_id: "",
-        assign_nodes: false,
+      });
+    else
+      form.setFieldsValue({
+        external_camera_id: undefined,
       });
   };
   const syncAll = async () => {
@@ -125,10 +125,12 @@ export function AdminSourcesPage() {
         response = await api.admin.syncStation(string(selected.id), payload);
       else if (mode === "gateway")
         response = await api.admin.syncGateway(string(selected.id), payload);
-      if (mode === "station" || mode === "gateway")
+      else if (mode === "camera")
+        response = await api.admin.syncCamera(string(selected.id), payload);
+      if (mode === "station" || mode === "gateway" || mode === "camera")
         setSyncResult(response as JsonRecord);
       setFeedback(
-        mode === "station" || mode === "gateway"
+        mode === "station" || mode === "gateway" || mode === "camera"
           ? "同步任务已完成"
           : mode === "create"
             ? "数据源已创建"
@@ -253,7 +255,7 @@ export function AdminSourcesPage() {
                       disabled={record.type !== "mysql"}
                       onClick={() => open("station", record)}
                     >
-                      同步设备
+                      同步标准站
                     </Button>
                     <Button
                       type="link"
@@ -267,7 +269,14 @@ export function AdminSourcesPage() {
                       disabled={record.type !== "mysql"}
                       onClick={() => open("gateway", record)}
                     >
-                      同步网关
+                      同步网关及节点
+                    </Button>
+                    <Button
+                      type="link"
+                      disabled={record.type !== "mysql"}
+                      onClick={() => open("camera", record)}
+                    >
+                      同步相机
                     </Button>
                   </Space>
                 ),
@@ -294,7 +303,7 @@ export function AdminSourcesPage() {
         onOk={() => void syncAll()}
         onCancel={() => { if (!fullSyncBusy) setFullSyncSource(null); }}
       >
-        <p>将读取该数据源外部 <code>devices</code> 表中所有未删除设备，并同步名称、序列号、配置、DataStream 和绑定。</p>
+        <p>将读取外部 <code>devices</code>、<code>gate_node</code> 和 <code>cameras</code>，同步设备、配置、DataStream、绑定、拓扑及相机。</p>
         <p>设备不会自动分配到工作区；已经同步的设备将更新，缺少配置的设备会单独记录失败原因。</p>
       </Modal>
       <Drawer
@@ -306,7 +315,7 @@ export function AdminSourcesPage() {
           <Space>
             <Button onClick={close}>取消</Button>
             <Button type="primary" loading={busy} onClick={() => void submit()}>
-              {mode === "station" || mode === "gateway" ? "开始同步" : "保存"}
+              {mode === "station" || mode === "gateway" || mode === "camera" ? "开始同步" : "保存"}
             </Button>
           </Space>
         }
@@ -316,23 +325,24 @@ export function AdminSourcesPage() {
             <SourceFields editing={mode === "edit"} />
           ) : mode === "station" ? (
             <StationFields />
+          ) : mode === "gateway" ? (
+            <GatewayFields />
           ) : (
-            <GatewayFields form={form} />
+            <CameraFields />
           )}
         </Form>
         <div className="drawer-note">
-          {mode === "station" || mode === "gateway" ? (
+          {mode === "station" || mode === "gateway" || mode === "camera" ? (
             <>
               <Network size={15} />
               同步会读取外部 THCPN
-              数据库并更新平台设备、数据流和绑定。建议先不指定
-              工作区，确认资产后再单独分配。
+              数据库并更新系统设备、数据流、绑定和拓扑。同步完成后再到设备管理中分配工作区。
             </>
           ) : (
             <>
               <Database size={15} />
               这里只保存 Secret 引用，例如
-              `env://THCPN_MYSQL_DSN`。前端不会读取或保存明文 DSN。
+              `env:THCPN_MYSQL_DSN`。前端不会读取或保存明文 DSN。
             </>
           )}
         </div>
@@ -361,7 +371,7 @@ function FullSyncSummary({ result }: { result: JsonRecord }) {
     <Panel className="section-gap sync-result">
       <div className="panel-header">
         <div><h2 className="panel-title">最近全量同步结果</h2><div className="panel-kicker">已处理外部 devices 表中的设备</div></div>
-        <Tag color={Number(result.failed ?? 0) ? "orange" : "green"}>{Number(result.failed ?? 0) ? "部分完成" : "同步成功"}</Tag>
+        <Tag color={Number(result.failed ?? 0) || Number(result.topology_failed ?? 0) ? "orange" : "green"}>{Number(result.failed ?? 0) || Number(result.topology_failed ?? 0) ? "部分完成" : "同步成功"}</Tag>
       </div>
       <div className="sync-result-metrics">
         <div><strong>{string(result.total, 0)}</strong><span>发现设备</span></div>
@@ -370,6 +380,10 @@ function FullSyncSummary({ result }: { result: JsonRecord }) {
         <div><strong>{string(result.updated, 0)}</strong><span>更新</span></div>
         <div><strong>{string(result.unconfigured, 0)}</strong><span>无配置</span></div>
         <div><strong>{string(result.failed, 0)}</strong><span>失败</span></div>
+        <div><strong>{string(result.relations, 0)}</strong><span>拓扑关系</span></div>
+        <div><strong>{string(result.topology_failed, 0)}</strong><span>拓扑失败</span></div>
+        <div><strong>{string(result.cameras_synced, 0)}</strong><span>相机</span></div>
+        <div><strong>{string(result.cameras_failed, 0)}</strong><span>相机失败</span></div>
       </div>
       {failures.length ? <div className="sync-warnings">{failures.slice(0, 20).map((failure, index) => <div key={`${failure.external_device_id}-${index}`}><strong>外部设备 {failure.external_device_id}</strong><span>{failure.error ?? "同步失败"}</span></div>)}</div> : null}
     </Panel>
@@ -380,7 +394,8 @@ function drawerTitle(mode: Mode, selected: JsonRecord | null) {
   if (mode === "create") return "新建数据源";
   if (mode === "edit") return `编辑数据源 · ${string(selected?.name)}`;
   if (mode === "station") return `同步标准站设备 · ${string(selected?.name)}`;
-  return `同步组网站 · ${string(selected?.name)}`;
+  if (mode === "gateway") return `同步网关及节点 · ${string(selected?.name)}`;
+  return `同步相机 · ${string(selected?.name)}`;
 }
 function SourceFields({ editing }: { editing: boolean }) {
   return (
@@ -405,7 +420,7 @@ function SourceFields({ editing }: { editing: boolean }) {
         rules={[{ required: true, message: "请输入 Secret 引用" }, { validator: validateSecretRef }]}
         validateFirst
       >
-        <Input placeholder="env://THCPN_MYSQL_DSN" />
+        <Input placeholder="env:THCPN_MYSQL_DSN" />
       </Form.Item>
       {editing && (
         <Form.Item name="status" label="状态">
@@ -418,28 +433,6 @@ function SourceFields({ editing }: { editing: boolean }) {
           />
         </Form.Item>
       )}
-    </>
-  );
-}
-function PlacementFields({ form }: { form: ReturnType<typeof Form.useForm>[0] }) {
-  const workspaceId = Form.useWatch("target_workspace_id", form);
-  const projectId = Form.useWatch("project_id", form);
-  const workspaces = useQuery({ queryKey: ["admin", "workspaces", "source-sync"], queryFn: api.workspaces.adminList });
-  const projects = useQuery({ queryKey: ["admin", "projects", workspaceId], queryFn: () => api.projects.adminList(workspaceId), enabled: Boolean(workspaceId) });
-  const sites = useQuery({ queryKey: ["admin", "sites", workspaceId, projectId], queryFn: () => api.sites.adminList(workspaceId, projectId), enabled: Boolean(workspaceId) });
-  return (
-    <>
-      <Form.Item name="target_workspace_id" label="目标工作区">
-        <Select allowClear showSearch optionFilterProp="label" loading={workspaces.isLoading} placeholder="可选，留空则只同步系统资产" options={(workspaces.data?.items ?? []).map((item) => ({ value: string(item.id, ""), label: string(item.name, item.id) }))} onChange={() => form.setFieldsValue({ project_id: undefined, site_id: undefined })} />
-      </Form.Item>
-      <div className="drawer-grid">
-        <Form.Item name="project_id" label="项目">
-          <Select allowClear showSearch optionFilterProp="label" disabled={!workspaceId} loading={projects.isLoading} options={(projects.data?.items ?? []).map((item) => ({ value: string(item.id, ""), label: string(item.name, item.id) }))} onChange={() => form.setFieldValue("site_id", undefined)} />
-        </Form.Item>
-        <Form.Item name="site_id" label="站点">
-          <Select allowClear showSearch optionFilterProp="label" disabled={!workspaceId} loading={sites.isLoading} options={(sites.data?.items ?? []).map((item) => ({ value: string(item.id, ""), label: string(item.name, item.id) }))} />
-        </Form.Item>
-      </div>
     </>
   );
 }
@@ -457,7 +450,7 @@ function StationFields() {
     </>
   );
 }
-function GatewayFields({ form }: { form: ReturnType<typeof Form.useForm>[0] }) {
+function GatewayFields() {
   return (
     <>
       <Form.Item
@@ -467,15 +460,22 @@ function GatewayFields({ form }: { form: ReturnType<typeof Form.useForm>[0] }) {
       >
         <InputNumber min={1} precision={0} style={{ width: "100%" }} />
       </Form.Item>
-      <PlacementFields form={form} />
-      <Form.Item name="assign_nodes" label="节点分配策略">
-        <Select
-          options={[
-            { value: false, label: "仅分配网关" },
-            { value: true, label: "网关和节点一起分配" },
-          ]}
-        />
+      <div className="drawer-note">将同步网关、其全部有效节点及网关节点拓扑；不会分配到工作区。</div>
+    </>
+  );
+}
+
+function CameraFields() {
+  return (
+    <>
+      <Form.Item
+        name="external_camera_id"
+        label="外部相机 ID"
+        rules={[{ required: true, message: "请输入外部 cameras.id" }]}
+      >
+        <InputNumber min={1} precision={0} style={{ width: "100%" }} />
       </Form.Item>
+      <div className="drawer-note">将读取 cameras 表并同步相机名称、萤石设备序列号和通道；不会分配到工作区。</div>
     </>
   );
 }

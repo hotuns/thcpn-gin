@@ -325,6 +325,13 @@ func (s *Service) Remove(ctx context.Context, input RemoveInput) error {
 	if current.Status == "removed" {
 		return apperr.New(apperr.KindNotFound, "workspace member not found")
 	}
+	workspace, err := q.GetWorkspace(ctx, input.WorkspaceID)
+	if err != nil {
+		return mapNotFoundOrInternal(err, "workspace not found")
+	}
+	if workspace.OwnerUserID == current.UserID {
+		return apperr.New(apperr.KindConflict, "workspace creator cannot leave; delete the workspace instead")
+	}
 
 	if current.RoleCode == ownerRoleCode {
 		if err := ensureNotLastOwner(ctx, q, input.WorkspaceID); err != nil {

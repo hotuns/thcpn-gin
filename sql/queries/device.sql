@@ -37,26 +37,53 @@ INSERT INTO device_assignments (
     workspace_id,
     project_id,
     site_id,
-    assigned_by
+    assigned_by,
+    assigned_by_type
 )
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, device_id, workspace_id, project_id, site_id, status, assigned_by, assigned_at, unassigned_at, created_at, updated_at;
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, device_id, workspace_id, project_id, site_id, status, assigned_by, assigned_at, unassigned_at, created_at, updated_at, assigned_by_type;
 
 -- name: GetActiveDeviceAssignment :one
-SELECT id, device_id, workspace_id, project_id, site_id, status, assigned_by, assigned_at, unassigned_at, created_at, updated_at
-FROM device_assignments
-WHERE device_id = $1
-  AND status = 'active'
+WITH target AS (
+    SELECT d.id FROM devices d WHERE d.id = $1
+),
+resolved AS (
+    SELECT COALESCE(dr.parent_device_id, target.id) AS device_id
+    FROM target
+    LEFT JOIN device_relations dr
+      ON dr.child_device_id = target.id
+     AND dr.relation_type = 'gateway_node'
+     AND dr.status = 'active'
+)
+SELECT da.id, da.device_id, da.workspace_id, da.project_id, da.site_id, da.status, da.assigned_by, da.assigned_at, da.unassigned_at, da.created_at, da.updated_at, da.assigned_by_type
+FROM resolved
+JOIN device_assignments da ON da.device_id = resolved.device_id
+WHERE da.status = 'active'
 ORDER BY assigned_at DESC, id DESC
 LIMIT 1;
 
 -- name: GetActiveDeviceAssignmentByDataStream :one
-SELECT da.id, da.device_id, da.workspace_id, da.project_id, da.site_id, da.status, da.assigned_by, da.assigned_at, da.unassigned_at, da.created_at, da.updated_at
+(
+SELECT da.id, da.device_id, da.workspace_id, da.project_id, da.site_id, da.status, da.assigned_by, da.assigned_at, da.unassigned_at, da.created_at, da.updated_at, da.assigned_by_type
 FROM device_assignments AS da
 JOIN data_streams AS ds ON ds.device_id = da.device_id
 WHERE ds.id = $1
   AND da.status = 'active'
-ORDER BY da.assigned_at DESC, da.id DESC
+)
+UNION ALL
+(
+SELECT da.id, da.device_id, da.workspace_id, da.project_id, da.site_id, da.status, da.assigned_by, da.assigned_at, da.unassigned_at, da.created_at, da.updated_at, da.assigned_by_type
+FROM data_streams ds
+JOIN device_relations dr
+  ON dr.child_device_id = ds.device_id
+ AND dr.relation_type = 'gateway_node'
+ AND dr.status = 'active'
+JOIN device_assignments da
+  ON da.device_id = dr.parent_device_id
+ AND da.status = 'active'
+WHERE ds.id = $1
+)
+ORDER BY assigned_at DESC, id DESC
 LIMIT 1;
 
 -- name: GetDeviceWithActiveAssignment :one
@@ -79,7 +106,20 @@ SELECT
     da.assigned_by,
     da.assigned_at
 FROM devices AS d
-JOIN device_assignments AS da ON da.device_id = d.id AND da.status = 'active'
+JOIN device_assignments AS da
+  ON da.device_id = CASE
+      WHEN d.device_type = 'gateway_node' THEN (
+          SELECT dr.parent_device_id
+          FROM device_relations dr
+          WHERE dr.child_device_id = d.id
+            AND dr.relation_type = 'gateway_node'
+            AND dr.status = 'active'
+          ORDER BY dr.synced_at DESC, dr.id DESC
+          LIMIT 1
+      )
+      ELSE d.id
+  END
+ AND da.status = 'active'
 WHERE d.id = $1;
 
 -- name: ListSystemDeviceAssets :many
@@ -135,9 +175,6 @@ SELECT
     (
         SELECT count(*)::bigint
         FROM device_relations AS child_rel
-        JOIN device_assignments AS child_da ON child_da.device_id = child_rel.child_device_id
-            AND child_da.status = 'active'
-            AND child_da.workspace_id = da.workspace_id
         WHERE child_rel.parent_device_id = d.id
           AND child_rel.relation_type = 'gateway_node'
           AND child_rel.status = 'active'
@@ -170,10 +207,6 @@ SELECT
     (
         SELECT count(*)::bigint
         FROM device_relations AS child_rel
-        JOIN device_assignments AS child_da ON child_da.device_id = child_rel.child_device_id
-            AND child_da.status = 'active'
-            AND child_da.workspace_id = da.workspace_id
-            AND child_da.project_id = da.project_id
         WHERE child_rel.parent_device_id = d.id
           AND child_rel.relation_type = 'gateway_node'
           AND child_rel.status = 'active'
@@ -207,10 +240,6 @@ SELECT
     (
         SELECT count(*)::bigint
         FROM device_relations AS child_rel
-        JOIN device_assignments AS child_da ON child_da.device_id = child_rel.child_device_id
-            AND child_da.status = 'active'
-            AND child_da.workspace_id = da.workspace_id
-            AND child_da.site_id = da.site_id
         WHERE child_rel.parent_device_id = d.id
           AND child_rel.relation_type = 'gateway_node'
           AND child_rel.status = 'active'
@@ -228,7 +257,7 @@ SET project_id = $2,
     updated_at = now()
 WHERE id = $1
   AND status = 'active'
-RETURNING id, device_id, workspace_id, project_id, site_id, status, assigned_by, assigned_at, unassigned_at, created_at, updated_at;
+RETURNING id, device_id, workspace_id, project_id, site_id, status, assigned_by, assigned_at, unassigned_at, created_at, updated_at, assigned_by_type;
 
 -- name: CloseActiveDeviceAssignment :one
 UPDATE device_assignments
@@ -237,7 +266,7 @@ SET status = $2,
     updated_at = now()
 WHERE device_id = $1
   AND status = 'active'
-RETURNING id, device_id, workspace_id, project_id, site_id, status, assigned_by, assigned_at, unassigned_at, created_at, updated_at;
+RETURNING id, device_id, workspace_id, project_id, site_id, status, assigned_by, assigned_at, unassigned_at, created_at, updated_at, assigned_by_type;
 
 -- name: ListDeviceCapabilities :many
 SELECT capability_code

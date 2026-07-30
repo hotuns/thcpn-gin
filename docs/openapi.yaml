@@ -1421,8 +1421,8 @@ paths:
       summary: Sync all THCPN devices from the external devices table
       description: >
         Requires a valid administrator bearer token. Reads all non-deleted rows from the external THCPN MySQL
-        `devices` table. Each device is synchronized independently and the response reports partial failures.
-        Devices remain unassigned to a Workspace.
+        `devices` and `cameras` tables plus active `gate_node` topology. Each asset is synchronized independently
+        and the response reports partial failures. Devices and cameras remain unassigned to a Workspace.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1460,8 +1460,8 @@ paths:
       summary: Sync a THCPN gateway topology into the system asset registry
       description: >
         Requires a valid administrator bearer token. Reads `gate_node` for the external gateway, synchronizes
-        the gateway and node devices as independent platform Devices, and stores gateway-node relations.
-        Node assignment is explicit and only runs when `assign_nodes` is true.
+        the gateway and node devices as independent system assets, and stores gateway-node relations.
+        Synchronization never assigns the gateway or nodes to a Workspace.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1488,6 +1488,42 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/data-sources/{data_source_id}/thcpn-standard-station/cameras:
+    parameters:
+      - $ref: "#/components/parameters/DataSourceID"
+    post:
+      tags:
+        - Admin
+      operationId: adminSyncTHCPNCamera
+      summary: Sync one camera from the external THCPN cameras table
+      description: >
+        Reads one non-deleted cameras row and synchronizes an unassigned camera Device,
+        Ezviz camera binding and stable source reference.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncTHCPNCameraRequest"
+      responses:
+        "200":
+          description: THCPN camera synchronized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/THCPNCameraSyncResult"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/Internal"
   /api/v1/admin/cameras:
@@ -1612,37 +1648,61 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
     post:
-      tags:
-        - Admin
+      tags: [Admin]
       operationId: adminCreateDeviceCapabilityDefinition
       summary: Create device capability metadata
       description: Requires a valid administrator bearer token.
-      security:
-        - bearerAuth: []
-        - devUserHeader: []
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: "#/components/schemas/CreateDeviceCapabilityDefinitionRequest"
+            schema: { $ref: "#/components/schemas/CreateDeviceCapabilityDefinitionRequest" }
       responses:
         "201":
           description: Device capability metadata created.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/DeviceCapabilityDefinition"
-        "400":
-          $ref: "#/components/responses/InvalidArgument"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/PermissionDenied"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/Internal"
+              schema: { $ref: "#/components/schemas/DeviceCapabilityDefinition" }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/admin/metadata/device-taxonomy:
+    get:
+      tags: [Admin]
+      operationId: adminListDeviceTaxonomy
+      summary: List all device classification terms
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Taxonomy catalog., content: { application/json: { schema: { $ref: "#/components/schemas/DeviceTaxonomyListResponse" } } } }
+    post:
+      tags: [Admin]
+      operationId: adminUpsertDeviceTaxonomy
+      summary: Create or update a classification term
+      security: [{ bearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/DeviceTaxonomyTerm" } } } }
+      responses:
+        "200": { description: Saved term., content: { application/json: { schema: { $ref: "#/components/schemas/DeviceTaxonomyTerm" } } } }
+  /api/v1/admin/device-map:
+    get:
+      tags: [Admin]
+      operationId: adminListDeviceMap
+      summary: List all system devices for the map
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: include_children, in: query, schema: { type: boolean, default: false } }]
+      responses:
+        "200": { description: System device map., content: { application/json: { schema: { $ref: "#/components/schemas/DeviceMapResponse" } } } }
+  /api/v1/admin/devices/environment/bulk:
+    post:
+      tags: [Admin]
+      operationId: adminBulkUpdateDeviceEnvironment
+      summary: Bulk replace device environment attributes
+      security: [{ bearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        "200": { description: Per-device update result. }
   /api/v1/admin/metadata/device-capabilities/{code}:
     parameters:
       - name: code
@@ -1767,6 +1827,45 @@ paths:
           $ref: "#/components/responses/PermissionDenied"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/admin/devices/runtime:
+    get:
+      tags: [Admin]
+      operationId: adminGetTHCPNDeviceRuntime
+      summary: Read current source-owned fields for system devices
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      parameters:
+        - name: device_ids
+          in: query
+          required: true
+          description: Comma-separated platform device UUIDs, up to 200.
+          schema: { type: string }
+      responses:
+        "200":
+          description: Current THCPN device rows and latest runtime attributes.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/THCPNDeviceRuntimeBatchResponse" }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/admin/devices/{device_id}/environment:
+    parameters: [{ $ref: "#/components/parameters/DeviceID" }]
+    get:
+      tags: [Admin]
+      operationId: adminGetDeviceEnvironment
+      summary: Get direct and inherited device classification
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Effective environment., content: { application/json: { schema: { $ref: "#/components/schemas/DeviceEnvironment" } } } }
+    patch:
+      tags: [Admin]
+      operationId: adminUpdateDeviceEnvironment
+      summary: Update device classification overrides
+      security: [{ bearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/UpdateDeviceEnvironmentRequest" } } } }
+      responses:
+        "200": { description: Updated environment., content: { application/json: { schema: { $ref: "#/components/schemas/DeviceEnvironment" } } } }
   /api/v1/admin/devices/{device_id}:
     parameters:
       - $ref: "#/components/parameters/DeviceID"
@@ -2097,8 +2196,8 @@ paths:
       tags:
         - Admin
       operationId: adminListTHCPNSensorTemplates
-      summary: List THCPN sensor templates for a device data source
-      description: Requires a valid administrator bearer token. Reads templates only from the active THCPN data source bound to the selected device.
+      summary: List active platform sensor templates for a device
+      description: Requires a valid administrator bearer token. Reads the platform template catalog and adapts config entries to the selected device.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -2120,7 +2219,7 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
       responses:
         "200":
-          description: Sensor templates from the device's active THCPN data source.
+          description: Active sensor templates from the platform catalog.
           content:
             application/json:
               schema:
@@ -2135,6 +2234,121 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/admin/sensor-templates:
+    get:
+      tags: [Admin]
+      operationId: adminListSensorTemplates
+      summary: List platform sensor templates
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: port, in: query, schema: { type: string } }
+        - { name: driver, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [active, disabled] } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: page_size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200":
+          description: Platform sensor template catalog.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/THCPNSensorTemplateListResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/Internal" }
+    post:
+      tags: [Admin]
+      operationId: adminCreateSensorTemplate
+      summary: Create a platform sensor template
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SensorTemplateRequest" }
+      responses:
+        "201":
+          description: Created sensor template.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/THCPNSensorTemplate" }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/admin/sensor-templates/{template_id}:
+    parameters:
+      - name: template_id
+        in: path
+        required: true
+        schema: { type: integer, format: int64, minimum: 1 }
+    get:
+      tags: [Admin]
+      operationId: adminGetSensorTemplate
+      summary: Get a platform sensor template
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Sensor template.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/THCPNSensorTemplate" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/admin/sensor-templates/import:
+    post:
+      tags: [Admin]
+      operationId: adminImportSensorTemplates
+      summary: Import sensor templates from a THCPN data source
+      description: Explicit one-time import from the source sensors table. Existing equivalent platform templates are skipped.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [data_source_id]
+              properties:
+                data_source_id: { $ref: "#/components/schemas/UUID" }
+      responses:
+        "200":
+          description: Import result.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [imported, skipped, invalid]
+                properties:
+                  imported: { type: integer }
+                  skipped: { type: integer }
+                  invalid: { type: integer }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
+    put:
+      tags: [Admin]
+      operationId: adminUpdateSensorTemplate
+      summary: Replace a platform sensor template
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SensorTemplateRequest" }
+      responses:
+        "200":
+          description: Updated sensor template.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/THCPNSensorTemplate" }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Admin]
+      operationId: adminDeleteSensorTemplate
+      summary: Delete a platform sensor template
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: Deleted. }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/admin/devices/{device_id}/lifecycle:
     parameters:
       - $ref: "#/components/parameters/DeviceID"
@@ -2253,6 +2467,120 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/device-claims/{claim_slug}:
+    get:
+      tags: [Devices]
+      operationId: getDeviceClaimEntry
+      summary: Open a permanent device claim link
+      parameters:
+        - name: claim_slug
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Login is required before resolving device information.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [login_required]
+                properties:
+                  login_required: { type: boolean }
+  /api/v1/device-claims/resolve:
+    post:
+      tags: [Devices]
+      operationId: resolveDeviceClaim
+      summary: Resolve a permanent device credential
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResolveDeviceClaimRequest" }
+      responses:
+        "200":
+          description: Minimal claimable device information.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceClaimCredential" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/v1/device-claims/claim:
+    post:
+      tags: [Devices]
+      operationId: claimDevice
+      summary: Atomically assign a device to a Workspace
+      description: Requires `device.bind` in the target Workspace.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ClaimDeviceRequest" }
+      responses:
+        "200":
+          description: Device claimed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceClaimResult" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/v1/admin/device-claims/ensure:
+    post:
+      tags: [Admin]
+      operationId: adminEnsureDeviceClaimCredentials
+      summary: Create permanent credentials for all eligible devices
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Credentials ensured.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [created]
+                properties:
+                  created: { type: integer, format: int64 }
+  /api/v1/admin/devices/{device_id}/claim-credential:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags: [Admin]
+      operationId: adminGetDeviceClaimCredential
+      summary: Get the permanent device plate credential
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Permanent credential.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceClaimCredential" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/admin/devices/{device_id}/claim-credential/printed:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    post:
+      tags: [Admin]
+      operationId: adminMarkDeviceClaimCredentialPrinted
+      summary: Record that a permanent plate was printed
+      security:
+        - bearerAuth: []
+      responses:
+        "204": { description: Print time recorded. }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/admin/devices/{device_id}/assignment:
     parameters:
       - $ref: "#/components/parameters/DeviceID"
@@ -2755,6 +3083,23 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/sites/{site_id}/environment:
+    parameters: [{ $ref: "#/components/parameters/SiteID" }]
+    get:
+      tags: [Sites]
+      operationId: getSiteEnvironment
+      summary: Get site classification defaults
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      responses:
+        "200": { description: Site defaults., content: { application/json: { schema: { $ref: "#/components/schemas/SiteEnvironment" } } } }
+    patch:
+      tags: [Sites]
+      operationId: updateSiteEnvironment
+      summary: Update site classification defaults
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/UpdateSiteEnvironmentRequest" } } } }
+      responses:
+        "200": { description: Updated site defaults., content: { application/json: { schema: { $ref: "#/components/schemas/SiteEnvironment" } } } }
   /api/v1/devices:
     get:
       tags:
@@ -2796,6 +3141,28 @@ paths:
           $ref: "#/components/responses/PermissionDenied"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/devices/runtime:
+    get:
+      tags: [Devices]
+      operationId: getTHCPNDeviceRuntime
+      summary: Read current source-owned fields for visible devices
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      parameters:
+        - name: device_ids
+          in: query
+          required: true
+          description: Comma-separated platform device UUIDs, up to 200. Every device requires device.view.
+          schema: { type: string }
+      responses:
+        "200":
+          description: Current THCPN device rows and latest runtime attributes.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/THCPNDeviceRuntimeBatchResponse" }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "500": { $ref: "#/components/responses/Internal" }
   /api/v1/devices/{device_id}:
     parameters:
       - $ref: "#/components/parameters/DeviceID"
@@ -2914,7 +3281,7 @@ paths:
       tags: [Devices]
       operationId: updateDeviceProfile
       summary: Update device-owned profile
-      description: Requires `device.configure`. Latitude and longitude must be supplied together.
+      description: Requires `device.configure`. Source-managed coordinates are read-only.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -2936,6 +3303,46 @@ paths:
         "403": { $ref: "#/components/responses/PermissionDenied" }
         "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/device-taxonomy/catalog:
+    get:
+      tags: [Devices]
+      operationId: listDeviceTaxonomy
+      summary: List active device classification terms
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      responses:
+        "200":
+          description: Active taxonomy catalog.
+          content: { application/json: { schema: { $ref: "#/components/schemas/DeviceTaxonomyListResponse" } } }
+  /api/v1/device-map:
+    get:
+      tags: [Devices]
+      operationId: listDeviceMap
+      summary: List authorized devices with effective locations and classifications
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      parameters:
+        - { name: workspace_id, in: query, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+        - { name: include_children, in: query, schema: { type: boolean, default: false } }
+      responses:
+        "200":
+          description: Permission-filtered device map.
+          content: { application/json: { schema: { $ref: "#/components/schemas/DeviceMapResponse" } } }
+  /api/v1/devices/{device_id}/environment:
+    parameters: [{ $ref: "#/components/parameters/DeviceID" }]
+    get:
+      tags: [Devices]
+      operationId: getDeviceEnvironment
+      summary: Get direct and inherited device classification
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      responses:
+        "200": { description: Effective environment., content: { application/json: { schema: { $ref: "#/components/schemas/DeviceEnvironment" } } } }
+    patch:
+      tags: [Devices]
+      operationId: updateDeviceEnvironment
+      summary: Update device classification overrides
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/UpdateDeviceEnvironmentRequest" } } } }
+      responses:
+        "200": { description: Updated environment., content: { application/json: { schema: { $ref: "#/components/schemas/DeviceEnvironment" } } } }
   /api/v1/devices/{device_id}/profile/images:
     parameters:
       - $ref: "#/components/parameters/DeviceID"
@@ -3046,6 +3453,182 @@ paths:
         - devUserHeader: []
       responses:
         "204": { description: Image deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/devices/{device_id}/metadata:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags: [Devices]
+      operationId: listDeviceMetadata
+      summary: List device metadata
+      description: Requires `device.view`. Metadata belongs to the physical device and is available to computed telemetry formulas.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Device metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceMetadataListResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
+    put:
+      tags: [Devices]
+      operationId: replaceDeviceMetadata
+      summary: Replace device metadata
+      description: Requires `device.configure`. The complete metadata collection is replaced atomically.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceDeviceMetadataRequest"
+      responses:
+        "200":
+          description: Updated device metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceMetadataListResponse"
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/devices/{device_id}/computed-streams:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags: [Devices]
+      operationId: listComputedDataStreams
+      summary: List computed telemetry streams
+      description: Requires `device.view`.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Computed telemetry stream definitions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComputedDataStreamListResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
+    post:
+      tags: [Devices]
+      operationId: createComputedDataStream
+      summary: Create a computed telemetry stream
+      description: Requires `device.configure`. Formulas may reference raw telemetry streams and numeric metadata from the same device.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateComputedDataStreamRequest"
+      responses:
+        "201":
+          description: Created computed telemetry stream.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComputedDataStream"
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/devices/{device_id}/computed-streams/preview:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    post:
+      tags: [Devices]
+      operationId: previewComputedDataStream
+      summary: Validate and preview a computed telemetry formula
+      description: Requires `device.configure`.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreviewComputedDataStreamRequest"
+      responses:
+        "200":
+          description: Formula preview result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreviewComputedDataStreamResponse"
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/devices/{device_id}/computed-streams/{data_stream_id}:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+      - name: data_stream_id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/UUID"
+    patch:
+      tags: [Devices]
+      operationId: updateComputedDataStream
+      summary: Update a computed telemetry stream
+      description: Requires `device.configure`.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateComputedDataStreamRequest"
+      responses:
+        "200":
+          description: Updated computed telemetry stream.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComputedDataStream"
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/Internal" }
+    delete:
+      tags: [Devices]
+      operationId: deleteComputedDataStream
+      summary: Delete a computed telemetry stream
+      description: Requires `device.configure`.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "204": { description: Computed telemetry stream deleted. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/PermissionDenied" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -6500,6 +7083,47 @@ components:
           $ref: "#/components/schemas/Timestamp"
         updated_at:
           $ref: "#/components/schemas/Timestamp"
+    ResolveDeviceClaimRequest:
+      type: object
+      properties:
+        claim_slug: { type: string }
+        serial_no: { type: string }
+        code: { type: string }
+    ClaimDeviceRequest:
+      allOf:
+        - $ref: "#/components/schemas/ResolveDeviceClaimRequest"
+        - type: object
+          required: [workspace_id]
+          properties:
+            workspace_id: { $ref: "#/components/schemas/UUID" }
+            project_id: { $ref: "#/components/schemas/UUID" }
+            site_id: { $ref: "#/components/schemas/UUID" }
+    DeviceClaimCredential:
+      type: object
+      required: [device_id, device_name, device_type, serial_no, created_at, child_count, is_assigned, is_claimable]
+      properties:
+        device_id: { $ref: "#/components/schemas/UUID" }
+        device_name: { type: string }
+        device_type: { $ref: "#/components/schemas/DeviceTopologyRole" }
+        serial_no: { type: string }
+        claim_slug: { type: string }
+        claim_path: { type: string }
+        manual_code: { type: string }
+        printed_at: { $ref: "#/components/schemas/Timestamp" }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+        child_count: { type: integer, format: int64 }
+        is_assigned: { type: boolean }
+        is_claimable: { type: boolean }
+    DeviceClaimResult:
+      type: object
+      required: [device_id, assignment_id, workspace_id, device_name, device_type, child_count]
+      properties:
+        device_id: { $ref: "#/components/schemas/UUID" }
+        assignment_id: { $ref: "#/components/schemas/UUID" }
+        workspace_id: { $ref: "#/components/schemas/UUID" }
+        device_name: { type: string }
+        device_type: { $ref: "#/components/schemas/DeviceTopologyRole" }
+        child_count: { type: integer, format: int64 }
     DeviceListResponse:
       type: object
       required:
@@ -6568,6 +7192,103 @@ components:
         items:
           type: array
           items: { $ref: "#/components/schemas/DeviceProfileImage" }
+    DeviceTaxonomyTerm:
+      type: object
+      required: [id, kind, code, name_zh, name_en, status, sort_order, system_defined]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        kind: { type: string, enum: [ecosystem, observation_object, purpose, management, deployment] }
+        code: { type: string }
+        name_zh: { type: string }
+        name_en: { type: string }
+        parent_id: { $ref: "#/components/schemas/UUID" }
+        status: { type: string, enum: [active, inactive] }
+        sort_order: { type: integer }
+        system_defined: { type: boolean }
+    DeviceTaxonomyListResponse:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/DeviceTaxonomyTerm" } }
+    DeviceEnvironmentValues:
+      type: object
+      required: [observation_objects, purposes, research_tags]
+      properties:
+        ecosystem: { $ref: "#/components/schemas/DeviceTaxonomyTerm" }
+        observation_objects: { type: array, items: { $ref: "#/components/schemas/DeviceTaxonomyTerm" } }
+        purposes: { type: array, items: { $ref: "#/components/schemas/DeviceTaxonomyTerm" } }
+        management: { $ref: "#/components/schemas/DeviceTaxonomyTerm" }
+        deployment: { $ref: "#/components/schemas/DeviceTaxonomyTerm" }
+        altitude_m: { type: number, format: double }
+        commissioned_year: { type: integer }
+        research_tags: { type: array, items: { type: string } }
+    DeviceEnvironment:
+      type: object
+      required: [device_id, direct, effective, overridden_fields, sources]
+      properties:
+        device_id: { $ref: "#/components/schemas/UUID" }
+        direct: { $ref: "#/components/schemas/DeviceEnvironmentValues" }
+        effective: { $ref: "#/components/schemas/DeviceEnvironmentValues" }
+        overridden_fields: { type: array, items: { type: string } }
+        sources: { type: object, additionalProperties: { type: string } }
+        parent_device_id: { $ref: "#/components/schemas/UUID" }
+        site_id: { $ref: "#/components/schemas/UUID" }
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+    SiteEnvironment:
+      type: object
+      required: [site_id, values]
+      properties:
+        site_id: { $ref: "#/components/schemas/UUID" }
+        values: { $ref: "#/components/schemas/DeviceEnvironmentValues" }
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+    UpdateSiteEnvironmentRequest:
+      type: object
+      properties:
+        ecosystem_term_id: { $ref: "#/components/schemas/UUID" }
+        observation_object_ids: { type: array, items: { $ref: "#/components/schemas/UUID" } }
+        purpose_ids: { type: array, items: { $ref: "#/components/schemas/UUID" } }
+        management_term_id: { $ref: "#/components/schemas/UUID" }
+        deployment_term_id: { $ref: "#/components/schemas/UUID" }
+        altitude_m: { type: number, format: double }
+        commissioned_year: { type: integer, minimum: 1900, maximum: 2200 }
+        research_tags: { type: array, items: { type: string } }
+    UpdateDeviceEnvironmentRequest:
+      type: object
+      required: [overridden_fields]
+      properties:
+        ecosystem_term_id: { $ref: "#/components/schemas/UUID" }
+        observation_object_ids: { type: array, items: { $ref: "#/components/schemas/UUID" } }
+        purpose_ids: { type: array, items: { $ref: "#/components/schemas/UUID" } }
+        management_term_id: { $ref: "#/components/schemas/UUID" }
+        deployment_term_id: { $ref: "#/components/schemas/UUID" }
+        commissioned_year: { type: integer, minimum: 1900, maximum: 2200 }
+        research_tags: { type: array, items: { type: string } }
+        overridden_fields: { type: array, items: { type: string } }
+    DeviceMapItem:
+      type: object
+      required: [device_id, name, serial_no, device_type, status, location_source, child_count, environment]
+      properties:
+        device_id: { $ref: "#/components/schemas/UUID" }
+        name: { type: string }
+        serial_no: { type: string }
+        device_type: { type: string }
+        status: { type: string }
+        workspace_id: { $ref: "#/components/schemas/UUID" }
+        site_id: { $ref: "#/components/schemas/UUID" }
+        latitude: { type: number, format: double }
+        longitude: { type: number, format: double }
+        location_source: { type: string, enum: [device, site, gateway, none] }
+        child_count: { type: integer, format: int64 }
+        environment: { $ref: "#/components/schemas/DeviceEnvironmentValues" }
+    DeviceMapResponse:
+      type: object
+      required: [items, total, located, unlocated, unclassified]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/DeviceMapItem" } }
+        total: { type: integer }
+        located: { type: integer }
+        unlocated: { type: integer }
+        unclassified: { type: integer }
     DeviceProfile:
       type: object
       required: [device_id, location_source, images, can_configure]
@@ -6595,8 +7316,6 @@ components:
       properties:
         description: { type: string, nullable: true }
         location_text: { type: string, nullable: true }
-        latitude: { type: number, format: double, nullable: true, minimum: -90, maximum: 90 }
-        longitude: { type: number, format: double, nullable: true, minimum: -180, maximum: 180 }
     CameraProvider:
       type: string
       enum:
@@ -7086,13 +7805,9 @@ components:
           $ref: "#/components/schemas/UUID"
         site_id:
           $ref: "#/components/schemas/UUID"
-        assign_children:
-          type: boolean
-          default: false
-          description: When true, gateway child nodes are explicitly assigned to the same Workspace, Project and Site.
     DataStream:
       type: object
-      description: System-level device data channel generated by system sync. Workspace permission is resolved through the parent device active assignment.
+      description: Device data channel. Raw channels are generated by source synchronization; computed channels are evaluated at query time. Workspace permission is resolved through the parent device active assignment.
       required:
         - id
         - device_id
@@ -7100,6 +7815,7 @@ components:
         - name
         - type
         - status
+        - computed
         - created_by
         - created_at
         - updated_at
@@ -7118,6 +7834,9 @@ components:
           type: string
         status:
           $ref: "#/components/schemas/DataStreamStatus"
+        computed:
+          type: boolean
+          description: Whether this channel is generated from a device formula at query time.
         created_by:
           $ref: "#/components/schemas/UUID"
         created_at:
@@ -7133,6 +7852,187 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/DataStream"
+    DeviceMetadata:
+      type: object
+      required:
+        - id
+        - device_id
+        - key
+        - name
+        - value_type
+        - value
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        device_id:
+          $ref: "#/components/schemas/UUID"
+        key:
+          type: string
+          pattern: "^[A-Za-z][A-Za-z0-9_]{0,63}$"
+        name:
+          type: string
+        value_type:
+          type: string
+          enum: [number, string, boolean]
+        value:
+          description: Typed value matching `value_type`.
+          oneOf:
+            - type: number
+            - type: string
+            - type: boolean
+        unit:
+          type: string
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    DeviceMetadataInput:
+      type: object
+      required: [key, name, value_type, value]
+      properties:
+        key:
+          type: string
+          pattern: "^[A-Za-z][A-Za-z0-9_]{0,63}$"
+        name:
+          type: string
+        value_type:
+          type: string
+          enum: [number, string, boolean]
+        value:
+          oneOf:
+            - type: number
+            - type: string
+            - type: boolean
+        unit:
+          type: string
+    DeviceMetadataListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceMetadata"
+    ReplaceDeviceMetadataRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 128
+          items:
+            $ref: "#/components/schemas/DeviceMetadataInput"
+    ComputedDataStream:
+      type: object
+      required:
+        - data_stream_id
+        - device_id
+        - code
+        - name
+        - status
+        - formula
+        - referenced_stream_codes
+        - referenced_metadata_keys
+        - enabled
+        - created_at
+        - updated_at
+      properties:
+        data_stream_id:
+          $ref: "#/components/schemas/UUID"
+        device_id:
+          $ref: "#/components/schemas/UUID"
+        code:
+          type: string
+        name:
+          type: string
+        unit:
+          type: string
+        status:
+          $ref: "#/components/schemas/DataStreamStatus"
+        formula:
+          type: string
+        referenced_stream_codes:
+          type: array
+          items:
+            type: string
+        referenced_metadata_keys:
+          type: array
+          items:
+            type: string
+        enabled:
+          type: boolean
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    ComputedDataStreamListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ComputedDataStream"
+    CreateComputedDataStreamRequest:
+      type: object
+      required: [code, name, formula]
+      properties:
+        code:
+          type: string
+          pattern: "^[A-Za-z][A-Za-z0-9_]{0,63}$"
+        name:
+          type: string
+        unit:
+          type: string
+        formula:
+          type: string
+        enabled:
+          type: boolean
+          default: true
+    UpdateComputedDataStreamRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          pattern: "^[A-Za-z][A-Za-z0-9_]{0,63}$"
+        name:
+          type: string
+        unit:
+          type: string
+        formula:
+          type: string
+        enabled:
+          type: boolean
+    PreviewComputedDataStreamRequest:
+      type: object
+      required: [formula, streams]
+      properties:
+        formula:
+          type: string
+        streams:
+          type: object
+          additionalProperties:
+            type: number
+        metadata:
+          type: object
+          additionalProperties:
+            type: number
+    PreviewComputedDataStreamResponse:
+      type: object
+      required: [value, referenced_stream_codes, referenced_metadata_keys]
+      properties:
+        value:
+          type: number
+        referenced_stream_codes:
+          type: array
+          items:
+            type: string
+        referenced_metadata_keys:
+          type: array
+          items:
+            type: string
     DataSource:
       type: object
       description: System-level device source instance managed through admin APIs. Workspace users cannot view or modify DataSource, DSN, adapter, table fields or raw SQL.
@@ -7215,6 +8115,11 @@ components:
         - created
         - updated
         - failed
+        - relations
+        - topology_failed
+        - cameras_total
+        - cameras_synced
+        - cameras_failed
       properties:
         data_source_id:
           $ref: "#/components/schemas/UUID"
@@ -7232,6 +8137,18 @@ components:
           description: Devices imported from the external devices table without a device_config row yet.
         failed:
           type: integer
+        relations:
+          type: integer
+          description: Number of active gateway-node relations synchronized.
+        topology_failed:
+          type: integer
+          description: Number of gateway topology groups that could not be synchronized.
+        cameras_total:
+          type: integer
+        cameras_synced:
+          type: integer
+        cameras_failed:
+          type: integer
         failures:
           type: array
           items:
@@ -7243,38 +8160,67 @@ components:
               external_device_id:
                 type: integer
                 format: int64
+              resource_type:
+                type: string
               error:
                 type: string
+    SyncTHCPNCameraRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - external_camera_id
+      properties:
+        external_camera_id:
+          type: integer
+          format: int64
+          minimum: 1
+    THCPNCameraSyncResult:
+      type: object
+      required:
+        - device
+        - source_ref
+        - external_camera
+      properties:
+        device:
+          $ref: "#/components/schemas/SyncedDevice"
+        source_ref:
+          $ref: "#/components/schemas/DeviceSourceRef"
+        external_camera:
+          type: object
+          required:
+            - id
+            - device_serial
+            - name
+            - channel
+            - poster
+          properties:
+            id:
+              type: integer
+              format: int64
+            device_serial:
+              type: string
+            name:
+              type: string
+            channel:
+              type: integer
+            poster:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
     SyncTHCPNGatewayRequest:
       type: object
       required:
         - external_gateway_id
       properties:
-        target_workspace_id:
-          $ref: "#/components/schemas/UUID"
-          description: Optional Workspace assignment target. Omit it to sync the gateway and nodes as unassigned system assets.
         external_gateway_id:
           type: integer
           format: int64
           minimum: 1
           description: External THCPN gateway `devices.id`.
-        project_id:
-          $ref: "#/components/schemas/UUID"
-        site_id:
-          $ref: "#/components/schemas/UUID"
-        assign_nodes:
-          type: boolean
-          default: false
-          description: When true, node devices are assigned to the same target Workspace, Project and Site.
-        product_id:
-          type: string
-          description: Optional platform product identifier for the gateway. Defaults to `thcpn_standard_station`.
-        serial_no:
-          type: string
-          description: Optional platform serial number override for the gateway.
-        name:
-          type: string
-          description: Optional platform device name override for the gateway.
     SyncedDevice:
       type: object
       required:
@@ -7362,12 +8308,6 @@ components:
         external_device_id:
           type: integer
           format: int64
-        external_sn:
-          type: string
-        external_uuid:
-          type: string
-        external_device_type:
-          type: string
         status:
           $ref: "#/components/schemas/DataStreamBindingStatus"
         synced_at:
@@ -7503,7 +8443,7 @@ components:
           additionalProperties: true
     THCPNSensorTemplate:
       type: object
-      required: [id, sensor_type, port_num, port_nums, params, metrics, config_entry, valid]
+      required: [id, sensor_type, port_num, port_nums, params, status, metrics, config_entry, valid]
       properties:
         id: { type: integer, format: int64 }
         sensor_type: { type: string }
@@ -7517,6 +8457,7 @@ components:
         params:
           type: object
           additionalProperties: true
+        status: { type: string, enum: [active, disabled] }
         metrics:
           type: array
           items: { $ref: "#/components/schemas/THCPNSensorMetric" }
@@ -7529,6 +8470,22 @@ components:
           items: { $ref: "#/components/schemas/QueryWarning" }
         created_at: { $ref: "#/components/schemas/Timestamp" }
         updated_at: { $ref: "#/components/schemas/Timestamp" }
+    SensorTemplateRequest:
+      type: object
+      required: [sensor_type, port_num, port_nums, params, status]
+      properties:
+        sensor_type: { type: string, minLength: 1 }
+        description: { type: string }
+        port: { type: string }
+        port_num: { type: integer, format: int64 }
+        driver: { type: string }
+        port_nums:
+          type: array
+          items: { type: integer }
+        params:
+          type: object
+          additionalProperties: true
+        status: { type: string, enum: [active, disabled] }
     THCPNSensorTemplateListResponse:
       type: object
       required: [items, total, page, page_size]
@@ -8591,6 +9548,7 @@ components:
       required:
         - device_id
         - external_device_id
+        - source_device
         - attributes
         - refreshed_at
       properties:
@@ -8599,12 +9557,50 @@ components:
         external_device_id:
           type: integer
           format: int64
+        source_device:
+          $ref: "#/components/schemas/THCPNSourceDeviceRuntime"
         attributes:
           type: object
           additionalProperties:
             $ref: "#/components/schemas/THCPNAttributeValue"
         refreshed_at:
           $ref: "#/components/schemas/Timestamp"
+    THCPNSourceDeviceRuntime:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        iccid: { type: string }
+        version: { type: string }
+        status: { type: string }
+        device_type: { type: string }
+        active: { type: integer, format: int64 }
+        sn: { type: string }
+        uuid: { type: string }
+        current_device_version: { type: string }
+        lat: { type: number, format: double }
+        lon: { type: number, format: double }
+        alt: { type: number, format: double }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+    THCPNDeviceRuntimeFailure:
+      type: object
+      required: [device_id, error]
+      properties:
+        device_id: { $ref: "#/components/schemas/UUID" }
+        error: { type: string }
+    THCPNDeviceRuntimeBatchResponse:
+      type: object
+      required: [items, failures, refreshed_at]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/THCPNLatestAttributesResponse" }
+        failures:
+          type: array
+          items: { $ref: "#/components/schemas/THCPNDeviceRuntimeFailure" }
+        refreshed_at: { $ref: "#/components/schemas/Timestamp" }
     THCPNDeviceLog:
       type: object
       required:

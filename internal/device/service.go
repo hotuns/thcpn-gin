@@ -198,7 +198,6 @@ type AssignInput struct {
 	TargetWorkspaceID uuid.UUID
 	ProjectID         *uuid.UUID
 	SiteID            *uuid.UUID
-	AssignChildren    bool
 	ActorUserID       uuid.UUID
 }
 
@@ -287,11 +286,12 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Device, error)
 		return Device{}, mapWriteError(err, "create device")
 	}
 	assignment, err := q.CreateDeviceAssignment(ctx, sqlc.CreateDeviceAssignmentParams{
-		DeviceID:    created.ID,
-		WorkspaceID: input.WorkspaceID,
-		ProjectID:   input.ProjectID,
-		SiteID:      input.SiteID,
-		AssignedBy:  &input.ActorUserID,
+		DeviceID:       created.ID,
+		WorkspaceID:    input.WorkspaceID,
+		ProjectID:      input.ProjectID,
+		SiteID:         input.SiteID,
+		AssignedBy:     &input.ActorUserID,
+		AssignedByType: "user",
 	})
 	if err != nil {
 		return Device{}, mapWriteError(err, "assign device")
@@ -1024,8 +1024,12 @@ func (s *Service) Assign(ctx context.Context, input AssignInput) (Device, error)
 	}()
 
 	q := s.queries.WithTx(tx)
-	if _, err := q.GetDevice(ctx, input.DeviceID); err != nil {
+	device, err := q.GetDevice(ctx, input.DeviceID)
+	if err != nil {
 		return Device{}, mapNotFoundOrInternal(err, "device not found")
+	}
+	if device.DeviceType == "gateway_node" {
+		return Device{}, apperr.New(apperr.KindInvalidArgument, "gateway node inherits assignment from its gateway")
 	}
 
 	assignment, err := assignDeviceInTx(ctx, q, assignDeviceInTxInput{
@@ -1040,26 +1044,7 @@ func (s *Service) Assign(ctx context.Context, input AssignInput) (Device, error)
 		return Device{}, err
 	}
 
-	if input.AssignChildren {
-		children, err := q.ListActiveDeviceChildren(ctx, input.DeviceID)
-		if err != nil {
-			return Device{}, apperr.Wrap(apperr.KindInternal, "list gateway children", err)
-		}
-		for _, child := range children {
-			if _, err := assignDeviceInTx(ctx, q, assignDeviceInTxInput{
-				DeviceID:          child.ChildDeviceID,
-				TargetWorkspaceID: input.TargetWorkspaceID,
-				ProjectID:         input.ProjectID,
-				SiteID:            input.SiteID,
-				ActorUserID:       input.ActorUserID,
-				AllowTransfer:     false,
-			}); err != nil {
-				return Device{}, err
-			}
-		}
-	}
-
-	device, err := q.GetDevice(ctx, input.DeviceID)
+	device, err = q.GetDevice(ctx, input.DeviceID)
 	if err != nil {
 		return Device{}, mapNotFoundOrInternal(err, "device not found")
 	}
@@ -1112,11 +1097,12 @@ func assignDeviceInTx(ctx context.Context, q *sqlc.Queries, input assignDeviceIn
 		}
 	}
 	assignment, err := q.CreateDeviceAssignment(ctx, sqlc.CreateDeviceAssignmentParams{
-		DeviceID:    input.DeviceID,
-		WorkspaceID: input.TargetWorkspaceID,
-		ProjectID:   input.ProjectID,
-		SiteID:      input.SiteID,
-		AssignedBy:  &input.ActorUserID,
+		DeviceID:       input.DeviceID,
+		WorkspaceID:    input.TargetWorkspaceID,
+		ProjectID:      input.ProjectID,
+		SiteID:         input.SiteID,
+		AssignedBy:     &input.ActorUserID,
+		AssignedByType: "system_admin",
 	})
 	if err != nil {
 		return sqlc.DeviceAssignment{}, mapWriteError(err, "assign device")
@@ -1202,11 +1188,12 @@ func (s *Service) Transfer(ctx context.Context, input TransferInput) (Device, er
 		return Device{}, mapWriteError(err, "close active device assignment")
 	}
 	assignment, err := q.CreateDeviceAssignment(ctx, sqlc.CreateDeviceAssignmentParams{
-		DeviceID:    input.DeviceID,
-		WorkspaceID: input.TargetWorkspaceID,
-		ProjectID:   input.ProjectID,
-		SiteID:      input.SiteID,
-		AssignedBy:  &input.ActorUserID,
+		DeviceID:       input.DeviceID,
+		WorkspaceID:    input.TargetWorkspaceID,
+		ProjectID:      input.ProjectID,
+		SiteID:         input.SiteID,
+		AssignedBy:     &input.ActorUserID,
+		AssignedByType: "user",
 	})
 	if err != nil {
 		return Device{}, mapWriteError(err, "transfer device")

@@ -29,10 +29,13 @@ const (
 )
 
 type Handler struct {
-	service   *Service
-	checker   *permission.Checker
-	audit     *audit.Service
-	logSigner *objectstore.Signer
+	service      *Service
+	checker      *permission.Checker
+	audit        *audit.Service
+	logSigner    *objectstore.Signer
+	claimEnsurer interface {
+		EnsureEligible(context.Context) (int64, error)
+	}
 }
 
 type createDataSourceRequest struct {
@@ -47,6 +50,21 @@ type updateDataSourceRequest struct {
 	Type         *string `json:"type"`
 	DsnSecretRef *string `json:"dsn_secret_ref"`
 	Status       *string `json:"status"`
+}
+
+type sensorTemplateRequest struct {
+	SensorType  string         `json:"sensor_type"`
+	Description string         `json:"description"`
+	Port        string         `json:"port"`
+	PortNum     int64          `json:"port_num"`
+	Driver      string         `json:"driver"`
+	PortNums    []int          `json:"port_nums"`
+	Params      map[string]any `json:"params"`
+	Status      string         `json:"status"`
+}
+
+type importSensorTemplatesRequest struct {
+	DataSourceID string `json:"data_source_id"`
 }
 
 type createBindingRequest struct {
@@ -82,24 +100,15 @@ type updateBindingRequest struct {
 }
 
 type syncTHCPNStandardStationRequest struct {
-	TargetWorkspaceID string `json:"target_workspace_id"`
-	ExternalDeviceID  int64  `json:"external_device_id"`
-	ProjectID         string `json:"project_id"`
-	SiteID            string `json:"site_id"`
-	ProductID         string `json:"product_id"`
-	SerialNo          string `json:"serial_no"`
-	Name              string `json:"name"`
+	ExternalDeviceID int64 `json:"external_device_id"`
 }
 
 type syncTHCPNGatewayRequest struct {
-	TargetWorkspaceID string `json:"target_workspace_id"`
-	ExternalGatewayID int64  `json:"external_gateway_id"`
-	ProjectID         string `json:"project_id"`
-	SiteID            string `json:"site_id"`
-	AssignNodes       bool   `json:"assign_nodes"`
-	ProductID         string `json:"product_id"`
-	SerialNo          string `json:"serial_no"`
-	Name              string `json:"name"`
+	ExternalGatewayID int64 `json:"external_gateway_id"`
+}
+
+type syncTHCPNCameraRequest struct {
+	ExternalCameraID int64 `json:"external_camera_id"`
 }
 
 type updateTHCPNDeviceConfigRequest struct {
@@ -129,12 +138,57 @@ func (h *Handler) SetTHCPNLogSigner(signer *objectstore.Signer) {
 	h.logSigner = signer
 }
 
+func (h *Handler) SetClaimCredentialEnsurer(ensurer interface {
+	EnsureEligible(context.Context) (int64, error)
+}) {
+	h.claimEnsurer = ensurer
+}
+
+func (h *Handler) ensureClaimCredentials(ctx context.Context) error {
+	if h.claimEnsurer == nil {
+		return nil
+	}
+	_, err := h.claimEnsurer.EnsureEligible(ctx)
+	return err
+}
+
 func (h *Handler) LatestTHCPNDeviceAttributes(c *gin.Context) {
 	deviceID, ok := parseUUIDParam(c, "device_id")
 	if !ok || !h.authorize(c, "device", deviceID, "device.view") {
 		return
 	}
 	result, err := h.service.LatestTHCPNDeviceAttributes(c.Request.Context(), deviceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) THCPNDeviceRuntime(c *gin.Context) {
+	deviceIDs, ok := parseDeviceIDs(c)
+	if !ok {
+		return
+	}
+	for _, deviceID := range deviceIDs {
+		if !h.authorize(c, "device", deviceID, "device.view") {
+			return
+		}
+	}
+	result, err := h.service.THCPNDeviceRuntime(c.Request.Context(), deviceIDs)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminTHCPNDeviceRuntime(c *gin.Context) {
+	deviceIDs, ok := parseDeviceIDs(c)
+	if !ok {
+		return
+	}
+	result, err := h.service.THCPNDeviceRuntime(c.Request.Context(), deviceIDs)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -212,6 +266,10 @@ func (h *Handler) AdminLatestTHCPNDeviceAttributes(c *gin.Context) {
 	}
 	result, err := h.service.LatestTHCPNDeviceAttributes(c.Request.Context(), deviceID)
 	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if err := h.ensureClaimCredentials(c.Request.Context()); err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
@@ -438,7 +496,7 @@ func (h *Handler) AdminCreateDataSource(c *gin.Context) {
 		Name:         req.Name,
 		Type:         req.Type,
 		DsnSecretRef: req.DsnSecretRef,
-		ActorUserID:  actor.UserID,
+		ActorAdminID: actor.UserID,
 	})
 	if err != nil {
 		httpx.WriteAppError(c, err)
@@ -488,29 +546,10 @@ func (h *Handler) AdminSyncTHCPNStandardStation(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
-	targetWorkspaceID, ok := parseOptionalUUIDValue(req.TargetWorkspaceID, "target_workspace_id", c)
-	if !ok {
-		return
-	}
-	projectID, ok := parseOptionalUUIDValue(req.ProjectID, "project_id", c)
-	if !ok {
-		return
-	}
-	siteID, ok := parseOptionalUUIDValue(req.SiteID, "site_id", c)
-	if !ok {
-		return
-	}
-
 	result, err := h.service.SyncTHCPNStandardStation(c.Request.Context(), SyncTHCPNStandardStationInput{
-		DataSourceID:      dataSourceID,
-		TargetWorkspaceID: uuidValue(targetWorkspaceID),
-		ProjectID:         projectID,
-		SiteID:            siteID,
-		ExternalDeviceID:  req.ExternalDeviceID,
-		ProductID:         req.ProductID,
-		SerialNo:          req.SerialNo,
-		Name:              req.Name,
-		ActorUserID:       actor.UserID,
+		DataSourceID:     dataSourceID,
+		ExternalDeviceID: req.ExternalDeviceID,
+		ActorUserID:      actor.UserID,
 	})
 	if err != nil {
 		httpx.WriteAppError(c, err)
@@ -545,6 +584,10 @@ func (h *Handler) AdminSyncAllTHCPNDevices(c *gin.Context) {
 		httpx.WriteAppError(c, err)
 		return
 	}
+	if err := h.ensureClaimCredentials(c.Request.Context()); err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
 	if !h.record(c, audit.RecordInput{
 		ActorType:    audit.ActorUser,
 		ActorID:      audit.UserActorID(actor.UserID),
@@ -552,7 +595,42 @@ func (h *Handler) AdminSyncAllTHCPNDevices(c *gin.Context) {
 		ResourceType: "data_source",
 		ResourceID:   audit.ResourceID(dataSourceID),
 		Result:       audit.ResultSuccess,
-		Reason:       fmt.Sprintf("total=%d; synced=%d; created=%d; updated=%d; unconfigured=%d; failed=%d", result.Total, result.Synced, result.Created, result.Updated, result.Unconfigured, result.Failed),
+		Reason: fmt.Sprintf(
+			"total=%d; synced=%d; created=%d; updated=%d; unconfigured=%d; failed=%d; relations=%d; topology_failed=%d; cameras=%d; cameras_failed=%d",
+			result.Total, result.Synced, result.Created, result.Updated, result.Unconfigured,
+			result.Failed, result.Relations, result.TopologyFailed, result.CamerasSynced, result.CamerasFailed,
+		),
+	}) {
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminSyncTHCPNCamera(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	dataSourceID, ok := parseUUIDParam(c, "data_source_id")
+	if !ok {
+		return
+	}
+	var req syncTHCPNCameraRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	result, err := h.service.SyncTHCPNCamera(c.Request.Context(), SyncTHCPNCameraInput{
+		DataSourceID: dataSourceID, ExternalCameraID: req.ExternalCameraID, ActorUserID: actor.UserID,
+	})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		ActorType: audit.ActorUser, ActorID: audit.UserActorID(actor.UserID),
+		Action: "thcpn.camera.sync", ResourceType: "device", ResourceID: audit.ResourceID(result.Device.ID),
+		Result: audit.ResultSuccess,
 	}) {
 		return
 	}
@@ -574,34 +652,13 @@ func (h *Handler) AdminSyncTHCPNGateway(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
-	targetWorkspaceID, ok := parseOptionalUUIDValue(req.TargetWorkspaceID, "target_workspace_id", c)
-	if !ok {
-		return
-	}
-	projectID, ok := parseOptionalUUIDValue(req.ProjectID, "project_id", c)
-	if !ok {
-		return
-	}
-	siteID, ok := parseOptionalUUIDValue(req.SiteID, "site_id", c)
-	if !ok {
-		return
-	}
-
 	result, err := h.service.SyncTHCPNGateway(c.Request.Context(), SyncTHCPNGatewayInput{
 		DataSourceID:      dataSourceID,
-		TargetWorkspaceID: uuidValue(targetWorkspaceID),
-		ProjectID:         projectID,
-		SiteID:            siteID,
 		ExternalGatewayID: req.ExternalGatewayID,
-		AssignNodes:       req.AssignNodes,
-		ProductID:         req.ProductID,
-		SerialNo:          req.SerialNo,
-		Name:              req.Name,
 		ActorUserID:       actor.UserID,
 	})
 	if err != nil {
 		if !h.record(c, audit.RecordInput{
-			WorkspaceID:  audit.WorkspaceID(uuidValue(targetWorkspaceID)),
 			ActorType:    audit.ActorUser,
 			ActorID:      audit.UserActorID(actor.UserID),
 			Action:       "thcpn.gateway_topology.sync",
@@ -612,6 +669,10 @@ func (h *Handler) AdminSyncTHCPNGateway(c *gin.Context) {
 		}) {
 			return
 		}
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if err := h.ensureClaimCredentials(c.Request.Context()); err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
@@ -636,19 +697,6 @@ func (h *Handler) AdminSyncTHCPNGateway(c *gin.Context) {
 		Result:       audit.ResultSuccess,
 	}) {
 		return
-	}
-	if req.AssignNodes {
-		if !h.record(c, audit.RecordInput{
-			WorkspaceID:  audit.WorkspaceID(uuidValue(result.Gateway.Device.WorkspaceID)),
-			ActorType:    audit.ActorUser,
-			ActorID:      audit.UserActorID(actor.UserID),
-			Action:       "device.assignment.cascade_gateway_nodes",
-			ResourceType: "device",
-			ResourceID:   audit.ResourceID(result.Gateway.Device.ID),
-			Result:       audit.ResultSuccess,
-		}) {
-			return
-		}
 	}
 	c.JSON(http.StatusOK, result)
 }
@@ -687,6 +735,119 @@ func (h *Handler) AdminListTHCPNSensorTemplates(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminListSensorTemplates(c *gin.Context) {
+	page, ok := parseOptionalIntQuery(c, "page")
+	if !ok {
+		return
+	}
+	pageSize, ok := parseOptionalIntQuery(c, "page_size")
+	if !ok {
+		return
+	}
+	result, err := h.service.ListTHCPNSensorTemplates(c.Request.Context(), THCPNSensorTemplateListInput{
+		Search: c.Query("q"), Port: c.Query("port"), Driver: c.Query("driver"), Status: c.Query("status"), Page: page, PageSize: pageSize,
+	})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminCreateSensorTemplate(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	var req sensorTemplateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	result, err := h.service.CreateTHCPNSensorTemplate(c.Request.Context(), sensorTemplateInput(req, actor.SystemAdministratorID()))
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, result)
+}
+
+func (h *Handler) AdminGetSensorTemplate(c *gin.Context) {
+	id, ok := parseInt64Param(c, "template_id")
+	if !ok {
+		return
+	}
+	result, err := h.service.GetTHCPNSensorTemplate(c.Request.Context(), id)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminUpdateSensorTemplate(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	id, ok := parseInt64Param(c, "template_id")
+	if !ok {
+		return
+	}
+	var req sensorTemplateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	result, err := h.service.UpdateTHCPNSensorTemplate(c.Request.Context(), id, sensorTemplateInput(req, actor.SystemAdministratorID()))
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminDeleteSensorTemplate(c *gin.Context) {
+	id, ok := parseInt64Param(c, "template_id")
+	if !ok {
+		return
+	}
+	if err := h.service.DeleteTHCPNSensorTemplate(c.Request.Context(), id); err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) AdminImportSensorTemplates(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	var req importSensorTemplatesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	dataSourceID, ok := parseUUIDValue(req.DataSourceID, "data_source_id", c)
+	if !ok {
+		return
+	}
+	result, err := h.service.ImportTHCPNSensorTemplates(c.Request.Context(), dataSourceID, actor.SystemAdministratorID())
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func sensorTemplateInput(req sensorTemplateRequest, actorID uuid.UUID) THCPNSensorTemplateWriteInput {
+	return THCPNSensorTemplateWriteInput{
+		SensorType: req.SensorType, Description: req.Description, Port: req.Port, PortNum: req.PortNum,
+		Driver: req.Driver, PortNums: req.PortNums, Params: req.Params, Status: req.Status, ActorID: actorID,
+	}
 }
 
 func (h *Handler) AdminUpdateTHCPNDeviceConfig(c *gin.Context) {
@@ -919,8 +1080,40 @@ func actorFromContext(c *gin.Context) (auth.Actor, bool) {
 	return actor, true
 }
 
+func parseDeviceIDs(c *gin.Context) ([]uuid.UUID, bool) {
+	raw := strings.TrimSpace(c.Query("device_ids"))
+	if raw == "" {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "device_ids is required"))
+		return nil, false
+	}
+	parts := strings.Split(raw, ",")
+	if len(parts) > maxTHCPNRuntimeDevices {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "at most 200 device ids are allowed"))
+		return nil, false
+	}
+	result := make([]uuid.UUID, 0, len(parts))
+	for _, part := range parts {
+		id, err := uuid.Parse(strings.TrimSpace(part))
+		if err != nil {
+			httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "device_ids contains an invalid uuid"))
+			return nil, false
+		}
+		result = append(result, id)
+	}
+	return uniqueUUIDs(result), true
+}
+
 func parseUUIDParam(c *gin.Context, name string) (uuid.UUID, bool) {
 	return parseUUIDValue(c.Param(name), name, c)
+}
+
+func parseInt64Param(c *gin.Context, name string) (int64, bool) {
+	value, err := strconv.ParseInt(strings.TrimSpace(c.Param(name)), 10, 64)
+	if err != nil || value <= 0 {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, name+" must be a positive integer"))
+		return 0, false
+	}
+	return value, true
 }
 
 func parseUUIDValue(value string, name string, c *gin.Context) (uuid.UUID, bool) {

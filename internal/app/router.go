@@ -20,6 +20,7 @@ import (
 	"thcpn-gin/internal/audit"
 	"thcpn-gin/internal/auth"
 	"thcpn-gin/internal/camera"
+	"thcpn-gin/internal/computedstream"
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/dataset"
 	"thcpn-gin/internal/datasource"
@@ -27,6 +28,8 @@ import (
 	"thcpn-gin/internal/db"
 	"thcpn-gin/internal/db/sqlc"
 	"thcpn-gin/internal/device"
+	"thcpn-gin/internal/deviceclaim"
+	"thcpn-gin/internal/deviceclassification"
 	"thcpn-gin/internal/deviceprofile"
 	emailx "thcpn-gin/internal/email"
 	"thcpn-gin/internal/export"
@@ -102,20 +105,43 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	projectService := project.NewService(deps.Postgres)
 	siteService := site.NewService(deps.Postgres)
 	deviceService := device.NewService(deps.Postgres)
+	deviceClaimService := deviceclaim.NewService(deps.Postgres, cfg.Auth.JWTSecret)
 	cameraService := camera.NewService(deps.Postgres, cfg.Ezviz)
 	dataStreamService := datastream.NewService(deps.Postgres)
+	computedStreamService := computedstream.NewService(deps.Postgres)
 	dataSourceService := datasource.NewService(deps.Postgres)
+	telemetryService := telemetry.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil), cfg.QueryLimits, computedStreamService)
 	datasetService := dataset.NewService(deps.Postgres, dataset.QueryDependencies{
 		DataSources: dataSourceService,
 		Runtime:     datasource.NewRuntime(nil),
 		Limits:      cfg.QueryLimits,
+		Telemetry:   telemetryService,
 	})
-	telemetryService := telemetry.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil), cfg.QueryLimits)
 	objectSigner := objectstore.NewSigner(cfg.ObjectStore, cfg.Auth.JWTSecret)
 	thcpnLogSigner := objectstore.NewSigner(cfg.THCPNLogObjectStore, cfg.Auth.JWTSecret)
 	objectStore := objectstore.NewStore(cfg.ObjectStore)
 	objectHandler := objectstore.NewHandler(objectStore, objectSigner)
-	deviceProfileService := deviceprofile.NewService(deps.Postgres, objectStore, objectSigner)
+	deviceProfileService := deviceprofile.NewService(deps.Postgres, objectStore, objectSigner, func(ctx context.Context, deviceID uuid.UUID) (deviceprofile.SourceLocation, bool, error) {
+		locations, err := dataSourceService.LiveTHCPNDeviceLocations(ctx, []uuid.UUID{deviceID})
+		if err != nil {
+			return deviceprofile.SourceLocation{}, false, err
+		}
+		location, found := locations[deviceID]
+		return deviceprofile.SourceLocation{Latitude: location.Latitude, Longitude: location.Longitude}, found, nil
+	})
+	deviceClassificationService := deviceclassification.NewService(deps.Postgres, func(ctx context.Context, deviceIDs []uuid.UUID) (map[uuid.UUID]deviceclassification.SourceLocation, error) {
+		locations, err := dataSourceService.LiveTHCPNDeviceLocations(ctx, deviceIDs)
+		if err != nil {
+			return nil, err
+		}
+		result := make(map[uuid.UUID]deviceclassification.SourceLocation, len(locations))
+		for deviceID, location := range locations {
+			result[deviceID] = deviceclassification.SourceLocation{
+				Latitude: location.Latitude, Longitude: location.Longitude, AltitudeM: location.AltitudeM,
+			}
+		}
+		return result, nil
+	})
 	mediaService := media.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil), objectSigner, cfg.QueryLimits, objectStore)
 	publicDeviceService := publicdevice.NewService(deps.Postgres)
 	exportService := export.NewService(deps.Postgres, objectSigner, cfg.Export)
@@ -157,10 +183,14 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	siteHandler := site.NewHandler(siteService, permissionChecker, auditService)
 	deviceHandler := device.NewHandler(deviceService, permissionChecker, auditService)
 	deviceProfileHandler := deviceprofile.NewHandler(deviceProfileService, permissionChecker, auditService)
+	deviceClassificationHandler := deviceclassification.NewHandler(deviceClassificationService, permissionChecker, auditService)
 	cameraHandler := camera.NewHandler(cameraService, permissionChecker, auditService)
 	dataStreamHandler := datastream.NewHandler(dataStreamService, permissionChecker, auditService)
+	computedStreamHandler := computedstream.NewHandler(computedStreamService, permissionChecker, auditService)
 	datasetHandler := dataset.NewHandler(datasetService, permissionChecker, auditService)
 	dataSourceHandler := datasource.NewHandler(dataSourceService, permissionChecker, auditService)
+	deviceClaimHandler := deviceclaim.NewHandler(deviceClaimService, permissionChecker, auditService)
+	dataSourceHandler.SetClaimCredentialEnsurer(deviceClaimService)
 	dataSourceHandler.SetTHCPNLogSigner(thcpnLogSigner)
 	telemetryHandler := telemetry.NewHandler(telemetryService, permissionChecker)
 	mediaHandler := media.NewHandler(mediaService, permissionChecker, auditService)
@@ -188,6 +218,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	api.POST("/public/devices/:public_slug/unlock", publicDeviceHandler.Unlock)
 	api.GET("/public/devices/:public_slug/telemetry", publicDeviceHandler.Telemetry)
 	api.GET("/public/devices/:public_slug/images", publicDeviceHandler.Images)
+	api.GET("/device-claims/:claim_slug", deviceClaimHandler.PublicEntry)
 	api.POST("/admin/auth/refresh", adminAuthHandler.Refresh)
 	if cfg.Auth.DevRegisterEnabled {
 		api.POST("/auth/register", userHandler.Register)
@@ -209,12 +240,15 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.POST("/auth/mfa/totp/enable", authHandler.EnableTOTP)
 	authed.DELETE("/auth/mfa/totp", authHandler.DisableTOTP)
 	authed.GET("/me", userHandler.Me)
+	authed.POST("/device-claims/resolve", deviceClaimHandler.Resolve)
+	authed.POST("/device-claims/claim", deviceClaimHandler.Claim)
 	authed.PATCH("/me", userHandler.UpdateMe)
 	authed.POST("/auth/password/change", authHandler.ChangePassword)
 	authed.GET("/workspaces", workspaceHandler.List)
 	authed.POST("/workspaces", workspaceHandler.Create)
 	authed.PATCH("/workspaces/:workspace_id", workspaceHandler.UpdateName)
 	authed.GET("/permissions/catalog", permissionCatalogHandler.Catalog)
+	authed.GET("/device-taxonomy/catalog", deviceClassificationHandler.Catalog)
 	admin := api.Group("/admin")
 	admin.Use(adminauth.Middleware(adminTokenManager, adminAuthService))
 	admin.GET("/me", adminAuthHandler.Me)
@@ -240,7 +274,11 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.POST("/workspaces/:workspace_id/transfer-owner", workspaceHandler.RequireAdminReason(), workspaceHandler.AdminTransferOwner)
 	admin.GET("/projects", projectHandler.AdminList)
 	admin.GET("/sites", siteHandler.AdminList)
+	admin.GET("/sites/:site_id/environment", deviceClassificationHandler.AdminGetSite)
+	admin.PATCH("/sites/:site_id/environment", deviceClassificationHandler.AdminUpdateSite)
 	admin.GET("/metadata/device-capabilities", deviceHandler.AdminListCapabilityDefinitions)
+	admin.GET("/metadata/device-taxonomy", deviceClassificationHandler.AdminCatalog)
+	admin.POST("/metadata/device-taxonomy", deviceClassificationHandler.AdminUpsertTerm)
 	admin.POST("/metadata/device-capabilities", deviceHandler.AdminCreateCapabilityDefinition)
 	admin.PATCH("/metadata/device-capabilities/:code", deviceHandler.AdminUpdateCapabilityDefinition)
 	admin.GET("/metadata/system-roles", deviceHandler.AdminListSystemRoles)
@@ -249,7 +287,14 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.GET("/cameras/:device_id", cameraHandler.AdminGet)
 	admin.PATCH("/cameras/:device_id", cameraHandler.AdminUpdate)
 	admin.GET("/devices", deviceHandler.AdminListSystemAssets)
+	admin.GET("/device-map", deviceClassificationHandler.AdminMap)
+	admin.POST("/devices/environment/bulk", deviceClassificationHandler.AdminBulkUpdate)
+	admin.POST("/device-claims/ensure", deviceClaimHandler.AdminEnsureAll)
+	admin.GET("/devices/:device_id/claim-credential", deviceClaimHandler.AdminCredential)
+	admin.POST("/devices/:device_id/claim-credential/printed", deviceClaimHandler.AdminMarkPrinted)
 	admin.PATCH("/devices/:device_id", deviceHandler.AdminUpdate)
+	admin.GET("/devices/:device_id/environment", deviceClassificationHandler.AdminGet)
+	admin.PATCH("/devices/:device_id/environment", deviceClassificationHandler.AdminUpdate)
 	admin.GET("/devices/:device_id/lifecycle", deviceHandler.AdminLifecycle)
 	admin.PATCH("/devices/:device_id/lifecycle", deviceHandler.AdminUpdateLifecycle)
 	admin.GET("/devices/:device_id/capabilities", deviceHandler.AdminCapabilities)
@@ -257,7 +302,14 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.GET("/devices/:device_id/thcpn-config", dataSourceHandler.AdminGetTHCPNDeviceConfig)
 	admin.POST("/devices/:device_id/thcpn-config", dataSourceHandler.AdminUpdateTHCPNDeviceConfig)
 	admin.GET("/devices/:device_id/sensor-templates", dataSourceHandler.AdminListTHCPNSensorTemplates)
+	admin.GET("/sensor-templates", dataSourceHandler.AdminListSensorTemplates)
+	admin.POST("/sensor-templates", dataSourceHandler.AdminCreateSensorTemplate)
+	admin.POST("/sensor-templates/import", dataSourceHandler.AdminImportSensorTemplates)
+	admin.GET("/sensor-templates/:template_id", dataSourceHandler.AdminGetSensorTemplate)
+	admin.PUT("/sensor-templates/:template_id", dataSourceHandler.AdminUpdateSensorTemplate)
+	admin.DELETE("/sensor-templates/:template_id", dataSourceHandler.AdminDeleteSensorTemplate)
 	admin.GET("/devices/:device_id/attributes/latest", dataSourceHandler.AdminLatestTHCPNDeviceAttributes)
+	admin.GET("/devices/runtime", dataSourceHandler.AdminTHCPNDeviceRuntime)
 	admin.GET("/devices/:device_id/logs", dataSourceHandler.AdminListTHCPNDeviceLogs)
 	admin.GET("/devices/:device_id/logs/:log_uuid/preview", dataSourceHandler.AdminPreviewTHCPNDeviceLog)
 	admin.GET("/devices/:device_id/logs/:log_uuid/download", dataSourceHandler.AdminDownloadTHCPNDeviceLog)
@@ -271,6 +323,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.POST("/data-sources/:data_source_id/thcpn-standard-station/devices", dataSourceHandler.AdminSyncTHCPNStandardStation)
 	admin.POST("/data-sources/:data_source_id/thcpn-standard-station/devices/sync-all", dataSourceHandler.AdminSyncAllTHCPNDevices)
 	admin.POST("/data-sources/:data_source_id/thcpn-standard-station/gateways", dataSourceHandler.AdminSyncTHCPNGateway)
+	admin.POST("/data-sources/:data_source_id/thcpn-standard-station/cameras", dataSourceHandler.AdminSyncTHCPNCamera)
 	admin.GET("/workspaces/:workspace_id/members", memberHandler.List)
 	admin.POST("/workspaces/:workspace_id/members", workspaceHandler.RequireAdminReason(), memberHandler.Add)
 	admin.PATCH("/workspaces/:workspace_id/members/:member_id", workspaceHandler.RequireAdminReason(), memberHandler.UpdateRole)
@@ -321,12 +374,23 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.POST("/sites", siteHandler.Create)
 	authed.GET("/sites/:site_id", siteHandler.Get)
 	authed.PATCH("/sites/:site_id", siteHandler.Update)
+	authed.GET("/sites/:site_id/environment", deviceClassificationHandler.GetSite)
+	authed.PATCH("/sites/:site_id/environment", deviceClassificationHandler.UpdateSite)
 	authed.GET("/devices", deviceHandler.List)
+	authed.GET("/device-map", deviceClassificationHandler.Map)
 	admin.GET("/devices/:device_id/children", deviceHandler.AdminChildren)
 	authed.GET("/devices/:device_id/children", deviceHandler.Children)
 	authed.POST("/devices/:device_id/camera/live-session", cameraHandler.CreateLiveSession)
 	authed.GET("/devices/:device_id/telemetry", telemetryHandler.QueryDevice)
+	authed.GET("/devices/:device_id/metadata", computedStreamHandler.ListMetadata)
+	authed.PUT("/devices/:device_id/metadata", computedStreamHandler.ReplaceMetadata)
+	authed.GET("/devices/:device_id/computed-streams", computedStreamHandler.List)
+	authed.POST("/devices/:device_id/computed-streams", computedStreamHandler.Create)
+	authed.PATCH("/devices/:device_id/computed-streams/:data_stream_id", computedStreamHandler.Update)
+	authed.DELETE("/devices/:device_id/computed-streams/:data_stream_id", computedStreamHandler.Delete)
+	authed.POST("/devices/:device_id/computed-streams/preview", computedStreamHandler.Preview)
 	authed.GET("/devices/:device_id/attributes/latest", dataSourceHandler.LatestTHCPNDeviceAttributes)
+	authed.GET("/devices/runtime", dataSourceHandler.THCPNDeviceRuntime)
 	authed.GET("/devices/:device_id/sampling-profile", dataSourceHandler.GetSamplingProfile)
 	authed.PATCH("/devices/:device_id/sampling-profile", dataSourceHandler.UpdateSamplingProfile)
 	authed.GET("/devices/:device_id/media", mediaHandler.ListDevice)
@@ -341,6 +405,8 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.GET("/devices/:device_id", deviceHandler.Get)
 	authed.PATCH("/devices/:device_id", deviceHandler.Update)
 	authed.GET("/devices/:device_id/profile", deviceProfileHandler.Get)
+	authed.GET("/devices/:device_id/environment", deviceClassificationHandler.Get)
+	authed.PATCH("/devices/:device_id/environment", deviceClassificationHandler.Update)
 	authed.PATCH("/devices/:device_id/profile", deviceProfileHandler.Update)
 	authed.POST("/devices/:device_id/profile/images", deviceProfileHandler.Upload)
 	authed.PATCH("/devices/:device_id/profile/images/:image_id", deviceProfileHandler.UpdateImage)

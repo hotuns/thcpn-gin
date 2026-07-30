@@ -2,6 +2,26 @@
   "name": "@thcpn/admin",
   "private": true,
   "type": "module",
-  "scripts": { "dev": "vite --port 5174", "build": "tsc -b && vite build", "typecheck": "tsc -b", "preview": "vite preview --port 5174" },
-  "dependencies": { "@tanstack/react-query": "^5.90.16", "@thcpn/admin-ui": "*", "@thcpn/api": "*", "@thcpn/auth": "*", "@thcpn/i18n": "*", "@thcpn/ui": "*", "@ant-design/icons": "^6.3.2", "antd": "^6.5.0", "lucide-react": "^0.468.0", "react": "^19.2.7", "react-dom": "^19.2.7", "react-router-dom": "^7.18.1" }
+  "scripts": {
+    "dev": "vite --port 5174",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b",
+    "preview": "vite preview --port 5174"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^6.3.2",
+    "@tanstack/react-query": "^5.90.16",
+    "@thcpn/admin-ui": "*",
+    "@thcpn/api": "*",
+    "@thcpn/auth": "*",
+    "@thcpn/device-map": "*",
+    "@thcpn/i18n": "*",
+    "@thcpn/ui": "*",
+    "antd": "^6.5.0",
+    "lucide-react": "^0.468.0",
+    "qrcode.react": "^4.2.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-router-dom": "^7.18.1"
+  }
 }

@@ -129,19 +129,16 @@ SELECT
     d.device_type,
     d.created_at AS device_created_at,
     d.updated_at AS device_updated_at,
-    da.id AS assignment_id,
-    da.workspace_id,
-    da.project_id,
-    da.site_id,
-    da.assigned_by,
-    da.assigned_at
+    parent_da.id AS assignment_id,
+    parent_da.workspace_id,
+    parent_da.project_id,
+    parent_da.site_id,
+    parent_da.assigned_by,
+    parent_da.assigned_at
 FROM device_relations AS dr
 JOIN devices AS d ON d.id = dr.child_device_id
 JOIN device_assignments AS parent_da ON parent_da.device_id = dr.parent_device_id
     AND parent_da.status = 'active'
-JOIN device_assignments AS da ON da.device_id = d.id
-    AND da.status = 'active'
-    AND da.workspace_id = parent_da.workspace_id
 WHERE dr.parent_device_id = $1
   AND dr.relation_type = 'gateway_node'
   AND dr.status = 'active'

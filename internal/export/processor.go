@@ -27,6 +27,7 @@ import (
 	"thcpn-gin/internal/db/sqlc"
 	"thcpn-gin/internal/metrics"
 	"thcpn-gin/internal/objectstore"
+	telemetrysvc "thcpn-gin/internal/telemetry"
 	"thcpn-gin/internal/tracing"
 )
 
@@ -56,6 +57,7 @@ type Processor struct {
 	store       objectstore.Store
 	cfg         config.ExportConfig
 	logger      *slog.Logger
+	telemetry   *telemetrysvc.Service
 }
 
 type requestConfig struct {
@@ -96,7 +98,7 @@ type CleanupExpiredFilesResult struct {
 	ExportFilesExpired int
 }
 
-func NewProcessor(db *pgxpool.Pool, dataSources *datasource.Service, runtime Runtime, store objectstore.Store, cfg config.ExportConfig, logger *slog.Logger) *Processor {
+func NewProcessor(db *pgxpool.Pool, dataSources *datasource.Service, runtime Runtime, store objectstore.Store, cfg config.ExportConfig, logger *slog.Logger, telemetryServices ...*telemetrysvc.Service) *Processor {
 	if dataSources == nil {
 		dataSources = datasource.NewService(db)
 	}
@@ -109,6 +111,10 @@ func NewProcessor(db *pgxpool.Pool, dataSources *datasource.Service, runtime Run
 	if cfg.MaxRows <= 0 {
 		cfg.MaxRows = 100000
 	}
+	var telemetryService *telemetrysvc.Service
+	if len(telemetryServices) > 0 {
+		telemetryService = telemetryServices[0]
+	}
 	return &Processor{
 		queries:     sqlc.New(db),
 		dataSources: dataSources,
@@ -116,6 +122,7 @@ func NewProcessor(db *pgxpool.Pool, dataSources *datasource.Service, runtime Run
 		store:       store,
 		cfg:         cfg,
 		logger:      logger,
+		telemetry:   telemetryService,
 	}
 }
 
@@ -600,6 +607,34 @@ func (p *Processor) queryTelemetry(ctx context.Context, resourceType string, res
 	}
 	if limit <= 0 || limit > p.cfg.MaxRows {
 		limit = p.cfg.MaxRows
+	}
+	if p.telemetry != nil && (resourceType == "device" || resourceType == "data_stream") {
+		input := telemetrysvc.QueryInput{StartTime: start, EndTime: end, Limit: limit}
+		if resourceType == "device" {
+			input.DeviceID = &resourceID
+		} else {
+			input.DataStreamID = &resourceID
+		}
+		result, err := p.telemetry.QueryInternal(ctx, input)
+		if err != nil {
+			return nil, err
+		}
+		items := make([]telemetrySeries, 0, len(result.Series))
+		for _, series := range result.Series {
+			points := make([]datasource.TelemetryPoint, 0, len(series.Points))
+			for _, point := range series.Points {
+				points = append(points, datasource.TelemetryPoint{Timestamp: point.Timestamp, Value: point.Value, Quality: point.Quality})
+			}
+			unit := ""
+			if series.Unit != nil {
+				unit = *series.Unit
+			}
+			items = append(items, telemetrySeries{
+				DataStreamID: series.DataStreamID, DeviceID: result.DeviceID,
+				Code: series.Code, Name: series.Name, Unit: unit, Points: points,
+			})
+		}
+		return items, nil
 	}
 
 	switch resourceType {

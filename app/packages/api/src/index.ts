@@ -22,8 +22,40 @@ export type AccessibleWorkspace = Workspace & {
 export type Device = Schema<"Device">;
 export type DeviceProfile = Schema<"DeviceProfile">;
 export type DeviceProfileImage = Schema<"DeviceProfileImage">;
+export type DeviceTaxonomyTerm = { id: string; kind: "ecosystem" | "observation_object" | "purpose" | "management" | "deployment"; code: string; name_zh: string; name_en: string; parent_id?: string; status: "active" | "inactive"; sort_order: number; system_defined: boolean };
+export type DeviceEnvironmentValues = { ecosystem?: DeviceTaxonomyTerm; observation_objects: DeviceTaxonomyTerm[]; purposes: DeviceTaxonomyTerm[]; management?: DeviceTaxonomyTerm; deployment?: DeviceTaxonomyTerm; altitude_m?: number; commissioned_year?: number; research_tags: string[] };
+export type DeviceEnvironment = { device_id: string; direct: DeviceEnvironmentValues; effective: DeviceEnvironmentValues; overridden_fields: string[]; sources: Record<string, string>; parent_device_id?: string; site_id?: string; updated_at?: string };
+export type SiteEnvironment = { site_id: string; values: DeviceEnvironmentValues; updated_at?: string };
+export type DeviceMapItem = { device_id: string; name: string; serial_no: string; device_type: string; status: string; workspace_id?: string; site_id?: string; latitude?: number; longitude?: number; location_source: string; child_count: number; environment: DeviceEnvironmentValues };
+export type DeviceMapResult = { items: DeviceMapItem[]; total: number; located: number; unlocated: number; unclassified: number };
 export type DeviceChild = Schema<"DeviceChild">;
-export type DataStream = Schema<"DataStream">;
+export type DataStream = Schema<"DataStream"> & { computed?: boolean };
+export type DeviceMetadata = {
+  id: string;
+  device_id: string;
+  key: string;
+  name: string;
+  value_type: "number" | "string" | "boolean";
+  value: number | string | boolean;
+  unit?: string;
+  created_at: string;
+  updated_at: string;
+};
+export type DeviceMetadataInput = Pick<DeviceMetadata, "key" | "name" | "value_type" | "value"> & { unit?: string };
+export type ComputedDataStream = {
+  data_stream_id: string;
+  device_id: string;
+  code: string;
+  name: string;
+  unit?: string;
+  status: "active" | "disabled" | "archived";
+  formula: string;
+  referenced_stream_codes: string[];
+  referenced_metadata_keys: string[];
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+};
 export type TelemetryPoint = Schema<"TelemetryPoint">;
 export type TelemetrySeries = Schema<"TelemetrySeries">;
 export type TelemetryQueryResponse = Schema<"TelemetryQueryResponse">;
@@ -33,16 +65,40 @@ export type CameraLiveSession = Schema<"CameraLiveSessionResponse">;
 export type Dataset = Schema<"Dataset">;
 export type ExportJob = Schema<"ExportJob">;
 export type THCPNLatestAttributesResponse = Schema<"THCPNLatestAttributesResponse">;
+export type THCPNDeviceRuntimeBatchResponse = Schema<"THCPNDeviceRuntimeBatchResponse">;
 export type THCPNDeviceLogListResponse = Schema<"THCPNDeviceLogListResponse">;
 export type THCPNDeviceLogAccessResponse = Schema<"THCPNDeviceLogAccessResponse">;
 export type THCPNSensorTemplate = Schema<"THCPNSensorTemplate">;
 export type THCPNSensorMetric = Schema<"THCPNSensorMetric">;
 export type THCPNSensorTemplateListResponse = Schema<"THCPNSensorTemplateListResponse">;
+export type SensorTemplateRequest = Schema<"SensorTemplateRequest">;
 export type SamplingProfile = Schema<"SamplingProfileResponse">;
 export type UpdateSamplingProfile = Schema<"UpdateSamplingProfileRequest">;
 export type DevicePublicAccess = Schema<"DevicePublicAccess">;
 export type PublicDevice = Schema<"PublicDevice">;
 export type PublicDeviceStream = Schema<"PublicDeviceStream">;
+export type DeviceClaimCredential = {
+  device_id: string;
+  device_name: string;
+  device_type: string;
+  serial_no: string;
+  claim_slug?: string;
+  claim_path?: string;
+  manual_code?: string;
+  printed_at?: string;
+  created_at: string;
+  child_count: number;
+  is_assigned: boolean;
+  is_claimable: boolean;
+};
+export type DeviceClaimResult = {
+  device_id: string;
+  assignment_id: string;
+  workspace_id: string;
+  device_name: string;
+  device_type: string;
+  child_count: number;
+};
 export type LoginResponse = Schema<"LoginResponse">;
 export type AdminUser = {
   id: string;
@@ -269,10 +325,16 @@ export const formatApiError = (error: unknown) => {
       data_source: { zh: "数据源暂时不可用", en: "The data source is temporarily unavailable" },
       internal: { zh: "服务暂时不可用", en: "The service is temporarily unavailable" },
     };
-    const localized = error.code ? messages[error.code.toLowerCase()] : undefined;
+    const normalizedCode = error.code?.toLowerCase();
+    const localized = normalizedCode ? messages[normalizedCode] : undefined;
     const english = typeof document !== "undefined" && document.documentElement.lang === "en-US";
     return {
-      message: localized ? localized[english ? "en" : "zh"] : error.message,
+      message:
+        normalizedCode === "invalid_argument" && error.message
+          ? error.message
+          : localized
+            ? localized[english ? "en" : "zh"]
+            : error.message,
       code: error.code,
       requestId: error.requestId,
       status: error.status,
@@ -426,6 +488,8 @@ export const api = {
         "PATCH",
         payload,
       ),
+    environment: (id: string) => request<SiteEnvironment>(`${isAdminContext() ? "/api/v1/admin/sites" : "/api/v1/sites"}/${encodeURIComponent(id)}/environment`),
+    updateEnvironment: (id: string, payload: JsonRecord) => jsonRequest<SiteEnvironment>(`${isAdminContext() ? "/api/v1/admin/sites" : "/api/v1/sites"}/${encodeURIComponent(id)}/environment`, "PATCH", payload),
   },
   members: {
     list: (workspaceId: string) =>
@@ -469,6 +533,24 @@ export const api = {
       request<THCPNLatestAttributesResponse>(
         `/api/v1/devices/${encodeURIComponent(id)}/attributes/latest`,
       ),
+    runtime: async (deviceIds: string[]) => {
+      const batches = Array.from(
+        { length: Math.ceil(deviceIds.length / 200) },
+        (_, index) => deviceIds.slice(index * 200, (index + 1) * 200),
+      );
+      const responses = await Promise.all(
+        batches.map((ids) =>
+          request<THCPNDeviceRuntimeBatchResponse>(
+            `/api/v1/devices/runtime?${new URLSearchParams({ device_ids: ids.join(",") })}`,
+          ),
+        ),
+      );
+      return {
+        items: responses.flatMap((item) => item.items),
+        failures: responses.flatMap((item) => item.failures),
+        refreshed_at: responses.at(-1)?.refreshed_at ?? new Date().toISOString(),
+      } satisfies THCPNDeviceRuntimeBatchResponse;
+    },
     update: (id: string, payload: JsonRecord) =>
       jsonRequest<Device>(
         `/api/v1/devices/${encodeURIComponent(id)}`,
@@ -485,6 +567,10 @@ export const api = {
         "PATCH",
         payload,
       ),
+    environment: (id: string) => request<DeviceEnvironment>(`/api/v1/devices/${encodeURIComponent(id)}/environment`),
+    updateEnvironment: (id: string, payload: JsonRecord) => jsonRequest<DeviceEnvironment>(`/api/v1/devices/${encodeURIComponent(id)}/environment`, "PATCH", payload),
+    taxonomy: () => request<ListResponse<DeviceTaxonomyTerm>>("/api/v1/device-taxonomy/catalog"),
+    map: (workspaceId: string, includeChildren = false) => request<DeviceMapResult>(`/api/v1/device-map?workspace_id=${encodeURIComponent(workspaceId)}&include_children=${includeChildren}`),
     samplingProfile: (id: string) =>
       request<SamplingProfile>(
         `/api/v1/devices/${encodeURIComponent(id)}/sampling-profile`,
@@ -503,6 +589,57 @@ export const api = {
       jsonRequest<DevicePublicAccess>(
         `/api/v1/devices/${encodeURIComponent(id)}/public-access`,
         "PATCH",
+        payload,
+      ),
+    metadata: (id: string) =>
+      request<ListResponse<DeviceMetadata>>(
+        `/api/v1/devices/${encodeURIComponent(id)}/metadata`,
+      ),
+    replaceMetadata: (id: string, items: DeviceMetadataInput[]) =>
+      jsonRequest<ListResponse<DeviceMetadata>>(
+        `/api/v1/devices/${encodeURIComponent(id)}/metadata`,
+        "PUT",
+        { items },
+      ),
+    computedStreams: (id: string) =>
+      request<ListResponse<ComputedDataStream>>(
+        `/api/v1/devices/${encodeURIComponent(id)}/computed-streams`,
+      ),
+    createComputedStream: (
+      id: string,
+      payload: { code: string; name: string; unit?: string; formula: string; enabled?: boolean },
+    ) =>
+      jsonRequest<ComputedDataStream>(
+        `/api/v1/devices/${encodeURIComponent(id)}/computed-streams`,
+        "POST",
+        payload,
+      ),
+    updateComputedStream: (
+      id: string,
+      streamId: string,
+      payload: Partial<{ code: string; name: string; unit: string; formula: string; enabled: boolean }>,
+    ) =>
+      jsonRequest<ComputedDataStream>(
+        `/api/v1/devices/${encodeURIComponent(id)}/computed-streams/${encodeURIComponent(streamId)}`,
+        "PATCH",
+        payload,
+      ),
+    deleteComputedStream: (id: string, streamId: string) =>
+      request<void>(
+        `/api/v1/devices/${encodeURIComponent(id)}/computed-streams/${encodeURIComponent(streamId)}`,
+        { method: "DELETE" },
+      ),
+    previewComputedStream: (
+      id: string,
+      payload: { formula: string; streams: Record<string, number>; metadata?: Record<string, number> },
+    ) =>
+      jsonRequest<{
+        value: number;
+        referenced_stream_codes: string[];
+        referenced_metadata_keys: string[];
+      }>(
+        `/api/v1/devices/${encodeURIComponent(id)}/computed-streams/preview`,
+        "POST",
         payload,
       ),
     uploadProfileImages: (id: string, files: File[]) => {
@@ -561,6 +698,30 @@ export const api = {
     unbind: (id: string) =>
       request<void>(`/api/v1/devices/${encodeURIComponent(id)}/unbind`, {
         method: "POST",
+      }),
+  },
+  deviceClaims: {
+    entry: (slug: string) =>
+      anonymousRequest<{ login_required: boolean }>(
+        `/api/v1/device-claims/${encodeURIComponent(slug)}`,
+      ),
+    resolve: (payload: { claim_slug?: string; serial_no?: string; code?: string }) =>
+      jsonRequest<DeviceClaimCredential>("/api/v1/device-claims/resolve", "POST", payload),
+    claim: (
+      payload: {
+        claim_slug?: string;
+        serial_no?: string;
+        code?: string;
+        workspace_id: string;
+        project_id?: string;
+        site_id?: string;
+      },
+      idempotencyKey: string,
+    ) =>
+      request<DeviceClaimResult>("/api/v1/device-claims/claim", {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify(payload),
       }),
   },
   publicDevices: {
@@ -769,12 +930,48 @@ export const api = {
         "POST",
         payload,
       ),
+    syncCamera: (id: string, payload: JsonRecord) =>
+      jsonRequest<JsonRecord>(
+        `/api/v1/admin/data-sources/${encodeURIComponent(id)}/thcpn-standard-station/cameras`,
+        "POST",
+        payload,
+      ),
     devices: () =>
       request<ListResponse<Record<string, unknown>>>("/api/v1/admin/devices"),
+    ensureDeviceClaimCredentials: () =>
+      jsonRequest<{ created: number }>("/api/v1/admin/device-claims/ensure", "POST", {}),
+    deviceClaimCredential: (id: string) =>
+      request<DeviceClaimCredential>(
+        `/api/v1/admin/devices/${encodeURIComponent(id)}/claim-credential`,
+      ),
+    markDeviceClaimCredentialPrinted: (id: string) =>
+      jsonRequest<void>(
+        `/api/v1/admin/devices/${encodeURIComponent(id)}/claim-credential/printed`,
+        "POST",
+        {},
+      ),
     deviceAttributes: (id: string) =>
       request<THCPNLatestAttributesResponse>(
         `/api/v1/admin/devices/${encodeURIComponent(id)}/attributes/latest`,
       ),
+    deviceRuntime: async (deviceIds: string[]) => {
+      const batches = Array.from(
+        { length: Math.ceil(deviceIds.length / 200) },
+        (_, index) => deviceIds.slice(index * 200, (index + 1) * 200),
+      );
+      const responses = await Promise.all(
+        batches.map((ids) =>
+          request<THCPNDeviceRuntimeBatchResponse>(
+            `/api/v1/admin/devices/runtime?${new URLSearchParams({ device_ids: ids.join(",") })}`,
+          ),
+        ),
+      );
+      return {
+        items: responses.flatMap((item) => item.items),
+        failures: responses.flatMap((item) => item.failures),
+        refreshed_at: responses.at(-1)?.refreshed_at ?? new Date().toISOString(),
+      } satisfies THCPNDeviceRuntimeBatchResponse;
+    },
     deviceLogs: (id: string, input: JsonRecord = {}) =>
       request<THCPNDeviceLogListResponse>(
         `/api/v1/admin/devices/${encodeURIComponent(id)}/logs${queryString(input as Record<string, string | number | boolean>)}`,
@@ -825,10 +1022,44 @@ export const api = {
       request<JsonRecord>(
         `/api/v1/admin/devices/${encodeURIComponent(id)}/thcpn-config`,
       ),
+    deviceEnvironment: (id: string) => request<DeviceEnvironment>(`/api/v1/admin/devices/${encodeURIComponent(id)}/environment`),
+    siteEnvironment: (id: string) => request<SiteEnvironment>(`/api/v1/admin/sites/${encodeURIComponent(id)}/environment`),
+    updateSiteEnvironment: (id: string, payload: JsonRecord) => jsonRequest<SiteEnvironment>(`/api/v1/admin/sites/${encodeURIComponent(id)}/environment`, "PATCH", payload),
+    updateDeviceEnvironment: (id: string, payload: JsonRecord) => jsonRequest<DeviceEnvironment>(`/api/v1/admin/devices/${encodeURIComponent(id)}/environment`, "PATCH", payload),
+    bulkUpdateDeviceEnvironment: (payload: JsonRecord) => jsonRequest<JsonRecord>("/api/v1/admin/devices/environment/bulk", "POST", payload),
+    deviceTaxonomy: () => request<ListResponse<DeviceTaxonomyTerm>>("/api/v1/admin/metadata/device-taxonomy"),
+    upsertDeviceTaxonomy: (payload: JsonRecord) => jsonRequest<DeviceTaxonomyTerm>("/api/v1/admin/metadata/device-taxonomy", "POST", payload),
+    deviceMap: (includeChildren = false) => request<DeviceMapResult>(`/api/v1/admin/device-map?include_children=${includeChildren}`),
     sensorTemplates: (id: string, input: JsonRecord = {}) =>
       request<THCPNSensorTemplateListResponse>(
         `/api/v1/admin/devices/${encodeURIComponent(id)}/sensor-templates${queryString(input as Record<string, string | number | boolean>)}`,
       ),
+    platformSensorTemplates: (input: JsonRecord = {}) =>
+      request<THCPNSensorTemplateListResponse>(
+        `/api/v1/admin/sensor-templates${queryString(input as Record<string, string | number | boolean>)}`,
+      ),
+    createSensorTemplate: (payload: SensorTemplateRequest) =>
+      jsonRequest<THCPNSensorTemplate>(
+        "/api/v1/admin/sensor-templates",
+        "POST",
+        payload,
+      ),
+    importSensorTemplates: (dataSourceId: string) =>
+      jsonRequest<{ imported: number; skipped: number; invalid: number }>(
+        "/api/v1/admin/sensor-templates/import",
+        "POST",
+        { data_source_id: dataSourceId },
+      ),
+    updateSensorTemplate: (id: number, payload: SensorTemplateRequest) =>
+      jsonRequest<THCPNSensorTemplate>(
+        `/api/v1/admin/sensor-templates/${id}`,
+        "PUT",
+        payload,
+      ),
+    deleteSensorTemplate: (id: number) =>
+      request<void>(`/api/v1/admin/sensor-templates/${id}`, {
+        method: "DELETE",
+      }),
     updateDeviceConfig: (id: string, payload: JsonRecord) =>
       jsonRequest<JsonRecord>(
         `/api/v1/admin/devices/${encodeURIComponent(id)}/thcpn-config`,

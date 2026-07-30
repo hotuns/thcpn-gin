@@ -15,10 +15,10 @@ import {
   Battery,
   Eye,
   Gauge,
-  Info,
   MapPin,
   MoveRight,
   RefreshCw,
+  ScanLine,
   Search,
   Signal,
   Settings2,
@@ -216,6 +216,30 @@ export function DevicesPage() {
   });
   const all = query.data?.items ?? [];
   const topLevelDevices = useMemo(() => all.filter(isTopLevelDevice), [all]);
+  const runtimeDeviceIDs = useMemo(
+    () =>
+      topLevelDevices
+        .filter((device) => deviceCategory(device) !== "camera")
+        .map((device) => device.id),
+    [topLevelDevices],
+  );
+  const runtime = useQuery({
+    queryKey: workspaceQueryKey(
+      currentId,
+      "device-runtime",
+      runtimeDeviceIDs.join(","),
+    ),
+    queryFn: () => api.devices.runtime(runtimeDeviceIDs),
+    enabled: Boolean(currentId && runtimeDeviceIDs.length),
+    retry: false,
+  });
+  const runtimeByDevice = useMemo(
+    () =>
+      new Map(
+        (runtime.data?.items ?? []).map((item) => [item.device_id, item]),
+      ),
+    [runtime.data?.items],
+  );
   const counts = useMemo(
     () =>
       topLevelDevices.reduce<Record<Category, number>>(
@@ -254,6 +278,11 @@ export function DevicesPage() {
     text(
       sites.data?.items.find((item) => item.id === id)?.name,
       id ? id.slice(0, 8) : "未设置",
+    );
+  const projectName = (id?: string) =>
+    text(
+      projects.data?.items.find((item) => item.id === id)?.name,
+      id ? id.slice(0, 8) : "未分配项目",
     );
   return (
     <>
@@ -302,6 +331,10 @@ export function DevicesPage() {
             <RefreshCw size={14} />
             刷新
           </Button>
+          <Button onClick={() => navigate("/claim")}>
+            <ScanLine size={14} />
+            认领设备
+          </Button>
         </div>
         <div className="device-categories">
           {(
@@ -340,19 +373,17 @@ export function DevicesPage() {
             <table className="data-table device-table">
               <colgroup>
                 <col className="device-table-name" />
-                <col className="device-table-topology" />
-                <col className="device-table-lifecycle" />
-                <col className="device-table-site" />
-                <col className="device-table-capabilities" />
+                <col className="device-table-status" />
+                <col className="device-table-data" />
+                <col className="device-table-location" />
                 <col className="device-table-actions" />
               </colgroup>
               <thead>
                 <tr>
                   <th>设备</th>
-                  <th>拓扑</th>
-                  <th>生命周期</th>
-                  <th>站点</th>
-                  <th>能力</th>
+                  <th>运行状态</th>
+                  <th>数据与上报</th>
+                  <th>位置归属</th>
                   <th>操作</th>
                 </tr>
               </thead>
@@ -362,7 +393,10 @@ export function DevicesPage() {
                     key={device.id}
                     device={device}
                     workspaceId={currentId}
+                    runtime={runtimeByDevice.get(device.id)}
+                    runtimeLoading={runtime.isLoading}
                     expanded={expandedId === device.id}
+                    projectName={projectName(device.project_id)}
                     siteName={siteName(device.site_id)}
                     onExpand={() =>
                       setExpandedId(expandedId === device.id ? "" : device.id)
@@ -416,19 +450,26 @@ export function LegacyDeviceDataRedirect() {
 function DeviceRows({
   device,
   workspaceId,
+  runtime,
+  runtimeLoading,
   expanded,
+  projectName,
   siteName,
   onExpand,
   onOpen,
 }: {
   device: Device;
   workspaceId: string;
+  runtime?: THCPNLatestAttributesResponse;
+  runtimeLoading: boolean;
   expanded: boolean;
+  projectName: string;
   siteName: string;
   onExpand: () => void;
   onOpen: (id?: string) => void;
 }) {
   const gateway = deviceCategory(device) === "gateway";
+  const camera = deviceCategory(device) === "camera";
   return (
     <>
       <tr className={expanded ? "selected-row" : ""}>
@@ -452,57 +493,69 @@ function DeviceRows({
               <button className="device-name-link" onClick={() => onOpen()}>
                 {device.name}
               </button>
-              <div className="cell-sub">{device.serial_no}</div>
-              <div className="cell-sub mono">{device.id}</div>
+              <div className="device-identity-meta">
+                <Badge>
+                  {deviceTopologyRoleLabel(device.topology_role || device.device_type)}
+                </Badge>
+                <span>SN {device.serial_no}</span>
+                {gateway && <span>{device.child_count} 个节点</span>}
+              </div>
             </div>
           </div>
         </td>
         <td>
-          {deviceTopologyRoleLabel(device.topology_role || device.device_type)}
-          <div className="cell-sub">
-            {gateway ? `${device.child_count} 个子节点` : "独立资产"}
+          <div className="device-operating-state">
+            <Badge tone={deviceRuntimeTone(device, runtime)}>
+              {deviceRuntimeLabel(device, runtime)}
+            </Badge>
+            <span>{deviceStatusLabel(device.status)}</span>
           </div>
+          <div className="cell-sub">{deviceLifecycleLabel(device.lifecycle_status)}</div>
         </td>
         <td>
-          <Badge
-            tone={
-              device.lifecycle_status === "online"
-                ? "success"
-                : device.lifecycle_status === "retired"
-                  ? "neutral"
-                  : "warning"
-            }
-          >
-            {deviceLifecycleLabel(device.lifecycle_status)}
-          </Badge>
-          <div className="cell-sub">{deviceStatusLabel(device.status)}</div>
-          <DeviceVitals workspaceId={workspaceId} deviceId={device.id} />
+          <DeviceDataSummary device={device} />
+          {!camera && (
+            <>
+              <DeviceVitalIndicators
+                attributes={runtime?.attributes}
+                loading={runtimeLoading}
+              />
+              <div
+                className="device-last-report"
+                title={overviewTime(runtime?.source_device.updated_at)}
+              >
+                <Clock3 size={13} />
+                <span>
+                  {runtime?.source_device.updated_at
+                    ? `最近上报 ${relativeTime(runtime.source_device.updated_at)}`
+                    : "暂无上报时间"}
+                </span>
+              </div>
+            </>
+          )}
         </td>
-        <td>{siteName}</td>
         <td>
-          <div className="capability-list">
-            {device.capabilities.slice(0, 3).map((item) => (
-              <span key={item} title={item}>
-                <Badge>{deviceCapabilityLabel(item)}</Badge>
-              </span>
-            ))}
-            {device.capabilities.length > 3 && (
-              <span className="muted">+{device.capabilities.length - 3}</span>
-            )}
+          <div className="device-placement-summary">
+            <strong>{siteName}</strong>
+            <span>{projectName}</span>
+            <small title={runtime?.source_device ? formatSourceLocation(runtime.source_device) : undefined}>
+              <MapPin size={12} />
+              {runtime?.source_device ? compactSourceLocation(runtime.source_device) : "暂无定位"}
+            </small>
           </div>
         </td>
         <td>
           <div className="device-actions">
             <Button onClick={() => onOpen()}>
-              <Info size={13} />
-              查看
+              <Eye size={13} />
+              {deviceCategory(device) === "camera" ? "查看视频" : "查看数据"}
             </Button>
           </div>
         </td>
       </tr>
       {expanded && (
         <tr className="children-row">
-          <td colSpan={6}>
+          <td colSpan={5}>
             <DeviceChildren
               workspaceId={workspaceId}
               deviceId={device.id}
@@ -515,28 +568,95 @@ function DeviceRows({
   );
 }
 
-function DeviceVitals({
-  workspaceId,
-  deviceId,
-}: {
-  workspaceId: string;
-  deviceId: string;
-}) {
-  const query = useQuery({
-    queryKey: workspaceQueryKey(
-      workspaceId,
-      "device",
-      deviceId,
-      "latest-attributes",
-    ),
-    queryFn: () => api.devices.latestAttributes(deviceId),
-    retry: false,
-  });
+const sourceDeviceStatus = (
+  source?: THCPNLatestAttributesResponse["source_device"],
+) => {
+  if (!source) return "—";
+  const rawStatus = text(source.status, "未知");
+  const status =
+    {
+      normal: "正常",
+      online: "在线",
+      offline: "离线",
+      warning: "告警",
+      error: "异常",
+      disabled: "停用",
+    }[rawStatus.toLowerCase()] ?? rawStatus;
+  const active = source.active;
+  return active === 0 ? `${status}（停用）` : status;
+};
+
+const deviceRuntimeTone = (
+  device: Device,
+  runtime?: THCPNLatestAttributesResponse,
+): "success" | "warning" | "neutral" => {
+  if (deviceCategory(device) === "camera")
+    return device.lifecycle_status === "online" ? "success" : "neutral";
+  if (!runtime) return "warning";
+  return runtime.source_device.active === 0 ? "neutral" : "success";
+};
+
+const deviceRuntimeLabel = (
+  device: Device,
+  runtime?: THCPNLatestAttributesResponse,
+) => {
+  if (deviceCategory(device) === "camera")
+    return deviceLifecycleLabel(device.lifecycle_status);
+  if (!runtime) return "状态未知";
+  return runtime.source_device.active === 0
+    ? "已停用"
+    : sourceDeviceStatus(runtime.source_device);
+};
+
+const relativeTime = (input: string) => {
+  const delta = Date.now() - new Date(input).getTime();
+  if (!Number.isFinite(delta)) return "时间未知";
+  if (delta <= 0 || delta < 60_000) return "刚刚";
+  if (delta < 3_600_000) return `${Math.floor(delta / 60_000)} 分钟前`;
+  if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)} 小时前`;
+  return `${Math.floor(delta / 86_400_000)} 天前`;
+};
+
+const formatSourceLocation = (
+  source: THCPNLatestAttributesResponse["source_device"],
+) => {
+  if (source.lat === undefined || source.lon === undefined) return "暂无定位";
+  const altitude = source.alt === undefined ? "" : ` · ${source.alt.toFixed(1)} m`;
+  return `${source.lat.toFixed(6)}, ${source.lon.toFixed(6)}${altitude}`;
+};
+
+const compactSourceLocation = (
+  source: THCPNLatestAttributesResponse["source_device"],
+) => {
+  if (source.lat === undefined || source.lon === undefined) return "暂无定位";
+  return `${source.lat.toFixed(4)}, ${source.lon.toFixed(4)}`;
+};
+
+function DeviceDataSummary({ device }: { device: Device }) {
+  const items =
+    deviceCategory(device) === "camera"
+      ? [{ key: "video", label: "实时视频", icon: Eye }]
+      : [
+          ...(device.capabilities.includes("telemetry")
+            ? [{ key: "telemetry", label: "遥测数据", icon: Gauge }]
+            : []),
+          ...(device.capabilities.includes("image_capture")
+            ? [{ key: "image", label: "图片", icon: Eye }]
+            : []),
+        ];
   return (
-    <DeviceVitalIndicators
-      attributes={query.data?.attributes}
-      loading={query.isLoading}
-    />
+    <div className="device-data-summary">
+      {items.length ? (
+        items.map(({ key, label, icon: Icon }) => (
+          <span key={key}>
+            <Icon size={12} />
+            {label}
+          </span>
+        ))
+      ) : (
+        <span>暂无数据能力</span>
+      )}
+    </div>
   );
 }
 
@@ -587,17 +707,14 @@ export const deviceDetailTab = (
   requested: string | null,
   camera: boolean,
 ): DeviceTab => {
-  const allowed: DeviceTab[] = [
-    "overview",
-    camera ? "video" : "data",
-    "profile",
-    "config",
-    "sharing",
-    "activity",
-  ];
+  const allowed: DeviceTab[] = camera
+    ? ["video", "profile", "activity"]
+    : ["overview", "data", "profile", "config", "sharing", "activity"];
   return requested && allowed.includes(requested as DeviceTab)
     ? (requested as DeviceTab)
-    : "overview";
+    : camera
+      ? "video"
+      : "overview";
 };
 export const legacyDeviceTarget = (device: Device) =>
   `/devices/${encodeURIComponent(device.id)}?tab=${isCameraDevice(device) ? "video" : "data"}`;
@@ -702,6 +819,13 @@ export function DeviceCenterDetailPage() {
     );
   const camera = isCameraDevice(device);
   const tab = deviceDetailTab(params.get("tab"), camera);
+  if (params.get("tab") !== tab)
+    return (
+      <Navigate
+        replace
+        to={`/devices/${encodeURIComponent(device.id)}?tab=${encodeURIComponent(tab)}`}
+      />
+    );
   const workspaceDeviceItems = workspaceDevices.data?.items ?? [];
   const quickSwitchDevices = workspaceDeviceItems.some(
     (item) => item.id === device.id,
@@ -713,8 +837,8 @@ export function DeviceCenterDetailPage() {
     let nextTab = tab;
     if (nextDevice) {
       const nextCamera = isCameraDevice(nextDevice);
-      if (nextCamera && nextTab === "data") nextTab = "video";
-      if (!nextCamera && nextTab === "video") nextTab = "data";
+      nextTab = deviceDetailTab(nextTab, nextCamera);
+      if (!nextCamera && tab === "video") nextTab = "data";
     }
     navigate(
       `/devices/${encodeURIComponent(nextDeviceId)}?tab=${encodeURIComponent(nextTab)}`,
@@ -743,14 +867,22 @@ export function DeviceCenterDetailPage() {
       return false;
     }
   };
-  const tabs = [
-    { id: "overview", label: "概览" },
-    { id: camera ? "video" : "data", label: camera ? "实时视频" : "数据" },
-    { id: "profile", label: "资料" },
-    { id: "config", label: "配置" },
-    { id: "sharing", label: "分享" },
-    { id: "activity", label: "操作记录" },
-  ] as Array<{ id: DeviceTab; label: string }>;
+  const tabs = (
+    camera
+      ? [
+          { id: "video", label: "实时视频" },
+          { id: "profile", label: "资料" },
+          { id: "activity", label: "操作记录" },
+        ]
+      : [
+          { id: "overview", label: "概览" },
+          { id: "data", label: "数据" },
+          { id: "profile", label: "资料" },
+          { id: "config", label: "配置" },
+          { id: "sharing", label: "分享" },
+          { id: "activity", label: "操作记录" },
+        ]
+  ) as Array<{ id: DeviceTab; label: string }>;
   return (
     <>
       <div className="device-detail-heading">
@@ -815,7 +947,12 @@ export function DeviceCenterDetailPage() {
       ) : tab === "video" ? (
         <CameraLive device={device} />
       ) : tab === "profile" ? (
-        <DeviceProfileTab workspaceId={detailWorkspaceId} device={device} />
+        <DeviceProfileTab
+          workspaceId={detailWorkspaceId}
+          device={device}
+          projects={projects.data?.items ?? []}
+          sites={sites.data?.items ?? []}
+        />
       ) : tab === "sharing" ? (
         <DeviceSharingTab workspaceId={detailWorkspaceId} device={device} />
       ) : tab === "activity" ? (
@@ -924,6 +1061,22 @@ function DeviceOverview({
           loading={latestAttributes.isLoading}
         />
       </Panel>
+      {latestAttributes.data?.source_device && (
+        <Panel className="device-source-runtime section-gap">
+          <div className="panel-header compact-panel-header">
+            <div>
+              <h2 className="panel-title">源设备实时状态</h2>
+              <div className="panel-kicker">直接读取 THCPN，不保存在业务平台</div>
+            </div>
+          </div>
+          <dl className="device-source-runtime-grid">
+            <div><dt>运行状态</dt><dd>{sourceDeviceStatus(latestAttributes.data.source_device)}</dd></div>
+            <div><dt>当前版本</dt><dd>{text(latestAttributes.data.source_device.current_device_version ?? latestAttributes.data.source_device.version)}</dd></div>
+            <div><dt>源库更新时间</dt><dd>{overviewTime(latestAttributes.data.source_device.updated_at)}</dd></div>
+            <div><dt>经纬高</dt><dd>{formatSourceLocation(latestAttributes.data.source_device)}</dd></div>
+          </dl>
+        </Panel>
+      )}
       {(hasTelemetry || hasImages) && (
         <div
           className={`device-overview-signals section-gap ${hasTelemetry && hasImages ? "split" : "single"}`}
@@ -988,7 +1141,7 @@ function DeviceOverview({
               <h2 className="panel-title">网关拓扑</h2>
               <div className="panel-kicker">当前工作区可见子节点</div>
             </div>
-            <Badge tone="neutral">{device.child_count}</Badge>
+            <Badge tone="neutral">{children.data?.items.length ?? device.child_count}</Badge>
           </div>
           {children.isLoading ? (
             <StateView

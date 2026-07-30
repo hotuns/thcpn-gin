@@ -41,21 +41,21 @@ INSERT INTO data_stream_bindings (
     created_by_type
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-RETURNING id, data_stream_id, data_source_id, adapter_code, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at;
+RETURNING id, data_stream_id, data_source_id, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at, adapter_code, created_by_type;
 
 -- name: GetDataStreamBinding :one
-SELECT id, data_stream_id, data_source_id, adapter_code, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at
+SELECT id, data_stream_id, data_source_id, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at, adapter_code, created_by_type
 FROM data_stream_bindings
 WHERE id = $1;
 
 -- name: ListDataStreamBindingsByDataStream :many
-SELECT id, data_stream_id, data_source_id, adapter_code, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at
+SELECT id, data_stream_id, data_source_id, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at, adapter_code, created_by_type
 FROM data_stream_bindings
 WHERE data_stream_id = $1
 ORDER BY created_at DESC, id DESC;
 
 -- name: GetActiveDataStreamBinding :one
-SELECT id, data_stream_id, data_source_id, adapter_code, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at
+SELECT id, data_stream_id, data_source_id, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at, adapter_code, created_by_type
 FROM data_stream_bindings
 WHERE data_stream_id = $1
   AND status = 'active'
@@ -78,7 +78,7 @@ SET data_source_id = $2,
     status = $13,
     updated_at = now()
 WHERE id = $1
-RETURNING id, data_stream_id, data_source_id, adapter_code, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at;
+RETURNING id, data_stream_id, data_source_id, database_name, schema_name, table_name, device_key_field, device_key_value, time_field, value_field, payload_type, adapter_config_json, status, created_by, created_at, updated_at, adapter_code, created_by_type;
 
 -- name: DisableMissingTHCPNDataStreamBindings :many
 UPDATE data_stream_bindings AS dsb
@@ -92,4 +92,4 @@ WHERE ds.id = dsb.data_stream_id
   AND dsb.status = 'active'
   AND (dsb.adapter_config_json->>'external_device_id')::bigint = sqlc.arg(external_device_id)::bigint
   AND NOT (ds.code = ANY(sqlc.arg(active_codes)::text[]))
-RETURNING dsb.id, dsb.data_stream_id, dsb.data_source_id, dsb.adapter_code, dsb.database_name, dsb.schema_name, dsb.table_name, dsb.device_key_field, dsb.device_key_value, dsb.time_field, dsb.value_field, dsb.payload_type, dsb.adapter_config_json, dsb.status, dsb.created_by, dsb.created_at, dsb.updated_at;
+RETURNING dsb.id, dsb.data_stream_id, dsb.data_source_id, dsb.database_name, dsb.schema_name, dsb.table_name, dsb.device_key_field, dsb.device_key_value, dsb.time_field, dsb.value_field, dsb.payload_type, dsb.adapter_config_json, dsb.status, dsb.created_by, dsb.created_at, dsb.updated_at, dsb.adapter_code, dsb.created_by_type;

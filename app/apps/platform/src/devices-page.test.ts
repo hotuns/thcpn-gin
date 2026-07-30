@@ -102,9 +102,13 @@ describe("device workflow payloads", () => {
     expect(deviceDetailTab("data", false)).toBe("data");
     expect(deviceDetailTab("video", true)).toBe("video");
     expect(deviceDetailTab("profile", false)).toBe("profile");
-    expect(deviceDetailTab("sharing", true)).toBe("sharing");
+    expect(deviceDetailTab("profile", true)).toBe("profile");
+    expect(deviceDetailTab("activity", true)).toBe("activity");
+    expect(deviceDetailTab("overview", true)).toBe("video");
+    expect(deviceDetailTab("config", true)).toBe("video");
+    expect(deviceDetailTab("sharing", true)).toBe("video");
     expect(deviceDetailTab("video", false)).toBe("overview");
-    expect(deviceDetailTab("unknown", true)).toBe("overview");
+    expect(deviceDetailTab("unknown", true)).toBe("video");
   });
 
   it("maps legacy links to data or video tabs", () => {

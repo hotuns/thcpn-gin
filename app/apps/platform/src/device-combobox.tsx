@@ -1,13 +1,13 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useQueries } from "@tanstack/react-query";
 import { ChevronDown, Search } from "lucide-react";
-import type { Device } from "@thcpn/api";
+import { api, type Device } from "@thcpn/api";
 
 export type DeviceOptionCategory = "all" | "gateway" | "gateway_node" | "camera" | "standalone";
 
 const categories: Array<{ id: DeviceOptionCategory; label: string }> = [
   { id: "all", label: "全部" },
-  { id: "gateway", label: "组网站" },
-  { id: "gateway_node", label: "节点" },
+  { id: "gateway", label: "网关" },
   { id: "camera", label: "相机" },
   { id: "standalone", label: "标准站" },
 ];
@@ -56,9 +56,36 @@ export function DeviceCombobox({
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [category, setCategory] = useState<DeviceOptionCategory>("all");
-  const selected = devices.find((item) => item.id === value);
+  const gateways = useMemo(
+    () => devices.filter((item) => deviceOptionCategory(item) === "gateway"),
+    [devices],
+  );
+  const childQueries = useQueries({
+    queries: gateways.map((gateway) => ({
+      queryKey: ["device-combobox", gateway.id, "children"],
+      queryFn: () => api.devices.children(gateway.id),
+      enabled: open,
+      staleTime: 60_000,
+    })),
+  });
+  const childrenByGateway = useMemo(
+    () => new Map(gateways.map((gateway, index) => [
+      gateway.id,
+      (childQueries[index]?.data?.items ?? []).map((item) => item.device),
+    ])),
+    [childQueries, gateways],
+  );
+  const childDevices = useMemo(
+    () => Array.from(childrenByGateway.values()).flat(),
+    [childrenByGateway],
+  );
+  const selected = [...devices, ...childDevices].find((item) => item.id === value);
   const matches = useMemo(
-    () => filterDeviceOptions(devices, keyword, category).slice(0, 100),
+    () => filterDeviceOptions(
+      devices.filter((item) => deviceOptionCategory(item) !== "gateway_node"),
+      keyword,
+      category,
+    ).slice(0, 100),
     [category, devices, keyword],
   );
 
@@ -89,12 +116,31 @@ export function DeviceCombobox({
     setOpen(false);
   };
   const grouped = categoryOrder
+    .filter((id) => id !== "gateway")
     .map((id) => ({
       id,
       label: categories.find((item) => item.id === id)!.label,
       items: matches.filter((item) => deviceOptionCategory(item) === id),
     }))
     .filter((group) => group.items.length);
+  const normalizedKeyword = keyword.trim().toLowerCase();
+  const gatewayGroups = gateways.map((gateway) => {
+    const children = childrenByGateway.get(gateway.id) ?? [];
+    const gatewayMatches = !normalizedKeyword || [gateway.name, gateway.serial_no, gateway.id]
+      .filter(Boolean)
+      .some((item) => item.toLowerCase().includes(normalizedKeyword));
+    const matchingChildren = children.filter((child) =>
+      !normalizedKeyword || [child.name, child.serial_no, child.id]
+        .filter(Boolean)
+        .some((item) => item.toLowerCase().includes(normalizedKeyword)),
+    );
+    return {
+      gateway,
+      children: gatewayMatches ? children : matchingChildren,
+      visible: gatewayMatches || matchingChildren.length > 0,
+    };
+  }).filter((group) => group.visible && (category === "all" || category === "gateway"));
+  const resultCount = grouped.length + gatewayGroups.length;
 
   return (
     <div className={`device-quick-switch-control ${className}`.trim()} ref={rootRef}>
@@ -131,7 +177,42 @@ export function DeviceCombobox({
             ))}
           </div>
           <div className="device-option-results">
-            {grouped.length ? grouped.map((group) => (
+            {resultCount ? <>
+              {gatewayGroups.length ? (
+                <section className="device-option-group device-option-gateway-group">
+                  <div className="device-option-group-title">
+                    <span>网关</span><small>{gatewayGroups.length}</small>
+                  </div>
+                  {gatewayGroups.map(({ gateway, children }) => (
+                    <div key={gateway.id} className="device-option-gateway">
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={gateway.id === value}
+                        className={gateway.id === value ? "selected" : undefined}
+                        onClick={() => selectDevice(gateway.id)}
+                      >
+                        <strong>{gateway.name}</strong>
+                        <small>{gateway.serial_no || gateway.id} · {children.length} 个节点</small>
+                      </button>
+                      {children.map((child) => (
+                        <button
+                          key={child.id}
+                          type="button"
+                          role="option"
+                          aria-selected={child.id === value}
+                          className={`device-option-child${child.id === value ? " selected" : ""}`}
+                          onClick={() => selectDevice(child.id)}
+                        >
+                          <strong>{child.name}</strong>
+                          <small>{child.serial_no || child.id}</small>
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </section>
+              ) : null}
+              {grouped.map((group) => (
               <section key={group.id} className="device-option-group">
                 <div className="device-option-group-title">
                   <span>{group.label}</span><small>{group.items.length}</small>
@@ -150,7 +231,8 @@ export function DeviceCombobox({
                   </button>
                 ))}
               </section>
-            )) : <div className="device-quick-switch-empty">没有匹配的设备</div>}
+              ))}
+            </> : <div className="device-quick-switch-empty">没有匹配的设备</div>}
           </div>
         </div>
       )}

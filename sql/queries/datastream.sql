@@ -1,7 +1,7 @@
 -- name: CreateDataStream :one
 INSERT INTO data_streams (device_id, code, name, type, unit, created_by)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, device_id, code, name, type, unit, status, created_by, created_at, updated_at;
+RETURNING id, device_id, code, name, type, unit, status, created_by, created_at, updated_at, created_by_type;
 
 -- name: UpsertDataStreamFromSync :one
 INSERT INTO data_streams (device_id, code, name, type, unit, status, created_by, created_by_type)
@@ -16,15 +16,15 @@ DO UPDATE SET
         ELSE 'active'
     END,
     updated_at = now()
-RETURNING id, device_id, code, name, type, unit, status, created_by, created_at, updated_at;
+RETURNING id, device_id, code, name, type, unit, status, created_by, created_at, updated_at, created_by_type;
 
 -- name: GetDataStream :one
-SELECT id, device_id, code, name, type, unit, status, created_by, created_at, updated_at
+SELECT id, device_id, code, name, type, unit, status, created_by, created_at, updated_at, created_by_type
 FROM data_streams
 WHERE id = $1;
 
 -- name: ListDataStreamsByDevice :many
-SELECT id, device_id, code, name, type, unit, status, created_by, created_at, updated_at
+SELECT id, device_id, code, name, type, unit, status, created_by, created_at, updated_at, created_by_type
 FROM data_streams
 WHERE device_id = $1
 ORDER BY created_at DESC, id DESC;
@@ -38,7 +38,7 @@ SET code = $2,
     status = $6,
     updated_at = now()
 WHERE id = $1
-RETURNING id, device_id, code, name, type, unit, status, created_by, created_at, updated_at;
+RETURNING id, device_id, code, name, type, unit, status, created_by, created_at, updated_at, created_by_type;
 
 -- name: DisableMissingTHCPNDataStreams :many
 UPDATE data_streams AS ds
@@ -56,4 +56,4 @@ WHERE ds.device_id = sqlc.arg(device_id)
         AND dsb.status = 'active'
         AND (dsb.adapter_config_json->>'external_device_id')::bigint = sqlc.arg(external_device_id)::bigint
   )
-RETURNING ds.id, ds.device_id, ds.code, ds.name, ds.type, ds.unit, ds.status, ds.created_by, ds.created_at, ds.updated_at;
+RETURNING ds.id, ds.device_id, ds.code, ds.name, ds.type, ds.unit, ds.status, ds.created_by, ds.created_at, ds.updated_at, ds.created_by_type;

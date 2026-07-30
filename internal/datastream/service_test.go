@@ -2,12 +2,22 @@ package datastream
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 
 	"thcpn-gin/internal/apperr"
 )
+
+func TestComputedDataStreamListUsesOwningDataStreamDevice(t *testing.T) {
+	if !strings.Contains(listComputedDataStreamIDsByDeviceQuery, "JOIN data_streams") {
+		t.Fatal("computed stream lookup must resolve device ownership through data_streams")
+	}
+	if strings.Contains(listComputedDataStreamIDsByDeviceQuery, "cds.device_id") {
+		t.Fatal("computed_data_streams does not own a device_id column")
+	}
+}
 
 func TestCreateRequiresCode(t *testing.T) {
 	service := NewService(nil)

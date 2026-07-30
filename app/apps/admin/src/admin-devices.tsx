@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { FormInstance } from "antd";
-import { Activity, Battery, FileJson, GitBranch, Pencil, Radio, RefreshCw, Search, Settings2, Trash2 } from "lucide-react";
+import { Activity, Battery, Copy, FileJson, GitBranch, Pencil, Printer, Radio, RefreshCw, Search, Settings2, Trash2 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import {
   Alert,
   Button,
@@ -228,7 +229,6 @@ export function AdminDevicesPage() {
         target_workspace_id: record.workspace_id,
         project_id: record.project_id,
         site_id: record.site_id,
-        assign_children: false,
       });
     if (next === "child") {
       form.setFieldsValue({ child_device_id: "" });
@@ -677,6 +677,7 @@ function DeviceDetailPanel({
   const latestConfig = (configData?.latest_config ?? {}) as JsonRecord;
   const snapshot = (configData?.latest_snapshot ?? {}) as JsonRecord;
   const attributeItems = Object.entries((attributes?.attributes ?? {}) as JsonRecord);
+  const sourceDevice = (attributes?.source_device ?? {}) as JsonRecord;
   const date = (input: unknown) => input ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(String(input))) : "—";
   const inlineError = (error: unknown, title: string) => error ? <Alert type="warning" showIcon title={title} description={formatApiError(error).message} /> : null;
   const queryLoading = ({ loading, data, error }: DetailQueryProps) => loading && !data && !error;
@@ -694,6 +695,7 @@ function DeviceDetailPanel({
         { key: "activated", label: "激活时间", children: date(device.activated_at) },
       ]} />
     </section>
+    {(device.device_type === "gateway" || device.device_type === "standalone") ? <ClaimCredentialSection device={device} date={date} /> : null}
     <section className="admin-detail-section">
       <div className="admin-detail-section-head"><div><h2>分配关系</h2><span>设备当前所属的工作区与资源位置</span></div><Space><Button onClick={() => onOpen("assign")}>调整分配</Button>{Boolean(device.workspace_id) && <Popconfirm title="解除工作区分配？" description="设备将不再对该工作区可见。" onConfirm={onUnassign}><Button danger>解除分配</Button></Popconfirm>}</Space></div>
       <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }} items={[
@@ -746,6 +748,19 @@ function DeviceDetailPanel({
       ]} />{latestConfig.id && snapshot.external_config_id && String(latestConfig.id) !== String(snapshot.external_config_id) ? <Alert className="admin-config-warning" type="warning" showIcon title="源配置与平台快照不一致" description="源数据库配置已变化，平台数据流和绑定可能尚未同步。" /> : null}</> : null}
     </section>
     <section className="admin-detail-section">
+      <div className="admin-detail-section-head"><div><h2>源设备实时状态</h2><span>直接读取 THCPN devices 表，不写入平台业务库</span></div></div>
+      {inlineError(attributesError, "源设备状态加载失败")}
+      {queryLoading({ loading: attributesLoading, data: attributes, error: attributesError }) ? <div className="admin-inline-loading">正在读取源设备状态…</div> : Object.keys(sourceDevice).length ? <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 4 }} items={[
+        { key: "runtime-status", label: "源运行状态", children: <Tag color={Number(sourceDevice.active) === 0 ? "default" : "green"}>{value(sourceDevice.status, "未知")}{Number(sourceDevice.active) === 0 ? " · 停用" : ""}</Tag> },
+        { key: "runtime-version", label: "当前设备版本", children: value(sourceDevice.current_device_version, sourceDevice.version) },
+        { key: "runtime-update", label: "源库更新时间", children: date(sourceDevice.updated_at) },
+        { key: "runtime-type", label: "源设备类型", children: value(sourceDevice.device_type) },
+        { key: "runtime-location", label: "实时经纬度", span: 2, children: sourceDevice.lat !== undefined && sourceDevice.lon !== undefined ? <span className="mono">{Number(sourceDevice.lat).toFixed(6)}, {Number(sourceDevice.lon).toFixed(6)}</span> : "暂无定位" },
+        { key: "runtime-altitude", label: "实时海拔", children: sourceDevice.alt !== undefined ? `${Number(sourceDevice.alt).toFixed(1)} m` : "—" },
+        { key: "runtime-name", label: "源设备名称", children: value(sourceDevice.name) },
+      ]} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="源设备不存在或当前不可读取" />}
+    </section>
+    <section className="admin-detail-section">
       <div className="admin-detail-section-head"><div><h2>最新设备属性</h2><span>来自源数据库的电池、信号和扩展信息</span></div><Button onClick={() => onOpen("attributes")}>查看原始属性</Button></div>
       {inlineError(attributesError, "设备属性加载失败")}
       {queryLoading({ loading: attributesLoading, data: attributes, error: attributesError }) ? <div className="admin-inline-loading">正在加载设备属性…</div> : attributeItems.length ? <div className="admin-attribute-grid">{attributeItems.map(([key, raw]) => { const item = raw as JsonRecord; const parsed = item.parsed_value ?? item.raw_value; const Icon = key === "battery" ? Battery : key === "signal" ? Radio : Settings2; return <div key={key}><Icon size={17} /><span>{key === "battery" ? "电池" : key === "signal" ? "信号" : key}</span><strong>{typeof parsed === "object" ? JSON.stringify(parsed) : value(parsed)}</strong><small>{date(item.sampled_at)}</small></div>; })}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无设备属性" />}
@@ -757,6 +772,43 @@ function DeviceDetailPanel({
     { key: "configuration", label: "配置与属性", children: configuration },
     { key: "logs", label: "设备日志", children: <DeviceLogsPanel deviceId={value(device.id, "")} deviceName={value(device.name, "未命名设备")} /> },
   ]} /></Panel>;
+}
+
+function ClaimCredentialSection({ device, date }: { device: JsonRecord; date: (input: unknown) => string }) {
+  const deviceId = value(device.id, "");
+  const query = useQuery({
+    queryKey: ["admin", "device", deviceId, "claim-credential"],
+    queryFn: () => api.admin.deviceClaimCredential(deviceId),
+  });
+  const credential = query.data;
+  const configuredBase = (import.meta as ImportMeta & { env?: Record<string, string> }).env?.VITE_DEVICE_CLAIM_BASE_URL;
+  const fallbackBase = window.location.origin.replace(/:5174$/, ":5173");
+  const claimUrl = credential ? `${(configuredBase || fallbackBase).replace(/\/$/, "")}${credential.claim_path}` : "";
+  const print = async () => {
+    if (!credential) return;
+    const popup = window.open("", "_blank", "width=520,height=720");
+    if (!popup) return;
+    const svg = document.getElementById(`claim-qr-${deviceId}`)?.outerHTML ?? "";
+    popup.document.write(`<title>设备永久铭牌</title><style>body{font-family:system-ui;padding:32px;text-align:center}h1{font-size:22px}.code{font:700 22px ui-monospace;margin:16px}.sn{font:16px ui-monospace;color:#475569}svg{margin:24px}</style><h1>${credential.device_name}</h1>${svg}<div class="sn">SN ${credential.serial_no}</div><div class="code">${credential.manual_code}</div><p>扫码登录后认领设备</p>`);
+    popup.document.close();
+    popup.focus();
+    popup.print();
+    await api.admin.markDeviceClaimCredentialPrinted(deviceId);
+    await query.refetch();
+  };
+  return <section className="admin-detail-section">
+    <div className="admin-detail-section-head"><div><h2>永久认领铭牌</h2><span>二维码和手动认领码永久有效，可在设备解绑后重复使用</span></div>{credential ? <Space><Button icon={<Copy size={14} />} onClick={() => void navigator.clipboard.writeText(`${claimUrl}\nSN: ${credential.serial_no}\n认领码: ${credential.manual_code}`)}>复制</Button><Button type="primary" icon={<Printer size={14} />} onClick={() => void print()}>打印铭牌</Button></Space> : null}</div>
+    {query.isLoading ? <div className="admin-inline-loading">正在加载永久铭牌…</div> : query.error ? <Alert type="warning" showIcon title="永久铭牌加载失败" description={formatApiError(query.error).message} /> : credential ? <div className="admin-claim-credential">
+      <QRCodeSVG id={`claim-qr-${deviceId}`} value={claimUrl} size={148} level="M" marginSize={2} />
+      <Descriptions bordered size="small" column={1} items={[
+        { key: "url", label: "认领地址", children: <span className="mono admin-break-value">{claimUrl}</span> },
+        { key: "sn", label: "设备 SN", children: <span className="mono">{credential.serial_no}</span> },
+        { key: "code", label: "手动认领码", children: <strong className="mono">{credential.manual_code}</strong> },
+        { key: "state", label: "当前状态", children: <Tag color={credential.is_claimable ? "green" : "blue"}>{credential.is_claimable ? "可认领" : "已分配，解绑后可再次认领"}</Tag> },
+        { key: "printed", label: "最近打印", children: date(credential.printed_at) },
+      ]} />
+    </div> : null}
+  </section>;
 }
 
 function columns() {
@@ -956,18 +1008,10 @@ function DeviceForm({
             />
           </Form.Item>
         </div>
-        <Form.Item name="assign_children" label="网关子节点">
-          <Select
-            options={[
-              { value: false, label: "只分配当前设备" },
-              { value: true, label: "同时分配全部子节点" },
-            ]}
-          />
-        </Form.Item>
         <Alert
           type="info"
           showIcon
-          title="项目与站点选项会随工作区自动更新"
+          title="项目与站点选项会随工作区自动更新；网关节点自动继承网关归属"
         />
       </>
     );

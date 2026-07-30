@@ -43,7 +43,7 @@ type CameraBinding struct {
 	Provider              string    `json:"provider"`
 	DeviceSerial          string    `json:"device_serial"`
 	ChannelNo             int32     `json:"channel_no"`
-	DefaultQuality         string    `json:"default_quality"`
+	DefaultQuality        string    `json:"default_quality"`
 	IsEncrypted           bool      `json:"is_encrypted"`
 	ValidateCodeSecretRef *string   `json:"validate_code_secret_ref,omitempty"`
 	Status                string    `json:"status"`
@@ -62,7 +62,7 @@ type CreateInput struct {
 	Name                  string
 	DeviceSerial          string
 	ChannelNo             int32
-	DefaultQuality         string
+	DefaultQuality        string
 	IsEncrypted           bool
 	ValidateCodeSecretRef string
 	Status                string
@@ -76,7 +76,7 @@ type UpdateInput struct {
 	DeviceID              uuid.UUID
 	DeviceSerial          *string
 	ChannelNo             *int32
-	DefaultQuality         *string
+	DefaultQuality        *string
 	IsEncrypted           *bool
 	ValidateCodeSecretRef *string
 	Status                *string
@@ -177,7 +177,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Camera, error)
 		DeviceID:              device.ID,
 		DeviceSerial:          bindingInput.deviceSerial,
 		ChannelNo:             bindingInput.channelNo,
-		DefaultQuality:         bindingInput.defaultQuality,
+		DefaultQuality:        bindingInput.defaultQuality,
 		IsEncrypted:           input.IsEncrypted,
 		ValidateCodeSecretRef: bindingInput.validateCodeSecretRef,
 		Status:                bindingInput.status,
@@ -291,7 +291,7 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (Camera, error)
 		DeviceID:              input.DeviceID,
 		DeviceSerial:          bindingInput.deviceSerial,
 		ChannelNo:             bindingInput.channelNo,
-		DefaultQuality:         bindingInput.defaultQuality,
+		DefaultQuality:        bindingInput.defaultQuality,
 		IsEncrypted:           isEncrypted,
 		ValidateCodeSecretRef: bindingInput.validateCodeSecretRef,
 		Status:                bindingInput.status,
@@ -398,7 +398,7 @@ func (s *Service) fetchAccessToken(ctx context.Context, now time.Time) (string, 
 type normalizedBindingInput struct {
 	deviceSerial          string
 	channelNo             int32
-	defaultQuality         string
+	defaultQuality        string
 	status                string
 	validateCodeSecretRef *string
 }
@@ -428,7 +428,7 @@ func normalizeBindingInput(deviceSerial string, channelNo int32, defaultQuality 
 	return normalizedBindingInput{
 		deviceSerial:          deviceSerial,
 		channelNo:             channelNo,
-		defaultQuality:         defaultQuality,
+		defaultQuality:        defaultQuality,
 		status:                status,
 		validateCodeSecretRef: nullableTrimmedString(validateCodeSecretRef),
 	}, nil
@@ -509,11 +509,12 @@ func assignDeviceInTx(ctx context.Context, q *sqlc.Queries, input assignDeviceIn
 		}
 	}
 	return q.CreateDeviceAssignment(ctx, sqlc.CreateDeviceAssignmentParams{
-		DeviceID:    input.DeviceID,
-		WorkspaceID: input.TargetWorkspaceID,
-		ProjectID:   input.ProjectID,
-		SiteID:      input.SiteID,
-		AssignedBy:  &input.ActorUserID,
+		DeviceID:       input.DeviceID,
+		WorkspaceID:    input.TargetWorkspaceID,
+		ProjectID:      input.ProjectID,
+		SiteID:         input.SiteID,
+		AssignedBy:     &input.ActorUserID,
+		AssignedByType: "system_admin",
 	})
 }
 
@@ -551,7 +552,7 @@ func bindingFromSQL(model sqlc.CameraBinding) CameraBinding {
 		Provider:              model.Provider,
 		DeviceSerial:          model.DeviceSerial,
 		ChannelNo:             model.ChannelNo,
-		DefaultQuality:         model.DefaultQuality,
+		DefaultQuality:        model.DefaultQuality,
 		IsEncrypted:           model.IsEncrypted,
 		ValidateCodeSecretRef: model.ValidateCodeSecretRef,
 		Status:                model.Status,

@@ -913,20 +913,28 @@ gate_node
 ```text
 系统管理员同步网关。
 系统自动同步该网关下的节点设备和拓扑关系。
-是否把节点一起分配给目标 Workspace 由 assign_nodes 显式控制，默认不级联分配。
+同步只创建系统资产，不分配 Workspace。
+后续只分配网关，节点通过有效拓扑关系继承网关的工作区和权限。
 节点也作为平台 Device 存在。
 ```
 
 这样权限、数据流和导出都更清晰。配置修改仍未开放，不能通过组网站拓扑写回旧库。
 
-可选增强：
+节点不能单独绑定或分配。
+
+### 8.3 相机同步
+
+源库 `cameras` 中未删除的记录同步为平台 `camera` 设备：
 
 ```text
-用户也可以直接绑定节点。
-系统展示它所属的网关。
+cameras.id -> device_source_refs.external_device_id
+device_source_refs.adapter_code -> thcpn_legacy_camera
+cameras.device_serial -> camera_bindings.device_serial
+cameras.channel -> camera_bindings.channel_no
+cameras.name -> devices.name
 ```
 
-但第一版可以先不做。
+相机同步只创建系统资产和萤石绑定，不自动分配 Workspace。`poster` 作为源库资料随同步结果返回，不复制为平台业务字段。
 
 ### 8.3 前端展示
 
@@ -1099,7 +1107,7 @@ POST /api/v1/admin/data-sources/:data_source_id/thcpn-standard-station/devices
 1. 已读取 gate_node。
 2. 已同步网关和节点设备。
 3. 已保存 device_relations。
-4. 已支持 assign_nodes=true 时显式级联分配节点，默认只同步资产和关系。
+4. 网关和节点同步时保持未分配；后续只分配网关，节点继承其权限。
 5. 已支持后台树形/手动拓扑管理和普通用户有权限范围内的节点展示。
 ```
 

@@ -70,7 +70,7 @@ func (q *Queries) CreateRefreshSession(ctx context.Context, arg CreateRefreshSes
 const createUserCredential = `-- name: CreateUserCredential :one
 INSERT INTO user_credentials (user_id, password_hash)
 VALUES ($1, $2)
-RETURNING user_id, password_hash, password_updated_at, failed_attempts, locked_until, created_at, updated_at
+RETURNING user_id, password_hash, password_updated_at, failed_attempts, locked_until, created_at, updated_at, must_change_password
 `
 
 type CreateUserCredentialParams struct {
@@ -89,6 +89,7 @@ func (q *Queries) CreateUserCredential(ctx context.Context, arg CreateUserCreden
 		&i.LockedUntil,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MustChangePassword,
 	)
 	return i, err
 }
@@ -146,7 +147,7 @@ func (q *Queries) EnableUserTOTP(ctx context.Context, arg EnableUserTOTPParams) 
 }
 
 const findActiveUserByIdentifier = `-- name: FindActiveUserByIdentifier :one
-SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at
+SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version
 FROM users
 WHERE status = 'active'
   AND (phone = $1 OR email = $1)
@@ -166,12 +167,13 @@ func (q *Queries) FindActiveUserByIdentifier(ctx context.Context, identifier *st
 		&i.PhoneVerifiedAt,
 		&i.EmailVerifiedAt,
 		&i.LastLoginAt,
+		&i.AuthVersion,
 	)
 	return i, err
 }
 
 const findActiveUserByPhoneForAuth = `-- name: FindActiveUserByPhoneForAuth :one
-SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at
+SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version
 FROM users
 WHERE status = 'active'
   AND phone = $1
@@ -191,6 +193,7 @@ func (q *Queries) FindActiveUserByPhoneForAuth(ctx context.Context, phone *strin
 		&i.PhoneVerifiedAt,
 		&i.EmailVerifiedAt,
 		&i.LastLoginAt,
+		&i.AuthVersion,
 	)
 	return i, err
 }
@@ -244,7 +247,7 @@ func (q *Queries) GetEnabledUserTOTP(ctx context.Context, userID uuid.UUID) (Use
 }
 
 const getUserCredential = `-- name: GetUserCredential :one
-SELECT user_id, password_hash, password_updated_at, failed_attempts, locked_until, created_at, updated_at
+SELECT user_id, password_hash, password_updated_at, failed_attempts, locked_until, created_at, updated_at, must_change_password
 FROM user_credentials
 WHERE user_id = $1
 `
@@ -260,6 +263,7 @@ func (q *Queries) GetUserCredential(ctx context.Context, userID uuid.UUID) (User
 		&i.LockedUntil,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MustChangePassword,
 	)
 	return i, err
 }
@@ -347,7 +351,7 @@ SET failed_attempts = 0,
     locked_until = NULL,
     updated_at = now()
 WHERE user_id = $1
-RETURNING user_id, password_hash, password_updated_at, failed_attempts, locked_until, created_at, updated_at
+RETURNING user_id, password_hash, password_updated_at, failed_attempts, locked_until, created_at, updated_at, must_change_password
 `
 
 func (q *Queries) ResetUserCredentialFailure(ctx context.Context, userID uuid.UUID) (UserCredential, error) {
@@ -361,6 +365,7 @@ func (q *Queries) ResetUserCredentialFailure(ctx context.Context, userID uuid.UU
 		&i.LockedUntil,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MustChangePassword,
 	)
 	return i, err
 }
@@ -462,7 +467,7 @@ SET failed_attempts = $2,
     locked_until = $3,
     updated_at = now()
 WHERE user_id = $1
-RETURNING user_id, password_hash, password_updated_at, failed_attempts, locked_until, created_at, updated_at
+RETURNING user_id, password_hash, password_updated_at, failed_attempts, locked_until, created_at, updated_at, must_change_password
 `
 
 type UpdateUserCredentialFailureParams struct {
@@ -482,6 +487,7 @@ func (q *Queries) UpdateUserCredentialFailure(ctx context.Context, arg UpdateUse
 		&i.LockedUntil,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MustChangePassword,
 	)
 	return i, err
 }
@@ -493,7 +499,7 @@ SET email_verified_at = COALESCE(email_verified_at, now()),
 WHERE id = $1
   AND email = $2
   AND status = 'active'
-RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at
+RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version
 `
 
 type UpdateUserEmailVerifiedParams struct {
@@ -515,6 +521,7 @@ func (q *Queries) UpdateUserEmailVerified(ctx context.Context, arg UpdateUserEma
 		&i.PhoneVerifiedAt,
 		&i.EmailVerifiedAt,
 		&i.LastLoginAt,
+		&i.AuthVersion,
 	)
 	return i, err
 }
@@ -524,7 +531,7 @@ UPDATE users
 SET last_login_at = now(),
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at
+RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version
 `
 
 func (q *Queries) UpdateUserLastLogin(ctx context.Context, id uuid.UUID) (User, error) {
@@ -541,6 +548,7 @@ func (q *Queries) UpdateUserLastLogin(ctx context.Context, id uuid.UUID) (User, 
 		&i.PhoneVerifiedAt,
 		&i.EmailVerifiedAt,
 		&i.LastLoginAt,
+		&i.AuthVersion,
 	)
 	return i, err
 }
@@ -551,7 +559,7 @@ SET phone_verified_at = COALESCE(phone_verified_at, now()),
     last_login_at = now(),
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at
+RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version
 `
 
 func (q *Queries) UpdateUserPhoneVerifiedAndLogin(ctx context.Context, id uuid.UUID) (User, error) {
@@ -568,6 +576,7 @@ func (q *Queries) UpdateUserPhoneVerifiedAndLogin(ctx context.Context, id uuid.U
 		&i.PhoneVerifiedAt,
 		&i.EmailVerifiedAt,
 		&i.LastLoginAt,
+		&i.AuthVersion,
 	)
 	return i, err
 }

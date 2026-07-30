@@ -1108,7 +1108,7 @@ object_store:
   secret_key_env: "OBJECT_STORE_SECRET_KEY"
 
 query_limits:
-  max_history_days: 31
+  max_history_days: 366
   max_points: 5000
   max_media_page_size: 100
 
