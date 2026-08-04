@@ -293,48 +293,55 @@ export function DevicesPage() {
           </div>
         )}
         <div className="device-filter-bar">
-          <div className="filter-input">
-            <Search size={15} />
-            <input
-              aria-label="搜索设备"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-              placeholder="搜索名称、序列号或 ID"
-            />
+          <div className="device-filter-main-row">
+            <div className="filter-input">
+              <Search size={15} />
+              <input
+                aria-label="搜索设备"
+                value={keyword}
+                onChange={(event) => setKeyword(event.target.value)}
+                placeholder="搜索名称、序列号或 ID"
+              />
+            </div>
+            <div className="device-filter-actions">
+              <Button variant="secondary" onClick={() => void query.refetch()}>
+                <RefreshCw size={14} />
+                刷新
+              </Button>
+              <Button onClick={() => navigate("/claim")}>
+                <ScanLine size={14} />
+                认领设备
+              </Button>
+            </div>
           </div>
-          <select
-            value={projectId}
-            onChange={(event) => {
-              setProjectId(event.target.value);
-              setSiteId("");
-            }}
-          >
-            <option value="">全部项目</option>
-            {projects.data?.items.map((item) => (
-              <option key={text(item.id)} value={text(item.id)}>
-                {text(item.name)}
-              </option>
-            ))}
-          </select>
-          <select
-            value={siteId}
-            onChange={(event) => setSiteId(event.target.value)}
-          >
-            <option value="">全部站点</option>
-            {sites.data?.items.map((item) => (
-              <option key={text(item.id)} value={text(item.id)}>
-                {text(item.name)}
-              </option>
-            ))}
-          </select>
-          <Button variant="secondary" onClick={() => void query.refetch()}>
-            <RefreshCw size={14} />
-            刷新
-          </Button>
-          <Button onClick={() => navigate("/claim")}>
-            <ScanLine size={14} />
-            认领设备
-          </Button>
+          <div className="device-filter-scope-row">
+            <span className="device-filter-label">位置范围</span>
+            <select
+              value={projectId}
+              onChange={(event) => {
+                setProjectId(event.target.value);
+                setSiteId("");
+              }}
+            >
+              <option value="">全部项目</option>
+              {projects.data?.items.map((item) => (
+                <option key={text(item.id)} value={text(item.id)}>
+                  {text(item.name)}
+                </option>
+              ))}
+            </select>
+            <select
+              value={siteId}
+              onChange={(event) => setSiteId(event.target.value)}
+            >
+              <option value="">全部站点</option>
+              {sites.data?.items.map((item) => (
+                <option key={text(item.id)} value={text(item.id)}>
+                  {text(item.name)}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         <div className="device-categories">
           {(

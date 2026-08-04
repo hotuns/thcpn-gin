@@ -1,0 +1,607 @@
+{
+  "title": "THCPN 系统设计",
+  "goal": "面向领导和同事，用张老师带学生开展森林科普项目的具体故事，从用户视角解释 THCPN 平台为什么需要工作区、项目、样地、设备和数据集，以及权限如何跟随工作范围生效。",
+  "audience": "公司领导、产品与业务同事、项目协作团队",
+  "owner": "THCPN 平台团队",
+  "randomSeed": "thcpn-system-20260804-lm7",
+  "pageCount": 11,
+  "themePack": "theme01",
+  "slides": [
+    {
+      "layout": "theme01_page001",
+      "props": {
+        "kicker": "系统设计汇报",
+        "titleTop": "从用户视角",
+        "titleBottom": "看懂 THCPN",
+        "en": "USER-CENTERED SYSTEM MAP",
+        "lead": "用一个案例看懂工作区、项目、样地、设备和权限",
+        "chips": [
+          "资源有归属",
+          "协作有边界",
+          "结果可复用"
+        ],
+        "panelIndex": "01",
+        "panelEn": "SYSTEM MAP",
+        "meta": [
+          {
+            "label": "案例角色",
+            "value": "张老师"
+          },
+          {
+            "label": "业务场景",
+            "value": "科普项目"
+          },
+          {
+            "label": "解释重点",
+            "value": "权限设计"
+          }
+        ],
+        "footnote": "基于当前已实现功能，从用户视角整理",
+        "metaCount": 3,
+        "chipCount": 3
+      }
+    },
+    {
+      "layout": "theme01_page009",
+      "props": {
+        "kicker": "案例主线",
+        "title": "七步看懂系统为什么这样分层",
+        "en": "ONE USER JOURNEY",
+        "cn": "从边界到结果",
+        "chapters": [
+          {
+            "no": "01",
+            "label": "区分空间",
+            "en": "WORKSPACE",
+            "desc": "张老师把个人研究与研究所协作分开"
+          },
+          {
+            "no": "02",
+            "label": "建立项目",
+            "en": "PROJECT",
+            "desc": "用科普项目承载共同目标和协作成员"
+          },
+          {
+            "no": "03",
+            "label": "定位样地",
+            "en": "SITE",
+            "desc": "用某森林样地说明设备在哪里工作"
+          },
+          {
+            "no": "04",
+            "label": "接入设备",
+            "en": "DEVICE",
+            "desc": "认领节点设备并关联到项目和样地"
+          },
+          {
+            "no": "05",
+            "label": "邀请协作",
+            "en": "MEMBER",
+            "desc": "邀请李同学加入研究所工作区"
+          },
+          {
+            "no": "06",
+            "label": "分配权限",
+            "en": "ACCESS",
+            "desc": "只开放科普项目、样地和指定设备"
+          },
+          {
+            "no": "07",
+            "label": "沉淀结果",
+            "en": "DATASET",
+            "desc": "把设备、指标和时间范围保存为数据集"
+          }
+        ],
+        "caption": "先把边界讲清楚，再解释协作和权限，最后落到数据结果。",
+        "chapterCount": 7
+      }
+    },
+    {
+      "layout": "theme01_page010",
+      "props": {
+        "kicker": "案例设定",
+        "title": "张老师为什么需要两个工作区",
+        "en": "ONE PERSON, TWO SPACES",
+        "cn": "先分边界，再共享资源",
+        "axisA": {
+          "tag": "研究所工作区",
+          "title": "科普项目协作",
+          "en": "INSTITUTE",
+          "desc": "科普项目、森林样地和设备属于研究所协作；张老师可以邀请学生和同事参与。"
+        },
+        "axisB": {
+          "tag": "个人工作区",
+          "title": "自己的研究数据",
+          "en": "PRIVATE",
+          "desc": "个人实验和未公开资料只属于张老师，不会因为参加研究所项目而自动共享。"
+        },
+        "result": "同一个人，不同的工作边界",
+        "crossLabel": "边界",
+        "caption": "工作区不是普通文件夹，而是一组成员、资源和权限共同成立的协作边界。"
+      }
+    },
+    {
+      "layout": "theme01_page014",
+      "props": {
+        "kicker": "为什么要分层",
+        "title": "为什么还要分项目、样地和设备",
+        "en": "WHY LAYERS MATTER",
+        "cn": "从组织边界一路落到现场和结果",
+        "layers": [
+          {
+            "name": "研究所工作区",
+            "en": "INSTITUTE WORKSPACE",
+            "segments": [
+              {
+                "label": "谁在这里",
+                "items": [
+                  "张老师",
+                  "李同学",
+                  "研究所同事",
+                  "外部协作者"
+                ]
+              },
+              {
+                "label": "管理什么",
+                "items": [
+                  "科普项目",
+                  "成员邀请",
+                  "资源权限",
+                  "数据集"
+                ]
+              }
+            ]
+          },
+          {
+            "name": "科普项目",
+            "en": "EDU PROJECT",
+            "segments": [
+              {
+                "label": "项目目标",
+                "items": [
+                  "组织科普活动",
+                  "记录样地变化",
+                  "协作采集数据",
+                  "产出分享结果"
+                ]
+              },
+              {
+                "label": "项目成员",
+                "items": [
+                  "项目负责人",
+                  "学生成员",
+                  "观察者",
+                  "数据协作者"
+                ]
+              }
+            ]
+          },
+          {
+            "name": "某森林样地（站点）",
+            "en": "FOREST SITE",
+            "segments": [
+              {
+                "label": "现场资源",
+                "items": [
+                  "样地位置",
+                  "网关设备",
+                  "节点设备",
+                  "相机"
+                ]
+              },
+              {
+                "label": "最终结果",
+                "items": [
+                  "实时状态",
+                  "遥测趋势",
+                  "图片视频",
+                  "科普数据集"
+                ]
+              },
+              {
+                "label": "维护动作",
+                "items": [
+                  "校准",
+                  "采样配置",
+                  "固件升级",
+                  "操作记录"
+                ]
+              }
+            ]
+          }
+        ],
+        "caption": "工作区回答“谁能进来”，项目回答“一起做什么”，样地回答“在哪里做”，设备和数据集回答“用什么、产出什么”。",
+        "groupCount": 3
+      }
+    },
+    {
+      "layout": "theme01_page040",
+      "props": {
+        "kicker": "先搭工作骨架",
+        "title": "张老师先把资源放到正确的位置",
+        "en": "SET UP THE WORK",
+        "cn": "工作区、项目、样地、设备逐层归位",
+        "phases": [
+          {
+            "period": "01",
+            "step": "工作区",
+            "heading": "进入研究所工作区",
+            "points": [
+              "研究所资源与个人资料分开",
+              "后续成员和权限都在这里生效"
+            ],
+            "verdict": "边界明确"
+          },
+          {
+            "period": "02",
+            "step": "项目",
+            "heading": "创建科普项目",
+            "points": [
+              "把共同目标放进一个项目",
+              "成员只围绕这件事协作"
+            ],
+            "verdict": "目标一致"
+          },
+          {
+            "period": "03",
+            "step": "样地",
+            "heading": "建立某森林样地",
+            "points": [
+              "记录真实位置和业务信息",
+              "设备通过样地找到现场归属"
+            ],
+            "verdict": "现场清楚"
+          },
+          {
+            "period": "04",
+            "step": "设备",
+            "heading": "认领并关联设备",
+            "points": [
+              "扫码认领一台节点设备",
+              "关联到科普项目和森林样地"
+            ],
+            "verdict": "资源到位"
+          }
+        ],
+        "caption": "先把资源归位，再邀请人协作，权限才有清晰依据。",
+        "itemCount": 4
+      }
+    },
+    {
+      "layout": "theme01_page028",
+      "props": {
+        "kicker": "再开始协作",
+        "title": "张老师把任务交给李同学",
+        "en": "ASSIGN THE WORK",
+        "cn": "邀请、授权、使用、沉淀",
+        "events": [
+          {
+            "date": "01 邀请",
+            "round": "加入工作区",
+            "amount": "成员",
+            "unit": "MEMBER",
+            "note": "李同学先成为研究所工作区成员，但还不能使用所有资源"
+          },
+          {
+            "date": "02 加入项目",
+            "round": "参与科普项目",
+            "amount": "项目",
+            "unit": "PROJECT",
+            "note": "张老师只把李同学加入科普项目，不开放其他项目"
+          },
+          {
+            "date": "03 分配设备",
+            "round": "限定森林样地",
+            "amount": "授权",
+            "unit": "SITE · DEVICE",
+            "note": "李同学只获得指定样地和节点设备的使用权限"
+          },
+          {
+            "date": "04 查看数据",
+            "round": "完成采集任务",
+            "amount": "使用",
+            "unit": "DATA",
+            "note": "李同学查看设备状态、遥测和图片，不能管理成员"
+          },
+          {
+            "date": "05 保存数据集",
+            "round": "沉淀分析结果",
+            "amount": "结果",
+            "unit": "DATASET",
+            "note": "张老师保存设备、指标和时间范围，形成可复用数据集"
+          }
+        ],
+        "caption": "权限不是一次性全开，而是随着任务逐层授予。",
+        "itemCount": 5
+      }
+    },
+    {
+      "layout": "theme01_page025",
+      "props": {
+        "kicker": "案例权限",
+        "title": "同一份工作，三种权限边界",
+        "en": "WHO CAN DO WHAT",
+        "cn": "权限跟着工作范围走",
+        "companies": [
+          {
+            "name": "张老师",
+            "role": "项目负责人"
+          },
+          {
+            "name": "李同学",
+            "role": "项目成员"
+          },
+          {
+            "name": "外部协作者",
+            "role": "只读分享"
+          }
+        ],
+        "attributes": [
+          {
+            "label": "进入工作区",
+            "values": [
+              "可管理",
+              "可进入",
+              "仅受邀进入"
+            ]
+          },
+          {
+            "label": "参与项目",
+            "values": [
+              "可建可管",
+              "仅科普项目",
+              "仅公开内容"
+            ]
+          },
+          {
+            "label": "使用设备",
+            "values": [
+              "全部设备",
+              "指定节点",
+              "不可用"
+            ]
+          },
+          {
+            "label": "导出数据",
+            "values": [
+              "可导出",
+              "项目内导出",
+              "不可导出"
+            ]
+          }
+        ],
+        "caption": "进入看工作区，参与看项目，操作看设备分配，权限可随时撤销。",
+        "itemCount": 3,
+        "rowCount": 4,
+        "highlight": true,
+        "highlightIndex": 1,
+        "accentColor": "#46b083",
+        "imageSlotCount": 0,
+        "showCaption": true
+      }
+    },
+    {
+      "layout": "theme01_page018",
+      "props": {
+        "kicker": "案例结果",
+        "title": "张老师的协作，最终沉淀为可复用结果",
+        "en": "FROM CASE TO DATASET",
+        "cn": "从现场设备到科普数据集",
+        "sourceColumnLabel": "现场输入",
+        "targetColumnLabel": "用户结果",
+        "unit": "相对流向",
+        "sources": [
+          {
+            "name": "某森林样地",
+            "en": "FOREST SITE",
+            "value": 100
+          },
+          {
+            "name": "节点与网关",
+            "en": "TOPOLOGY",
+            "value": 80
+          },
+          {
+            "name": "相机与图片",
+            "en": "CAMERA",
+            "value": 60
+          },
+          {
+            "name": "采集任务",
+            "en": "TASK",
+            "value": 40
+          }
+        ],
+        "targets": [
+          {
+            "name": "实时观测",
+            "en": "OBSERVE"
+          },
+          {
+            "name": "科普分析",
+            "en": "ANALYZE"
+          },
+          {
+            "name": "科普数据集",
+            "en": "DATASET"
+          },
+          {
+            "name": "公开分享",
+            "en": "PUBLIC"
+          }
+        ],
+        "flows": [
+          {
+            "from": "某森林样地",
+            "to": "实时观测",
+            "value": 100
+          },
+          {
+            "from": "某森林样地",
+            "to": "科普分析",
+            "value": 72
+          },
+          {
+            "from": "某森林样地",
+            "to": "科普数据集",
+            "value": 48
+          },
+          {
+            "from": "某森林样地",
+            "to": "公开分享",
+            "value": 18
+          },
+          {
+            "from": "节点与网关",
+            "to": "实时观测",
+            "value": 80
+          },
+          {
+            "from": "节点与网关",
+            "to": "科普分析",
+            "value": 55
+          },
+          {
+            "from": "节点与网关",
+            "to": "科普数据集",
+            "value": 34
+          },
+          {
+            "from": "节点与网关",
+            "to": "公开分享",
+            "value": 12
+          },
+          {
+            "from": "相机与图片",
+            "to": "实时观测",
+            "value": 60
+          },
+          {
+            "from": "相机与图片",
+            "to": "科普数据集",
+            "value": 15
+          },
+          {
+            "from": "相机与图片",
+            "to": "公开分享",
+            "value": 30
+          },
+          {
+            "from": "采集任务",
+            "to": "实时观测",
+            "value": 28
+          },
+          {
+            "from": "采集任务",
+            "to": "科普分析",
+            "value": 38
+          },
+          {
+            "from": "采集任务",
+            "to": "科普数据集",
+            "value": 25
+          }
+        ],
+        "caption": "设备、任务和时间范围，沉淀为可复用的科普数据集。",
+        "sourceCount": 4
+      }
+    },
+    {
+      "layout": "theme01_page047",
+      "props": {
+        "kicker": "一条判断",
+        "quote": "工作区管边界，项目管目标，样地管现场，设备管任务，数据集管结果",
+        "contrastWord": "不是多一层",
+        "highlightWord": "是少走弯路",
+        "attribution": "权限与协作",
+        "caption": "层级越清晰，邀请谁、分配什么、能看哪些数据，就越容易解释和追溯。",
+        "notes": [
+          {
+            "label": "范围明确"
+          },
+          {
+            "label": "权限可撤销"
+          }
+        ],
+        "noteCount": 2
+      }
+    },
+    {
+      "layout": "theme01_page083",
+      "props": {
+        "kicker": "结论",
+        "title": "让协作有边界，让数据有归属",
+        "en": "FROM DATA TO ACTION",
+        "cn": "用户看得懂，管理者管得住",
+        "takeaways": [
+          {
+            "tag": "边界清楚",
+            "en": "CLEAR SCOPE",
+            "text": "张老师的个人资料不会因为加入研究所工作区而被共享。"
+          },
+          {
+            "tag": "协作清楚",
+            "en": "CLEAR WORK",
+            "text": "李同学只进入科普项目，只使用被分配的节点设备。"
+          },
+          {
+            "tag": "结果清楚",
+            "en": "CLEAR RESULT",
+            "text": "数据集记录设备、指标和时间范围，可以复用，也可以追溯。"
+          }
+        ],
+        "summary": "多层级不是增加操作步骤，而是在组织、人员、现场设备和数据结果之间建立一套稳定关系。",
+        "bandLabel": "THCPN PLATFORM",
+        "caption": "从资源归位到权限授予，再到结果沉淀，整条路径清晰可解释。",
+        "takeawayCount": 3
+      }
+    },
+    {
+      "layout": "theme01_page084",
+      "props": {
+        "kicker": "实现边界",
+        "title": "系统保存关系，源库保留原始数据",
+        "en": "TRUST & BOUNDARIES",
+        "cn": "协作信息进平台，实时数据留源头",
+        "listLabel": "平台负责关系与治理",
+        "sources": [
+          {
+            "label": "业务主数据",
+            "note": "用户、工作区、项目、站点与成员关系"
+          },
+          {
+            "label": "设备身份",
+            "note": "稳定身份、拓扑、分配、数据流定义与模板"
+          },
+          {
+            "label": "协作记录",
+            "note": "数据集、导出任务、授权与审计"
+          },
+          {
+            "label": "治理信息",
+            "note": "分类词典、角色权限、操作状态与请求追踪"
+          }
+        ],
+        "panelLabel": "源库保留原始数据",
+        "lead": "实时位置、运行属性、原始遥测、图片和视频保持在 THCPN 源库，平台按需读取，不建立重复缓存。",
+        "meta": [
+          {
+            "k": "不重复缓存",
+            "v": "减少数据漂移"
+          },
+          {
+            "k": "删除平台设备",
+            "v": "不删源库数据"
+          },
+          {
+            "k": "高风险操作",
+            "v": "必须留痕"
+          }
+        ],
+        "disclaimer": "本页只解释业务边界，不展开接口、表结构和部署细节。",
+        "caption": "关系在平台中可管理、可审计；原始数据在源库中保持权威。",
+        "sourceCount": 4
+      }
+    }
+  ]
+}
