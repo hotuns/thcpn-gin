@@ -33,10 +33,14 @@
 
 ## Admin Routes
 
-- `/admin`: Workspace、Project、Site、DataSource 和系统设备汇总。
-- `/admin/sources`: DataSource CRUD、标准站和组网站同步。
-- `/admin/devices`: 系统设备、拓扑、THCPN 配置、生命周期、能力、分配和相机。
-- `/admin/metadata`: 设备能力定义和系统角色。
+- `/admin`: API 健康、平台异常、设备资产、数据源、用户和工作区运维总览。
+- `/admin/sources`: DataSource CRUD、标准站/网关/相机同步和全量同步。
+- `/admin/devices`: 系统设备搜索、分页、多选批量操作、拓扑、THCPN 配置、生命周期、能力、分配和相机。
+- `/admin/sensors`: 平台传感器模板 CRUD，以及协议参数和指标的可视化/JSON 编辑。
+- `/admin/device-map`: 系统设备地图、分类统计和批量分类。
+- `/admin/logs`: 平台日志查询、导出、原始文件和索引维护。
+- `/admin/workspaces`, `/admin/users`: 工作区治理和普通用户账号管理。
+- `/admin/metadata`, `/admin/settings`: 设备能力/角色元数据和服务状态设置。
 
 高频流程使用结构化表单。THCPN 配置、权限 scope、角色权限等低频复杂请求使用 JSON 操作台，字段结构直接遵循 OpenAPI；高风险操作提交前必须二次确认。
 

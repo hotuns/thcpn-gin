@@ -230,6 +230,12 @@ API 访问能力。`parent_grant_id` 记录授权委派链。
 从 THCPN `device_config` 同步的设备配置快照。保存外部配置 ID、版本以及 data/image/control
 三部分 JSON。管理员保存新配置时创建新源配置并同步快照，用于版本冲突检查和平台通道应用。
 
+### `sensor_templates`
+
+平台维护的传感器配置模板库，替代直接维护 THCPN 源库 `sensors` 表的做法。保存传感器型号、通信端口、端口编号、驱动、允许选择的端口编号数组、协议参数与指标 JSON、启用状态和维护人。
+
+协议参数中的 `command`、`wait_time`、`contents` 以及厂商扩展字段既可通过后台可视化编辑，也可通过 JSON 编辑。模板修改不会自动改写已经保存的设备配置；设备配置使用模板时会生成自己的配置内容。
+
 ## 8. 设备元数据与计算指标
 
 ### `device_metadata`

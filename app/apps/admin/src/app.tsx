@@ -10,7 +10,11 @@ import {
   useNavigate,
 } from "react-router-dom";
 import {
+  Activity,
+  AlertTriangle,
   Boxes,
+  Camera,
+  CircleCheck,
   Cpu,
   ChevronDown,
   ChevronRight,
@@ -20,6 +24,9 @@ import {
   Home,
   MapPinned,
   Languages,
+  Network,
+  RefreshCw,
+  Server,
   Settings,
   LogOut,
   Menu as MenuIcon,
@@ -31,7 +38,7 @@ import {
   TableProperties,
   UserRound,
 } from "lucide-react";
-import { Avatar, Dropdown, Menu, Statistic, Space, Tooltip, type MenuProps } from "antd";
+import { Avatar, Dropdown, Menu, Space, Tooltip, type MenuProps } from "antd";
 import { api, formatApiError } from "@thcpn/api";
 import { useAdminAuth } from "@thcpn/auth";
 import {
@@ -45,6 +52,7 @@ import {
   StateView,
 } from "@thcpn/ui";
 import { LanguageSwitcher, useLocale, useTheme } from "@thcpn/i18n";
+import { formatOverviewTime } from "./admin-overview-model";
 const AdminMetadataPage = lazy(() =>
   import("./admin-metadata").then((module) => ({
     default: module.AdminMetadataPage,
@@ -342,148 +350,164 @@ function AdminLoginPage() {
   return <main className="admin-auth-page"><div className="admin-auth-actions"><LanguageSwitcher compact /><Tooltip title={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")}><IconButton label={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")} onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>{resolvedTheme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</IconButton></Tooltip></div><section className="admin-auth-panel"><div className="brand-mark"><ShieldCheck size={20} /></div><div className="eyebrow">THCPN / SYSTEM CONTROL</div><h1>{t("admin:auth.title")}</h1><p>{t("admin:auth.copy")}</p><form onSubmit={submit}><label>{t("admin:auth.email")}<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required /></label><label>{t("admin:auth.password")}<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></label>{error && <div className="admin-login-error">{error}</div>}<button type="submit" disabled={busy}>{busy ? t("admin:auth.signingIn") : t("admin:auth.submit")}</button></form><a href={`${platformUrl}/login`}>{t("admin:auth.back")}</a></section></main>;
 }
 
-async function listAllAdminResources(kind: "projects" | "sites") {
-  const workspaces = await api.workspaces.adminList();
-  const responses = await Promise.all(
-    workspaces.items.map((workspace) =>
-      kind === "projects"
-        ? api.projects.adminList(String(workspace.id))
-        : api.sites.adminList(String(workspace.id)),
-    ),
-  );
-  return { items: responses.flatMap((response) => response.items) };
-}
+const overviewText = (input: unknown, fallback = "—") =>
+  input === undefined || input === null || input === "" ? fallback : String(input);
+const overviewCount = (query: { isError: boolean; data?: { items: unknown[]; total?: number } }) =>
+  query.isError ? undefined : (query.data?.total ?? query.data?.items.length ?? 0);
 function AdminOverview() {
+  const health = useQuery({
+    queryKey: ["system", "health"],
+    queryFn: api.health,
+    retry: false,
+    refetchInterval: 60_000,
+  });
   const sources = useQuery({
-    queryKey: ["admin", "sources"],
+    queryKey: ["admin", "overview", "sources"],
     queryFn: api.admin.sources,
   });
   const devices = useQuery({
-    queryKey: ["admin", "devices"],
+    queryKey: ["admin", "overview", "devices"],
     queryFn: api.admin.devices,
   });
   const workspaces = useQuery({
-    queryKey: ["admin", "workspaces"],
-    queryFn: api.workspaces.adminList,
+    queryKey: ["admin", "overview", "workspaces"],
+    queryFn: () => api.admin.workspaces.list({ page: 1, page_size: 100 }),
   });
-  const projects = useQuery({
-    queryKey: ["admin", "projects", "all-workspaces"],
-    queryFn: () => listAllAdminResources("projects"),
+  const users = useQuery({
+    queryKey: ["admin", "overview", "users"],
+    queryFn: () => api.admin.users.list({ page: 1, page_size: 100 }),
   });
-  const sites = useQuery({
-    queryKey: ["admin", "sites", "all-workspaces"],
-    queryFn: () => listAllAdminResources("sites"),
+  const errorLogs = useQuery({
+    queryKey: ["admin", "overview", "logs", "ERROR"],
+    queryFn: () => api.admin.platformLogs({
+      start: new Date(Date.now() - 86_400_000).toISOString(),
+      end: new Date().toISOString(),
+      level: "ERROR",
+      page: 1,
+      page_size: 6,
+    }),
   });
-  const stat = (query: any) =>
-    query.isError ? "—" : (query.data?.items.length ?? 0);
-  const failures = [
-    { name: "工作区", query: workspaces },
-    { name: "项目", query: projects },
-    { name: "站点", query: sites },
-    { name: "DataSource", query: sources },
-    { name: "设备", query: devices },
-  ].filter((item) => item.query.isError);
+  const warningLogs = useQuery({
+    queryKey: ["admin", "overview", "logs", "WARN"],
+    queryFn: () => api.admin.platformLogs({
+      start: new Date(Date.now() - 86_400_000).toISOString(),
+      end: new Date().toISOString(),
+      level: "WARN",
+      page: 1,
+      page_size: 6,
+    }),
+  });
+  const queries = [health, sources, devices, workspaces, users, errorLogs, warningLogs];
+  const refreshAll = () => queries.forEach((query) => void query.refetch());
+  const refreshing = queries.some((query) => query.isFetching);
+  const refreshedAt = Math.max(...queries.map((query) => query.dataUpdatedAt || 0));
+  const deviceItems = devices.data?.items ?? [];
+  const sourceItems = sources.data?.items ?? [];
+  const workspaceItems = workspaces.data?.items ?? [];
+  const userItems = users.data?.items ?? [];
+  const category = (item: Record<string, unknown>) =>
+    overviewText(item.topology_role || item.device_type, "standalone");
+  const deviceGroups = {
+    gateway: deviceItems.filter((item) => category(item) === "gateway").length,
+    gateway_node: deviceItems.filter((item) => category(item) === "gateway_node").length,
+    standalone: deviceItems.filter((item) => category(item) === "standalone").length,
+    camera: deviceItems.filter((item) => category(item) === "camera").length,
+  };
+  const unassignedDevices = deviceItems.filter((item) => !item.workspace_id).length;
+  const pendingDevices = deviceItems.filter((item) => item.lifecycle_status === "pending_enrollment").length;
+  const inactiveSources = sourceItems.filter((item) => item.status !== "active").length;
+  const restrictedUsers = userItems.filter((item) => item.locked || item.status === "disabled").length;
+  const disabledWorkspaces = workspaceItems.filter((item) => item.status === "disabled").length;
+  const recentLogs = [...(errorLogs.data?.items ?? []), ...(warningLogs.data?.items ?? [])]
+    .sort((a, b) => new Date(String(b.timestamp ?? b.time ?? 0)).getTime() - new Date(String(a.timestamp ?? a.time ?? 0)).getTime())
+    .slice(0, 6);
+  const attentionItems = [
+    { label: "未分配设备", count: unassignedDevices, detail: "尚未进入任何工作区", to: "/admin/devices", tone: unassignedDevices ? "warning" : "success" },
+    { label: "待登记设备", count: pendingDevices, detail: "生命周期仍处于待登记", to: "/admin/devices", tone: pendingDevices ? "warning" : "success" },
+    { label: "异常数据源", count: inactiveSources, detail: "已停用或状态异常", to: "/admin/sources", tone: inactiveSources ? "danger" : "success" },
+    { label: "受限用户", count: restrictedUsers, detail: "账号停用或已锁定", to: "/admin/users", tone: restrictedUsers ? "danger" : "success" },
+    { label: "停用工作区", count: disabledWorkspaces, detail: "当前不可正常使用", to: "/admin/workspaces?status=disabled", tone: disabledWorkspaces ? "warning" : "success" },
+  ] as const;
+  const metrics = [
+    { label: "系统设备", value: overviewCount(devices), suffix: "台", issue: unassignedDevices, issueLabel: "未分配", icon: Boxes, to: "/admin/devices" },
+    { label: "数据源", value: overviewCount(sources), suffix: "个", issue: inactiveSources, issueLabel: "异常", icon: Database, to: "/admin/sources" },
+    { label: "平台用户", value: overviewCount(users), suffix: "人", issue: restrictedUsers, issueLabel: "受限", icon: UserRound, to: "/admin/users" },
+    { label: "工作区", value: overviewCount(workspaces), suffix: "个", issue: disabledWorkspaces, issueLabel: "停用", icon: Network, to: "/admin/workspaces" },
+  ];
   return (
     <>
       <PageHeader
         eyebrow="System / overview"
         title="后台总览"
-        description="平台级工作区、项目、站点、设备资产与数据源运行入口。"
+        description="查看平台运行状态、资产规模、异常事项与近期系统事件。"
         actions={
-          <Badge tone="info">
-            <ShieldCheck size={13} />
-            系统管理员
-          </Badge>
+          <Space>
+            <Badge tone={health.isSuccess ? "success" : health.isLoading ? "neutral" : "danger"}>
+              {health.isSuccess ? <CircleCheck size={13} /> : <AlertTriangle size={13} />}
+              API {health.isSuccess ? "运行正常" : health.isLoading ? "检查中" : "不可用"}
+            </Badge>
+            <Button variant="secondary" onClick={refreshAll} disabled={refreshing}>
+              <RefreshCw size={14} className={refreshing ? "admin-spin" : ""} />
+              刷新
+            </Button>
+          </Space>
         }
       />
-      <div className="grid grid-4">
-        <Panel
-          className={`admin-stat ${workspaces.isError ? "metric-error" : ""}`}
-        >
-          <Statistic
-            title="工作区"
-            value={stat(workspaces)}
-            suffix={workspaces.isError ? "不可用" : "个"}
-          />
+      <div className="admin-overview-status">
+        <div><Server size={16} /><span>API 服务</span><strong>{health.isSuccess ? overviewText(health.data.status, "正常") : health.isLoading ? "检查中" : "连接失败"}</strong></div>
+        <div><Activity size={16} /><span>24 小时事件</span><strong>{(errorLogs.data?.total ?? errorLogs.data?.items.length ?? 0)} 错误 / {(warningLogs.data?.total ?? warningLogs.data?.items.length ?? 0)} 警告</strong></div>
+        <div className="admin-overview-refreshed"><span>数据更新时间</span><strong>{refreshedAt ? formatOverviewTime(refreshedAt, document.documentElement.lang || "zh-CN") : "正在加载"}</strong></div>
+      </div>
+      <div className="admin-overview-metrics section-gap">
+        {metrics.map((metric) => <Link key={metric.label} to={metric.to} className={metric.value === undefined ? "metric-error" : ""}>
+          <metric.icon size={18} />
+          <span>{metric.label}</span>
+          <strong>{metric.value ?? "—"}<small>{metric.value === undefined ? "不可用" : metric.suffix}</small></strong>
+          <em className={metric.issue ? "has-issue" : ""}>{metric.value === undefined ? "加载失败" : metric.issue ? `${metric.issue} ${metric.issueLabel}` : "状态正常"}</em>
+        </Link>)}
+      </div>
+      <div className="admin-overview-main section-gap">
+        <Panel className="admin-overview-panel">
+          <div className="admin-overview-panel-head"><div><h2>待处理事项</h2><span>需要系统管理员关注的资产与账号状态</span></div><Badge tone={attentionItems.some((item) => item.count) ? "warning" : "success"}>{attentionItems.reduce((sum, item) => sum + item.count, 0)} 项</Badge></div>
+          <div className="admin-attention-list">
+            {attentionItems.map((item) => <Link key={item.label} to={item.to}>
+              <span className={`admin-attention-dot ${item.tone}`} />
+              <span><strong>{item.label}</strong><small>{item.detail}</small></span>
+              <b>{item.count}</b><ChevronRight size={14} />
+            </Link>)}
+          </div>
         </Panel>
-        <Panel
-          className={`admin-stat ${projects.isError || sites.isError ? "metric-error" : ""}`}
-        >
-          <Statistic
-            title="项目 / 站点"
-            value={`${stat(projects)} / ${stat(sites)}`}
-          />
-        </Panel>
-        <Panel
-          className={`admin-stat ${sources.isError ? "metric-error" : ""}`}
-        >
-          <Statistic
-            title="数据源"
-            value={stat(sources)}
-            suffix={sources.isError ? "不可用" : "个"}
-          />
-        </Panel>
-        <Panel
-          className={`admin-stat ${devices.isError ? "metric-error" : ""}`}
-        >
-          <Statistic
-            title="系统设备"
-            value={stat(devices)}
-            suffix={devices.isError ? "不可用" : "台"}
-          />
+        <Panel className="admin-overview-panel admin-recent-events">
+          <div className="admin-overview-panel-head"><div><h2>近期系统事件</h2><span>过去 24 小时最新错误与警告</span></div><Link to="/admin/logs">查看全部 <ChevronRight size={13} /></Link></div>
+          {errorLogs.isError && warningLogs.isError ? <div className="admin-overview-empty">日志服务暂时不可用</div> : recentLogs.length ? <div className="admin-event-list">
+            {recentLogs.map((item, index) => <Link to="/admin/logs" key={overviewText(item.id, `${item.timestamp}-${index}`)}>
+              <Badge tone={String(item.level).toUpperCase() === "ERROR" ? "danger" : "warning"}>{overviewText(item.level)}</Badge>
+              <span><strong>{overviewText(item.message)}</strong><small>{overviewText(item.service, "SYSTEM").toUpperCase()} · {overviewText(item.path, overviewText(item.request_id, "系统事件"))}</small></span>
+              <time>{formatOverviewTime(item.timestamp ?? item.time, document.documentElement.lang || "zh-CN")}</time>
+            </Link>)}
+          </div> : <div className="admin-overview-empty"><CircleCheck size={18} />过去 24 小时没有错误或警告</div>}
         </Panel>
       </div>
-      {failures.length ? (
-        <Panel className="section-gap">
-          <StateView
-            type="error"
-            title="部分统计加载失败"
-            description={failures
-              .map(
-                (item) =>
-                  `${item.name}：${formatApiError(item.query.error).message}`,
-              )
-              .join("；")}
-            requestId={failures
-              .map((item) => formatApiError(item.query.error).requestId)
-              .find(Boolean)}
-          />
+      <div className="admin-overview-bottom section-gap">
+        <Panel className="admin-overview-panel">
+          <div className="admin-overview-panel-head"><div><h2>设备资产结构</h2><span>当前系统登记的设备类型</span></div><Link to="/admin/devices">设备管理 <ChevronRight size={13} /></Link></div>
+          <div className="admin-device-estate">
+            <div><Network size={17} /><span>网关</span><strong>{devices.isError ? "—" : deviceGroups.gateway}</strong></div>
+            <div><Cpu size={17} /><span>节点</span><strong>{devices.isError ? "—" : deviceGroups.gateway_node}</strong></div>
+            <div><Server size={17} /><span>标准站</span><strong>{devices.isError ? "—" : deviceGroups.standalone}</strong></div>
+            <div><Camera size={17} /><span>相机</span><strong>{devices.isError ? "—" : deviceGroups.camera}</strong></div>
+          </div>
         </Panel>
-      ) : null}
-      <div className="admin-shortcuts section-gap">
-        <Link to="/admin/sources">
-          <Database size={17} />
-          <span>
-            <strong>THCPN 数据源</strong>
-            <small>连接配置与设备同步</small>
-          </span>
-          <ChevronRight size={15} />
-        </Link>
-        <Link to="/admin/devices">
-          <Boxes size={17} />
-          <span>
-            <strong>系统设备</strong>
-            <small>拓扑、分配与生命周期</small>
-          </span>
-          <ChevronRight size={15} />
-        </Link>
+        <Panel className="admin-overview-panel">
+          <div className="admin-overview-panel-head"><div><h2>常用操作</h2><span>系统资产与运行维护入口</span></div></div>
+          <div className="admin-overview-shortcuts">
+            <Link to="/admin/sources"><Database size={16} /><span><strong>数据源与同步</strong><small>连接配置、单设备与全量同步</small></span><ChevronRight size={14} /></Link>
+            <Link to="/admin/devices"><Boxes size={16} /><span><strong>设备管理</strong><small>拓扑、分配和生命周期</small></span><ChevronRight size={14} /></Link>
+            <Link to="/admin/sensors"><Cpu size={16} /><span><strong>传感器模板</strong><small>协议参数与遥测指标</small></span><ChevronRight size={14} /></Link>
+            <Link to="/admin/logs"><Activity size={16} /><span><strong>平台日志</strong><small>错误诊断与请求检索</small></span><ChevronRight size={14} /></Link>
+          </div>
+        </Panel>
       </div>
-      <Panel className="section-gap">
-        <div className="panel-header">
-          <div>
-            <h2 className="panel-title">控制平面状态</h2>
-            <div className="panel-kicker">
-              平台管理独立于用户工作区
-            </div>
-          </div>
-          <Badge tone="success">已隔离</Badge>
-        </div>
-        <div className="panel-body">
-          <div className="command-note">
-            设备注册、DataSource、DSN、Binding、拓扑、能力、生命周期与分配只在系统后台操作；涉及工作区的操作必须显式选择目标工作区。
-          </div>
-        </div>
-      </Panel>
     </>
   );
 }
