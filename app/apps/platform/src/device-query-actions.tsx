@@ -1,4 +1,5 @@
-import { Check, Search } from "lucide-react";
+import { useRef, useState } from "react";
+import { Check, GripVertical, Search } from "lucide-react";
 import {
   api,
   formatApiError,
@@ -102,6 +103,7 @@ export function DeviceQueryActions({
   streams,
   selected,
   onSelectedChange,
+  onSelectedOrderChange,
   startTime,
   endTime,
   onStartTimeChange,
@@ -116,6 +118,7 @@ export function DeviceQueryActions({
   streams: DataStream[];
   selected: string[];
   onSelectedChange: (ids: string[]) => void;
+  onSelectedOrderChange: (ids: string[]) => void;
   startTime: string;
   endTime: string;
   onStartTimeChange: (value: string) => void;
@@ -127,9 +130,17 @@ export function DeviceQueryActions({
   loading?: boolean;
   error?: unknown;
 }) {
+  const [draggedId, setDraggedId] = useState("");
+  const [dragOverId, setDragOverId] = useState("");
+  const draggedRef = useRef(false);
   const telemetryStreams = streams.filter(
     (item) => item.type === "telemetry" && item.status === "active",
   );
+  const streamsById = new Map(telemetryStreams.map((item) => [item.id, item]));
+  const orderedTelemetryStreams = [
+    ...selected.map((id) => streamsById.get(id)).filter((item) => item !== undefined),
+    ...telemetryStreams.filter((item) => !selected.includes(item.id)),
+  ];
   const invalidRange = !startTime || !endTime || Date.parse(startTime) >= Date.parse(endTime);
   const toggle = (id: string) =>
     onSelectedChange(
@@ -137,6 +148,22 @@ export function DeviceQueryActions({
         ? selected.filter((item) => item !== id)
         : [...selected, id],
     );
+  const moveSelected = (targetId: string) => {
+    if (!draggedId || draggedId === targetId) return;
+    const from = selected.indexOf(draggedId);
+    const to = selected.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+    const next = [...selected];
+    next.splice(to, 0, next.splice(from, 1)[0]);
+    onSelectedOrderChange(next);
+  };
+  const finishDrag = () => {
+    setDraggedId("");
+    setDragOverId("");
+    window.setTimeout(() => {
+      draggedRef.current = false;
+    }, 0);
+  };
   return (
     <Panel className="section-gap stream-selector query-condition-panel">
       <div className="panel-header">
@@ -177,7 +204,7 @@ export function DeviceQueryActions({
       <div className="query-metric-heading">
         <div>
           <strong>数据指标</strong>
-          <small>默认全选，可按需取消</small>
+          <small>拖动已选指标可调整下方图表顺序</small>
         </div>
         <div className="header-actions">
           <Badge tone="info">已选 {selected.length}</Badge>
@@ -211,13 +238,40 @@ export function DeviceQueryActions({
         />
       ) : telemetryStreams.length ? (
         <div className="stream-check-grid">
-          {telemetryStreams.map((stream) => (
+          {orderedTelemetryStreams.map((stream) => (
             <button
               type="button"
               key={stream.id}
-              className={selected.includes(stream.id) ? "selected" : ""}
-              onClick={() => toggle(stream.id)}
+              className={[
+                selected.includes(stream.id) ? "selected" : "",
+                draggedId === stream.id ? "dragging" : "",
+                dragOverId === stream.id ? "drag-over" : "",
+              ].filter(Boolean).join(" ")}
+              draggable={selected.includes(stream.id)}
+              onDragStart={(event) => {
+                if (!selected.includes(stream.id)) return;
+                draggedRef.current = true;
+                setDraggedId(stream.id);
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", stream.id);
+              }}
+              onDragOver={(event) => {
+                if (!draggedId || !selected.includes(stream.id)) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                setDragOverId(stream.id);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                moveSelected(stream.id);
+                finishDrag();
+              }}
+              onDragEnd={finishDrag}
+              onClick={() => {
+                if (!draggedRef.current) toggle(stream.id);
+              }}
             >
+              <GripVertical className="stream-drag-handle" size={13} aria-hidden="true" />
               <span className="stream-check">{selected.includes(stream.id) && <Check size={12} />}</span>
               <span>
                 <strong>{stream.computed && <i className="stream-fx">fx</i>}{stream.name}</strong>

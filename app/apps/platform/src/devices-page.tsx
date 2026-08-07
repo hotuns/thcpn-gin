@@ -55,7 +55,7 @@ import { DeviceCombobox } from "./device-combobox";
 
 type DeviceCategory = "gateway" | "gateway_node" | "camera" | "standalone";
 type Category = "all" | Exclude<DeviceCategory, "gateway_node">;
-type Mode = "placement" | "calibration" | "firmware" | "transfer";
+type Mode = "calibration" | "firmware" | "transfer";
 type VitalLevel = "good" | "fair" | "low" | "critical" | "unknown";
 type VitalReading = {
   level: VitalLevel;
@@ -348,7 +348,7 @@ export function DevicesPage() {
             [
               { id: "all", label: "全部" },
               { id: "gateway", label: "组网站" },
-              { id: "camera", label: "相机" },
+              { id: "camera", label: "监控站" },
               { id: "standalone", label: "标准站" },
             ] as Array<{ id: Category; label: string }>
           ).map((item) => (
@@ -780,7 +780,6 @@ export function DeviceCenterDetailPage() {
     queryFn: () => api.sites.list(detailWorkspaceId!),
     enabled: Boolean(detailWorkspaceId),
   });
-  const [editing, setEditing] = useState<Mode | null>(null);
   const [feedback, setFeedback] = useState("");
   if (detail.isLoading)
     return (
@@ -972,11 +971,7 @@ export function DeviceCenterDetailPage() {
             id: item.id,
             name: item.name,
           }))}
-          projects={projects.data?.items ?? []}
-          sites={sites.data?.items ?? []}
           systemAdmin={false}
-          editing={editing}
-          setEditing={setEditing}
           run={run}
         />
       )}
@@ -1333,85 +1328,22 @@ function DeviceConfig({
   device,
   currentWorkspaceId,
   workspaces,
-  projects,
-  sites,
   systemAdmin,
-  editing,
-  setEditing,
   run,
 }: {
   device: Device;
   currentWorkspaceId: string;
   workspaces: Array<{ id: string; name: string }>;
-  projects: JsonRecord[];
-  sites: JsonRecord[];
   systemAdmin: boolean;
-  editing: Mode | null;
-  setEditing: (mode: Mode | null) => void;
   run: (
     action: () => Promise<unknown>,
     message: string,
     leavesWorkspace?: boolean,
   ) => Promise<boolean>;
 }) {
-  const actions: Array<{ mode: Mode; label: string; show: boolean }> = [
-    { mode: "placement", label: "项目 / 站点", show: true },
-    {
-      mode: "calibration",
-      label: "设备校准",
-      show: device.capabilities.some((item) => item.includes("calibrat")),
-    },
-    {
-      mode: "firmware",
-      label: "固件升级",
-      show: device.capabilities.some((item) => item.includes("firmware")),
-    },
-    { mode: "transfer", label: "转移设备", show: true },
-  ];
   return (
     <>
       <SamplingProfilePanel deviceId={device.id} workspaceId={currentWorkspaceId} />
-      <Panel>
-        <div className="panel-header">
-          <div>
-            <h2 className="panel-title">工作区配置</h2>
-            <div className="panel-kicker">
-              按当前账号权限调整设备在工作区中的使用方式
-            </div>
-          </div>
-        </div>
-        <div className="device-config-actions">
-          {actions
-            .filter((item) => item.show)
-            .map((item) => (
-              <Button
-                key={item.mode}
-                variant="secondary"
-                onClick={() => setEditing(item.mode)}
-              >
-                <Settings2 size={14} />
-                {item.label}
-              </Button>
-            ))}
-        </div>
-      </Panel>
-      {editing && (
-        <DeviceActionForm
-          key={`${device.id}-${editing}`}
-          device={device}
-          mode={editing}
-          currentWorkspaceId={currentWorkspaceId}
-          workspaces={workspaces}
-          projects={projects}
-          sites={sites}
-          onClose={() => setEditing(null)}
-          onComplete={async (action, message) => {
-            const ok = await run(action, message, editing === "transfer");
-            if (ok) setEditing(null);
-            return ok;
-          }}
-        />
-      )}
       {systemAdmin && (
         <SystemDeviceConfig device={device} workspaces={workspaces} run={run} />
       )}
@@ -1753,17 +1685,17 @@ function SystemCameraBinding({
   }, [query.data]);
   return (
     <section className="thcpn-config-editor camera-binding-editor">
-      <h3>海康 / 萤石相机绑定</h3>
+      <h3>监控站视频绑定</h3>
       {query.isLoading ? (
         <StateView
           type="loading"
-          title="正在加载相机绑定"
+          title="正在加载监控站视频绑定"
           description="正在读取视频通道配置。"
         />
       ) : query.error ? (
         <StateView
           type="error"
-          title="相机绑定加载失败"
+          title="监控站视频绑定加载失败"
           description={formatApiError(query.error).message}
         />
       ) : (
@@ -1837,11 +1769,11 @@ function SystemCameraBinding({
                     is_encrypted: encrypted,
                     validate_code_secret_ref: secretRef.trim(),
                   }),
-                "相机绑定已更新",
+                "监控站视频绑定已更新",
               )
             }
           >
-            保存相机绑定
+            保存监控站视频绑定
           </Button>
         </>
       )}
@@ -2089,8 +2021,6 @@ function DeviceActionForm({
   mode,
   currentWorkspaceId,
   workspaces,
-  projects,
-  sites,
   onClose,
   onComplete,
 }: {
@@ -2098,16 +2028,12 @@ function DeviceActionForm({
   mode: Mode;
   currentWorkspaceId: string;
   workspaces: Array<{ id: string; name: string }>;
-  projects: JsonRecord[];
-  sites: JsonRecord[];
   onClose: () => void;
   onComplete: (
     action: () => Promise<unknown>,
     message: string,
   ) => Promise<boolean>;
 }) {
-  const [projectId, setProjectId] = useState(device.project_id ?? "");
-  const [siteId, setSiteId] = useState(device.site_id ?? "");
   const [calibrationType, setCalibrationType] = useState("zero_point");
   const [parameters, setParameters] = useState("{}");
   const [version, setVersion] = useState("");
@@ -2142,15 +2068,6 @@ function DeviceActionForm({
     setBusy(true);
     setError("");
     try {
-      if (mode === "placement")
-        await onComplete(
-          () =>
-            api.devices.update(device.id, {
-              project_id: projectId || null,
-              site_id: siteId || null,
-            }),
-          "设备位置已更新",
-        );
       if (mode === "calibration")
         await onComplete(
           () =>
@@ -2190,21 +2107,16 @@ function DeviceActionForm({
       setBusy(false);
     }
   };
-  const availableSites = sites.filter(
-    (item) => !projectId || item.project_id === projectId,
-  );
   return (
     <Panel className="section-gap device-editor">
       <div className="panel-header">
         <div>
           <h2 className="panel-title">
-            {mode === "placement"
-              ? "调整项目 / 站点"
-              : mode === "calibration"
-                ? "请求设备校准"
-                : mode === "firmware"
-                  ? "安排固件升级"
-                  : "转移设备"}
+            {mode === "calibration"
+              ? "请求设备校准"
+              : mode === "firmware"
+                ? "安排固件升级"
+                : "转移设备"}
           </h2>
           <div className="panel-kicker">
             {device.name} · {device.serial_no}
@@ -2217,42 +2129,7 @@ function DeviceActionForm({
       </div>
       <form onSubmit={submit}>
         <div className="device-form-grid">
-          {mode === "placement" ? (
-            <>
-              <label className="field">
-                <span className="field-label">项目</span>
-                <select
-                  value={projectId}
-                  onChange={(event) => {
-                    setProjectId(event.target.value);
-                    setSiteId("");
-                  }}
-                >
-                  <option value="">不设置</option>
-                  {projects.map((item) => (
-                    <option key={text(item.id)} value={text(item.id)}>
-                      {text(item.name)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                <span className="field-label">站点</span>
-                <select
-                  value={siteId}
-                  disabled={!projectId}
-                  onChange={(event) => setSiteId(event.target.value)}
-                >
-                  <option value="">不设置</option>
-                  {availableSites.map((item) => (
-                    <option key={text(item.id)} value={text(item.id)}>
-                      {text(item.name)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </>
-          ) : mode === "calibration" ? (
+          {mode === "calibration" ? (
             <>
               <label className="field">
                 <span className="field-label">校准流程</span>

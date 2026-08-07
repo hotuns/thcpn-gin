@@ -23,7 +23,7 @@ const topologyRoleLabels = {
   standalone: { zh: "标准站", en: "Station" },
   gateway: { zh: "网关", en: "Gateway" },
   gateway_node: { zh: "网关节点", en: "Gateway node" },
-  camera: { zh: "相机", en: "Camera" },
+  camera: { zh: "监控站", en: "Monitoring station" },
 };
 
 const deviceCapabilityLabels = {

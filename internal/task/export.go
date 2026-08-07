@@ -16,12 +16,18 @@ import (
 )
 
 const (
-	TypeExportJob = "export:process"
-	QueueExports  = "exports"
+	TypeExportJob      = "export:process"
+	TypeProcessingScan = "processing:scan"
+	QueueExports       = "exports"
+	QueueProcessing    = "processing"
 )
 
 type ExportProcessor interface {
 	ProcessJob(ctx context.Context, jobID uuid.UUID) (bool, error)
+}
+
+type ProcessingProcessor interface {
+	ProcessAvailable(ctx context.Context, limit int) (int, error)
 }
 
 type ExportJobPayload struct {
@@ -53,6 +59,21 @@ func (c *Client) EnqueueExportJob(ctx context.Context, jobID uuid.UUID) error {
 			return nil
 		}
 		return apperr.Wrap(apperr.KindInternal, "enqueue export job task", err)
+	}
+	return nil
+}
+
+func (c *Client) EnqueueProcessingScan(ctx context.Context) error {
+	if c == nil || c.client == nil {
+		return apperr.New(apperr.KindInternal, "task client is not configured")
+	}
+	task := asynq.NewTask(TypeProcessingScan, nil)
+	_, err := c.client.EnqueueContext(ctx, task, asynq.Queue(QueueProcessing), asynq.MaxRetry(2), asynq.Timeout(2*time.Hour), asynq.Unique(30*time.Second))
+	if errors.Is(err, asynq.ErrDuplicateTask) || errors.Is(err, asynq.ErrTaskIDConflict) {
+		return nil
+	}
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "enqueue processing scan", err)
 	}
 	return nil
 }
@@ -130,17 +151,37 @@ func RegisterExportHandlers(mux *asynq.ServeMux, processor ExportProcessor, logg
 	mux.Handle(TypeExportJob, ExportJobHandler{Processor: processor, Logger: logger})
 }
 
-func NewExportServer(redisClient redis.UniversalClient, processor ExportProcessor, logger *slog.Logger, concurrency int) (*asynq.Server, *asynq.ServeMux) {
+type ProcessingScanHandler struct {
+	Processor ProcessingProcessor
+	Logger    *slog.Logger
+}
+
+func (h ProcessingScanHandler) ProcessTask(ctx context.Context, task *asynq.Task) error {
+	if h.Processor == nil {
+		return apperr.New(apperr.KindInternal, "processing engine is not configured")
+	}
+	processed, err := h.Processor.ProcessAvailable(ctx, 20)
+	if h.Logger != nil {
+		h.Logger.Info("processing scan handled", slog.Int("processed", processed))
+	}
+	return err
+}
+
+func NewExportServer(redisClient redis.UniversalClient, processor ExportProcessor, logger *slog.Logger, concurrency int, processingProcessors ...ProcessingProcessor) (*asynq.Server, *asynq.ServeMux) {
 	if concurrency <= 0 {
 		concurrency = 5
 	}
 	mux := asynq.NewServeMux()
 	RegisterExportHandlers(mux, processor, logger)
+	if len(processingProcessors) > 0 && processingProcessors[0] != nil {
+		mux.Handle(TypeProcessingScan, ProcessingScanHandler{Processor: processingProcessors[0], Logger: logger})
+	}
 
 	cfg := asynq.Config{
 		Concurrency: concurrency,
 		Queues: map[string]int{
-			QueueExports: 10,
+			QueueExports:    10,
+			QueueProcessing: 4,
 		},
 		Logger:       SlogLogger{Logger: logger},
 		ErrorHandler: exportTaskErrorHandler(logger),

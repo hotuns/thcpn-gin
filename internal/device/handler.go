@@ -661,6 +661,60 @@ func (h *Handler) AdminUnassign(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+func (h *Handler) AdminRequestCalibration(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	var req createCalibrationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	result, err := h.service.RequestCalibration(c.Request.Context(), CalibrationInput{
+		DeviceID: deviceID, CalibrationType: req.CalibrationType, Parameters: req.Parameters, ActorUserID: actor.UserID,
+	})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{ActorType: audit.ActorSystemAdmin, ActorID: audit.UserActorID(actor.UserID), Action: "device.calibrate", ResourceType: "device", ResourceID: audit.ResourceID(deviceID), Result: audit.ResultSuccess}) {
+		return
+	}
+	c.JSON(http.StatusCreated, result)
+}
+
+func (h *Handler) AdminRequestFirmwareUpgrade(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	var req createFirmwareUpgradeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	result, err := h.service.RequestFirmwareUpgrade(c.Request.Context(), FirmwareUpgradeInput{
+		DeviceID: deviceID, FirmwareVersion: req.FirmwareVersion, PackageURI: req.PackageURI, Checksum: req.Checksum, ScheduledAt: req.ScheduledAt, ActorUserID: actor.UserID,
+	})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{ActorType: audit.ActorSystemAdmin, ActorID: audit.UserActorID(actor.UserID), Action: "device.firmware_upgrade", ResourceType: "device", ResourceID: audit.ResourceID(deviceID), Result: audit.ResultSuccess}) {
+		return
+	}
+	c.JSON(http.StatusCreated, result)
+}
+
 func (h *Handler) Create(c *gin.Context) {
 	actor, ok := actorFromContext(c)
 	if !ok {

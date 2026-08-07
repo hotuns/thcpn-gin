@@ -46,6 +46,15 @@ export const permissionsForTemplate = (
     (item) => !external || externalPermission(item),
   );
 
+const scopeTypeLabel = (value: string) =>
+  ({
+    workspace: "整个工作区",
+    project: "项目",
+    site: "站点",
+    device: "设备",
+    dataset: "数据集",
+  })[value] ?? value;
+
 export function AccessControlTab() {
   const { currentId, current } = useWorkspace();
   const [params, setParams] = useSearchParams();
@@ -171,10 +180,36 @@ export function AccessControlTab() {
         : (query.data?.items.length ?? 0);
   return (
     <>
+      <Panel className="access-guide">
+        <div className="access-guide-heading">
+          <div>
+            <h2 className="panel-title">先选择访问方式</h2>
+            <div className="panel-kicker">三种方式对应三种不同的协作关系</div>
+          </div>
+          <ShieldCheck size={18} />
+        </div>
+        <div className="access-guide-grid">
+          <div>
+            <strong>工作区成员</strong>
+            <p>对方是长期协作者。加入后按成员角色使用当前工作区。</p>
+            <span>适合课题组成员、项目负责人</span>
+          </div>
+          <div>
+            <strong>单项授权</strong>
+            <p>对方不加入工作区，只开放指定项目、站点、设备或数据集。</p>
+            <span>适合合作单位、临时查看者</span>
+          </div>
+          <div>
+            <strong>访问邀请</strong>
+            <p>对方还没有账号，发送邀请后按指定范围获得访问权限。</p>
+            <span>适合首次邀请外部用户</span>
+          </div>
+        </div>
+      </Panel>
       <div className="access-summary">
         <div>
           <strong>{summaryCount(members)}</strong>
-          <span>内部成员</span>
+          <span>工作区成员</span>
         </div>
         <div>
           <strong>
@@ -198,11 +233,11 @@ export function AccessControlTab() {
       {feedback && <div className="command-note section-gap">{feedback}</div>}
       <div className="access-layout section-gap">
         <AccessPanel
-          title="内部成员"
-          subtitle="长期协作关系"
+          title="工作区成员"
+          subtitle="长期协作关系，按成员角色访问"
           icon={<UserPlus size={16} />}
           action={
-            <Button onClick={() => open("member")}>
+            <Button variant="secondary" onClick={() => open("member")}>
               <Plus size={14} />
               添加成员
             </Button>
@@ -225,11 +260,11 @@ export function AccessControlTab() {
           />
         </AccessPanel>
         <AccessPanel
-          title="资源授权"
-          subtitle="已注册外部用户"
+          title="单项授权"
+          subtitle="不加入工作区，只开放指定资源"
           icon={<ShieldCheck size={16} />}
           action={
-            <Button onClick={() => open("grant")}>
+            <Button variant="secondary" onClick={() => open("grant")}>
               <Plus size={14} />
               创建授权
             </Button>
@@ -249,11 +284,11 @@ export function AccessControlTab() {
           />
         </AccessPanel>
         <AccessPanel
-          title="发出的邀请"
-          subtitle="未注册或尚未加入平台"
+          title="待处理邀请"
+          subtitle="发给尚未加入平台的用户"
           icon={<KeyRound size={16} />}
           action={
-            <Button onClick={() => open("invitation")}>
+            <Button variant="secondary" onClick={() => open("invitation")}>
               <Plus size={14} />
               创建邀请
             </Button>
@@ -270,8 +305,8 @@ export function AccessControlTab() {
           />
         </AccessPanel>
         <AccessPanel
-          title="我的待接受邀请"
-          subtitle="与当前手机号或邮箱匹配"
+          title="我收到的邀请"
+          subtitle="与当前账号匹配的待处理邀请"
           icon={<Check size={16} />}
           query={mine}
         >
@@ -287,8 +322,8 @@ export function AccessControlTab() {
       </div>
       <div className="section-gap">
         <AccessPanel
-          title="授予我的访问"
-          subtitle="其他工作区分享给当前账号的有效资源"
+          title="我收到的访问"
+          subtitle="其他工作区分享给当前账号的资源"
           icon={<ShieldCheck size={16} />}
           query={myGrants}
         >
@@ -340,7 +375,7 @@ function AccessPanel({
         </div>
         <div className="header-actions">
           {action}
-          {icon}
+          {!action && icon}
         </div>
       </div>
       {query.isLoading ? (
@@ -553,7 +588,7 @@ const scopeLabel = (row: JsonRecord, resources: ResourceMap) => {
   const type = text(row.scope_type);
   const id = text(row.scope_id);
   const resource = (resources[type] ?? []).find((item) => text(item.id) === id);
-  return `${type} / ${text(resource?.name, text(resource?.serial_no, id.slice(0, 8)))}`;
+  return `${scopeTypeLabel(type)} · ${text(resource?.name, text(resource?.serial_no, id.slice(0, 8)))}`;
 };
 
 function AccessForm({
@@ -615,8 +650,31 @@ function AccessForm({
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [busy, onClose]);
-  const availableTemplates = templates.filter(
-    (item) => !external || !["owner", "admin"].includes(item.code),
+  const internalTemplateCodes = [
+    "custom",
+    "owner",
+    "admin",
+    "project_manager",
+    "site_operator",
+    "data_manager",
+    "researcher",
+    "viewer",
+  ];
+  const externalTemplateCodes = [
+    "custom",
+    "shared_viewer",
+    "shared_downloader",
+    "project_manager",
+    "site_operator",
+    "data_manager",
+    "researcher",
+    "viewer",
+    "service_engineer",
+  ];
+  const availableTemplates = templates.filter((item) =>
+    (external ? externalTemplateCodes : internalTemplateCodes).includes(
+      item.code,
+    ),
   );
   const availablePermissions = permissions.filter(
     (item) => !external || externalPermission(item.code),
@@ -727,7 +785,11 @@ function AccessForm({
                       : "创建邀请"}
               </h2>
               <div className="panel-kicker">
-                权限模板用于预填，下方权限点是最终授权依据
+                {mode === "member" || mode === "edit-member"
+                  ? "选择成员角色；默认作用于整个工作区"
+                  : mode === "grant"
+                    ? "选择资源范围，只开放需要的权限"
+                    : "对方接受后获得指定范围的访问权限"}
               </div>
             </div>
             <Button variant="secondary" onClick={onClose} disabled={busy}>
@@ -771,10 +833,12 @@ function AccessForm({
               </div>
             )}
             <div className="form-section">
-              <h3>权限模板与范围</h3>
+              <h3>访问范围与角色</h3>
               <div className="access-form-grid">
                 <label className="field">
-                  <span className="field-label">权限模板</span>
+                  <span className="field-label">
+                    {external ? "访问角色" : "成员角色"}
+                  </span>
                   <select
                     value={template}
                     onChange={(event) => setTemplateCode(event.target.value)}
@@ -787,7 +851,7 @@ function AccessForm({
                   </select>
                 </label>
                 <label className="field">
-                  <span className="field-label">Scope 类型</span>
+                  <span className="field-label">访问范围</span>
                   <select
                     value={scopeType}
                     disabled={template === "owner"}
@@ -801,13 +865,13 @@ function AccessForm({
                       )
                       .map((item) => (
                         <option key={item} value={item}>
-                          {item}
+                          {scopeTypeLabel(item)}
                         </option>
                       ))}
                   </select>
                 </label>
                 <label className="field field-wide">
-                  <span className="field-label">Scope 资源</span>
+                  <span className="field-label">具体资源</span>
                   <select
                     required
                     value={scopeId}
@@ -824,10 +888,11 @@ function AccessForm({
                 </label>
               </div>
             </div>
-            <div className="form-section">
-              <h3>
-                权限点 <span>{selectedPermissions.length} 项</span>
-              </h3>
+            <details className="form-section access-advanced">
+              <summary>
+                <span>高级：调整具体操作权限</span>
+                <strong>{selectedPermissions.length} 项已选择</strong>
+              </summary>
               <div className="permission-grid">
                 {availablePermissions.map((item) => (
                   <label
@@ -848,7 +913,7 @@ function AccessForm({
                   </label>
                 ))}
               </div>
-            </div>
+            </details>
             {external && (
               <div className="form-section">
                 <h3>有效期与附加能力</h3>

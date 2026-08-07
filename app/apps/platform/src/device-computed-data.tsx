@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Braces,
@@ -19,6 +19,27 @@ import {
 } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, Panel, StateView } from "@thcpn/ui";
+
+const FORMULA_VARIABLE_PATTERN = /\b(?:stream|meta)\.[A-Za-z][A-Za-z0-9_]*\b/g;
+const FORMULA_HIGHLIGHT_PATTERN = /(?:stream|meta)\.[A-Za-z][A-Za-z0-9_]*|\b\d+(?:\.\d+)?\b|[()+\-*/%^]/g;
+
+function highlightFormula(formula: string, knownVariables: Set<string>): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  const pattern = new RegExp(FORMULA_HIGHLIGHT_PATTERN.source, "g");
+  while ((match = pattern.exec(formula))) {
+    if (match.index > cursor) nodes.push(formula.slice(cursor, match.index));
+    const token = match[0];
+    const className = token.startsWith("stream.") || token.startsWith("meta.")
+      ? knownVariables.has(token) ? "formula-token-variable" : "formula-token-unknown"
+      : /^\d/.test(token) ? "formula-token-number" : "formula-token-operator";
+    nodes.push(<span className={className} key={`${match.index}-${token}`}>{token}</span>);
+    cursor = match.index + token.length;
+  }
+  if (cursor < formula.length) nodes.push(formula.slice(cursor));
+  return nodes;
+}
 
 export function DeviceMetadataPanel({
   workspaceId,
@@ -296,14 +317,42 @@ function ComputedStreamEditor({
   const [preview, setPreview] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [formulaScroll, setFormulaScroll] = useState({ top: 0, left: 0 });
+  const formulaInputRef = useRef<HTMLTextAreaElement>(null);
   const numericMetadata = metadata.filter((entry) => entry.value_type === "number");
   const sampleStreams = useMemo(
     () => Object.fromEntries(streams.map((stream) => [stream.code, 1])),
     [streams],
   );
+  const knownVariables = useMemo(
+    () => new Set([
+      ...streams.map((stream) => `stream.${stream.code}`),
+      ...numericMetadata.map((entry) => `meta.${entry.key}`),
+    ]),
+    [numericMetadata, streams],
+  );
+  const formulaVariables = useMemo(
+    () => Array.from(new Set(formula.match(FORMULA_VARIABLE_PATTERN) ?? [])),
+    [formula],
+  );
+  const unknownVariableCount = formulaVariables.filter((variable) => !knownVariables.has(variable)).length;
   useEffect(() => setPreview(null), [formula]);
-  const insert = (variable: string) =>
-    setFormula((current) => current ? `${current} ${variable}` : variable);
+  const insert = (variable: string) => {
+    const input = formulaInputRef.current;
+    const start = input?.selectionStart ?? formula.length;
+    const end = input?.selectionEnd ?? start;
+    const before = formula.slice(0, start);
+    const after = formula.slice(end);
+    const beforeSeparator = before && !/[\s([,=+\-*/%^]$/.test(before) ? " " : "";
+    const afterSeparator = after && !/^[\s),=+\-*/%^]/.test(after) ? " " : "";
+    const next = `${before}${beforeSeparator}${variable}${afterSeparator}${after}`;
+    const cursor = start + beforeSeparator.length + variable.length;
+    setFormula(next);
+    requestAnimationFrame(() => {
+      formulaInputRef.current?.focus();
+      formulaInputRef.current?.setSelectionRange(cursor, cursor);
+    });
+  };
   const tryFormula = async () => {
     setError("");
     try {
@@ -346,7 +395,43 @@ function ComputedStreamEditor({
               <label className="computed-enabled"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />启用</label>
             </div>
             <div className="formula-editor">
-              <label className="field"><span className="field-label">公式</span><textarea required rows={4} value={formula} onChange={(event) => setFormula(event.target.value)} placeholder="stream.change / 1000 + meta.initial_value" /></label>
+              <div className="formula-editor-heading">
+                <span className="field-label">公式</span>
+                <span className="formula-editor-status">
+                  {formulaVariables.length
+                    ? `${formulaVariables.length} 个变量${unknownVariableCount ? ` · ${unknownVariableCount} 个未匹配` : ""}`
+                    : "等待输入变量"}
+                </span>
+              </div>
+              <div className="formula-input-shell">
+                <pre
+                  className="formula-highlight"
+                  aria-hidden="true"
+                  style={{ transform: `translate(${-formulaScroll.left}px, ${-formulaScroll.top}px)` }}
+                >
+                  {formula ? highlightFormula(formula, knownVariables) : <span className="formula-placeholder">点击下方变量插入公式</span>}
+                </pre>
+                <textarea
+                  ref={formulaInputRef}
+                  required
+                  rows={4}
+                  value={formula}
+                  onChange={(event) => setFormula(event.target.value)}
+                  onScroll={(event) => setFormulaScroll({ top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft })}
+                  aria-label="公式"
+                  placeholder="stream.change / 1000 + meta.initial_value"
+                  spellCheck={false}
+                />
+              </div>
+              {formulaVariables.length > 0 && (
+                <div className="formula-token-summary" aria-label="公式中的变量">
+                  {formulaVariables.map((variable) => (
+                    <span key={variable} className={knownVariables.has(variable) ? "formula-token-chip" : "formula-token-chip unknown"}>
+                      {variable}
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className="formula-variables">
                 <strong><Braces size={14} />原始指标</strong>
                 <div>{streams.map((stream) => <button type="button" key={stream.id} onClick={() => insert(`stream.${stream.code}`)}><span>{stream.name}</span><code>stream.{stream.code}</code></button>)}</div>

@@ -40,6 +40,17 @@ services:
         condition: service_healthy
     entrypoint: ["migrate"]
 
+  processor:
+    build:
+      context: ./processor
+    environment:
+      PROCESSOR_ARTIFACT_DIR: /var/lib/thcpn-processor/artifacts
+    ports:
+      - "${PROCESSOR_PORT:-8090}:8090"
+    volumes:
+      - processor_artifacts:/var/lib/thcpn-processor/artifacts
+
 volumes:
   postgres_data:
   redis_data:
+  processor_artifacts:

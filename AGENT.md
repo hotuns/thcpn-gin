@@ -2,20 +2,6 @@
 
 本文件只维护仓库开发规则、架构边界和验证要求，不记录功能进度、历史验收结果或临时任务状态。
 
-开始实现前先阅读：
-
-- `iot_research_permission_mvp.md`
-- `iot_research_go_backend_dev_guide.md`
-- `thcpn-adapter.md`
-- `docs/frontend-functional-design.md`，涉及前端时必读
-- 本文件
-
-## 文档维护
-
-- 本文件只记录长期有效的规则，不记录已完成功能、migration 数量、测试通过历史、版本验收或待办清单。
-- 功能契约变化时更新对应设计文档和 OpenAPI；任务进度保留在 issue、commit、PR 或当次协作记录中。
-- 避免复制可从源码直接读取且容易过期的清单、版本号和统计数字。
-- 删除或调整规则时说明架构原因，不用项目进度作为长期规则。
 
 ## 项目边界
 

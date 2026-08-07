@@ -407,10 +407,10 @@ function EnvironmentOverview({ environment, loading }: { environment?: DeviceEnv
     <section className="device-profile-group device-profile-observation">
       <div className="device-profile-group-heading">
         <Leaf size={16} />
-        <h3>观测分类</h3>
+        <h3>观测资料</h3>
       </div>
       {loading ? (
-        <div className="device-profile-observation-loading">正在加载观测分类…</div>
+        <div className="device-profile-observation-loading">正在加载观测资料…</div>
       ) : (
         <>
           <div className="device-profile-ecosystem">
@@ -421,23 +421,7 @@ function EnvironmentOverview({ environment, loading }: { environment?: DeviceEnv
             <span><Target size={14} />观测对象</span>
             <TaxonomyTags values={values?.observation_objects.map((term) => term.name_zh) ?? []} />
           </div>
-          <div className="device-profile-taxonomy-row">
-            <span><Tags size={14} />观测用途</span>
-            <TaxonomyTags values={values?.purposes.map((term) => term.name_zh) ?? []} />
-          </div>
           <div className="device-profile-observation-meta">
-            <ProfileDatum
-              label="管理方式"
-              value={values?.management?.name_zh ?? "未设置"}
-            />
-            <ProfileDatum
-              label="部署环境"
-              value={values?.deployment?.name_zh ?? "未设置"}
-            />
-            <ProfileDatum
-              label="海拔"
-              value={values?.altitude_m !== undefined ? `${values.altitude_m} m` : "未设置"}
-            />
             <ProfileDatum
               label="投运年份"
               value={values?.commissioned_year ? String(values.commissioned_year) : "未设置"}
@@ -445,7 +429,7 @@ function EnvironmentOverview({ environment, loading }: { environment?: DeviceEnv
           </div>
           {values?.research_tags?.length ? (
             <div className="device-profile-taxonomy-row device-profile-research-tags">
-              <span>研究标签</span>
+              <span>研究方向 / 标签</span>
               <TaxonomyTags values={values.research_tags} />
             </div>
           ) : null}
@@ -552,9 +536,6 @@ function ProfileEditor({ profile, environment, terms, busy, onClose, onSubmit }:
   const [overrides,setOverrides]=useState(()=>new Set((environment?.overridden_fields??[]).filter((field)=>field!=="altitude_m")));
   const [ecosystem,setEcosystem]=useState(direct?.ecosystem?.id??effective?.ecosystem?.id??"");
   const [observations,setObservations]=useState(direct?.observation_objects.map((term)=>term.id)??effective?.observation_objects.map((term)=>term.id)??[]);
-  const [purposes,setPurposes]=useState(direct?.purposes.map((term)=>term.id)??effective?.purposes.map((term)=>term.id)??[]);
-  const [management,setManagement]=useState(direct?.management?.id??effective?.management?.id??"");
-  const [deployment,setDeployment]=useState(direct?.deployment?.id??effective?.deployment?.id??"");
   const [year,setYear]=useState(String(direct?.commissioned_year??effective?.commissioned_year??""));
   const [tags,setTags]=useState((direct?.research_tags??effective?.research_tags??[]).join(", "));
   const byKind=(kind:string)=>terms.filter((term)=>term.kind===kind&&term.status==="active");
@@ -569,7 +550,7 @@ function ProfileEditor({ profile, environment, terms, busy, onClose, onSubmit }:
     void onSubmit({
       description: description.trim() || null,
       location_text: locationText.trim() || null,
-    },{ecosystem_term_id:ecosystem||null,observation_object_ids:observations,purpose_ids:purposes,management_term_id:management||null,deployment_term_id:deployment||null,commissioned_year:year?Number(year):null,research_tags:tags.split(",").map((value)=>value.trim()).filter(Boolean),overridden_fields:Array.from(overrides)});
+    },{ecosystem_term_id:ecosystem||null,observation_object_ids:observations,purpose_ids:direct?.purposes.map((term)=>term.id)??[],management_term_id:direct?.management?.id??null,deployment_term_id:direct?.deployment?.id??null,commissioned_year:year?Number(year):null,research_tags:tags.split(",").map((value)=>value.trim()).filter(Boolean),overridden_fields:Array.from(overrides)});
   };
   return (
     <div className="access-drawer-layer">
@@ -600,15 +581,13 @@ function ProfileEditor({ profile, environment, terms, busy, onClose, onSubmit }:
             <div className="form-section environment-form-section">
               <div className="profile-editor-section-head">
                 <span><Tags size={16} /></span>
-                <div><h3>观测分类</h3><p>用于地图筛选、统计分析和设备归类</p></div>
+                <div><h3>观测资料</h3><p>用于地图筛选、统计分析和设备归类</p></div>
               </div>
               <div className="profile-editor-inheritance-note">开启“设备覆盖”后使用当前设备设置；关闭后继续继承网关或站点。</div>
               <EnvironmentField label="生态类型" field="ecosystem" overrides={overrides} toggle={toggle}><select disabled={!overrides.has("ecosystem")} value={ecosystem} onChange={(event)=>setEcosystem(event.target.value)}><option value="">未设置</option>{byKind("ecosystem").map((term)=><option key={term.id} value={term.id}>{term.name_zh}</option>)}</select></EnvironmentField>
               <EnvironmentMultiField label="观测对象" field="observation_objects" overrides={overrides} toggle={toggle} options={byKind("observation_object")} value={observations} onChange={setObservations} />
-              <EnvironmentMultiField label="观测用途" field="purposes" overrides={overrides} toggle={toggle} options={byKind("purpose")} value={purposes} onChange={setPurposes} />
-              <div className="access-form-grid"><EnvironmentField label="管理方式" field="management" overrides={overrides} toggle={toggle}><select disabled={!overrides.has("management")} value={management} onChange={(event)=>setManagement(event.target.value)}><option value="">未设置</option>{byKind("management").map((term)=><option key={term.id} value={term.id}>{term.name_zh}</option>)}</select></EnvironmentField><EnvironmentField label="部署环境" field="deployment" overrides={overrides} toggle={toggle}><select disabled={!overrides.has("deployment")} value={deployment} onChange={(event)=>setDeployment(event.target.value)}><option value="">未设置</option>{byKind("deployment").map((term)=><option key={term.id} value={term.id}>{term.name_zh}</option>)}</select></EnvironmentField></div>
               <EnvironmentField label="投运年份" field="commissioned_year" overrides={overrides} toggle={toggle}><input type="number" min="1900" max="2200" disabled={!overrides.has("commissioned_year")} value={year} onChange={(event)=>setYear(event.target.value)}/></EnvironmentField>
-              <EnvironmentField label="研究标签（逗号分隔）" field="research_tags" overrides={overrides} toggle={toggle}><input disabled={!overrides.has("research_tags")} value={tags} onChange={(event)=>setTags(event.target.value)}/></EnvironmentField>
+              <EnvironmentField label="研究方向 / 标签（逗号分隔）" field="research_tags" overrides={overrides} toggle={toggle}><input disabled={!overrides.has("research_tags")} value={tags} onChange={(event)=>setTags(event.target.value)}/></EnvironmentField>
             </div>
             <div className="form-actions"><Button variant="secondary" type="button" onClick={onClose}>取消</Button><Button type="submit" disabled={busy}>{busy ? "保存中…" : "保存资料"}</Button></div>
           </form>

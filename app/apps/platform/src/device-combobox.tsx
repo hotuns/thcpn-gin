@@ -8,7 +8,7 @@ export type DeviceOptionCategory = "all" | "gateway" | "gateway_node" | "camera"
 const categories: Array<{ id: DeviceOptionCategory; label: string }> = [
   { id: "all", label: "全部" },
   { id: "gateway", label: "网关" },
-  { id: "camera", label: "相机" },
+  { id: "camera", label: "监控站" },
   { id: "standalone", label: "标准站" },
 ];
 

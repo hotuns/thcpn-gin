@@ -3254,6 +3254,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/processing/processors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Synchronize and list built-in processing definitions */
+        get: operations["listProcessingProcessors"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/processing-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace UUID. */
+                workspace_id: components["parameters"]["WorkspaceID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List workspace processing tasks
+         * @description Requires `processing.view` on the workspace.
+         */
+        get: operations["listProcessingTasks"];
+        put?: never;
+        /**
+         * Create a versioned processing task
+         * @description Requires `processing.manage` on the workspace.
+         */
+        post: operations["createProcessingTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/processing-tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace UUID. */
+                workspace_id: components["parameters"]["WorkspaceID"];
+                task_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        /** Get a processing task and its input bindings */
+        get: operations["getProcessingTask"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/processing-tasks/{task_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace UUID. */
+                workspace_id: components["parameters"]["WorkspaceID"];
+                task_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Activate, pause, or archive a processing task */
+        patch: operations["updateProcessingTaskStatus"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -5216,6 +5302,79 @@ export interface components {
             total: number;
             page: number;
             page_size: number;
+        };
+        ProcessingProcessor: {
+            code: string;
+            version: string;
+            name: string;
+            description?: string;
+            manifest: {
+                [key: string]: unknown;
+            };
+            enabled: boolean;
+            synced_at: components["schemas"]["Timestamp"];
+        };
+        ProcessingProcessorListResponse: {
+            items: components["schemas"]["ProcessingProcessor"][];
+        };
+        ProcessingTaskInput: {
+            slot_code: string;
+            /** @enum {string} */
+            source_type: "data_stream" | "processing_task" | "metadata";
+            source_id?: components["schemas"]["UUID"];
+            source_task_id?: components["schemas"]["UUID"];
+            config: {
+                [key: string]: unknown;
+            };
+        };
+        ProcessingTask: {
+            id: components["schemas"]["UUID"];
+            workspace_id: components["schemas"]["UUID"];
+            name: string;
+            description?: string;
+            /** @enum {string} */
+            target_type: "device" | "site";
+            target_id: components["schemas"]["UUID"];
+            /** @enum {string} */
+            status: "active" | "paused" | "archived";
+            current_version: number;
+            processor_code: string;
+            processor_version: string;
+            processor_manifest: {
+                [key: string]: unknown;
+            };
+            config: {
+                [key: string]: unknown;
+            };
+            trigger: {
+                [key: string]: unknown;
+            };
+            start_at: components["schemas"]["Timestamp"];
+            inputs?: components["schemas"]["ProcessingTaskInput"][];
+            last_execution_status?: string;
+            last_execution_at?: components["schemas"]["Timestamp"];
+            created_at: components["schemas"]["Timestamp"];
+            updated_at: components["schemas"]["Timestamp"];
+        };
+        ProcessingTaskListResponse: {
+            items: components["schemas"]["ProcessingTask"][];
+        };
+        CreateProcessingTaskRequest: {
+            name: string;
+            description?: string;
+            /** @enum {string} */
+            target_type: "device" | "site";
+            target_id: components["schemas"]["UUID"];
+            processor_code: string;
+            processor_version: string;
+            config?: {
+                [key: string]: unknown;
+            };
+            trigger?: {
+                [key: string]: unknown;
+            };
+            start_at: components["schemas"]["Timestamp"];
+            inputs: components["schemas"]["ProcessingTaskInput"][];
         };
     };
     responses: {
@@ -10667,6 +10826,140 @@ export interface operations {
                     "application/json": components["schemas"]["AdminUserActivityListResponse"];
                 };
             };
+        };
+    };
+    listProcessingProcessors: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Available versioned processors. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcessingProcessorListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    listProcessingTasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace UUID. */
+                workspace_id: components["parameters"]["WorkspaceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Processing tasks. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcessingTaskListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+        };
+    };
+    createProcessingTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace UUID. */
+                workspace_id: components["parameters"]["WorkspaceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateProcessingTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Created task. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcessingTask"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            403: components["responses"]["PermissionDenied"];
+        };
+    };
+    getProcessingTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace UUID. */
+                workspace_id: components["parameters"]["WorkspaceID"];
+                task_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Processing task. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcessingTask"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateProcessingTaskStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace UUID. */
+                workspace_id: components["parameters"]["WorkspaceID"];
+                task_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    status: "active" | "paused" | "archived";
+                };
+            };
+        };
+        responses: {
+            /** @description Updated task. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcessingTask"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            404: components["responses"]["NotFound"];
         };
     };
 }

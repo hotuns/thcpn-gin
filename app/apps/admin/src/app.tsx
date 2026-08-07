@@ -495,7 +495,7 @@ function AdminOverview() {
             <div><Network size={17} /><span>网关</span><strong>{devices.isError ? "—" : deviceGroups.gateway}</strong></div>
             <div><Cpu size={17} /><span>节点</span><strong>{devices.isError ? "—" : deviceGroups.gateway_node}</strong></div>
             <div><Server size={17} /><span>标准站</span><strong>{devices.isError ? "—" : deviceGroups.standalone}</strong></div>
-            <div><Camera size={17} /><span>相机</span><strong>{devices.isError ? "—" : deviceGroups.camera}</strong></div>
+            <div><Camera size={17} /><span>监控站</span><strong>{devices.isError ? "—" : deviceGroups.camera}</strong></div>
           </div>
         </Panel>
         <Panel className="admin-overview-panel">

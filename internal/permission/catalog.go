@@ -125,6 +125,7 @@ func defaultPermissionGroups() []PermissionGroup {
 		{Code: "telemetry", Name: "遥测"},
 		{Code: "media", Name: "媒体"},
 		{Code: "dataset", Name: "数据集"},
+		{Code: "processing", Name: "数据处理"},
 		{Code: "share_service", Name: "分享与售后"},
 		{Code: "audit", Name: "审计"},
 	}
@@ -144,6 +145,8 @@ func permissionGroupFor(code string, resourceType string) string {
 		return "media"
 	case "dataset":
 		return "dataset"
+	case "processing":
+		return "processing"
 	case "share", "service_access":
 		return "share_service"
 	case "audit":

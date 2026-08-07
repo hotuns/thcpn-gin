@@ -51,6 +51,8 @@ tags:
     description: Dataset query definition and source metadata APIs
   - name: ExportJobs
     description: Asynchronous telemetry, media and dataset export job APIs
+  - name: Processing
+    description: Built-in Python data processing catalog and task orchestration APIs
   - name: AccessGrants
     description: Resource sharing and temporary authorization APIs
   - name: Invitations
@@ -5421,6 +5423,104 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/AdminUserActivityListResponse" }
 
+  /api/v1/processing/processors:
+    get:
+      tags: [Processing]
+      operationId: listProcessingProcessors
+      summary: Synchronize and list built-in processing definitions
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      responses:
+        "200":
+          description: Available versioned processors.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProcessingProcessorListResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/workspaces/{workspace_id}/processing-tasks:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      tags: [Processing]
+      operationId: listProcessingTasks
+      summary: List workspace processing tasks
+      description: Requires `processing.view` on the workspace.
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      responses:
+        "200":
+          description: Processing tasks.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProcessingTaskListResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+    post:
+      tags: [Processing]
+      operationId: createProcessingTask
+      summary: Create a versioned processing task
+      description: Requires `processing.manage` on the workspace.
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateProcessingTaskRequest" }
+      responses:
+        "201":
+          description: Created task.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProcessingTask" }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+  /api/v1/workspaces/{workspace_id}/processing-tasks/{task_id}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: task_id
+        in: path
+        required: true
+        schema: { $ref: "#/components/schemas/UUID" }
+    get:
+      tags: [Processing]
+      operationId: getProcessingTask
+      summary: Get a processing task and its input bindings
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      responses:
+        "200":
+          description: Processing task.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProcessingTask" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/workspaces/{workspace_id}/processing-tasks/{task_id}/status:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: task_id
+        in: path
+        required: true
+        schema: { $ref: "#/components/schemas/UUID" }
+    patch:
+      tags: [Processing]
+      operationId: updateProcessingTaskStatus
+      summary: Activate, pause, or archive a processing task
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [active, paused, archived] }
+      responses:
+        "200":
+          description: Updated task.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProcessingTask" }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "404": { $ref: "#/components/responses/NotFound" }
 components:
   securitySchemes:
     bearerAuth:
@@ -9749,3 +9849,78 @@ components:
         total: { type: integer, format: int64 }
         page: { type: integer }
         page_size: { type: integer }
+    ProcessingProcessor:
+      type: object
+      required: [code, version, name, manifest, enabled, synced_at]
+      properties:
+        code: { type: string }
+        version: { type: string }
+        name: { type: string }
+        description: { type: string }
+        manifest: { type: object, additionalProperties: true }
+        enabled: { type: boolean }
+        synced_at: { $ref: "#/components/schemas/Timestamp" }
+    ProcessingProcessorListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ProcessingProcessor" }
+    ProcessingTaskInput:
+      type: object
+      required: [slot_code, source_type, config]
+      properties:
+        slot_code: { type: string }
+        source_type: { type: string, enum: [data_stream, processing_task, metadata] }
+        source_id: { $ref: "#/components/schemas/UUID" }
+        source_task_id: { $ref: "#/components/schemas/UUID" }
+        config: { type: object, additionalProperties: true }
+    ProcessingTask:
+      type: object
+      required: [id, workspace_id, name, target_type, target_id, status, current_version, processor_code, processor_version, processor_manifest, config, trigger, start_at, created_at, updated_at]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        workspace_id: { $ref: "#/components/schemas/UUID" }
+        name: { type: string }
+        description: { type: string }
+        target_type: { type: string, enum: [device, site] }
+        target_id: { $ref: "#/components/schemas/UUID" }
+        status: { type: string, enum: [active, paused, archived] }
+        current_version: { type: integer }
+        processor_code: { type: string }
+        processor_version: { type: string }
+        processor_manifest: { type: object, additionalProperties: true }
+        config: { type: object, additionalProperties: true }
+        trigger: { type: object, additionalProperties: true }
+        start_at: { $ref: "#/components/schemas/Timestamp" }
+        inputs:
+          type: array
+          items: { $ref: "#/components/schemas/ProcessingTaskInput" }
+        last_execution_status: { type: string }
+        last_execution_at: { $ref: "#/components/schemas/Timestamp" }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+    ProcessingTaskListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ProcessingTask" }
+    CreateProcessingTaskRequest:
+      type: object
+      required: [name, target_type, target_id, processor_code, processor_version, inputs, start_at]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        target_type: { type: string, enum: [device, site] }
+        target_id: { $ref: "#/components/schemas/UUID" }
+        processor_code: { type: string }
+        processor_version: { type: string }
+        config: { type: object, additionalProperties: true }
+        trigger: { type: object, additionalProperties: true }
+        start_at: { $ref: "#/components/schemas/Timestamp" }
+        inputs:
+          type: array
+          items: { $ref: "#/components/schemas/ProcessingTaskInput" }

@@ -413,6 +413,8 @@ func (p *Processor) renderDatasetZIP(ctx context.Context, job Job) ([]byte, erro
 
 	start := pgTimeValue(dataset.TimeStart)
 	end := pgTimeValue(dataset.TimeEnd)
+	mediaItems := make([]mediaExportItem, 0)
+	usedMediaPaths := map[string]int{}
 	for _, source := range sources {
 		switch source.SourceType {
 		case "device":
@@ -427,27 +429,49 @@ func (p *Processor) renderDatasetZIP(ctx context.Context, job Job) ([]byte, erro
 			if err := writeBytesFile(zw, "telemetry/device_"+source.SourceID.String()+".csv", body); err != nil {
 				return nil, err
 			}
+			items, err := p.queryMedia(ctx, "device", source.SourceID, start, end, p.cfg.MaxRows, "")
+			if err != nil {
+				return nil, err
+			}
+			mediaItems, err = p.writeMediaItems(ctx, zw, items, mediaItems, usedMediaPaths)
+			if err != nil {
+				return nil, err
+			}
 		case "data_stream":
 			stream, err := p.queries.GetDataStream(ctx, source.SourceID)
 			if err != nil {
 				return nil, mapNotFoundOrInternal(err, "data stream source not found")
 			}
-			if stream.Type != "telemetry" {
-				continue
-			}
-			series, err := p.queryTelemetry(ctx, "data_stream", source.SourceID, start, end, p.cfg.MaxRows)
-			if err != nil {
-				return nil, err
-			}
-			body, err := renderTelemetryCSV(series)
-			if err != nil {
-				return nil, err
-			}
-			if err := writeBytesFile(zw, "telemetry/data_stream_"+source.SourceID.String()+".csv", body); err != nil {
-				return nil, err
+			switch {
+			case stream.Type == "telemetry":
+				series, err := p.queryTelemetry(ctx, "data_stream", source.SourceID, start, end, p.cfg.MaxRows)
+				if err != nil {
+					return nil, err
+				}
+				body, err := renderTelemetryCSV(series)
+				if err != nil {
+					return nil, err
+				}
+				if err := writeBytesFile(zw, "telemetry/data_stream_"+source.SourceID.String()+".csv", body); err != nil {
+					return nil, err
+				}
+			case isMediaStreamType(stream.Type):
+				items, err := p.queryMediaStream(ctx, stream, start, end, p.cfg.MaxRows)
+				if err != nil {
+					return nil, err
+				}
+				mediaItems, err = p.writeMediaItems(ctx, zw, items, mediaItems, usedMediaPaths)
+				if err != nil {
+					return nil, err
+				}
 			}
 		case "file":
 			continue
+		}
+	}
+	if len(mediaItems) > 0 {
+		if err := writeMediaManifestCSVNamed(zw, "media/manifest.csv", mediaItems); err != nil {
+			return nil, err
 		}
 	}
 
@@ -467,24 +491,10 @@ func (p *Processor) renderMediaZIP(ctx context.Context, job Job, cfg requestConf
 	zw := zip.NewWriter(&buf)
 
 	usedPaths := map[string]int{}
-	for i := range items {
-		archivePath := mediaArchivePath(items[i], usedPaths)
-		items[i].ArchivePath = archivePath
-
-		result, err := p.store.Get(ctx, items[i].ObjectKey)
-		if err != nil {
-			_ = zw.Close()
-			return nil, err
-		}
-		if err := writeObjectFile(zw, archivePath, result.Body); err != nil {
-			_ = result.Body.Close()
-			_ = zw.Close()
-			return nil, err
-		}
-		if err := result.Body.Close(); err != nil {
-			_ = zw.Close()
-			return nil, apperr.Wrap(apperr.KindInternal, "close media object", err)
-		}
+	items, err = p.writeMediaItems(ctx, zw, items, nil, usedPaths)
+	if err != nil {
+		_ = zw.Close()
+		return nil, err
 	}
 	if err := writeMediaManifestCSV(zw, items); err != nil {
 		_ = zw.Close()
@@ -494,6 +504,39 @@ func (p *Processor) renderMediaZIP(ctx context.Context, job Job, cfg requestConf
 		return nil, apperr.Wrap(apperr.KindInternal, "close media export zip", err)
 	}
 	return buf.Bytes(), nil
+}
+
+func (p *Processor) writeMediaItems(ctx context.Context, zw *zip.Writer, items []mediaExportItem, existing []mediaExportItem, usedPaths map[string]int) ([]mediaExportItem, error) {
+	seen := make(map[string]struct{}, len(existing))
+	for _, item := range existing {
+		seen[item.DataStreamID.String()+"\x00"+item.MediaID] = struct{}{}
+	}
+	for i := range items {
+		key := items[i].DataStreamID.String() + "\x00" + items[i].MediaID
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+
+		archivePath := mediaArchivePath(items[i], usedPaths)
+		items[i].ArchivePath = archivePath
+		result, err := p.store.Get(ctx, items[i].ObjectKey)
+		if err != nil {
+			return nil, err
+		}
+		if result.Body == nil {
+			return nil, apperr.New(apperr.KindInternal, "media object body is empty")
+		}
+		if err := writeObjectFile(zw, archivePath, result.Body); err != nil {
+			_ = result.Body.Close()
+			return nil, err
+		}
+		if err := result.Body.Close(); err != nil {
+			return nil, apperr.Wrap(apperr.KindInternal, "close media object", err)
+		}
+		existing = append(existing, items[i])
+	}
+	return existing, nil
 }
 
 func (p *Processor) queryMedia(ctx context.Context, resourceType string, resourceID uuid.UUID, start time.Time, end time.Time, limit int, mediaType string) ([]mediaExportItem, error) {

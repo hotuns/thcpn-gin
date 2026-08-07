@@ -579,7 +579,7 @@ export function CameraLive({ device }: { device: Device }) {
     <Panel className="section-gap camera-live">
       <div className="panel-header">
         <div>
-          <h2 className="panel-title">相机实时画面</h2>
+          <h2 className="panel-title">监控站实时画面</h2>
           <div className="panel-kicker">
             短期会话只在当前页面内使用，切换设备后自动销毁播放器
           </div>

@@ -7,6 +7,23 @@ import "./styles.css";
 
 export type DeviceMapPoint = { device_id: string; name: string; device_type: string; status: string; latitude?: number; longitude?: number; child_count?: number; ecosystem?: string; purposes?: string[] };
 
+export function tiandituImageryStyle(token: string): StyleSpecification {
+  const tiles = (layer: "img" | "cia") => Array.from({ length: 8 }, (_, index) =>
+    `https://t${index}.tianditu.gov.cn/${layer}_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=${layer}&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILECOL={x}&TILEROW={y}&TILEMATRIX={z}&tk=${encodeURIComponent(token)}`,
+  );
+  return {
+    version: 8,
+    sources: {
+      imagery: { type: "raster", tiles: tiles("img"), tileSize: 256, attribution: "天地图 GS(2024)0650号" },
+      labels: { type: "raster", tiles: tiles("cia"), tileSize: 256 },
+    },
+    layers: [
+      { id: "tianditu-imagery", type: "raster", source: "imagery" },
+      { id: "tianditu-labels", type: "raster", source: "labels" },
+    ],
+  };
+}
+
 function defaultStyle(): StyleSpecification {
   return {
     version: 8,
@@ -17,7 +34,7 @@ function defaultStyle(): StyleSpecification {
   };
 }
 
-export function DeviceMap({ points, onSelect, height = 520, styleUrl }: { points: DeviceMapPoint[]; onSelect?: (id: string) => void; height?: number; styleUrl?: string }) {
+export function DeviceMap({ points, onSelect, height = 520, styleUrl, mapStyle }: { points: DeviceMapPoint[]; onSelect?: (id: string) => void; height?: number | string; styleUrl?: string; mapStyle?: StyleSpecification }) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
   const markers = useRef<maplibregl.Marker[]>([]);
@@ -25,12 +42,14 @@ export function DeviceMap({ points, onSelect, height = 520, styleUrl }: { points
   latestPoints.current = points;
   useEffect(() => {
     if (!container.current || map.current) return;
-    const instance = new maplibregl.Map({ container: container.current, style: styleUrl || defaultStyle(), center: [104, 35], zoom: 3, attributionControl: {} });
+    const instance = new maplibregl.Map({ container: container.current, style: mapStyle || styleUrl || defaultStyle(), center: [104, 35], zoom: 3, attributionControl: {} });
     map.current = instance;
     instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     fit(instance, latestPoints.current);
-    return () => { markers.current.forEach((marker) => marker.remove()); markers.current = []; instance.remove(); map.current = null; };
-  }, [styleUrl]);
+    const observer = new ResizeObserver(() => instance.resize());
+    observer.observe(container.current);
+    return () => { observer.disconnect(); markers.current.forEach((marker) => marker.remove()); markers.current = []; instance.remove(); map.current = null; };
+  }, [styleUrl, mapStyle]);
   useEffect(() => {
     let attempts = 0;
     let retry: ReturnType<typeof setInterval> | undefined;

@@ -38,13 +38,13 @@ export const resources = {
       status: { active: "有效", disabled: "停用", retired: "已退役", pending: "待处理", accepted: "已接受", revoked: "已撤销", expired: "已过期", archived: "已归档", success: "成功", failed: "失败" },
       deviceStatus: { active: "启用", disabled: "停用", retired: "已退役" },
       lifecycle: { inbound: "待入库", installed: "已安装", online: "在线运行", maintenance: "维护中", repairing: "维修中", retired: "已退役" },
-      topology: { standalone: "标准站", gateway: "网关", gateway_node: "网关节点", camera: "相机" },
+      topology: { standalone: "标准站", gateway: "网关", gateway_node: "网关节点", camera: "监控站" },
       capability: { telemetry: "遥测数据", image_capture: "图片采集", video_stream: "实时视频", ptz_control: "云台控制", remote_command: "远程控制", configurable: "参数配置", calibratable: "设备校准", firmware_update: "固件升级", edge_storage: "边缘存储", fallback: "扩展能力" },
       role: { owner: "所有者", admin: "管理员", project_manager: "项目管理员", site_operator: "站点运维人员", data_manager: "数据管理员", researcher: "研究人员", viewer: "查看者", shared_viewer: "共享查看者", shared_downloader: "共享下载者", service_engineer: "服务工程师", custom: "自定义权限" },
       errors: { invalid_argument: "请求参数不正确", unauthorized: "登录状态已失效", permission_denied: "没有执行此操作的权限", not_found: "请求的资源不存在", conflict: "数据已经发生变化，请刷新后重试", rate_limited: "操作过于频繁，请稍后重试", data_source: "数据源暂时不可用", internal: "服务暂时不可用" }
     },
     platform: {
-      navigation: { overview: "总览", devices: "设备", deviceMap: "设备地图", compare: "数据对比", datasets: "数据集", exports: "导出任务", workspaces: "工作区", account: "账户中心", logout: "退出登录", settings: "工作区设置" },
+      navigation: { overview: "总览", devices: "设备", deviceMap: "设备地图", compare: "数据对比", datasets: "数据集", processing: "数据处理", exports: "导出任务", workspaces: "工作区", account: "账户中心", logout: "退出登录", settings: "工作区设置" },
       workspace: { current: "当前工作区", loading: "载入工作区…", none: "暂无可用工作区", switch: "切换工作区", search: "搜索工作区", noMatch: "没有匹配的工作区", invite: "邀请用户" },
       account: { openMenu: "打开账户菜单", profile: "账户资料", security: "账号安全" },
       telemetry: { displayMode: "图表显示方式", compare: "叠加对比", separate: "分指标", visibleMetrics: "显示的数据指标", allHidden: "已隐藏全部指标，点击上方图例恢复显示。", metricCount: "显示指标", sourcePoints: "原始点", chartPoints: "绘图点", dataPoints: "数据点", complete: "完整时间范围", truncated: "数据源可能已截断", normalized: "各指标按自身区间归一化", normalizedChart: "多指标归一化趋势对比", normal: "正常", minimum: "最小", average: "平均", maximum: "最大", quality: "质量", change: "区间变化", trend: "{{name}}时间序列趋势", realtime: "实时值", rangeAverage: "区间平均", abnormalPoints: "{{count}} 个非正常质量点" },
@@ -126,13 +126,13 @@ export const resources = {
       status: { active: "Active", disabled: "Disabled", retired: "Retired", pending: "Pending", accepted: "Accepted", revoked: "Revoked", expired: "Expired", archived: "Archived", success: "Success", failed: "Failed" },
       deviceStatus: { active: "Enabled", disabled: "Disabled", retired: "Retired" },
       lifecycle: { inbound: "Pending intake", installed: "Installed", online: "Online", maintenance: "Maintenance", repairing: "Repairing", retired: "Retired" },
-      topology: { standalone: "Station", gateway: "Gateway", gateway_node: "Gateway node", camera: "Camera" },
+      topology: { standalone: "Station", gateway: "Gateway", gateway_node: "Gateway node", camera: "Monitoring station" },
       capability: { telemetry: "Telemetry", image_capture: "Image capture", video_stream: "Live video", ptz_control: "PTZ control", remote_command: "Remote control", configurable: "Configuration", calibratable: "Calibration", firmware_update: "Firmware update", edge_storage: "Edge storage", fallback: "Extended capability" },
       role: { owner: "Owner", admin: "Administrator", project_manager: "Project manager", site_operator: "Site operator", data_manager: "Data manager", researcher: "Researcher", viewer: "Viewer", shared_viewer: "Shared viewer", shared_downloader: "Shared downloader", service_engineer: "Service engineer", custom: "Custom permissions" },
       errors: { invalid_argument: "Invalid request parameters", unauthorized: "Your session has expired", permission_denied: "You do not have permission for this action", not_found: "The requested resource was not found", conflict: "The data has changed. Refresh and try again", rate_limited: "Too many requests. Try again later", data_source: "The data source is temporarily unavailable", internal: "The service is temporarily unavailable" }
     },
     platform: {
-      navigation: { overview: "Overview", devices: "Devices", deviceMap: "Device map", compare: "Data comparison", datasets: "Datasets", exports: "Export jobs", workspaces: "Workspaces", account: "Account", logout: "Sign out", settings: "Workspace settings" },
+      navigation: { overview: "Overview", devices: "Devices", deviceMap: "Device map", compare: "Data comparison", datasets: "Datasets", processing: "Processing", exports: "Export jobs", workspaces: "Workspaces", account: "Account", logout: "Sign out", settings: "Workspace settings" },
       workspace: { current: "Current workspace", loading: "Loading workspaces…", none: "No workspace available", switch: "Switch workspace", search: "Search workspaces", noMatch: "No matching workspaces", invite: "Invite user" },
       account: { openMenu: "Open account menu", profile: "Profile", security: "Account security" },
       telemetry: { displayMode: "Chart display mode", compare: "Overlay", separate: "By metric", visibleMetrics: "Visible metrics", allHidden: "All metrics are hidden. Select a legend item to restore it.", metricCount: "metrics", sourcePoints: "source points", chartPoints: "chart points", dataPoints: "data points", complete: "Complete time range", truncated: "The data source may be truncated", normalized: "Each metric is normalized to its own range", normalizedChart: "Normalized multi-metric trend comparison", normal: "Normal", minimum: "Min", average: "Average", maximum: "Max", quality: "Quality", change: "Range change", trend: "{{name}} time-series trend", realtime: "Latest", rangeAverage: "Range average", abnormalPoints: "{{count}} abnormal-quality points" },

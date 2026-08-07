@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
@@ -77,12 +77,6 @@ const localTime = (input: Date | string) => {
     .toISOString()
     .slice(0, 16);
 };
-const localTimeSeconds = (input: Date | string) => {
-  const date = new Date(input);
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-    .toISOString()
-    .slice(0, 19);
-};
 const displayTime = (input?: string) =>
   input
     ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", {
@@ -125,6 +119,11 @@ export function DatasetsPage() {
   const projects = useQuery({
     queryKey: workspaceQueryKey(currentId, "projects"),
     queryFn: () => api.projects.list(currentId!),
+    enabled: Boolean(currentId),
+  });
+  const devices = useQuery({
+    queryKey: workspaceQueryKey(currentId, "devices"),
+    queryFn: () => api.devices.list(currentId!),
     enabled: Boolean(currentId),
   });
   const query = useQuery({
@@ -248,9 +247,18 @@ export function DatasetsPage() {
                 {rows.map((dataset) => (
                   <tr key={dataset.id}>
                     <td>
-                      <div className="cell-title">{dataset.name}</div>
+                      <button
+                        type="button"
+                        className="dataset-title-link"
+                        onClick={() => navigate(datasetDetailPath(dataset.id))}
+                      >
+                        {dataset.name}
+                      </button>
                       <div className="cell-sub">
                         {dataset.description || "暂无描述"}
+                      </div>
+                      <div className="cell-sub">
+                        项目：{String(projects.data?.items.find((item) => item.id === dataset.project_id)?.name ?? "未关联项目")}
                       </div>
                       <div className="cell-sub mono">{dataset.id}</div>
                     </td>
@@ -263,7 +271,12 @@ export function DatasetsPage() {
                         至 {displayTime(dataset.time_end)}
                       </div>
                     </td>
-                    <td>{dataset.sources.length} 个</td>
+                    <td>
+                      <DatasetSourceSummary
+                        sources={dataset.sources}
+                        devices={devices.data?.items ?? []}
+                      />
+                    </td>
                     <td>
                       <Badge
                         tone={
@@ -297,13 +310,16 @@ export function DatasetsPage() {
                         <IconButton
                           label="导出数据集"
                           onClick={() =>
-                            void run(
-                              () =>
-                                api.datasets.export(dataset.id, {
-                                  export_type: "dataset_zip",
-                                }),
-                              "导出任务已创建",
-                            )
+                            (async () => {
+                              const created = await run(
+                                () =>
+                                  api.datasets.export(dataset.id, {
+                                    export_type: "dataset_zip",
+                                  }),
+                                "导出任务已创建",
+                              );
+                              if (created) navigate("/exports");
+                            })()
                           }
                         >
                           <Download size={13} />
@@ -359,6 +375,11 @@ export function DatasetDetailPage() {
   const devices = useQuery({
     queryKey: workspaceQueryKey(currentId, "devices"),
     queryFn: () => api.devices.list(currentId!),
+    enabled: Boolean(currentId),
+  });
+  const projects = useQuery({
+    queryKey: workspaceQueryKey(currentId, "projects"),
+    queryFn: () => api.projects.list(currentId!),
     enabled: Boolean(currentId),
   });
   const comparableSources = (dataset.data?.sources ?? [])
@@ -496,7 +517,12 @@ export function DatasetDetailPage() {
         }
       />
       {actionError && <div className="command-note section-gap">{actionError}</div>}
-      <DatasetPreview dataset={dataset.data} devices={devices.data?.items ?? []} />
+      <DatasetPreview
+        key={dataset.data.id}
+        dataset={dataset.data}
+        devices={devices.data?.items ?? []}
+        projectName={projects.data?.items.find((item) => item.id === dataset.data?.project_id)?.name}
+      />
     </>
   );
 }
@@ -507,6 +533,8 @@ export function DatasetEditorPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const creating = !datasetId;
+  const [formBusy, setFormBusy] = useState(false);
+  const [formDirty, setFormDirty] = useState(false);
   const prefill = useMemo<DatasetPrefill | undefined>(() => {
     if (!creating) return undefined;
     const sources = (searchParams.get("sources") ?? "")
@@ -550,8 +578,12 @@ export function DatasetEditorPage() {
   });
   const [feedback, setFeedback] = useState("");
   const returnPath = datasetId ? datasetDetailPath(datasetId) : "/datasets";
+  const requestBack = () => {
+    if (formDirty && !window.confirm("当前数据集有未保存修改，确定离开吗？")) return;
+    navigate(returnPath);
+  };
   const back = (
-    <Button variant="secondary" onClick={() => navigate(returnPath)}>
+    <Button variant="secondary" onClick={requestBack}>
       <ArrowLeft size={14} />
       {datasetId ? "返回详情" : "返回数据集"}
     </Button>
@@ -592,8 +624,17 @@ export function DatasetEditorPage() {
   return (
     <>
       <PageHeader
+        eyebrow="工作区 / 数据集"
         title={creating ? "创建数据集" : dataset.data?.name ?? "编辑数据集"}
-        actions={back}
+        description={creating ? "定义数据来源、时间范围和数据类型。" : "修改数据集定义；预览页面只展示已保存的范围。"}
+        actions={
+          <div className="header-actions">
+            <Button type="submit" form="dataset-form" disabled={formBusy}>
+              {formBusy ? "保存中…" : "保存数据集"}
+            </Button>
+            {back}
+          </div>
+        }
       />
       {feedback && <div className="command-note section-gap">{feedback}</div>}
       <DatasetForm
@@ -603,7 +644,8 @@ export function DatasetEditorPage() {
         prefill={prefill}
         projects={projects.data?.items ?? []}
         devices={devices.data?.items ?? []}
-        onClose={() => navigate(returnPath)}
+        onBusyChange={setFormBusy}
+        onDirtyChange={setFormDirty}
         onSaved={async (action, message) => {
           setFeedback("");
           try {
@@ -629,7 +671,8 @@ function DatasetForm({
   prefill,
   projects,
   devices,
-  onClose,
+  onBusyChange,
+  onDirtyChange,
   onSaved,
 }: {
   workspaceId: string;
@@ -637,28 +680,31 @@ function DatasetForm({
   prefill?: DatasetPrefill;
   projects: JsonRecord[];
   devices: JsonRecord[];
-  onClose: () => void;
+  onBusyChange: (busy: boolean) => void;
+  onDirtyChange: (dirty: boolean) => void;
   onSaved: (
     action: () => Promise<Dataset>,
     message: string,
   ) => Promise<boolean>;
 }) {
-  const [name, setName] = useState(dataset?.name ?? prefill?.name ?? "");
-  const [description, setDescription] = useState(dataset?.description ?? "");
-  const [projectId, setProjectId] = useState(dataset?.project_id ?? "");
-  const [dataType, setDataType] = useState<Dataset["data_type"]>(
-    dataset?.data_type ?? "telemetry",
-  );
-  const [startTime, setStartTime] = useState(
+  const initialDataType = dataset?.data_type ?? "telemetry";
+  const initialStartTime =
     dataset
       ? localTime(dataset.time_start)
-      : prefill?.startTime ?? localTime(new Date(Date.now() - 86_400_000)),
-  );
-  const [endTime, setEndTime] = useState(
+      : prefill?.startTime ?? localTime(new Date(Date.now() - 86_400_000));
+  const initialEndTime =
     dataset
       ? localTime(dataset.time_end)
-      : prefill?.endTime ?? localTime(new Date()),
+      : prefill?.endTime ?? localTime(new Date());
+  const generatedName = `${datasetTypeLabel(initialDataType)} ${initialStartTime.slice(0, 10)}`;
+  const [name, setName] = useState(
+    dataset?.name ?? prefill?.name ?? generatedName,
   );
+  const [description, setDescription] = useState(dataset?.description ?? "");
+  const [projectId, setProjectId] = useState(dataset?.project_id ?? "");
+  const [dataType, setDataType] = useState<Dataset["data_type"]>(initialDataType);
+  const [startTime, setStartTime] = useState(initialStartTime);
+  const [endTime, setEndTime] = useState(initialEndTime);
   const [status, setStatus] = useState<Dataset["status"]>(
     dataset?.status ?? "draft",
   );
@@ -669,44 +715,93 @@ function DatasetForm({
         source_id: item.source_id,
       })) ?? prefill?.sources ?? [],
   );
-  const [sourceType, setSourceType] = useState<AddableSourceType>("device");
+  const initialSourceType: AddableSourceType =
+    dataset?.sources.some((item) => item.source_type === "device")
+      ? "device"
+      : "data_stream";
+  const [sourceType, setSourceType] =
+    useState<AddableSourceType>(initialSourceType);
+  const [streamKind, setStreamKind] = useState<"telemetry" | "image">(
+    dataset?.data_type === "image" ? "image" : "telemetry",
+  );
   const [deviceId, setDeviceId] = useState("");
-  const [sourceId, setSourceId] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [selectedStreamIds, setSelectedStreamIds] = useState<string[]>([]);
   const [error, setError] = useState("");
+  const initialFingerprint = useRef<string | undefined>(undefined);
+  const fingerprint = JSON.stringify({
+    name,
+    description,
+    projectId,
+    dataType,
+    startTime,
+    endTime,
+    status,
+    sources,
+  });
+  if (initialFingerprint.current === undefined) initialFingerprint.current = fingerprint;
+  const dirty = initialFingerprint.current !== fingerprint;
+  useEffect(() => {
+    onDirtyChange(dirty);
+  }, [dirty, onDirtyChange]);
   const streams = useQuery({
     queryKey: ["device", deviceId, "streams", "dataset-form"],
     queryFn: () => api.dataStreams.list(deviceId),
     enabled: sourceType === "data_stream" && Boolean(deviceId),
   });
   useEffect(() => {
-    setSourceId("");
-  }, [deviceId, sourceType]);
-  const addSource = () => {
-    const id = sourceType === "device" ? deviceId : sourceId;
-    if (
-      !id ||
-      sources.some(
-        (item) => item.source_type === sourceType && item.source_id === id,
+    setSelectedStreamIds([]);
+  }, [deviceId, sourceType, streamKind]);
+  const addSources = () => {
+    const ids = sourceType === "device" ? [deviceId] : selectedStreamIds;
+    const additions = ids
+      .filter(Boolean)
+      .filter(
+        (id) =>
+          !sources.some(
+            (item) => item.source_type === sourceType && item.source_id === id,
+          ),
       )
-    )
-      return;
-    setSources((current) => [
-      ...current,
-      { source_type: sourceType, source_id: id },
-    ]);
+      .map((source_id) => ({ source_type: sourceType, source_id }));
+    if (!additions.length) return;
+    setSources((current) => [...current, ...additions]);
+    if (sourceType === "data_stream") setSelectedStreamIds([]);
   };
+  const toggleStream = (streamId: string) => {
+    setSelectedStreamIds((current) =>
+      current.includes(streamId)
+        ? current.filter((id) => id !== streamId)
+        : [...current, streamId],
+    );
+  };
+  const availableStreams =
+    streams.data?.items.filter((item) =>
+      streamKind === "image" ? item.type === "image" : item.type === "telemetry",
+    ) ?? [];
+  const availableStreamIds = availableStreams.map((item) => item.id);
+  const existingStreamIds = new Set(
+    sources
+      .filter((item) => item.source_type === "data_stream")
+      .map((item) => item.source_id),
+  );
+  const selectableStreamIds = availableStreamIds.filter(
+    (id) => !existingStreamIds.has(id),
+  );
+  const allStreamsSelected =
+    selectableStreamIds.length > 0 &&
+    selectableStreamIds.every((id) => selectedStreamIds.includes(id));
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!sources.length) {
       setError("请至少添加一个设备或数据流来源");
       return;
     }
-    if (new Date(startTime) >= new Date(endTime)) {
-      setError("结束时间必须晚于开始时间");
+    const startMs = Date.parse(startTime);
+    const endMs = Date.parse(endTime);
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs >= endMs) {
+      setError("请选择有效的时间范围，且结束时间必须晚于开始时间");
       return;
     }
-    setBusy(true);
+    onBusyChange(true);
     setError("");
     const draft = {
       workspaceId,
@@ -734,172 +829,154 @@ function DatasetForm({
         `${item.message}${item.requestId ? ` · request id ${item.requestId}` : ""}`,
       );
     } finally {
-      setBusy(false);
+      onBusyChange(false);
     }
   };
   return (
-    <Panel className="section-gap dataset-editor">
-      <div className="panel-header">
-        <div>
-          <h2 className="panel-title">
-            {dataset ? "编辑数据集" : "创建数据集"}
-          </h2>
-          <div className="panel-kicker">
-            {prefill?.sources.length
-              ? `已带入 ${prefill.sources.length} 个数据指标和查询时间，可继续调整`
-              : "选择可访问资源，不需要填写数据表或查询语句"}
+    <div className="section-gap dataset-editor-page">
+      <form id="dataset-form" onSubmit={submit}>
+        <section className="dataset-editor-section dataset-sources">
+          <div className="dataset-editor-section-heading">
+            <div>
+              <h2>数据来源</h2>
+              <p>先选择设备，再批量选择要加入数据集的数据指标。</p>
+            </div>
+            <span className="dataset-source-count">{sources.length} 个已选择</span>
           </div>
-        </div>
-        <Button variant="secondary" onClick={onClose}>
-          <X size={14} />
-          关闭
-        </Button>
-      </div>
-      <form onSubmit={submit}>
-        <div className="dataset-form-grid">
-          <label className="field">
-            <span className="field-label">名称</span>
-            <input
-              required
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-            />
-          </label>
-          <label className="field">
-            <span className="field-label">项目</span>
-            <select
-              value={projectId}
-              disabled={Boolean(dataset)}
-              onChange={(event) => setProjectId(event.target.value)}
+          <div className="dataset-source-mode" role="group" aria-label="来源类型">
+            <button
+              type="button"
+              className={sourceType === "device" ? "active" : ""}
+              onClick={() => setSourceType("device")}
             >
-            <option value="">不关联项目</option>
-              {projects.map((item) => (
-                <option key={String(item.id)} value={String(item.id)}>
-                  {String(item.name)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span className="field-label">数据类型</span>
-            <select
-              value={dataType}
-              onChange={(event) =>
-                setDataType(event.target.value as Dataset["data_type"])
-              }
+              整台设备
+            </button>
+            <button
+              type="button"
+              className={sourceType === "data_stream" ? "active" : ""}
+              onClick={() => setSourceType("data_stream")}
             >
-              {[
-                "telemetry",
-                "image",
-                "video",
-                "audio",
-                "event",
-                "log",
-                "mixed",
-              ].map((item) => (
-                <option key={item} value={item}>
-                  {datasetTypeLabel(item as Dataset["data_type"])}
-                </option>
-              ))}
-            </select>
-          </label>
-          {dataset && (
+              数据指标
+            </button>
+          </div>
+          <div className="source-picker">
             <label className="field">
-              <span className="field-label">状态</span>
+              <span className="field-label">设备</span>
               <select
-                value={status}
-                onChange={(event) =>
-                  setStatus(event.target.value as Dataset["status"])
-                }
+                aria-label="来源设备"
+                value={deviceId}
+                onChange={(event) => setDeviceId(event.target.value)}
               >
-                {["draft", "published", "locked", "archived"].map((item) => (
-                  <option key={item} value={item}>
-                    {datasetStatusLabel(item as Dataset["status"])}
+                <option value="">选择设备</option>
+                {devices.map((item) => (
+                  <option key={String(item.id)} value={String(item.id)}>
+                    {String(item.name)} · {String(item.serial_no)}
                   </option>
                 ))}
               </select>
             </label>
-          )}
-          <label className="field">
-            <span className="field-label">开始时间</span>
-            <input
-              required
-              type="datetime-local"
-              value={startTime}
-              onChange={(event) => setStartTime(event.target.value)}
-            />
-          </label>
-          <label className="field">
-            <span className="field-label">结束时间</span>
-            <input
-              required
-              type="datetime-local"
-              value={endTime}
-              onChange={(event) => setEndTime(event.target.value)}
-            />
-          </label>
-          <label className="field dataset-description">
-            <span className="field-label">描述</span>
-            <input
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-            />
-          </label>
-        </div>
-        <div className="dataset-sources">
-          <div>
-            <h3>数据来源</h3>
-            <span>{sources.length} 个已选择</span>
-          </div>
-          <div className="source-picker">
-            <select
-              value={sourceType}
-              onChange={(event) =>
-                setSourceType(event.target.value as AddableSourceType)
-              }
-            >
-              <option value="device">整台设备</option>
-              <option value="data_stream">单个数据指标</option>
-            </select>
-            <select
-              value={deviceId}
-              onChange={(event) => setDeviceId(event.target.value)}
-            >
-              <option value="">选择设备</option>
-              {devices.map((item) => (
-                <option key={String(item.id)} value={String(item.id)}>
-                  {String(item.name)} · {String(item.serial_no)}
-                </option>
-              ))}
-            </select>
-            {sourceType === "data_stream" && (
-              <select
-                value={sourceId}
-                disabled={!deviceId || streams.isLoading}
-                onChange={(event) => setSourceId(event.target.value)}
+            {sourceType === "device" && (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={!deviceId}
+                onClick={addSources}
               >
-                <option value="">
-                  {streams.isLoading ? "正在加载数据指标" : "选择数据指标"}
-                </option>
-                {streams.data?.items.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name} · {item.code}
-                  </option>
-                ))}
-              </select>
+                <Plus size={13} />
+                添加整台设备
+              </Button>
             )}
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={
-                !deviceId || (sourceType === "data_stream" && !sourceId)
-              }
-              onClick={addSource}
-            >
-              <Plus size={13} />
-              添加来源
-            </Button>
           </div>
+          {sourceType === "data_stream" && (
+            <div className="dataset-stream-picker">
+              <div className="dataset-stream-picker-header">
+                <div>
+                  <strong>
+                    可选{streamKind === "image" ? "图片数据流" : "遥测指标"}
+                  </strong>
+                  <span>
+                    {deviceId
+                      ? `${selectedStreamIds.length} 项已选`
+                      : "选择设备后加载指标"}
+                  </span>
+                </div>
+                {deviceId && selectableStreamIds.length > 0 && (
+                  <button
+                    type="button"
+                    className="dataset-stream-select-all"
+                    onClick={() =>
+                      setSelectedStreamIds(
+                        allStreamsSelected ? [] : availableStreamIds,
+                      )
+                    }
+                  >
+                    {allStreamsSelected ? "清空选择" : "全选指标"}
+                  </button>
+                )}
+              </div>
+              <div className="dataset-stream-kind" role="group" aria-label="数据类型">
+                <button
+                  type="button"
+                  className={streamKind === "telemetry" ? "active" : ""}
+                  onClick={() => setStreamKind("telemetry")}
+                >
+                  遥测数据
+                </button>
+                <button
+                  type="button"
+                  className={streamKind === "image" ? "active" : ""}
+                  onClick={() => setStreamKind("image")}
+                >
+                  图片
+                </button>
+              </div>
+              {!deviceId ? (
+                <div className="dataset-stream-empty">请先选择设备</div>
+              ) : streams.isLoading ? (
+                <div className="dataset-stream-empty">正在加载数据指标…</div>
+              ) : availableStreams.length ? (
+                <div className="dataset-stream-options">
+                  {availableStreams.map((item) => (
+                    <label
+                      key={item.id}
+                      className={`dataset-stream-option${selectedStreamIds.includes(item.id) ? " selected" : ""}${existingStreamIds.has(item.id) ? " added" : ""}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={
+                          existingStreamIds.has(item.id) ||
+                          selectedStreamIds.includes(item.id)
+                        }
+                        disabled={existingStreamIds.has(item.id)}
+                        onChange={() => toggleStream(item.id)}
+                      />
+                      <span>
+                        <strong>{item.name}</strong>
+                        <small>
+                          {existingStreamIds.has(item.id) ? "已添加" : item.code}
+                        </small>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <div className="dataset-stream-empty">
+                  该设备暂无可用{streamKind === "image" ? "图片数据流" : "遥测指标"}
+                </div>
+              )}
+              <div className="dataset-stream-picker-actions">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={!selectedStreamIds.length}
+                  onClick={addSources}
+                >
+                  <Plus size={13} />
+                  添加已选{streamKind === "image" ? "图片" : "指标"}
+                </Button>
+              </div>
+            </div>
+          )}
           {sources.length ? (
             <div className="source-chips">
               {sources.map((source) => (
@@ -928,24 +1005,156 @@ function DatasetForm({
             <StateView
               type="empty"
               title="尚未选择来源"
-              description="可以添加整台设备，或先选择设备再添加具体数据流。"
+              description="可以添加整台设备，或先选择设备后批量添加多个数据指标。"
             />
           )}
-        </div>
+        </section>
+        <section className="dataset-editor-section">
+          <div className="dataset-editor-section-heading">
+            <div>
+              <h2>基本信息</h2>
+              <p>
+                {prefill?.sources.length
+                  ? `已带入 ${prefill.sources.length} 个数据指标和查询时间，可继续调整`
+                  : dataset
+                    ? "修改名称、时间范围、来源和状态"
+                    : "定义数据集名称、类型和查询范围"}
+              </p>
+            </div>
+            {dirty && <Badge tone="warning">未保存</Badge>}
+          </div>
+          <div className="dataset-form-grid">
+            <label className="field">
+              <div className="dataset-field-label-row">
+                <span className="field-label">名称</span>
+                <button
+                  type="button"
+                  className="dataset-auto-name"
+                  onClick={() =>
+                    setName(`${datasetTypeLabel(dataType)} ${startTime.slice(0, 10)}`)
+                  }
+                >
+                  <RefreshCw size={11} />
+                  自动生成
+                </button>
+              </div>
+              <input
+                required
+                aria-label="名称"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span className="field-label">项目</span>
+              <select
+                value={projectId}
+                disabled={Boolean(dataset)}
+                onChange={(event) => setProjectId(event.target.value)}
+              >
+                <option value="">不关联项目</option>
+                {projects.map((item) => (
+                  <option key={String(item.id)} value={String(item.id)}>
+                    {String(item.name)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span className="field-label">数据类型</span>
+              <select
+                value={dataType}
+                onChange={(event) =>
+                  setDataType(event.target.value as Dataset["data_type"])
+                }
+              >
+                {[
+                  "telemetry",
+                  "image",
+                  "video",
+                  "audio",
+                  "event",
+                  "log",
+                  "mixed",
+                ].map((item) => (
+                  <option key={item} value={item}>
+                    {datasetTypeLabel(item as Dataset["data_type"])}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {dataset && (
+              <label className="field">
+                <span className="field-label">状态</span>
+                <select
+                  value={status}
+                  onChange={(event) =>
+                    setStatus(event.target.value as Dataset["status"])
+                  }
+                >
+                  {["draft", "published", "locked", "archived"].map((item) => (
+                    <option key={item} value={item}>
+                      {datasetStatusLabel(item as Dataset["status"])}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label className="field">
+              <span className="field-label">开始时间</span>
+              <input
+                required
+                type="datetime-local"
+                value={startTime}
+                onChange={(event) => setStartTime(event.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span className="field-label">结束时间</span>
+              <input
+                required
+                type="datetime-local"
+                value={endTime}
+                onChange={(event) => setEndTime(event.target.value)}
+              />
+            </label>
+            <label className="field dataset-description">
+              <span className="field-label">描述</span>
+              <input
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+              />
+            </label>
+          </div>
+        </section>
         {error && <div className="form-error dataset-error">{error}</div>}
-        <div className="form-actions">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            取消
-          </Button>
-          <Button
-            type="submit"
-            disabled={busy || !name.trim() || !sources.length}
-          >
-            {busy ? "保存中…" : "保存数据集"}
-          </Button>
-        </div>
       </form>
-    </Panel>
+    </div>
+  );
+}
+
+function DatasetSourceSummary({
+  sources,
+  devices,
+  limit = 2,
+}: {
+  sources: SourceInput[];
+  devices: JsonRecord[];
+  limit?: number;
+}) {
+  const visible = sources.slice(0, limit);
+  return (
+    <div className="dataset-source-summary">
+      {visible.map((source) => (
+        <div key={`${source.source_type}-${source.source_id}`}>
+          <SourceName source={source} devices={devices} />
+          <small>{sourceTypeLabel(source.source_type)}</small>
+        </div>
+      ))}
+      {sources.length > visible.length && (
+        <span className="dataset-source-more">+ {sources.length - visible.length} 个</span>
+      )}
+    </div>
   );
 }
 
@@ -1011,91 +1220,49 @@ function SourceName({
 function DatasetPreview({
   dataset,
   devices,
+  projectName,
 }: {
   dataset: Dataset;
   devices: JsonRecord[];
+  projectName?: unknown;
 }) {
-  const [limit, setLimit] = useState(500);
-  const [startTime, setStartTime] = useState(
-    localTimeSeconds(dataset.time_start),
-  );
-  const [endTime, setEndTime] = useState(localTimeSeconds(dataset.time_end));
-  const queryStart = new Date(
-    Math.max(Date.parse(startTime), Date.parse(dataset.time_start)),
-  ).toISOString();
-  const queryEnd = new Date(
-    Math.min(Date.parse(endTime), Date.parse(dataset.time_end)),
-  ).toISOString();
+  const datasetStartMs = Date.parse(dataset.time_start);
+  const datasetEndMs = Date.parse(dataset.time_end);
+  const validDatasetRange = Number.isFinite(datasetStartMs) && Number.isFinite(datasetEndMs) && datasetStartMs < datasetEndMs;
+  const queryStart = validDatasetRange
+    ? new Date(datasetStartMs).toISOString()
+    : "";
+  const queryEnd = validDatasetRange
+    ? new Date(datasetEndMs).toISOString()
+    : "";
   const previewable = ["telemetry", "mixed"].includes(dataset.data_type);
   const query = useQuery({
-    queryKey: ["dataset", dataset.id, "preview", queryStart, queryEnd, limit],
+    queryKey: ["dataset", dataset.id, "preview", queryStart, queryEnd],
     queryFn: () =>
       api.telemetry.dataset(dataset.id, {
         startTime: queryStart,
         endTime: queryEnd,
-        limit,
+        limit: 500,
       }),
-    enabled: Boolean(
-      previewable &&
-        startTime &&
-        endTime &&
-        Date.parse(queryStart) < Date.parse(queryEnd),
-    ),
+    enabled: previewable && validDatasetRange,
   });
   const series = ((query.data as any)?.series ?? []) as TelemetrySeries[];
   const points = series
     .flatMap((item) => item.points.map((point) => ({ ...point, series: item })))
     .sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts));
   return (
-    <Panel className="section-gap dataset-preview">
+    <Panel className="section-gap dataset-page-panel dataset-preview">
       <div className="panel-header">
         <div>
-          <h2 className="panel-title">
-            数据预览
-          </h2>
+          <div className="dataset-panel-heading">
+            <h2 className="panel-title">数据预览</h2>
+            <span className="dataset-panel-context">已保存范围</span>
+          </div>
           <div className="panel-kicker">
-            数据集时间范围、来源、趋势和明细
+            按数据集定义的时间范围展示趋势和明细；如需调整，请进入编辑
           </div>
         </div>
       </div>
-      {previewable && <div className="dataset-preview-controls">
-        <label className="field">
-          <span className="field-label">开始时间</span>
-          <input
-            type="datetime-local"
-            step="1"
-            value={startTime}
-            min={localTimeSeconds(dataset.time_start)}
-            max={localTimeSeconds(dataset.time_end)}
-            onChange={(event) => setStartTime(event.target.value)}
-          />
-        </label>
-        <label className="field">
-          <span className="field-label">结束时间</span>
-          <input
-            type="datetime-local"
-            step="1"
-            value={endTime}
-            min={localTimeSeconds(dataset.time_start)}
-            max={localTimeSeconds(dataset.time_end)}
-            onChange={(event) => setEndTime(event.target.value)}
-          />
-        </label>
-        <label className="field">
-          <span className="field-label">每序列上限</span>
-          <input
-            type="number"
-            min="1"
-            max="5000"
-            value={limit}
-            onChange={(event) =>
-              setLimit(
-                Math.min(5000, Math.max(1, Number(event.target.value) || 1)),
-              )
-            }
-          />
-        </label>
-      </div>}
       <div className="dataset-preview-meta">
         <div className="dataset-preview-summary">
           <span>
@@ -1105,6 +1272,16 @@ function DatasetPreview({
           <span>
             <small>数据来源</small>
             <strong>{dataset.sources.length} 项</strong>
+          </span>
+          <span>
+            <small>所属项目</small>
+            <strong>{String(projectName ?? "未关联项目")}</strong>
+          </span>
+          <span>
+            <small>数据范围</small>
+            <strong className="dataset-preview-time-range">
+              {displayTime(dataset.time_start)} 至 {displayTime(dataset.time_end)}
+            </strong>
           </span>
           <span>
             <small>当前状态</small>
@@ -1119,7 +1296,7 @@ function DatasetPreview({
             </Badge>
           </span>
         </div>
-        <details className="dataset-source-details">
+        <details className="dataset-source-details" open>
           <summary>
             <span>
               <Database size={14} aria-hidden="true" />
@@ -1147,11 +1324,11 @@ function DatasetPreview({
           title="当前数据集没有遥测预览"
           description="此页面已展示数据集定义和来源；在线图表目前用于遥测和混合类型数据集。"
         />
-      ) : new Date(startTime) >= new Date(endTime) ? (
+      ) : !validDatasetRange ? (
         <StateView
           type="error"
           title="时间范围无效"
-          description="结束时间必须晚于开始时间。"
+          description="数据集保存的开始时间必须早于结束时间，请进入编辑修正。"
         />
       ) : query.isLoading ? (
         <StateView

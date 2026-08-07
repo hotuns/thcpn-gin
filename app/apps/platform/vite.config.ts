@@ -2,6 +2,8 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 
+const apiTarget = process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:8080";
+
 export default defineConfig({
   plugins: [
     react(),
@@ -34,9 +36,9 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
-      "/api": "http://127.0.0.1:8080",
-      "/healthz": "http://127.0.0.1:8080",
-      "/readyz": "http://127.0.0.1:8080",
+      "/api": apiTarget,
+      "/healthz": apiTarget,
+      "/readyz": apiTarget,
     },
   },
 });

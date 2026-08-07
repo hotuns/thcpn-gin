@@ -278,6 +278,13 @@ export function DeviceDataPage({
     setAppliedEndTime(endTime);
     setAppliedStreamIds(selectedStreamIds);
   };
+  const reorderSelectedStreams = (nextIds: string[]) => {
+    setSelectedStreamIds(nextIds);
+    setAppliedStreamIds((current) => {
+      const applied = new Set(current);
+      return nextIds.filter((id) => applied.has(id));
+    });
+  };
   const queryDirty =
     startTime !== appliedStartTime ||
     endTime !== appliedEndTime ||
@@ -302,16 +309,16 @@ export function DeviceDataPage({
       <>
         {!embedded && (
           <PageHeader
-            eyebrow="工作区 / 相机"
+            eyebrow="工作区 / 监控站"
             title={selectedDevice.name}
-            description="海康相机实时视频。播放凭证为短期会话，仅在当前页面使用。"
+            description="监控站实时视频。播放凭证为短期会话，仅在当前页面使用。"
           />
         )}
         {!embedded && (
           <Panel>
             <div className="camera-only-selector">
               <label className="field">
-                <span className="field-label">相机</span>
+                <span className="field-label">监控站</span>
                 <select
                   value={deviceId}
                   onChange={(event) => {
@@ -379,6 +386,7 @@ export function DeviceDataPage({
                 streams={streamsQuery.data?.items ?? []}
                 selected={selectedStreamIds}
                 onSelectedChange={setSelectedStreamIds}
+                onSelectedOrderChange={reorderSelectedStreams}
                 startTime={startTime}
                 endTime={endTime}
                 onStartTimeChange={setStartTime}
@@ -462,7 +470,11 @@ export function DeviceDataPage({
                 (series) => series.points.length,
               ) ? (
               <TelemetryCharts
-                series={telemetryQuery.data.series}
+                series={[...telemetryQuery.data.series].sort(
+                  (left, right) =>
+                    appliedStreamIds.indexOf(left.data_stream_id) -
+                    appliedStreamIds.indexOf(right.data_stream_id),
+                )}
                 startTime={appliedStartTime}
                 endTime={appliedEndTime}
               />

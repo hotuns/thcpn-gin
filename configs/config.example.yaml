@@ -74,6 +74,10 @@ export:
   file_ttl_hours: 72
   max_rows: 100000
 
+processing:
+  processor_url: "http://127.0.0.1:8090"
+  poll_seconds: 10
+
 tracing:
   enabled: false
   service_name: "thcpn-gin"

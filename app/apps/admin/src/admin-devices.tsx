@@ -50,6 +50,8 @@ type Mode =
   | "capabilities"
   | "attributes"
   | "config"
+  | "calibration"
+  | "firmware"
   | "camera"
   | "camera-edit"
   | null;
@@ -230,6 +232,10 @@ export function AdminDevicesPage() {
         project_id: record.project_id,
         site_id: record.site_id,
       });
+    if (next === "calibration")
+      form.setFieldsValue({ calibration_type: "zero_point", parameters: "{}" });
+    if (next === "firmware")
+      form.setFieldsValue({ firmware_version: "", package_uri: "", checksum: "", scheduled_at: "" });
     if (next === "child") {
       form.setFieldsValue({ child_device_id: "" });
       void loadDetail("children", record);
@@ -339,6 +345,20 @@ export function AdminDevicesPage() {
       if (!selected && mode !== "camera") throw new Error("请先选择设备");
       if (mode === "edit") await api.admin.updateDevice(id, fields);
       if (mode === "assign") await api.admin.assignDevice(id, fields);
+      if (mode === "calibration")
+        await api.admin.calibrateDevice(id, {
+          calibration_type: fields.calibration_type,
+          ...(fields.parameters?.trim() && fields.parameters.trim() !== "{}"
+            ? { parameters: JSON.parse(fields.parameters) }
+            : {}),
+        });
+      if (mode === "firmware")
+        await api.admin.upgradeDeviceFirmware(id, {
+          firmware_version: fields.firmware_version.trim(),
+          ...(fields.package_uri?.trim() ? { package_uri: fields.package_uri.trim() } : {}),
+          ...(fields.checksum?.trim() ? { checksum: fields.checksum.trim() } : {}),
+          ...(fields.scheduled_at ? { scheduled_at: new Date(fields.scheduled_at).toISOString() } : {}),
+        });
       if (mode === "child") await api.admin.addDeviceChild(id, fields);
       if (mode === "lifecycle") await api.admin.updateLifecycle(id, fields);
       if (mode === "capabilities")
@@ -465,7 +485,7 @@ export function AdminDevicesPage() {
         eyebrow="System / devices"
         title="系统设备"
         description="管理设备身份、工作区分配、网关拓扑、生命周期和 THCPN 配置。"
-        actions={<Space><Button type="primary" onClick={openCameraCreate}>创建相机</Button><Button icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>刷新</Button></Space>}
+        actions={<Space><Button type="primary" onClick={openCameraCreate}>创建监控站</Button><Button icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>刷新</Button></Space>}
       />
       <Panel>
         <div className="admin-device-filters">
@@ -507,7 +527,7 @@ export function AdminDevicesPage() {
           {[
             { key: "all", label: "全部" },
             { key: "gateway", label: "网关" },
-            { key: "camera", label: "相机" },
+            { key: "camera", label: "监控站" },
             { key: "standalone", label: "标准站" },
           ].map((item) => (
             <button
@@ -716,7 +736,17 @@ function DeviceDetailPanel({
       ]} />
       {events.length ? <div className="admin-latest-event"><strong>{events[0].from_status ? `${deviceLifecycleLabel(value(events[0].from_status, ""))} → ` : ""}{deviceLifecycleLabel(value(events[0].to_status, ""))}</strong><span>{date(events[0].occurred_at)}{events[0].note ? ` · ${value(events[0].note)}` : ""}</span></div> : null}
     </section>
-    {isCamera ? <section className="admin-detail-section"><div className="admin-detail-section-head"><div><h2>相机绑定</h2><span>管理当前相机的萤石云通道和清晰度</span></div><Button onClick={() => onOpen("camera-edit")}>编辑绑定</Button></div></section> : null}
+    {isCamera ? <section className="admin-detail-section"><div className="admin-detail-section-head"><div><h2>监控站视频绑定</h2><span>管理当前监控站的萤石云通道和清晰度</span></div><Button onClick={() => onOpen("camera-edit")}>编辑绑定</Button></div></section> : null}
+    <section className="admin-detail-section">
+      <div className="admin-detail-section-head">
+        <div><h2>设备操作</h2><span>校准、固件升级与工作区转移仅由系统管理员执行</span></div>
+        <Space>
+          {capabilities.includes("calibratable") ? <Button onClick={() => onOpen("calibration")}>设备校准</Button> : null}
+          {capabilities.includes("firmware_update") ? <Button onClick={() => onOpen("firmware")}>固件升级</Button> : null}
+          <Button onClick={() => onOpen("assign")}>转移设备</Button>
+        </Space>
+      </div>
+    </section>
   </div>;
   const topology = <div className="admin-device-detail-content">
     <section className="admin-detail-section">
@@ -1015,6 +1045,31 @@ function DeviceForm({
         />
       </>
     );
+  if (mode === "calibration")
+    return (
+      <>
+        <Form.Item name="calibration_type" label="校准流程" rules={[{ required: true }]}>
+          <Select options={[
+            { value: "zero_point", label: "零点校准" },
+            { value: "span", label: "量程校准" },
+            { value: "factory_reset", label: "恢复出厂校准" },
+            { value: "custom", label: "自定义流程" },
+          ]} />
+        </Form.Item>
+        <Form.Item name="parameters" label="设备参数 JSON">
+          <Input.TextArea rows={6} spellCheck={false} />
+        </Form.Item>
+      </>
+    );
+  if (mode === "firmware")
+    return (
+      <>
+        <Form.Item name="firmware_version" label="目标版本" rules={[{ required: true }]}><Input placeholder="例如 2.4.1" /></Form.Item>
+        <Form.Item name="package_uri" label="固件包 URI"><Input /></Form.Item>
+        <Form.Item name="checksum" label="Checksum"><Input /></Form.Item>
+        <Form.Item name="scheduled_at" label="计划执行时间"><Input type="datetime-local" /></Form.Item>
+      </>
+    );
   if (mode === "child")
     return (
       <>
@@ -1101,7 +1156,7 @@ function DeviceForm({
         <div className="drawer-grid">
           <Form.Item
             name="name"
-            label="平台相机名称"
+            label="监控站名称"
             rules={[{ required: true }]}
           >
             <Input />
@@ -1483,7 +1538,7 @@ function CameraBindingFields({ editing = false }: { editing?: boolean }) {
 }
 
 function drawerTitle(mode: Mode, selected: JsonRecord | null) {
-  if (mode === "camera" && !selected) return "创建相机";
+  if (mode === "camera" && !selected) return "创建监控站";
   const name = value(selected?.name, "设备");
   return (
     (
@@ -1494,8 +1549,10 @@ function drawerTitle(mode: Mode, selected: JsonRecord | null) {
         lifecycle: "更新生命周期",
         capabilities: "设备能力",
         config: "THCPN 高级配置",
-        camera: "创建相机",
-        "camera-edit": "编辑相机绑定",
+        calibration: "设备校准",
+        firmware: "固件升级",
+        camera: "创建监控站",
+        "camera-edit": "编辑监控站视频绑定",
       } as Record<string, string>
     )[mode ?? ""] + ` · ${name}`
   );

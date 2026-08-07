@@ -8,6 +8,7 @@ import {
   Routes,
   useLocation,
   useNavigate,
+  useSearchParams,
 } from "react-router-dom";
 import {
   BarChart3,
@@ -22,6 +23,7 @@ import {
   SlidersHorizontal,
   Table2,
   Truck,
+  Workflow,
   X,
 } from "lucide-react";
 import {
@@ -84,6 +86,7 @@ const DatasetEditorPage = lazy(() =>
 const ExportsPage = lazy(() =>
   import("./exports-page").then((module) => ({ default: module.ExportsPage })),
 );
+const ProcessingPage = lazy(() => import("./processing-page").then((module) => ({ default: module.ProcessingPage })));
 const DataComparisonPage = lazy(() =>
   import("./data-comparison-page").then((module) => ({
     default: module.DataComparisonPage,
@@ -121,6 +124,7 @@ const navGroups = [
     items: [
       { to: "/data-compare", key: "compare", icon: BarChart3 },
       { to: "/datasets", key: "datasets", icon: Table2 },
+      { to: "/processing", key: "processing", icon: Workflow },
       { to: "/exports", key: "exports", icon: Download },
     ],
   },
@@ -161,6 +165,8 @@ function Shell() {
             ? t("platform:navigation.compare")
           : location.pathname === "/exports"
             ? t("platform:navigation.exports")
+          : location.pathname === "/processing"
+            ? t("platform:navigation.processing")
             : location.pathname === "/workspaces"
               ? t("platform:navigation.workspaces")
             : location.pathname === "/settings"
@@ -316,11 +322,19 @@ function Workspaces() {
   const { workspaces, currentId, setCurrentId, loading, error, refresh } =
     useWorkspace();
   const navigate = useNavigate();
-  const [showForm, setShowForm] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const [showForm, setShowForm] = useState(params.get("action") === "create");
   const [name, setName] = useState("");
   const [type, setType] = useState("lab");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (params.get("action") !== "create") return;
+    setShowForm(true);
+    const next = new URLSearchParams(params);
+    next.delete("action");
+    setParams(next, { replace: true });
+  }, [params, setParams]);
   const manageWorkspace = (workspaceId: string) => {
     if (workspaceId !== currentId) setCurrentId(workspaceId);
     navigate("/settings?tab=resources");
@@ -551,6 +565,7 @@ export function PlatformApp() {
               element={<DatasetDetailPage />}
             />
             <Route path="/exports" element={<ExportsPage />} />
+            <Route path="/processing" element={<ProcessingPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/account" element={<AccountPage />} />
             <Route path="*" element={<RootRedirect />} />

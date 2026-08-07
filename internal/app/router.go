@@ -39,6 +39,7 @@ import (
 	"thcpn-gin/internal/objectstore"
 	"thcpn-gin/internal/permission"
 	"thcpn-gin/internal/platformlog"
+	"thcpn-gin/internal/processing"
 	"thcpn-gin/internal/project"
 	"thcpn-gin/internal/publicdevice"
 	"thcpn-gin/internal/site"
@@ -145,6 +146,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	mediaService := media.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil), objectSigner, cfg.QueryLimits, objectStore)
 	publicDeviceService := publicdevice.NewService(deps.Postgres)
 	exportService := export.NewService(deps.Postgres, objectSigner, cfg.Export)
+	processingService := processing.NewService(deps.Postgres, processing.NewClient(cfg.Processing.ProcessorURL))
 	tokenManager := auth.NewTokenManager(cfg.Auth.JWTSecret, time.Duration(cfg.Auth.AccessTokenTTLMinutes)*time.Minute)
 	smsSender, err := newSMSSender(cfg.SMS, deps.Logger)
 	if err != nil {
@@ -196,6 +198,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	mediaHandler := media.NewHandler(mediaService, permissionChecker, auditService)
 	publicDeviceHandler := publicdevice.NewHandler(publicDeviceService, telemetryService, mediaService, permissionChecker, auditService, deps.Redis, cfg.Auth.JWTSecret)
 	exportHandler := export.NewHandler(exportService, permissionChecker, auditService)
+	processingHandler := processing.NewHandler(processingService, permissionChecker)
 	if taskClient := task.NewClient(deps.Redis); taskClient != nil {
 		exportHandler.SetJobEnqueuer(taskClient)
 	}
@@ -315,6 +318,8 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.GET("/devices/:device_id/logs/:log_uuid/download", dataSourceHandler.AdminDownloadTHCPNDeviceLog)
 	admin.POST("/devices/:device_id/assignment", deviceHandler.AdminAssign)
 	admin.DELETE("/devices/:device_id/assignment", deviceHandler.AdminUnassign)
+	admin.POST("/devices/:device_id/calibrations", deviceHandler.AdminRequestCalibration)
+	admin.POST("/devices/:device_id/firmware-upgrades", deviceHandler.AdminRequestFirmwareUpgrade)
 	admin.POST("/devices/:device_id/children", deviceHandler.AdminAddChild)
 	admin.DELETE("/devices/:device_id/children/:child_device_id", deviceHandler.AdminRemoveChild)
 	admin.GET("/data-sources", dataSourceHandler.AdminListDataSources)
@@ -398,9 +403,6 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.GET("/devices/:device_id/media/videos", mediaHandler.ListDeviceVideos)
 	authed.GET("/devices/:device_id/public-access", publicDeviceHandler.GetManagement)
 	authed.PATCH("/devices/:device_id/public-access", publicDeviceHandler.UpdateManagement)
-	authed.POST("/devices/:device_id/calibrations", deviceHandler.RequestCalibration)
-	authed.POST("/devices/:device_id/firmware-upgrades", deviceHandler.RequestFirmwareUpgrade)
-	authed.POST("/devices/:device_id/transfer", deviceHandler.Transfer)
 	authed.POST("/devices/:device_id/unbind", deviceHandler.Unbind)
 	authed.GET("/devices/:device_id", deviceHandler.Get)
 	authed.PATCH("/devices/:device_id", deviceHandler.Update)
@@ -420,6 +422,11 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.POST("/datasets", datasetHandler.Create)
 	authed.GET("/datasets/:dataset_id", datasetHandler.Get)
 	authed.GET("/datasets/:dataset_id/telemetry", datasetHandler.QueryTelemetry)
+	authed.GET("/processing/processors", processingHandler.Processors)
+	authed.GET("/workspaces/:workspace_id/processing-tasks", processingHandler.List)
+	authed.POST("/workspaces/:workspace_id/processing-tasks", processingHandler.Create)
+	authed.GET("/workspaces/:workspace_id/processing-tasks/:task_id", processingHandler.Get)
+	authed.PATCH("/workspaces/:workspace_id/processing-tasks/:task_id/status", processingHandler.SetStatus)
 	authed.POST("/datasets/:dataset_id/export", exportHandler.ExportDataset)
 	authed.PATCH("/datasets/:dataset_id", datasetHandler.Update)
 	authed.DELETE("/datasets/:dataset_id", datasetHandler.Delete)

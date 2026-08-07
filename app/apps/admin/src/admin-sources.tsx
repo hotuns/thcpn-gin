@@ -276,7 +276,7 @@ export function AdminSourcesPage() {
                       disabled={record.type !== "mysql"}
                       onClick={() => open("camera", record)}
                     >
-                      同步相机
+                      同步监控站
                     </Button>
                   </Space>
                 ),
@@ -303,7 +303,7 @@ export function AdminSourcesPage() {
         onOk={() => void syncAll()}
         onCancel={() => { if (!fullSyncBusy) setFullSyncSource(null); }}
       >
-        <p>将读取外部 <code>devices</code>、<code>gate_node</code> 和 <code>cameras</code>，同步设备、配置、DataStream、绑定、拓扑及相机。</p>
+        <p>将读取外部 <code>devices</code>、<code>gate_node</code> 和 <code>cameras</code>，同步设备、配置、DataStream、绑定、拓扑及监控站。</p>
         <p>设备不会自动分配到工作区；已经同步的设备将更新，缺少配置的设备会单独记录失败原因。</p>
       </Modal>
       <Drawer
@@ -382,8 +382,8 @@ function FullSyncSummary({ result }: { result: JsonRecord }) {
         <div><strong>{string(result.failed, 0)}</strong><span>失败</span></div>
         <div><strong>{string(result.relations, 0)}</strong><span>拓扑关系</span></div>
         <div><strong>{string(result.topology_failed, 0)}</strong><span>拓扑失败</span></div>
-        <div><strong>{string(result.cameras_synced, 0)}</strong><span>相机</span></div>
-        <div><strong>{string(result.cameras_failed, 0)}</strong><span>相机失败</span></div>
+        <div><strong>{string(result.cameras_synced, 0)}</strong><span>监控站</span></div>
+        <div><strong>{string(result.cameras_failed, 0)}</strong><span>监控站失败</span></div>
       </div>
       {failures.length ? <div className="sync-warnings">{failures.slice(0, 20).map((failure, index) => <div key={`${failure.external_device_id}-${index}`}><strong>外部设备 {failure.external_device_id}</strong><span>{failure.error ?? "同步失败"}</span></div>)}</div> : null}
     </Panel>
@@ -395,7 +395,7 @@ function drawerTitle(mode: Mode, selected: JsonRecord | null) {
   if (mode === "edit") return `编辑数据源 · ${string(selected?.name)}`;
   if (mode === "station") return `同步标准站设备 · ${string(selected?.name)}`;
   if (mode === "gateway") return `同步网关及节点 · ${string(selected?.name)}`;
-  return `同步相机 · ${string(selected?.name)}`;
+  return `同步监控站 · ${string(selected?.name)}`;
 }
 function SourceFields({ editing }: { editing: boolean }) {
   return (
@@ -470,12 +470,12 @@ function CameraFields() {
     <>
       <Form.Item
         name="external_camera_id"
-        label="外部相机 ID"
+        label="外部监控站 ID"
         rules={[{ required: true, message: "请输入外部 cameras.id" }]}
       >
         <InputNumber min={1} precision={0} style={{ width: "100%" }} />
       </Form.Item>
-      <div className="drawer-note">将读取 cameras 表并同步相机名称、萤石设备序列号和通道；不会分配到工作区。</div>
+      <div className="drawer-note">将读取 cameras 表并同步监控站名称、萤石设备序列号和通道；不会分配到工作区。</div>
     </>
   );
 }

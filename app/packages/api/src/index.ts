@@ -121,6 +121,20 @@ export type AdminLoginResponse = {
 export type ApiEnvelope<T> = T & { request_id?: string };
 export type ListResponse<T> = { items: T[]; total?: number; page?: number; page_size?: number };
 export type JsonRecord = Record<string, unknown>;
+export type ProcessingProcessor = {
+  code: string; version: string; name: string; description: string;
+  manifest: { inputs?: Array<{ code: string; name: string; kind: string; required?: boolean }>; outputs?: Array<{ code: string; name: string; kind: string; unit?: string }>; triggers?: string[]; parameters?: JsonRecord };
+  enabled: boolean; synced_at: string;
+};
+export type ProcessingTask = {
+  id: string; workspace_id: string; name: string; description: string;
+  target_type: "device" | "site"; target_id: string;
+  status: "active" | "paused" | "archived"; current_version: number;
+  processor_code: string; processor_version: string;
+  processor_manifest: JsonRecord; config: JsonRecord; trigger: JsonRecord;
+  start_at: string; inputs?: Array<JsonRecord>; created_at: string; updated_at: string;
+  last_execution_status?: string; last_execution_at?: string;
+};
 
 const queryString = (
   values: Record<string, string | number | boolean | undefined | null>,
@@ -848,6 +862,13 @@ export const api = {
         `/api/v1/export-jobs/${encodeURIComponent(id)}/download`,
       ),
   },
+  processing: {
+    processors: () => request<ListResponse<ProcessingProcessor>>("/api/v1/processing/processors"),
+    list: (workspaceId: string) => request<ListResponse<ProcessingTask>>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/processing-tasks`),
+    get: (workspaceId: string, taskId: string) => request<ProcessingTask>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/processing-tasks/${encodeURIComponent(taskId)}`),
+    create: (workspaceId: string, payload: JsonRecord) => jsonRequest<ProcessingTask>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/processing-tasks`, "POST", payload),
+    status: (workspaceId: string, taskId: string, status: string) => jsonRequest<ProcessingTask>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/processing-tasks/${encodeURIComponent(taskId)}/status`, "PATCH", { status }),
+  },
   accessGrants: {
     list: (
       workspaceId?: string,
@@ -1096,6 +1117,18 @@ export const api = {
       request<void>(
         `/api/v1/admin/devices/${encodeURIComponent(id)}/assignment`,
         { method: "DELETE" },
+      ),
+    calibrateDevice: (id: string, payload: JsonRecord) =>
+      jsonRequest<JsonRecord>(
+        `/api/v1/admin/devices/${encodeURIComponent(id)}/calibrations`,
+        "POST",
+        payload,
+      ),
+    upgradeDeviceFirmware: (id: string, payload: JsonRecord) =>
+      jsonRequest<JsonRecord>(
+        `/api/v1/admin/devices/${encodeURIComponent(id)}/firmware-upgrades`,
+        "POST",
+        payload,
       ),
     createCamera: (payload: JsonRecord) =>
       jsonRequest<JsonRecord>("/api/v1/admin/cameras", "POST", payload),

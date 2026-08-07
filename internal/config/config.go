@@ -24,6 +24,7 @@ type Config struct {
 	THCPNLogObjectStore ObjectStoreConfig `yaml:"thcpn_log_object_store"`
 	QueryLimits         QueryLimitsConfig `yaml:"query_limits"`
 	Export              ExportConfig      `yaml:"export"`
+	Processing          ProcessingConfig  `yaml:"processing"`
 	Tracing             TracingConfig     `yaml:"tracing"`
 	Ezviz               EzvizConfig       `yaml:"ezviz"`
 }
@@ -118,6 +119,11 @@ type QueryLimitsConfig struct {
 type ExportConfig struct {
 	FileTTLHours int `yaml:"file_ttl_hours"`
 	MaxRows      int `yaml:"max_rows"`
+}
+
+type ProcessingConfig struct {
+	ProcessorURL string `yaml:"processor_url"`
+	PollSeconds  int    `yaml:"poll_seconds"`
 }
 
 type TracingConfig struct {
@@ -221,6 +227,10 @@ func Default() Config {
 		Export: ExportConfig{
 			FileTTLHours: 72,
 			MaxRows:      100000,
+		},
+		Processing: ProcessingConfig{
+			ProcessorURL: "http://127.0.0.1:8090",
+			PollSeconds:  10,
 		},
 		Tracing: TracingConfig{
 			Enabled:     false,
@@ -408,6 +418,12 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.Export.MaxRows <= 0 {
 		return errors.New("export.max_rows must be greater than 0")
+	}
+	if strings.TrimSpace(cfg.Processing.ProcessorURL) == "" {
+		return errors.New("processing.processor_url is required")
+	}
+	if cfg.Processing.PollSeconds <= 0 {
+		return errors.New("processing.poll_seconds must be greater than 0")
 	}
 	if strings.TrimSpace(cfg.Tracing.ServiceName) == "" {
 		return errors.New("tracing.service_name is required")
@@ -641,6 +657,14 @@ func applyEnv(cfg *Config) {
 	if value := strings.TrimSpace(os.Getenv("EXPORT_MAX_ROWS")); value != "" {
 		if rows, err := strconv.Atoi(value); err == nil {
 			cfg.Export.MaxRows = rows
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("PROCESSOR_URL")); value != "" {
+		cfg.Processing.ProcessorURL = value
+	}
+	if value := strings.TrimSpace(os.Getenv("PROCESSING_POLL_SECONDS")); value != "" {
+		if seconds, err := strconv.Atoi(value); err == nil {
+			cfg.Processing.PollSeconds = seconds
 		}
 	}
 	if value := strings.TrimSpace(os.Getenv("TRACING_ENABLED")); value != "" {

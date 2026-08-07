@@ -16,7 +16,9 @@ import (
 	"thcpn-gin/internal/db"
 	"thcpn-gin/internal/export"
 	"thcpn-gin/internal/logger"
+	"thcpn-gin/internal/media"
 	"thcpn-gin/internal/objectstore"
+	"thcpn-gin/internal/processing"
 	"thcpn-gin/internal/task"
 	"thcpn-gin/internal/telemetry"
 	"thcpn-gin/internal/tracing"
@@ -87,6 +89,8 @@ func run() int {
 		telemetryService,
 	)
 	accessGrantService := accessgrant.NewService(pg)
+	processorClient := processing.NewClient(cfg.Processing.ProcessorURL)
+	processingEngine := processing.NewEngine(pg, processorClient, media.NewService(pg, dataSourceService, datasource.NewRuntime(nil), objectstore.NewSigner(cfg.ObjectStore, cfg.Auth.JWTSecret), cfg.QueryLimits, objectstore.NewStore(cfg.ObjectStore)), objectstore.NewStore(cfg.ObjectStore))
 
 	if envBool("WORKER_RUN_ONCE") {
 		if err := cleanupExpiredAccess(ctx, accessGrantService, log); err != nil {
@@ -107,7 +111,10 @@ func run() int {
 	}
 
 	concurrency := envInt("WORKER_CONCURRENCY", 5)
-	server, mux := task.NewExportServer(redisClient, processor, log, concurrency)
+	server, mux := task.NewExportServer(redisClient, processor, log, concurrency, processingEngine)
+	taskClient := task.NewClient(redisClient)
+	defer taskClient.Close()
+	startProcessingScan(ctx, taskClient, log, time.Duration(cfg.Processing.PollSeconds)*time.Second)
 	startExpiredAccessCleanup(ctx, accessGrantService, log, time.Hour)
 	startExpiredExportFileCleanup(ctx, processor, log, time.Hour)
 
@@ -129,6 +136,30 @@ func run() int {
 		}
 		return 0
 	}
+}
+
+func startProcessingScan(ctx context.Context, client *task.Client, log *slog.Logger, interval time.Duration) {
+	if interval <= 0 {
+		interval = 10 * time.Second
+	}
+	go func() {
+		enqueue := func() {
+			if err := client.EnqueueProcessingScan(ctx); err != nil && log != nil {
+				log.Warn("enqueue processing scan", slog.Any("error", err))
+			}
+		}
+		enqueue()
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				enqueue()
+			}
+		}
+	}()
 }
 
 func startExpiredAccessCleanup(ctx context.Context, service *accessgrant.Service, log *slog.Logger, interval time.Duration) {
