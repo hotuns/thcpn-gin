@@ -880,6 +880,264 @@ a {
     background: rgba(23, 33, 43, 0.35);
   }
 }
+
+/* MotionSites "Intelligent Operations" inspired precision theme. */
+:root {
+  --ink: #182321;
+  --muted: #687571;
+  --line: #d8dfdc;
+  --soft-line: #e8ecea;
+  --canvas: #edf2f0;
+  --panel: rgba(250, 252, 251, 0.9);
+  --control: #fbfcfb;
+  --surface-muted: #f3f6f4;
+  --surface-subtle: #e7ece9;
+  --surface-selected: #e3ebe7;
+  --blue: #285f5a;
+  --blue-dark: #174742;
+  --blue-soft: #e2ece8;
+  --green: #39735b;
+  --green-soft: #e5f0e9;
+  --orange: #a36f25;
+  --orange-soft: #f7eddb;
+  --red: #a54848;
+  --red-soft: #f8e8e6;
+  --shadow: 0 18px 48px rgba(30, 48, 43, 0.06);
+}
+
+body {
+  background:
+    radial-gradient(circle at 76% 4%, rgba(201, 166, 102, 0.18), transparent 24rem),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.72), transparent 42%),
+    var(--canvas);
+  background-attachment: fixed;
+}
+
+.sidebar {
+  background: rgba(242, 246, 244, 0.88);
+  border-right-color: rgba(95, 112, 106, 0.2);
+  backdrop-filter: blur(18px) saturate(115%);
+}
+
+.brand-mark {
+  color: #f8fbfa;
+  background: #173d39;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 3px;
+  box-shadow: 0 8px 20px rgba(23, 61, 57, 0.18);
+}
+
+.brand-name {
+  color: #173d39;
+  font-weight: 700;
+}
+
+.nav-title,
+.eyebrow {
+  color: #8a7560;
+}
+
+.nav-item {
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+
+.nav-item:hover {
+  background: rgba(255, 255, 255, 0.62);
+  border-color: rgba(95, 112, 106, 0.16);
+}
+
+.nav-item.active {
+  color: #153f3a;
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(54, 91, 84, 0.25);
+  box-shadow: inset 3px 0 #b68a46;
+}
+
+.topbar {
+  height: 66px;
+  background: rgba(245, 248, 246, 0.72);
+  border-bottom-color: rgba(95, 112, 106, 0.2);
+  backdrop-filter: blur(20px) saturate(125%);
+}
+
+.page {
+  position: relative;
+  padding-top: 30px;
+}
+
+.page::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 36px;
+  left: 36px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(182, 138, 70, 0.55), transparent);
+}
+
+.page-header {
+  min-height: 52px;
+  align-items: flex-end;
+  margin-bottom: 20px;
+}
+
+.page-title {
+  font-size: 22px;
+  font-weight: 650;
+}
+
+.btn,
+.icon-btn {
+  border-radius: 4px;
+}
+
+.btn-primary {
+  background: #1c4b46;
+  box-shadow: 0 8px 20px rgba(28, 75, 70, 0.16);
+}
+
+.btn-primary:hover {
+  background: #123a36;
+}
+
+.btn-secondary {
+  color: #40534f;
+  background: rgba(255, 255, 255, 0.7);
+  border-color: rgba(79, 99, 93, 0.26);
+}
+
+.panel {
+  background: var(--panel);
+  border-color: rgba(86, 105, 99, 0.2);
+  border-radius: 5px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px) saturate(110%);
+}
+
+.panel-header {
+  min-height: 52px;
+  border-bottom-color: rgba(86, 105, 99, 0.16);
+}
+
+.panel-title {
+  font-weight: 700;
+}
+
+.metric {
+  position: relative;
+  overflow: hidden;
+}
+
+.metric::after {
+  content: "";
+  position: absolute;
+  right: -20px;
+  bottom: -42px;
+  width: 92px;
+  height: 92px;
+  border: 1px solid rgba(182, 138, 70, 0.28);
+  border-radius: 50%;
+  box-shadow: 0 0 0 14px rgba(182, 138, 70, 0.04);
+  pointer-events: none;
+}
+
+.metric-value {
+  color: #173d39;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.data-table th {
+  color: #65736f;
+  background: rgba(231, 236, 233, 0.72);
+  letter-spacing: 0.04em;
+}
+
+.data-table tr:hover td {
+  background: rgba(228, 236, 232, 0.58);
+}
+
+.badge {
+  border: 1px solid currentColor;
+  border-radius: 3px;
+}
+
+.field input,
+.field select {
+  border-radius: 4px;
+}
+
+.field input:focus,
+.field select:focus {
+  border-color: #6b958c;
+  box-shadow: 0 0 0 3px rgba(40, 95, 90, 0.1);
+}
+
+.auth-layout {
+  background: #f7f8f7;
+}
+
+.auth-visual {
+  color: #173d39;
+  background:
+    linear-gradient(105deg, rgba(255, 255, 255, 0.74), transparent 58%),
+    radial-gradient(circle at 82% 48%, rgba(194, 158, 98, 0.26), transparent 16rem),
+    #dfe7e4;
+}
+
+.auth-visual::before {
+  content: "";
+  position: absolute;
+  inset: 8% 7% auto auto;
+  width: 1px;
+  height: 34%;
+  background: #b68a46;
+  box-shadow:
+    -12px 36px 0 rgba(43, 86, 79, 0.2),
+    -24px 72px 0 rgba(43, 86, 79, 0.1),
+    -36px 108px 0 rgba(43, 86, 79, 0.06);
+}
+
+.auth-visual::after {
+  width: 420px;
+  height: 420px;
+  right: -170px;
+  bottom: -180px;
+  border-color: rgba(40, 95, 90, 0.2);
+  box-shadow:
+    0 0 0 34px rgba(255, 255, 255, 0.12),
+    0 0 0 70px rgba(40, 95, 90, 0.05);
+}
+
+.auth-visual .brand {
+  color: #173d39;
+}
+
+.auth-visual .brand-mark {
+  color: #f8fbfa;
+  background: #173d39;
+}
+
+.auth-lede {
+  color: #526762;
+}
+
+.auth-title {
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.auth-form-side {
+  background: rgba(250, 251, 250, 0.94);
+}
+
+@media (max-width: 680px) {
+  .page::before {
+    right: 18px;
+    left: 18px;
+  }
+}
 .language-switcher {
   display: inline-flex;
   align-items: center;
@@ -909,3 +1167,163 @@ a {
 }
 .language-switcher.compact { width: 100%; }
 .language-switcher.compact button { flex: 1; }
+
+:root[data-theme="dark"] {
+  --ink: #e8eeeb;
+  --muted: #98a7a2;
+  --line: #35443f;
+  --soft-line: #293732;
+  --canvas: #101714;
+  --panel: rgba(24, 34, 30, 0.92);
+  --control: #17211d;
+  --surface-muted: #1b2722;
+  --surface-subtle: #22302b;
+  --surface-selected: #263a33;
+  --blue: #77afa4;
+  --blue-dark: #9bc6bd;
+  --blue-soft: #223a34;
+  --green: #7fbd9b;
+  --green-soft: #1d392b;
+  --orange: #d2a35e;
+  --orange-soft: #3b2d1c;
+  --red: #e28b88;
+  --red-soft: #402524;
+  --shadow: 0 20px 56px rgba(0, 0, 0, 0.28);
+  color: var(--ink);
+  background: var(--canvas);
+}
+
+:root[data-theme="dark"] body {
+  background:
+    radial-gradient(circle at 76% 4%, rgba(184, 138, 70, 0.12), transparent 24rem),
+    linear-gradient(135deg, rgba(70, 96, 87, 0.12), transparent 42%),
+    var(--canvas);
+}
+
+:root[data-theme="dark"] .sidebar {
+  background: rgba(17, 25, 22, 0.92);
+  border-right-color: rgba(140, 165, 156, 0.2);
+}
+
+:root[data-theme="dark"] .topbar {
+  background: rgba(17, 25, 22, 0.78);
+  border-bottom-color: rgba(140, 165, 156, 0.18);
+}
+
+:root[data-theme="dark"] .brand-name,
+:root[data-theme="dark"] .page-title,
+:root[data-theme="dark"] .metric-value {
+  color: #e8eeeb;
+}
+
+:root[data-theme="dark"] .brand-mark {
+  color: #17231f;
+  background: #d8e2de;
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+}
+
+:root[data-theme="dark"] .nav-title,
+:root[data-theme="dark"] .eyebrow {
+  color: #c09a62;
+}
+
+:root[data-theme="dark"] .nav-item:hover {
+  color: #edf2f0;
+  background: rgba(255, 255, 255, 0.045);
+  border-color: rgba(151, 178, 168, 0.15);
+}
+
+:root[data-theme="dark"] .nav-item.active {
+  color: #eaf0ed;
+  background: rgba(48, 72, 64, 0.7);
+  border-color: rgba(126, 164, 151, 0.3);
+  box-shadow: inset 3px 0 #c19a5d;
+}
+
+:root[data-theme="dark"] .btn-primary {
+  color: #101714;
+  background: #9bc6bd;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+}
+
+:root[data-theme="dark"] .btn-primary:hover {
+  background: #b0d2cb;
+}
+
+:root[data-theme="dark"] .btn-secondary {
+  color: #c3cfca;
+  background: rgba(28, 40, 35, 0.82);
+  border-color: rgba(143, 166, 158, 0.3);
+}
+
+:root[data-theme="dark"] .panel {
+  border-color: rgba(137, 162, 153, 0.2);
+}
+
+:root[data-theme="dark"] .panel-header {
+  border-bottom-color: rgba(137, 162, 153, 0.16);
+}
+
+:root[data-theme="dark"] .metric::after {
+  border-color: rgba(201, 158, 91, 0.32);
+  box-shadow: 0 0 0 14px rgba(201, 158, 91, 0.035);
+}
+
+:root[data-theme="dark"] .data-table th {
+  color: #a7b4af;
+  background: rgba(31, 45, 39, 0.82);
+}
+
+:root[data-theme="dark"] .data-table tr:hover td {
+  background: rgba(48, 67, 60, 0.48);
+}
+
+:root[data-theme="dark"] .field input,
+:root[data-theme="dark"] .field select {
+  color: var(--ink);
+  background: var(--control);
+  border-color: var(--line);
+}
+
+:root[data-theme="dark"] .field input:focus,
+:root[data-theme="dark"] .field select:focus {
+  border-color: #73a89d;
+  box-shadow: 0 0 0 3px rgba(119, 175, 164, 0.12);
+}
+
+:root[data-theme="dark"] .auth-layout {
+  background: #111815;
+}
+
+:root[data-theme="dark"] .auth-visual {
+  color: #e7eeeb;
+  background:
+    linear-gradient(105deg, rgba(41, 59, 52, 0.46), transparent 58%),
+    radial-gradient(circle at 82% 48%, rgba(184, 138, 70, 0.18), transparent 16rem),
+    #17221e;
+}
+
+:root[data-theme="dark"] .auth-visual .brand,
+:root[data-theme="dark"] .auth-title {
+  color: #e7eeeb;
+}
+
+:root[data-theme="dark"] .auth-visual .brand-mark {
+  color: #17231f;
+  background: #d8e2de;
+}
+
+:root[data-theme="dark"] .auth-lede {
+  color: #aab9b4;
+}
+
+:root[data-theme="dark"] .auth-form-side {
+  background: rgba(16, 23, 20, 0.96);
+}
+
+:root[data-theme="dark"] .language-switcher button.active {
+  color: #dce8e4;
+  background: #263630;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}

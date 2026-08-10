@@ -1,11 +1,12 @@
 import { useSearchParams } from "react-router-dom";
 import { useState, type FormEvent } from "react";
-import { Mail, Moon, Pencil, Phone, Sun, UserRound, X } from "lucide-react";
+import { Check, Mail, Moon, Palette, Pencil, Phone, Sun, UserRound, X } from "lucide-react";
 import { api, commonStatusLabel, formatApiError } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
 import { Badge, Button, CopyId, PageHeader, Panel } from "@thcpn/ui";
 import { useLocale, useTheme, type ThemeMode } from "@thcpn/i18n";
 import { SecurityTab } from "./security-tab";
+import { useColorTheme, type ColorTheme } from "./color-theme";
 
 const formatTime = (input?: string) =>
   input
@@ -53,11 +54,33 @@ export function AccountPage() {
 function PreferencesTab() {
   const { locale, setLocale, t } = useLocale();
   const { theme, setTheme } = useTheme();
+  const { colorTheme, setColorTheme } = useColorTheme();
   const themeOptions: Array<{ value: ThemeMode; label: string; icon: typeof Sun }> = [
     { value: "system", label: t("themeSystem"), icon: Sun },
     { value: "light", label: t("themeLight"), icon: Sun },
     { value: "dark", label: t("themeDark"), icon: Moon },
   ];
+  const colorThemeOptions: Array<{
+    value: ColorTheme;
+    label: string;
+    description: string;
+  }> = locale === "zh-CN"
+    ? [
+        { value: "pine", label: "松针", description: "深青绿与暖金，沉静精密" },
+        { value: "ocean", label: "海湾", description: "矿物蓝与雾灰，清晰理性" },
+        { value: "clay", label: "陶土", description: "砖红与铜色，温暖稳重" },
+        { value: "aurora", label: "极光", description: "青绿与荧光黄，鲜明高效" },
+        { value: "iris", label: "鸢尾", description: "紫罗兰与莓红，灵动专注" },
+        { value: "obsidian", label: "曜石", description: "近黑与亮黄，强烈克制" },
+      ]
+    : [
+        { value: "pine", label: "Pine", description: "Deep green with warm gold" },
+        { value: "ocean", label: "Ocean", description: "Mineral blue with mist gray" },
+        { value: "clay", label: "Clay", description: "Brick red with warm copper" },
+        { value: "aurora", label: "Aurora", description: "Teal with electric lime" },
+        { value: "iris", label: "Iris", description: "Violet with berry pink" },
+        { value: "obsidian", label: "Obsidian", description: "Near black with vivid yellow" },
+      ];
   return <Panel className="preferences-panel">
     <div className="preference-list">
       <div className="preference-row">
@@ -72,6 +95,28 @@ function PreferencesTab() {
         <select aria-label={t("theme")} value={theme} onChange={(event) => setTheme(event.target.value as ThemeMode)}>
           {themeOptions.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
         </select>
+      </div>
+      <div className="preference-row color-theme-preference">
+        <div>
+          <strong><Palette size={15} />{locale === "zh-CN" ? "颜色主题" : "Color theme"}</strong>
+          <small>{locale === "zh-CN" ? "选择平台界面的强调色与氛围。" : "Choose the platform accent colors and atmosphere."}</small>
+        </div>
+        <div className="color-theme-options" role="radiogroup" aria-label={locale === "zh-CN" ? "颜色主题" : "Color theme"}>
+          {colorThemeOptions.map((option) => (
+            <button
+              type="button"
+              role="radio"
+              aria-checked={colorTheme === option.value}
+              className={`color-theme-option color-theme-${option.value}${colorTheme === option.value ? " selected" : ""}`}
+              key={option.value}
+              onClick={() => setColorTheme(option.value)}
+            >
+              <span className="color-theme-swatch" aria-hidden="true"><i /><i /><i /></span>
+              <span><strong>{option.label}</strong><small>{option.description}</small></span>
+              <Check className="color-theme-check" size={15} aria-hidden="true" />
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   </Panel>;

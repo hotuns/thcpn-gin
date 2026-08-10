@@ -8,7 +8,8 @@ import { I18nProvider } from "@thcpn/i18n";
 import "@thcpn/ui/styles.css";
 import "./platform.css";
 import { PlatformApp } from "./app";
+import { ColorThemeProvider } from "./color-theme";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 0 } } });
 
-createRoot(document.getElementById("root")!).render(<StrictMode><I18nProvider><QueryClientProvider client={queryClient}><BrowserRouter><AuthProvider><PlatformApp /></AuthProvider></BrowserRouter></QueryClientProvider></I18nProvider></StrictMode>);
+createRoot(document.getElementById("root")!).render(<StrictMode><I18nProvider><ColorThemeProvider><QueryClientProvider client={queryClient}><BrowserRouter><AuthProvider><PlatformApp /></AuthProvider></BrowserRouter></QueryClientProvider></ColorThemeProvider></I18nProvider></StrictMode>);

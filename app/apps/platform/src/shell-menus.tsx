@@ -166,7 +166,7 @@ export function WorkspaceMenu({
                 {t("platform:navigation.settings")}
               </Link>
               <Link
-                to="/settings?tab=access&action=invite"
+                to="/settings?tab=access"
                 onClick={onNavigate}
               >
                 <UserPlus size={15} aria-hidden="true" />
