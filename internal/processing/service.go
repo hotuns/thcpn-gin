@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"sort"
 	"strings"
@@ -14,13 +15,21 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/billing"
 	"thcpn-gin/internal/objectstore"
 )
 
 type Service struct {
-	db     *pgxpool.Pool
-	client *Client
-	signer *objectstore.Signer
+	db      *pgxpool.Pool
+	client  *Client
+	signer  *objectstore.Signer
+	store   objectstore.Store
+	billing *billing.Service
+}
+
+func (s *Service) SetBilling(service *billing.Service, store objectstore.Store) {
+	s.billing = service
+	s.store = store
 }
 
 type Execution struct {
@@ -253,7 +262,7 @@ FROM processing_executions WHERE task_id=$1 ORDER BY created_at DESC LIMIT 100`,
 			&item.ObservedAt, &item.QueuedAt, &item.StartedAt, &item.FinishedAt, &item.ErrorMessage, &item.Inputs, &item.CreatedAt); err != nil {
 			return nil, apperr.Wrap(apperr.KindInternal, "scan processing execution", err)
 		}
-		item.Results, err = s.listResults(ctx, item.ID)
+		item.Results, err = s.listResults(ctx, workspaceID, item.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -262,7 +271,7 @@ FROM processing_executions WHERE task_id=$1 ORDER BY created_at DESC LIMIT 100`,
 	return items, rows.Err()
 }
 
-func (s *Service) listResults(ctx context.Context, executionID uuid.UUID) ([]Result, error) {
+func (s *Service) listResults(ctx context.Context, workspaceID, executionID uuid.UUID) ([]Result, error) {
 	rows, err := s.db.Query(ctx, `SELECT id, output_code, kind, observed_at, numeric_value, unit,
 record_json, COALESCE(object_key, ''), content_type, created_at
 FROM processing_results WHERE execution_id=$1 ORDER BY created_at`, executionID)
@@ -278,16 +287,44 @@ FROM processing_results WHERE execution_id=$1 ORDER BY created_at`, executionID)
 			&item.Unit, &item.Record, &objectKey, &item.ContentType, &item.CreatedAt); err != nil {
 			return nil, apperr.Wrap(apperr.KindInternal, "scan processing result", err)
 		}
-		if objectKey != "" && s.signer != nil {
-			signed, err := s.signer.SignObjectURL(objectKey, 15*time.Minute)
-			if err != nil {
-				return nil, err
-			}
-			item.URL = signed.URL
+		if objectKey != "" {
+			item.URL = "/api/v1/workspaces/" + workspaceID.String() + "/processing-results/" + item.ID.String() + "/download"
 		}
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (s *Service) PrepareResultDownload(ctx context.Context, workspaceID, resultID, actorID uuid.UUID) (string, time.Time, error) {
+	if s.signer == nil || s.store == nil || s.billing == nil {
+		return "", time.Time{}, apperr.New(apperr.KindInternal, "processing download is not configured")
+	}
+	var objectKey string
+	err := s.db.QueryRow(ctx, `SELECT r.object_key FROM processing_results r JOIN processing_executions e ON e.id=r.execution_id JOIN processing_tasks t ON t.id=e.task_id WHERE r.id=$1 AND t.workspace_id=$2 AND r.object_key IS NOT NULL`, resultID, workspaceID).Scan(&objectKey)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", time.Time{}, apperr.New(apperr.KindNotFound, "processing result not found")
+	}
+	if err != nil {
+		return "", time.Time{}, apperr.Wrap(apperr.KindInternal, "load processing result", err)
+	}
+	if err = s.billing.RequireProfessional(ctx, workspaceID); err != nil {
+		return "", time.Time{}, err
+	}
+	info, err := objectstore.Stat(ctx, s.store, objectKey)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	if info.SizeBytes <= 0 {
+		return "", time.Time{}, apperr.New(apperr.KindConflict, "processing artifact size is unavailable")
+	}
+	if err = s.billing.ReserveDownload(ctx, billing.ReserveDownloadInput{WorkspaceID: workspaceID, SourceType: "processing", ResourceID: &resultID, ObjectKey: objectKey, Bytes: info.SizeBytes, ActorUserID: &actorID, IdempotencyKey: "processing:" + resultID.String() + ":" + actorID.String()}); err != nil {
+		return "", time.Time{}, err
+	}
+	signed, err := s.signer.SignObjectURL(objectKey, 15*time.Minute)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return signed.URL, signed.ExpiresAt, nil
 }
 
 func (s *Service) CreateTask(ctx context.Context, input CreateInput) (Task, error) {

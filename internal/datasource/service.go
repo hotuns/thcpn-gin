@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/billing"
 	"thcpn-gin/internal/db/sqlc"
 	"thcpn-gin/internal/objectstore"
 )
@@ -34,6 +35,27 @@ type Service struct {
 	db      *pgxpool.Pool
 	queries *sqlc.Queries
 	store   objectstore.Store
+	billing *billing.Service
+}
+
+func (s *Service) SetBilling(service *billing.Service) { s.billing = service }
+
+func (s *Service) validateDeviceHistory(ctx context.Context, deviceID uuid.UUID, start time.Time) error {
+	if s.billing == nil {
+		return nil
+	}
+	assignment, err := s.queries.GetActiveDeviceAssignment(ctx, deviceID)
+	if err != nil {
+		return mapNotFoundOrInternal(err, "active device assignment not found")
+	}
+	summary, err := s.billing.Summary(ctx, assignment.WorkspaceID)
+	if err != nil {
+		return err
+	}
+	if summary.Plan == billing.PlanBase && start.Before(time.Now().UTC().AddDate(0, 0, -90)) {
+		return apperr.New(apperr.KindPermissionDenied, "base plan online history is limited to the latest 90 days")
+	}
+	return nil
 }
 
 type Adapter interface {

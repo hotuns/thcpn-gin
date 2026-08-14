@@ -183,6 +183,9 @@ func (s *Service) CarbonFlux(ctx context.Context, deviceID uuid.UUID, nodeID int
 	if !end.After(start) {
 		return CarbonFluxResponse{}, apperr.New(apperr.KindInvalidArgument, "end must be after start")
 	}
+	if err := s.validateDeviceHistory(ctx, deviceID, start); err != nil {
+		return CarbonFluxResponse{}, err
+	}
 	ref, db, err := s.openCarbonDeviceSource(ctx, deviceID)
 	if err != nil {
 		return CarbonFluxResponse{}, err
@@ -200,6 +203,9 @@ func (s *Service) CarbonFlux(ctx context.Context, deviceID uuid.UUID, nodeID int
 }
 
 func (s *Service) CarbonPeriods(ctx context.Context, deviceID uuid.UUID, nodeID int, start, end time.Time) ([]CarbonPeriodSummary, error) {
+	if err := s.validateDeviceHistory(ctx, deviceID, start); err != nil {
+		return nil, err
+	}
 	if nodeID <= 0 || !end.After(start) {
 		return nil, apperr.New(apperr.KindInvalidArgument, "node_id and valid time range are required")
 	}
@@ -241,6 +247,9 @@ func (s *Service) CarbonPeriod(ctx context.Context, deviceID uuid.UUID, nodeID i
 	defer db.Close()
 	periodAt, err := queryCarbonPeriodAt(ctx, db, ref.ExternalID, nodeID, field, period)
 	if err != nil {
+		return CarbonPeriodDetail{}, err
+	}
+	if err := s.validateDeviceHistory(ctx, deviceID, periodAt); err != nil {
 		return CarbonPeriodDetail{}, err
 	}
 	months := carbonMonthNames(periodAt.AddDate(0, -1, 0), periodAt.AddDate(0, 1, 0))

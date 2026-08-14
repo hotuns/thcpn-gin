@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/billing"
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/datasource"
 	"thcpn-gin/internal/db/sqlc"
@@ -32,7 +33,10 @@ type Service struct {
 	signer      *objectstore.Signer
 	store       objectstore.Store
 	limits      config.QueryLimitsConfig
+	billing     *billing.Service
 }
+
+func (s *Service) SetBilling(service *billing.Service) { s.billing = service }
 
 type QueryInput struct {
 	DeviceID        *uuid.UUID
@@ -133,13 +137,40 @@ func (s *Service) List(ctx context.Context, input QueryInput) (ListResult, error
 	return s.listDevice(ctx, *input.DeviceID, input.MediaType, input.StartTime, input.EndTime, page, pageSize, input.DownloadAllowed, input.DeleteAllowed)
 }
 
-func (s *Service) PrepareDownload(ctx context.Context, token string) (DownloadResult, error) {
+func (s *Service) PrepareDownload(ctx context.Context, token string, actorIDs ...uuid.UUID) (DownloadResult, error) {
+	actorID := uuid.Nil
+	if len(actorIDs) > 0 {
+		actorID = actorIDs[0]
+	}
 	target, err := s.ResolveMediaToken(ctx, token)
 	if err != nil {
 		return DownloadResult{}, err
 	}
 	if s.signer == nil {
 		return DownloadResult{}, apperr.New(apperr.KindInternal, "object store signer is not configured")
+	}
+	if s.billing != nil {
+		if err := s.billing.RequireProfessional(ctx, target.WorkspaceID); err != nil {
+			return DownloadResult{}, err
+		}
+		if s.store == nil {
+			return DownloadResult{}, apperr.New(apperr.KindInternal, "object store is not configured")
+		}
+		info, err := objectstore.Stat(ctx, s.store, target.ObjectKey)
+		if err != nil {
+			return DownloadResult{}, err
+		}
+		resourceID := target.DataStreamID
+		if info.SizeBytes <= 0 {
+			return DownloadResult{}, apperr.New(apperr.KindConflict, "media object size is unavailable")
+		}
+		var actorUserID *uuid.UUID
+		if actorID != uuid.Nil {
+			actorUserID = &actorID
+		}
+		if err = s.billing.ReserveDownload(ctx, billing.ReserveDownloadInput{WorkspaceID: target.WorkspaceID, SourceType: "media", ResourceID: &resourceID, ObjectKey: target.ObjectKey, Bytes: info.SizeBytes, ActorUserID: actorUserID, IdempotencyKey: "media:" + target.MediaID + ":" + actorID.String()}); err != nil {
+			return DownloadResult{}, err
+		}
 	}
 	mediaURL, external := externalMediaURL(target.ObjectKey)
 	expiresAt := time.Now().Add(mediaURLTTL)
@@ -220,6 +251,14 @@ func (s *Service) listDevice(ctx context.Context, deviceID uuid.UUID, mediaType 
 		return ListResult{}, mapNotFoundOrInternal(err, "device not found")
 	}
 	_ = device
+	assignment, err := s.queries.GetActiveDeviceAssignment(ctx, deviceID)
+	if err != nil {
+		return ListResult{}, mapNotFoundOrInternal(err, "active device assignment not found")
+	}
+	downloadAllowed, err = s.professionalDownloadAllowed(ctx, assignment.WorkspaceID, downloadAllowed)
+	if err != nil {
+		return ListResult{}, err
+	}
 	streams, err := s.queries.ListDataStreamsByDevice(ctx, deviceID)
 	if err != nil {
 		return ListResult{}, apperr.Wrap(apperr.KindInternal, "list data streams", err)
@@ -277,7 +316,26 @@ func (s *Service) listDataStream(ctx context.Context, dataStreamID uuid.UUID, de
 	if stream.Status != "active" {
 		return ListResult{}, apperr.New(apperr.KindInvalidArgument, "data stream is not active")
 	}
+	assignment, err := s.queries.GetActiveDeviceAssignmentByDataStream(ctx, dataStreamID)
+	if err != nil {
+		return ListResult{}, mapNotFoundOrInternal(err, "active device assignment not found")
+	}
+	downloadAllowed, err = s.professionalDownloadAllowed(ctx, assignment.WorkspaceID, downloadAllowed)
+	if err != nil {
+		return ListResult{}, err
+	}
 	return s.queryStream(ctx, stream, start, end, page, pageSize, downloadAllowed, deleteAllowed)
+}
+
+func (s *Service) professionalDownloadAllowed(ctx context.Context, workspaceID uuid.UUID, allowed bool) (bool, error) {
+	if !allowed || s.billing == nil {
+		return allowed, nil
+	}
+	summary, err := s.billing.Summary(ctx, workspaceID)
+	if err != nil {
+		return false, err
+	}
+	return summary.Plan == billing.PlanProfessional, nil
 }
 
 func (s *Service) queryStream(ctx context.Context, stream sqlc.DataStream, start time.Time, end time.Time, page int, pageSize int, downloadAllowed bool, deleteAllowed bool) (ListResult, error) {

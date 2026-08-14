@@ -477,6 +477,27 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a workspace name
+         * @description Requires the `workspace.manage` permission.
+         */
+        patch: operations["updateWorkspaceName"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/billing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the current Workspace plan and download usage */
+        get: operations["getWorkspaceBilling"];
+        put?: never;
         /**
          * Create organization workspace
          * @description Creates an organization workspace. The current user becomes Owner.
@@ -486,11 +507,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /**
-         * Update a workspace name
-         * @description Requires the `workspace.manage` permission.
-         */
-        patch: operations["updateWorkspaceName"];
+        patch?: never;
         trace?: never;
     };
     "/api/v1/admin/auth/password/login": {
@@ -638,6 +655,91 @@ export interface paths {
         put?: never;
         /** Transfer the Owner of an organization Workspace */
         post: operations["adminTransferWorkspaceOwner"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/workspaces/{workspace_id}/billing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workspace billing state */
+        get: operations["adminGetWorkspaceBilling"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/billing/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Workspaces with expiry or download usage risks */
+        get: operations["adminListWorkspaceBillingRisks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/workspaces/{workspace_id}/billing/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List immutable plan and traffic pack grants */
+        get: operations["adminGetWorkspaceBillingHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/workspaces/{workspace_id}/billing/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Grant or extend a Workspace professional plan */
+        post: operations["adminGrantWorkspaceProfessionalPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/workspaces/{workspace_id}/billing/traffic-packs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a long-lived download traffic pack */
+        post: operations["adminAddWorkspaceTrafficPack"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3340,6 +3442,23 @@ export interface paths {
         patch: operations["updateProcessingTaskStatus"];
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/processing-results/{result_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Prepare a metered professional processing artifact download */
+        get: operations["downloadProcessingResult"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3812,6 +3931,84 @@ export interface components {
             status: components["schemas"]["WorkspaceStatus"];
             created_at: components["schemas"]["Timestamp"];
             updated_at: components["schemas"]["Timestamp"];
+        };
+        WorkspaceBillingSummary: {
+            workspace_id: components["schemas"]["UUID"];
+            /** @enum {string} */
+            plan: "base" | "professional";
+            professional_started_at?: components["schemas"]["Timestamp"];
+            professional_expires_at?: components["schemas"]["Timestamp"];
+            full_history: boolean;
+            professional_features: boolean;
+            /** Format: int64 */
+            monthly_download_limit_bytes: number;
+            /** Format: int64 */
+            monthly_download_used_bytes: number;
+            /** Format: int64 */
+            monthly_download_remaining_bytes: number;
+            /** Format: int64 */
+            traffic_pack_balance_bytes: number;
+            /** Format: double */
+            usage_percent: number;
+            /** @enum {integer} */
+            warning_level: 0 | 80 | 95;
+            days_until_expiry?: number;
+            notices: {
+                code: string;
+                /** @enum {string} */
+                level: "info" | "warning" | "error";
+                message: string;
+            }[];
+        };
+        ProfessionalPlanGrant: {
+            id: components["schemas"]["UUID"];
+            workspace_id: components["schemas"]["UUID"];
+            /** @enum {string} */
+            source_type: "device_order" | "service_contract" | "manual_correction";
+            reference_no?: string;
+            /** Format: int64 */
+            amount_cents: number;
+            starts_at: components["schemas"]["Timestamp"];
+            ends_at: components["schemas"]["Timestamp"];
+            reason: string;
+            actor_admin_id: components["schemas"]["UUID"];
+            created_at: components["schemas"]["Timestamp"];
+        };
+        TrafficPackGrant: {
+            id: components["schemas"]["UUID"];
+            workspace_id: components["schemas"]["UUID"];
+            /** Format: int64 */
+            bytes: number;
+            /** Format: int64 */
+            price_cents: number;
+            reference_no?: string;
+            reason: string;
+            actor_admin_id: components["schemas"]["UUID"];
+            created_at: components["schemas"]["Timestamp"];
+        };
+        WorkspaceBillingHistory: {
+            plan_grants: components["schemas"]["ProfessionalPlanGrant"][];
+            traffic_pack_grants: components["schemas"]["TrafficPackGrant"][];
+        };
+        ProfessionalPlanGrantRequest: {
+            /** @enum {string} */
+            source_type: "device_order" | "service_contract" | "manual_correction";
+            reference_no?: string;
+            /** Format: int64 */
+            amount_cents?: number;
+            starts_at?: components["schemas"]["Timestamp"];
+            ends_at?: components["schemas"]["Timestamp"];
+            /** @default 12 */
+            duration_months: number;
+            reason: string;
+        };
+        TrafficPackGrantRequest: {
+            /** Format: int64 */
+            bytes: number;
+            /** Format: int64 */
+            price_cents?: number;
+            reference_no?: string;
+            reason: string;
         };
         RoleSummary: {
             id: components["schemas"]["UUID"];
@@ -5044,6 +5241,8 @@ export interface components {
             status: components["schemas"]["ExportStatus"];
             /** @description Object store key for a completed export. Present only after worker generation succeeds. */
             file_object_key?: string;
+            /** Format: int64 */
+            file_size_bytes?: number;
             error_message?: string;
             created_at: components["schemas"]["Timestamp"];
             updated_at: components["schemas"]["Timestamp"];
@@ -5062,7 +5261,7 @@ export interface components {
             end_time?: components["schemas"]["Timestamp"];
             /** @description Maximum rows per telemetry stream. Defaults to the worker `export.max_rows`. */
             limit?: number;
-            /** @description Advanced worker input. Top-level `start_time`, `end_time`, and `limit` override matching fields in this object. `media_type` can narrow device-level `media_zip` exports. */
+            /** @description Advanced worker input. Batch station exports use `device_ids`, `start_time`, `end_time`, `include_data`, and `include_images`. */
             request_config?: {
                 [key: string]: unknown;
             };
@@ -6102,34 +6301,6 @@ export interface operations {
             500: components["responses"]["Internal"];
         };
     };
-    createWorkspace: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateWorkspaceRequest"];
-            };
-        };
-        responses: {
-            /** @description Organization workspace created. */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkspaceWithMembership"];
-                };
-            };
-            400: components["responses"]["InvalidArgument"];
-            401: components["responses"]["Unauthorized"];
-            409: components["responses"]["Conflict"];
-            500: components["responses"]["Internal"];
-        };
-    };
     updateWorkspaceName: {
         parameters: {
             query?: never;
@@ -6159,6 +6330,59 @@ export interface operations {
             400: components["responses"]["InvalidArgument"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    getWorkspaceBilling: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Effective billing entitlement. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceBillingSummary"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWorkspaceRequest"];
+            };
+        };
+        responses: {
+            /** @description Organization workspace created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceWithMembership"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["Internal"];
         };
     };
@@ -6391,6 +6615,130 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["Internal"];
+        };
+    };
+    adminGetWorkspaceBilling: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Billing state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceBillingSummary"];
+                };
+            };
+        };
+    };
+    adminListWorkspaceBillingRisks: {
+        parameters: {
+            query?: {
+                risk?: "professional_expiring" | "professional_expired" | "download_usage_warning";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workspace billing risks. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminGetWorkspaceBillingHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Billing history. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceBillingHistory"];
+                };
+            };
+        };
+    };
+    adminGrantWorkspaceProfessionalPlan: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Reason recorded in the audit log for this system administrator operation. */
+                "X-Admin-Reason": components["parameters"]["AdminReason"];
+            };
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfessionalPlanGrantRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated billing state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceBillingSummary"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+        };
+    };
+    adminAddWorkspaceTrafficPack: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Reason recorded in the audit log for this system administrator operation. */
+                "X-Admin-Reason": components["parameters"]["AdminReason"];
+            };
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrafficPackGrantRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated billing state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceBillingSummary"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
         };
     };
     adminPermissionCatalog: {
@@ -10959,6 +11307,29 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidArgument"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    downloadProcessingResult: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+                result_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Temporary object URL. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
         };
     };

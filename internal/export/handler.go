@@ -220,7 +220,7 @@ func (h *Handler) Download(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.PrepareDownload(c.Request.Context(), jobID)
+	result, err := h.service.PrepareDownload(c.Request.Context(), jobID, actor.UserID)
 	if err != nil {
 		if !h.record(c, auditInput(actor, resolved, audit.ResultFailure, apperr.MessageOf(err))) {
 			return

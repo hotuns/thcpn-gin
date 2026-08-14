@@ -449,10 +449,11 @@ type DeviceTaxonomyTerm struct {
 
 // 异步数据导出任务及结果对象、状态、错误和下载有效期。
 type ExportJob struct {
-	ID                uuid.UUID          `json:"id"`
-	WorkspaceID       uuid.UUID          `json:"workspace_id"`
-	RequestedBy       uuid.UUID          `json:"requested_by"`
-	ResourceType      string             `json:"resource_type"`
+	ID           uuid.UUID `json:"id"`
+	WorkspaceID  uuid.UUID `json:"workspace_id"`
+	RequestedBy  uuid.UUID `json:"requested_by"`
+	ResourceType string    `json:"resource_type"`
+	// 单资源导出使用目标资源；device_batch 导出使用首个设备作为权限锚点，完整设备列表保存在 request_config_json.device_ids。
 	ResourceID        uuid.UUID          `json:"resource_id"`
 	ExportType        string             `json:"export_type"`
 	Status            string             `json:"status"`
@@ -464,6 +465,7 @@ type ExportJob struct {
 	FinishedAt        pgtype.Timestamptz `json:"finished_at"`
 	ExpiresAt         pgtype.Timestamptz `json:"expires_at"`
 	RequestConfigJson []byte             `json:"request_config_json"`
+	FileSizeBytes     pgtype.Int8        `json:"file_size_bytes"`
 }
 
 // 待接受的工作区或资源邀请，包含邀请对象、作用域、权限模板和期限。
@@ -765,6 +767,31 @@ type Workspace struct {
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 }
 
+type WorkspaceBillingAccount struct {
+	WorkspaceID               uuid.UUID          `json:"workspace_id"`
+	ProfessionalStartedAt     pgtype.Timestamptz `json:"professional_started_at"`
+	ProfessionalExpiresAt     pgtype.Timestamptz `json:"professional_expires_at"`
+	MonthlyDownloadLimitBytes int64              `json:"monthly_download_limit_bytes"`
+	TrafficPackBalanceBytes   int64              `json:"traffic_pack_balance_bytes"`
+	CreatedAt                 pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                 pgtype.Timestamptz `json:"updated_at"`
+}
+
+type WorkspaceDownloadUsage struct {
+	ID               uuid.UUID          `json:"id"`
+	WorkspaceID      uuid.UUID          `json:"workspace_id"`
+	UsageMonth       pgtype.Date        `json:"usage_month"`
+	SourceType       string             `json:"source_type"`
+	ResourceID       *uuid.UUID         `json:"resource_id"`
+	ObjectKey        string             `json:"object_key"`
+	Bytes            int64              `json:"bytes"`
+	MonthlyBytes     int64              `json:"monthly_bytes"`
+	TrafficPackBytes int64              `json:"traffic_pack_bytes"`
+	ActorUserID      *uuid.UUID         `json:"actor_user_id"`
+	IdempotencyKey   string             `json:"idempotency_key"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+}
+
 // 用户加入工作区的成员关系，包含角色、权限模板和资源作用域。
 type WorkspaceMember struct {
 	ID           uuid.UUID          `json:"id"`
@@ -784,4 +811,28 @@ type WorkspaceMember struct {
 type WorkspaceMemberPermission struct {
 	MemberID     uuid.UUID `json:"member_id"`
 	PermissionID uuid.UUID `json:"permission_id"`
+}
+
+type WorkspacePlanGrant struct {
+	ID           uuid.UUID          `json:"id"`
+	WorkspaceID  uuid.UUID          `json:"workspace_id"`
+	SourceType   string             `json:"source_type"`
+	ReferenceNo  *string            `json:"reference_no"`
+	AmountCents  int64              `json:"amount_cents"`
+	StartsAt     pgtype.Timestamptz `json:"starts_at"`
+	EndsAt       pgtype.Timestamptz `json:"ends_at"`
+	Reason       string             `json:"reason"`
+	ActorAdminID uuid.UUID          `json:"actor_admin_id"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+type WorkspaceTrafficPackGrant struct {
+	ID           uuid.UUID          `json:"id"`
+	WorkspaceID  uuid.UUID          `json:"workspace_id"`
+	Bytes        int64              `json:"bytes"`
+	PriceCents   int64              `json:"price_cents"`
+	ReferenceNo  *string            `json:"reference_no"`
+	Reason       string             `json:"reason"`
+	ActorAdminID uuid.UUID          `json:"actor_admin_id"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }

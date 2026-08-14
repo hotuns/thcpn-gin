@@ -128,7 +128,7 @@ func (h *Handler) Download(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.PrepareDownload(c.Request.Context(), token)
+	result, err := h.service.PrepareDownload(c.Request.Context(), token, actor.UserID)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return

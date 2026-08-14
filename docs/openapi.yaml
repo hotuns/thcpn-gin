@@ -875,6 +875,70 @@ paths:
           $ref: "#/components/responses/PermissionDenied"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/workspaces/{workspace_id}/billing:
+    get:
+      tags: [Workspaces]
+      operationId: getWorkspaceBilling
+      summary: Get the current Workspace plan and download usage
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+      responses:
+        "200": { description: Effective billing entitlement., content: { application/json: { schema: { $ref: "#/components/schemas/WorkspaceBillingSummary" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/workspaces/{workspace_id}/api-keys:
+    parameters:
+      - { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+    get:
+      tags: [Workspaces]
+      operationId: listWorkspaceApiKeys
+      summary: List Workspace API Keys without secret values
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: API Key list. }
+    post:
+      tags: [Workspaces]
+      operationId: createWorkspaceApiKey
+      summary: Create a professional Workspace API Key
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateWorkspaceApiKeyRequest" }
+      responses:
+        "201": { description: API Key with its one-time secret., content: { application/json: { schema: { $ref: "#/components/schemas/CreatedWorkspaceApiKey" } } } }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+  /api/v1/workspaces/{workspace_id}/api-keys/{key_id}:
+    delete:
+      tags: [Workspaces]
+      operationId: revokeWorkspaceApiKey
+      summary: Revoke a Workspace API Key
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+        - { name: key_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+      responses:
+        "204": { description: API Key revoked. }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/open/devices/{device_id}/telemetry:
+    get:
+      tags: [Telemetry]
+      operationId: queryOpenApiDeviceTelemetry
+      summary: Query Workspace device telemetry with a professional API Key
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: device_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+        - { name: start_time, in: query, required: true, schema: { $ref: "#/components/schemas/Timestamp" } }
+        - { name: end_time, in: query, required: true, schema: { $ref: "#/components/schemas/Timestamp" } }
+        - { name: data_stream_ids, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1 } }
+      responses:
+        "200": { description: Telemetry response., content: { application/json: { schema: { $ref: "#/components/schemas/TelemetryQueryResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
     post:
       tags:
         - Workspaces
@@ -1109,6 +1173,62 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
         "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/admin/workspaces/{workspace_id}/billing:
+    get:
+      tags: [Admin]
+      operationId: adminGetWorkspaceBilling
+      summary: Get Workspace billing state
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+      responses:
+        "200": { description: Billing state., content: { application/json: { schema: { $ref: "#/components/schemas/WorkspaceBillingSummary" } } } }
+  /api/v1/admin/billing/workspaces:
+    get:
+      tags: [Admin]
+      operationId: adminListWorkspaceBillingRisks
+      summary: List Workspaces with expiry or download usage risks
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: risk, in: query, schema: { type: string, enum: [professional_expiring, professional_expired, download_usage_warning] } }
+      responses:
+        "200": { description: Workspace billing risks. }
+  /api/v1/admin/workspaces/{workspace_id}/billing/history:
+    get:
+      tags: [Admin]
+      operationId: adminGetWorkspaceBillingHistory
+      summary: List immutable plan and traffic pack grants
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+      responses:
+        "200": { description: Billing history., content: { application/json: { schema: { $ref: "#/components/schemas/WorkspaceBillingHistory" } } } }
+  /api/v1/admin/workspaces/{workspace_id}/billing/grants:
+    post:
+      tags: [Admin]
+      operationId: adminGrantWorkspaceProfessionalPlan
+      summary: Grant or extend a Workspace professional plan
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+        - $ref: "#/components/parameters/AdminReason"
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ProfessionalPlanGrantRequest" } } } }
+      responses:
+        "200": { description: Updated billing state., content: { application/json: { schema: { $ref: "#/components/schemas/WorkspaceBillingSummary" } } } }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+  /api/v1/admin/workspaces/{workspace_id}/billing/traffic-packs:
+    post:
+      tags: [Admin]
+      operationId: adminAddWorkspaceTrafficPack
+      summary: Add a long-lived download traffic pack
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+        - $ref: "#/components/parameters/AdminReason"
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/TrafficPackGrantRequest" } } } }
+      responses:
+        "200": { description: Updated billing state., content: { application/json: { schema: { $ref: "#/components/schemas/WorkspaceBillingSummary" } } } }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
   /api/v1/admin/permissions/catalog:
     get:
       tags: [Admin]
@@ -5521,6 +5641,19 @@ paths:
               schema: { $ref: "#/components/schemas/ProcessingTask" }
         "400": { $ref: "#/components/responses/InvalidArgument" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/workspaces/{workspace_id}/processing-results/{result_id}/download:
+    get:
+      tags: [Processing]
+      operationId: downloadProcessingResult
+      summary: Prepare a metered professional processing artifact download
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+        - { name: result_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+      responses:
+        "200": { description: Temporary object URL. }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
 components:
   securitySchemes:
     bearerAuth:
@@ -5952,6 +6085,7 @@ components:
         - dataset_zip
         - standard_station_zip
         - group_site_zip
+        - carbon_station_zip
     ExportStatus:
       type: string
       enum:
@@ -6697,6 +6831,109 @@ components:
           $ref: "#/components/schemas/Timestamp"
         updated_at:
           $ref: "#/components/schemas/Timestamp"
+    WorkspaceBillingSummary:
+      type: object
+      required: [workspace_id, plan, full_history, professional_features, monthly_download_limit_bytes, monthly_download_used_bytes, monthly_download_remaining_bytes, traffic_pack_balance_bytes, usage_percent, warning_level, notices]
+      properties:
+        workspace_id: { $ref: "#/components/schemas/UUID" }
+        plan: { type: string, enum: [base, professional] }
+        professional_started_at: { $ref: "#/components/schemas/Timestamp" }
+        professional_expires_at: { $ref: "#/components/schemas/Timestamp" }
+        full_history: { type: boolean }
+        professional_features: { type: boolean }
+        monthly_download_limit_bytes: { type: integer, format: int64 }
+        monthly_download_used_bytes: { type: integer, format: int64 }
+        monthly_download_remaining_bytes: { type: integer, format: int64 }
+        traffic_pack_balance_bytes: { type: integer, format: int64 }
+        usage_percent: { type: number, format: double }
+        warning_level: { type: integer, enum: [0, 80, 95] }
+        days_until_expiry: { type: integer, minimum: 0 }
+        notices:
+          type: array
+          items:
+            type: object
+            required: [code, level, message]
+            properties:
+              code: { type: string }
+              level: { type: string, enum: [info, warning, error] }
+              message: { type: string }
+    WorkspaceApiKey:
+      type: object
+      required: [id, workspace_id, name, key_prefix, created_by, created_at]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        workspace_id: { $ref: "#/components/schemas/UUID" }
+        name: { type: string }
+        key_prefix: { type: string }
+        created_by: { $ref: "#/components/schemas/UUID" }
+        expires_at: { $ref: "#/components/schemas/Timestamp" }
+        last_used_at: { $ref: "#/components/schemas/Timestamp" }
+        revoked_at: { $ref: "#/components/schemas/Timestamp" }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+    CreatedWorkspaceApiKey:
+      allOf:
+        - $ref: "#/components/schemas/WorkspaceApiKey"
+        - type: object
+          required: [secret]
+          properties:
+            secret: { type: string, description: Returned only once when the key is created. }
+    CreateWorkspaceApiKeyRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        expires_at: { $ref: "#/components/schemas/Timestamp" }
+    ProfessionalPlanGrant:
+      type: object
+      required: [id, workspace_id, source_type, amount_cents, starts_at, ends_at, reason, actor_admin_id, created_at]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        workspace_id: { $ref: "#/components/schemas/UUID" }
+        source_type: { type: string, enum: [device_order, service_contract, manual_correction] }
+        reference_no: { type: string }
+        amount_cents: { type: integer, format: int64 }
+        starts_at: { $ref: "#/components/schemas/Timestamp" }
+        ends_at: { $ref: "#/components/schemas/Timestamp" }
+        reason: { type: string }
+        actor_admin_id: { $ref: "#/components/schemas/UUID" }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+    TrafficPackGrant:
+      type: object
+      required: [id, workspace_id, bytes, price_cents, reason, actor_admin_id, created_at]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        workspace_id: { $ref: "#/components/schemas/UUID" }
+        bytes: { type: integer, format: int64 }
+        price_cents: { type: integer, format: int64 }
+        reference_no: { type: string }
+        reason: { type: string }
+        actor_admin_id: { $ref: "#/components/schemas/UUID" }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+    WorkspaceBillingHistory:
+      type: object
+      required: [plan_grants, traffic_pack_grants]
+      properties:
+        plan_grants: { type: array, items: { $ref: "#/components/schemas/ProfessionalPlanGrant" } }
+        traffic_pack_grants: { type: array, items: { $ref: "#/components/schemas/TrafficPackGrant" } }
+    ProfessionalPlanGrantRequest:
+      type: object
+      required: [source_type, reason]
+      properties:
+        source_type: { type: string, enum: [device_order, service_contract, manual_correction] }
+        reference_no: { type: string }
+        amount_cents: { type: integer, format: int64, minimum: 0 }
+        starts_at: { $ref: "#/components/schemas/Timestamp" }
+        ends_at: { $ref: "#/components/schemas/Timestamp" }
+        duration_months: { type: integer, minimum: 1, default: 12 }
+        reason: { type: string, minLength: 5 }
+    TrafficPackGrantRequest:
+      type: object
+      required: [bytes, reason]
+      properties:
+        bytes: { type: integer, format: int64, minimum: 1 }
+        price_cents: { type: integer, format: int64, minimum: 0 }
+        reference_no: { type: string }
+        reason: { type: string, minLength: 5 }
     RoleSummary:
       type: object
       required:
@@ -9301,6 +9538,10 @@ components:
         file_object_key:
           type: string
           description: Object store key for a completed export. Present only after worker generation succeeds.
+        file_size_bytes:
+          type: integer
+          format: int64
+          minimum: 0
         error_message:
           type: string
         created_at:

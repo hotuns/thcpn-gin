@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/billing"
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/db/sqlc"
 	"thcpn-gin/internal/objectstore"
@@ -30,7 +31,10 @@ type Service struct {
 	queries *sqlc.Queries
 	signer  *objectstore.Signer
 	cfg     config.ExportConfig
+	billing *billing.Service
 }
+
+func (s *Service) SetBilling(service *billing.Service) { s.billing = service }
 
 type Job struct {
 	ID            uuid.UUID       `json:"id"`
@@ -42,6 +46,7 @@ type Job struct {
 	RequestConfig json.RawMessage `json:"request_config"`
 	Status        string          `json:"status"`
 	FileObjectKey *string         `json:"file_object_key,omitempty"`
+	FileSizeBytes *int64          `json:"file_size_bytes,omitempty"`
 	ErrorMessage  *string         `json:"error_message,omitempty"`
 	CreatedAt     time.Time       `json:"created_at"`
 	UpdatedAt     time.Time       `json:"updated_at"`
@@ -177,6 +182,9 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Job, ResolvedR
 	if err != nil {
 		return Job{}, ResolvedResource{}, err
 	}
+	if err := s.validatePlan(ctx, resolved, requestConfig); err != nil {
+		return Job{}, ResolvedResource{}, err
+	}
 	if input.ResourceType == "device_batch" {
 		if err := s.validateDeviceBatch(ctx, resolved.WorkspaceID, resolved.ResourceID, input.ExportType, requestConfig); err != nil {
 			return Job{}, ResolvedResource{}, err
@@ -201,6 +209,50 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Job, ResolvedR
 		return Job{}, ResolvedResource{}, mapWriteError(err, "create export job")
 	}
 	return jobFromSQL(row), resolved, nil
+}
+
+func (s *Service) validatePlan(ctx context.Context, resolved ResolvedResource, requestConfig []byte) error {
+	if s.billing == nil {
+		return nil
+	}
+	summary, err := s.billing.Summary(ctx, resolved.WorkspaceID)
+	if err != nil {
+		return err
+	}
+	if summary.Plan == billing.PlanProfessional {
+		return nil
+	}
+	if resolved.ResourceType != "device" && resolved.ResourceType != "data_stream" {
+		return apperr.New(apperr.KindPermissionDenied, "professional plan is required for batch or dataset exports")
+	}
+	switch resolved.ExportType {
+	case "telemetry_csv", "telemetry_excel", "carbon_station_zip":
+	default:
+		return apperr.New(apperr.KindPermissionDenied, "professional plan is required for this export type")
+	}
+	var config map[string]any
+	if err := json.Unmarshal(requestConfig, &config); err != nil {
+		return apperr.New(apperr.KindInvalidArgument, "invalid export time range")
+	}
+	start, startOK := exportConfigTime(config, "start_time")
+	end, endOK := exportConfigTime(config, "end_time")
+	if !startOK || !endOK || !end.After(start) {
+		return apperr.New(apperr.KindInvalidArgument, "start_time and end_time are required for base plan exports")
+	}
+	now := time.Now().UTC()
+	if end.After(now.Add(5*time.Minute)) || start.Before(now.AddDate(0, 0, -7)) || end.Sub(start) > 7*24*time.Hour {
+		return apperr.New(apperr.KindPermissionDenied, "base plan exports are limited to one device within the latest 7 days")
+	}
+	return nil
+}
+
+func exportConfigTime(config map[string]any, key string) (time.Time, bool) {
+	value, ok := config[key].(string)
+	if !ok {
+		return time.Time{}, false
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	return parsed.UTC(), err == nil
 }
 
 func (s *Service) Get(ctx context.Context, jobID uuid.UUID) (Job, error) {
@@ -260,7 +312,11 @@ func (s *Service) List(ctx context.Context, input ListInput) ([]Job, error) {
 	return items, nil
 }
 
-func (s *Service) PrepareDownload(ctx context.Context, jobID uuid.UUID) (DownloadResult, error) {
+func (s *Service) PrepareDownload(ctx context.Context, jobID uuid.UUID, actorIDs ...uuid.UUID) (DownloadResult, error) {
+	actorID := uuid.Nil
+	if len(actorIDs) > 0 {
+		actorID = actorIDs[0]
+	}
 	if s.signer == nil {
 		return DownloadResult{}, apperr.New(apperr.KindInternal, "object store signer is not configured")
 	}
@@ -276,6 +332,22 @@ func (s *Service) PrepareDownload(ctx context.Context, jobID uuid.UUID) (Downloa
 	}
 	if job.FileObjectKey == nil || strings.TrimSpace(*job.FileObjectKey) == "" {
 		return DownloadResult{}, apperr.New(apperr.KindConflict, "export file is not available")
+	}
+	if s.billing != nil && job.FileSizeBytes != nil && *job.FileSizeBytes > 0 {
+		summary, summaryErr := s.billing.Summary(ctx, job.WorkspaceID)
+		if summaryErr != nil {
+			return DownloadResult{}, summaryErr
+		}
+		if summary.Plan == billing.PlanProfessional {
+			resourceID := job.ID
+			var actorUserID *uuid.UUID
+			if actorID != uuid.Nil {
+				actorUserID = &actorID
+			}
+			if err := s.billing.ReserveDownload(ctx, billing.ReserveDownloadInput{WorkspaceID: job.WorkspaceID, SourceType: "export", ResourceID: &resourceID, ObjectKey: *job.FileObjectKey, Bytes: *job.FileSizeBytes, ActorUserID: actorUserID, IdempotencyKey: "export:" + job.ID.String() + ":" + actorID.String()}); err != nil {
+				return DownloadResult{}, err
+			}
+		}
 	}
 	signed, err := s.signer.SignObjectURL(*job.FileObjectKey, time.Until(job.ExpiresAt))
 	if err != nil {
@@ -406,6 +478,7 @@ func jobFromSQL(model sqlc.ExportJob) Job {
 		RequestConfig: json.RawMessage(model.RequestConfigJson),
 		Status:        model.Status,
 		FileObjectKey: model.FileObjectKey,
+		FileSizeBytes: pgInt8Ptr(model.FileSizeBytes),
 		ErrorMessage:  model.ErrorMessage,
 		CreatedAt:     pgTimeValue(model.CreatedAt),
 		UpdatedAt:     pgTimeValue(model.UpdatedAt),
@@ -413,6 +486,14 @@ func jobFromSQL(model sqlc.ExportJob) Job {
 		FinishedAt:    pgTimePtr(model.FinishedAt),
 		ExpiresAt:     pgTimeValue(model.ExpiresAt),
 	}
+}
+
+func pgInt8Ptr(value pgtype.Int8) *int64 {
+	if !value.Valid {
+		return nil
+	}
+	result := value.Int64
+	return &result
 }
 
 func normalizeRequestConfig(value json.RawMessage) ([]byte, error) {

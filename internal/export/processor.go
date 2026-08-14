@@ -19,6 +19,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel/attribute"
 
@@ -304,6 +305,7 @@ func (p *Processor) processClaimed(ctx context.Context, job Job) (err error) {
 	if _, err := p.queries.MarkExportJobSuccess(ctx, sqlc.MarkExportJobSuccessParams{
 		ID:            job.ID,
 		FileObjectKey: &rendered.ObjectKey,
+		FileSizeBytes: pgtype.Int8{Int64: int64(len(rendered.Body)), Valid: true},
 	}); err != nil {
 		status = "error"
 		return apperr.Wrap(apperr.KindInternal, "mark export job success", err)

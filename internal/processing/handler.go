@@ -10,6 +10,7 @@ import (
 
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/auth"
+	"thcpn-gin/internal/billing"
 	"thcpn-gin/internal/httpx"
 	"thcpn-gin/internal/permission"
 )
@@ -17,6 +18,7 @@ import (
 type Handler struct {
 	service *Service
 	checker *permission.Checker
+	billing *billing.Service
 }
 
 type createTaskRequest struct {
@@ -32,8 +34,12 @@ type createTaskRequest struct {
 	Inputs           []TaskInput     `json:"inputs"`
 }
 
-func NewHandler(service *Service, checker *permission.Checker) *Handler {
-	return &Handler{service: service, checker: checker}
+func NewHandler(service *Service, checker *permission.Checker, billingServices ...*billing.Service) *Handler {
+	var billingService *billing.Service
+	if len(billingServices) > 0 {
+		billingService = billingServices[0]
+	}
+	return &Handler{service: service, checker: checker, billing: billingService}
 }
 
 func (h *Handler) Processors(c *gin.Context) {
@@ -100,6 +106,12 @@ func (h *Handler) Create(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if h.billing != nil {
+		if err := h.billing.RequireProfessional(c.Request.Context(), workspaceID); err != nil {
+			httpx.WriteAppError(c, err)
+			return
+		}
+	}
 	var req createTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
@@ -133,12 +145,35 @@ func (h *Handler) SetStatus(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
+	if req.Status == "active" && h.billing != nil {
+		if err := h.billing.RequireProfessional(c.Request.Context(), workspaceID); err != nil {
+			httpx.WriteAppError(c, err)
+			return
+		}
+	}
 	item, err := h.service.SetStatus(c.Request.Context(), workspaceID, taskID, req.Status)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, item)
+}
+
+func (h *Handler) DownloadResult(c *gin.Context) {
+	workspaceID, actor, ok := h.authorize(c, "processing.view")
+	if !ok {
+		return
+	}
+	resultID, ok := parseID(c.Param("result_id"), "result_id", c)
+	if !ok {
+		return
+	}
+	url, expiresAt, err := h.service.PrepareResultDownload(c.Request.Context(), workspaceID, resultID, actor.UserID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"result_id": resultID, "url": url, "expires_at": expiresAt})
 }
 
 func (h *Handler) authorize(c *gin.Context, action string) (uuid.UUID, auth.Actor, bool) {

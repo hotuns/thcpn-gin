@@ -543,6 +543,10 @@ export const api = {
       }),
     update: (workspaceId: string, payload: { name: string }) =>
       jsonRequest<WorkspaceWithMembership>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}`, "PATCH", payload),
+    billing: (workspaceId: string) => request<JsonRecord>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing`),
+    apiKeys: (workspaceId: string) => request<ListResponse<JsonRecord>>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/api-keys`),
+    createApiKey: (workspaceId: string, payload: JsonRecord) => jsonRequest<JsonRecord>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/api-keys`, "POST", payload),
+    revokeApiKey: (workspaceId: string, keyId: string) => request<void>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/api-keys/${encodeURIComponent(keyId)}`, { method: "DELETE" }),
     adminList: (filters: JsonRecord = {}) =>
       request<ListResponse<JsonRecord>>(`/api/v1/admin/workspaces${queryString(filters as Record<string, string | number | boolean>)}`),
   },
@@ -1031,6 +1035,11 @@ export const api = {
       get: (id: string) => request<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(id)}`),
       updateStatus: (id: string, reason: string, payload: JsonRecord) => adminReasonRequest<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(id)}/status`, "PATCH", reason, payload),
       transferOwner: (id: string, reason: string, payload: JsonRecord) => adminReasonRequest<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(id)}/transfer-owner`, "POST", reason, payload),
+      billing: (id: string) => request<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(id)}/billing`),
+      billingHistory: (id: string) => request<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(id)}/billing/history`),
+      grantProfessional: (id: string, reason: string, payload: JsonRecord) => adminReasonRequest<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(id)}/billing/grants`, "POST", reason, payload),
+      addTrafficPack: (id: string, reason: string, payload: JsonRecord) => adminReasonRequest<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(id)}/billing/traffic-packs`, "POST", reason, payload),
+      billingRisks: (risk?: string) => request<ListResponse<JsonRecord>>(`/api/v1/admin/billing/workspaces${queryString({ risk })}`),
     },
     permissionsCatalog: () => request<JsonRecord>("/api/v1/admin/permissions/catalog"),
     sources: () =>

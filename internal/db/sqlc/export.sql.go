@@ -27,7 +27,7 @@ SET status = 'running',
     started_at = COALESCE(started_at, now()),
     updated_at = now()
 WHERE id IN (SELECT id FROM next_job)
-RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes
 `
 
 func (q *Queries) ClaimNextPendingExportJob(ctx context.Context) (ExportJob, error) {
@@ -49,6 +49,7 @@ func (q *Queries) ClaimNextPendingExportJob(ctx context.Context) (ExportJob, err
 		&i.FinishedAt,
 		&i.ExpiresAt,
 		&i.RequestConfigJson,
+		&i.FileSizeBytes,
 	)
 	return i, err
 }
@@ -64,7 +65,7 @@ INSERT INTO export_jobs (
     expires_at
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes
 `
 
 type CreateExportJobParams struct {
@@ -104,6 +105,7 @@ func (q *Queries) CreateExportJob(ctx context.Context, arg CreateExportJobParams
 		&i.FinishedAt,
 		&i.ExpiresAt,
 		&i.RequestConfigJson,
+		&i.FileSizeBytes,
 	)
 	return i, err
 }
@@ -126,7 +128,7 @@ func (q *Queries) ExpireExportJobs(ctx context.Context) (int64, error) {
 }
 
 const getExportJob = `-- name: GetExportJob :one
-SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json
+SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes
 FROM export_jobs
 WHERE id = $1
 `
@@ -150,12 +152,13 @@ func (q *Queries) GetExportJob(ctx context.Context, id uuid.UUID) (ExportJob, er
 		&i.FinishedAt,
 		&i.ExpiresAt,
 		&i.RequestConfigJson,
+		&i.FileSizeBytes,
 	)
 	return i, err
 }
 
 const listExpiredExportFiles = `-- name: ListExpiredExportFiles :many
-SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json
+SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes
 FROM export_jobs
 WHERE status = 'success'
   AND expires_at <= now()
@@ -189,6 +192,7 @@ func (q *Queries) ListExpiredExportFiles(ctx context.Context, limit int32) ([]Ex
 			&i.FinishedAt,
 			&i.ExpiresAt,
 			&i.RequestConfigJson,
+			&i.FileSizeBytes,
 		); err != nil {
 			return nil, err
 		}
@@ -201,7 +205,7 @@ func (q *Queries) ListExpiredExportFiles(ctx context.Context, limit int32) ([]Ex
 }
 
 const listExportJobsByRequester = `-- name: ListExportJobsByRequester :many
-SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json
+SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes
 FROM export_jobs
 WHERE requested_by = $1
 ORDER BY created_at DESC, id DESC
@@ -238,6 +242,7 @@ func (q *Queries) ListExportJobsByRequester(ctx context.Context, arg ListExportJ
 			&i.FinishedAt,
 			&i.ExpiresAt,
 			&i.RequestConfigJson,
+			&i.FileSizeBytes,
 		); err != nil {
 			return nil, err
 		}
@@ -250,7 +255,7 @@ func (q *Queries) ListExportJobsByRequester(ctx context.Context, arg ListExportJ
 }
 
 const listExportJobsByRequesterAndWorkspace = `-- name: ListExportJobsByRequesterAndWorkspace :many
-SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json
+SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes
 FROM export_jobs
 WHERE workspace_id = $1
   AND requested_by = $2
@@ -289,6 +294,7 @@ func (q *Queries) ListExportJobsByRequesterAndWorkspace(ctx context.Context, arg
 			&i.FinishedAt,
 			&i.ExpiresAt,
 			&i.RequestConfigJson,
+			&i.FileSizeBytes,
 		); err != nil {
 			return nil, err
 		}
@@ -301,7 +307,7 @@ func (q *Queries) ListExportJobsByRequesterAndWorkspace(ctx context.Context, arg
 }
 
 const listExportJobsByWorkspace = `-- name: ListExportJobsByWorkspace :many
-SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json
+SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes
 FROM export_jobs
 WHERE workspace_id = $1
 ORDER BY created_at DESC, id DESC
@@ -338,6 +344,7 @@ func (q *Queries) ListExportJobsByWorkspace(ctx context.Context, arg ListExportJ
 			&i.FinishedAt,
 			&i.ExpiresAt,
 			&i.RequestConfigJson,
+			&i.FileSizeBytes,
 		); err != nil {
 			return nil, err
 		}
@@ -357,7 +364,7 @@ SET status = 'expired',
     finished_at = COALESCE(finished_at, now())
 WHERE id = $1
   AND status = 'success'
-RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes
 `
 
 func (q *Queries) MarkExportJobExpired(ctx context.Context, id uuid.UUID) (ExportJob, error) {
@@ -379,6 +386,7 @@ func (q *Queries) MarkExportJobExpired(ctx context.Context, id uuid.UUID) (Expor
 		&i.FinishedAt,
 		&i.ExpiresAt,
 		&i.RequestConfigJson,
+		&i.FileSizeBytes,
 	)
 	return i, err
 }
@@ -391,7 +399,7 @@ SET status = 'failed',
     updated_at = now()
 WHERE id = $1
   AND status IN ('pending', 'running')
-RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes
 `
 
 type MarkExportJobFailedParams struct {
@@ -418,6 +426,7 @@ func (q *Queries) MarkExportJobFailed(ctx context.Context, arg MarkExportJobFail
 		&i.FinishedAt,
 		&i.ExpiresAt,
 		&i.RequestConfigJson,
+		&i.FileSizeBytes,
 	)
 	return i, err
 }
@@ -429,7 +438,7 @@ SET status = 'running',
     updated_at = now()
 WHERE id = $1
   AND status = 'pending'
-RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes
 `
 
 func (q *Queries) MarkExportJobRunning(ctx context.Context, id uuid.UUID) (ExportJob, error) {
@@ -451,6 +460,7 @@ func (q *Queries) MarkExportJobRunning(ctx context.Context, id uuid.UUID) (Expor
 		&i.FinishedAt,
 		&i.ExpiresAt,
 		&i.RequestConfigJson,
+		&i.FileSizeBytes,
 	)
 	return i, err
 }
@@ -459,21 +469,23 @@ const markExportJobSuccess = `-- name: MarkExportJobSuccess :one
 UPDATE export_jobs
 SET status = 'success',
     file_object_key = $2,
+    file_size_bytes = $3,
     error_message = NULL,
     finished_at = now(),
     updated_at = now()
 WHERE id = $1
   AND status IN ('pending', 'running')
-RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes
 `
 
 type MarkExportJobSuccessParams struct {
-	ID            uuid.UUID `json:"id"`
-	FileObjectKey *string   `json:"file_object_key"`
+	ID            uuid.UUID   `json:"id"`
+	FileObjectKey *string     `json:"file_object_key"`
+	FileSizeBytes pgtype.Int8 `json:"file_size_bytes"`
 }
 
 func (q *Queries) MarkExportJobSuccess(ctx context.Context, arg MarkExportJobSuccessParams) (ExportJob, error) {
-	row := q.db.QueryRow(ctx, markExportJobSuccess, arg.ID, arg.FileObjectKey)
+	row := q.db.QueryRow(ctx, markExportJobSuccess, arg.ID, arg.FileObjectKey, arg.FileSizeBytes)
 	var i ExportJob
 	err := row.Scan(
 		&i.ID,
@@ -491,6 +503,7 @@ func (q *Queries) MarkExportJobSuccess(ctx context.Context, arg MarkExportJobSuc
 		&i.FinishedAt,
 		&i.ExpiresAt,
 		&i.RequestConfigJson,
+		&i.FileSizeBytes,
 	)
 	return i, err
 }

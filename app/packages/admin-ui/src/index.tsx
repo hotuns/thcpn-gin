@@ -11,4 +11,4 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   return <ConfigProvider locale={locale === "zh-CN" ? zhCN : enUS} theme={{ algorithm: dark ? theme.darkAlgorithm : theme.defaultAlgorithm, token: { colorPrimary: "#1769e0", borderRadius: 6, colorBgLayout: dark ? "#0d151d" : "#f4f7fa", fontFamily: "-apple-system, SF Pro Text, PingFang SC, Noto Sans SC, sans-serif" }, components: { Table: { headerBg: dark ? "#121c26" : "#f7fafc", cellPaddingBlock: 13 }, Button: { controlHeight: 36 } } }}><App>{children}</App></ConfigProvider>;
 }
 
-export { Table, Form, Input, InputNumber, Select, Modal, Drawer, Tabs, Tag, Card, Statistic, Empty, Alert, Space, Popconfirm, Button, Segmented, Descriptions, Tooltip, App } from "antd";
+export { Table, Form, Input, InputNumber, Select, DatePicker, Modal, Drawer, Tabs, Tag, Card, Statistic, Progress, Empty, Alert, Space, Popconfirm, Button, Segmented, Descriptions, Tooltip, App } from "antd";

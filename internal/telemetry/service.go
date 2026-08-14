@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/billing"
 	"thcpn-gin/internal/computedstream"
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/datasource"
@@ -32,7 +33,10 @@ type Service struct {
 	runtime     TelemetryRuntime
 	limits      config.QueryLimitsConfig
 	computed    *computedstream.Service
+	billing     *billing.Service
 }
+
+func (s *Service) SetBilling(service *billing.Service) { s.billing = service }
 
 type QueryInput struct {
 	DeviceID      *uuid.UUID
@@ -113,11 +117,42 @@ func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, err
 	if err := validateTimeRange(input.StartTime, input.EndTime, s.limits); err != nil {
 		return QueryResult{}, err
 	}
+	if err := s.validateHistoryWindow(ctx, input); err != nil {
+		return QueryResult{}, err
+	}
 
 	if input.DataStreamID != nil {
 		return s.queryDataStream(ctx, *input.DataStreamID, input.DeviceID, input.StartTime, input.EndTime, limit, input.Adaptive, targetPoints)
 	}
 	return s.queryDevice(ctx, *input.DeviceID, input.DataStreamIDs, input.StartTime, input.EndTime, limit, input.Adaptive, targetPoints)
+}
+
+func (s *Service) validateHistoryWindow(ctx context.Context, input QueryInput) error {
+	if s.billing == nil {
+		return nil
+	}
+	var workspaceID uuid.UUID
+	var err error
+	if input.DataStreamID != nil {
+		var assignment sqlc.DeviceAssignment
+		assignment, err = s.queries.GetActiveDeviceAssignmentByDataStream(ctx, *input.DataStreamID)
+		workspaceID = assignment.WorkspaceID
+	} else if input.DeviceID != nil {
+		var assignment sqlc.DeviceAssignment
+		assignment, err = s.queries.GetActiveDeviceAssignment(ctx, *input.DeviceID)
+		workspaceID = assignment.WorkspaceID
+	}
+	if err != nil {
+		return mapNotFoundOrInternal(err, "active device assignment not found")
+	}
+	summary, err := s.billing.Summary(ctx, workspaceID)
+	if err != nil {
+		return err
+	}
+	if summary.Plan == billing.PlanBase && input.StartTime.Before(time.Now().UTC().AddDate(0, 0, -90)) {
+		return apperr.New(apperr.KindPermissionDenied, "base plan online history is limited to the latest 90 days")
+	}
+	return nil
 }
 
 // QueryInternal is used by trusted background jobs that already enforce their

@@ -26,6 +26,23 @@ type Store interface {
 	Put(ctx context.Context, input PutInput) error
 }
 
+type ObjectInfo struct {
+	SizeBytes   int64
+	ContentType string
+}
+
+type StatStore interface {
+	Stat(ctx context.Context, objectKey string) (ObjectInfo, error)
+}
+
+func Stat(ctx context.Context, store Store, objectKey string) (ObjectInfo, error) {
+	statStore, ok := store.(StatStore)
+	if !ok {
+		return ObjectInfo{}, apperr.New(apperr.KindInternal, "object store stat is not supported")
+	}
+	return statStore.Stat(ctx, objectKey)
+}
+
 type PutInput struct {
 	ObjectKey   string
 	ContentType string
@@ -54,6 +71,25 @@ type ossObjectClient interface {
 	DeleteObject(ctx context.Context, request *oss.DeleteObjectRequest, optFns ...func(*oss.Options)) (*oss.DeleteObjectResult, error)
 	GetObject(ctx context.Context, request *oss.GetObjectRequest, optFns ...func(*oss.Options)) (*oss.GetObjectResult, error)
 	PutObject(ctx context.Context, request *oss.PutObjectRequest, optFns ...func(*oss.Options)) (*oss.PutObjectResult, error)
+}
+
+type ossHeadObjectClient interface {
+	HeadObject(ctx context.Context, request *oss.HeadObjectRequest, optFns ...func(*oss.Options)) (*oss.HeadObjectResult, error)
+}
+
+func (s *FileStore) Stat(ctx context.Context, objectKey string) (ObjectInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return ObjectInfo{}, err
+	}
+	target, err := s.objectPath(objectKey)
+	if err != nil {
+		return ObjectInfo{}, err
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		return ObjectInfo{}, apperr.Wrap(apperr.KindNotFound, "object not found", err)
+	}
+	return ObjectInfo{SizeBytes: info.Size()}, nil
 }
 
 type OSSStore struct {
@@ -212,6 +248,30 @@ func (s *OSSStore) Delete(ctx context.Context, objectKey string) error {
 	return nil
 }
 
+func (s *OSSStore) Stat(ctx context.Context, objectKey string) (ObjectInfo, error) {
+	objectKey, err := validateObjectKey(objectKey)
+	if err != nil {
+		return ObjectInfo{}, err
+	}
+	if err = s.validateConfig(); err != nil {
+		return ObjectInfo{}, err
+	}
+	headClient, ok := s.client.(ossHeadObjectClient)
+	if !ok {
+		return ObjectInfo{}, apperr.New(apperr.KindInternal, "oss object stat is not supported")
+	}
+	result, err := headClient.HeadObject(ctx, &oss.HeadObjectRequest{Bucket: oss.Ptr(strings.TrimSpace(s.cfg.Bucket)), Key: oss.Ptr(objectKey)})
+	if err != nil {
+		return ObjectInfo{}, apperr.Wrap(apperr.KindInternal, "inspect oss object", err)
+	}
+	info := ObjectInfo{}
+	info.SizeBytes = result.ContentLength
+	if result.ContentType != nil {
+		info.ContentType = strings.TrimSpace(*result.ContentType)
+	}
+	return info, nil
+}
+
 func (s *OSSStore) Put(ctx context.Context, input PutInput) error {
 	objectKey, err := validateObjectKey(input.ObjectKey)
 	if err != nil {
@@ -320,6 +380,33 @@ func (s *S3Store) Delete(ctx context.Context, objectKey string) error {
 		return apperr.New(apperr.KindInternal, "delete object failed with status "+resp.Status)
 	}
 	return nil
+}
+
+func (s *S3Store) Stat(ctx context.Context, objectKey string) (ObjectInfo, error) {
+	objectKey, err := validateObjectKey(objectKey)
+	if err != nil {
+		return ObjectInfo{}, err
+	}
+	if err = s.validateRemoteConfig(); err != nil {
+		return ObjectInfo{}, err
+	}
+	req, err := s.newSignedRequest(ctx, http.MethodHead, objectKey, nil, "")
+	if err != nil {
+		return ObjectInfo{}, err
+	}
+	client := s.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return ObjectInfo{}, apperr.Wrap(apperr.KindInternal, "inspect object", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return ObjectInfo{}, apperr.New(apperr.KindInternal, "inspect object failed with status "+resp.Status)
+	}
+	return ObjectInfo{SizeBytes: resp.ContentLength, ContentType: resp.Header.Get("Content-Type")}, nil
 }
 
 func (s *S3Store) Put(ctx context.Context, input PutInput) error {

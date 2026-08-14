@@ -131,6 +131,25 @@
 .workspace-settings-summary {
   padding: 0;
 }
+
+.workspace-billing-layout { display: grid; gap: 16px; }
+.billing-feature-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; margin-top: 18px; background: var(--border); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.billing-feature-grid > div { display: grid; gap: 5px; padding: 16px; background: var(--surface); }
+.billing-feature-grid span, .billing-usage-meta { color: var(--muted); font-size: 13px; }
+.billing-usage-track { height: 8px; margin: 18px 0 10px; overflow: hidden; border-radius: 4px; background: var(--surface-muted); }
+.billing-usage-track span { display: block; height: 100%; background: var(--accent); }
+.billing-usage-meta { display: flex; justify-content: space-between; gap: 16px; }
+@media (max-width: 720px) { .billing-feature-grid { grid-template-columns: 1fr; } }
+.api-key-create { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; margin: 16px 0; }
+.api-key-create input { min-width: 0; }
+.api-key-secret { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; margin-top: 16px; padding: 14px; border: 1px solid color-mix(in srgb, var(--orange) 40%, var(--border)); border-radius: 6px; background: color-mix(in srgb, var(--orange) 8%, var(--panel)); }
+.api-key-secret > div { grid-column: 1 / -1; display: grid; gap: 3px; }
+.api-key-secret span, .api-key-list span { color: var(--muted); font-size: 13px; }
+.api-key-secret code { overflow: auto; padding: 9px; border-radius: 4px; background: var(--surface); }
+.api-key-list { display: grid; border-top: 1px solid var(--border); }
+.api-key-list > div { display: flex; justify-content: space-between; gap: 14px; align-items: center; padding: 13px 0; border-bottom: 1px solid var(--border); }
+.api-key-list > div > div { display: grid; gap: 4px; }
+@media (max-width: 720px) { .api-key-create { grid-template-columns: 1fr; } .api-key-secret { grid-template-columns: 1fr; } }
 .workspace-resource-layout {
   display: grid;
   gap: 18px;

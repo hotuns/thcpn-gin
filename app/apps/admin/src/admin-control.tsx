@@ -8,12 +8,14 @@ import {
   App as AntApp,
   Button,
   Card,
+  DatePicker,
   Descriptions,
   Drawer,
   Form,
   Input,
   InputNumber,
   Modal,
+  Progress,
   Segmented,
   Select,
   Space,
@@ -74,6 +76,7 @@ export function AdminWorkspacesPage() {
     page_size: Number(params.get("page_size") ?? 20),
   };
   const query = useQuery({ queryKey: ["admin", "workspaces", filters], queryFn: () => api.admin.workspaces.list(filters), placeholderData: (previous) => previous });
+  const billingRisks = useQuery({ queryKey: ["admin", "billing-risks"], queryFn: () => api.admin.workspaces.billingRisks() });
   const update = (values: Record<string, unknown>) => {
     const next = new URLSearchParams(params);
     Object.entries(values).forEach(([key, value]) => value === undefined || value === "" ? next.delete(key) : next.set(key, String(value)));
@@ -81,7 +84,8 @@ export function AdminWorkspacesPage() {
     setParams(next, { replace: true });
   };
   const listSearch = params.toString();
-  return <Panel className="governance-list">
+  const expiring = (billingRisks.data?.items ?? []).filter((item) => item.risks?.includes("professional_expiring")).length; const expired = (billingRisks.data?.items ?? []).filter((item) => item.risks?.includes("professional_expired")).length; const usageWarnings = (billingRisks.data?.items ?? []).filter((item) => item.risks?.includes("download_usage_warning")).length;
+  return <><div className="grid grid-3"><Card size="small" title="专业版即将到期"><strong>{expiring}</strong><span className="cell-sub">30 天内</span></Card><Card size="small" title="专业版已到期"><strong>{expired}</strong><span className="cell-sub">已恢复基础版</span></Card><Card size="small" title="下载流量预警"><strong>{usageWarnings}</strong><span className="cell-sub">使用量达到 80%</span></Card></div><Panel className="governance-list">
     <div className="governance-toolbar">
       <Input value={keyword} prefix={<Search size={15} />} allowClear placeholder="搜索名称、Owner 或工作区 ID" onChange={(event) => setKeyword(event.target.value)} onPressEnter={() => update({ q: keyword })} />
       <Select allowClear value={filters.type} placeholder="全部类型" options={[{ value: "personal", label: "个人" }, { value: "organization", label: "组织" }]} onChange={(value) => update({ type: value })} />
@@ -102,7 +106,7 @@ export function AdminWorkspacesPage() {
       { title: "最近活动", dataIndex: "last_activity_at", width: 170, sorter: true, render: time },
       { title: "操作", width: 110, fixed: "right", render: (_, item) => <Link to={`/admin/workspaces/${item.id}?tab=overview&from=${encodeURIComponent(listSearch)}`}><Button type="link">查看详情</Button></Link> },
     ]} />}
-  </Panel>;
+  </Panel></>;
 }
 
 export function AdminWorkspaceDetailPage() {
@@ -131,6 +135,7 @@ export function AdminWorkspaceDetailPage() {
     <Panel className="governance-detail-panel">
       <Tabs activeKey={tab} onChange={setTab} items={[
         { key: "overview", label: "概览", children: <Overview workspace={item} /> },
+        { key: "billing", label: "计费", children: <Billing workspaceId={workspaceId} /> },
         { key: "members", label: "成员与权限", children: <Members {...context} /> },
         { key: "resources", label: "资源层级", children: <Resources {...context} /> },
         { key: "sharing", label: "共享与邀请", children: <Sharing {...context} /> },
@@ -139,6 +144,28 @@ export function AdminWorkspaceDetailPage() {
       ]} />
     </Panel>
   </>;
+}
+
+const GB = 1024 ** 3;
+const bytes = (value: unknown) => `${(Number(value ?? 0) / GB).toFixed(Number(value ?? 0) >= GB ? 1 : 2)} GB`;
+
+function Billing({ workspaceId }: { workspaceId: string }) {
+  const { message } = AntApp.useApp(); const client = useQueryClient(); const [grantOpen, setGrantOpen] = useState(false); const [packOpen, setPackOpen] = useState(false); const [grantForm] = Form.useForm(); const [packForm] = Form.useForm();
+  const summary = useQuery({ queryKey: ["admin", "billing", workspaceId], queryFn: () => api.admin.workspaces.billing(workspaceId) });
+  const history = useQuery({ queryKey: ["admin", "billing-history", workspaceId], queryFn: () => api.admin.workspaces.billingHistory(workspaceId) });
+  const refresh = async () => { await Promise.all([client.invalidateQueries({ queryKey: ["admin", "billing", workspaceId] }), client.invalidateQueries({ queryKey: ["admin", "billing-history", workspaceId] })]); };
+  const grant = async () => { try { const values = await grantForm.validateFields(); const payload = { ...values, starts_at: values.starts_at?.toISOString(), ends_at: values.ends_at?.toISOString() }; await api.admin.workspaces.grantProfessional(workspaceId, values.reason, payload); setGrantOpen(false); grantForm.resetFields(); await refresh(); void message.success("专业版授权已生效"); } catch (error) { if (!(error as any)?.errorFields) void message.error(formatApiError(error).message); } };
+  const addPack = async () => { try { const values = await packForm.validateFields(); await api.admin.workspaces.addTrafficPack(workspaceId, values.reason, { ...values, bytes: Number(values.size_gb) * GB, size_gb: undefined }); setPackOpen(false); packForm.resetFields(); await refresh(); void message.success("流量包已入账"); } catch (error) { if (!(error as any)?.errorFields) void message.error(formatApiError(error).message); } };
+  if (summary.isLoading || history.isLoading) return <StateView type="loading" title="正在加载计费信息" description="正在汇总套餐、用量和授权流水。" />;
+  if (summary.error || history.error) return <ErrorState error={summary.error ?? history.error} title="计费信息加载失败" />;
+  const value = summary.data ?? {}; const professional = value.plan === "professional"; const usage = Math.min(100, Number(value.usage_percent ?? 0));
+  return <div className="billing-admin"><div className="tab-toolbar"><div><Tag color={professional ? "green" : "default"}>{professional ? "专业版" : "基础版"}</Tag>{professional && <span className="cell-sub">有效至 {time(value.professional_expires_at)}</span>}</div><Space><Button onClick={() => setPackOpen(true)}>增加流量包</Button><Button type="primary" onClick={() => setGrantOpen(true)}>授予专业版</Button></Space></div>
+    <div className="grid grid-3"><Card size="small" title="当前套餐"><strong>{professional ? "专业版" : "基础版永久免费"}</strong><p className="cell-sub">{professional ? `剩余 ${value.days_until_expiry ?? 0} 天` : "设备接入与基础查看不受限制"}</p></Card><Card size="small" title="本月下载"><Progress percent={Number(usage.toFixed(1))} status={usage >= 100 ? "exception" : "normal"} /><p className="cell-sub">{bytes(value.monthly_download_used_bytes)} / {bytes(value.monthly_download_limit_bytes)}</p></Card><Card size="small" title="流量扩展包"><strong>{bytes(value.traffic_pack_balance_bytes)}</strong><p className="cell-sub">专业版月度额度用尽后自动使用</p></Card></div>
+    <h3 className="drawer-section-title">专业版授权记录</h3><Table rowKey="id" pagination={false} dataSource={history.data?.plan_grants ?? []} columns={[{ title: "来源", dataIndex: "source_type", render: (v) => ({ device_order: "设备订单", service_contract: "服务合同", manual_correction: "人工纠正" })[v] ?? v }, { title: "合同 / 订单", dataIndex: "reference_no", render: text }, { title: "金额", dataIndex: "amount_cents", render: (v) => `¥${(Number(v) / 100).toFixed(2)}` }, { title: "授权期间", render: (_, row) => `${time(row.starts_at)} 至 ${time(row.ends_at)}` }, { title: "原因", dataIndex: "reason" }, { title: "创建时间", dataIndex: "created_at", render: time }]} />
+    <h3 className="drawer-section-title">流量包记录</h3><Table rowKey="id" pagination={false} dataSource={history.data?.traffic_pack_grants ?? []} columns={[{ title: "容量", dataIndex: "bytes", render: bytes }, { title: "金额", dataIndex: "price_cents", render: (v) => `¥${(Number(v) / 100).toFixed(2)}` }, { title: "合同 / 订单", dataIndex: "reference_no", render: text }, { title: "原因", dataIndex: "reason" }, { title: "创建时间", dataIndex: "created_at", render: time }]} />
+    <Modal title="授予专业版" open={grantOpen} onCancel={() => setGrantOpen(false)} onOk={() => void grant()} okText="确认授权"><Form form={grantForm} layout="vertical" initialValues={{ source_type: "device_order", duration_months: 12, amount_cents: 200000 }}><Form.Item name="source_type" label="授权来源" rules={[{ required: true }]}><Select options={[{ value: "device_order", label: "设备订单" }, { value: "service_contract", label: "服务合同" }, { value: "manual_correction", label: "人工纠正" }]} /></Form.Item><Form.Item name="reference_no" label="合同 / 订单号"><Input /></Form.Item><div className="drawer-grid"><Form.Item name="duration_months" label="授权月数" rules={[{ required: true }]}><InputNumber min={1} max={120} style={{ width: "100%" }} /></Form.Item><Form.Item name="amount_cents" label="金额（分）"><InputNumber min={0} style={{ width: "100%" }} /></Form.Item></div><div className="drawer-grid"><Form.Item name="starts_at" label="指定开始时间"><DatePicker showTime style={{ width: "100%" }} /></Form.Item><Form.Item name="ends_at" label="指定结束时间"><DatePicker showTime style={{ width: "100%" }} /></Form.Item></div><Form.Item name="reason" label="授权原因" rules={[{ required: true, min: 5 }]}><Input.TextArea rows={3} maxLength={300} showCount /></Form.Item></Form></Modal>
+    <Modal title="增加流量扩展包" open={packOpen} onCancel={() => setPackOpen(false)} onOk={() => void addPack()} okText="确认入账"><Form form={packForm} layout="vertical" initialValues={{ size_gb: 100, price_cents: 10000 }}><Form.Item name="size_gb" label="容量（GB）" rules={[{ required: true }]}><InputNumber min={1} style={{ width: "100%" }} /></Form.Item><Form.Item name="price_cents" label="金额（分）"><InputNumber min={0} style={{ width: "100%" }} /></Form.Item><Form.Item name="reference_no" label="合同 / 订单号"><Input /></Form.Item><Form.Item name="reason" label="入账原因" rules={[{ required: true, min: 5 }]}><Input.TextArea rows={3} maxLength={300} showCount /></Form.Item></Form></Modal>
+  </div>;
 }
 
 function Overview({ workspace }: { workspace: JsonRecord }) {

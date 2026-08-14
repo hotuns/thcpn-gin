@@ -19,6 +19,7 @@ import (
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/audit"
 	"thcpn-gin/internal/auth"
+	"thcpn-gin/internal/billing"
 	"thcpn-gin/internal/camera"
 	"thcpn-gin/internal/computedstream"
 	"thcpn-gin/internal/config"
@@ -37,6 +38,7 @@ import (
 	"thcpn-gin/internal/media"
 	"thcpn-gin/internal/member"
 	"thcpn-gin/internal/objectstore"
+	"thcpn-gin/internal/openapiaccess"
 	"thcpn-gin/internal/permission"
 	"thcpn-gin/internal/platformlog"
 	"thcpn-gin/internal/processing"
@@ -97,6 +99,7 @@ func NewRouter(deps Dependencies) (*gin.Engine, error) {
 func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) error {
 	userService := user.NewService(deps.Postgres)
 	workspaceService := workspace.NewService(deps.Postgres)
+	billingService := billing.NewService(deps.Postgres)
 	permissionChecker := permission.NewChecker(sqlc.New(deps.Postgres))
 	permissionCatalogService := permission.NewCatalogService(deps.Postgres)
 	auditService := audit.NewService(deps.Postgres)
@@ -114,7 +117,10 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	thcpnLogSigner := objectstore.NewSigner(cfg.THCPNLogObjectStore, cfg.Auth.JWTSecret)
 	objectStore := objectstore.NewStore(cfg.ObjectStore)
 	dataSourceService := datasource.NewService(deps.Postgres, objectStore)
+	dataSourceService.SetBilling(billingService)
 	telemetryService := telemetry.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil), cfg.QueryLimits, computedStreamService)
+	telemetryService.SetBilling(billingService)
+	openAPIService := openapiaccess.NewService(deps.Postgres, billingService)
 	datasetService := dataset.NewService(deps.Postgres, dataset.QueryDependencies{
 		DataSources: dataSourceService,
 		Runtime:     datasource.NewRuntime(nil),
@@ -144,9 +150,12 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 		return result, nil
 	})
 	mediaService := media.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil), objectSigner, cfg.QueryLimits, objectStore)
+	mediaService.SetBilling(billingService)
 	publicDeviceService := publicdevice.NewService(deps.Postgres)
 	exportService := export.NewService(deps.Postgres, objectSigner, cfg.Export)
+	exportService.SetBilling(billingService)
 	processingService := processing.NewService(deps.Postgres, processing.NewClient(cfg.Processing.ProcessorURL), objectSigner)
+	processingService.SetBilling(billingService, objectStore)
 	tokenManager := auth.NewTokenManager(cfg.Auth.JWTSecret, time.Duration(cfg.Auth.AccessTokenTTLMinutes)*time.Minute)
 	smsSender, err := newSMSSender(cfg.SMS, deps.Logger)
 	if err != nil {
@@ -168,6 +177,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	adminAuthHandler := adminauth.NewHandler(adminAuthService)
 	userHandler := user.NewHandler(userService, auditService)
 	workspaceHandler := workspace.NewHandlerWithChecker(workspaceService, permissionChecker, auditService)
+	billingHandler := billing.NewHandler(billingService, permissionChecker, auditService)
 	memberHandler := member.NewHandler(memberService, permissionChecker, auditService)
 	accessGrantHandler := accessgrant.NewHandler(accessGrantService, permissionChecker, auditService)
 	permissionCatalogHandler := permission.NewCatalogHandler(permissionCatalogService)
@@ -195,10 +205,11 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	dataSourceHandler.SetClaimCredentialEnsurer(deviceClaimService)
 	dataSourceHandler.SetTHCPNLogSigner(thcpnLogSigner)
 	telemetryHandler := telemetry.NewHandler(telemetryService, permissionChecker)
+	openAPIHandler := openapiaccess.NewHandler(openAPIService, telemetryService, permissionChecker, auditService)
 	mediaHandler := media.NewHandler(mediaService, permissionChecker, auditService)
 	publicDeviceHandler := publicdevice.NewHandler(publicDeviceService, telemetryService, mediaService, permissionChecker, auditService, deps.Redis, cfg.Auth.JWTSecret)
 	exportHandler := export.NewHandler(exportService, permissionChecker, auditService)
-	processingHandler := processing.NewHandler(processingService, permissionChecker)
+	processingHandler := processing.NewHandler(processingService, permissionChecker, billingService)
 	if taskClient := task.NewClient(deps.Redis); taskClient != nil {
 		exportHandler.SetJobEnqueuer(taskClient)
 	}
@@ -223,6 +234,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	api.GET("/public/devices/:public_slug/images", publicDeviceHandler.Images)
 	api.GET("/device-claims/:claim_slug", deviceClaimHandler.PublicEntry)
 	api.POST("/admin/auth/refresh", adminAuthHandler.Refresh)
+	api.GET("/open/devices/:device_id/telemetry", openAPIHandler.QueryTelemetry)
 	if cfg.Auth.DevRegisterEnabled {
 		api.POST("/auth/register", userHandler.Register)
 	} else {
@@ -250,6 +262,10 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.GET("/workspaces", workspaceHandler.List)
 	authed.POST("/workspaces", workspaceHandler.Create)
 	authed.PATCH("/workspaces/:workspace_id", workspaceHandler.UpdateName)
+	authed.GET("/workspaces/:workspace_id/billing", billingHandler.Get)
+	authed.GET("/workspaces/:workspace_id/api-keys", openAPIHandler.List)
+	authed.POST("/workspaces/:workspace_id/api-keys", openAPIHandler.Create)
+	authed.DELETE("/workspaces/:workspace_id/api-keys/:key_id", openAPIHandler.Revoke)
 	authed.GET("/permissions/catalog", permissionCatalogHandler.Catalog)
 	authed.GET("/device-taxonomy/catalog", deviceClassificationHandler.Catalog)
 	admin := api.Group("/admin")
@@ -275,6 +291,11 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.GET("/workspaces/:workspace_id", workspaceHandler.AdminGet)
 	admin.PATCH("/workspaces/:workspace_id/status", workspaceHandler.RequireAdminReason(), workspaceHandler.AdminUpdateStatus)
 	admin.POST("/workspaces/:workspace_id/transfer-owner", workspaceHandler.RequireAdminReason(), workspaceHandler.AdminTransferOwner)
+	admin.GET("/workspaces/:workspace_id/billing", billingHandler.AdminGet)
+	admin.GET("/billing/workspaces", billingHandler.AdminRisks)
+	admin.GET("/workspaces/:workspace_id/billing/history", billingHandler.AdminHistory)
+	admin.POST("/workspaces/:workspace_id/billing/grants", workspaceHandler.RequireAdminReason(), billingHandler.AdminGrantProfessional)
+	admin.POST("/workspaces/:workspace_id/billing/traffic-packs", workspaceHandler.RequireAdminReason(), billingHandler.AdminAddTrafficPack)
 	admin.GET("/projects", projectHandler.AdminList)
 	admin.GET("/sites", siteHandler.AdminList)
 	admin.GET("/sites/:site_id/environment", deviceClassificationHandler.AdminGetSite)
@@ -436,6 +457,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.GET("/workspaces/:workspace_id/processing-tasks/:task_id", processingHandler.Get)
 	authed.GET("/workspaces/:workspace_id/processing-tasks/:task_id/executions", processingHandler.Executions)
 	authed.PATCH("/workspaces/:workspace_id/processing-tasks/:task_id/status", processingHandler.SetStatus)
+	authed.GET("/workspaces/:workspace_id/processing-results/:result_id/download", processingHandler.DownloadResult)
 	authed.POST("/datasets/:dataset_id/export", exportHandler.ExportDataset)
 	authed.PATCH("/datasets/:dataset_id", datasetHandler.Update)
 	authed.DELETE("/datasets/:dataset_id", datasetHandler.Delete)
