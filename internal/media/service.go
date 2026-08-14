@@ -22,6 +22,11 @@ import (
 
 const mediaURLTTL = 15 * time.Minute
 
+const (
+	mediaThumbnailProcess = "image/resize,w_480/quality,Q_70/format,webp"
+	mediaPreviewProcess   = "image/resize,w_1600/quality,Q_75/format,webp"
+)
+
 type Runtime interface {
 	QueryMedia(ctx context.Context, source datasource.DataSource, req datasource.MediaQuery) (datasource.MediaResult, error)
 }
@@ -371,16 +376,10 @@ func (s *Service) itemsFromDatasource(stream sqlc.DataStream, records []datasour
 	}
 	items := make([]Item, 0, len(records))
 	for _, record := range records {
-		previewURL, external := externalMediaURL(record.ObjectKey)
-		if !external {
-			preview, err := s.signer.SignObjectURL(record.ObjectKey, mediaURLTTL)
-			if err != nil {
-				return nil, err
-			}
-			previewURL = preview.URL
-		}
-		thumbnailURL := previewURL
+		previewURL := ""
+		thumbnailURL := ""
 		if record.ThumbnailObjectKey != nil && *record.ThumbnailObjectKey != "" {
+			var external bool
 			thumbnailURL, external = externalMediaURL(*record.ThumbnailObjectKey)
 			if !external {
 				thumbnail, err := s.signer.SignObjectURL(*record.ThumbnailObjectKey, mediaURLTTL)
@@ -388,6 +387,41 @@ func (s *Service) itemsFromDatasource(stream sqlc.DataStream, records []datasour
 					return nil, err
 				}
 				thumbnailURL = thumbnail.URL
+			}
+		}
+		if record.MediaType == "image" {
+			previewURL, _ = externalOSSImagePreviewURL(record.ObjectKey, mediaPreviewProcess)
+			if previewURL == "" {
+				if preview, err := s.signer.SignImagePreviewURL(record.ObjectKey, mediaPreviewProcess, mediaURLTTL); err == nil {
+					previewURL = preview.URL
+				}
+			}
+			if previewURL == "" {
+				previewURL = thumbnailURL
+			}
+			thumbnailURL, _ = externalOSSImagePreviewURL(record.ObjectKey, mediaThumbnailProcess)
+			if thumbnailURL == "" {
+				if thumbnail, err := s.signer.SignImagePreviewURL(record.ObjectKey, mediaThumbnailProcess, mediaURLTTL); err == nil {
+					thumbnailURL = thumbnail.URL
+				}
+			}
+			if thumbnailURL == "" {
+				thumbnailURL = previewURL
+			}
+			if previewURL == "" {
+				continue
+			}
+		} else {
+			previewURL, _ = externalMediaURL(record.ObjectKey)
+			if previewURL == "" {
+				preview, err := s.signer.SignObjectURL(record.ObjectKey, mediaURLTTL)
+				if err != nil {
+					return nil, err
+				}
+				previewURL = preview.URL
+			}
+			if thumbnailURL == "" {
+				thumbnailURL = previewURL
 			}
 		}
 		item := Item{
@@ -440,6 +474,21 @@ func externalMediaURL(value string) (string, bool) {
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return "", false
 	}
+	return parsed.String(), true
+}
+
+func externalOSSImagePreviewURL(value string, process string) (string, bool) {
+	value, external := externalMediaURL(value)
+	if !external {
+		return "", false
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || !strings.HasSuffix(strings.ToLower(parsed.Hostname()), ".aliyuncs.com") {
+		return "", false
+	}
+	query := parsed.Query()
+	query.Set("x-oss-process", process)
+	parsed.RawQuery = query.Encode()
 	return parsed.String(), true
 }
 

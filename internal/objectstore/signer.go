@@ -117,6 +117,36 @@ func (s *Signer) SignObjectURL(objectKey string, ttl time.Duration) (SignedURL, 
 	return SignedURL{URL: u.String(), ExpiresAt: expiresAt}, nil
 }
 
+func (s *Signer) SignImagePreviewURL(objectKey string, process string, ttl time.Duration) (SignedURL, error) {
+	process = strings.TrimSpace(process)
+	if process == "" {
+		return SignedURL{}, apperr.New(apperr.KindInvalidArgument, "image process is required")
+	}
+	validObjectKey, err := s.NormalizeObjectKey(objectKey)
+	if err != nil {
+		return SignedURL{}, err
+	}
+	expiresAt := s.now().Add(ttl).UTC()
+	if publicURLPrefix := normalizedPublicURLPrefix(s.cfg.PublicURLPrefix); publicURLPrefix != "" {
+		u, err := url.Parse(joinPublicObjectURL(publicURLPrefix, validObjectKey))
+		if err != nil {
+			return SignedURL{}, apperr.Wrap(apperr.KindInternal, "build image preview url", err)
+		}
+		query := u.Query()
+		query.Set("x-oss-process", process)
+		u.RawQuery = query.Encode()
+		return SignedURL{URL: u.String(), ExpiresAt: expiresAt}, nil
+	}
+	if normalizedProvider(s.cfg.Provider) != "oss" || s.accessKey == "" || s.secretKey == "" {
+		return SignedURL{}, apperr.New(apperr.KindConflict, "generated image preview is unavailable")
+	}
+	u, err := presignOSSImageURL(s.cfg, validObjectKey, process, s.accessKey, s.secretKey, expiresAt)
+	if err != nil {
+		return SignedURL{}, apperr.Wrap(apperr.KindInternal, "presign oss image preview url", err)
+	}
+	return SignedURL{URL: u, ExpiresAt: expiresAt}, nil
+}
+
 // NormalizeObjectKey converts a configured OSS URL or an object key into the
 // key accepted by the signer. Absolute URLs are only accepted when they point
 // at this signer's configured endpoint and bucket.
@@ -153,6 +183,14 @@ func (s *Signer) NormalizeObjectKey(raw string) (string, error) {
 }
 
 func presignOSSGetObjectURL(cfg config.ObjectStoreConfig, objectKey string, accessKey string, secretKey string, expiresAt time.Time) (string, error) {
+	return presignOSSObjectURL(cfg, objectKey, "", accessKey, secretKey, expiresAt)
+}
+
+func presignOSSImageURL(cfg config.ObjectStoreConfig, objectKey string, process string, accessKey string, secretKey string, expiresAt time.Time) (string, error) {
+	return presignOSSObjectURL(cfg, objectKey, process, accessKey, secretKey, expiresAt)
+}
+
+func presignOSSObjectURL(cfg config.ObjectStoreConfig, objectKey string, process string, accessKey string, secretKey string, expiresAt time.Time) (string, error) {
 	if strings.TrimSpace(cfg.Endpoint) == "" {
 		return "", apperr.New(apperr.KindInternal, "object store endpoint is required")
 	}
@@ -170,10 +208,14 @@ func presignOSSGetObjectURL(cfg config.ObjectStoreConfig, objectKey string, acce
 		WithRegion(strings.TrimSpace(cfg.Region)).
 		WithEndpoint(strings.TrimSpace(cfg.Endpoint)).
 		WithSignatureVersion(oss.SignatureVersionV4)
-	result, err := oss.NewClient(ossCfg).Presign(context.Background(), &oss.GetObjectRequest{
+	request := &oss.GetObjectRequest{
 		Bucket: oss.Ptr(strings.TrimSpace(cfg.Bucket)),
 		Key:    oss.Ptr(objectKey),
-	}, oss.PresignExpiration(expiresAt))
+	}
+	if strings.TrimSpace(process) != "" {
+		request.Process = oss.Ptr(strings.TrimSpace(process))
+	}
+	result, err := oss.NewClient(ossCfg).Presign(context.Background(), request, oss.PresignExpiration(expiresAt))
 	if err != nil {
 		return "", err
 	}
