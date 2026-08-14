@@ -26,6 +26,8 @@ const string = (input: unknown, fallback: unknown = "—"): string =>
   input === undefined || input === null || input === ""
     ? String(fallback)
     : String(input);
+const isCarbonSource = (source: JsonRecord) =>
+  string(source.dsn_secret_ref, "").toUpperCase().includes("CARBON_SINK");
 type Mode = "create" | "edit" | "station" | "gateway" | "camera" | null;
 const formatTime = (input: unknown) => input ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(String(input))) : "—";
 const validateSecretRef = (_: unknown, input: unknown) => {
@@ -48,6 +50,8 @@ export function AdminSourcesPage() {
   const [syncResult, setSyncResult] = useState<JsonRecord | null>(null);
   const [fullSyncSource, setFullSyncSource] = useState<JsonRecord | null>(null);
   const [fullSyncBusy, setFullSyncBusy] = useState(false);
+  const [carbonSyncSource, setCarbonSyncSource] = useState<JsonRecord | null>(null);
+  const [carbonSyncBusy, setCarbonSyncBusy] = useState(false);
   const [form] = Form.useForm();
   const rows = useMemo(
     () =>
@@ -104,6 +108,24 @@ export function AdminSourcesPage() {
       setFeedback(`${detail.message}${detail.requestId ? ` · request id ${detail.requestId}` : ""}`);
     } finally {
       setFullSyncBusy(false);
+    }
+  };
+  const syncAllCarbon = async () => {
+    if (!carbonSyncSource) return;
+    setCarbonSyncBusy(true);
+    setFeedback("");
+    setSyncResult(null);
+    try {
+      const response = await api.admin.syncAllCarbonDevices(string(carbonSyncSource.id));
+      setSyncResult(response);
+      setCarbonSyncSource(null);
+      setFeedback("Carbon v2 全量同步已完成");
+      await query.refetch();
+    } catch (error) {
+      const detail = formatApiError(error);
+      setFeedback(`${detail.message}${detail.requestId ? ` · request id ${detail.requestId}` : ""}`);
+    } finally {
+      setCarbonSyncBusy(false);
     }
   };
   const close = () => {
@@ -245,41 +267,49 @@ export function AdminSourcesPage() {
               {
                 title: "操作",
                 width: 360,
-                render: (_, record: JsonRecord) => (
-                  <Space size={2}>
+                render: (_, record: JsonRecord) => {
+                  const carbonSource = isCarbonSource(record);
+                  return <Space size={2}>
                     <Button type="link" onClick={() => open("edit", record)}>
                       编辑
                     </Button>
-                    <Button
+                    {!carbonSource ? <Button
                       type="link"
                       disabled={record.type !== "mysql"}
                       onClick={() => open("station", record)}
                     >
                       同步标准站
-                    </Button>
-                    <Button
+                    </Button> : null}
+                    {!carbonSource ? <Button
                       type="link"
                       disabled={record.type !== "mysql"}
                       onClick={() => setFullSyncSource(record)}
                     >
                       全量同步
-                    </Button>
-                    <Button
+                    </Button> : null}
+                    {!carbonSource ? <Button
                       type="link"
                       disabled={record.type !== "mysql"}
                       onClick={() => open("gateway", record)}
                     >
                       同步网关及节点
-                    </Button>
-                    <Button
+                    </Button> : null}
+                    {!carbonSource ? <Button
                       type="link"
                       disabled={record.type !== "mysql"}
                       onClick={() => open("camera", record)}
                     >
                       同步监控站
-                    </Button>
-                  </Space>
-                ),
+                    </Button> : null}
+                    {carbonSource ? <Button
+                      type="link"
+                      disabled={record.type !== "mysql"}
+                      onClick={() => setCarbonSyncSource(record)}
+                    >
+                      同步碳汇设备
+                    </Button> : null}
+                  </Space>;
+                },
               },
             ]}
             pagination={{ pageSize: 12, showSizeChanger: false }}
@@ -305,6 +335,18 @@ export function AdminSourcesPage() {
       >
         <p>将读取外部 <code>devices</code>、<code>gate_node</code> 和 <code>cameras</code>，同步设备、配置、DataStream、绑定、拓扑及监控站。</p>
         <p>设备不会自动分配到工作区；已经同步的设备将更新，缺少配置的设备会单独记录失败原因。</p>
+      </Modal>
+      <Modal
+        title={`同步 Carbon v2 设备 · ${string(carbonSyncSource?.name)}`}
+        open={Boolean(carbonSyncSource)}
+        confirmLoading={carbonSyncBusy}
+        okText="开始同步"
+        cancelText="取消"
+        onOk={() => void syncAllCarbon()}
+        onCancel={() => { if (!carbonSyncBusy) setCarbonSyncSource(null); }}
+      >
+        <p>只读取 <code>devices.device_type = carbon-sink-v2</code>，一个采集器同步为一个平台设备，节点数量保存为设备资料。</p>
+        <p>数据查询使用 Carbon 专属页面，原始采样以 <code>device_data_next_YYYYMM</code> 为准，通量以 <code>carbon_flux_YYYYMM</code> 为准。</p>
       </Modal>
       <Drawer
         title={drawerTitle(mode, selected)}

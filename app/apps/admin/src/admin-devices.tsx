@@ -59,6 +59,8 @@ const value = (input: unknown, fallback: unknown = "—"): string =>
   input === undefined || input === null || input === ""
     ? String(fallback)
     : String(input);
+const categoryOf = (item: JsonRecord) =>
+  value(item.topology_role || item.device_type, "standalone");
 
 export function AdminDevicesPage() {
   const { deviceId } = useParams();
@@ -66,25 +68,33 @@ export function AdminDevicesPage() {
     queryKey: ["admin", "devices"],
     queryFn: api.admin.devices,
   });
+  const allRows = query.data?.items ?? [];
+  const detailDevice = allRows.find((item) => value(item.id, "") === deviceId);
+  const isCarbonDetail = categoryOf(detailDevice ?? {}) === "carbon_sink";
   const detailAttributesQuery = useQuery({
     queryKey: ["admin", "device", deviceId, "attributes"],
     queryFn: () => api.admin.deviceAttributes(deviceId!),
-    enabled: Boolean(deviceId),
+    enabled: Boolean(detailDevice) && !isCarbonDetail,
   });
   const detailChildrenQuery = useQuery({
     queryKey: ["admin", "device", deviceId, "children"],
     queryFn: () => api.admin.deviceChildren(deviceId!),
-    enabled: Boolean(deviceId),
+    enabled: Boolean(detailDevice) && !isCarbonDetail,
   });
   const detailLifecycleQuery = useQuery({
     queryKey: ["admin", "device", deviceId, "lifecycle"],
     queryFn: () => api.admin.lifecycle(deviceId!),
-    enabled: Boolean(deviceId),
+    enabled: Boolean(detailDevice),
   });
   const detailConfigQuery = useQuery({
     queryKey: ["admin", "device", deviceId, "config"],
     queryFn: () => api.admin.deviceConfig(deviceId!),
-    enabled: Boolean(deviceId),
+    enabled: Boolean(detailDevice) && !isCarbonDetail,
+  });
+  const detailCarbonQuery = useQuery({
+    queryKey: ["admin", "device", deviceId, "carbon-overview"],
+    queryFn: () => api.admin.carbonOverview(deviceId!),
+    enabled: Boolean(detailDevice) && isCarbonDetail,
   });
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState("");
@@ -106,9 +116,6 @@ export function AdminDevicesPage() {
   } | null>(null);
   const [children, setChildren] = useState<Record<string, JsonRecord[]>>({});
   const [form] = Form.useForm<Record<string, any>>();
-  const allRows = query.data?.items ?? [];
-  const categoryOf = (item: JsonRecord) =>
-    value(item.topology_role || item.device_type, "standalone");
   const topLevelRows = useMemo(
     () => allRows.filter((item) => categoryOf(item) !== "gateway_node"),
     [allRows],
@@ -118,6 +125,7 @@ export function AdminDevicesPage() {
       all: topLevelRows.length,
       gateway: topLevelRows.filter((item) => categoryOf(item) === "gateway").length,
       camera: topLevelRows.filter((item) => categoryOf(item) === "camera").length,
+      carbon_sink: topLevelRows.filter((item) => categoryOf(item) === "carbon_sink").length,
       standalone: topLevelRows.filter((item) => categoryOf(item) === "standalone")
         .length,
     }),
@@ -475,8 +483,8 @@ export function AdminDevicesPage() {
     if (query.error) return <StateView type="error" title="设备详情加载失败" description={formatApiError(query.error).message} requestId={formatApiError(query.error).requestId} />;
     if (!device) return <StateView type="empty" title="设备不存在" description="该设备可能已被删除或尚未同步。" action={<Button><Link to="/admin/devices">返回设备列表</Link></Button>} />;
     const isCamera = categoryOf(device) === "camera";
-    const refreshDetail = () => void Promise.all([query.refetch(), detailAttributesQuery.refetch(), detailChildrenQuery.refetch(), detailLifecycleQuery.refetch(), detailConfigQuery.refetch()]);
-    return <><PageHeader eyebrow="System / devices / detail" title={value(device.name, "未命名设备")} description={`${value(device.serial_no, device.id)} · ${deviceTopologyRoleLabel(categoryOf(device))}`} actions={<Space><Button><Link to="/admin/devices">返回列表</Link></Button><Button type="primary" icon={<Pencil size={14} />} onClick={() => open("edit", device)}>编辑资料</Button><Button icon={<RefreshCw size={14} />} onClick={refreshDetail}>刷新</Button></Space>} />{feedback && <div className="admin-feedback section-gap">{feedback}</div>}<DeviceDetailPanel device={device} isCamera={isCamera} attributes={detailAttributesQuery.data as unknown as JsonRecord | undefined} attributesLoading={detailAttributesQuery.isLoading} attributesError={detailAttributesQuery.error} childrenData={detailChildrenQuery.data as unknown as JsonRecord | undefined} childrenLoading={detailChildrenQuery.isLoading} childrenError={detailChildrenQuery.error} lifecycleData={detailLifecycleQuery.data as JsonRecord | undefined} lifecycleLoading={detailLifecycleQuery.isLoading} lifecycleError={detailLifecycleQuery.error} configData={detailConfigQuery.data as JsonRecord | undefined} configLoading={detailConfigQuery.isLoading} configError={detailConfigQuery.error} onOpen={(next) => open(next, device)} onUnassign={() => void unassign(device)} />{managementOverlays}</>;
+    const refreshDetail = () => void Promise.all([query.refetch(), detailLifecycleQuery.refetch(), ...(isCarbonDetail ? [detailCarbonQuery.refetch()] : [detailAttributesQuery.refetch(), detailChildrenQuery.refetch(), detailConfigQuery.refetch()])]);
+    return <><PageHeader eyebrow="System / devices / detail" title={value(device.name, "未命名设备")} description={`${value(device.serial_no, device.id)} · ${deviceTopologyRoleLabel(categoryOf(device))}`} actions={<Space><Button><Link to="/admin/devices">返回列表</Link></Button><Button type="primary" icon={<Pencil size={14} />} onClick={() => open("edit", device)}>编辑资料</Button><Button icon={<RefreshCw size={14} />} onClick={refreshDetail}>刷新</Button></Space>} />{feedback && <div className="admin-feedback section-gap">{feedback}</div>}<DeviceDetailPanel device={device} isCamera={isCamera} isCarbon={isCarbonDetail} carbonData={detailCarbonQuery.data as unknown as JsonRecord | undefined} carbonLoading={detailCarbonQuery.isLoading} carbonError={detailCarbonQuery.error} attributes={detailAttributesQuery.data as unknown as JsonRecord | undefined} attributesLoading={detailAttributesQuery.isLoading} attributesError={detailAttributesQuery.error} childrenData={detailChildrenQuery.data as unknown as JsonRecord | undefined} childrenLoading={detailChildrenQuery.isLoading} childrenError={detailChildrenQuery.error} lifecycleData={detailLifecycleQuery.data as JsonRecord | undefined} lifecycleLoading={detailLifecycleQuery.isLoading} lifecycleError={detailLifecycleQuery.error} configData={detailConfigQuery.data as JsonRecord | undefined} configLoading={detailConfigQuery.isLoading} configError={detailConfigQuery.error} onOpen={(next) => open(next, device)} onUnassign={() => void unassign(device)} />{managementOverlays}</>;
   }
 
   return (
@@ -484,7 +492,7 @@ export function AdminDevicesPage() {
       <PageHeader
         eyebrow="System / devices"
         title="系统设备"
-        description="管理设备身份、工作区分配、网关拓扑、生命周期和 THCPN 配置。"
+        description="统一管理标准站、组网站、碳汇站和监控站。"
         actions={<Space><Button type="primary" onClick={openCameraCreate}>创建监控站</Button><Button icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>刷新</Button></Space>}
       />
       <Panel>
@@ -526,9 +534,10 @@ export function AdminDevicesPage() {
         <div className="admin-device-categories">
           {[
             { key: "all", label: "全部" },
-            { key: "gateway", label: "网关" },
-            { key: "camera", label: "监控站" },
             { key: "standalone", label: "标准站" },
+            { key: "gateway", label: "组网站" },
+            { key: "carbon_sink", label: "碳汇站" },
+            { key: "camera", label: "监控站" },
           ].map((item) => (
             <button
               key={item.key}
@@ -659,6 +668,10 @@ function confirmConfigSave(summary: ReturnType<typeof configChangeSummary>, warn
 function DeviceDetailPanel({
   device,
   isCamera,
+  isCarbon,
+  carbonData,
+  carbonLoading,
+  carbonError,
   attributes,
   attributesLoading,
   attributesError,
@@ -676,6 +689,10 @@ function DeviceDetailPanel({
 }: {
   device: JsonRecord;
   isCamera: boolean;
+  isCarbon: boolean;
+  carbonData?: JsonRecord;
+  carbonLoading: boolean;
+  carbonError: unknown;
   attributes?: JsonRecord;
   attributesLoading: boolean;
   attributesError: unknown;
@@ -698,6 +715,8 @@ function DeviceDetailPanel({
   const snapshot = (configData?.latest_snapshot ?? {}) as JsonRecord;
   const attributeItems = Object.entries((attributes?.attributes ?? {}) as JsonRecord);
   const sourceDevice = (attributes?.source_device ?? {}) as JsonRecord;
+  const carbonRuntime = (carbonData?.runtime ?? {}) as JsonRecord;
+  const carbonNodes = (carbonData?.nodes as JsonRecord[] | undefined) ?? [];
   const date = (input: unknown) => input ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(String(input))) : "—";
   const inlineError = (error: unknown, title: string) => error ? <Alert type="warning" showIcon title={title} description={formatApiError(error).message} /> : null;
   const queryLoading = ({ loading, data, error }: DetailQueryProps) => loading && !data && !error;
@@ -715,7 +734,7 @@ function DeviceDetailPanel({
         { key: "activated", label: "激活时间", children: date(device.activated_at) },
       ]} />
     </section>
-    {(device.device_type === "gateway" || device.device_type === "standalone") ? <ClaimCredentialSection device={device} date={date} /> : null}
+    {(device.device_type === "gateway" || device.device_type === "standalone" || device.device_type === "carbon_sink") ? <ClaimCredentialSection device={device} date={date} /> : null}
     <section className="admin-detail-section">
       <div className="admin-detail-section-head"><div><h2>分配关系</h2><span>设备当前所属的工作区与资源位置</span></div><Space><Button onClick={() => onOpen("assign")}>调整分配</Button>{Boolean(device.workspace_id) && <Popconfirm title="解除工作区分配？" description="设备将不再对该工作区可见。" onConfirm={onUnassign}><Button danger>解除分配</Button></Popconfirm>}</Space></div>
       <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }} items={[
@@ -796,11 +815,42 @@ function DeviceDetailPanel({
       {queryLoading({ loading: attributesLoading, data: attributes, error: attributesError }) ? <div className="admin-inline-loading">正在加载设备属性…</div> : attributeItems.length ? <div className="admin-attribute-grid">{attributeItems.map(([key, raw]) => { const item = raw as JsonRecord; const parsed = item.parsed_value ?? item.raw_value; const Icon = key === "battery" ? Battery : key === "signal" ? Radio : Settings2; return <div key={key}><Icon size={17} /><span>{key === "battery" ? "电池" : key === "signal" ? "信号" : key}</span><strong>{typeof parsed === "object" ? JSON.stringify(parsed) : value(parsed)}</strong><small>{date(item.sampled_at)}</small></div>; })}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无设备属性" />}
     </section>
   </div>;
+  const carbonManagement = <div className="admin-device-detail-content">
+    <section className="admin-detail-section">
+      <div className="admin-detail-section-head"><div><h2>碳汇数据概览</h2><span>展示源库中当前设备的最新数据，不判断实时在线状态</span></div></div>
+      {inlineError(carbonError, "碳汇数据加载失败")}
+      {queryLoading({ loading: carbonLoading, data: carbonData, error: carbonError }) ? <div className="admin-inline-loading">正在读取碳汇数据…</div> : carbonData ? <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 4 }} items={[
+        { key: "external", label: "源设备 ID", children: value(carbonData.external_device_id) },
+        { key: "nodes", label: "节点数量", children: `${value(carbonData.nodes_count, 0)} 个` },
+        { key: "sample", label: "最新数据", children: date(carbonData.latest_sample_at) },
+        { key: "flux", label: "最新通量", children: date(carbonData.latest_flux_at) },
+        { key: "battery", label: "电池", children: value(carbonRuntime.battery) },
+        { key: "signal", label: "信号", children: value(carbonRuntime.signal) },
+        { key: "network", label: "网络", children: value(carbonRuntime.network) },
+        { key: "refreshed", label: "读取时间", children: date(carbonData.refreshed_at) },
+      ]} /> : null}
+    </section>
+    <section className="admin-detail-section">
+      <div className="admin-detail-section-head"><div><h2>节点最新数据</h2><span>每个采集节点最后一次写入源库的时间</span></div></div>
+      {carbonNodes.length ? <Table rowKey="node_id" size="small" pagination={false} dataSource={carbonNodes} columns={[
+        { title: "节点", width: 100, render: (_, item) => `Node ${value(item.node_id)}` },
+        { title: "数据状态", width: 120, render: (_, item) => <Tag color={item.status === "has_data" ? "green" : "default"}>{item.status === "has_data" ? "有数据" : "暂无数据"}</Tag> },
+        { title: "最新数据", render: (_, item) => date(item.latest_sample_at) },
+        { title: "最新通量", render: (_, item) => date(item.latest_flux_at) },
+      ]} /> : !carbonLoading && !carbonError ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无节点数据" /> : null}
+    </section>
+    <section className="admin-detail-section">
+      <div className="admin-detail-section-head"><div><h2>设备能力</h2><span>管理碳汇站在平台中可使用的功能</span></div><Button onClick={() => onOpen("capabilities")}>编辑能力</Button></div>
+      <div className="admin-capability-list">{capabilities.length ? capabilities.map((capability) => <Tag key={capability} color="blue">{capability}</Tag>) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未配置设备能力" />}</div>
+    </section>
+  </div>;
   return <Panel className="admin-device-detail"><div className="admin-device-detail-summary"><div><span>设备 ID</span><strong className="mono">{value(device.id)}</strong></div><div><span>生命周期</span><Tag color="blue">{deviceLifecycleLabel(value(device.lifecycle_status, ""))}</Tag></div><div><span>分配状态</span><strong>{device.workspace_id ? "已分配" : "未分配"}</strong></div><div><span>资产状态</span><Tag color={device.status === "active" ? "green" : "default"}>{deviceStatusLabel(value(device.status, ""))}</Tag></div></div><Tabs className="admin-device-detail-tabs" items={[
     { key: "overview", label: "概览", children: overview },
-    { key: "topology", label: "拓扑与能力", children: topology },
-    { key: "configuration", label: "配置与属性", children: configuration },
-    { key: "logs", label: "设备日志", children: <DeviceLogsPanel deviceId={value(device.id, "")} deviceName={value(device.name, "未命名设备")} /> },
+    ...(isCarbon ? [{ key: "carbon", label: "碳汇数据", children: carbonManagement }] : [
+      { key: "topology", label: "拓扑与能力", children: topology },
+      { key: "configuration", label: "配置与属性", children: configuration },
+      { key: "logs", label: "设备日志", children: <DeviceLogsPanel deviceId={value(device.id, "")} deviceName={value(device.name, "未命名设备")} /> },
+    ]),
   ]} /></Panel>;
 }
 
@@ -981,7 +1031,7 @@ function DeviceForm({
         <div className="drawer-grid">
           <Form.Item name="device_type" label="设备类型">
             <Select
-              options={["standalone", "gateway", "gateway_node", "camera"].map(
+              options={["standalone", "gateway", "gateway_node", "camera", "carbon_sink"].map(
                 (item) => ({
                   value: item,
                   label: deviceTopologyRoleLabel(item),

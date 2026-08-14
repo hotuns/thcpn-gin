@@ -5939,6 +5939,7 @@ components:
       type: string
       enum:
         - device
+        - device_batch
         - data_stream
         - dataset
         - media
@@ -5949,6 +5950,8 @@ components:
         - telemetry_excel
         - media_zip
         - dataset_zip
+        - standard_station_zip
+        - group_site_zip
     ExportStatus:
       type: string
       enum:
@@ -9343,7 +9346,7 @@ components:
         request_config:
           type: object
           additionalProperties: true
-          description: Advanced worker input. Top-level `start_time`, `end_time`, and `limit` override matching fields in this object. `media_type` can narrow device-level `media_zip` exports.
+          description: Advanced worker input. Batch station exports use `device_ids`, `start_time`, `end_time`, `include_data`, and `include_images`.
         expires_at:
           $ref: "#/components/schemas/Timestamp"
     DatasetExportRequest:

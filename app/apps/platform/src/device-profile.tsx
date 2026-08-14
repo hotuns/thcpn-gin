@@ -30,7 +30,6 @@ import {
 import { workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, Panel, StateView } from "@thcpn/ui";
 import { renderPhotoToolbar } from "./device-media";
-import { DeviceMetadataPanel } from "./device-computed-data";
 
 const value = (input: unknown, fallback = "—") =>
   input === undefined || input === null || input === ""
@@ -42,15 +41,18 @@ export function DeviceProfileTab({
   device,
   projects,
   sites,
+  operational,
 }: {
   workspaceId: string;
   device: Device;
   projects: JsonRecord[];
   sites: JsonRecord[];
+  operational?: ReactNode;
 }) {
   const client = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [placementEditing, setPlacementEditing] = useState(false);
+  const [managingImages, setManagingImages] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(-1);
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
@@ -117,6 +119,10 @@ export function DeviceProfileTab({
   const profile = query.data;
   const location = profile.effective_location;
   const images = profile.images ?? [];
+  const coverIndex = Math.max(0, images.findIndex((image) => image.is_cover));
+  const galleryImages = images
+    .map((image, index) => ({ image, index }))
+    .filter(({ index }) => index !== coverIndex);
   const latitude = location?.latitude;
   const longitude = location?.longitude;
   const projectName = projects.find((item) => String(item.id) === device.project_id)?.name;
@@ -128,7 +134,7 @@ export function DeviceProfileTab({
           <div className="panel-header compact-panel-header">
             <div>
               <h2 className="panel-title">设备资料</h2>
-              <div className="panel-kicker">归属、位置与观测信息</div>
+              <div className="panel-kicker">设备归属、运行状态、位置与观测信息</div>
             </div>
             {profile.can_configure && (
               <Button variant="secondary" onClick={() => setEditing(true)}>
@@ -137,6 +143,7 @@ export function DeviceProfileTab({
               </Button>
             )}
           </div>
+          {operational}
           <div className="device-profile-summary">
             <span>设备描述</span>
             <p className={profile.description ? "" : "is-empty"}>
@@ -228,6 +235,15 @@ export function DeviceProfileTab({
             </div>
             <div className="header-actions">
               <Badge tone="info">{images.length} / 12</Badge>
+              {profile.can_configure && images.length > 0 && (
+                <Button
+                  variant="secondary"
+                  onClick={() => setManagingImages((current) => !current)}
+                >
+                  <Pencil size={14} />
+                  {managingImages ? "完成" : "管理图片"}
+                </Button>
+              )}
               {profile.can_configure && images.length < 12 && (
                 <label className="btn btn-secondary device-image-upload">
                   <ImagePlus size={14} />
@@ -252,7 +268,7 @@ export function DeviceProfileTab({
             </div>
           </div>
           {images.length ? (
-            <div className="device-profile-image-grid">
+            managingImages ? <div className="device-profile-image-grid">
               {images.map((image, index) => (
                 <div key={image.id} className="device-profile-image-card">
                   <button type="button" onClick={() => setPreviewIndex(index)}>
@@ -281,17 +297,17 @@ export function DeviceProfileTab({
                         title="上移"
                         disabled={index === 0 || busy}
                         onClick={() => void moveImage(images, index, -1, device.id, run)}
-                      ><ArrowUp size={14} /></button>
+                      ><ArrowUp size={13} /><span>前移</span></button>
                       <button
                         title="下移"
                         disabled={index === images.length - 1 || busy}
                         onClick={() => void moveImage(images, index, 1, device.id, run)}
-                      ><ArrowDown size={14} /></button>
+                      ><ArrowDown size={13} /><span>后移</span></button>
                       <button
-                        title="设为封面"
+                        title={image.is_cover ? "当前首图" : "设为首图"}
                         disabled={image.is_cover || busy}
                         onClick={() => void run(() => api.devices.updateProfileImage(device.id, image.id, { is_cover: true }), "已设为封面")}
-                      ><Star size={14} /></button>
+                      ><Star size={13} /><span>{image.is_cover ? "当前首图" : "设为首图"}</span></button>
                       <button
                         className="danger"
                         title="删除"
@@ -300,11 +316,40 @@ export function DeviceProfileTab({
                           window.confirm("确认删除这张设备图片？") &&
                           void run(() => api.devices.deleteProfileImage(device.id, image.id), "设备图片已删除")
                         }
-                      ><Trash2 size={14} /></button>
+                      ><Trash2 size={13} /><span>删除</span></button>
                     </div>
                   )}
                 </div>
               ))}
+            </div> : <div className={`device-profile-showcase ${images.length === 1 ? "single" : ""}`}>
+              <button
+                className="device-profile-showcase-main"
+                type="button"
+                onClick={() => setPreviewIndex(coverIndex)}
+              >
+                <img
+                  src={images[coverIndex].preview_url}
+                  alt={images[coverIndex].caption || images[coverIndex].original_filename}
+                />
+                <span className="image-cover-badge">封面</span>
+                <span className="device-profile-showcase-caption">
+                  {images[coverIndex].caption || device.name}
+                </span>
+              </button>
+              {galleryImages.length > 0 && (
+                <div className="device-profile-showcase-thumbs">
+                  {galleryImages.slice(0, 4).map(({ image, index }, thumbIndex) => {
+                    const remaining = galleryImages.length - 4;
+                    const showRemaining = thumbIndex === 3 && remaining > 0;
+                    return (
+                      <button type="button" key={image.id} onClick={() => setPreviewIndex(index)}>
+                        <img src={image.preview_url} alt={image.caption || image.original_filename} />
+                        {showRemaining && <span className="device-profile-image-more">+{remaining}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           ) : (
             <StateView
@@ -314,13 +359,6 @@ export function DeviceProfileTab({
             />
           )}
         </Panel>
-      </div>
-      <div className="section-gap">
-        <DeviceMetadataPanel
-          workspaceId={workspaceId}
-          deviceId={device.id}
-          canConfigure={profile.can_configure}
-        />
       </div>
       <PhotoSlider
         visible={previewIndex >= 0}

@@ -188,6 +188,9 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Dataset, error
 	if err := s.validateSources(ctx, input.WorkspaceID, input.ProjectID, sources); err != nil {
 		return Dataset{}, err
 	}
+	if err := s.validateDeviceSystems(ctx, sources); err != nil {
+		return Dataset{}, err
+	}
 
 	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -389,6 +392,9 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (Dataset, error
 		}
 	}
 	if err := s.validateSources(ctx, current.WorkspaceID, current.ProjectID, sourceInputs); err != nil {
+		return Dataset{}, err
+	}
+	if err := s.validateDeviceSystems(ctx, sourceInputs); err != nil {
 		return Dataset{}, err
 	}
 
@@ -608,6 +614,47 @@ func (s *Service) validateSources(ctx context.Context, workspaceID uuid.UUID, pr
 		default:
 			return apperr.New(apperr.KindInvalidArgument, "invalid dataset source_type")
 		}
+	}
+	return nil
+}
+
+func (s *Service) validateDeviceSystems(ctx context.Context, sources []SourceInput) error {
+	systems := map[string]struct{}{}
+	for _, source := range sources {
+		if source.SourceType == "file" {
+			continue
+		}
+		deviceType := ""
+		if source.SourceType == "device" {
+			device, err := s.queries.GetDevice(ctx, source.SourceID)
+			if err != nil {
+				return mapNotFoundOrInternal(err, "device source not found")
+			}
+			deviceType = device.DeviceType
+		} else {
+			stream, err := s.queries.GetDataStream(ctx, source.SourceID)
+			if err != nil {
+				return mapNotFoundOrInternal(err, "data stream source not found")
+			}
+			device, err := s.queries.GetDevice(ctx, stream.DeviceID)
+			if err != nil {
+				return mapNotFoundOrInternal(err, "data stream device not found")
+			}
+			deviceType = device.DeviceType
+		}
+		var system string
+		switch deviceType {
+		case "standalone":
+			system = "standard"
+		case "gateway_node":
+			system = "group"
+		default:
+			return apperr.New(apperr.KindInvalidArgument, "数据集只支持标准站或组网站节点")
+		}
+		systems[system] = struct{}{}
+	}
+	if len(systems) > 1 {
+		return apperr.New(apperr.KindInvalidArgument, "一个数据集不能混合标准站和组网站设备")
 	}
 	return nil
 }

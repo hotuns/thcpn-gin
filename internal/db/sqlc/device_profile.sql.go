@@ -40,10 +40,10 @@ func (q *Queries) CountDeviceProfileImages(ctx context.Context, deviceID uuid.UU
 const createDeviceProfileImage = `-- name: CreateDeviceProfileImage :one
 INSERT INTO device_profile_images (
     device_id, object_key, original_filename, content_type, size_bytes,
-    width, height, caption, sort_order, is_cover, uploaded_by
+    width, height, caption, sort_order, is_cover, uploaded_by, source_url
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-RETURNING id, device_id, object_key, original_filename, content_type, size_bytes, width, height, caption, sort_order, is_cover, uploaded_by, created_at, updated_at
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+RETURNING id, device_id, object_key, original_filename, content_type, size_bytes, width, height, caption, sort_order, is_cover, uploaded_by, created_at, updated_at, source_url
 `
 
 type CreateDeviceProfileImageParams struct {
@@ -57,7 +57,8 @@ type CreateDeviceProfileImageParams struct {
 	Caption          *string     `json:"caption"`
 	SortOrder        int32       `json:"sort_order"`
 	IsCover          bool        `json:"is_cover"`
-	UploadedBy       uuid.UUID   `json:"uploaded_by"`
+	UploadedBy       *uuid.UUID  `json:"uploaded_by"`
+	SourceUrl        *string     `json:"source_url"`
 }
 
 func (q *Queries) CreateDeviceProfileImage(ctx context.Context, arg CreateDeviceProfileImageParams) (DeviceProfileImage, error) {
@@ -73,6 +74,7 @@ func (q *Queries) CreateDeviceProfileImage(ctx context.Context, arg CreateDevice
 		arg.SortOrder,
 		arg.IsCover,
 		arg.UploadedBy,
+		arg.SourceUrl,
 	)
 	var i DeviceProfileImage
 	err := row.Scan(
@@ -90,6 +92,7 @@ func (q *Queries) CreateDeviceProfileImage(ctx context.Context, arg CreateDevice
 		&i.UploadedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceUrl,
 	)
 	return i, err
 }
@@ -97,7 +100,7 @@ func (q *Queries) CreateDeviceProfileImage(ctx context.Context, arg CreateDevice
 const deleteDeviceProfileImage = `-- name: DeleteDeviceProfileImage :one
 DELETE FROM device_profile_images
 WHERE id = $1 AND device_id = $2
-RETURNING id, device_id, object_key, original_filename, content_type, size_bytes, width, height, caption, sort_order, is_cover, uploaded_by, created_at, updated_at
+RETURNING id, device_id, object_key, original_filename, content_type, size_bytes, width, height, caption, sort_order, is_cover, uploaded_by, created_at, updated_at, source_url
 `
 
 type DeleteDeviceProfileImageParams struct {
@@ -123,6 +126,7 @@ func (q *Queries) DeleteDeviceProfileImage(ctx context.Context, arg DeleteDevice
 		&i.UploadedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceUrl,
 	)
 	return i, err
 }
@@ -148,7 +152,7 @@ func (q *Queries) GetDeviceProfile(ctx context.Context, deviceID uuid.UUID) (Dev
 }
 
 const getDeviceProfileImage = `-- name: GetDeviceProfileImage :one
-SELECT id, device_id, object_key, original_filename, content_type, size_bytes, width, height, caption, sort_order, is_cover, uploaded_by, created_at, updated_at
+SELECT id, device_id, object_key, original_filename, content_type, size_bytes, width, height, caption, sort_order, is_cover, uploaded_by, created_at, updated_at, source_url
 FROM device_profile_images
 WHERE id = $1 AND device_id = $2
 `
@@ -176,6 +180,7 @@ func (q *Queries) GetDeviceProfileImage(ctx context.Context, arg GetDeviceProfil
 		&i.UploadedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceUrl,
 	)
 	return i, err
 }
@@ -210,7 +215,7 @@ func (q *Queries) GetDeviceProfileSite(ctx context.Context, deviceID uuid.UUID) 
 }
 
 const listDeviceProfileImages = `-- name: ListDeviceProfileImages :many
-SELECT id, device_id, object_key, original_filename, content_type, size_bytes, width, height, caption, sort_order, is_cover, uploaded_by, created_at, updated_at
+SELECT id, device_id, object_key, original_filename, content_type, size_bytes, width, height, caption, sort_order, is_cover, uploaded_by, created_at, updated_at, source_url
 FROM device_profile_images
 WHERE device_id = $1
 ORDER BY sort_order, created_at, id
@@ -240,6 +245,7 @@ func (q *Queries) ListDeviceProfileImages(ctx context.Context, deviceID uuid.UUI
 			&i.UploadedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SourceUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -306,7 +312,7 @@ SET caption = $3,
     is_cover = $4,
     updated_at = now()
 WHERE id = $1 AND device_id = $2
-RETURNING id, device_id, object_key, original_filename, content_type, size_bytes, width, height, caption, sort_order, is_cover, uploaded_by, created_at, updated_at
+RETURNING id, device_id, object_key, original_filename, content_type, size_bytes, width, height, caption, sort_order, is_cover, uploaded_by, created_at, updated_at, source_url
 `
 
 type UpdateDeviceProfileImageParams struct {
@@ -339,6 +345,7 @@ func (q *Queries) UpdateDeviceProfileImage(ctx context.Context, arg UpdateDevice
 		&i.UploadedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceUrl,
 	)
 	return i, err
 }

@@ -1,8 +1,11 @@
 package processing
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -11,11 +14,43 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/objectstore"
 )
 
 type Service struct {
 	db     *pgxpool.Pool
 	client *Client
+	signer *objectstore.Signer
+}
+
+type Execution struct {
+	ID           uuid.UUID       `json:"id"`
+	TaskID       uuid.UUID       `json:"task_id"`
+	TaskVersion  int32           `json:"task_version"`
+	InputKey     string          `json:"input_key"`
+	Status       string          `json:"status"`
+	Attempt      int32           `json:"attempt"`
+	ObservedAt   *time.Time      `json:"observed_at,omitempty"`
+	QueuedAt     *time.Time      `json:"queued_at,omitempty"`
+	StartedAt    *time.Time      `json:"started_at,omitempty"`
+	FinishedAt   *time.Time      `json:"finished_at,omitempty"`
+	ErrorMessage string          `json:"error_message"`
+	Inputs       json.RawMessage `json:"inputs"`
+	CreatedAt    time.Time       `json:"created_at"`
+	Results      []Result        `json:"results"`
+}
+
+type Result struct {
+	ID           uuid.UUID       `json:"id"`
+	OutputCode   string          `json:"output_code"`
+	Kind         string          `json:"kind"`
+	ObservedAt   *time.Time      `json:"observed_at,omitempty"`
+	NumericValue *float64        `json:"numeric_value,omitempty"`
+	Unit         *string         `json:"unit,omitempty"`
+	Record       json.RawMessage `json:"record"`
+	URL          string          `json:"url,omitempty"`
+	ContentType  *string         `json:"content_type,omitempty"`
+	CreatedAt    time.Time       `json:"created_at"`
 }
 
 type ProcessorDefinition struct {
@@ -34,6 +69,9 @@ type TaskInput struct {
 	SourceID     *uuid.UUID      `json:"source_id,omitempty"`
 	SourceTaskID *uuid.UUID      `json:"source_task_id,omitempty"`
 	Config       json.RawMessage `json:"config"`
+	SourceName   string          `json:"source_name,omitempty"`
+	DeviceID     *uuid.UUID      `json:"device_id,omitempty"`
+	DeviceName   string          `json:"device_name,omitempty"`
 }
 
 type Task struct {
@@ -43,6 +81,7 @@ type Task struct {
 	Description         string          `json:"description"`
 	TargetType          string          `json:"target_type"`
 	TargetID            uuid.UUID       `json:"target_id"`
+	TargetName          string          `json:"target_name"`
 	Status              string          `json:"status"`
 	CurrentVersion      int32           `json:"current_version"`
 	ProcessorCode       string          `json:"processor_code"`
@@ -83,8 +122,8 @@ type CreateInput struct {
 	ActorID          uuid.UUID
 }
 
-func NewService(db *pgxpool.Pool, client *Client) *Service {
-	return &Service{db: db, client: client}
+func NewService(db *pgxpool.Pool, client *Client, signer *objectstore.Signer) *Service {
+	return &Service{db: db, client: client, signer: signer}
 }
 
 func (s *Service) SyncCatalog(ctx context.Context) ([]ProcessorDefinition, error) {
@@ -134,7 +173,9 @@ SELECT t.id, t.workspace_id, t.name, t.description, t.target_type, t.target_id, 
        v.processor_code, v.processor_version, v.processor_manifest_json, v.config_json, v.trigger_json, v.start_at,
        t.created_at, t.updated_at,
        (SELECT e.status FROM processing_executions e WHERE e.task_id=t.id ORDER BY e.created_at DESC LIMIT 1),
-       (SELECT e.created_at FROM processing_executions e WHERE e.task_id=t.id ORDER BY e.created_at DESC LIMIT 1)
+       (SELECT e.created_at FROM processing_executions e WHERE e.task_id=t.id ORDER BY e.created_at DESC LIMIT 1),
+       CASE t.target_type WHEN 'device' THEN COALESCE((SELECT d.name FROM devices d WHERE d.id=t.target_id), '')
+                          WHEN 'site' THEN COALESCE((SELECT s.name FROM sites s WHERE s.id=t.target_id), '') ELSE '' END
 FROM processing_tasks t
 JOIN processing_task_versions v ON v.task_id = t.id AND v.version = t.current_version
 WHERE t.workspace_id = $1 ORDER BY t.created_at DESC`, workspaceID)
@@ -147,7 +188,7 @@ WHERE t.workspace_id = $1 ORDER BY t.created_at DESC`, workspaceID)
 		var item Task
 		if err := rows.Scan(&item.ID, &item.WorkspaceID, &item.Name, &item.Description, &item.TargetType, &item.TargetID,
 			&item.Status, &item.CurrentVersion, &item.ProcessorCode, &item.ProcessorVersion, &item.Manifest,
-			&item.Config, &item.Trigger, &item.StartAt, &item.CreatedAt, &item.UpdatedAt, &item.LastExecutionStatus, &item.LastExecutionAt); err != nil {
+			&item.Config, &item.Trigger, &item.StartAt, &item.CreatedAt, &item.UpdatedAt, &item.LastExecutionStatus, &item.LastExecutionAt, &item.TargetName); err != nil {
 			return nil, apperr.Wrap(apperr.KindInternal, "scan processing task", err)
 		}
 		result = append(result, item)
@@ -162,13 +203,15 @@ SELECT t.id, t.workspace_id, t.name, t.description, t.target_type, t.target_id, 
        v.processor_code, v.processor_version, v.processor_manifest_json, v.config_json, v.trigger_json, v.start_at,
        t.created_at, t.updated_at,
        (SELECT e.status FROM processing_executions e WHERE e.task_id=t.id ORDER BY e.created_at DESC LIMIT 1),
-       (SELECT e.created_at FROM processing_executions e WHERE e.task_id=t.id ORDER BY e.created_at DESC LIMIT 1)
+       (SELECT e.created_at FROM processing_executions e WHERE e.task_id=t.id ORDER BY e.created_at DESC LIMIT 1),
+       CASE t.target_type WHEN 'device' THEN COALESCE((SELECT d.name FROM devices d WHERE d.id=t.target_id), '')
+                          WHEN 'site' THEN COALESCE((SELECT s.name FROM sites s WHERE s.id=t.target_id), '') ELSE '' END
 FROM processing_tasks t
 JOIN processing_task_versions v ON v.task_id = t.id AND v.version = t.current_version
 WHERE t.workspace_id = $1 AND t.id = $2`, workspaceID, taskID).Scan(
 		&item.ID, &item.WorkspaceID, &item.Name, &item.Description, &item.TargetType, &item.TargetID,
 		&item.Status, &item.CurrentVersion, &item.ProcessorCode, &item.ProcessorVersion, &item.Manifest,
-		&item.Config, &item.Trigger, &item.StartAt, &item.CreatedAt, &item.UpdatedAt, &item.LastExecutionStatus, &item.LastExecutionAt)
+		&item.Config, &item.Trigger, &item.StartAt, &item.CreatedAt, &item.UpdatedAt, &item.LastExecutionStatus, &item.LastExecutionAt, &item.TargetName)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return Task{}, apperr.New(apperr.KindNotFound, "processing task not found")
@@ -186,6 +229,65 @@ WHERE t.workspace_id = $1 AND t.id = $2`, workspaceID, taskID).Scan(
 	}
 	item.Outputs = outputs
 	return item, nil
+}
+
+func (s *Service) ListExecutions(ctx context.Context, workspaceID, taskID uuid.UUID) ([]Execution, error) {
+	var exists bool
+	if err := s.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM processing_tasks WHERE id=$1 AND workspace_id=$2)`, taskID, workspaceID).Scan(&exists); err != nil {
+		return nil, apperr.Wrap(apperr.KindInternal, "validate processing task", err)
+	}
+	if !exists {
+		return nil, apperr.New(apperr.KindNotFound, "processing task not found")
+	}
+	rows, err := s.db.Query(ctx, `SELECT id, task_id, task_version, input_key, status, attempt, observed_at,
+queued_at, started_at, finished_at, error_message, request_json, created_at
+FROM processing_executions WHERE task_id=$1 ORDER BY created_at DESC LIMIT 100`, taskID)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindInternal, "list processing executions", err)
+	}
+	defer rows.Close()
+	items := []Execution{}
+	for rows.Next() {
+		var item Execution
+		if err := rows.Scan(&item.ID, &item.TaskID, &item.TaskVersion, &item.InputKey, &item.Status, &item.Attempt,
+			&item.ObservedAt, &item.QueuedAt, &item.StartedAt, &item.FinishedAt, &item.ErrorMessage, &item.Inputs, &item.CreatedAt); err != nil {
+			return nil, apperr.Wrap(apperr.KindInternal, "scan processing execution", err)
+		}
+		item.Results, err = s.listResults(ctx, item.ID)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *Service) listResults(ctx context.Context, executionID uuid.UUID) ([]Result, error) {
+	rows, err := s.db.Query(ctx, `SELECT id, output_code, kind, observed_at, numeric_value, unit,
+record_json, COALESCE(object_key, ''), content_type, created_at
+FROM processing_results WHERE execution_id=$1 ORDER BY created_at`, executionID)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindInternal, "list processing results", err)
+	}
+	defer rows.Close()
+	items := []Result{}
+	for rows.Next() {
+		var item Result
+		var objectKey string
+		if err := rows.Scan(&item.ID, &item.OutputCode, &item.Kind, &item.ObservedAt, &item.NumericValue,
+			&item.Unit, &item.Record, &objectKey, &item.ContentType, &item.CreatedAt); err != nil {
+			return nil, apperr.Wrap(apperr.KindInternal, "scan processing result", err)
+		}
+		if objectKey != "" && s.signer != nil {
+			signed, err := s.signer.SignObjectURL(objectKey, 15*time.Minute)
+			if err != nil {
+				return nil, err
+			}
+			item.URL = signed.URL
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 func (s *Service) CreateTask(ctx context.Context, input CreateInput) (Task, error) {
@@ -221,6 +323,9 @@ WHERE code = $1 AND version = $2 AND enabled = true`, input.ProcessorCode, input
 		return Task{}, apperr.Wrap(apperr.KindInternal, "decode processor manifest", err)
 	}
 	if err := s.validateInputCapabilities(ctx, input.WorkspaceID, input.Inputs, contract.RequiredCapability); err != nil {
+		return Task{}, err
+	}
+	if err := s.rejectDuplicateTask(ctx, input); err != nil {
 		return Task{}, err
 	}
 	tx, err := s.db.Begin(ctx)
@@ -318,8 +423,13 @@ WHERE workspace_id=$1 AND id=$2`, workspaceID, taskID, status)
 }
 
 func (s *Service) listInputs(ctx context.Context, taskID uuid.UUID, version int32) ([]TaskInput, error) {
-	rows, err := s.db.Query(ctx, `SELECT slot_code, source_type, source_id, source_task_id, config_json
-FROM processing_task_inputs WHERE task_id=$1 AND task_version=$2 ORDER BY slot_code`, taskID, version)
+	rows, err := s.db.Query(ctx, `SELECT i.slot_code, i.source_type, i.source_id, i.source_task_id, i.config_json,
+       COALESCE(ds.name, upstream.name, ''), ds.device_id, COALESCE(d.name, '')
+FROM processing_task_inputs i
+LEFT JOIN data_streams ds ON i.source_type='data_stream' AND ds.id=i.source_id
+LEFT JOIN devices d ON d.id=ds.device_id
+LEFT JOIN processing_tasks upstream ON i.source_type='processing_task' AND upstream.id=i.source_task_id
+WHERE i.task_id=$1 AND i.task_version=$2 ORDER BY i.slot_code`, taskID, version)
 	if err != nil {
 		return nil, apperr.Wrap(apperr.KindInternal, "list processing task inputs", err)
 	}
@@ -327,12 +437,69 @@ FROM processing_task_inputs WHERE task_id=$1 AND task_version=$2 ORDER BY slot_c
 	result := []TaskInput{}
 	for rows.Next() {
 		var item TaskInput
-		if err := rows.Scan(&item.SlotCode, &item.SourceType, &item.SourceID, &item.SourceTaskID, &item.Config); err != nil {
+		if err := rows.Scan(&item.SlotCode, &item.SourceType, &item.SourceID, &item.SourceTaskID, &item.Config, &item.SourceName, &item.DeviceID, &item.DeviceName); err != nil {
 			return nil, apperr.Wrap(apperr.KindInternal, "scan processing task input", err)
 		}
 		result = append(result, item)
 	}
 	return result, rows.Err()
+}
+
+func (s *Service) rejectDuplicateTask(ctx context.Context, input CreateInput) error {
+	rows, err := s.db.Query(ctx, `SELECT t.id, t.current_version, v.config_json, v.trigger_json
+FROM processing_tasks t
+JOIN processing_task_versions v ON v.task_id=t.id AND v.version=t.current_version
+WHERE t.workspace_id=$1 AND t.status<>'archived' AND t.target_type=$2 AND t.target_id=$3
+  AND v.processor_code=$4 AND v.processor_version=$5`, input.WorkspaceID, input.TargetType, input.TargetID, input.ProcessorCode, input.ProcessorVersion)
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "check duplicate processing task", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var taskID uuid.UUID
+		var version int32
+		var config, trigger json.RawMessage
+		if err := rows.Scan(&taskID, &version, &config, &trigger); err != nil {
+			return apperr.Wrap(apperr.KindInternal, "scan duplicate processing task", err)
+		}
+		existingInputs, err := s.listInputs(ctx, taskID, version)
+		if err != nil {
+			return err
+		}
+		if jsonEqual(config, input.Config) && jsonEqual(trigger, input.Trigger) && processingInputsEqual(existingInputs, input.Inputs) {
+			return apperr.New(apperr.KindConflict, "相同配置的处理任务已存在")
+		}
+	}
+	return rows.Err()
+}
+
+func processingInputsEqual(left, right []TaskInput) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	leftCopy := append([]TaskInput(nil), left...)
+	rightCopy := append([]TaskInput(nil), right...)
+	sort.Slice(leftCopy, func(i, j int) bool { return leftCopy[i].SlotCode < leftCopy[j].SlotCode })
+	sort.Slice(rightCopy, func(i, j int) bool { return rightCopy[i].SlotCode < rightCopy[j].SlotCode })
+	for index := range leftCopy {
+		a, b := leftCopy[index], rightCopy[index]
+		if a.SlotCode != b.SlotCode || a.SourceType != b.SourceType || !uuidPtrEqual(a.SourceID, b.SourceID) || !uuidPtrEqual(a.SourceTaskID, b.SourceTaskID) || !jsonEqual(a.Config, b.Config) {
+			return false
+		}
+	}
+	return true
+}
+
+func uuidPtrEqual(left, right *uuid.UUID) bool {
+	return left == nil && right == nil || left != nil && right != nil && *left == *right
+}
+
+func jsonEqual(left, right json.RawMessage) bool {
+	var a, b any
+	if json.Unmarshal(left, &a) != nil || json.Unmarshal(right, &b) != nil {
+		return bytes.Equal(bytes.TrimSpace(left), bytes.TrimSpace(right))
+	}
+	return reflect.DeepEqual(a, b)
 }
 
 func (s *Service) listOutputs(ctx context.Context, taskID uuid.UUID, version int32) ([]TaskOutput, error) {

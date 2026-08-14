@@ -2,11 +2,16 @@ package datasource
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
+	"net/http"
+	"net/url"
+	"path"
 	"reflect"
 	"strconv"
 	"strings"
@@ -20,7 +25,10 @@ import (
 	"thcpn-gin/internal/db/sqlc"
 )
 
-const defaultTHCPNProductID = "thcpn_standard_station"
+const (
+	defaultTHCPNProductID            = "thcpn_standard_station"
+	defaultTHCPNMediaPublicURLPrefix = "https://iot-datas.oss-cn-beijing.aliyuncs.com"
+)
 
 type SyncTHCPNStandardStationInput struct {
 	DataSourceID     uuid.UUID
@@ -246,6 +254,7 @@ type THCPNExternalDeviceMetadata struct {
 	Latitude             *float64   `json:"lat,omitempty"`
 	Longitude            *float64   `json:"lon,omitempty"`
 	AltitudeM            *float64   `json:"alt,omitempty"`
+	AvatarURLs           []string   `json:"avatar_urls,omitempty"`
 	CreatedAt            *time.Time `json:"created_at,omitempty"`
 	UpdatedAt            *time.Time `json:"updated_at,omitempty"`
 }
@@ -969,8 +978,11 @@ func (s *Service) syncTHCPNDevice(ctx context.Context, q *sqlc.Queries, source s
 	if err != nil {
 		return THCPNStandardStationSyncResult{}, err
 	}
+	if err := s.syncTHCPNDeviceAvatars(ctx, q, deviceRow.ID, externalDevice.AvatarURLs); err != nil {
+		return THCPNStandardStationSyncResult{}, err
+	}
 	if created {
-		streamSpecs, err := buildTHCPNStreamSpecs(input.ExternalDeviceID, externalConfig.Data, externalConfig.Image)
+		streamSpecs, err := buildTHCPNStreamSpecsForDevice(input.ExternalDeviceID, input.DeviceType, externalConfig.Data, externalConfig.Image)
 		if err != nil {
 			return THCPNStandardStationSyncResult{}, err
 		}
@@ -1024,7 +1036,11 @@ func applyTHCPNConfigToPlatform(
 	actorUserID uuid.UUID,
 	disableMissing bool,
 ) (appliedTHCPNConfig, error) {
-	streamSpecs, err := buildTHCPNStreamSpecs(externalDeviceID, externalConfig.Data, externalConfig.Image)
+	device, err := q.GetDevice(ctx, deviceID)
+	if err != nil {
+		return appliedTHCPNConfig{}, mapNotFoundOrInternal(err, "device not found")
+	}
+	streamSpecs, err := buildTHCPNStreamSpecsForDevice(externalDeviceID, device.DeviceType, externalConfig.Data, externalConfig.Image)
 	if err != nil {
 		return appliedTHCPNConfig{}, err
 	}
@@ -1356,6 +1372,7 @@ SELECT
   CAST(lat AS CHAR),
   CAST(lon AS CHAR),
   CAST(alt AS CHAR),
+  CAST(avatar AS CHAR),
   created_at,
   updated_at
 FROM devices
@@ -1365,7 +1382,7 @@ LIMIT 1`
 	var row thcpnExternalDevice
 	var iccid, version, status, deviceType, sn, externalUUID, currentDeviceVersion sql.NullString
 	var active sql.NullInt64
-	var latitude, longitude, altitude sql.NullString
+	var latitude, longitude, altitude, avatar sql.NullString
 	var createdAt, updatedAt sql.NullTime
 	if err := db.QueryRowContext(ctx, query, externalDeviceID).Scan(
 		&row.ID,
@@ -1381,6 +1398,7 @@ LIMIT 1`
 		&latitude,
 		&longitude,
 		&altitude,
+		&avatar,
 		&createdAt,
 		&updatedAt,
 	); err != nil {
@@ -1403,9 +1421,86 @@ LIMIT 1`
 		row.Latitude, row.Longitude = nil, nil
 	}
 	row.AltitudeM = parseSourceNumber(altitude)
+	if avatar.Valid && strings.TrimSpace(avatar.String) != "" {
+		_ = json.Unmarshal([]byte(avatar.String), &row.AvatarURLs)
+	}
 	row.CreatedAt = nullTimePtr(createdAt)
 	row.UpdatedAt = nullTimePtr(updatedAt)
 	return row, nil
+}
+
+func (s *Service) syncTHCPNDeviceAvatars(ctx context.Context, q *sqlc.Queries, deviceID uuid.UUID, avatarURLs []string) error {
+	if len(avatarURLs) == 0 {
+		return nil
+	}
+	existing, err := q.ListDeviceProfileImages(ctx, deviceID)
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "list synced device images", err)
+	}
+	existingKeys := make(map[string]struct{}, len(existing))
+	for _, image := range existing {
+		existingKeys[image.ObjectKey] = struct{}{}
+	}
+	remaining := 12 - len(existing)
+	seenURLs := make(map[string]struct{}, len(avatarURLs))
+	for _, rawURL := range avatarURLs {
+		imageURL := strings.TrimSpace(strings.ReplaceAll(rawURL, `\/`, `/`))
+		if imageURL == "" || remaining <= 0 {
+			continue
+		}
+		if _, seen := seenURLs[imageURL]; seen {
+			continue
+		}
+		seenURLs[imageURL] = struct{}{}
+		hash := fmt.Sprintf("%x", sha256.Sum256([]byte(imageURL)))
+		objectKeyPrefix := fmt.Sprintf("device-profiles/%s/thcpn-%s", deviceID, hash)
+		alreadySynced := false
+		for key := range existingKeys {
+			if strings.HasPrefix(key, objectKeyPrefix+".") {
+				alreadySynced = true
+				break
+			}
+		}
+		if alreadySynced {
+			continue
+		}
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
+		if err != nil {
+			return apperr.Wrap(apperr.KindDataSource, "build thcpn device image request", err)
+		}
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			return apperr.Wrap(apperr.KindDataSource, "download thcpn device image", err)
+		}
+		data, readErr := io.ReadAll(io.LimitReader(response.Body, 10*1024*1024+1))
+		response.Body.Close()
+		if readErr != nil || response.StatusCode < 200 || response.StatusCode >= 300 || len(data) == 0 || len(data) > 10<<20 {
+			return apperr.New(apperr.KindDataSource, "downloaded thcpn device image is invalid")
+		}
+		contentType := http.DetectContentType(data)
+		extension := map[string]string{"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[contentType]
+		if extension == "" {
+			return apperr.New(apperr.KindDataSource, "thcpn device avatar is not a supported image")
+		}
+		objectKey := objectKeyPrefix + extension
+		parsedURL, _ := url.Parse(imageURL)
+		filename := path.Base(parsedURL.Path)
+		if filename == "." || filename == "/" || filename == "" {
+			filename = "thcpn-device" + extension
+		}
+		_, err = q.CreateDeviceProfileImage(ctx, sqlc.CreateDeviceProfileImageParams{
+			DeviceID: deviceID, ObjectKey: objectKey, OriginalFilename: filename, ContentType: contentType,
+			SizeBytes: int64(len(data)), SortOrder: int32(len(existing)), IsCover: len(existing) == 0,
+			UploadedBy: nil, SourceUrl: &imageURL, Caption: nil,
+		})
+		if err != nil {
+			return apperr.Wrap(apperr.KindInternal, "create synced device image", err)
+		}
+		existing = append(existing, sqlc.DeviceProfileImage{ObjectKey: objectKey})
+		existingKeys[objectKey] = struct{}{}
+		remaining--
+	}
+	return nil
 }
 
 func validCoordinate(value sql.NullFloat64, min, max float64) *float64 {
@@ -1790,16 +1885,21 @@ VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`
 }
 
 func buildTHCPNStreamSpecs(externalDeviceID int64, dataJSON json.RawMessage, imageJSON json.RawMessage) ([]thcpnStreamSpec, error) {
+	return buildTHCPNStreamSpecsForDevice(externalDeviceID, "standalone", dataJSON, imageJSON)
+}
+
+func buildTHCPNStreamSpecsForDevice(externalDeviceID int64, deviceType string, dataJSON json.RawMessage, imageJSON json.RawMessage) ([]thcpnStreamSpec, error) {
 	specs := make([]thcpnStreamSpec, 0)
 	usedCodes := map[string]int{}
+	shardStrategy := thcpnShardStrategyForDeviceType(deviceType)
 
-	dataSpecs, err := buildTHCPNTelemetryStreamSpecs(externalDeviceID, dataJSON, usedCodes)
+	dataSpecs, err := buildTHCPNTelemetryStreamSpecs(externalDeviceID, shardStrategy, dataJSON, usedCodes)
 	if err != nil {
 		return nil, err
 	}
 	specs = append(specs, dataSpecs...)
 
-	imageSpecs, err := buildTHCPNImageStreamSpecs(externalDeviceID, imageJSON, usedCodes)
+	imageSpecs, err := buildTHCPNImageStreamSpecs(externalDeviceID, shardStrategy, imageJSON, usedCodes)
 	if err != nil {
 		return nil, err
 	}
@@ -1807,7 +1907,7 @@ func buildTHCPNStreamSpecs(externalDeviceID int64, dataJSON json.RawMessage, ima
 	return specs, nil
 }
 
-func buildTHCPNTelemetryStreamSpecs(externalDeviceID int64, raw json.RawMessage, usedCodes map[string]int) ([]thcpnStreamSpec, error) {
+func buildTHCPNTelemetryStreamSpecs(externalDeviceID int64, shardStrategy string, raw json.RawMessage, usedCodes map[string]int) ([]thcpnStreamSpec, error) {
 	var sensors []struct {
 		Desc       string `json:"desc"`
 		SensorType string `json:"sensorType"`
@@ -1843,7 +1943,7 @@ func buildTHCPNTelemetryStreamSpecs(externalDeviceID int64, raw json.RawMessage,
 			if name == "" {
 				name = key
 			}
-			cfg := thcpnTelemetryAdapterConfig(externalDeviceID, key)
+			cfg := thcpnTelemetryAdapterConfig(externalDeviceID, shardStrategy, key)
 			specs = append(specs, thcpnStreamSpec{
 				Code:          nextTHCPNStreamCode(key, usedCodes),
 				Name:          name,
@@ -1858,7 +1958,7 @@ func buildTHCPNTelemetryStreamSpecs(externalDeviceID int64, raw json.RawMessage,
 	return specs, nil
 }
 
-func buildTHCPNImageStreamSpecs(externalDeviceID int64, raw json.RawMessage, usedCodes map[string]int) ([]thcpnStreamSpec, error) {
+func buildTHCPNImageStreamSpecs(externalDeviceID int64, shardStrategy string, raw json.RawMessage, usedCodes map[string]int) ([]thcpnStreamSpec, error) {
 	var images []struct {
 		Key  string `json:"key"`
 		Dest string `json:"dest"`
@@ -1879,7 +1979,7 @@ func buildTHCPNImageStreamSpecs(externalDeviceID int64, raw json.RawMessage, use
 			continue
 		}
 		name := firstNonEmpty(image.Name, image.Dest, image.Desc, key)
-		cfg := thcpnImageAdapterConfig(externalDeviceID, key)
+		cfg := thcpnImageAdapterConfig(externalDeviceID, shardStrategy, key)
 		specs = append(specs, thcpnStreamSpec{
 			Code:          nextTHCPNStreamCode(key, usedCodes),
 			Name:          name,
@@ -1892,9 +1992,10 @@ func buildTHCPNImageStreamSpecs(externalDeviceID int64, raw json.RawMessage, use
 	return specs, nil
 }
 
-func thcpnTelemetryAdapterConfig(externalDeviceID int64, jsonKey string) json.RawMessage {
+func thcpnTelemetryAdapterConfig(externalDeviceID int64, shardStrategy string, jsonKey string) json.RawMessage {
 	return marshalAdapterConfig(map[string]any{
 		"external_device_id": externalDeviceID,
+		"shard_strategy":     shardStrategy,
 		"row_type":           "data",
 		"json_key":           jsonKey,
 		"value_path":         thcpnJSONValuePath(jsonKey),
@@ -1906,19 +2007,30 @@ func thcpnTelemetryAdapterConfig(externalDeviceID int64, jsonKey string) json.Ra
 	})
 }
 
-func thcpnImageAdapterConfig(externalDeviceID int64, imageKey string) json.RawMessage {
+func thcpnImageAdapterConfig(externalDeviceID int64, shardStrategy string, imageKey string) json.RawMessage {
 	return marshalAdapterConfig(map[string]any{
 		"external_device_id": externalDeviceID,
+		"shard_strategy":     shardStrategy,
 		"row_type":           "image",
 		"image_key":          imageKey,
 		"object_key_path":    thcpnJSONValuePath(imageKey),
 		"media_type":         "image",
+		"public_url_prefix":  defaultTHCPNMediaPublicURLPrefix,
 		"table_index":        defaultTHCPNTableIndexField,
 		"table_name_field":   defaultTHCPNTableNameField,
 		"index_start_field":  defaultTHCPNIndexStartField,
 		"index_end_field":    defaultTHCPNIndexEndField,
 		"time_field":         defaultTHCPNTimeField,
 	})
+}
+
+func thcpnShardStrategyForDeviceType(deviceType string) string {
+	switch strings.TrimSpace(deviceType) {
+	case "gateway", "gateway_node":
+		return thcpnShardStrategyIndex
+	default:
+		return thcpnShardStrategyCutover
+	}
 }
 
 func upsertTHCPNDataStreamBinding(ctx context.Context, q *sqlc.Queries, sourceID uuid.UUID, dataStreamID uuid.UUID, spec thcpnStreamSpec, actorUserID uuid.UUID) (DataStreamBinding, error) {

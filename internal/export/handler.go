@@ -303,9 +303,16 @@ func buildRequestConfig(exportType string, raw json.RawMessage, start *time.Time
 	}
 
 	switch strings.TrimSpace(exportType) {
-	case "telemetry_csv", "telemetry_excel", "media_zip":
+	case "telemetry_csv", "telemetry_excel", "media_zip", "carbon_flux_csv", "carbon_raw_csv", "standard_station_zip", "group_site_zip":
 		if strings.TrimSpace(stringValue(config["start_time"])) == "" || strings.TrimSpace(stringValue(config["end_time"])) == "" {
 			httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "start_time and end_time are required for this export_type"))
+			return nil, false
+		}
+	}
+	if exportType == "standard_station_zip" || exportType == "group_site_zip" {
+		ids, ok := config["device_ids"].([]any)
+		if !ok || len(ids) == 0 {
+			httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "device_ids are required for batch station export"))
 			return nil, false
 		}
 	}

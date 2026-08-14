@@ -1384,7 +1384,7 @@ func isValidDeviceStatus(status string) bool {
 
 func isValidDeviceType(value string) bool {
 	switch value {
-	case "standalone", "gateway", "gateway_node", "camera":
+	case "standalone", "gateway", "gateway_node", "camera", "carbon_sink":
 		return true
 	default:
 		return false

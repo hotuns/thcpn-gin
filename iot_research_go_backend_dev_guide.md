@@ -1100,7 +1100,7 @@ redis:
 object_store:
   provider: "oss"
   endpoint: "https://oss-cn-beijing.aliyuncs.com"
-  bucket: "iot-platform"
+  bucket: "iot-platform-datas"
   region: "cn-beijing"
   local_path: "var/objectstore"
   public_url_prefix: ""

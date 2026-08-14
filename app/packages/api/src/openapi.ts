@@ -3418,9 +3418,9 @@ export interface components {
         /** @enum {string} */
         DatasetStatus: "draft" | "locked" | "archived" | "published";
         /** @enum {string} */
-        ExportResourceType: "device" | "data_stream" | "dataset" | "media";
+        ExportResourceType: "device" | "device_batch" | "data_stream" | "dataset" | "media";
         /** @enum {string} */
-        ExportType: "telemetry_csv" | "telemetry_excel" | "media_zip" | "dataset_zip";
+        ExportType: "telemetry_csv" | "telemetry_excel" | "media_zip" | "dataset_zip" | "standard_station_zip" | "group_site_zip" | "carbon_station_zip";
         /** @enum {string} */
         ExportStatus: "pending" | "running" | "success" | "failed" | "expired";
         /** @enum {string} */

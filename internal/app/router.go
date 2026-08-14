@@ -110,7 +110,10 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	cameraService := camera.NewService(deps.Postgres, cfg.Ezviz)
 	dataStreamService := datastream.NewService(deps.Postgres)
 	computedStreamService := computedstream.NewService(deps.Postgres)
-	dataSourceService := datasource.NewService(deps.Postgres)
+	objectSigner := objectstore.NewSigner(cfg.ObjectStore, cfg.Auth.JWTSecret)
+	thcpnLogSigner := objectstore.NewSigner(cfg.THCPNLogObjectStore, cfg.Auth.JWTSecret)
+	objectStore := objectstore.NewStore(cfg.ObjectStore)
+	dataSourceService := datasource.NewService(deps.Postgres, objectStore)
 	telemetryService := telemetry.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil), cfg.QueryLimits, computedStreamService)
 	datasetService := dataset.NewService(deps.Postgres, dataset.QueryDependencies{
 		DataSources: dataSourceService,
@@ -118,9 +121,6 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 		Limits:      cfg.QueryLimits,
 		Telemetry:   telemetryService,
 	})
-	objectSigner := objectstore.NewSigner(cfg.ObjectStore, cfg.Auth.JWTSecret)
-	thcpnLogSigner := objectstore.NewSigner(cfg.THCPNLogObjectStore, cfg.Auth.JWTSecret)
-	objectStore := objectstore.NewStore(cfg.ObjectStore)
 	objectHandler := objectstore.NewHandler(objectStore, objectSigner)
 	deviceProfileService := deviceprofile.NewService(deps.Postgres, objectStore, objectSigner, func(ctx context.Context, deviceID uuid.UUID) (deviceprofile.SourceLocation, bool, error) {
 		locations, err := dataSourceService.LiveTHCPNDeviceLocations(ctx, []uuid.UUID{deviceID})
@@ -146,7 +146,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	mediaService := media.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil), objectSigner, cfg.QueryLimits, objectStore)
 	publicDeviceService := publicdevice.NewService(deps.Postgres)
 	exportService := export.NewService(deps.Postgres, objectSigner, cfg.Export)
-	processingService := processing.NewService(deps.Postgres, processing.NewClient(cfg.Processing.ProcessorURL))
+	processingService := processing.NewService(deps.Postgres, processing.NewClient(cfg.Processing.ProcessorURL), objectSigner)
 	tokenManager := auth.NewTokenManager(cfg.Auth.JWTSecret, time.Duration(cfg.Auth.AccessTokenTTLMinutes)*time.Minute)
 	smsSender, err := newSMSSender(cfg.SMS, deps.Logger)
 	if err != nil {
@@ -312,6 +312,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.PUT("/sensor-templates/:template_id", dataSourceHandler.AdminUpdateSensorTemplate)
 	admin.DELETE("/sensor-templates/:template_id", dataSourceHandler.AdminDeleteSensorTemplate)
 	admin.GET("/devices/:device_id/attributes/latest", dataSourceHandler.AdminLatestTHCPNDeviceAttributes)
+	admin.GET("/devices/:device_id/carbon/overview", dataSourceHandler.AdminCarbonOverview)
 	admin.GET("/devices/runtime", dataSourceHandler.AdminTHCPNDeviceRuntime)
 	admin.GET("/devices/:device_id/logs", dataSourceHandler.AdminListTHCPNDeviceLogs)
 	admin.GET("/devices/:device_id/logs/:log_uuid/preview", dataSourceHandler.AdminPreviewTHCPNDeviceLog)
@@ -327,6 +328,9 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.PATCH("/data-sources/:data_source_id", dataSourceHandler.AdminUpdateDataSource)
 	admin.POST("/data-sources/:data_source_id/thcpn-standard-station/devices", dataSourceHandler.AdminSyncTHCPNStandardStation)
 	admin.POST("/data-sources/:data_source_id/thcpn-standard-station/devices/sync-all", dataSourceHandler.AdminSyncAllTHCPNDevices)
+	admin.GET("/data-sources/:data_source_id/carbon-sink/devices", dataSourceHandler.AdminListCarbonDevices)
+	admin.POST("/data-sources/:data_source_id/carbon-sink/devices", dataSourceHandler.AdminSyncCarbonDevice)
+	admin.POST("/data-sources/:data_source_id/carbon-sink/devices/sync-all", dataSourceHandler.AdminSyncAllCarbonDevices)
 	admin.POST("/data-sources/:data_source_id/thcpn-standard-station/gateways", dataSourceHandler.AdminSyncTHCPNGateway)
 	admin.POST("/data-sources/:data_source_id/thcpn-standard-station/cameras", dataSourceHandler.AdminSyncTHCPNCamera)
 	admin.GET("/workspaces/:workspace_id/members", memberHandler.List)
@@ -395,6 +399,10 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.DELETE("/devices/:device_id/computed-streams/:data_stream_id", computedStreamHandler.Delete)
 	authed.POST("/devices/:device_id/computed-streams/preview", computedStreamHandler.Preview)
 	authed.GET("/devices/:device_id/attributes/latest", dataSourceHandler.LatestTHCPNDeviceAttributes)
+	authed.GET("/devices/:device_id/carbon/overview", dataSourceHandler.CarbonOverview)
+	authed.GET("/devices/:device_id/carbon/flux", dataSourceHandler.CarbonFlux)
+	authed.GET("/devices/:device_id/carbon/periods", dataSourceHandler.CarbonPeriods)
+	authed.GET("/devices/:device_id/carbon/periods/:period", dataSourceHandler.CarbonPeriod)
 	authed.GET("/devices/runtime", dataSourceHandler.THCPNDeviceRuntime)
 	authed.GET("/devices/:device_id/sampling-profile", dataSourceHandler.GetSamplingProfile)
 	authed.PATCH("/devices/:device_id/sampling-profile", dataSourceHandler.UpdateSamplingProfile)
@@ -426,6 +434,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.GET("/workspaces/:workspace_id/processing-tasks", processingHandler.List)
 	authed.POST("/workspaces/:workspace_id/processing-tasks", processingHandler.Create)
 	authed.GET("/workspaces/:workspace_id/processing-tasks/:task_id", processingHandler.Get)
+	authed.GET("/workspaces/:workspace_id/processing-tasks/:task_id/executions", processingHandler.Executions)
 	authed.PATCH("/workspaces/:workspace_id/processing-tasks/:task_id/status", processingHandler.SetStatus)
 	authed.POST("/datasets/:dataset_id/export", exportHandler.ExportDataset)
 	authed.PATCH("/datasets/:dataset_id", datasetHandler.Update)

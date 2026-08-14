@@ -21,7 +21,7 @@ WHERE da.device_id = $1
   AND da.status = 'active';
 
 -- name: ListDeviceProfileImages :many
-SELECT id, device_id, object_key, original_filename, content_type, size_bytes, width, height, caption, sort_order, is_cover, uploaded_by, created_at, updated_at
+SELECT id, device_id, object_key, original_filename, content_type, size_bytes, width, height, caption, sort_order, is_cover, uploaded_by, created_at, updated_at, source_url
 FROM device_profile_images
 WHERE device_id = $1
 ORDER BY sort_order, created_at, id;
@@ -40,13 +40,13 @@ FOR UPDATE;
 -- name: CreateDeviceProfileImage :one
 INSERT INTO device_profile_images (
     device_id, object_key, original_filename, content_type, size_bytes,
-    width, height, caption, sort_order, is_cover, uploaded_by
+    width, height, caption, sort_order, is_cover, uploaded_by, source_url
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-RETURNING id, device_id, object_key, original_filename, content_type, size_bytes, width, height, caption, sort_order, is_cover, uploaded_by, created_at, updated_at;
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, sqlc.narg(uploaded_by), sqlc.narg(source_url))
+RETURNING id, device_id, object_key, original_filename, content_type, size_bytes, width, height, caption, sort_order, is_cover, uploaded_by, created_at, updated_at, source_url;
 
 -- name: GetDeviceProfileImage :one
-SELECT id, device_id, object_key, original_filename, content_type, size_bytes, width, height, caption, sort_order, is_cover, uploaded_by, created_at, updated_at
+SELECT id, device_id, object_key, original_filename, content_type, size_bytes, width, height, caption, sort_order, is_cover, uploaded_by, created_at, updated_at, source_url
 FROM device_profile_images
 WHERE id = $1 AND device_id = $2;
 
@@ -56,7 +56,7 @@ SET caption = $3,
     is_cover = $4,
     updated_at = now()
 WHERE id = $1 AND device_id = $2
-RETURNING id, device_id, object_key, original_filename, content_type, size_bytes, width, height, caption, sort_order, is_cover, uploaded_by, created_at, updated_at;
+RETURNING id, device_id, object_key, original_filename, content_type, size_bytes, width, height, caption, sort_order, is_cover, uploaded_by, created_at, updated_at, source_url;
 
 -- name: ClearDeviceProfileImageCover :exec
 UPDATE device_profile_images
@@ -73,7 +73,7 @@ WHERE id = $1 AND device_id = $2;
 -- name: DeleteDeviceProfileImage :one
 DELETE FROM device_profile_images
 WHERE id = $1 AND device_id = $2
-RETURNING id, device_id, object_key, original_filename, content_type, size_bytes, width, height, caption, sort_order, is_cover, uploaded_by, created_at, updated_at;
+RETURNING id, device_id, object_key, original_filename, content_type, size_bytes, width, height, caption, sort_order, is_cover, uploaded_by, created_at, updated_at, source_url;
 
 -- name: PromoteFirstDeviceProfileImageCover :exec
 UPDATE device_profile_images

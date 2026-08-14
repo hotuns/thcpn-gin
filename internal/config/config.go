@@ -204,7 +204,7 @@ func Default() Config {
 		ObjectStore: ObjectStoreConfig{
 			Provider:        "oss",
 			Endpoint:        "https://oss-cn-beijing.aliyuncs.com",
-			Bucket:          "iot-platform",
+			Bucket:          "iot-platform-datas",
 			Region:          "cn-beijing",
 			LocalPath:       "var/objectstore",
 			PublicURLPrefix: "",

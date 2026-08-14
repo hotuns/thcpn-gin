@@ -87,6 +87,7 @@ const ExportsPage = lazy(() =>
   import("./exports-page").then((module) => ({ default: module.ExportsPage })),
 );
 const ProcessingPage = lazy(() => import("./processing-page").then((module) => ({ default: module.ProcessingPage })));
+const ProcessingTaskDetailPage = lazy(() => import("./processing-page").then((module) => ({ default: module.ProcessingTaskDetailPage })));
 const DataComparisonPage = lazy(() =>
   import("./data-comparison-page").then((module) => ({
     default: module.DataComparisonPage,
@@ -165,7 +166,7 @@ function Shell() {
             ? t("platform:navigation.compare")
           : location.pathname === "/exports"
             ? t("platform:navigation.exports")
-          : location.pathname === "/processing"
+          : location.pathname.startsWith("/processing")
             ? t("platform:navigation.processing")
             : location.pathname === "/workspaces"
               ? t("platform:navigation.workspaces")
@@ -566,6 +567,7 @@ export function PlatformApp() {
             />
             <Route path="/exports" element={<ExportsPage />} />
             <Route path="/processing" element={<ProcessingPage />} />
+            <Route path="/processing/:taskId" element={<ProcessingTaskDetailPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/account" element={<AccountPage />} />
             <Route path="*" element={<RootRedirect />} />

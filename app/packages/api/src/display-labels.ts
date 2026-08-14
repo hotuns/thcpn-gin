@@ -24,6 +24,7 @@ const topologyRoleLabels = {
   gateway: { zh: "网关", en: "Gateway" },
   gateway_node: { zh: "网关节点", en: "Gateway node" },
   camera: { zh: "监控站", en: "Monitoring station" },
+  carbon_sink: { zh: "碳汇站", en: "Carbon sink station" },
 };
 
 const deviceCapabilityLabels = {

@@ -122,7 +122,7 @@ func (e *Engine) processTask(ctx context.Context, task executionCandidate) (int,
 		for _, input := range inputs {
 			item := selected[input.SlotCode]
 			keyParts = append(keyParts, input.SlotCode+":"+item.ID)
-			requestInputs = append(requestInputs, map[string]any{"slot_code": input.SlotCode, "kind": "media", "url": item.PreviewURL, "observed_at": item.CapturedAt})
+			requestInputs = append(requestInputs, map[string]any{"slot_code": input.SlotCode, "kind": "media", "url": item.PreviewURL, "observed_at": item.CapturedAt, "metadata": input.Config})
 		}
 		inputKey := strings.Join(keyParts, "|")
 		executionID := uuid.New()

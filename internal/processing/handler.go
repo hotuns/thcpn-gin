@@ -78,6 +78,23 @@ func (h *Handler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, item)
 }
 
+func (h *Handler) Executions(c *gin.Context) {
+	workspaceID, _, ok := h.authorize(c, "processing.view")
+	if !ok {
+		return
+	}
+	taskID, ok := parseID(c.Param("task_id"), "task_id", c)
+	if !ok {
+		return
+	}
+	items, err := h.service.ListExecutions(c.Request.Context(), workspaceID, taskID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
 func (h *Handler) Create(c *gin.Context) {
 	workspaceID, actor, ok := h.authorize(c, "processing.manage")
 	if !ok {

@@ -756,14 +756,23 @@ func defaultMediaType(cfg mediaBindingConfig, requested string) string {
 }
 
 func (r *Runtime) openMySQL(ctx context.Context, source DataSource) (*sql.DB, error) {
+	return r.openMySQLDatabase(ctx, source, "")
+}
+
+func (r *Runtime) openMySQLDatabase(ctx context.Context, source DataSource, databaseName string) (*sql.DB, error) {
 	dsn, err := r.resolver.Resolve(ctx, source.DsnSecretRef)
 	if err != nil {
 		return nil, err
 	}
-	dsn, err = mysqlDSNWithParseTime(dsn)
+	cfg, err := mysql.ParseDSN(dsn)
 	if err != nil {
-		return nil, err
+		return nil, apperr.Wrap(apperr.KindDataSource, "parse mysql data source dsn", err)
 	}
+	cfg.ParseTime = true
+	if strings.TrimSpace(databaseName) != "" {
+		cfg.DBName = strings.TrimSpace(databaseName)
+	}
+	dsn = cfg.FormatDSN()
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, apperr.Wrap(apperr.KindDataSource, "connect data source", err)

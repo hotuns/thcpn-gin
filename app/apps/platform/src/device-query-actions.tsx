@@ -104,6 +104,8 @@ export function DeviceQueryActions({
   selected,
   onSelectedChange,
   onSelectedOrderChange,
+  selectedImages,
+  onSelectedImagesChange,
   startTime,
   endTime,
   onStartTimeChange,
@@ -119,6 +121,8 @@ export function DeviceQueryActions({
   selected: string[];
   onSelectedChange: (ids: string[]) => void;
   onSelectedOrderChange: (ids: string[]) => void;
+  selectedImages: string[];
+  onSelectedImagesChange: (ids: string[]) => void;
   startTime: string;
   endTime: string;
   onStartTimeChange: (value: string) => void;
@@ -135,6 +139,9 @@ export function DeviceQueryActions({
   const draggedRef = useRef(false);
   const telemetryStreams = streams.filter(
     (item) => item.type === "telemetry" && item.status === "active",
+  );
+  const imageStreams = streams.filter(
+    (item) => item.type === "image" && item.status === "active",
   );
   const streamsById = new Map(telemetryStreams.map((item) => [item.id, item]));
   const orderedTelemetryStreams = [
@@ -169,7 +176,7 @@ export function DeviceQueryActions({
       <div className="panel-header">
         <div>
           <h2 className="panel-title">查询条件</h2>
-          <div className="panel-kicker">设置时间范围和数据指标后统一搜索</div>
+          <div className="panel-kicker">设置时间范围、数据指标和图片类型后统一搜索</div>
         </div>
         <div className="header-actions">
           {dirty && <Badge tone="warning">条件未应用</Badge>}
@@ -282,6 +289,60 @@ export function DeviceQueryActions({
         </div>
       ) : (
         <StateView type="empty" title="没有遥测指标" description="当前设备尚未同步可查询的遥测指标。" />
+      )}
+      <div className="query-metric-heading query-image-heading">
+        <div>
+          <strong>图片</strong>
+          <small>选择要在下方加载的图片类型</small>
+        </div>
+        <div className="header-actions">
+          <Badge tone="info">已选 {selectedImages.length}</Badge>
+          <Button
+            variant="secondary"
+            disabled={!imageStreams.length}
+            onClick={() =>
+              onSelectedImagesChange(
+                selectedImages.length === imageStreams.length
+                  ? []
+                  : imageStreams.map((item) => item.id),
+              )
+            }
+          >
+            {selectedImages.length === imageStreams.length && selectedImages.length
+              ? "清空"
+              : "全选"}
+          </Button>
+        </div>
+      </div>
+      {imageStreams.length ? (
+        <div className="stream-check-grid image-stream-check-grid">
+          {imageStreams.map((stream) => {
+            const selectedImage = selectedImages.includes(stream.id);
+            return (
+              <button
+                type="button"
+                key={stream.id}
+                className={selectedImage ? "selected" : ""}
+                aria-pressed={selectedImage}
+                onClick={() =>
+                  onSelectedImagesChange(
+                    selectedImage
+                      ? selectedImages.filter((id) => id !== stream.id)
+                      : [...selectedImages, stream.id],
+                  )
+                }
+              >
+                <span className="stream-check">{selectedImage && <Check size={12} />}</span>
+                <span>
+                  <strong>{stream.name}</strong>
+                  <small>{stream.unit || "图片"}</small>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <StateView type="empty" title="没有图片来源" description="当前设备尚未同步可查询的图片类型。" />
       )}
       {invalidRange && <div className="form-error query-condition-error">结束时间必须晚于开始时间。</div>}
     </Panel>

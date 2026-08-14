@@ -71,6 +71,10 @@ const datasetStatusLabel = (value: Dataset["status"]) =>
   })[value] ?? value;
 const sourceTypeLabel = (value: SourceInput["source_type"]) =>
   ({ device: "设备", data_stream: "数据指标", file: "文件" })[value] ?? value;
+const datasetDeviceSystem = (item?: JsonRecord) => {
+  const type = String(item?.device_type ?? "");
+  return type === "standalone" ? "standard" : type === "gateway_node" ? "group" : "";
+};
 const localTime = (input: Date | string) => {
   const date = new Date(input);
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
@@ -691,7 +695,7 @@ function DatasetForm({
   const initialStartTime =
     dataset
       ? localTime(dataset.time_start)
-      : prefill?.startTime ?? localTime(new Date(Date.now() - 86_400_000));
+      : prefill?.startTime ?? localTime(new Date(Date.now() - 7 * 86_400_000));
   const initialEndTime =
     dataset
       ? localTime(dataset.time_end)
@@ -727,6 +731,31 @@ function DatasetForm({
   const [deviceId, setDeviceId] = useState("");
   const [selectedStreamIds, setSelectedStreamIds] = useState<string[]>([]);
   const [error, setError] = useState("");
+  const datasetDevices = useMemo(
+    () => devices.filter((item) => Boolean(datasetDeviceSystem(item))),
+    [devices],
+  );
+  const gatewayDevices = useMemo(
+    () => devices.filter((item) => String(item.device_type ?? "") === "gateway"),
+    [devices],
+  );
+  const childQueries = useQueries({
+    queries: gatewayDevices.map((gateway) => ({
+      queryKey: ["device", String(gateway.id), "children", "dataset-form"],
+      queryFn: () => api.devices.children(String(gateway.id)),
+      staleTime: 60_000,
+    })),
+  });
+  const datasetSelectableDevices = useMemo(() => {
+    const items = [...datasetDevices];
+    for (const result of childQueries) {
+      for (const item of result.data?.items ?? []) {
+        const child = item.device as unknown as JsonRecord;
+        if (!items.some((candidate) => String(candidate.id) === String(child.id))) items.push(child);
+      }
+    }
+    return items;
+  }, [childQueries, datasetDevices]);
   const initialFingerprint = useRef<string | undefined>(undefined);
   const fingerprint = JSON.stringify({
     name,
@@ -753,6 +782,22 @@ function DatasetForm({
   }, [deviceId, sourceType, streamKind]);
   const addSources = () => {
     const ids = sourceType === "device" ? [deviceId] : selectedStreamIds;
+    const currentSystems = new Set(
+      sources.flatMap((source) => {
+        if (source.source_type === "device") {
+          const item = devices.find((candidate) => String(candidate.id) === source.source_id);
+          return datasetDeviceSystem(item) ? [datasetDeviceSystem(item)] : [];
+        }
+        return [];
+      }),
+    );
+    const selectedSystem = datasetDeviceSystem(
+      devices.find((item) => String(item.id) === deviceId),
+    );
+    if (selectedSystem && currentSystems.size > 0 && !currentSystems.has(selectedSystem)) {
+      setError("一个数据集只能选择标准站或组网站中的一种设备体系");
+      return;
+    }
     const additions = ids
       .filter(Boolean)
       .filter(
@@ -764,6 +809,11 @@ function DatasetForm({
       .map((source_id) => ({ source_type: sourceType, source_id }));
     if (!additions.length) return;
     setSources((current) => [...current, ...additions]);
+    if (sourceType === "device") setDataType("mixed");
+    if (sourceType === "data_stream") {
+      setDataType((current) => current === "image" && streamKind === "telemetry" ? "mixed" : current === "telemetry" && streamKind === "image" ? "mixed" : streamKind);
+    }
+    setError("");
     if (sourceType === "data_stream") setSelectedStreamIds([]);
   };
   const toggleStream = (streamId: string) => {
@@ -868,7 +918,7 @@ function DatasetForm({
                 onChange={(event) => setDeviceId(event.target.value)}
               >
                 <option value="">选择设备</option>
-                {devices.map((item) => (
+                {datasetSelectableDevices.map((item) => (
                   <option key={String(item.id)} value={String(item.id)}>
                     {String(item.name)} · {String(item.serial_no)}
                   </option>
@@ -1062,26 +1112,10 @@ function DatasetForm({
             </label>
             <label className="field">
               <span className="field-label">数据类型</span>
-              <select
-                value={dataType}
-                onChange={(event) =>
-                  setDataType(event.target.value as Dataset["data_type"])
-                }
-              >
-                {[
-                  "telemetry",
-                  "image",
-                  "video",
-                  "audio",
-                  "event",
-                  "log",
-                  "mixed",
-                ].map((item) => (
-                  <option key={item} value={item}>
-                    {datasetTypeLabel(item as Dataset["data_type"])}
-                  </option>
-                ))}
-              </select>
+              <div className="dataset-derived-type">
+                <strong>{datasetTypeLabel(dataType)}</strong>
+                <small>根据已选设备、指标和图片自动判断</small>
+              </div>
             </label>
             {dataset && (
               <label className="field">

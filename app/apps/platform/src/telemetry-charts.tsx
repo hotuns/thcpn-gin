@@ -16,8 +16,6 @@ import type { TelemetrySeries } from "@thcpn/api";
 import { useLocale } from "@thcpn/i18n";
 
 const chartColors = ["#1769e0", "#16845b", "#d36b12", "#b13e4a", "#6a5ab5"];
-export const healthyTelemetryQuality = (quality?: string) =>
-  ["good", "valid", "ok"].includes((quality ?? "").toLowerCase());
 
 export function TelemetryCharts({
   series,
@@ -163,7 +161,6 @@ function ComparisonChart({
           ? ((point.value - itemStats.min) / spread) * 100
           : 50;
         row[`${item.data_stream_id}:raw`] = point.value;
-        row[`${item.data_stream_id}:quality`] = point.quality;
         rows.set(time, row);
       });
     });
@@ -242,9 +239,8 @@ function ComparisonChart({
                   (entry) => entry.data_stream_id === name,
                 );
                 const raw = item.payload[`${name}:raw`];
-                const quality = item.payload[`${name}:quality`];
                 return [
-                  `${formatNumber(Number(raw), { maximumFractionDigits: 2 })}${current?.unit ? ` ${current.unit}` : ""} · ${healthyTelemetryQuality(String(quality)) ? t("platform:telemetry.normal") : quality}`,
+                  `${formatNumber(Number(raw), { maximumFractionDigits: 2 })}${current?.unit ? ` ${current.unit}` : ""}`,
                   current?.name ?? String(name),
                 ];
               }}
@@ -325,10 +321,6 @@ function TelemetryChart({
   const average = values.reduce((sum, item) => sum + item, 0) / source.length;
   const latest = source.at(-1);
   const first = source[0];
-  const good = source.filter((point) =>
-    healthyTelemetryQuality(point.quality),
-  ).length;
-  const quality = Math.round((good / source.length) * 100);
   const change = first && latest ? latest.value - first.value : 0;
   const changePercent = first?.value
     ? (change / Math.abs(first.value)) * 100
@@ -358,9 +350,6 @@ function TelemetryChart({
         </span>
         <span>
           {t("platform:telemetry.maximum")} <strong>{formatNumber(max, { maximumFractionDigits: 2 })}</strong>
-        </span>
-        <span>
-          {t("platform:telemetry.quality")} <strong>{quality}%</strong>
         </span>
         <span>
           {t("platform:telemetry.change")}{" "}
@@ -439,11 +428,9 @@ function TelemetryChart({
               labelFormatter={(value) =>
                 formatDateTime(new Date(Number(value)), { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
               }
-              formatter={(value, _name, item) => [
+              formatter={(value) => [
                 `${formatNumber(Number(value), { maximumFractionDigits: 2 })}${series.unit ? ` ${series.unit}` : ""}`,
-                healthyTelemetryQuality(item.payload.quality)
-                  ? t("platform:telemetry.normal")
-                  : `${t("platform:telemetry.quality")}: ${item.payload.quality}`,
+                series.name,
               ]}
               contentStyle={{
                 border: "1px solid var(--line)",
@@ -483,11 +470,6 @@ function TelemetryChart({
           <i className="legend-average" />
           {t("platform:telemetry.rangeAverage")} {formatNumber(average, { maximumFractionDigits: 2 })}
         </span>
-        {quality < 100 && (
-          <span className="quality-alert">
-            {t("platform:telemetry.abnormalPoints", { count: source.length - good })}
-          </span>
-        )}
       </div>
       {series.warnings?.length ? (
         <div className="chart-warning">

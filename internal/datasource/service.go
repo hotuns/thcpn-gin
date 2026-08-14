@@ -16,6 +16,7 @@ import (
 
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/db/sqlc"
+	"thcpn-gin/internal/objectstore"
 )
 
 var identifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -26,11 +27,13 @@ const (
 	AdapterHTTPAPI        = "http_api"
 	AdapterTHCPNLegacy    = "thcpn_legacy_mysql"
 	AdapterTHCPNCamera    = "thcpn_legacy_camera"
+	AdapterCarbonSink     = "carbon_sink_mysql"
 )
 
 type Service struct {
 	db      *pgxpool.Pool
 	queries *sqlc.Queries
+	store   objectstore.Store
 }
 
 type Adapter interface {
@@ -186,8 +189,12 @@ type UpdateDataStreamBindingInput struct {
 	Status            *string
 }
 
-func NewService(db *pgxpool.Pool) *Service {
-	return &Service{db: db, queries: sqlc.New(db)}
+func NewService(db *pgxpool.Pool, stores ...objectstore.Store) *Service {
+	var store objectstore.Store
+	if len(stores) > 0 {
+		store = stores[0]
+	}
+	return &Service{db: db, queries: sqlc.New(db), store: store}
 }
 
 func (s *Service) CreateDataSource(ctx context.Context, input CreateDataSourceInput) (DataSource, error) {

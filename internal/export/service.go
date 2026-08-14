@@ -23,6 +23,7 @@ const (
 	ActionDatasetExport   = "dataset.export"
 	ActionMediaDownload   = "media.download"
 	ActionTelemetryExport = "telemetry.export"
+	ActionCarbonExport    = "telemetry.export"
 )
 
 type Service struct {
@@ -111,10 +112,13 @@ func (s *Service) Resolve(ctx context.Context, resourceType string, resourceID u
 		PermissionResourceID:   resourceID,
 	}
 	switch resourceType {
-	case "device":
+	case "device", "device_batch":
 		device, err := s.queries.GetDevice(ctx, resourceID)
 		if err != nil {
 			return ResolvedResource{}, mapNotFoundOrInternal(err, "device not found")
+		}
+		if exportType == "carbon_station_zip" && device.DeviceType != "carbon_sink" {
+			return ResolvedResource{}, apperr.New(apperr.KindInvalidArgument, "carbon export requires a carbon sink device")
 		}
 		assignment, err := s.queries.GetActiveDeviceAssignment(ctx, device.ID)
 		if err != nil {
@@ -172,6 +176,16 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Job, ResolvedR
 	requestConfig, err := normalizeRequestConfig(input.RequestConfig)
 	if err != nil {
 		return Job{}, ResolvedResource{}, err
+	}
+	if input.ResourceType == "device_batch" {
+		if err := s.validateDeviceBatch(ctx, resolved.WorkspaceID, resolved.ResourceID, input.ExportType, requestConfig); err != nil {
+			return Job{}, ResolvedResource{}, err
+		}
+	}
+	if input.ExportType == "carbon_station_zip" {
+		if err := validateCarbonStationConfig(requestConfig); err != nil {
+			return Job{}, ResolvedResource{}, err
+		}
 	}
 
 	row, err := s.queries.CreateExportJob(ctx, sqlc.CreateExportJobParams{
@@ -272,6 +286,11 @@ func (s *Service) PrepareDownload(ctx context.Context, jobID uuid.UUID) (Downloa
 
 func resolveAction(resourceType string, exportType string) (string, string, error) {
 	switch exportType {
+	case "carbon_station_zip":
+		if resourceType != "device" {
+			return "", "", apperr.New(apperr.KindInvalidArgument, "carbon export requires device resource")
+		}
+		return ActionCarbonExport, "device", nil
 	case "telemetry_csv", "telemetry_excel":
 		switch resourceType {
 		case "device", "data_stream":
@@ -293,9 +312,87 @@ func resolveAction(resourceType string, exportType string) (string, string, erro
 		default:
 			return "", "", apperr.New(apperr.KindInvalidArgument, "media export requires device, data_stream or media resource")
 		}
+	case "standard_station_zip", "group_site_zip":
+		if resourceType != "device_batch" {
+			return "", "", apperr.New(apperr.KindInvalidArgument, "batch station export requires device_batch resource")
+		}
+		return ActionTelemetryExport, "device", nil
 	default:
 		return "", "", apperr.New(apperr.KindInvalidArgument, "invalid export_type")
 	}
+}
+
+func validateCarbonStationConfig(raw []byte) error {
+	var config struct {
+		NodeIDs           []int     `json:"node_ids"`
+		Fields            []string  `json:"fields"`
+		StartTime         time.Time `json:"start_time"`
+		EndTime           time.Time `json:"end_time"`
+		IncludeFlux       bool      `json:"include_flux"`
+		IncludeRawSamples bool      `json:"include_raw_samples"`
+	}
+	if err := json.Unmarshal(raw, &config); err != nil {
+		return apperr.New(apperr.KindInvalidArgument, "invalid carbon export config")
+	}
+	if len(config.NodeIDs) == 0 || len(config.Fields) == 0 || !config.EndTime.After(config.StartTime) {
+		return apperr.New(apperr.KindInvalidArgument, "node_ids, fields and valid time range are required")
+	}
+	if !config.IncludeFlux && !config.IncludeRawSamples {
+		return apperr.New(apperr.KindInvalidArgument, "at least one carbon export content is required")
+	}
+	for _, nodeID := range config.NodeIDs {
+		if nodeID <= 0 {
+			return apperr.New(apperr.KindInvalidArgument, "node_ids must be positive")
+		}
+	}
+	for _, field := range config.Fields {
+		if strings.TrimSpace(field) == "" {
+			return apperr.New(apperr.KindInvalidArgument, "fields must not be empty")
+		}
+	}
+	return nil
+}
+
+func (s *Service) validateDeviceBatch(ctx context.Context, workspaceID, anchorID uuid.UUID, exportType string, raw []byte) error {
+	var config struct {
+		DeviceIDs []string `json:"device_ids"`
+	}
+	if err := json.Unmarshal(raw, &config); err != nil || len(config.DeviceIDs) == 0 {
+		return apperr.New(apperr.KindInvalidArgument, "device_ids are required for batch export")
+	}
+	wantType := "standalone"
+	if exportType == "group_site_zip" {
+		wantType = "gateway_node"
+	}
+	seen := map[uuid.UUID]struct{}{}
+	for index, rawID := range config.DeviceIDs {
+		id, err := uuid.Parse(strings.TrimSpace(rawID))
+		if err != nil || id == uuid.Nil {
+			return apperr.New(apperr.KindInvalidArgument, "device_ids must contain valid UUIDs")
+		}
+		if _, exists := seen[id]; exists {
+			return apperr.New(apperr.KindInvalidArgument, "device_ids must not contain duplicates")
+		}
+		seen[id] = struct{}{}
+		device, err := s.queries.GetDevice(ctx, id)
+		if err != nil {
+			return mapNotFoundOrInternal(err, "batch device not found")
+		}
+		if device.DeviceType != wantType {
+			return apperr.New(apperr.KindInvalidArgument, "batch export cannot mix device systems")
+		}
+		assignment, err := s.queries.GetActiveDeviceAssignment(ctx, id)
+		if err != nil {
+			return mapNotFoundOrInternal(err, "active device assignment not found")
+		}
+		if assignment.WorkspaceID != workspaceID {
+			return apperr.New(apperr.KindPermissionDenied, "batch device is outside the current workspace")
+		}
+		if index == 0 && id != anchorID {
+			return apperr.New(apperr.KindInvalidArgument, "resource_id must match the first device_id")
+		}
+	}
+	return nil
 }
 
 func jobFromSQL(model sqlc.ExportJob) Job {

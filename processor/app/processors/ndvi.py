@@ -20,8 +20,10 @@ MANIFEST = {
     "target_types": ["device", "site"],
     "required_capability": "ndvi_processing",
     "inputs": [
-        {"code": "red", "name": "红光图片", "kind": "media", "required": True},
-        {"code": "nir", "name": "近红外图片", "kind": "media", "required": True},
+        {"code": "red", "name": "红光图片", "kind": "media", "required": True,
+         "ui": {"calibration_board": {"required": True, "shape": "rectangle", "label": "红光标定板"}}},
+        {"code": "nir", "name": "近红外图片", "kind": "media", "required": True,
+         "ui": {"calibration_board": {"required": True, "shape": "rectangle", "label": "近红外标定板"}}},
     ],
     "parameters": {
         "type": "object",

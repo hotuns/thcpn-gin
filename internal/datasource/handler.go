@@ -3,6 +3,7 @@ package datasource
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -111,6 +112,10 @@ type syncTHCPNCameraRequest struct {
 	ExternalCameraID int64 `json:"external_camera_id"`
 }
 
+type syncCarbonDeviceRequest struct {
+	ExternalDeviceID int64 `json:"external_device_id"`
+}
+
 type updateTHCPNDeviceConfigRequest struct {
 	DataJSON         json.RawMessage `json:"data_json"`
 	ImageJSON        json.RawMessage `json:"image_json"`
@@ -158,6 +163,106 @@ func (h *Handler) LatestTHCPNDeviceAttributes(c *gin.Context) {
 		return
 	}
 	result, err := h.service.LatestTHCPNDeviceAttributes(c.Request.Context(), deviceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) CarbonOverview(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok || !h.authorize(c, "device", deviceID, "device.view") {
+		return
+	}
+	result, err := h.service.CarbonOverview(c.Request.Context(), deviceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminCarbonOverview(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	result, err := h.service.CarbonOverview(c.Request.Context(), deviceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) CarbonFlux(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok || !h.authorize(c, "device", deviceID, "device.view") {
+		return
+	}
+	nodeID, ok := parsePositiveQueryInt(c, "node_id")
+	if !ok {
+		return
+	}
+	field := strings.TrimSpace(c.Query("field"))
+	if field == "" {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "field is required"))
+		return
+	}
+	start, end, ok := parseCarbonRange(c)
+	if !ok {
+		return
+	}
+	result, err := h.service.CarbonFlux(c.Request.Context(), deviceID, nodeID, field, start, end)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) CarbonPeriods(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok || !h.authorize(c, "device", deviceID, "device.view") {
+		return
+	}
+	nodeID, ok := parsePositiveQueryInt(c, "node_id")
+	if !ok {
+		return
+	}
+	start, end, ok := parseCarbonRange(c)
+	if !ok {
+		return
+	}
+	result, err := h.service.CarbonPeriods(c.Request.Context(), deviceID, nodeID, start, end)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": result})
+}
+
+func (h *Handler) CarbonPeriod(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok || !h.authorize(c, "device", deviceID, "device.view") {
+		return
+	}
+	nodeID, ok := parsePositiveQueryInt(c, "node_id")
+	if !ok {
+		return
+	}
+	field := strings.TrimSpace(c.Query("field"))
+	if field == "" {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "field is required"))
+		return
+	}
+	period := strings.TrimSpace(c.Param("period"))
+	if period == "" {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "period is required"))
+		return
+	}
+	result, err := h.service.CarbonPeriod(c.Request.Context(), deviceID, nodeID, field, period)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -553,6 +658,78 @@ func (h *Handler) AdminSyncTHCPNStandardStation(c *gin.Context) {
 	})
 	if err != nil {
 		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminListCarbonDevices(c *gin.Context) {
+	dataSourceID, ok := parseUUIDParam(c, "data_source_id")
+	if !ok {
+		return
+	}
+	items, err := h.service.ListCarbonDevices(c.Request.Context(), dataSourceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+func (h *Handler) AdminSyncCarbonDevice(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	dataSourceID, ok := parseUUIDParam(c, "data_source_id")
+	if !ok {
+		return
+	}
+	var req syncCarbonDeviceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	result, err := h.service.SyncCarbonDevice(c.Request.Context(), SyncCarbonDeviceInput{
+		DataSourceID: dataSourceID, ExternalDeviceID: req.ExternalDeviceID, ActorUserID: actor.UserID,
+	})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if err := h.ensureClaimCredentials(c.Request.Context()); err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminSyncAllCarbonDevices(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	dataSourceID, ok := parseUUIDParam(c, "data_source_id")
+	if !ok {
+		return
+	}
+	result, err := h.service.SyncAllCarbonDevices(c.Request.Context(), SyncAllCarbonDevicesInput{
+		DataSourceID: dataSourceID, ActorUserID: actor.UserID,
+	})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if err := h.ensureClaimCredentials(c.Request.Context()); err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{
+		ActorType: audit.ActorUser, ActorID: audit.UserActorID(actor.UserID),
+		Action: "carbon.devices.full_sync", ResourceType: "data_source", ResourceID: audit.ResourceID(dataSourceID),
+		Result: audit.ResultSuccess,
+		Reason: fmt.Sprintf("total=%d; synced=%d; created=%d; updated=%d; failed=%d", result.Total, result.Synced, result.Created, result.Updated, result.Failed),
+	}) {
 		return
 	}
 	c.JSON(http.StatusOK, result)
@@ -1114,6 +1291,50 @@ func parseInt64Param(c *gin.Context, name string) (int64, bool) {
 		return 0, false
 	}
 	return value, true
+}
+
+func parsePositiveQueryInt(c *gin.Context, name string) (int, bool) {
+	value, err := strconv.Atoi(strings.TrimSpace(c.Query(name)))
+	if err != nil || value <= 0 {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, name+" must be a positive integer"))
+		return 0, false
+	}
+	return value, true
+}
+
+func parseCarbonRange(c *gin.Context) (time.Time, time.Time, bool) {
+	now := time.Now().In(carbonLocation)
+	start, err := parseCarbonTime(c.Query("start"), now.AddDate(0, 0, -7))
+	if err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid start"))
+		return time.Time{}, time.Time{}, false
+	}
+	end, err := parseCarbonTime(c.Query("end"), now)
+	if err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid end"))
+		return time.Time{}, time.Time{}, false
+	}
+	if !end.After(start) {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "end must be after start"))
+		return time.Time{}, time.Time{}, false
+	}
+	return start, end, true
+}
+
+func parseCarbonTime(raw string, fallback time.Time) (time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fallback, nil
+	}
+	if parsed, err := time.Parse(time.RFC3339, raw); err == nil {
+		return parsed.In(carbonLocation), nil
+	}
+	for _, layout := range []string{"2006-01-02 15:04:05", "2006-01-02T15:04", "2006-01-02"} {
+		if parsed, err := time.ParseInLocation(layout, raw, carbonLocation); err == nil {
+			return parsed, nil
+		}
+	}
+	return time.Time{}, errors.New("invalid carbon time")
 }
 
 func parseUUIDValue(value string, name string, c *gin.Context) (uuid.UUID, bool) {

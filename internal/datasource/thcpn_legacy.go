@@ -33,6 +33,11 @@ const (
 
 const thcpnMonthlyShardTablePrefix = "device_data_"
 
+const (
+	thcpnShardStrategyCutover = "cutover"
+	thcpnShardStrategyIndex   = "index"
+)
+
 var (
 	thcpnShardTablePattern       = regexp.MustCompile(`^device_data_[0-9]+$`)
 	thcpnMonthlyShardCutoverDate = time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
@@ -47,6 +52,8 @@ type thcpnLegacyBindingConfig struct {
 	ValuePath        string `json:"value_path"`
 	ObjectKeyPath    string `json:"object_key_path"`
 	MediaType        string `json:"media_type"`
+	PublicURLPrefix  string `json:"public_url_prefix"`
+	ShardStrategy    string `json:"shard_strategy"`
 
 	TableIndex      string `json:"table_index"`
 	TableNameField  string `json:"table_name_field"`
@@ -316,8 +323,8 @@ func supportsTHCPNTelemetryBatch(cfg thcpnLegacyBindingConfig) bool {
 }
 
 func thcpnTelemetryBatchGroupKey(cfg thcpnLegacyBindingConfig) string {
-	return fmt.Sprintf("%d\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%d",
-		cfg.ExternalDeviceID, cfg.RowType, cfg.TableIndex, cfg.TableNameField, cfg.IndexStartField, cfg.IndexEndField,
+	return fmt.Sprintf("%d\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%d",
+		cfg.ExternalDeviceID, cfg.RowType, cfg.ShardStrategy, cfg.TableIndex, cfg.TableNameField, cfg.IndexStartField, cfg.IndexEndField,
 		cfg.DeviceIDField, cfg.DataField, cfg.TimeField+"\x00"+cfg.TypeField+"\x00"+cfg.DeletedAtField, cfg.MaxShardTables)
 }
 
@@ -515,6 +522,9 @@ func parseTHCPNLegacyMediaConfig(raw json.RawMessage) (thcpnLegacyBindingConfig,
 	if cfg.MediaType == "" {
 		cfg.MediaType = "image"
 	}
+	if cfg.PublicURLPrefix == "" {
+		cfg.PublicURLPrefix = defaultTHCPNMediaPublicURLPrefix
+	}
 	return cfg, nil
 }
 
@@ -538,6 +548,14 @@ func parseTHCPNLegacyConfig(raw json.RawMessage) (thcpnLegacyBindingConfig, erro
 	cfg.ValuePath = strings.TrimSpace(cfg.ValuePath)
 	cfg.ObjectKeyPath = strings.TrimSpace(cfg.ObjectKeyPath)
 	cfg.MediaType = strings.TrimSpace(cfg.MediaType)
+	cfg.PublicURLPrefix = strings.TrimRight(strings.TrimSpace(cfg.PublicURLPrefix), "/")
+	cfg.ShardStrategy = strings.TrimSpace(cfg.ShardStrategy)
+	if cfg.ShardStrategy == "" {
+		cfg.ShardStrategy = thcpnShardStrategyCutover
+	}
+	if cfg.ShardStrategy != thcpnShardStrategyCutover && cfg.ShardStrategy != thcpnShardStrategyIndex {
+		return thcpnLegacyBindingConfig{}, apperr.New(apperr.KindInvalidArgument, "invalid adapter_config.shard_strategy")
+	}
 
 	cfg.TableIndex = defaultIdentifier(cfg.TableIndex, defaultTHCPNTableIndexField)
 	cfg.TableNameField = defaultIdentifier(cfg.TableNameField, defaultTHCPNTableNameField)
@@ -580,7 +598,7 @@ func validateTHCPNConfigIdentifiers(cfg thcpnLegacyBindingConfig) error {
 }
 
 func queryTHCPNShardTables(ctx context.Context, db *sql.DB, cfg thcpnLegacyBindingConfig, start time.Time, end time.Time) ([]thcpnShardTable, error) {
-	if useMonthlyTHCPNShards(start) {
+	if cfg.ShardStrategy != thcpnShardStrategyIndex && useMonthlyTHCPNShards(start) {
 		return monthlyTHCPNShardTables(start, end, cfg.MaxShardTables)
 	}
 
@@ -820,7 +838,7 @@ func queryTHCPNShardMedia(ctx context.Context, db *sql.DB, tableName string, cfg
 			continue
 		}
 		item.ID = tableName + ":" + rawID
-		item.ObjectKey = strings.TrimSpace(objectKey.String)
+		item.ObjectKey = cfg.PublicURLPrefix + "/" + strings.TrimLeft(strings.TrimSpace(objectKey.String), "/")
 		item.MediaType = cfg.MediaType
 		items = append(items, item)
 	}

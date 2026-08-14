@@ -49,6 +49,7 @@ type Querier interface {
 	CreateUserCredential(ctx context.Context, arg CreateUserCredentialParams) (UserCredential, error)
 	CreateWorkspaceMember(ctx context.Context, arg CreateWorkspaceMemberParams) (WorkspaceMember, error)
 	DeleteAccessGrantPermissions(ctx context.Context, accessGrantID uuid.UUID) error
+	DeleteCarbonRuntimeMetadata(ctx context.Context, arg DeleteCarbonRuntimeMetadataParams) error
 	DeleteDataset(ctx context.Context, id uuid.UUID) (Dataset, error)
 	DeleteDatasetSources(ctx context.Context, datasetID uuid.UUID) error
 	DeleteDeviceCapabilities(ctx context.Context, deviceID uuid.UUID) error
@@ -187,6 +188,8 @@ type Querier interface {
 	UpdateWorkspaceMemberRoleStatusByUser(ctx context.Context, arg UpdateWorkspaceMemberRoleStatusByUserParams) (WorkspaceMember, error)
 	UpsertCameraBinding(ctx context.Context, arg UpsertCameraBindingParams) (CameraBinding, error)
 	UpsertCameraDevice(ctx context.Context, arg UpsertCameraDeviceParams) (Device, error)
+	UpsertCarbonMetadata(ctx context.Context, arg UpsertCarbonMetadataParams) error
+	UpsertCarbonNodeMetadata(ctx context.Context, arg UpsertCarbonNodeMetadataParams) error
 	UpsertDataStreamFromSync(ctx context.Context, arg UpsertDataStreamFromSyncParams) (DataStream, error)
 	UpsertDeviceConfigSnapshot(ctx context.Context, arg UpsertDeviceConfigSnapshotParams) (DeviceConfigSnapshot, error)
 	UpsertDeviceProfile(ctx context.Context, arg UpsertDeviceProfileParams) (DeviceProfile, error)

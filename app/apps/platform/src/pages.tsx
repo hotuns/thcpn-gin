@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Database, GitCompareArrows } from "lucide-react";
+import { Database, Download, GitCompareArrows } from "lucide-react";
 import { api, formatApiError, type TelemetrySeries } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, PageHeader, Panel, StateView } from "@thcpn/ui";
@@ -19,7 +19,6 @@ import {
 import { TelemetryCharts } from "./telemetry-charts";
 import { TelemetryTable } from "./telemetry-table";
 import { dataComparisonPath, datasetCreatePath } from "./data-workflow";
-import { ComputedStreamsPanel } from "./device-computed-data";
 
 const dateTimeLocal = (date: Date) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
@@ -57,13 +56,15 @@ export function DeviceDataPage({
   const [searchParams, setSearchParams] = useSearchParams();
   const [deviceId, setDeviceId] = useState(fixedDeviceId ?? "");
   const [startTime, setStartTime] = useState(() =>
-    dateTimeLocal(new Date(Date.now() - 24 * 60 * 60 * 1000)),
+    dateTimeLocal(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)),
   );
   const [endTime, setEndTime] = useState(() => dateTimeLocal(new Date()));
   const [selectedStreamIds, setSelectedStreamIds] = useState<string[]>([]);
+  const [selectedImageStreamIds, setSelectedImageStreamIds] = useState<string[]>([]);
   const [appliedStartTime, setAppliedStartTime] = useState(startTime);
   const [appliedEndTime, setAppliedEndTime] = useState(endTime);
   const [appliedStreamIds, setAppliedStreamIds] = useState<string[]>([]);
+  const [appliedImageStreamIds, setAppliedImageStreamIds] = useState<string[]>([]);
   const [selectionReadyForDevice, setSelectionReadyForDevice] = useState("");
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailPages, setDetailPages] = useState<TelemetrySeries[][]>([]);
@@ -100,7 +101,9 @@ export function DeviceDataPage({
   });
   useEffect(() => {
     setSelectedStreamIds([]);
+    setSelectedImageStreamIds([]);
     setAppliedStreamIds([]);
+    setAppliedImageStreamIds([]);
     setSelectionReadyForDevice("");
     setDetailOpen(false);
     setDetailPages([]);
@@ -112,8 +115,13 @@ export function DeviceDataPage({
     const defaults = streamsQuery.data.items
         .filter((item) => item.type === "telemetry" && item.status === "active")
         .map((item) => item.id);
+    const imageDefaults = streamsQuery.data.items
+      .filter((item) => item.type === "image" && item.status === "active")
+      .map((item) => item.id);
     setSelectedStreamIds(defaults);
+    setSelectedImageStreamIds(imageDefaults);
     setAppliedStreamIds(defaults);
+    setAppliedImageStreamIds(imageDefaults);
     setSelectionReadyForDevice(deviceId);
   }, [deviceId, selectionReadyForDevice, streamsQuery.data, streamsQuery.isSuccess]);
   const telemetryQuery = useQuery({
@@ -259,13 +267,6 @@ export function DeviceDataPage({
       setDetailLoadingMore(false);
     }
   };
-  const imageStreams = useMemo(
-    () =>
-      (streamsQuery.data?.items ?? []).filter(
-        (item) => item.type === "image" && item.status === "active",
-      ),
-    [streamsQuery.data],
-  );
   const setRange = (hours: number) => {
     const end = new Date();
     setEndTime(dateTimeLocal(end));
@@ -277,6 +278,7 @@ export function DeviceDataPage({
     setAppliedStartTime(startTime);
     setAppliedEndTime(endTime);
     setAppliedStreamIds(selectedStreamIds);
+    setAppliedImageStreamIds(selectedImageStreamIds);
   };
   const reorderSelectedStreams = (nextIds: string[]) => {
     setSelectedStreamIds(nextIds);
@@ -289,7 +291,9 @@ export function DeviceDataPage({
     startTime !== appliedStartTime ||
     endTime !== appliedEndTime ||
     selectedStreamIds.slice().sort().join(",") !==
-      appliedStreamIds.slice().sort().join(",");
+      appliedStreamIds.slice().sort().join(",") ||
+    selectedImageStreamIds.slice().sort().join(",") !==
+      appliedImageStreamIds.slice().sort().join(",");
   const querying = telemetryQuery.isFetching || streamsQuery.isFetching;
   if (!currentId)
     return (
@@ -378,6 +382,7 @@ export function DeviceDataPage({
           />
         </Panel>
       ) : (
+        <>
         <div className="device-data-layout">
           <div className="device-data-content">
           {selectedDevice && (
@@ -387,6 +392,8 @@ export function DeviceDataPage({
                 selected={selectedStreamIds}
                 onSelectedChange={setSelectedStreamIds}
                 onSelectedOrderChange={reorderSelectedStreams}
+                selectedImages={selectedImageStreamIds}
+                onSelectedImagesChange={setSelectedImageStreamIds}
                 startTime={startTime}
                 endTime={endTime}
                 onStartTimeChange={setStartTime}
@@ -400,13 +407,6 @@ export function DeviceDataPage({
               />
             </div>
           )}
-          {selectedDevice && currentId && (
-            <ComputedStreamsPanel
-              workspaceId={currentId}
-              deviceId={selectedDevice.id}
-              streams={streamsQuery.data?.items ?? []}
-            />
-          )}
           <div id="data-section-trend" className="data-page-anchor section-gap">
           <Panel>
             <div className="panel-header">
@@ -417,6 +417,28 @@ export function DeviceDataPage({
                 </div>
               </div>
               <div className="header-actions data-workflow-actions">
+                {selectedDevice && !isCameraDevice(selectedDevice) && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      const type = selectedDevice.device_type;
+                      const exportParams = new URLSearchParams({
+                        system: type === "standalone" ? "standard" : "group",
+                        start: new Date(appliedStartTime).toISOString(),
+                        end: new Date(appliedEndTime).toISOString(),
+                      });
+                      if (type === "standalone") exportParams.set("devices", selectedDevice.id);
+                      else {
+                        exportParams.set("gateway", String((selectedDevice as unknown as Record<string, unknown>).parent_device_id ?? selectedDevice.id));
+                        if (type === "gateway_node") exportParams.set("devices", selectedDevice.id);
+                      }
+                      navigate(`/exports?${exportParams}`);
+                    }}
+                  >
+                    <Download size={14} />
+                    数据导出
+                  </Button>
+                )}
                 <Button
                   variant="secondary"
                   disabled={!deviceId || !appliedStreamIds.length}
@@ -551,13 +573,22 @@ export function DeviceDataPage({
               workspaceId={currentId}
               device={selectedDevice}
               streams={streamsQuery.data?.items ?? []}
+              imageStreamIds={appliedImageStreamIds}
               startTime={appliedStartTime}
               endTime={appliedEndTime}
             />
           )}
           </div>
-          <DataQuickNavigator imageStreams={imageStreams} />
+          <DataQuickNavigator
+            imageStreams={(streamsQuery.data?.items ?? []).filter(
+              (stream) =>
+                stream.type === "image" &&
+                stream.status === "active" &&
+                appliedImageStreamIds.includes(stream.id),
+            )}
+          />
         </div>
+        </>
       )}
     </>
   );

@@ -10,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { ChartNoAxesCombined, Clock3, CopyPlus, Database, PanelsTopLeft, Percent, Plus, Search, Trash2 } from "lucide-react";
+import { ChartNoAxesCombined, Clock3, CopyPlus, Database, PanelsTopLeft, Percent, Plus, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import {
   api,
   formatApiError,
@@ -75,7 +75,6 @@ export type ComparisonStatistic = {
   max: number;
   average: number;
   latest: number;
-  quality: number;
 };
 
 const dateTimeLocal = (date: Date) => {
@@ -137,16 +136,12 @@ export function comparisonStatistic(series?: TelemetrySeries): ComparisonStatist
   const points = series.points.filter((point) => Number.isFinite(point.value));
   if (!points.length) return null;
   const values = points.map((point) => point.value);
-  const healthy = points.filter((point) =>
-    ["good", "valid", "ok"].includes((point.quality ?? "").toLowerCase()),
-  ).length;
   return {
     count: series.source_count || points.length,
     min: Math.min(...values),
     max: Math.max(...values),
     average: values.reduce((sum, value) => sum + value, 0) / values.length,
     latest: points.at(-1)!.value,
-    quality: Math.round((healthy / points.length) * 100),
   };
 }
 
@@ -168,6 +163,7 @@ export function DataComparisonPage() {
     seeded ? initialDrafts : [],
   );
   const [validationError, setValidationError] = useState("");
+  const [editingConditions, setEditingConditions] = useState(!seeded);
   const [searchVersion, setSearchVersion] = useState(0);
   const [chartMode, setChartMode] = useState<"raw" | "minmax" | "zscore">("raw");
   const [timeAlignment, setTimeAlignment] = useState<"time" | "progress">("time");
@@ -183,6 +179,7 @@ export function DataComparisonPage() {
     previousWorkspaceId.current = currentId;
     setApplied([]);
     setValidationError("");
+    setEditingConditions(true);
   }, [currentId]);
 
   const updateDraft = (id: string, patch: Partial<ComparisonDraft>) =>
@@ -211,6 +208,26 @@ export function DataComparisonPage() {
       ),
     }, { replace: true });
     setSearchVersion((current) => current + 1);
+    setEditingConditions(false);
+  };
+
+  const addComparison = () => setDrafts((current) => {
+    const source = current[0];
+    const next = createDraft(source?.deviceId);
+    return [
+      ...current,
+      {
+        ...next,
+        startTime: source?.startTime ?? next.startTime,
+        endTime: source?.endTime ?? next.endTime,
+      },
+    ];
+  });
+
+  const cancelEditing = () => {
+    setDrafts(applied.map((item) => ({ ...item })));
+    setValidationError("");
+    setEditingConditions(false);
   };
 
   const appliedGroups = useMemo(() => groupComparisonDrafts(applied), [applied]);
@@ -253,6 +270,8 @@ export function DataComparisonPage() {
   });
   const successful = compared.filter((item) => item.series?.points.length);
   const loading = results.some((result) => result.isLoading || result.isFetching);
+  const appliedDeviceCount = new Set(applied.map((item) => item.deviceId)).size;
+  const appliedRangeCount = new Set(applied.map((item) => `${item.startTime}\u0000${item.endTime}`)).size;
   const datasetStart = applied.length
     ? applied.reduce((value, item) =>
         Date.parse(item.startTime) < Date.parse(value) ? item.startTime : value,
@@ -269,45 +288,70 @@ export function DataComparisonPage() {
   return (
     <>
       <PageHeader title="数据对比" />
-      <Panel className="comparison-conditions section-gap">
-        <div className="panel-header comparison-panel-header">
-          <h2 className="panel-title">对比条件</h2>
-          <div className="header-actions">
-            {dirty && <Badge tone="warning">条件未应用</Badge>}
-            <Button
-              variant="secondary"
-              disabled={drafts.length >= MAX_COMPARISONS}
-              onClick={() => setDrafts((current) => [...current, createDraft(current[0]?.deviceId)])}
-            >
-              <Plus size={14} />添加对比项
-            </Button>
-            <Button disabled={loading || devicesQuery.isLoading} onClick={search}>
-              <Search size={14} />{loading ? "查询中…" : "搜索"}
-            </Button>
-          </div>
-        </div>
-        {devicesQuery.isLoading ? (
-          <StateView type="loading" title="正在加载设备" description="正在读取当前工作区的设备。" />
-        ) : devicesQuery.error ? (
-          <StateView type="error" title="设备加载失败" description={formatApiError(devicesQuery.error).message} requestId={formatApiError(devicesQuery.error).requestId} />
+      <Panel className={`comparison-conditions section-gap ${editingConditions ? "is-editing" : "is-collapsed"}`}>
+        {editingConditions ? (
+          <>
+            <div className="panel-header comparison-panel-header">
+              <div>
+                <h2 className="panel-title">设置对比条件</h2>
+                <div className="panel-kicker">每项可以选择不同设备、数据要素和时间范围，最多 {MAX_COMPARISONS} 项</div>
+              </div>
+              <div className="header-actions">
+                {dirty && <Badge tone="warning">条件未应用</Badge>}
+                {applied.length > 0 && (
+                  <Button variant="secondary" onClick={cancelEditing}><X size={14} />取消</Button>
+                )}
+                <Button disabled={loading || devicesQuery.isLoading} onClick={search}>
+                  <Search size={14} />{loading ? "查询中…" : "应用并查询"}
+                </Button>
+              </div>
+            </div>
+            {devicesQuery.isLoading ? (
+              <StateView type="loading" title="正在加载设备" description="正在读取当前工作区的设备。" />
+            ) : devicesQuery.error ? (
+              <StateView type="error" title="设备加载失败" description={formatApiError(devicesQuery.error).message} requestId={formatApiError(devicesQuery.error).requestId} />
+            ) : (
+              <div className="comparison-condition-list">
+                <div className="comparison-condition-columns" aria-hidden="true">
+                  <span>序号</span><span>设备</span><span>数据要素</span><span>开始时间</span><span>结束时间</span><span>操作</span>
+                </div>
+                {drafts.map((draft, index) => (
+                  <ComparisonCondition
+                    key={draft.id}
+                    workspaceId={currentId}
+                    index={index}
+                    value={draft}
+                    devices={devices}
+                    onChange={(patch) => updateDraft(draft.id, patch)}
+                    onDuplicate={() => drafts.length < MAX_COMPARISONS && setDrafts((current) => [...current, { ...draft, id: crypto.randomUUID() }])}
+                    onRemove={() => setDrafts((current) => current.filter((item) => item.id !== draft.id))}
+                    removable={drafts.length > 1}
+                  />
+                ))}
+                <button type="button" className="comparison-add-row" disabled={drafts.length >= MAX_COMPARISONS} onClick={addComparison}>
+                  <Plus size={14} />{drafts.length >= MAX_COMPARISONS ? `已达到 ${MAX_COMPARISONS} 项上限` : "添加对比项"}
+                </button>
+              </div>
+            )}
+            {validationError && <div className="form-error comparison-error">{validationError}</div>}
+          </>
         ) : (
-          <div className="comparison-condition-list">
-            {drafts.map((draft, index) => (
-              <ComparisonCondition
-                key={draft.id}
-                workspaceId={currentId}
-                index={index}
-                value={draft}
-                devices={devices}
-                onChange={(patch) => updateDraft(draft.id, patch)}
-                onDuplicate={() => drafts.length < MAX_COMPARISONS && setDrafts((current) => [...current, { ...draft, id: crypto.randomUUID() }])}
-                onRemove={() => setDrafts((current) => current.filter((item) => item.id !== draft.id))}
-                removable={drafts.length > 1}
-              />
-            ))}
+          <div className="comparison-condition-summary">
+            <div className="comparison-summary-title">
+              <span className="comparison-summary-icon"><ChartNoAxesCombined size={17} /></span>
+              <div>
+                <h2 className="panel-title">对比条件已应用</h2>
+                <div className="panel-kicker">
+                  {applied.length} 项 · {appliedDeviceCount} 台设备 · {appliedRangeCount === 1 ? `${formatTime(applied[0].startTime)} — ${formatTime(applied[0].endTime)}` : `${appliedRangeCount} 个时间范围`}
+                </div>
+              </div>
+            </div>
+            <div className="comparison-summary-actions">
+              {loading && <Badge tone="info">正在更新数据</Badge>}
+              <Button variant="secondary" onClick={() => setEditingConditions(true)}><SlidersHorizontal size={14} />编辑条件</Button>
+            </div>
           </div>
         )}
-        {validationError && <div className="form-error comparison-error">{validationError}</div>}
       </Panel>
 
       {applied.length ? (
@@ -405,27 +449,28 @@ function ComparisonCondition({
     queryFn: () => api.dataStreams.list(value.deviceId),
     enabled: Boolean(value.deviceId),
   });
-  const metrics = (streams.data?.items ?? []).filter((item) => item.type === "telemetry" && item.status === "active");
+  const metrics = useMemo(
+    () => (streams.data?.items ?? []).filter((item) => item.type === "telemetry" && item.status === "active"),
+    [streams.data?.items],
+  );
 
   useEffect(() => {
     if (!streams.isSuccess) return;
-    if (!metrics.some((item) => item.id === value.streamId)) onChange({ streamId: metrics[0]?.id ?? "" });
-  }, [metrics, onChange, streams.isSuccess, value.streamId]);
-
-  const setQuickRange = (hours: number) => {
-    const end = new Date();
-    onChange({ startTime: dateTimeLocal(new Date(end.getTime() - hours * 60 * 60 * 1000)), endTime: dateTimeLocal(end) });
-  };
+    const nextStreamId = metrics.some((item) => item.id === value.streamId)
+      ? value.streamId
+      : metrics[0]?.id ?? "";
+    if (nextStreamId !== value.streamId) onChange({ streamId: nextStreamId });
+  }, [metrics, streams.isSuccess, value.streamId]);
 
   return (
     <div className="comparison-condition-row">
       <div className="comparison-index">{index + 1}</div>
       <div className="comparison-field comparison-device-field">
-        <span className="field-label">设备</span>
+        <span className="field-label comparison-mobile-label">设备</span>
         <DeviceCombobox devices={devices} value={value.deviceId} className="comparison-device-control" ariaLabel="搜索对比设备" onChange={(deviceId) => onChange({ deviceId, streamId: "" })} />
       </div>
       <label className="comparison-field">
-        <span className="field-label">数据要素</span>
+        <span className="field-label comparison-mobile-label">数据要素</span>
         <select value={value.streamId} disabled={streams.isLoading || !metrics.length} onChange={(event) => onChange({ streamId: event.target.value })}>
           <option value="">{streams.isLoading ? "加载中…" : metrics.length ? "选择要素" : "无可用要素"}</option>
           {metrics.map((item) => (
@@ -436,16 +481,14 @@ function ComparisonCondition({
         </select>
       </label>
       <label className="comparison-field">
-        <span className="field-label">开始时间</span>
+        <span className="field-label comparison-mobile-label">开始时间</span>
         <input type="datetime-local" value={value.startTime} onChange={(event) => onChange({ startTime: event.target.value })} />
       </label>
       <label className="comparison-field">
-        <span className="field-label">结束时间</span>
+        <span className="field-label comparison-mobile-label">结束时间</span>
         <input type="datetime-local" value={value.endTime} onChange={(event) => onChange({ endTime: event.target.value })} />
       </label>
       <div className="comparison-row-actions">
-        <button type="button" onClick={() => setQuickRange(24)}>24 小时</button>
-        <button type="button" onClick={() => setQuickRange(24 * 7)}>7 天</button>
         <button type="button" title="复制对比项" aria-label="复制对比项" onClick={onDuplicate}><CopyPlus size={15} /></button>
         <button type="button" title="删除对比项" aria-label="删除对比项" disabled={!removable} onClick={onRemove}><Trash2 size={15} /></button>
       </div>
@@ -654,9 +697,9 @@ function ComparisonLegend({ items }: { items: { config: ComparisonDraft; device?
 }
 
 function ComparisonStatistics({ items }: { items: { config: ComparisonDraft; device?: Device; query: { isLoading: boolean; error: unknown }; series?: TelemetrySeries }[] }) {
-  return <div className="table-wrap"><table className="data-table comparison-table"><thead><tr><th>对比项</th><th>时间范围</th><th>数据量</th><th>最新值</th><th>平均值</th><th>最小 / 最大</th><th>质量</th></tr></thead><tbody>{items.map((item, index) => {
+  return <div className="table-wrap"><table className="data-table comparison-table"><thead><tr><th>对比项</th><th>时间范围</th><th>数据量</th><th>最新值</th><th>平均值</th><th>最小 / 最大</th></tr></thead><tbody>{items.map((item, index) => {
     const stats = comparisonStatistic(item.series);
     const unit = item.series?.unit ? ` ${item.series.unit}` : "";
-    return <tr key={item.config.id}><td><div className="comparison-table-title"><i style={{ background: colors[index % colors.length] }} /><div><strong>{item.device?.name ?? item.config.deviceId}</strong><small>{item.series?.name ?? "数据要素"}</small></div></div></td><td>{formatTime(item.config.startTime)}<small>至 {formatTime(item.config.endTime)}</small></td>{item.query.isLoading ? <td colSpan={5}>正在加载…</td> : item.query.error ? <td colSpan={5} className="comparison-query-error">{formatApiError(item.query.error).message}</td> : stats ? <><td>{stats.count.toLocaleString(document.documentElement.lang || "zh-CN")}</td><td>{formatNumber(stats.latest)}{unit}</td><td>{formatNumber(stats.average)}{unit}</td><td>{formatNumber(stats.min)} / {formatNumber(stats.max)}{unit}</td><td><Badge tone={stats.quality >= 90 ? "success" : stats.quality >= 60 ? "warning" : "danger"}>{stats.quality}%</Badge></td></> : <td colSpan={5}>暂无数据</td>}</tr>;
+    return <tr key={item.config.id}><td><div className="comparison-table-title"><i style={{ background: colors[index % colors.length] }} /><div><strong>{item.device?.name ?? item.config.deviceId}</strong><small>{item.series?.name ?? "数据要素"}</small></div></div></td><td>{formatTime(item.config.startTime)}<small>至 {formatTime(item.config.endTime)}</small></td>{item.query.isLoading ? <td colSpan={4}>正在加载…</td> : item.query.error ? <td colSpan={4} className="comparison-query-error">{formatApiError(item.query.error).message}</td> : stats ? <><td>{stats.count.toLocaleString(document.documentElement.lang || "zh-CN")}</td><td>{formatNumber(stats.latest)}{unit}</td><td>{formatNumber(stats.average)}{unit}</td><td>{formatNumber(stats.min)} / {formatNumber(stats.max)}{unit}</td></> : <td colSpan={4}>暂无数据</td>}</tr>;
   })}</tbody></table></div>;
 }

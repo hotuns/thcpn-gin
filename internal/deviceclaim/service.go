@@ -73,7 +73,7 @@ func NewService(db *pgxpool.Pool, secret string) *Service {
 func (s *Service) EnsureEligible(ctx context.Context) (int64, error) {
 	rows, err := s.db.Query(ctx, `
 		SELECT id FROM devices
-		WHERE status = 'active' AND device_type IN ('gateway', 'standalone')
+		WHERE status = 'active' AND device_type IN ('gateway', 'standalone', 'carbon_sink')
 		ORDER BY created_at`)
 	if err != nil {
 		return 0, apperr.Wrap(apperr.KindInternal, "list claimable devices", err)
@@ -99,7 +99,7 @@ func (s *Service) EnsureEligible(ctx context.Context) (int64, error) {
 func (s *Service) EnsureForDevice(ctx context.Context, deviceID uuid.UUID) (bool, error) {
 	var eligible bool
 	if err := s.db.QueryRow(ctx, `
-		SELECT status = 'active' AND device_type IN ('gateway', 'standalone')
+		SELECT status = 'active' AND device_type IN ('gateway', 'standalone', 'carbon_sink')
 		FROM devices WHERE id = $1`, deviceID).Scan(&eligible); err != nil {
 		return false, mapNotFound(err, "device not found")
 	}
@@ -260,7 +260,7 @@ func (s *Service) Claim(ctx context.Context, input ClaimInput) (ClaimResult, err
 	if err := tx.QueryRow(ctx, `SELECT status, device_type, name FROM devices WHERE id=$1 FOR UPDATE`, resolved.DeviceID).Scan(&status, &deviceType, &name); err != nil {
 		return ClaimResult{}, genericUnavailable(err)
 	}
-	if status != "active" || (deviceType != "gateway" && deviceType != "standalone") {
+	if status != "active" || (deviceType != "gateway" && deviceType != "standalone" && deviceType != "carbon_sink") {
 		return ClaimResult{}, apperr.New(apperr.KindConflict, "device is not available for claiming")
 	}
 	var assigned bool

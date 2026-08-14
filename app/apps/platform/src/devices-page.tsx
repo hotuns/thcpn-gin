@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import {
   Link,
   Navigate,
@@ -13,10 +13,14 @@ import {
   Clock3,
   ArrowLeft,
   Battery,
+  CircleAlert,
+  CircleCheck,
+  DatabaseZap,
   Eye,
   Gauge,
   MapPin,
   MoveRight,
+  RadioTower,
   RefreshCw,
   ScanLine,
   Search,
@@ -50,10 +54,12 @@ import { DeviceDataPage } from "./pages";
 import { TelemetryCharts } from "./telemetry-charts";
 import { DeviceProfileTab } from "./device-profile";
 import { DeviceSharingTab } from "./device-sharing";
+import { CarbonDevicePage } from "./carbon-device-page";
 import { SamplingProfilePanel } from "./sampling-profile";
 import { DeviceCombobox } from "./device-combobox";
+import { ComputedStreamsPanel, DeviceMetadataPanel } from "./device-computed-data";
 
-type DeviceCategory = "gateway" | "gateway_node" | "camera" | "standalone";
+type DeviceCategory = "gateway" | "gateway_node" | "camera" | "carbon_sink" | "standalone";
 type Category = "all" | Exclude<DeviceCategory, "gateway_node">;
 type Mode = "calibration" | "firmware" | "transfer";
 type VitalLevel = "good" | "fair" | "low" | "critical" | "unknown";
@@ -79,8 +85,8 @@ const overviewTime = (input?: string) =>
 export const deviceCategory = (
   device: Pick<Device, "topology_role" | "device_type">,
 ): DeviceCategory => {
-  const role = device.topology_role || device.device_type;
-  return role === "gateway" || role === "gateway_node" || role === "camera"
+  const role = String(device.topology_role || device.device_type);
+  return role === "gateway" || role === "gateway_node" || role === "camera" || role === "carbon_sink"
     ? role
     : "standalone";
 };
@@ -219,7 +225,7 @@ export function DevicesPage() {
   const runtimeDeviceIDs = useMemo(
     () =>
       topLevelDevices
-        .filter((device) => deviceCategory(device) !== "camera")
+        .filter((device) => !["camera", "carbon_sink"].includes(deviceCategory(device)))
         .map((device) => device.id),
     [topLevelDevices],
   );
@@ -249,7 +255,7 @@ export function DevicesPage() {
           if (itemCategory !== "gateway_node") result[itemCategory]++;
           return result;
         },
-        { all: 0, gateway: 0, camera: 0, standalone: 0 },
+        { all: 0, gateway: 0, camera: 0, carbon_sink: 0, standalone: 0 },
       ),
     [topLevelDevices],
   );
@@ -347,9 +353,10 @@ export function DevicesPage() {
           {(
             [
               { id: "all", label: "全部" },
-              { id: "gateway", label: "组网站" },
-              { id: "camera", label: "监控站" },
               { id: "standalone", label: "标准站" },
+              { id: "gateway", label: "组网站" },
+              { id: "carbon_sink", label: "碳汇站" },
+              { id: "camera", label: "监控站" },
             ] as Array<{ id: Category; label: string }>
           ).map((item) => (
             <button
@@ -713,15 +720,20 @@ type DeviceTab =
 export const deviceDetailTab = (
   requested: string | null,
   camera: boolean,
+  carbon = false,
 ): DeviceTab => {
   const allowed: DeviceTab[] = camera
     ? ["video", "profile", "activity"]
-    : ["overview", "data", "profile", "config", "sharing", "activity"];
+    : carbon
+      ? ["data", "profile", "config", "sharing", "activity"]
+      : ["overview", "data", "profile", "config", "sharing", "activity"];
   return requested && allowed.includes(requested as DeviceTab)
     ? (requested as DeviceTab)
     : camera
       ? "video"
-      : "overview";
+      : carbon
+        ? "data"
+        : "overview";
 };
 export const legacyDeviceTarget = (device: Device) =>
   `/devices/${encodeURIComponent(device.id)}?tab=${isCameraDevice(device) ? "video" : "data"}`;
@@ -823,8 +835,9 @@ export function DeviceCenterDetailPage() {
         />
       </Panel>
     );
+  const carbonDevice = device.device_type === "carbon_sink";
   const camera = isCameraDevice(device);
-  const tab = deviceDetailTab(params.get("tab"), camera);
+  const tab = deviceDetailTab(params.get("tab"), camera, carbonDevice);
   if (params.get("tab") !== tab)
     return (
       <Navigate
@@ -843,7 +856,8 @@ export function DeviceCenterDetailPage() {
     let nextTab = tab;
     if (nextDevice) {
       const nextCamera = isCameraDevice(nextDevice);
-      nextTab = deviceDetailTab(nextTab, nextCamera);
+      const nextCarbon = nextDevice.device_type === "carbon_sink";
+      nextTab = deviceDetailTab(nextTab, nextCamera, nextCarbon);
       if (!nextCamera && tab === "video") nextTab = "data";
     }
     navigate(
@@ -878,15 +892,15 @@ export function DeviceCenterDetailPage() {
       ? [
           { id: "video", label: "实时视频" },
           { id: "profile", label: "资料" },
-          { id: "activity", label: "操作记录" },
+          { id: "activity", label: "记录" },
         ]
       : [
-          { id: "overview", label: "概览" },
+          ...(!carbonDevice ? [{ id: "overview" as DeviceTab, label: "概览" }] : []),
           { id: "data", label: "数据" },
           { id: "profile", label: "资料" },
           { id: "config", label: "配置" },
           { id: "sharing", label: "分享" },
-          { id: "activity", label: "操作记录" },
+          { id: "activity", label: "记录" },
         ]
   ) as Array<{ id: DeviceTab; label: string }>;
   return (
@@ -940,12 +954,12 @@ export function DeviceCenterDetailPage() {
       {feedback && (
         <div className="command-note device-feedback">{feedback}</div>
       )}
-      {tab === "overview" ? (
+      {carbonDevice && tab === "data" ? (
+        <CarbonDevicePage device={device} />
+      ) : tab === "overview" ? (
         <DeviceOverview
           device={device}
           workspaceId={detailWorkspaceId}
-          projects={projects.data?.items ?? []}
-          sites={sites.data?.items ?? []}
           onOpenData={() => setParams({ tab: "data" })}
         />
       ) : tab === "data" ? (
@@ -958,6 +972,7 @@ export function DeviceCenterDetailPage() {
           device={device}
           projects={projects.data?.items ?? []}
           sites={sites.data?.items ?? []}
+          operational={<DeviceProfileOperational workspaceId={detailWorkspaceId} device={device} />}
         />
       ) : tab === "sharing" ? (
         <DeviceSharingTab workspaceId={detailWorkspaceId} device={device} />
@@ -979,21 +994,35 @@ export function DeviceCenterDetailPage() {
   );
 }
 
+function DeviceProfileOperational({ device, workspaceId }: { device: Device; workspaceId: string }) {
+  const latestAttributes = useQuery({
+    queryKey: workspaceQueryKey(workspaceId, "device", device.id, "latest-attributes"),
+    queryFn: () => api.devices.latestAttributes(device.id),
+  });
+  return <div className="device-profile-operational">
+    <section className="device-profile-runtime-summary">
+      <div className="device-profile-section-heading"><div><h3>运行概况</h3><span>能力与设备最新状态</span></div><span title={`最近更新 ${overviewTime(device.updated_at)}`}><Clock3 size={14} aria-hidden="true" />{overviewTime(device.updated_at)}</span></div>
+      <div className="device-overview-summary">
+        <div className="device-detail-capabilities device-overview-capabilities">{device.capabilities.length ? device.capabilities.map((item) => <span key={item} title={item}><Badge tone="info">{deviceCapabilityLabel(item)}</Badge></span>) : <span className="muted">未声明设备能力</span>}</div>
+        <DeviceVitalIndicators attributes={latestAttributes.data?.attributes} loading={latestAttributes.isLoading} />
+      </div>
+    </section>
+    <section className="device-source-runtime">
+      <div className="device-profile-section-heading"><div><h3>源设备</h3><span>THCPN 实时状态</span></div></div>
+      {latestAttributes.isLoading ? <StateView type="loading" title="正在读取源设备" description="" /> : latestAttributes.error ? <StateView type="error" title="源设备状态不可用" description={formatApiError(latestAttributes.error).message} /> : latestAttributes.data?.source_device ? <dl className="device-source-runtime-grid"><div><dt>运行状态</dt><dd>{sourceDeviceStatus(latestAttributes.data.source_device)}</dd></div><div><dt>当前版本</dt><dd>{text(latestAttributes.data.source_device.current_device_version ?? latestAttributes.data.source_device.version)}</dd></div><div><dt>源库更新时间</dt><dd>{overviewTime(latestAttributes.data.source_device.updated_at)}</dd></div></dl> : <StateView type="empty" title="暂无源设备状态" description="当前设备没有可读取的源库运行信息。" />}
+    </section>
+  </div>;
+}
+
 function DeviceOverview({
   device,
   workspaceId,
-  projects,
-  sites,
   onOpenData,
 }: {
   device: Device;
   workspaceId: string;
-  projects: JsonRecord[];
-  sites: JsonRecord[];
   onOpenData: () => void;
 }) {
-  const project = projects.find((item) => text(item.id) === device.project_id);
-  const site = sites.find((item) => text(item.id) === device.site_id);
   const children = useQuery({
     queryKey: workspaceQueryKey(workspaceId, "device", device.id, "children"),
     queryFn: () => api.devices.children(device.id),
@@ -1009,10 +1038,6 @@ function DeviceOverview({
     !camera && device.capabilities.some((item) => item.includes("telemetry"));
   const hasImages =
     !camera && device.capabilities.some((item) => item.includes("image"));
-  const latestAttributes = useQuery({
-    queryKey: workspaceQueryKey(workspaceId, "device", device.id, "latest-attributes"),
-    queryFn: () => api.devices.latestAttributes(device.id),
-  });
   const telemetry = useQuery({
     queryKey: workspaceQueryKey(
       workspaceId,
@@ -1033,52 +1058,27 @@ function DeviceOverview({
   const recentSeries = (telemetry.data?.series ?? [])
     .filter((series) => series.points.length)
     .slice(0, 3);
-  const placement = [project?.name, site?.name].filter(Boolean).join(" / ");
+  const gateway = deviceCategory(device) === "gateway";
+  const childItems = children.data?.items ?? [];
+  const childRuntimeQueries = useQueries({
+    queries: gateway
+      ? childItems.slice(0, 8).map(({ device: child }) => ({
+          queryKey: workspaceQueryKey(workspaceId, "device", child.id, "latest-attributes", "gateway-overview"),
+          queryFn: () => api.devices.latestAttributes(child.id),
+          staleTime: 30_000,
+        }))
+      : [],
+  });
+  if (gateway) {
+    return <GatewayOverview
+      device={device}
+      children={childItems}
+      childRuntimeQueries={childRuntimeQueries}
+      onOpenData={onOpenData}
+    />;
+  }
   return (
     <>
-      <Panel className="device-overview-summary">
-        <div className="device-overview-meta">
-          <span title={placement || "未设置项目与样地"}>
-            <MapPin size={15} aria-hidden="true" />
-            {placement || "未设置项目与样地"}
-          </span>
-          <span title={`最近更新 ${overviewTime(device.updated_at)}`}>
-            <Clock3 size={15} aria-hidden="true" />
-            {overviewTime(device.updated_at)}
-          </span>
-        </div>
-        <div className="device-detail-capabilities device-overview-capabilities">
-          {device.capabilities.length ? (
-            device.capabilities.map((item) => (
-              <span key={item} title={item}>
-                <Badge tone="info">{deviceCapabilityLabel(item)}</Badge>
-              </span>
-            ))
-          ) : (
-            <span className="muted">未声明设备能力</span>
-          )}
-        </div>
-        <DeviceVitalIndicators
-          attributes={latestAttributes.data?.attributes}
-          loading={latestAttributes.isLoading}
-        />
-      </Panel>
-      {latestAttributes.data?.source_device && (
-        <Panel className="device-source-runtime section-gap">
-          <div className="panel-header compact-panel-header">
-            <div>
-              <h2 className="panel-title">源设备实时状态</h2>
-              <div className="panel-kicker">直接读取 THCPN，不保存在业务平台</div>
-            </div>
-          </div>
-          <dl className="device-source-runtime-grid">
-            <div><dt>运行状态</dt><dd>{sourceDeviceStatus(latestAttributes.data.source_device)}</dd></div>
-            <div><dt>当前版本</dt><dd>{text(latestAttributes.data.source_device.current_device_version ?? latestAttributes.data.source_device.version)}</dd></div>
-            <div><dt>源库更新时间</dt><dd>{overviewTime(latestAttributes.data.source_device.updated_at)}</dd></div>
-            <div><dt>经纬高</dt><dd>{formatSourceLocation(latestAttributes.data.source_device)}</dd></div>
-          </dl>
-        </Panel>
-      )}
       {(hasTelemetry || hasImages) && (
         <div
           className={`device-overview-signals section-gap ${hasTelemetry && hasImages ? "split" : "single"}`}
@@ -1136,58 +1136,48 @@ function DeviceOverview({
           )}
         </div>
       )}
-      {deviceCategory(device) === "gateway" && (
-        <Panel className="section-gap">
-          <div className="panel-header">
-            <div>
-              <h2 className="panel-title">网关拓扑</h2>
-              <div className="panel-kicker">当前工作区可见子节点</div>
-            </div>
-            <Badge tone="neutral">{children.data?.items.length ?? device.child_count}</Badge>
-          </div>
-          {children.isLoading ? (
-            <StateView
-              type="loading"
-              title="正在加载子节点"
-              description="正在读取设备拓扑。"
-            />
-          ) : children.error ? (
-            <StateView
-              type="error"
-              title="拓扑加载失败"
-              description={formatApiError(children.error).message}
-            />
-          ) : children.data?.items.length ? (
-            <div className="series-list">
-              {children.data.items.map(({ device: child }) => (
-                <Link
-                  className="series-row"
-                  key={child.id}
-                  to={`/devices/${child.id}`}
-                >
-                  <div>
-                    <div className="cell-title">{child.name}</div>
-                    <div className="cell-sub mono">{child.serial_no}</div>
-                  </div>
-                  <Badge
-                    tone={child.status === "active" ? "success" : "neutral"}
-                  >
-                    {deviceStatusLabel(child.status)}
-                  </Badge>
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <StateView
-              type="empty"
-              title="暂无子节点"
-              description="当前网关没有可见子设备。"
-            />
-          )}
-        </Panel>
-      )}
     </>
   );
+}
+
+function GatewayOverview({
+  device,
+  children,
+  childRuntimeQueries,
+  onOpenData,
+}: {
+  device: Device;
+  children: Array<{ device: Device }>;
+  childRuntimeQueries: Array<ReturnType<typeof useQuery<THCPNLatestAttributesResponse>>>;
+  onOpenData: () => void;
+}) {
+  const onlineCount = children.filter(({ device: child }) => child.lifecycle_status === "online" || child.status === "active").length;
+  const attentionCount = children.length - onlineCount;
+  const reportingCount = childRuntimeQueries.filter((query) => query.data?.source_device?.updated_at).length;
+  const healthPercent = children.length ? Math.round((onlineCount / children.length) * 100) : 0;
+  const reportingPercent = children.length ? Math.round((reportingCount / Math.min(children.length, 8)) * 100) : 0;
+  const visibleChildren = children.slice(0, 8);
+  return <div className="gateway-overview">
+    <section className="gateway-overview-hero">
+      <div className="gateway-overview-hero-main"><div className="gateway-overview-icon"><RadioTower size={22}/></div><div><span>组网站数据概览</span><h2>{device.name}</h2><p>网关与下挂节点的连接、数据接入和最近活动</p></div></div>
+      <div className="gateway-overview-hero-meta"><Badge tone={device.lifecycle_status === "online" ? "success" : "warning"}>{device.lifecycle_status === "online" ? "网关在线" : deviceLifecycleLabel(device.lifecycle_status)}</Badge><span className="mono">{device.serial_no || device.id}</span></div>
+    </section>
+    <div className="gateway-overview-kpis"><div><span>下挂节点</span><strong>{children.length}</strong><small>个节点</small></div><div><span>连接正常</span><strong>{onlineCount}</strong><small>/ {children.length || 0}</small></div><div><span>最近有数据</span><strong>{reportingCount}</strong><small>个节点</small></div><div className={attentionCount ? "is-warning" : "is-good"}><span>需要关注</span><strong>{attentionCount}</strong><small>{attentionCount ? "离线或无响应" : "全部正常"}</small></div></div>
+    <div className="gateway-overview-grid section-gap">
+      <Panel className="gateway-health-panel"><div className="panel-header"><div><h2 className="panel-title">节点健康度</h2><div className="panel-kicker">根据设备状态和最近源库响应判断</div></div><CircleCheck size={18}/></div><div className="gateway-health-content"><div className="gateway-health-score"><strong>{healthPercent}<small>%</small></strong><span>连接健康度</span><div className="gateway-health-bar"><i style={{width:`${healthPercent}%`}}/></div></div><div className="gateway-health-breakdown"><div><span><i className="is-online"/>在线</span><strong>{onlineCount}</strong></div><div><span><i className="is-attention"/>需关注</span><strong>{attentionCount}</strong></div><div><span><i className="is-reporting"/>有数据响应</span><strong>{reportingCount}</strong></div></div></div></Panel>
+      <Panel className="gateway-pulse-panel"><div className="panel-header"><div><h2 className="panel-title">数据接入</h2><div className="panel-kicker">最近一次同步状态</div></div><DatabaseZap size={18}/></div><div className="gateway-pulse-stat"><div><strong>{reportingPercent}<small>%</small></strong><span>节点响应率</span></div><div className="gateway-pulse-bar"><i style={{width:`${reportingPercent}%`}}/></div><p>{reportingCount ? `已读取 ${reportingCount} 个节点的源设备状态` : "正在等待节点状态"}</p><Button variant="secondary" onClick={onOpenData}>查看组网站数据 <MoveRight size={14}/></Button></div></Panel>
+    </div>
+    <Panel className="gateway-nodes-panel"><div className="panel-header"><div><h2 className="panel-title">节点数据状态</h2><div className="panel-kicker">展示最近 8 个节点，可进入节点查看完整数据</div></div><Badge tone="neutral">{children.length} 个节点</Badge></div>{children.length ? <div className="gateway-node-table"><div className="gateway-node-table-head"><span>节点</span><span>连接</span><span>信号 / 电量</span><span>最近响应</span><span></span></div>{visibleChildren.map(({device: child}, index) => { const runtime = childRuntimeQueries[index]; const attrs = runtime?.data?.attributes; const signal = inferSignalReading(firstNumericAttribute(attrs, ["rssi", "signal", "signal_strength"])); const battery = inferBatteryReading(firstNumericAttribute(attrs, ["battery", "bat", "voltage"])); const sourceUpdatedAt = runtime?.data?.source_device?.updated_at ?? child.updated_at; const isOnline = child.lifecycle_status === "online" || child.status === "active"; return <Link className="gateway-node-row" key={child.id} to={`/devices/${child.id}`}><div className="gateway-node-name"><span className={`gateway-node-dot ${isOnline ? "is-online" : "is-offline"}`}/><div><strong>{child.name}</strong><small className="mono">{child.serial_no || child.id}</small></div></div><Badge tone={isOnline ? "success" : "warning"}>{isOnline ? "在线" : "离线"}</Badge><div className="gateway-node-vitals"><span>{signal.valueLabel}</span><span>{battery.valueLabel}</span></div><time>{overviewTime(sourceUpdatedAt)}</time><MoveRight size={15}/></Link>; })}</div> : <StateView type="empty" title="暂无下挂节点" description="当前组网站还没有可见的网关节点。"/>}{children.length > visibleChildren.length && <div className="gateway-node-table-foot"><span>还有 {children.length - visibleChildren.length} 个节点未展开</span><Button variant="secondary" onClick={onOpenData}>查看全部数据</Button></div>}</Panel>
+    {attentionCount > 0 && <div className="gateway-overview-note"><CircleAlert size={16}/><span>{attentionCount} 个节点当前未在线，建议检查 LoRa 链路或设备供电。</span></div>}
+  </div>;
+}
+
+function firstNumericAttribute(attributes: THCPNLatestAttributesResponse["attributes"] | undefined, keys: string[]) {
+  for (const key of keys) {
+    const value = numericAttributeValue(attributes?.[key]);
+    if (value !== null) return value;
+  }
+  return null;
 }
 
 function DeviceActivity({
@@ -1341,8 +1331,15 @@ function DeviceConfig({
     leavesWorkspace?: boolean,
   ) => Promise<boolean>;
 }) {
+  const streams = useQuery({ queryKey: workspaceQueryKey(currentWorkspaceId, "device", device.id, "streams", "config"), queryFn: () => api.dataStreams.list(device.id) });
+  const profile = useQuery({ queryKey: workspaceQueryKey(currentWorkspaceId, "device", device.id, "profile", "config-access"), queryFn: () => api.devices.profile(device.id) });
   return (
-    <>
+    <div className="device-config-workspace">
+      <div className="device-config-heading"><div><h2>数据配置</h2><p>管理设备业务参数、计算公式与采样方式</p></div><Badge tone="neutral">{streams.data?.items.length ?? 0} 个数据流</Badge></div>
+      <div className="device-config-data-grid">
+        <ComputedStreamsPanel workspaceId={currentWorkspaceId} deviceId={device.id} streams={streams.data?.items ?? []} />
+        <DeviceMetadataPanel workspaceId={currentWorkspaceId} deviceId={device.id} canConfigure={Boolean(profile.data?.can_configure)} />
+      </div>
       <SamplingProfilePanel deviceId={device.id} workspaceId={currentWorkspaceId} />
       {systemAdmin && (
         <SystemDeviceConfig device={device} workspaces={workspaces} run={run} />
@@ -1367,7 +1364,7 @@ function DeviceConfig({
           </Button>
         </div>
       </Panel>
-    </>
+    </div>
   );
 }
 

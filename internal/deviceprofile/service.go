@@ -70,21 +70,21 @@ type SiteSummary struct {
 }
 
 type ProfileImage struct {
-	ID               uuid.UUID `json:"id"`
-	DeviceID         uuid.UUID `json:"device_id"`
-	OriginalFilename string    `json:"original_filename"`
-	ContentType      string    `json:"content_type"`
-	SizeBytes        int64     `json:"size_bytes"`
-	Width            *int32    `json:"width,omitempty"`
-	Height           *int32    `json:"height,omitempty"`
-	Caption          *string   `json:"caption,omitempty"`
-	SortOrder        int32     `json:"sort_order"`
-	IsCover          bool      `json:"is_cover"`
-	PreviewURL       string    `json:"preview_url"`
-	PreviewExpiresAt time.Time `json:"preview_expires_at"`
-	UploadedBy       uuid.UUID `json:"uploaded_by"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID               uuid.UUID  `json:"id"`
+	DeviceID         uuid.UUID  `json:"device_id"`
+	OriginalFilename string     `json:"original_filename"`
+	ContentType      string     `json:"content_type"`
+	SizeBytes        int64      `json:"size_bytes"`
+	Width            *int32     `json:"width,omitempty"`
+	Height           *int32     `json:"height,omitempty"`
+	Caption          *string    `json:"caption,omitempty"`
+	SortOrder        int32      `json:"sort_order"`
+	IsCover          bool       `json:"is_cover"`
+	PreviewURL       string     `json:"preview_url"`
+	PreviewExpiresAt time.Time  `json:"preview_expires_at"`
+	UploadedBy       *uuid.UUID `json:"uploaded_by,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 type UpdateProfileInput struct {
@@ -198,7 +198,7 @@ func (s *Service) Upload(ctx context.Context, deviceID, actorUserID uuid.UUID, i
 		row, err := tq.CreateDeviceProfileImage(ctx, sqlc.CreateDeviceProfileImageParams{
 			DeviceID: deviceID, ObjectKey: key, OriginalFilename: filepath.Base(strings.TrimSpace(input.Filename)),
 			ContentType: input.ContentType, SizeBytes: int64(len(input.Data)), Width: width, Height: height,
-			SortOrder: int32(count) + int32(index), IsCover: count == 0 && index == 0, UploadedBy: actorUserID,
+			SortOrder: int32(count) + int32(index), IsCover: count == 0 && index == 0, UploadedBy: &actorUserID,
 		})
 		if err != nil {
 			cleanup()
@@ -375,13 +375,21 @@ func (s *Service) buildProfile(ctx context.Context, q *sqlc.Queries, deviceID uu
 }
 
 func (s *Service) imageFromSQL(row sqlc.DeviceProfileImage) (ProfileImage, error) {
-	signed, err := s.signer.SignObjectURL(row.ObjectKey, profileURLTTL)
-	if err != nil {
-		return ProfileImage{}, err
+	previewURL := ""
+	previewExpiresAt := time.Time{}
+	if row.SourceUrl != nil {
+		previewURL = *row.SourceUrl
+	} else {
+		signed, err := s.signer.SignObjectURL(row.ObjectKey, profileURLTTL)
+		if err != nil {
+			return ProfileImage{}, err
+		}
+		previewURL = signed.URL
+		previewExpiresAt = signed.ExpiresAt
 	}
 	return ProfileImage{ID: row.ID, DeviceID: row.DeviceID, OriginalFilename: row.OriginalFilename, ContentType: row.ContentType,
 		SizeBytes: row.SizeBytes, Width: int32Ptr(row.Width), Height: int32Ptr(row.Height), Caption: row.Caption,
-		SortOrder: row.SortOrder, IsCover: row.IsCover, PreviewURL: signed.URL, PreviewExpiresAt: signed.ExpiresAt,
+		SortOrder: row.SortOrder, IsCover: row.IsCover, PreviewURL: previewURL, PreviewExpiresAt: previewExpiresAt,
 		UploadedBy: row.UploadedBy, CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time}, nil
 }
 

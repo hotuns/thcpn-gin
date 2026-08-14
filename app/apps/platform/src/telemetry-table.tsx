@@ -17,7 +17,6 @@ import {
 } from "lucide-react";
 import type { TelemetrySeries } from "@thcpn/api";
 import { IconButton } from "@thcpn/ui";
-import { healthyTelemetryQuality } from "./telemetry-charts";
 
 type TelemetryPoint = TelemetrySeries["points"][number] & {
   series: TelemetrySeries;
@@ -73,13 +72,7 @@ export function TelemetryTable({
             const point = row.original.values[stream.data_stream_id];
             if (!point) return <span className="muted">—</span>;
             return (
-              <span
-                className="telemetry-reading"
-                title={`质量：${point.quality}`}
-              >
-                <span
-                  className={`telemetry-quality ${healthyTelemetryQuality(point.quality) ? "healthy" : "warning"}`}
-                />
+              <span className="telemetry-reading">
                 <span className="reading-value">{String(point.value)}</span>
                 <small>{stream.unit}</small>
               </span>

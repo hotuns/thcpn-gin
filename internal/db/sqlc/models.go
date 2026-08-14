@@ -207,7 +207,7 @@ type Device struct {
 	// 设备入库、待认领、服役和退役等业务生命周期状态。
 	LifecycleStatus    string             `json:"lifecycle_status"`
 	LifecycleUpdatedAt pgtype.Timestamptz `json:"lifecycle_updated_at"`
-	// 平台设备类型，例如 gateway、node、camera 或 standalone。
+	// 平台设备类型，例如 gateway、gateway_node、camera、carbon_sink 或 standalone。
 	DeviceType string `json:"device_type"`
 }
 
@@ -367,20 +367,23 @@ type DeviceProfile struct {
 
 // 设备资料图片元数据，图片二进制存储在对象存储。
 type DeviceProfileImage struct {
-	ID               uuid.UUID          `json:"id"`
-	DeviceID         uuid.UUID          `json:"device_id"`
-	ObjectKey        string             `json:"object_key"`
-	OriginalFilename string             `json:"original_filename"`
-	ContentType      string             `json:"content_type"`
-	SizeBytes        int64              `json:"size_bytes"`
-	Width            pgtype.Int4        `json:"width"`
-	Height           pgtype.Int4        `json:"height"`
-	Caption          *string            `json:"caption"`
-	SortOrder        int32              `json:"sort_order"`
-	IsCover          bool               `json:"is_cover"`
-	UploadedBy       uuid.UUID          `json:"uploaded_by"`
-	CreatedAt        pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	ID               uuid.UUID   `json:"id"`
+	DeviceID         uuid.UUID   `json:"device_id"`
+	ObjectKey        string      `json:"object_key"`
+	OriginalFilename string      `json:"original_filename"`
+	ContentType      string      `json:"content_type"`
+	SizeBytes        int64       `json:"size_bytes"`
+	Width            pgtype.Int4 `json:"width"`
+	Height           pgtype.Int4 `json:"height"`
+	Caption          *string     `json:"caption"`
+	SortOrder        int32       `json:"sort_order"`
+	IsCover          bool        `json:"is_cover"`
+	// 人工上传者；从外部设备源同步的图片为空。
+	UploadedBy *uuid.UUID         `json:"uploaded_by"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+	// 外部设备源图片地址；人工上传图片为空。
+	SourceUrl *string `json:"source_url"`
 }
 
 // 设备永久公开地址、启用状态、密码哈希和公开会话版本。
@@ -496,6 +499,104 @@ type Permission struct {
 	Action       string    `json:"action"`
 }
 
+type ProcessingExecution struct {
+	ID                  uuid.UUID          `json:"id"`
+	TaskID              uuid.UUID          `json:"task_id"`
+	TaskVersion         int32              `json:"task_version"`
+	InputKey            string             `json:"input_key"`
+	Status              string             `json:"status"`
+	Attempt             int32              `json:"attempt"`
+	ExternalExecutionID pgtype.Text        `json:"external_execution_id"`
+	WindowStart         pgtype.Timestamptz `json:"window_start"`
+	WindowEnd           pgtype.Timestamptz `json:"window_end"`
+	ObservedAt          pgtype.Timestamptz `json:"observed_at"`
+	RequestJson         []byte             `json:"request_json"`
+	ResponseJson        []byte             `json:"response_json"`
+	ErrorMessage        string             `json:"error_message"`
+	SupersedesID        *uuid.UUID         `json:"supersedes_id"`
+	QueuedAt            pgtype.Timestamptz `json:"queued_at"`
+	StartedAt           pgtype.Timestamptz `json:"started_at"`
+	FinishedAt          pgtype.Timestamptz `json:"finished_at"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ProcessingProcessor struct {
+	Code         string             `json:"code"`
+	Version      string             `json:"version"`
+	Name         string             `json:"name"`
+	Description  string             `json:"description"`
+	ManifestJson []byte             `json:"manifest_json"`
+	Enabled      bool               `json:"enabled"`
+	SyncedAt     pgtype.Timestamptz `json:"synced_at"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ProcessingResult struct {
+	ID           uuid.UUID          `json:"id"`
+	ExecutionID  uuid.UUID          `json:"execution_id"`
+	OutputCode   string             `json:"output_code"`
+	Kind         string             `json:"kind"`
+	ObservedAt   pgtype.Timestamptz `json:"observed_at"`
+	NumericValue pgtype.Float8      `json:"numeric_value"`
+	Unit         pgtype.Text        `json:"unit"`
+	RecordJson   []byte             `json:"record_json"`
+	ObjectKey    pgtype.Text        `json:"object_key"`
+	ContentType  pgtype.Text        `json:"content_type"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+type ProcessingTask struct {
+	ID             uuid.UUID          `json:"id"`
+	WorkspaceID    uuid.UUID          `json:"workspace_id"`
+	Name           string             `json:"name"`
+	Description    string             `json:"description"`
+	TargetType     string             `json:"target_type"`
+	TargetID       uuid.UUID          `json:"target_id"`
+	Status         string             `json:"status"`
+	CurrentVersion int32              `json:"current_version"`
+	CreatedBy      uuid.UUID          `json:"created_by"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ProcessingTaskInput struct {
+	TaskID       uuid.UUID  `json:"task_id"`
+	TaskVersion  int32      `json:"task_version"`
+	SlotCode     string     `json:"slot_code"`
+	SourceType   string     `json:"source_type"`
+	SourceID     *uuid.UUID `json:"source_id"`
+	SourceTaskID *uuid.UUID `json:"source_task_id"`
+	ConfigJson   []byte     `json:"config_json"`
+}
+
+type ProcessingTaskOutput struct {
+	TaskID         uuid.UUID          `json:"task_id"`
+	TaskVersion    int32              `json:"task_version"`
+	OutputCode     string             `json:"output_code"`
+	Name           string             `json:"name"`
+	Kind           string             `json:"kind"`
+	Unit           pgtype.Text        `json:"unit"`
+	ContentType    pgtype.Text        `json:"content_type"`
+	DefinitionJson []byte             `json:"definition_json"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type ProcessingTaskVersion struct {
+	TaskID                uuid.UUID          `json:"task_id"`
+	Version               int32              `json:"version"`
+	ProcessorCode         string             `json:"processor_code"`
+	ProcessorVersion      string             `json:"processor_version"`
+	ProcessorManifestJson []byte             `json:"processor_manifest_json"`
+	ConfigJson            []byte             `json:"config_json"`
+	TriggerJson           []byte             `json:"trigger_json"`
+	StartAt               pgtype.Timestamptz `json:"start_at"`
+	EffectiveAt           pgtype.Timestamptz `json:"effective_at"`
+	CreatedBy             uuid.UUID          `json:"created_by"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+}
+
 // 工作区下的项目主数据。
 type Project struct {
 	ID          uuid.UUID          `json:"id"`
@@ -523,6 +624,28 @@ type Role struct {
 type RolePermission struct {
 	RoleID       uuid.UUID `json:"role_id"`
 	PermissionID uuid.UUID `json:"permission_id"`
+}
+
+// 平台维护的传感器配置模板库，替代各 THCPN 源库中的 sensors 表；管理员可复用模板生成设备配置，但修改模板不会自动改写已有设备配置。
+type SensorTemplate struct {
+	ID int64 `json:"id"`
+	// 传感器型号，例如 HCD6818。
+	SensorType  string  `json:"sensor_type"`
+	Description *string `json:"description"`
+	Port        *string `json:"port"`
+	PortNum     int32   `json:"port_num"`
+	// 通信驱动或协议，例如 modbusrtu。
+	Driver *string `json:"driver"`
+	// 该模板允许选择的端口编号数组。
+	PortNums []byte `json:"port_nums"`
+	// 完整协议参数与指标定义，包含 command、wait_time、contents 及厂商扩展字段。
+	Params []byte `json:"params"`
+	// 模板状态：active 可用于设备配置，disabled 仅保留维护。
+	Status    string             `json:"status"`
+	CreatedBy *uuid.UUID         `json:"created_by"`
+	UpdatedBy *uuid.UUID         `json:"updated_by"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
 // 项目下的业务站点；站点经纬度是人工维护的业务位置，可作为设备地图回退位置。

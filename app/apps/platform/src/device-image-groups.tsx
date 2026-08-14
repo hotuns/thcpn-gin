@@ -30,6 +30,7 @@ export function DeviceMedia({
   workspaceId,
   device,
   streams,
+  imageStreamIds,
   startTime,
   endTime,
   onStatsChange,
@@ -37,14 +38,21 @@ export function DeviceMedia({
   workspaceId: string;
   device: Device;
   streams: DataStream[];
+  imageStreamIds?: string[];
   startTime: string;
   endTime: string;
   onStatsChange?: (stats: ImageGroupStats) => void;
 }) {
   const queryClient = useQueryClient();
-  const imageStreams = useMemo(
+  const availableImageStreams = useMemo(
     () => streams.filter((item) => item.type === "image" && item.status === "active"),
     [streams],
+  );
+  const imageStreams = useMemo(
+    () => imageStreamIds === undefined
+      ? availableImageStreams
+      : availableImageStreams.filter((item) => imageStreamIds.includes(item.id)),
+    [availableImageStreams, imageStreamIds],
   );
   const streamSignature = imageStreams.map((item) => item.id).join(",");
   const [stats, setStats] = useState<ImageGroupStats>({});
@@ -116,8 +124,10 @@ export function DeviceMedia({
         ) : (
           <StateView
             type="empty"
-            title="当前设备没有图片来源"
-            description="设备尚未配置启用状态的图片指标。"
+            title={availableImageStreams.length ? "未选择图片指标" : "当前设备没有图片来源"}
+            description={availableImageStreams.length
+              ? "在上方图片选择器中选择要查看的图片类型。"
+              : "设备尚未配置启用状态的图片指标。"}
           />
         )}
       </Panel>

@@ -3,18 +3,20 @@ import { useQueries } from "@tanstack/react-query";
 import { ChevronDown, Search } from "lucide-react";
 import { api, type Device } from "@thcpn/api";
 
-export type DeviceOptionCategory = "all" | "gateway" | "gateway_node" | "camera" | "standalone";
+export type DeviceOptionCategory = "all" | "gateway" | "gateway_node" | "camera" | "carbon_sink" | "standalone";
 
 const categories: Array<{ id: DeviceOptionCategory; label: string }> = [
   { id: "all", label: "全部" },
-  { id: "gateway", label: "网关" },
-  { id: "camera", label: "监控站" },
   { id: "standalone", label: "标准站" },
+  { id: "gateway", label: "组网站" },
+  { id: "carbon_sink", label: "碳汇站" },
+  { id: "camera", label: "监控站" },
 ];
 
 const categoryOrder = categories.slice(1).map((item) => item.id);
 
 export const deviceOptionCategory = (device: Device): Exclude<DeviceOptionCategory, "all"> => {
+  if (device.device_type === "carbon_sink") return "carbon_sink";
   const value = device.topology_role || device.device_type;
   return value === "gateway" || value === "gateway_node" || value === "camera"
     ? value

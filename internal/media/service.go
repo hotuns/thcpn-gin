@@ -3,7 +3,9 @@ package media
 import (
 	"context"
 	"errors"
+	"net/url"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -139,9 +141,15 @@ func (s *Service) PrepareDownload(ctx context.Context, token string) (DownloadRe
 	if s.signer == nil {
 		return DownloadResult{}, apperr.New(apperr.KindInternal, "object store signer is not configured")
 	}
-	signed, err := s.signer.SignObjectURL(target.ObjectKey, mediaURLTTL)
-	if err != nil {
-		return DownloadResult{}, err
+	mediaURL, external := externalMediaURL(target.ObjectKey)
+	expiresAt := time.Now().Add(mediaURLTTL)
+	if !external {
+		signed, err := s.signer.SignObjectURL(target.ObjectKey, mediaURLTTL)
+		if err != nil {
+			return DownloadResult{}, err
+		}
+		mediaURL = signed.URL
+		expiresAt = signed.ExpiresAt
 	}
 	return DownloadResult{
 		DataStreamID: target.DataStreamID,
@@ -149,8 +157,8 @@ func (s *Service) PrepareDownload(ctx context.Context, token string) (DownloadRe
 		WorkspaceID:  target.WorkspaceID,
 		MediaID:      target.MediaID,
 		MediaType:    target.MediaType,
-		URL:          signed.URL,
-		ExpiresAt:    signed.ExpiresAt,
+		URL:          mediaURL,
+		ExpiresAt:    expiresAt,
 	}, nil
 }
 
@@ -305,17 +313,24 @@ func (s *Service) itemsFromDatasource(stream sqlc.DataStream, records []datasour
 	}
 	items := make([]Item, 0, len(records))
 	for _, record := range records {
-		preview, err := s.signer.SignObjectURL(record.ObjectKey, mediaURLTTL)
-		if err != nil {
-			return nil, err
-		}
-		thumbnailURL := preview.URL
-		if record.ThumbnailObjectKey != nil && *record.ThumbnailObjectKey != "" {
-			thumbnail, err := s.signer.SignObjectURL(*record.ThumbnailObjectKey, mediaURLTTL)
+		previewURL, external := externalMediaURL(record.ObjectKey)
+		if !external {
+			preview, err := s.signer.SignObjectURL(record.ObjectKey, mediaURLTTL)
 			if err != nil {
 				return nil, err
 			}
-			thumbnailURL = thumbnail.URL
+			previewURL = preview.URL
+		}
+		thumbnailURL := previewURL
+		if record.ThumbnailObjectKey != nil && *record.ThumbnailObjectKey != "" {
+			thumbnailURL, external = externalMediaURL(*record.ThumbnailObjectKey)
+			if !external {
+				thumbnail, err := s.signer.SignObjectURL(*record.ThumbnailObjectKey, mediaURLTTL)
+				if err != nil {
+					return nil, err
+				}
+				thumbnailURL = thumbnail.URL
+			}
 		}
 		item := Item{
 			ID:              record.ID,
@@ -324,7 +339,7 @@ func (s *Service) itemsFromDatasource(stream sqlc.DataStream, records []datasour
 			CapturedAt:      record.CapturedAt,
 			MediaType:       record.MediaType,
 			ThumbnailURL:    thumbnailURL,
-			PreviewURL:      preview.URL,
+			PreviewURL:      previewURL,
 			DownloadAllowed: downloadAllowed,
 			DeleteAllowed:   deleteAllowed,
 		}
@@ -359,6 +374,15 @@ func (s *Service) itemsFromDatasource(stream sqlc.DataStream, records []datasour
 		items = append(items, item)
 	}
 	return items, nil
+}
+
+func externalMediaURL(value string) (string, bool) {
+	value = strings.TrimSpace(value)
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", false
+	}
+	return parsed.String(), true
 }
 
 func isMediaStreamType(value string) bool {

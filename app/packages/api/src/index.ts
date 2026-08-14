@@ -19,7 +19,7 @@ export type AccessibleWorkspace = Workspace & {
   membership: WorkspaceMembership;
 };
 
-export type Device = Schema<"Device">;
+export type Device = Omit<Schema<"Device">, "device_type"> & { device_type: string };
 export type DeviceProfile = Schema<"DeviceProfile">;
 export type DeviceProfileImage = Schema<"DeviceProfileImage">;
 export type DeviceTaxonomyTerm = { id: string; kind: "ecosystem" | "observation_object" | "purpose" | "management" | "deployment"; code: string; name_zh: string; name_en: string; parent_id?: string; status: "active" | "inactive"; sort_order: number; system_defined: boolean };
@@ -123,17 +123,100 @@ export type ListResponse<T> = { items: T[]; total?: number; page?: number; page_
 export type JsonRecord = Record<string, unknown>;
 export type ProcessingProcessor = {
   code: string; version: string; name: string; description: string;
-  manifest: { inputs?: Array<{ code: string; name: string; kind: string; required?: boolean }>; outputs?: Array<{ code: string; name: string; kind: string; unit?: string }>; triggers?: string[]; parameters?: JsonRecord };
+  manifest: { inputs?: Array<{ code: string; name: string; kind: string; required?: boolean; ui?: { calibration_board?: { required?: boolean; shape?: "rectangle"; label?: string } } }>; outputs?: Array<{ code: string; name: string; kind: string; unit?: string }>; triggers?: string[]; parameters?: JsonRecord };
   enabled: boolean; synced_at: string;
 };
 export type ProcessingTask = {
   id: string; workspace_id: string; name: string; description: string;
-  target_type: "device" | "site"; target_id: string;
+  target_type: "device" | "site"; target_id: string; target_name: string;
   status: "active" | "paused" | "archived"; current_version: number;
   processor_code: string; processor_version: string;
   processor_manifest: JsonRecord; config: JsonRecord; trigger: JsonRecord;
-  start_at: string; inputs?: Array<JsonRecord>; created_at: string; updated_at: string;
+  start_at: string; inputs?: Array<JsonRecord>; outputs?: Array<{ code: string; name: string; kind: string; unit?: string; content_type?: string }>; created_at: string; updated_at: string;
   last_execution_status?: string; last_execution_at?: string;
+};
+export type ProcessingResult = {
+  id: string; output_code: string; kind: "metric" | "record" | "artifact";
+  observed_at?: string; numeric_value?: number; unit?: string; record: JsonRecord;
+  url?: string; content_type?: string; created_at: string;
+};
+export type ProcessingExecution = {
+  id: string; task_id: string; task_version: number; input_key: string; status: string; attempt: number;
+  observed_at?: string; queued_at?: string; started_at?: string; finished_at?: string;
+  error_message: string; inputs?: Array<{ slot_code: string; kind: string; url?: string; observed_at?: string; metadata?: JsonRecord }>; created_at: string; results: ProcessingResult[];
+};
+export type CarbonNodeStatus = {
+  node_id: number;
+  status: "has_data" | "no_data";
+  latest_sample_at?: string;
+  latest_flux_at?: string;
+};
+export type CarbonOverview = {
+  device_id: string;
+  external_device_id: number;
+  nodes_count: number;
+  nodes: CarbonNodeStatus[];
+  status: "has_data" | "no_data";
+  runtime?: { battery?: string; signal?: string; network?: string };
+  latest_sample_at?: string;
+  latest_flux_at?: string;
+  refreshed_at: string;
+};
+export type CarbonFluxPoint = {
+  node_id: number;
+  period: string;
+  period_at: string;
+  field: string;
+  nee?: number;
+  er?: number;
+  gpp?: number;
+};
+export type CarbonFluxResponse = {
+  device_id: string;
+  node_id: number;
+  field: string;
+  start: string;
+  end: string;
+  points: CarbonFluxPoint[];
+};
+export type CarbonPeriodSummary = {
+  node_id: number;
+  period: string;
+  period_at: string;
+  fields: string[];
+  flux_fields: string[];
+};
+export type CarbonSensorSample = {
+  ts: string;
+  co2?: number;
+  temperature?: number;
+  humidity?: number;
+  temp_l?: number;
+  humi_l?: number;
+  temp_b?: number;
+  humi_b?: number;
+  stemp?: number;
+  shumi?: number;
+};
+export type CarbonRawPhase = {
+  room: "light" | "black" | string;
+  field: string;
+  start_at?: string;
+  end_at?: string;
+  samples: number;
+  complete: boolean;
+  points: CarbonSensorSample[];
+};
+export type CarbonPeriodDetail = {
+  device_id: string;
+  external_device_id: number;
+  node_id: number;
+  period: string;
+  period_at: string;
+  field: string;
+  flux?: { field: string; nee?: number; er?: number; gpp?: number };
+  phases: CarbonRawPhase[];
+  warnings?: string[];
 };
 
 const queryString = (
@@ -714,6 +797,34 @@ export const api = {
         method: "POST",
       }),
   },
+  carbon: {
+    overview: (deviceId: string) =>
+      request<CarbonOverview>(`/api/v1/devices/${encodeURIComponent(deviceId)}/carbon/overview`),
+    flux: (
+      deviceId: string,
+      input: { nodeId: number; field: string; start?: string; end?: string },
+    ) =>
+      request<CarbonFluxResponse>(
+        `/api/v1/devices/${encodeURIComponent(deviceId)}/carbon/flux${queryString({ node_id: input.nodeId, field: input.field, start: input.start, end: input.end })}`,
+      ),
+    periods: (
+      deviceId: string,
+      input: { nodeId: number; start?: string; end?: string },
+    ) =>
+      request<ListResponse<CarbonPeriodSummary>>(
+        `/api/v1/devices/${encodeURIComponent(deviceId)}/carbon/periods${queryString({ node_id: input.nodeId, start: input.start, end: input.end })}`,
+      ),
+    period: (deviceId: string, input: { nodeId: number; field: string; period: string }) =>
+      request<CarbonPeriodDetail>(
+        `/api/v1/devices/${encodeURIComponent(deviceId)}/carbon/periods/${encodeURIComponent(input.period)}${queryString({ node_id: input.nodeId, field: input.field })}`,
+      ),
+    export: (deviceId: string, payload: { export_type: "carbon_flux_csv" | "carbon_raw_csv"; node_id: number; field: string; start_time: string; end_time: string; limit?: number }) =>
+      jsonRequest<ExportJob>(
+        `/api/v1/devices/${encodeURIComponent(deviceId)}/carbon/exports`,
+        "POST",
+        payload,
+      ),
+  },
   deviceClaims: {
     entry: (slug: string) =>
       anonymousRequest<{ login_required: boolean }>(
@@ -866,6 +977,7 @@ export const api = {
     processors: () => request<ListResponse<ProcessingProcessor>>("/api/v1/processing/processors"),
     list: (workspaceId: string) => request<ListResponse<ProcessingTask>>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/processing-tasks`),
     get: (workspaceId: string, taskId: string) => request<ProcessingTask>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/processing-tasks/${encodeURIComponent(taskId)}`),
+    executions: (workspaceId: string, taskId: string) => request<ListResponse<ProcessingExecution>>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/processing-tasks/${encodeURIComponent(taskId)}/executions`),
     create: (workspaceId: string, payload: JsonRecord) => jsonRequest<ProcessingTask>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/processing-tasks`, "POST", payload),
     status: (workspaceId: string, taskId: string, status: string) => jsonRequest<ProcessingTask>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/processing-tasks/${encodeURIComponent(taskId)}/status`, "PATCH", { status }),
   },
@@ -945,6 +1057,22 @@ export const api = {
         "POST",
         {},
       ),
+    carbonDevices: (id: string) =>
+      request<ListResponse<Record<string, unknown>>>(
+        `/api/v1/admin/data-sources/${encodeURIComponent(id)}/carbon-sink/devices`,
+      ),
+    syncCarbonDevice: (id: string, payload: { external_device_id: number }) =>
+      jsonRequest<JsonRecord>(
+        `/api/v1/admin/data-sources/${encodeURIComponent(id)}/carbon-sink/devices`,
+        "POST",
+        payload,
+      ),
+    syncAllCarbonDevices: (id: string) =>
+      jsonRequest<JsonRecord>(
+        `/api/v1/admin/data-sources/${encodeURIComponent(id)}/carbon-sink/devices/sync-all`,
+        "POST",
+        {},
+      ),
     syncGateway: (id: string, payload: JsonRecord) =>
       jsonRequest<JsonRecord>(
         `/api/v1/admin/data-sources/${encodeURIComponent(id)}/thcpn-standard-station/gateways`,
@@ -974,6 +1102,10 @@ export const api = {
     deviceAttributes: (id: string) =>
       request<THCPNLatestAttributesResponse>(
         `/api/v1/admin/devices/${encodeURIComponent(id)}/attributes/latest`,
+      ),
+    carbonOverview: (id: string) =>
+      request<CarbonOverview>(
+        `/api/v1/admin/devices/${encodeURIComponent(id)}/carbon/overview`,
       ),
     deviceRuntime: async (deviceIds: string[]) => {
       const batches = Array.from(
