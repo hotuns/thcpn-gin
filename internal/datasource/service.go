@@ -52,8 +52,8 @@ func (s *Service) validateDeviceHistory(ctx context.Context, deviceID uuid.UUID,
 	if err != nil {
 		return err
 	}
-	if summary.Plan == billing.PlanBase && start.Before(time.Now().UTC().AddDate(0, 0, -90)) {
-		return apperr.New(apperr.KindPermissionDenied, "base plan online history is limited to the latest 90 days")
+	if summary.Plan == billing.PlanBase && start.Before(time.Now().UTC().AddDate(0, 0, -s.billing.BaseHistoryDays())) {
+		return apperr.New(apperr.KindPermissionDenied, "base plan online history is outside the configured window")
 	}
 	return nil
 }

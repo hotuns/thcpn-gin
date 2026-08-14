@@ -3,6 +3,7 @@ package billing
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 	"time"
 
@@ -14,12 +15,26 @@ import (
 )
 
 const (
-	PlanBase                          = "base"
-	PlanProfessional                  = "professional"
-	DefaultMonthlyDownloadLimit int64 = 100 * 1024 * 1024 * 1024
+	PlanBase         = "base"
+	PlanProfessional = "professional"
 )
 
-type Service struct{ db *pgxpool.Pool }
+type Policy struct {
+	ProfessionalAnnualPriceCents    int64
+	ProfessionalDefaultMonths       int
+	BaseHistoryDays                 int
+	BaseExportDays                  int
+	MonthlyDownloadLimitBytes       int64
+	TrafficPackSizeBytes            int64
+	TrafficPackPriceCents           int64
+	ExpiryNoticeDays                []int
+	DownloadUsageWarningPercentages []int
+}
+
+type Service struct {
+	db     *pgxpool.Pool
+	policy Policy
+}
 
 type Summary struct {
 	WorkspaceID                   uuid.UUID  `json:"workspace_id"`
@@ -36,6 +51,12 @@ type Summary struct {
 	WarningLevel                  int        `json:"warning_level"`
 	DaysUntilExpiry               *int       `json:"days_until_expiry,omitempty"`
 	Notices                       []Notice   `json:"notices"`
+	ProfessionalAnnualPriceCents  int64      `json:"professional_annual_price_cents"`
+	ProfessionalDefaultMonths     int        `json:"professional_default_months"`
+	BaseHistoryDays               int        `json:"base_history_days"`
+	BaseExportDays                int        `json:"base_export_days"`
+	TrafficPackSizeBytes          int64      `json:"traffic_pack_size_bytes"`
+	TrafficPackPriceCents         int64      `json:"traffic_pack_price_cents"`
 }
 
 type Notice struct {
@@ -100,7 +121,16 @@ type ReserveDownloadInput struct {
 	IdempotencyKey string
 }
 
-func NewService(db *pgxpool.Pool) *Service { return &Service{db: db} }
+func NewService(db *pgxpool.Pool, policy Policy) *Service {
+	policy.ExpiryNoticeDays = append([]int(nil), policy.ExpiryNoticeDays...)
+	policy.DownloadUsageWarningPercentages = append([]int(nil), policy.DownloadUsageWarningPercentages...)
+	sort.Sort(sort.Reverse(sort.IntSlice(policy.ExpiryNoticeDays)))
+	sort.Ints(policy.DownloadUsageWarningPercentages)
+	return &Service{db: db, policy: policy}
+}
+
+func (s *Service) BaseHistoryDays() int { return s.policy.BaseHistoryDays }
+func (s *Service) BaseExportDays() int  { return s.policy.BaseExportDays }
 
 func monthStart(now time.Time) time.Time {
 	y, m, _ := now.UTC().Date()
@@ -114,30 +144,37 @@ func (s *Service) Summary(ctx context.Context, workspaceID uuid.UUID) (Summary, 
 	now := time.Now().UTC()
 	month := monthStart(now)
 	var started, expires *time.Time
-	var limit, pack, used int64
+	var pack, used int64
 	err := s.db.QueryRow(ctx, `
 		SELECT a.professional_started_at, a.professional_expires_at,
-			COALESCE(a.monthly_download_limit_bytes, $2), COALESCE(a.traffic_pack_balance_bytes, 0),
-			COALESCE((SELECT sum(u.monthly_bytes) FROM workspace_download_usage u WHERE u.workspace_id=$1 AND u.usage_month=$3), 0)
+			COALESCE(a.traffic_pack_balance_bytes, 0),
+			COALESCE((SELECT sum(u.monthly_bytes) FROM workspace_download_usage u WHERE u.workspace_id=$1 AND u.usage_month=$2), 0)
 		FROM workspaces w LEFT JOIN workspace_billing_accounts a ON a.workspace_id=w.id WHERE w.id=$1
-	`, workspaceID, DefaultMonthlyDownloadLimit, month).Scan(&started, &expires, &limit, &pack, &used)
+	`, workspaceID, month).Scan(&started, &expires, &pack, &used)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Summary{}, apperr.New(apperr.KindNotFound, "workspace not found")
 	}
 	if err != nil {
 		return Summary{}, apperr.Wrap(apperr.KindInternal, "load workspace billing", err)
 	}
-	return makeSummary(workspaceID, started, expires, limit, pack, used, now), nil
+	return s.makeSummary(workspaceID, started, expires, pack, used, now), nil
 }
 
-func makeSummary(workspaceID uuid.UUID, started, expires *time.Time, limit, pack, used int64, now time.Time) Summary {
+func (s *Service) makeSummary(workspaceID uuid.UUID, started, expires *time.Time, pack, used int64, now time.Time) Summary {
 	professional := started != nil && !started.After(now) && expires != nil && expires.After(now)
+	limit := int64(0)
+	if professional {
+		limit = s.policy.MonthlyDownloadLimitBytes
+	}
 	remaining := limit - used
 	if remaining < 0 {
 		remaining = 0
 	}
 	result := Summary{WorkspaceID: workspaceID, Plan: PlanBase, ProfessionalStartedAt: started, ProfessionalExpiresAt: expires,
-		MonthlyDownloadLimitBytes: limit, MonthlyDownloadUsedBytes: used, MonthlyDownloadRemainingBytes: remaining, TrafficPackBalanceBytes: pack, Notices: []Notice{}}
+		MonthlyDownloadLimitBytes: limit, MonthlyDownloadUsedBytes: used, MonthlyDownloadRemainingBytes: remaining, TrafficPackBalanceBytes: pack, Notices: []Notice{},
+		ProfessionalAnnualPriceCents: s.policy.ProfessionalAnnualPriceCents, ProfessionalDefaultMonths: s.policy.ProfessionalDefaultMonths,
+		BaseHistoryDays: s.policy.BaseHistoryDays, BaseExportDays: s.policy.BaseExportDays,
+		TrafficPackSizeBytes: s.policy.TrafficPackSizeBytes, TrafficPackPriceCents: s.policy.TrafficPackPriceCents}
 	if professional {
 		result.Plan = PlanProfessional
 		result.FullHistory = true
@@ -147,28 +184,40 @@ func makeSummary(workspaceID uuid.UUID, started, expires *time.Time, limit, pack
 			days = 0
 		}
 		result.DaysUntilExpiry = &days
-		if days <= 30 {
-			level := "info"
-			if days <= 7 {
-				level = "warning"
-			}
-			if days <= 1 {
-				level = "error"
-			}
+		if len(s.policy.ExpiryNoticeDays) > 0 && days <= s.policy.ExpiryNoticeDays[0] {
+			level := expiryNoticeLevel(days, s.policy.ExpiryNoticeDays)
 			result.Notices = append(result.Notices, Notice{Code: "professional_expiring", Level: level, Message: "专业版将在近期到期"})
 		}
 	}
 	if limit > 0 {
 		result.UsagePercent = float64(used) * 100 / float64(limit)
 	}
-	if result.UsagePercent >= 95 {
-		result.WarningLevel = 95
-		result.Notices = append(result.Notices, Notice{Code: "download_usage_95", Level: "error", Message: "本月下载额度已使用 95% 以上"})
-	} else if result.UsagePercent >= 80 {
-		result.WarningLevel = 80
-		result.Notices = append(result.Notices, Notice{Code: "download_usage_80", Level: "warning", Message: "本月下载额度已使用 80% 以上"})
+	for _, threshold := range s.policy.DownloadUsageWarningPercentages {
+		if result.UsagePercent >= float64(threshold) {
+			result.WarningLevel = threshold
+		}
+	}
+	if result.WarningLevel > 0 {
+		level := "warning"
+		if result.WarningLevel == s.policy.DownloadUsageWarningPercentages[len(s.policy.DownloadUsageWarningPercentages)-1] {
+			level = "error"
+		}
+		result.Notices = append(result.Notices, Notice{Code: "download_usage_warning", Level: level, Message: "本月下载额度即将用尽"})
 	}
 	return result
+}
+
+func expiryNoticeLevel(days int, thresholds []int) string {
+	level := "info"
+	for index, threshold := range thresholds {
+		if days <= threshold && index > 0 {
+			level = "warning"
+		}
+	}
+	if len(thresholds) > 1 && days <= thresholds[len(thresholds)-1] {
+		level = "error"
+	}
+	return level
 }
 
 func (s *Service) RequireProfessional(ctx context.Context, workspaceID uuid.UUID) error {
@@ -197,8 +246,8 @@ func (s *Service) ReserveDownload(ctx context.Context, in ReserveDownloadInput) 
 	}
 	defer tx.Rollback(ctx)
 	var started, expires *time.Time
-	var limit, pack int64
-	err = tx.QueryRow(ctx, `SELECT professional_started_at,professional_expires_at,monthly_download_limit_bytes,traffic_pack_balance_bytes FROM workspace_billing_accounts WHERE workspace_id=$1 FOR UPDATE`, in.WorkspaceID).Scan(&started, &expires, &limit, &pack)
+	var pack int64
+	err = tx.QueryRow(ctx, `SELECT professional_started_at,professional_expires_at,traffic_pack_balance_bytes FROM workspace_billing_accounts WHERE workspace_id=$1 FOR UPDATE`, in.WorkspaceID).Scan(&started, &expires, &pack)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return apperr.New(apperr.KindPermissionDenied, "professional plan required for file downloads")
 	}
@@ -223,7 +272,7 @@ func (s *Service) ReserveDownload(ctx context.Context, in ReserveDownloadInput) 
 	if err != nil {
 		return apperr.Wrap(apperr.KindInternal, "load monthly download usage", err)
 	}
-	monthlyAvailable := limit - used
+	monthlyAvailable := s.policy.MonthlyDownloadLimitBytes - used
 	if monthlyAvailable < 0 {
 		monthlyAvailable = 0
 	}
@@ -257,6 +306,12 @@ func (s *Service) GrantProfessional(ctx context.Context, workspaceID, adminID uu
 	in.Reason = strings.TrimSpace(in.Reason)
 	if in.SourceType != "device_order" && in.SourceType != "service_contract" && in.SourceType != "manual_correction" {
 		return Summary{}, apperr.New(apperr.KindInvalidArgument, "invalid grant source type")
+	}
+	if in.SourceType != "manual_correction" && in.ReferenceNo == "" {
+		return Summary{}, apperr.New(apperr.KindInvalidArgument, "contract or order reference is required")
+	}
+	if in.SourceType == "device_order" && in.DurationMonths > s.policy.ProfessionalDefaultMonths {
+		return Summary{}, apperr.New(apperr.KindInvalidArgument, "a device order can grant at most one standard professional term")
 	}
 	if len(in.Reason) < 5 {
 		return Summary{}, apperr.New(apperr.KindInvalidArgument, "grant reason must contain at least 5 characters")
@@ -296,12 +351,15 @@ func (s *Service) GrantProfessional(ctx context.Context, workspaceID, adminID uu
 	} else {
 		months := in.DurationMonths
 		if months <= 0 {
-			months = 12
+			months = s.policy.ProfessionalDefaultMonths
 		}
 		end = start.AddDate(0, months, 0)
 	}
 	if !end.After(start) {
 		return Summary{}, apperr.New(apperr.KindInvalidArgument, "grant end must be after start")
+	}
+	if in.SourceType == "device_order" && end.After(start.AddDate(0, s.policy.ProfessionalDefaultMonths, 0)) {
+		return Summary{}, apperr.New(apperr.KindInvalidArgument, "a device order can grant at most one standard professional term")
 	}
 	var ref any
 	if in.ReferenceNo != "" {
@@ -309,6 +367,9 @@ func (s *Service) GrantProfessional(ctx context.Context, workspaceID, adminID uu
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO workspace_plan_grants(workspace_id,source_type,reference_no,amount_cents,starts_at,ends_at,reason,actor_admin_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, workspaceID, in.SourceType, ref, in.AmountCents, start, end, in.Reason, adminID)
 	if err != nil {
+		if strings.Contains(err.Error(), "workspace_plan_grants_reference_unique") {
+			return Summary{}, apperr.New(apperr.KindConflict, "this contract or order has already granted professional access")
+		}
 		return Summary{}, apperr.Wrap(apperr.KindInternal, "record professional grant", err)
 	}
 	accountStart := start
@@ -398,10 +459,10 @@ func (s *Service) History(ctx context.Context, workspaceID uuid.UUID) (History, 
 func (s *Service) AdminRiskWorkspaces(ctx context.Context, filter string) ([]RiskWorkspace, error) {
 	now := time.Now().UTC()
 	rows, err := s.db.Query(ctx, `SELECT w.id,w.name,a.professional_started_at,a.professional_expires_at,
-		COALESCE(a.monthly_download_limit_bytes,$1),COALESCE(a.traffic_pack_balance_bytes,0),COALESCE(sum(u.monthly_bytes),0)
+		COALESCE(a.traffic_pack_balance_bytes,0),COALESCE(sum(u.monthly_bytes),0)
 		FROM workspaces w LEFT JOIN workspace_billing_accounts a ON a.workspace_id=w.id
-		LEFT JOIN workspace_download_usage u ON u.workspace_id=w.id AND u.usage_month=$2
-		GROUP BY w.id,w.name,a.professional_started_at,a.professional_expires_at,a.monthly_download_limit_bytes,a.traffic_pack_balance_bytes ORDER BY w.name`, DefaultMonthlyDownloadLimit, monthStart(now))
+		LEFT JOIN workspace_download_usage u ON u.workspace_id=w.id AND u.usage_month=$1
+		GROUP BY w.id,w.name,a.professional_started_at,a.professional_expires_at,a.traffic_pack_balance_bytes ORDER BY w.name`, monthStart(now))
 	if err != nil {
 		return nil, apperr.Wrap(apperr.KindInternal, "list billing workspaces", err)
 	}
@@ -411,18 +472,18 @@ func (s *Service) AdminRiskWorkspaces(ctx context.Context, filter string) ([]Ris
 		var id uuid.UUID
 		var name string
 		var started, expires *time.Time
-		var limit, pack, used int64
-		if err = rows.Scan(&id, &name, &started, &expires, &limit, &pack, &used); err != nil {
+		var pack, used int64
+		if err = rows.Scan(&id, &name, &started, &expires, &pack, &used); err != nil {
 			return nil, apperr.Wrap(apperr.KindInternal, "scan billing workspace", err)
 		}
-		summary := makeSummary(id, started, expires, limit, pack, used, now)
+		summary := s.makeSummary(id, started, expires, pack, used, now)
 		risks := []string{}
 		if summary.ProfessionalExpiresAt != nil && !summary.ProfessionalExpiresAt.After(now) {
 			risks = append(risks, "professional_expired")
-		} else if summary.DaysUntilExpiry != nil && *summary.DaysUntilExpiry <= 30 {
+		} else if summary.DaysUntilExpiry != nil && len(s.policy.ExpiryNoticeDays) > 0 && *summary.DaysUntilExpiry <= s.policy.ExpiryNoticeDays[0] {
 			risks = append(risks, "professional_expiring")
 		}
-		if summary.WarningLevel >= 80 {
+		if summary.WarningLevel > 0 {
 			risks = append(risks, "download_usage_warning")
 		}
 		if len(risks) == 0 {

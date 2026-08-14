@@ -14,6 +14,9 @@ export type Workspace = Schema<"Workspace">;
 export type WorkspaceMembership = Schema<"WorkspaceMembership">;
 export type WorkspaceWithMembership = Schema<"WorkspaceWithMembership">;
 export type WorkspaceMember = Schema<"WorkspaceMember">;
+export type WorkspaceBillingSummary = Schema<"WorkspaceBillingSummary">;
+export type WorkspaceApiKey = Schema<"WorkspaceApiKey">;
+export type WorkspaceApiKeyCreated = Schema<"CreatedWorkspaceApiKey">;
 
 export type AccessibleWorkspace = Workspace & {
   membership: WorkspaceMembership;
@@ -543,9 +546,9 @@ export const api = {
       }),
     update: (workspaceId: string, payload: { name: string }) =>
       jsonRequest<WorkspaceWithMembership>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}`, "PATCH", payload),
-    billing: (workspaceId: string) => request<JsonRecord>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing`),
-    apiKeys: (workspaceId: string) => request<ListResponse<JsonRecord>>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/api-keys`),
-    createApiKey: (workspaceId: string, payload: JsonRecord) => jsonRequest<JsonRecord>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/api-keys`, "POST", payload),
+    billing: (workspaceId: string) => request<WorkspaceBillingSummary>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing`),
+    apiKeys: (workspaceId: string) => request<ListResponse<WorkspaceApiKey>>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/api-keys`),
+    createApiKey: (workspaceId: string, payload: JsonRecord) => jsonRequest<WorkspaceApiKeyCreated>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/api-keys`, "POST", payload),
     revokeApiKey: (workspaceId: string, keyId: string) => request<void>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/api-keys/${encodeURIComponent(keyId)}`, { method: "DELETE" }),
     adminList: (filters: JsonRecord = {}) =>
       request<ListResponse<JsonRecord>>(`/api/v1/admin/workspaces${queryString(filters as Record<string, string | number | boolean>)}`),

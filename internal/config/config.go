@@ -23,6 +23,7 @@ type Config struct {
 	ObjectStore         ObjectStoreConfig `yaml:"object_store"`
 	THCPNLogObjectStore ObjectStoreConfig `yaml:"thcpn_log_object_store"`
 	QueryLimits         QueryLimitsConfig `yaml:"query_limits"`
+	Billing             BillingConfig     `yaml:"billing"`
 	Export              ExportConfig      `yaml:"export"`
 	Processing          ProcessingConfig  `yaml:"processing"`
 	Tracing             TracingConfig     `yaml:"tracing"`
@@ -114,6 +115,18 @@ type QueryLimitsConfig struct {
 	MaxHistoryDays   int `yaml:"max_history_days"`
 	MaxPoints        int `yaml:"max_points"`
 	MaxMediaPageSize int `yaml:"max_media_page_size"`
+}
+
+type BillingConfig struct {
+	ProfessionalAnnualPriceCents    int64 `yaml:"professional_annual_price_cents"`
+	ProfessionalDefaultMonths       int   `yaml:"professional_default_months"`
+	BaseHistoryDays                 int   `yaml:"base_history_days"`
+	BaseExportDays                  int   `yaml:"base_export_days"`
+	MonthlyDownloadLimitGB          int64 `yaml:"monthly_download_limit_gb"`
+	TrafficPackSizeGB               int64 `yaml:"traffic_pack_size_gb"`
+	TrafficPackPriceCents           int64 `yaml:"traffic_pack_price_cents"`
+	ExpiryNoticeDays                []int `yaml:"expiry_notice_days"`
+	DownloadUsageWarningPercentages []int `yaml:"download_usage_warning_percentages"`
 }
 
 type ExportConfig struct {
@@ -223,6 +236,17 @@ func Default() Config {
 			MaxHistoryDays:   366,
 			MaxPoints:        5000,
 			MaxMediaPageSize: 100,
+		},
+		Billing: BillingConfig{
+			ProfessionalAnnualPriceCents:    200000,
+			ProfessionalDefaultMonths:       12,
+			BaseHistoryDays:                 90,
+			BaseExportDays:                  7,
+			MonthlyDownloadLimitGB:          100,
+			TrafficPackSizeGB:               100,
+			TrafficPackPriceCents:           10000,
+			ExpiryNoticeDays:                []int{30, 7, 1},
+			DownloadUsageWarningPercentages: []int{80, 95},
 		},
 		Export: ExportConfig{
 			FileTTLHours: 72,
@@ -412,6 +436,22 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.QueryLimits.MaxMediaPageSize <= 0 {
 		return errors.New("query_limits.max_media_page_size must be greater than 0")
+	}
+	if cfg.Billing.ProfessionalAnnualPriceCents < 0 || cfg.Billing.ProfessionalDefaultMonths <= 0 || cfg.Billing.BaseHistoryDays <= 0 || cfg.Billing.BaseExportDays <= 0 || cfg.Billing.MonthlyDownloadLimitGB <= 0 || cfg.Billing.TrafficPackSizeGB <= 0 || cfg.Billing.TrafficPackPriceCents < 0 {
+		return errors.New("billing commercial parameters must be positive")
+	}
+	if len(cfg.Billing.ExpiryNoticeDays) == 0 || len(cfg.Billing.DownloadUsageWarningPercentages) == 0 {
+		return errors.New("billing notice thresholds are required")
+	}
+	for _, days := range cfg.Billing.ExpiryNoticeDays {
+		if days < 0 {
+			return errors.New("billing.expiry_notice_days must not contain negative values")
+		}
+	}
+	for _, percent := range cfg.Billing.DownloadUsageWarningPercentages {
+		if percent <= 0 || percent >= 100 {
+			return errors.New("billing.download_usage_warning_percentages values must be between 1 and 99")
+		}
 	}
 	if cfg.Export.FileTTLHours <= 0 {
 		return errors.New("export.file_ttl_hours must be greater than 0")

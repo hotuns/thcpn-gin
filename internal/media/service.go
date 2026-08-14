@@ -168,7 +168,7 @@ func (s *Service) PrepareDownload(ctx context.Context, token string, actorIDs ..
 		if actorID != uuid.Nil {
 			actorUserID = &actorID
 		}
-		if err = s.billing.ReserveDownload(ctx, billing.ReserveDownloadInput{WorkspaceID: target.WorkspaceID, SourceType: "media", ResourceID: &resourceID, ObjectKey: target.ObjectKey, Bytes: info.SizeBytes, ActorUserID: actorUserID, IdempotencyKey: "media:" + target.MediaID + ":" + actorID.String()}); err != nil {
+		if err = s.billing.ReserveDownload(ctx, billing.ReserveDownloadInput{WorkspaceID: target.WorkspaceID, SourceType: "media", ResourceID: &resourceID, ObjectKey: target.ObjectKey, Bytes: info.SizeBytes, ActorUserID: actorUserID, IdempotencyKey: "media:" + target.MediaID + ":" + uuid.NewString()}); err != nil {
 			return DownloadResult{}, err
 		}
 	}

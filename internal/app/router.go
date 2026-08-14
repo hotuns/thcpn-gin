@@ -99,7 +99,18 @@ func NewRouter(deps Dependencies) (*gin.Engine, error) {
 func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) error {
 	userService := user.NewService(deps.Postgres)
 	workspaceService := workspace.NewService(deps.Postgres)
-	billingService := billing.NewService(deps.Postgres)
+	const bytesPerGB int64 = 1024 * 1024 * 1024
+	billingService := billing.NewService(deps.Postgres, billing.Policy{
+		ProfessionalAnnualPriceCents:    cfg.Billing.ProfessionalAnnualPriceCents,
+		ProfessionalDefaultMonths:       cfg.Billing.ProfessionalDefaultMonths,
+		BaseHistoryDays:                 cfg.Billing.BaseHistoryDays,
+		BaseExportDays:                  cfg.Billing.BaseExportDays,
+		MonthlyDownloadLimitBytes:       cfg.Billing.MonthlyDownloadLimitGB * bytesPerGB,
+		TrafficPackSizeBytes:            cfg.Billing.TrafficPackSizeGB * bytesPerGB,
+		TrafficPackPriceCents:           cfg.Billing.TrafficPackPriceCents,
+		ExpiryNoticeDays:                cfg.Billing.ExpiryNoticeDays,
+		DownloadUsageWarningPercentages: cfg.Billing.DownloadUsageWarningPercentages,
+	})
 	permissionChecker := permission.NewChecker(sqlc.New(deps.Postgres))
 	permissionCatalogService := permission.NewCatalogService(deps.Postgres)
 	auditService := audit.NewService(deps.Postgres)
@@ -205,7 +216,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	dataSourceHandler.SetClaimCredentialEnsurer(deviceClaimService)
 	dataSourceHandler.SetTHCPNLogSigner(thcpnLogSigner)
 	telemetryHandler := telemetry.NewHandler(telemetryService, permissionChecker)
-	openAPIHandler := openapiaccess.NewHandler(openAPIService, telemetryService, permissionChecker, auditService)
+	openAPIHandler := openapiaccess.NewHandler(openAPIService, telemetryService, exportService, permissionChecker, auditService)
 	mediaHandler := media.NewHandler(mediaService, permissionChecker, auditService)
 	publicDeviceHandler := publicdevice.NewHandler(publicDeviceService, telemetryService, mediaService, permissionChecker, auditService, deps.Redis, cfg.Auth.JWTSecret)
 	exportHandler := export.NewHandler(exportService, permissionChecker, auditService)
@@ -235,6 +246,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	api.GET("/device-claims/:claim_slug", deviceClaimHandler.PublicEntry)
 	api.POST("/admin/auth/refresh", adminAuthHandler.Refresh)
 	api.GET("/open/devices/:device_id/telemetry", openAPIHandler.QueryTelemetry)
+	api.GET("/open/exports/:export_job_id/download", openAPIHandler.DownloadExport)
 	if cfg.Auth.DevRegisterEnabled {
 		api.POST("/auth/register", userHandler.Register)
 	} else {

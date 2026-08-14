@@ -317,7 +317,7 @@ func (s *Service) PrepareResultDownload(ctx context.Context, workspaceID, result
 	if info.SizeBytes <= 0 {
 		return "", time.Time{}, apperr.New(apperr.KindConflict, "processing artifact size is unavailable")
 	}
-	if err = s.billing.ReserveDownload(ctx, billing.ReserveDownloadInput{WorkspaceID: workspaceID, SourceType: "processing", ResourceID: &resultID, ObjectKey: objectKey, Bytes: info.SizeBytes, ActorUserID: &actorID, IdempotencyKey: "processing:" + resultID.String() + ":" + actorID.String()}); err != nil {
+	if err = s.billing.ReserveDownload(ctx, billing.ReserveDownloadInput{WorkspaceID: workspaceID, SourceType: "processing", ResourceID: &resultID, ObjectKey: objectKey, Bytes: info.SizeBytes, ActorUserID: &actorID, IdempotencyKey: "processing:" + resultID.String() + ":" + uuid.NewString()}); err != nil {
 		return "", time.Time{}, err
 	}
 	signed, err := s.signer.SignObjectURL(objectKey, 15*time.Minute)

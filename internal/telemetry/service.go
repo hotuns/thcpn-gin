@@ -149,8 +149,8 @@ func (s *Service) validateHistoryWindow(ctx context.Context, input QueryInput) e
 	if err != nil {
 		return err
 	}
-	if summary.Plan == billing.PlanBase && input.StartTime.Before(time.Now().UTC().AddDate(0, 0, -90)) {
-		return apperr.New(apperr.KindPermissionDenied, "base plan online history is limited to the latest 90 days")
+	if summary.Plan == billing.PlanBase && input.StartTime.Before(time.Now().UTC().AddDate(0, 0, -s.billing.BaseHistoryDays())) {
+		return apperr.New(apperr.KindPermissionDenied, "base plan online history is outside the configured window")
 	}
 	return nil
 }

@@ -461,7 +461,12 @@ export interface paths {
         /** List workspaces for current user */
         get: operations["listWorkspaces"];
         put?: never;
-        post?: never;
+        /**
+         * Create organization workspace
+         * @description Creates an organization workspace. The current user becomes Owner.
+         *     Personal workspaces are created only by registration flows.
+         */
+        post: operations["createWorkspace"];
         delete?: never;
         options?: never;
         head?: never;
@@ -498,12 +503,81 @@ export interface paths {
         /** Get the current Workspace plan and download usage */
         get: operations["getWorkspaceBilling"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        /** List Workspace API Keys without secret values */
+        get: operations["listWorkspaceApiKeys"];
+        put?: never;
+        /** Create a professional Workspace API Key */
+        post: operations["createWorkspaceApiKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/api-keys/{key_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke a Workspace API Key */
+        delete: operations["revokeWorkspaceApiKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/open/devices/{device_id}/telemetry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Query Workspace device telemetry with a professional API Key */
+        get: operations["queryOpenApiDeviceTelemetry"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/open/exports/{export_job_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
         /**
-         * Create organization workspace
-         * @description Creates an organization workspace. The current user becomes Owner.
-         *     Personal workspaces are created only by registration flows.
+         * Prepare an export file download with a professional API Key
+         * @description The export must belong to the API Key Workspace. Its file size consumes the shared monthly allowance or traffic-pack balance.
          */
-        post: operations["createWorkspace"];
+        get: operations["prepareOpenApiExportDownload"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3950,8 +4024,7 @@ export interface components {
             traffic_pack_balance_bytes: number;
             /** Format: double */
             usage_percent: number;
-            /** @enum {integer} */
-            warning_level: 0 | 80 | 95;
+            warning_level: number;
             days_until_expiry?: number;
             notices: {
                 code: string;
@@ -3959,6 +4032,34 @@ export interface components {
                 level: "info" | "warning" | "error";
                 message: string;
             }[];
+            /** Format: int64 */
+            professional_annual_price_cents: number;
+            professional_default_months: number;
+            base_history_days: number;
+            base_export_days: number;
+            /** Format: int64 */
+            traffic_pack_size_bytes: number;
+            /** Format: int64 */
+            traffic_pack_price_cents: number;
+        };
+        WorkspaceApiKey: {
+            id: components["schemas"]["UUID"];
+            workspace_id: components["schemas"]["UUID"];
+            name: string;
+            key_prefix: string;
+            created_by: components["schemas"]["UUID"];
+            expires_at?: components["schemas"]["Timestamp"];
+            last_used_at?: components["schemas"]["Timestamp"];
+            revoked_at?: components["schemas"]["Timestamp"];
+            created_at: components["schemas"]["Timestamp"];
+        };
+        CreatedWorkspaceApiKey: components["schemas"]["WorkspaceApiKey"] & {
+            /** @description Returned only once when the key is created. */
+            secret: string;
+        };
+        CreateWorkspaceApiKeyRequest: {
+            name: string;
+            expires_at?: components["schemas"]["Timestamp"];
         };
         ProfessionalPlanGrant: {
             id: components["schemas"]["UUID"];
@@ -6301,6 +6402,34 @@ export interface operations {
             500: components["responses"]["Internal"];
         };
     };
+    createWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWorkspaceRequest"];
+            };
+        };
+        responses: {
+            /** @description Organization workspace created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceWithMembership"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["Internal"];
+        };
+    };
     updateWorkspaceName: {
         parameters: {
             query?: never;
@@ -6358,32 +6487,129 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
-    createWorkspace: {
+    listWorkspaceApiKeys: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description API Key list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createWorkspaceApiKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateWorkspaceRequest"];
+                "application/json": components["schemas"]["CreateWorkspaceApiKeyRequest"];
             };
         };
         responses: {
-            /** @description Organization workspace created. */
+            /** @description API Key with its one-time secret. */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["WorkspaceWithMembership"];
+                    "application/json": components["schemas"]["CreatedWorkspaceApiKey"];
                 };
             };
-            400: components["responses"]["InvalidArgument"];
+            403: components["responses"]["PermissionDenied"];
+        };
+    };
+    revokeWorkspaceApiKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+                key_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description API Key revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    queryOpenApiDeviceTelemetry: {
+        parameters: {
+            query: {
+                start_time: components["schemas"]["Timestamp"];
+                end_time: components["schemas"]["Timestamp"];
+                data_stream_ids?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                device_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Telemetry response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelemetryQueryResponse"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+        };
+    };
+    prepareOpenApiExportDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Export job UUID. */
+                export_job_id: components["parameters"]["ExportJobID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Temporary export download URL. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportDownloadResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
-            500: components["responses"]["Internal"];
         };
     };
     adminPasswordLogin: {

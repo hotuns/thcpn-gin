@@ -836,6 +836,43 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/Internal"
+    post:
+      tags:
+        - Workspaces
+      operationId: createWorkspace
+      summary: Create organization workspace
+      description: |
+        Creates an organization workspace. The current user becomes Owner.
+        Personal workspaces are created only by registration flows.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorkspaceRequest"
+            examples:
+              lab:
+                value:
+                  name: 华中农业大学作物生态课题组
+                  organization_type: lab
+      responses:
+        "201":
+          description: Organization workspace created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceWithMembership"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
   /api/v1/workspaces/{workspace_id}:
     patch:
       tags: [Workspaces]
@@ -939,43 +976,21 @@ paths:
         "200": { description: Telemetry response., content: { application/json: { schema: { $ref: "#/components/schemas/TelemetryQueryResponse" } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/PermissionDenied" }
-    post:
-      tags:
-        - Workspaces
-      operationId: createWorkspace
-      summary: Create organization workspace
-      description: |
-        Creates an organization workspace. The current user becomes Owner.
-        Personal workspaces are created only by registration flows.
-      security:
-        - bearerAuth: []
-        - devUserHeader: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateWorkspaceRequest"
-            examples:
-              lab:
-                value:
-                  name: 华中农业大学作物生态课题组
-                  organization_type: lab
+  /api/v1/open/exports/{export_job_id}/download:
+    get:
+      tags: [ExportJobs]
+      operationId: prepareOpenApiExportDownload
+      summary: Prepare an export file download with a professional API Key
+      description: The export must belong to the API Key Workspace. Its file size consumes the shared monthly allowance or traffic-pack balance.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ExportJobID"
       responses:
-        "201":
-          description: Organization workspace created.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkspaceWithMembership"
-        "400":
-          $ref: "#/components/responses/InvalidArgument"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/Internal"
+        "200": { description: Temporary export download URL., content: { application/json: { schema: { $ref: "#/components/schemas/ExportDownloadResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /api/v1/admin/auth/password/login:
     post:
       tags: [Admin]
@@ -6833,7 +6848,7 @@ components:
           $ref: "#/components/schemas/Timestamp"
     WorkspaceBillingSummary:
       type: object
-      required: [workspace_id, plan, full_history, professional_features, monthly_download_limit_bytes, monthly_download_used_bytes, monthly_download_remaining_bytes, traffic_pack_balance_bytes, usage_percent, warning_level, notices]
+      required: [workspace_id, plan, full_history, professional_features, monthly_download_limit_bytes, monthly_download_used_bytes, monthly_download_remaining_bytes, traffic_pack_balance_bytes, usage_percent, warning_level, notices, professional_annual_price_cents, professional_default_months, base_history_days, base_export_days, traffic_pack_size_bytes, traffic_pack_price_cents]
       properties:
         workspace_id: { $ref: "#/components/schemas/UUID" }
         plan: { type: string, enum: [base, professional] }
@@ -6846,7 +6861,7 @@ components:
         monthly_download_remaining_bytes: { type: integer, format: int64 }
         traffic_pack_balance_bytes: { type: integer, format: int64 }
         usage_percent: { type: number, format: double }
-        warning_level: { type: integer, enum: [0, 80, 95] }
+        warning_level: { type: integer, minimum: 0 }
         days_until_expiry: { type: integer, minimum: 0 }
         notices:
           type: array
@@ -6857,6 +6872,12 @@ components:
               code: { type: string }
               level: { type: string, enum: [info, warning, error] }
               message: { type: string }
+        professional_annual_price_cents: { type: integer, format: int64 }
+        professional_default_months: { type: integer, minimum: 1 }
+        base_history_days: { type: integer, minimum: 1 }
+        base_export_days: { type: integer, minimum: 1 }
+        traffic_pack_size_bytes: { type: integer, format: int64 }
+        traffic_pack_price_cents: { type: integer, format: int64 }
     WorkspaceApiKey:
       type: object
       required: [id, workspace_id, name, key_prefix, created_by, created_at]

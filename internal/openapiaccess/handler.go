@@ -12,6 +12,7 @@ import (
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/audit"
 	"thcpn-gin/internal/auth"
+	exportservice "thcpn-gin/internal/export"
 	"thcpn-gin/internal/httpx"
 	"thcpn-gin/internal/permission"
 	"thcpn-gin/internal/telemetry"
@@ -20,12 +21,13 @@ import (
 type Handler struct {
 	service   *Service
 	telemetry *telemetry.Service
+	exports   *exportservice.Service
 	checker   *permission.Checker
 	audit     *audit.Service
 }
 
-func NewHandler(service *Service, telemetryService *telemetry.Service, checker *permission.Checker, auditService *audit.Service) *Handler {
-	return &Handler{service: service, telemetry: telemetryService, checker: checker, audit: auditService}
+func NewHandler(service *Service, telemetryService *telemetry.Service, exportService *exportservice.Service, checker *permission.Checker, auditService *audit.Service) *Handler {
+	return &Handler{service: service, telemetry: telemetryService, exports: exportService, checker: checker, audit: auditService}
 }
 
 type createRequest struct {
@@ -116,21 +118,15 @@ func (h *Handler) record(c *gin.Context, workspaceID, userID uuid.UUID, action s
 }
 
 func (h *Handler) QueryTelemetry(c *gin.Context) {
-	raw, err := auth.BearerTokenFromHeader(c.GetHeader("Authorization"))
-	if err != nil {
-		httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "missing api key"))
-		return
-	}
-	key, err := h.service.Authenticate(c.Request.Context(), raw)
-	if err != nil {
-		httpx.WriteAppError(c, err)
+	key, ok := h.authenticateAPIKey(c)
+	if !ok {
 		return
 	}
 	deviceID, ok := parseID(c, "device_id")
 	if !ok {
 		return
 	}
-	if err = h.service.DeviceBelongsToWorkspace(c.Request.Context(), deviceID, key.WorkspaceID); err != nil {
+	if err := h.service.DeviceBelongsToWorkspace(c.Request.Context(), deviceID, key.WorkspaceID); err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
@@ -169,4 +165,35 @@ func (h *Handler) QueryTelemetry(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) DownloadExport(c *gin.Context) {
+	key, ok := h.authenticateAPIKey(c)
+	if !ok {
+		return
+	}
+	jobID, ok := parseID(c, "export_job_id")
+	if !ok {
+		return
+	}
+	result, err := h.exports.PrepareAPIDownload(c.Request.Context(), jobID, key.WorkspaceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) authenticateAPIKey(c *gin.Context) (APIKey, bool) {
+	raw, err := auth.BearerTokenFromHeader(c.GetHeader("Authorization"))
+	if err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "missing api key"))
+		return APIKey{}, false
+	}
+	key, err := h.service.Authenticate(c.Request.Context(), raw)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return APIKey{}, false
+	}
+	return key, true
 }

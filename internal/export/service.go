@@ -240,8 +240,9 @@ func (s *Service) validatePlan(ctx context.Context, resolved ResolvedResource, r
 		return apperr.New(apperr.KindInvalidArgument, "start_time and end_time are required for base plan exports")
 	}
 	now := time.Now().UTC()
-	if end.After(now.Add(5*time.Minute)) || start.Before(now.AddDate(0, 0, -7)) || end.Sub(start) > 7*24*time.Hour {
-		return apperr.New(apperr.KindPermissionDenied, "base plan exports are limited to one device within the latest 7 days")
+	days := s.billing.BaseExportDays()
+	if end.After(now.Add(5*time.Minute)) || start.Before(now.AddDate(0, 0, -days)) || end.Sub(start) > time.Duration(days)*24*time.Hour {
+		return apperr.New(apperr.KindPermissionDenied, "base plan export is outside the configured window")
 	}
 	return nil
 }
@@ -317,12 +318,23 @@ func (s *Service) PrepareDownload(ctx context.Context, jobID uuid.UUID, actorIDs
 	if len(actorIDs) > 0 {
 		actorID = actorIDs[0]
 	}
+	return s.prepareDownload(ctx, jobID, nil, actorID, "export")
+}
+
+func (s *Service) PrepareAPIDownload(ctx context.Context, jobID, workspaceID uuid.UUID) (DownloadResult, error) {
+	return s.prepareDownload(ctx, jobID, &workspaceID, uuid.Nil, "api_file")
+}
+
+func (s *Service) prepareDownload(ctx context.Context, jobID uuid.UUID, expectedWorkspaceID *uuid.UUID, actorID uuid.UUID, sourceType string) (DownloadResult, error) {
 	if s.signer == nil {
 		return DownloadResult{}, apperr.New(apperr.KindInternal, "object store signer is not configured")
 	}
 	job, err := s.Get(ctx, jobID)
 	if err != nil {
 		return DownloadResult{}, err
+	}
+	if expectedWorkspaceID != nil && job.WorkspaceID != *expectedWorkspaceID {
+		return DownloadResult{}, apperr.New(apperr.KindNotFound, "export job not found")
 	}
 	if job.Status != "success" {
 		return DownloadResult{}, apperr.New(apperr.KindConflict, "export job is not ready")
@@ -344,7 +356,7 @@ func (s *Service) PrepareDownload(ctx context.Context, jobID uuid.UUID, actorIDs
 			if actorID != uuid.Nil {
 				actorUserID = &actorID
 			}
-			if err := s.billing.ReserveDownload(ctx, billing.ReserveDownloadInput{WorkspaceID: job.WorkspaceID, SourceType: "export", ResourceID: &resourceID, ObjectKey: *job.FileObjectKey, Bytes: *job.FileSizeBytes, ActorUserID: actorUserID, IdempotencyKey: "export:" + job.ID.String() + ":" + actorID.String()}); err != nil {
+			if err := s.billing.ReserveDownload(ctx, billing.ReserveDownloadInput{WorkspaceID: job.WorkspaceID, SourceType: sourceType, ResourceID: &resourceID, ObjectKey: *job.FileObjectKey, Bytes: *job.FileSizeBytes, ActorUserID: actorUserID, IdempotencyKey: sourceType + ":" + job.ID.String() + ":" + uuid.NewString()}); err != nil {
 				return DownloadResult{}, err
 			}
 		}
