@@ -553,6 +553,13 @@ export const api = {
     adminList: (filters: JsonRecord = {}) =>
       request<ListResponse<JsonRecord>>(`/api/v1/admin/workspaces${queryString(filters as Record<string, string | number | boolean>)}`),
   },
+  notifications: {
+    list: (workspaceId?: string, limit = 50) => request<JsonRecord>(`/api/v1/notifications${queryString({ workspace_id: workspaceId, limit })}`),
+    read: (id: string) => jsonRequest<void>(`/api/v1/notifications/${encodeURIComponent(id)}/read`, "POST", {}),
+    readAll: (workspaceId?: string) => jsonRequest<void>(`/api/v1/notifications/read-all${queryString({ workspace_id: workspaceId })}`, "POST", {}),
+    announcements: (workspaceId?: string) => request<JsonRecord>(`/api/v1/announcements${queryString({ workspace_id: workspaceId })}`),
+    readAnnouncement: (id: string) => jsonRequest<void>(`/api/v1/announcements/${encodeURIComponent(id)}/read`, "POST", {}),
+  },
   projects: {
     list: (workspaceId: string) =>
       request<ListResponse<JsonRecord>>(
@@ -1045,6 +1052,12 @@ export const api = {
       billingRisks: (risk?: string) => request<ListResponse<JsonRecord>>(`/api/v1/admin/billing/workspaces${queryString({ risk })}`),
     },
     permissionsCatalog: () => request<JsonRecord>("/api/v1/admin/permissions/catalog"),
+    announcements: {
+      list: () => request<JsonRecord>("/api/v1/admin/announcements"),
+      create: (payload: JsonRecord) => jsonRequest<JsonRecord>("/api/v1/admin/announcements", "POST", payload),
+      setStatus: (id: string, status: string) => jsonRequest<void>(`/api/v1/admin/announcements/${encodeURIComponent(id)}/status`, "PATCH", { status }),
+      sendNotification: (payload: JsonRecord) => jsonRequest<JsonRecord>("/api/v1/admin/notifications", "POST", payload),
+    },
     sources: () =>
       request<ListResponse<Record<string, unknown>>>(
         "/api/v1/admin/data-sources",

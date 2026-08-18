@@ -40,6 +40,123 @@ services:
         condition: service_healthy
     entrypoint: ["migrate"]
 
+  migrate-init:
+    image: migrate/migrate:v4.17.1
+    volumes:
+      - ./migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://${POSTGRES_USER:-thcpn}:${POSTGRES_PASSWORD:-thcpn_dev_password}@postgres:5432/${POSTGRES_DB:-thcpn_platform}?sslmode=disable"
+      - "up"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["api"]
+    environment: &backend_environment
+      SERVER_ADDR: ":8080"
+      PLATFORM_DATABASE_DSN: "postgres://${POSTGRES_USER:-thcpn}:${POSTGRES_PASSWORD:-thcpn_dev_password}@postgres:5432/${POSTGRES_DB:-thcpn_platform}?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DB: ${REDIS_DB:-0}
+      PROCESSOR_URL: "http://processor:8090"
+      PROCESSOR_ARTIFACT_DIR: "/var/lib/thcpn-processor/artifacts"
+      LOGGER_DIRECTORY: "/var/log/thcpn"
+      OBJECT_STORE_PROVIDER: ${OBJECT_STORE_PROVIDER:-local}
+      OBJECT_STORE_ENDPOINT: ${OBJECT_STORE_ENDPOINT:-}
+      OBJECT_STORE_BUCKET: ${OBJECT_STORE_BUCKET:-}
+      OBJECT_STORE_REGION: ${OBJECT_STORE_REGION:-}
+      OBJECT_STORE_LOCAL_PATH: "/var/lib/thcpn/objectstore"
+      OBJECT_STORE_PUBLIC_URL_PREFIX: ${OBJECT_STORE_PUBLIC_URL_PREFIX:-}
+      OBJECT_STORE_ACCESS_KEY: ${OBJECT_STORE_ACCESS_KEY:-}
+      OBJECT_STORE_SECRET_KEY: ${OBJECT_STORE_SECRET_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:-dev-insecure-change-me}
+      ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET:-dev-admin-insecure-change-me}
+      AUTH_DEV_USER_HEADER_ENABLED: ${AUTH_DEV_USER_HEADER_ENABLED:-false}
+      AUTH_DEV_REGISTER_ENABLED: ${AUTH_DEV_REGISTER_ENABLED:-false}
+      SMS_PROVIDER: ${SMS_PROVIDER:-log}
+      ALIYUN_ACCESS_KEY_ID: ${ALIYUN_ACCESS_KEY_ID:-}
+      ALIYUN_ACCESS_KEY_SECRET: ${ALIYUN_ACCESS_KEY_SECRET:-}
+      ALIYUN_SMS_SIGN_NAME: ${ALIYUN_SMS_SIGN_NAME:-}
+      ALIYUN_SMS_TEMPLATE_CODE: ${ALIYUN_SMS_TEMPLATE_CODE:-}
+      THCPN_STANDARD_STATION_MYSQL_DSN: ${THCPN_STANDARD_STATION_MYSQL_DSN:-}
+      EZVIZ_APP_KEY: ${EZVIZ_APP_KEY:-}
+      EZVIZ_APP_SECRET: ${EZVIZ_APP_SECRET:-}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      migrate-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      processor:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - objectstore_data:/var/lib/thcpn/objectstore
+      - platform_logs:/var/log/thcpn
+      - processor_artifacts:/var/lib/thcpn-processor/artifacts
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["worker"]
+    environment: *backend_environment
+    depends_on:
+      migrate-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      processor:
+        condition: service_started
+    volumes:
+      - objectstore_data:/var/lib/thcpn/objectstore
+      - platform_logs:/var/log/thcpn
+      - processor_artifacts:/var/lib/thcpn-processor/artifacts
+    restart: unless-stopped
+
+  platform:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+      target: platform
+      args:
+        VITE_TIANDITU_TOKEN: ${VITE_TIANDITU_TOKEN:-}
+        VITE_PLATFORM_URL: ${PLATFORM_PUBLIC_URL:-http://127.0.0.1:5173}
+    ports:
+      - "${PLATFORM_PORT:-5173}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+      admin:
+        condition: service_started
+    restart: unless-stopped
+
+  admin:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+      target: admin
+      args:
+        VITE_TIANDITU_TOKEN: ${VITE_TIANDITU_TOKEN:-}
+        VITE_PLATFORM_URL: ${PLATFORM_PUBLIC_URL:-http://127.0.0.1:5173}
+    ports:
+      - "${ADMIN_PORT:-5174}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
   processor:
     build:
       context: ./processor
@@ -49,8 +166,11 @@ services:
       - "${PROCESSOR_PORT:-8090}:8090"
     volumes:
       - processor_artifacts:/var/lib/thcpn-processor/artifacts
+    restart: unless-stopped
 
 volumes:
   postgres_data:
   redis_data:
   processor_artifacts:
+  objectstore_data:
+  platform_logs:

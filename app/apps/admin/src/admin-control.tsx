@@ -61,6 +61,43 @@ function riskTags(risks: JsonRecord[] = []) {
   return <Space size={[4, 4]} wrap>{risks.map((risk) => <Tag key={text(risk.code)} color={risk.code === "workspace_disabled" || risk.code === "owner_unavailable" ? "red" : "gold"}>{text(risk.label)}{risk.count ? ` ${risk.count}` : ""}</Tag>)}</Space>;
 }
 
+const billingRiskLabel = (value: unknown) => ({ professional_expiring: "即将到期", professional_expired: "已到期", download_usage_warning: "流量预警" })[String(value)] ?? text(value);
+
+export function AdminBillingPage() {
+  const [risk, setRisk] = useState("all");
+  const [keyword, setKeyword] = useState("");
+  const query = useQuery({ queryKey: ["admin", "billing-workspaces", risk], queryFn: () => api.admin.workspaces.billingRisks(risk) });
+  const all = query.data?.items ?? [];
+  const rows = all.filter((item) => `${text(item.workspace_name)} ${text(item.workspace_id)}`.toLowerCase().includes(keyword.toLowerCase()));
+  const professional = all.filter((item) => item.billing?.plan === "professional").length;
+  const expiring = all.filter((item) => item.risks?.includes("professional_expiring")).length;
+  const warnings = all.filter((item) => item.risks?.includes("download_usage_warning")).length;
+  return <>
+    <PageHeader eyebrow="Commercial / subscriptions" title="订阅管理" description="查看所有工作区套餐、到期风险和下载用量，并进入工作区完成授权或流量包入账。" actions={<Button icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>刷新</Button>} />
+    <div className="billing-overview-cards">
+      <Card size="small"><span>工作区</span><strong>{risk === "all" ? all.length : "—"}</strong><small>按工作区管理商业权益</small></Card>
+      <Card size="small"><span>有效专业版</span><strong>{professional}</strong><small>全部成员共享权益</small></Card>
+      <Card size="small"><span>即将到期</span><strong>{expiring}</strong><small>30 天内需要跟进</small></Card>
+      <Card size="small"><span>流量预警</span><strong>{warnings}</strong><small>本月使用达到阈值</small></Card>
+    </div>
+    <Panel className="billing-workspace-list">
+      <div className="governance-toolbar billing-toolbar">
+        <Input value={keyword} prefix={<Search size={15} />} allowClear placeholder="搜索工作区名称或 ID" onChange={(event) => setKeyword(event.target.value)} />
+        <Segmented value={risk} onChange={setRisk} options={[{ value: "all", label: "全部" }, { value: "professional_expiring", label: "即将到期" }, { value: "professional_expired", label: "已到期" }, { value: "download_usage_warning", label: "流量预警" }]} />
+      </div>
+      {query.isLoading ? <StateView type="loading" title="正在加载订阅" description="正在汇总工作区套餐与本月用量。" /> : query.error ? <ErrorState error={query.error} title="订阅列表加载失败" /> : <Table rowKey="workspace_id" dataSource={rows} pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (total) => `共 ${total} 个工作区` }} scroll={{ x: 1040 }} columns={[
+        { title: "工作区", width: 280, render: (_, item) => <div><Link className="governance-primary-link" to={`/admin/workspaces/${item.workspace_id}?tab=billing`}>{text(item.workspace_name)}</Link><div className="cell-sub mono">{text(item.workspace_id)}</div></div> },
+        { title: "套餐", width: 110, render: (_, item) => <Tag color={item.billing?.plan === "professional" ? "green" : "default"}>{item.billing?.plan === "professional" ? "专业版" : "基础版"}</Tag> },
+        { title: "专业版有效期", width: 200, render: (_, item) => item.billing?.professional_expires_at ? <div>{time(item.billing.professional_expires_at)}<div className="cell-sub">{item.billing.plan === "professional" ? `剩余 ${item.billing.days_until_expiry ?? 0} 天` : "已恢复基础版"}</div></div> : "—" },
+        { title: "本月下载", width: 220, render: (_, item) => <div><Progress size="small" percent={Math.min(100, Number(item.billing?.usage_percent ?? 0))} status={Number(item.billing?.usage_percent ?? 0) >= 100 ? "exception" : "normal"} /><div className="cell-sub">{bytes(item.billing?.monthly_download_used_bytes)} / {bytes(item.billing?.monthly_download_limit_bytes)}</div></div> },
+        { title: "流量包", width: 120, render: (_, item) => bytes(item.billing?.traffic_pack_balance_bytes) },
+        { title: "提醒", width: 190, render: (_, item) => item.risks?.length ? <Space wrap size={[4, 4]}>{item.risks.map((entry) => <Tag key={entry} color="gold">{billingRiskLabel(entry)}</Tag>)}</Space> : <Tag color="green">正常</Tag> },
+        { title: "操作", width: 120, fixed: "right", render: (_, item) => <Link to={`/admin/workspaces/${item.workspace_id}?tab=billing`}><Button type="link">管理订阅</Button></Link> },
+      ]} />}
+    </Panel>
+  </>;
+}
+
 export function AdminWorkspacesPage() {
   const [params, setParams] = useSearchParams();
   const [keyword, setKeyword] = useState(params.get("q") ?? "");

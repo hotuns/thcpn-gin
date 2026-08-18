@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
-import { Copy, KeyRound, Pencil, Plus, Tags, Trash2, X } from "lucide-react";
+import { Pencil, Plus, Tags, X } from "lucide-react";
 import { api, formatApiError, type DeviceTaxonomyTerm, type JsonRecord } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
@@ -20,9 +20,10 @@ export function SettingsPage() {
   const tab = params.get("tab") ?? "resources";
   if (tab === "security")
     return <Navigate to="/account?tab=security" replace />;
+  if (tab === "billing")
+    return <Navigate to="/subscription" replace />;
   const tabs = [
     { id: "resources", label: "基础资料" },
-    { id: "billing", label: "套餐与用量" },
     { id: "access", label: "访问控制" },
     { id: "audit", label: "审计日志" },
   ];
@@ -55,8 +56,6 @@ export function SettingsPage() {
       </div>
       {tab === "resources" ? (
         <ResourcesTab />
-      ) : tab === "billing" ? (
-        <BillingTab />
       ) : tab === "access" ? (
         <AccessControlTab />
       ) : (
@@ -64,29 +63,6 @@ export function SettingsPage() {
       )}
     </>
   );
-}
-
-function BillingTab() {
-  const { currentId } = useWorkspace();
-  const client = useQueryClient();
-  const [keyName, setKeyName] = useState("");
-  const [createdSecret, setCreatedSecret] = useState("");
-  const [keyError, setKeyError] = useState("");
-  const query = useQuery({ queryKey: workspaceQueryKey(currentId, "billing"), queryFn: () => api.workspaces.billing(currentId!), enabled: Boolean(currentId) });
-  const keys = useQuery({ queryKey: workspaceQueryKey(currentId, "api-keys"), queryFn: () => api.workspaces.apiKeys(currentId!), enabled: Boolean(currentId) });
-  if (!currentId) return <Panel><StateView type="empty" title="请选择工作区" description="请先选择工作区，再查看套餐。" /></Panel>;
-  if (query.isLoading) return <Panel><StateView type="loading" title="正在加载套餐" description="正在读取当前工作区权益与用量。" /></Panel>;
-  if (query.error) { const error=formatApiError(query.error); return <Panel><StateView type="error" title="套餐加载失败" description={error.message} requestId={error.requestId} /></Panel>; }
-  if (!query.data) return <Panel><StateView type="empty" title="暂无套餐信息" description="当前工作区尚未返回计费信息。" /></Panel>;
-  const value=query.data;const professional=value.plan==="professional";const used=Number(value.monthly_download_used_bytes??0);const limit=Number(value.monthly_download_limit_bytes??0);const percent=limit>0?Math.min(100,used*100/limit):0;const formatBytes=(input:unknown)=>`${(Number(input??0)/1024**3).toFixed(1)} GB`;
-  const createKey=async()=>{if(!keyName.trim())return;try{const item=await api.workspaces.createApiKey(currentId,{name:keyName.trim()});setCreatedSecret(text(item.secret,""));setKeyName("");setKeyError("");await client.invalidateQueries({queryKey:workspaceQueryKey(currentId,"api-keys")});}catch(error){setKeyError(formatApiError(error).message);}};
-  const revokeKey=async(keyId:string)=>{try{await api.workspaces.revokeApiKey(currentId,keyId);await client.invalidateQueries({queryKey:workspaceQueryKey(currentId,"api-keys")});}catch(error){setKeyError(formatApiError(error).message);}};
-  return <div className="workspace-billing-layout">
-    {(value.notices??[]).map((notice)=><div key={notice.code} className={`notice ${notice.level}`}>{notice.message}{notice.code==="professional_expiring"?`，剩余 ${value.days_until_expiry} 天`:""}</div>)}
-    <Panel><div className="panel-header"><div><h2 className="panel-title">{professional?"专业版":"基础版"}</h2><div className="panel-kicker">{professional?`有效至 ${new Date(String(value.professional_expires_at)).toLocaleDateString()}`:"永久免费"}</div></div><Badge tone={professional?"success":"neutral"}>{professional?"已开通":"基础权益"}</Badge></div><div className="billing-feature-grid"><div><strong>在线历史</strong><span>{professional?"完整保留历史":`最近 ${value.base_history_days} 天`}</span></div><div><strong>数据导出</strong><span>{professional?"批量与长时间范围":`单设备最近 ${value.base_export_days} 天`}</span></div><div><strong>数据处理与开放 API</strong><span>{professional?"已启用":"专业版功能"}</span></div><div><strong>原图下载</strong><span>{professional?"按下载额度使用":"仅支持压缩预览"}</span></div></div></Panel>
-    <Panel><div className="panel-header"><div><h2 className="panel-title">本月下载用量</h2><div className="panel-kicker">原图、导出文件和 API 文件合并计算</div></div><strong>{formatBytes(used)} / {formatBytes(limit)}</strong></div><div className="billing-usage-track"><span style={{width:`${percent}%`}} /></div><div className="billing-usage-meta"><span>套餐剩余 {formatBytes(value.monthly_download_remaining_bytes)}</span><span>流量包 {formatBytes(value.traffic_pack_balance_bytes)}</span></div></Panel>
-    <Panel><div className="panel-header"><div><h2 className="panel-title">开放 API</h2><div className="panel-kicker">API Key 归属于当前工作区</div></div><Badge tone={professional?"success":"neutral"}>{professional?"可用":"需要专业版"}</Badge></div>{createdSecret&&<div className="api-key-secret"><div><strong>请立即保存此密钥</strong><span>关闭后将无法再次查看完整值</span></div><code>{createdSecret}</code><Button variant="secondary" onClick={()=>void navigator.clipboard.writeText(createdSecret)}><Copy size={14}/>复制</Button></div>}{professional&&<div className="api-key-create"><input value={keyName} maxLength={100} placeholder="密钥名称" onChange={(event)=>setKeyName(event.target.value)}/><Button onClick={()=>void createKey()} disabled={!keyName.trim()}><KeyRound size={14}/>创建密钥</Button></div>}{keyError&&<div className="notice warning">{keyError}</div>}<div className="api-key-list">{(keys.data?.items??[]).map((item)=><div key={text(item.id)}><div><strong>{text(item.name)}</strong><span><code>{text(item.key_prefix)}...</code> · {item.revoked_at?"已撤销":item.last_used_at?`最近使用 ${new Date(String(item.last_used_at)).toLocaleString()}`:"尚未使用"}</span></div>{!item.revoked_at&&<Button variant="secondary" onClick={()=>void revokeKey(text(item.id))}><Trash2 size={14}/>撤销</Button>}</div>)}{!keys.isLoading&&!(keys.data?.items??[]).length&&<span className="cell-sub">暂无 API Key</span>}</div></Panel>
-  </div>;
 }
 
 function ResourcesTab() {

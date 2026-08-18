@@ -13,7 +13,7 @@ MIGRATE_DATABASE_URL ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgre
 MIGRATE_IMAGE ?= migrate/migrate:v4.17.1
 SQLC_IMAGE ?= sqlc/sqlc:1.27.0
 
-.PHONY: db-up db-down processor-up migrate-up migrate-down sqlc test stop-local run-api run-worker run-all app-install run-platform run-admin build-app
+.PHONY: db-up db-down processor-up migrate-up migrate-down sqlc test stop-local run-api run-worker run-all app-install run-platform run-admin build-app deploy deploy-down deploy-logs
 
 db-up:
 	docker compose up -d postgres redis
@@ -75,3 +75,12 @@ run-admin:
 
 build-app:
 	cd app && npm run build
+
+deploy:
+	docker compose up -d --build
+
+deploy-down:
+	docker compose down
+
+deploy-logs:
+	docker compose logs -f api worker platform admin

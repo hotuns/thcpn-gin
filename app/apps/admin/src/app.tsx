@@ -16,6 +16,7 @@ import {
   Camera,
   CircleCheck,
   Cpu,
+  CreditCard,
   ChevronDown,
   ChevronRight,
   Database,
@@ -23,6 +24,7 @@ import {
   FileText,
   Home,
   MapPinned,
+  Megaphone,
   Languages,
   Network,
   RefreshCw,
@@ -84,6 +86,14 @@ const AdminWorkspacesPage = lazy(() =>
     default: module.AdminWorkspacesPage,
   })),
 );
+const AdminBillingPage = lazy(() =>
+  import("./admin-control").then((module) => ({
+    default: module.AdminBillingPage,
+  })),
+);
+const AdminAnnouncementsPage = lazy(() =>
+  import("./admin-announcements").then((module) => ({ default: module.AdminAnnouncementsPage })),
+);
 const AdminWorkspaceDetailPage = lazy(() =>
   import("./admin-control").then((module) => ({
     default: module.AdminWorkspaceDetailPage,
@@ -111,6 +121,9 @@ const adminNav = [
   { to: "/admin/devices", key: "devices", icon: Boxes, group: "assets" },
   { to: "/admin/sensors", key: "sensors", icon: Cpu, group: "assets" },
   { to: "/admin/device-map", key: "deviceMap", icon: MapPinned, group: "assets" },
+  { to: "/admin/workspaces", key: "workspaces", icon: Network, group: "platform" },
+  { to: "/admin/billing", key: "billing", icon: CreditCard, group: "platform" },
+  { to: "/admin/announcements", key: "announcements", icon: Megaphone, group: "platform" },
   { to: "/admin/logs", key: "logs", icon: FileText, group: "system" },
   { to: "/admin/users", key: "users", icon: UserRound, group: "platform" },
   { to: "/admin/metadata", key: "metadata", icon: TableProperties, group: "platform" },
@@ -526,6 +539,8 @@ function AdminRoot() {
         <Route path="logs" element={<AdminLogsPage />} />
         <Route path="workspaces" element={<AdminWorkspacesPage />} />
         <Route path="workspaces/:workspaceId" element={<AdminWorkspaceDetailPage />} />
+        <Route path="billing" element={<AdminBillingPage />} />
+        <Route path="announcements" element={<AdminAnnouncementsPage />} />
         <Route path="users" element={<AdminUsersPage />} />
         <Route path="users/:userId" element={<AdminUserDetailPage />} />
         <Route path="metadata" element={<AdminMetadataPage />} />

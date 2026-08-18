@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: THCPN IoT Research Platform API
-  version: 0.15.0
+  version: 0.16.0
   description: |
     THCPN 科研物联网数据管理平台后端 API。
 
@@ -15,6 +15,8 @@ servers:
   - url: http://127.0.0.1:8080
     description: Local development API server
 tags:
+  - name: OpenAPI
+    description: Third-party Workspace data access authenticated by API Key
   - name: Health
     description: Service health and readiness checks
   - name: Observability
@@ -960,6 +962,41 @@ paths:
       responses:
         "204": { description: API Key revoked. }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/open/devices:
+    get:
+      tags: [OpenAPI]
+      operationId: listOpenApiDevices
+      summary: List devices available to the API Key Workspace
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: device_type, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string } }
+      responses:
+        "200": { description: Device list., content: { application/json: { schema: { $ref: "#/components/schemas/OpenApiDeviceList" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+  /api/v1/open/devices/{device_id}:
+    get:
+      tags: [OpenAPI]
+      operationId: getOpenApiDevice
+      summary: Get a Workspace device
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: device_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+      responses:
+        "200": { description: Device., content: { application/json: { schema: { $ref: "#/components/schemas/OpenApiDevice" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/open/devices/{device_id}/data-streams:
+    get:
+      tags: [OpenAPI]
+      operationId: listOpenApiDeviceDataStreams
+      summary: Discover active telemetry and media fields for a device
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: device_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+      responses:
+        "200": { description: Data stream list., content: { application/json: { schema: { $ref: "#/components/schemas/OpenApiDataStreamList" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/open/devices/{device_id}/telemetry:
     get:
       tags: [Telemetry]
@@ -976,6 +1013,81 @@ paths:
         "200": { description: Telemetry response., content: { application/json: { schema: { $ref: "#/components/schemas/TelemetryQueryResponse" } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/PermissionDenied" }
+  /api/v1/open/devices/{device_id}/media:
+    get:
+      tags: [OpenAPI]
+      operationId: listOpenApiDeviceMedia
+      summary: Query device image, video or audio records
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: device_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+        - { name: start_time, in: query, required: true, schema: { $ref: "#/components/schemas/Timestamp" } }
+        - { name: end_time, in: query, required: true, schema: { $ref: "#/components/schemas/Timestamp" } }
+        - { name: media_type, in: query, schema: { type: string, enum: [image, video, audio] } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: page_size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        "200": { description: Media records with temporary preview and API download links., content: { application/json: { schema: { $ref: "#/components/schemas/MediaListResponse" } } } }
+  /api/v1/open/media/download:
+    get:
+      tags: [OpenAPI]
+      operationId: prepareOpenApiMediaDownload
+      summary: Prepare an original media download URL
+      description: Original downloads consume the Workspace download allowance.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: token, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Temporary original media URL., content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+  /api/v1/open/devices/{device_id}/carbon/overview:
+    get:
+      tags: [OpenAPI]
+      operationId: getOpenApiCarbonOverview
+      summary: Get carbon station nodes and latest sample status
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: device_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+      responses:
+        "200": { description: Carbon station overview., content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+  /api/v1/open/devices/{device_id}/carbon/flux:
+    get:
+      tags: [OpenAPI]
+      operationId: queryOpenApiCarbonFlux
+      summary: Query carbon flux results
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: device_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+        - { name: node_id, in: query, required: true, schema: { type: integer, minimum: 1 } }
+        - { name: field, in: query, required: true, schema: { type: string } }
+        - { name: start_time, in: query, required: true, schema: { $ref: "#/components/schemas/Timestamp" } }
+        - { name: end_time, in: query, required: true, schema: { $ref: "#/components/schemas/Timestamp" } }
+      responses:
+        "200": { description: Carbon flux points., content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+  /api/v1/open/devices/{device_id}/carbon/periods:
+    get:
+      tags: [OpenAPI]
+      operationId: listOpenApiCarbonPeriods
+      summary: List carbon sampling periods
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: device_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+        - { name: node_id, in: query, required: true, schema: { type: integer, minimum: 1 } }
+        - { name: start_time, in: query, required: true, schema: { $ref: "#/components/schemas/Timestamp" } }
+        - { name: end_time, in: query, required: true, schema: { $ref: "#/components/schemas/Timestamp" } }
+      responses:
+        "200": { description: Carbon periods., content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+  /api/v1/open/devices/{device_id}/carbon/period:
+    get:
+      tags: [OpenAPI]
+      operationId: getOpenApiCarbonPeriod
+      summary: Get flux and raw light/black samples for one carbon period
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: device_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+        - { name: node_id, in: query, required: true, schema: { type: integer, minimum: 1 } }
+        - { name: field, in: query, required: true, schema: { type: string } }
+        - { name: period, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Carbon period detail., content: { application/json: { schema: { type: object, additionalProperties: true } } } }
   /api/v1/open/exports/{export_job_id}/download:
     get:
       tags: [ExportJobs]
@@ -1202,10 +1314,10 @@ paths:
     get:
       tags: [Admin]
       operationId: adminListWorkspaceBillingRisks
-      summary: List Workspaces with expiry or download usage risks
+      summary: List Workspace billing states, optionally filtered by risk
       security: [{ bearerAuth: [] }]
       parameters:
-        - { name: risk, in: query, schema: { type: string, enum: [professional_expiring, professional_expired, download_usage_warning] } }
+        - { name: risk, in: query, schema: { type: string, enum: [all, professional_expiring, professional_expired, download_usage_warning] } }
       responses:
         "200": { description: Workspace billing risks. }
   /api/v1/admin/workspaces/{workspace_id}/billing/history:
@@ -6878,6 +6990,41 @@ components:
         base_export_days: { type: integer, minimum: 1 }
         traffic_pack_size_bytes: { type: integer, format: int64 }
         traffic_pack_price_cents: { type: integer, format: int64 }
+    OpenApiDevice:
+      type: object
+      required: [id, name, serial_no, device_type, status, lifecycle_status]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        name: { type: string }
+        serial_no: { type: string }
+        device_type: { type: string, enum: [standalone, gateway, gateway_node, camera, carbon_sink] }
+        status: { type: string }
+        lifecycle_status: { type: string }
+        project_id: { $ref: "#/components/schemas/UUID" }
+        site_id: { $ref: "#/components/schemas/UUID" }
+    OpenApiDeviceList:
+      type: object
+      required: [items, total]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/OpenApiDevice" } }
+        total: { type: integer }
+    OpenApiDataStream:
+      type: object
+      required: [id, device_id, code, name, type, status]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        device_id: { $ref: "#/components/schemas/UUID" }
+        code: { type: string }
+        name: { type: string }
+        type: { type: string, enum: [telemetry, image, video, audio, event, log] }
+        unit: { type: string }
+        status: { type: string }
+    OpenApiDataStreamList:
+      type: object
+      required: [items, total]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/OpenApiDataStream" } }
+        total: { type: integer }
     WorkspaceApiKey:
       type: object
       required: [id, workspace_id, name, key_prefix, created_by, created_at]
@@ -6891,6 +7038,7 @@ components:
         last_used_at: { $ref: "#/components/schemas/Timestamp" }
         revoked_at: { $ref: "#/components/schemas/Timestamp" }
         created_at: { $ref: "#/components/schemas/Timestamp" }
+        requests_this_month: { type: integer, format: int64, description: Successful API Key authentications in the current calendar month. }
     CreatedWorkspaceApiKey:
       allOf:
         - $ref: "#/components/schemas/WorkspaceApiKey"

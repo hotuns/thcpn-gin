@@ -320,11 +320,6 @@ function TelemetryChart({
   const max = Math.max(...values);
   const average = values.reduce((sum, item) => sum + item, 0) / source.length;
   const latest = source.at(-1);
-  const first = source[0];
-  const change = first && latest ? latest.value - first.value : 0;
-  const changePercent = first?.value
-    ? (change / Math.abs(first.value)) * 100
-    : null;
   const domainPadding = Math.max((max - min) * 0.08, Math.abs(max || 1) * 0.01);
   return (
     <section className={`telemetry-chart chart-color-${colorIndex % 5}`}>
@@ -350,18 +345,6 @@ function TelemetryChart({
         </span>
         <span>
           {t("platform:telemetry.maximum")} <strong>{formatNumber(max, { maximumFractionDigits: 2 })}</strong>
-        </span>
-        <span>
-          {t("platform:telemetry.change")}{" "}
-          <strong
-            className={change > 0 ? "trend-up" : change < 0 ? "trend-down" : ""}
-          >
-            {change > 0 ? "+" : ""}
-            {formatNumber(change, { maximumFractionDigits: 2 })}
-            {changePercent === null
-              ? ""
-              : ` (${changePercent > 0 ? "+" : ""}${changePercent.toFixed(1)}%)`}
-          </strong>
         </span>
       </div>
       <div

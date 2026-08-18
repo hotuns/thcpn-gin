@@ -2,6 +2,7 @@ package openapiaccess
 
 import (
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -12,22 +13,26 @@ import (
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/audit"
 	"thcpn-gin/internal/auth"
+	"thcpn-gin/internal/datasource"
 	exportservice "thcpn-gin/internal/export"
 	"thcpn-gin/internal/httpx"
+	"thcpn-gin/internal/media"
 	"thcpn-gin/internal/permission"
 	"thcpn-gin/internal/telemetry"
 )
 
 type Handler struct {
-	service   *Service
-	telemetry *telemetry.Service
-	exports   *exportservice.Service
-	checker   *permission.Checker
-	audit     *audit.Service
+	service     *Service
+	telemetry   *telemetry.Service
+	exports     *exportservice.Service
+	dataSources *datasource.Service
+	media       *media.Service
+	checker     *permission.Checker
+	audit       *audit.Service
 }
 
-func NewHandler(service *Service, telemetryService *telemetry.Service, exportService *exportservice.Service, checker *permission.Checker, auditService *audit.Service) *Handler {
-	return &Handler{service: service, telemetry: telemetryService, exports: exportService, checker: checker, audit: auditService}
+func NewHandler(service *Service, telemetryService *telemetry.Service, exportService *exportservice.Service, dataSourceService *datasource.Service, mediaService *media.Service, checker *permission.Checker, auditService *audit.Service) *Handler {
+	return &Handler{service: service, telemetry: telemetryService, exports: exportService, dataSources: dataSourceService, media: mediaService, checker: checker, audit: auditService}
 }
 
 type createRequest struct {
@@ -166,6 +171,212 @@ func (h *Handler) QueryTelemetry(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, result)
 }
+
+func (h *Handler) ListDevices(c *gin.Context) {
+	key, ok := h.authenticateAPIKey(c)
+	if !ok {
+		return
+	}
+	items, err := h.service.ListDevices(c, key.WorkspaceID, c.Query("device_type"), c.Query("status"))
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items, "total": len(items)})
+}
+
+func (h *Handler) GetDevice(c *gin.Context) {
+	key, ok := h.authenticateAPIKey(c)
+	if !ok {
+		return
+	}
+	deviceID, ok := parseID(c, "device_id")
+	if !ok {
+		return
+	}
+	item, err := h.service.GetDevice(c, key.WorkspaceID, deviceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, item)
+}
+
+func (h *Handler) ListDataStreams(c *gin.Context) {
+	key, ok := h.authenticateAPIKey(c)
+	if !ok {
+		return
+	}
+	deviceID, ok := parseID(c, "device_id")
+	if !ok {
+		return
+	}
+	items, err := h.service.ListDataStreams(c, key.WorkspaceID, deviceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items, "total": len(items)})
+}
+
+func (h *Handler) ListMedia(c *gin.Context) {
+	key, ok := h.authenticateAPIKey(c)
+	if !ok {
+		return
+	}
+	deviceID, ok := parseID(c, "device_id")
+	if !ok {
+		return
+	}
+	if err := h.service.DeviceBelongsToWorkspace(c, deviceID, key.WorkspaceID); err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	start, ok := parseRequiredTime(c, "start_time")
+	if !ok {
+		return
+	}
+	end, ok := parseRequiredTime(c, "end_time")
+	if !ok {
+		return
+	}
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "50"))
+	result, err := h.media.List(c, media.QueryInput{DeviceID: &deviceID, MediaType: c.Query("media_type"), StartTime: start, EndTime: end, Page: page, PageSize: pageSize, DownloadAllowed: true})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	for i := range result.Items {
+		if result.Items[i].DownloadURL != nil {
+			parsed, _ := url.Parse(*result.Items[i].DownloadURL)
+			next := "/api/v1/open/media/download?token=" + url.QueryEscape(parsed.Query().Get("token"))
+			result.Items[i].DownloadURL = &next
+		}
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) DownloadMedia(c *gin.Context) {
+	key, ok := h.authenticateAPIKey(c)
+	if !ok {
+		return
+	}
+	token := strings.TrimSpace(c.Query("token"))
+	target, err := h.media.ResolveMediaToken(c, token)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if target.WorkspaceID != key.WorkspaceID {
+		httpx.WriteAppError(c, apperr.New(apperr.KindNotFound, "media not found"))
+		return
+	}
+	result, err := h.media.PrepareDownload(c, token)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) CarbonOverview(c *gin.Context) {
+	key, deviceID, ok := h.openDevice(c)
+	if !ok {
+		return
+	}
+	_ = key
+	result, err := h.dataSources.CarbonOverview(c, deviceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+func (h *Handler) CarbonFlux(c *gin.Context) {
+	_, deviceID, ok := h.openDevice(c)
+	if !ok {
+		return
+	}
+	nodeID, _ := strconv.Atoi(c.Query("node_id"))
+	start, ok := parseRequiredTime(c, "start_time")
+	if !ok {
+		return
+	}
+	end, ok := parseRequiredTime(c, "end_time")
+	if !ok {
+		return
+	}
+	result, err := h.dataSources.CarbonFlux(c, deviceID, nodeID, c.Query("field"), start, end)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+func (h *Handler) CarbonPeriods(c *gin.Context) {
+	_, deviceID, ok := h.openDevice(c)
+	if !ok {
+		return
+	}
+	nodeID, _ := strconv.Atoi(c.Query("node_id"))
+	start, ok := parseRequiredTime(c, "start_time")
+	if !ok {
+		return
+	}
+	end, ok := parseRequiredTime(c, "end_time")
+	if !ok {
+		return
+	}
+	result, err := h.dataSources.CarbonPeriods(c, deviceID, nodeID, start, end)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": result, "total": len(result)})
+}
+func (h *Handler) CarbonPeriod(c *gin.Context) {
+	_, deviceID, ok := h.openDevice(c)
+	if !ok {
+		return
+	}
+	nodeID, _ := strconv.Atoi(c.Query("node_id"))
+	result, err := h.dataSources.CarbonPeriod(c, deviceID, nodeID, c.Query("field"), c.Query("period"))
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+func (h *Handler) openDevice(c *gin.Context) (APIKey, uuid.UUID, bool) {
+	key, ok := h.authenticateAPIKey(c)
+	if !ok {
+		return APIKey{}, uuid.Nil, false
+	}
+	deviceID, ok := parseID(c, "device_id")
+	if !ok {
+		return key, uuid.Nil, false
+	}
+	if err := h.service.DeviceBelongsToWorkspace(c, deviceID, key.WorkspaceID); err != nil {
+		httpx.WriteAppError(c, err)
+		return key, uuid.Nil, false
+	}
+	return key, deviceID, true
+}
+func parseRequiredTime(c *gin.Context, name string) (time.Time, bool) {
+	value, err := time.Parse(time.RFC3339, c.Query(name))
+	if err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid "+name))
+		return time.Time{}, false
+	}
+	return value, true
+}
+
+func (h *Handler) Docs(c *gin.Context) {
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.String(http.StatusOK, `<!doctype html><html><head><meta charset="utf-8"><title>THCPN Open API</title><link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css"></head><body><div id="swagger-ui"></div><script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script><script>SwaggerUIBundle({url:'/api/v1/open/openapi.yaml',dom_id:'#swagger-ui',deepLinking:true,persistAuthorization:true})</script></body></html>`)
+}
+func (h *Handler) Spec(c *gin.Context) { c.File("docs/openapi.yaml") }
 
 func (h *Handler) DownloadExport(c *gin.Context) {
 	key, ok := h.authenticateAPIKey(c)

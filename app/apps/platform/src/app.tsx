@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Link,
   Navigate,
@@ -12,8 +13,10 @@ import {
 } from "react-router-dom";
 import {
   BarChart3,
+  Bell,
   Boxes,
   Building2,
+  CreditCard,
   Download,
   Gauge,
   Home,
@@ -96,6 +99,12 @@ const DataComparisonPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import("./settings").then((module) => ({ default: module.SettingsPage })),
 );
+const SubscriptionPage = lazy(() =>
+  import("./subscription-page").then((module) => ({ default: module.SubscriptionPage })),
+);
+const NotificationsPage = lazy(() =>
+  import("./notifications-page").then((module) => ({ default: module.NotificationsPage })),
+);
 const AccountPage = lazy(() =>
   import("./account-page").then((module) => ({ default: module.AccountPage })),
 );
@@ -131,7 +140,10 @@ const navGroups = [
   },
   {
     label: "管理",
-    items: [{ to: "/workspaces", key: "workspaces", icon: Building2 }],
+    items: [
+      { to: "/workspaces", key: "workspaces", icon: Building2 },
+      { to: "/subscription", key: "subscription", icon: CreditCard },
+    ],
   },
 ];
 
@@ -172,6 +184,10 @@ function Shell() {
               ? t("platform:navigation.workspaces")
             : location.pathname === "/settings"
                 ? t("platform:navigation.settings")
+                : location.pathname === "/subscription"
+                  ? t("platform:navigation.subscription")
+                : location.pathname === "/notifications"
+                  ? t("platform:navigation.notifications")
                 : location.pathname === "/account"
                   ? t("platform:navigation.account")
                 : location.pathname === "/dashboard"
@@ -197,6 +213,15 @@ function Shell() {
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [mobileOpen]);
+  const notificationSummary = useQuery({
+    queryKey: workspaceQueryKey(workspace.currentId, "notification-summary"),
+    queryFn: async () => {
+      const [notices, announcements] = await Promise.all([api.notifications.list(workspace.currentId ?? undefined, 20), api.notifications.announcements(workspace.currentId ?? undefined)]);
+      return Number(notices.unread_count ?? 0) + Number(announcements.unread_count ?? 0);
+    },
+    enabled: Boolean(workspace.currentId),
+    refetchInterval: 60_000,
+  });
   return (
     <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       {mobileOpen && (
@@ -310,6 +335,10 @@ function Shell() {
               )}
             </div>
           </div>
+          <Link className="topbar-notification" to="/notifications" aria-label="通知中心">
+            <Bell size={18} />
+            {(notificationSummary.data ?? 0) > 0 && <span>{Math.min(notificationSummary.data ?? 0, 99)}</span>}
+          </Link>
         </header>
         <main className="page">
           <Outlet />
@@ -569,6 +598,8 @@ export function PlatformApp() {
             <Route path="/processing" element={<ProcessingPage />} />
             <Route path="/processing/:taskId" element={<ProcessingTaskDetailPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/subscription" element={<SubscriptionPage />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/account" element={<AccountPage />} />
             <Route path="*" element={<RootRedirect />} />
           </Route>

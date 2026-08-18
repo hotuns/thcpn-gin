@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-build:
+    name: Backend build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build API and worker
+        run: |
+          go build ./cmd/api
+          go build ./cmd/worker
+
+  frontend-build:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  compose-build:
+    name: Docker Compose build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+      - name: Build deployment images
+        run: docker compose build api worker platform admin processor

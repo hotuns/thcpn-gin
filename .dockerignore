@@ -1,0 +1,15 @@
+.git
+.github
+.env
+.DS_Store
+app/node_modules
+app/**/node_modules
+app/**/dist
+bin
+dist
+tmp
+var
+output
+coverage.out
+*.log
+*.tsbuildinfo

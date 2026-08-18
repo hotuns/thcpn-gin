@@ -486,10 +486,10 @@ func (s *Service) AdminRiskWorkspaces(ctx context.Context, filter string) ([]Ris
 		if summary.WarningLevel > 0 {
 			risks = append(risks, "download_usage_warning")
 		}
-		if len(risks) == 0 {
+		if len(risks) == 0 && filter != "all" {
 			continue
 		}
-		if filter != "" {
+		if filter != "" && filter != "all" {
 			matched := false
 			for _, risk := range risks {
 				if risk == filter {

@@ -547,6 +547,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/open/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List devices available to the API Key Workspace */
+        get: operations["listOpenApiDevices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/open/devices/{device_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a Workspace device */
+        get: operations["getOpenApiDevice"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/open/devices/{device_id}/data-streams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Discover active telemetry and media fields for a device */
+        get: operations["listOpenApiDeviceDataStreams"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/open/devices/{device_id}/telemetry": {
         parameters: {
             query?: never;
@@ -556,6 +607,111 @@ export interface paths {
         };
         /** Query Workspace device telemetry with a professional API Key */
         get: operations["queryOpenApiDeviceTelemetry"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/open/devices/{device_id}/media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Query device image, video or audio records */
+        get: operations["listOpenApiDeviceMedia"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/open/media/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Prepare an original media download URL
+         * @description Original downloads consume the Workspace download allowance.
+         */
+        get: operations["prepareOpenApiMediaDownload"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/open/devices/{device_id}/carbon/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get carbon station nodes and latest sample status */
+        get: operations["getOpenApiCarbonOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/open/devices/{device_id}/carbon/flux": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Query carbon flux results */
+        get: operations["queryOpenApiCarbonFlux"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/open/devices/{device_id}/carbon/periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List carbon sampling periods */
+        get: operations["listOpenApiCarbonPeriods"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/open/devices/{device_id}/carbon/period": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get flux and raw light/black samples for one carbon period */
+        get: operations["getOpenApiCarbonPeriod"];
         put?: never;
         post?: never;
         delete?: never;
@@ -759,7 +915,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Workspaces with expiry or download usage risks */
+        /** List Workspace billing states, optionally filtered by risk */
         get: operations["adminListWorkspaceBillingRisks"];
         put?: never;
         post?: never;
@@ -4042,6 +4198,35 @@ export interface components {
             /** Format: int64 */
             traffic_pack_price_cents: number;
         };
+        OpenApiDevice: {
+            id: components["schemas"]["UUID"];
+            name: string;
+            serial_no: string;
+            /** @enum {string} */
+            device_type: "standalone" | "gateway" | "gateway_node" | "camera" | "carbon_sink";
+            status: string;
+            lifecycle_status: string;
+            project_id?: components["schemas"]["UUID"];
+            site_id?: components["schemas"]["UUID"];
+        };
+        OpenApiDeviceList: {
+            items: components["schemas"]["OpenApiDevice"][];
+            total: number;
+        };
+        OpenApiDataStream: {
+            id: components["schemas"]["UUID"];
+            device_id: components["schemas"]["UUID"];
+            code: string;
+            name: string;
+            /** @enum {string} */
+            type: "telemetry" | "image" | "video" | "audio" | "event" | "log";
+            unit?: string;
+            status: string;
+        };
+        OpenApiDataStreamList: {
+            items: components["schemas"]["OpenApiDataStream"][];
+            total: number;
+        };
         WorkspaceApiKey: {
             id: components["schemas"]["UUID"];
             workspace_id: components["schemas"]["UUID"];
@@ -4052,6 +4237,11 @@ export interface components {
             last_used_at?: components["schemas"]["Timestamp"];
             revoked_at?: components["schemas"]["Timestamp"];
             created_at: components["schemas"]["Timestamp"];
+            /**
+             * Format: int64
+             * @description Successful API Key authentications in the current calendar month.
+             */
+            requests_this_month?: number;
         };
         CreatedWorkspaceApiKey: components["schemas"]["WorkspaceApiKey"] & {
             /** @description Returned only once when the key is created. */
@@ -6556,6 +6746,77 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    listOpenApiDevices: {
+        parameters: {
+            query?: {
+                device_type?: string;
+                status?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenApiDeviceList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+        };
+    };
+    getOpenApiDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenApiDevice"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listOpenApiDeviceDataStreams: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Data stream list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenApiDataStreamList"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
     queryOpenApiDeviceTelemetry: {
         parameters: {
             query: {
@@ -6583,6 +6844,167 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["PermissionDenied"];
+        };
+    };
+    listOpenApiDeviceMedia: {
+        parameters: {
+            query: {
+                start_time: components["schemas"]["Timestamp"];
+                end_time: components["schemas"]["Timestamp"];
+                media_type?: "image" | "video" | "audio";
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path: {
+                device_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Media records with temporary preview and API download links. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaListResponse"];
+                };
+            };
+        };
+    };
+    prepareOpenApiMediaDownload: {
+        parameters: {
+            query: {
+                token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Temporary original media URL. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    getOpenApiCarbonOverview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Carbon station overview. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    queryOpenApiCarbonFlux: {
+        parameters: {
+            query: {
+                node_id: number;
+                field: string;
+                start_time: components["schemas"]["Timestamp"];
+                end_time: components["schemas"]["Timestamp"];
+            };
+            header?: never;
+            path: {
+                device_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Carbon flux points. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    listOpenApiCarbonPeriods: {
+        parameters: {
+            query: {
+                node_id: number;
+                start_time: components["schemas"]["Timestamp"];
+                end_time: components["schemas"]["Timestamp"];
+            };
+            header?: never;
+            path: {
+                device_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Carbon periods. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    getOpenApiCarbonPeriod: {
+        parameters: {
+            query: {
+                node_id: number;
+                field: string;
+                period: string;
+            };
+            header?: never;
+            path: {
+                device_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Carbon period detail. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
         };
     };
     prepareOpenApiExportDownload: {
@@ -6868,7 +7290,7 @@ export interface operations {
     adminListWorkspaceBillingRisks: {
         parameters: {
             query?: {
-                risk?: "professional_expiring" | "professional_expired" | "download_usage_warning";
+                risk?: "all" | "professional_expiring" | "professional_expired" | "download_usage_warning";
             };
             header?: never;
             path?: never;

@@ -37,6 +37,7 @@ import (
 	"thcpn-gin/internal/httpx"
 	"thcpn-gin/internal/media"
 	"thcpn-gin/internal/member"
+	"thcpn-gin/internal/notification"
 	"thcpn-gin/internal/objectstore"
 	"thcpn-gin/internal/openapiaccess"
 	"thcpn-gin/internal/permission"
@@ -167,6 +168,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	exportService.SetBilling(billingService)
 	processingService := processing.NewService(deps.Postgres, processing.NewClient(cfg.Processing.ProcessorURL), objectSigner)
 	processingService.SetBilling(billingService, objectStore)
+	notificationService := notification.NewService(deps.Postgres)
 	tokenManager := auth.NewTokenManager(cfg.Auth.JWTSecret, time.Duration(cfg.Auth.AccessTokenTTLMinutes)*time.Minute)
 	smsSender, err := newSMSSender(cfg.SMS, deps.Logger)
 	if err != nil {
@@ -216,11 +218,12 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	dataSourceHandler.SetClaimCredentialEnsurer(deviceClaimService)
 	dataSourceHandler.SetTHCPNLogSigner(thcpnLogSigner)
 	telemetryHandler := telemetry.NewHandler(telemetryService, permissionChecker)
-	openAPIHandler := openapiaccess.NewHandler(openAPIService, telemetryService, exportService, permissionChecker, auditService)
+	openAPIHandler := openapiaccess.NewHandler(openAPIService, telemetryService, exportService, dataSourceService, mediaService, permissionChecker, auditService)
 	mediaHandler := media.NewHandler(mediaService, permissionChecker, auditService)
 	publicDeviceHandler := publicdevice.NewHandler(publicDeviceService, telemetryService, mediaService, permissionChecker, auditService, deps.Redis, cfg.Auth.JWTSecret)
 	exportHandler := export.NewHandler(exportService, permissionChecker, auditService)
 	processingHandler := processing.NewHandler(processingService, permissionChecker, billingService)
+	notificationHandler := notification.NewHandler(notificationService)
 	if taskClient := task.NewClient(deps.Redis); taskClient != nil {
 		exportHandler.SetJobEnqueuer(taskClient)
 	}
@@ -246,6 +249,17 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	api.GET("/device-claims/:claim_slug", deviceClaimHandler.PublicEntry)
 	api.POST("/admin/auth/refresh", adminAuthHandler.Refresh)
 	api.GET("/open/devices/:device_id/telemetry", openAPIHandler.QueryTelemetry)
+	api.GET("/open/devices", openAPIHandler.ListDevices)
+	api.GET("/open/devices/:device_id", openAPIHandler.GetDevice)
+	api.GET("/open/devices/:device_id/data-streams", openAPIHandler.ListDataStreams)
+	api.GET("/open/devices/:device_id/media", openAPIHandler.ListMedia)
+	api.GET("/open/media/download", openAPIHandler.DownloadMedia)
+	api.GET("/open/devices/:device_id/carbon/overview", openAPIHandler.CarbonOverview)
+	api.GET("/open/devices/:device_id/carbon/flux", openAPIHandler.CarbonFlux)
+	api.GET("/open/devices/:device_id/carbon/periods", openAPIHandler.CarbonPeriods)
+	api.GET("/open/devices/:device_id/carbon/period", openAPIHandler.CarbonPeriod)
+	api.GET("/open/docs", openAPIHandler.Docs)
+	api.GET("/open/openapi.yaml", openAPIHandler.Spec)
 	api.GET("/open/exports/:export_job_id/download", openAPIHandler.DownloadExport)
 	if cfg.Auth.DevRegisterEnabled {
 		api.POST("/auth/register", userHandler.Register)
@@ -258,6 +272,11 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed := api.Group("")
 	authed.Use(authMiddleware)
 	authed.POST("/auth/logout", authHandler.Logout)
+	authed.GET("/notifications", notificationHandler.List)
+	authed.POST("/notifications/read-all", notificationHandler.ReadAll)
+	authed.POST("/notifications/:id/read", notificationHandler.Read)
+	authed.GET("/announcements", notificationHandler.Announcements)
+	authed.POST("/announcements/:id/read", notificationHandler.ReadAnnouncement)
 	authed.GET("/auth/sessions", authHandler.ListSessions)
 	authed.DELETE("/auth/sessions/:session_id", authHandler.RevokeSession)
 	authed.POST("/auth/email/send", authHandler.SendEmailVerification)
@@ -283,6 +302,10 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin := api.Group("/admin")
 	admin.Use(adminauth.Middleware(adminTokenManager, adminAuthService))
 	admin.GET("/me", adminAuthHandler.Me)
+	admin.GET("/announcements", notificationHandler.AdminListAnnouncements)
+	admin.POST("/announcements", notificationHandler.AdminCreateAnnouncement)
+	admin.PATCH("/announcements/:id/status", notificationHandler.AdminSetAnnouncementStatus)
+	admin.POST("/notifications", notificationHandler.AdminSend)
 	admin.GET("/users", adminUserHandler.List)
 	admin.POST("/users", adminUserHandler.Create)
 	admin.GET("/users/:user_id", adminUserHandler.Get)
