@@ -57,6 +57,8 @@ services:
       context: .
       dockerfile: Dockerfile
     command: ["api"]
+    env_file:
+      - .env
     environment: &backend_environment
       SERVER_ADDR: ":8080"
       PLATFORM_DATABASE_DSN: "postgres://${POSTGRES_USER:-thcpn}:${POSTGRES_PASSWORD:-thcpn_dev_password}@postgres:5432/${POSTGRES_DB:-thcpn_platform}?sslmode=disable"
@@ -111,6 +113,8 @@ services:
       context: .
       dockerfile: Dockerfile
     command: ["worker"]
+    env_file:
+      - .env
     environment: *backend_environment
     depends_on:
       migrate-init:
