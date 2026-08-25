@@ -14,6 +14,15 @@ type Sender interface {
 	SendVerificationCode(ctx context.Context, req SendRequest) error
 }
 
+type VerifyRequest struct {
+	Phone string
+	Code  string
+}
+
+type Verifier interface {
+	VerifyVerificationCode(ctx context.Context, req VerifyRequest) error
+}
+
 type NoopSender struct{}
 
 func (NoopSender) SendVerificationCode(context.Context, SendRequest) error {

@@ -97,6 +97,7 @@ type AliyunSMSConfig struct {
 	AccessKeySecretEnv string `yaml:"access_key_secret_env"`
 	SignNameEnv        string `yaml:"sign_name_env"`
 	TemplateCodeEnv    string `yaml:"template_code_env"`
+	SchemeNameEnv      string `yaml:"scheme_name_env"`
 	Endpoint           string `yaml:"endpoint"`
 }
 
@@ -205,7 +206,8 @@ func Default() Config {
 				AccessKeySecretEnv: "ALIYUN_ACCESS_KEY_SECRET",
 				SignNameEnv:        "ALIYUN_SMS_SIGN_NAME",
 				TemplateCodeEnv:    "ALIYUN_SMS_TEMPLATE_CODE",
-				Endpoint:           "dysmsapi.aliyuncs.com",
+				SchemeNameEnv:      "ALIYUN_SMS_SCHEME_NAME",
+				Endpoint:           "dypnsapi.aliyuncs.com",
 			},
 		},
 		Email: EmailConfig{

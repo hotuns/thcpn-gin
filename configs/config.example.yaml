@@ -35,7 +35,7 @@ auth:
     lock_minutes: 15
 
 sms:
-  provider: "log"
+  provider: "aliyun"
   code_ttl_seconds: 300
   cooldown_seconds: 60
   daily_limit: 10
@@ -46,7 +46,8 @@ sms:
     access_key_secret_env: "ALIYUN_ACCESS_KEY_SECRET"
     sign_name_env: "ALIYUN_SMS_SIGN_NAME"
     template_code_env: "ALIYUN_SMS_TEMPLATE_CODE"
-    endpoint: "dysmsapi.aliyuncs.com"
+    scheme_name_env: "ALIYUN_SMS_SCHEME_NAME"
+    endpoint: "dypnsapi.aliyuncs.com"
 
 email:
   provider: "log"

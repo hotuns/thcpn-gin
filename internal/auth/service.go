@@ -294,8 +294,15 @@ func (s *Service) LoginWithSMS(ctx context.Context, input SMSLoginInput) (LoginR
 	if s.codeStore == nil {
 		return LoginResult{}, apperr.New(apperr.KindInternal, "sms code store is not configured")
 	}
-	if err := s.codeStore.Verify(ctx, phone, code); err != nil {
-		return LoginResult{}, err
+	if verifier, ok := s.sender.(smsx.Verifier); ok {
+		if err := verifier.VerifyVerificationCode(ctx, smsx.VerifyRequest{Phone: phone, Code: code}); err != nil {
+			return LoginResult{}, err
+		}
+		_ = s.codeStore.ClearIssue(ctx, phone)
+	} else {
+		if err := s.codeStore.Verify(ctx, phone, code); err != nil {
+			return LoginResult{}, err
+		}
 	}
 
 	phonePtr := &phone
