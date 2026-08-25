@@ -1358,6 +1358,14 @@ export const api = {
       activity: (id: string, filters: JsonRecord = {}) => request<ListResponse<JsonRecord>>(`/api/v1/admin/users/${encodeURIComponent(id)}/activity${queryString(filters as Record<string, string | number | boolean>)}`),
       remove: (id: string, payload: JsonRecord) => jsonRequest<void>(`/api/v1/admin/users/${encodeURIComponent(id)}`, "DELETE", payload),
     },
+    administrators: {
+      list: () => request<ListResponse<JsonRecord>>("/api/v1/admin/administrators"),
+      create: (payload: JsonRecord) => jsonRequest<JsonRecord>("/api/v1/admin/administrators", "POST", payload),
+      updateStatus: (id: string, payload: JsonRecord) => jsonRequest<void>(`/api/v1/admin/administrators/${encodeURIComponent(id)}/status`, "PATCH", payload),
+      unlock: (id: string, payload: JsonRecord) => jsonRequest<void>(`/api/v1/admin/administrators/${encodeURIComponent(id)}/unlock`, "POST", payload),
+      revokeAllSessions: (id: string, payload: JsonRecord) => jsonRequest<void>(`/api/v1/admin/administrators/${encodeURIComponent(id)}/sessions/revoke-all`, "POST", payload),
+      temporaryPassword: (id: string, payload: JsonRecord) => jsonRequest<JsonRecord>(`/api/v1/admin/administrators/${encodeURIComponent(id)}/temporary-password`, "POST", payload),
+    },
   },
 };
 

@@ -27,6 +27,7 @@ type Querier interface {
 	CountPermissionsByCodes(ctx context.Context, dollar_1 []string) (int64, error)
 	CreateAccessGrant(ctx context.Context, arg CreateAccessGrantParams) (AccessGrant, error)
 	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) (AuditLog, error)
+	CreateCameraDevice(ctx context.Context, arg CreateCameraDeviceParams) (Device, error)
 	CreateDataSource(ctx context.Context, arg CreateDataSourceParams) (DataSource, error)
 	CreateDataStream(ctx context.Context, arg CreateDataStreamParams) (DataStream, error)
 	CreateDataStreamBinding(ctx context.Context, arg CreateDataStreamBindingParams) (DataStreamBinding, error)
@@ -187,7 +188,6 @@ type Querier interface {
 	UpdateWorkspaceMemberRole(ctx context.Context, arg UpdateWorkspaceMemberRoleParams) (WorkspaceMember, error)
 	UpdateWorkspaceMemberRoleStatusByUser(ctx context.Context, arg UpdateWorkspaceMemberRoleStatusByUserParams) (WorkspaceMember, error)
 	UpsertCameraBinding(ctx context.Context, arg UpsertCameraBindingParams) (CameraBinding, error)
-	UpsertCameraDevice(ctx context.Context, arg UpsertCameraDeviceParams) (Device, error)
 	UpsertCarbonMetadata(ctx context.Context, arg UpsertCarbonMetadataParams) error
 	UpsertCarbonNodeMetadata(ctx context.Context, arg UpsertCarbonNodeMetadataParams) error
 	UpsertDataStreamFromSync(ctx context.Context, arg UpsertDataStreamFromSyncParams) (DataStream, error)

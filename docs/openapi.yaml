@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
-  title: THCPN IoT Research Platform API
+  title: In-situ EcoCloud API
   version: 0.16.0
   description: |
-    THCPN 科研物联网数据管理平台后端 API。
+    原位生态云后端 API。
 
     当前文档覆盖已实现的阶段功能：健康检查、短信验证码登录/注册、邮箱验证码验证、密码注册/登录、TOTP MFA、refresh token、logout、会话管理、
     JWT 认证、Workspace 列表/创建、Workspace 成员管理、Project、Site、Device、DeviceRelation、DataStream、DataSource、DataStreamBinding、Telemetry Query、Media Query、Dataset 元信息与遥测查询管理和 ExportJob 导出任务、
@@ -1780,8 +1780,8 @@ paths:
       tags:
         - Admin
       operationId: adminCreateCamera
-      summary: Create or update an Ezviz camera device
-      description: Requires a valid administrator bearer token. Creates or updates a system-level camera Device, stores Ezviz binding metadata, adds the `video_stream` capability, and can optionally assign the camera to a Workspace.
+      summary: Create an Ezviz camera device
+      description: Requires a valid administrator bearer token. Creates a camera Device with a platform-generated EC-######## serial number, stores Ezviz identity in the camera binding, adds the `video_stream` capability, and can optionally assign the camera to a Workspace.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -7892,13 +7892,10 @@ components:
     CreateCameraRequest:
       type: object
       required:
-        - serial_no
         - name
         - device_serial
       properties:
         product_id:
-          type: string
-        serial_no:
           type: string
         name:
           type: string
@@ -8210,11 +8207,9 @@ components:
           $ref: "#/components/schemas/UUID"
     AdminUpdateDeviceRequest:
       type: object
-      description: System admin update for device asset fields. Assignment, topology relations, and lifecycle are managed separately.
+      description: System admin update for mutable device asset fields. Platform serial numbers are generated once and cannot be edited. Assignment, topology relations, and lifecycle are managed separately.
       properties:
         product_id:
-          type: string
-        serial_no:
           type: string
         name:
           type: string

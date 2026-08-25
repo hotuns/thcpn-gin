@@ -297,7 +297,6 @@ type thcpnDeviceSyncInput struct {
 	ExternalDeviceID  int64
 	DeviceType        string
 	ProductID         string
-	SerialNo          string
 	Name              string
 	ActorUserID       uuid.UUID
 }
@@ -398,13 +397,9 @@ func (s *Service) syncTHCPNCamera(
 	if strings.TrimSpace(camera.DeviceSerial) == "" || camera.Channel <= 0 {
 		return THCPNCameraSyncResult{}, apperr.New(apperr.KindDataSource, "thcpn camera serial and channel are required")
 	}
-	platformSerial := strings.TrimSpace(camera.DeviceSerial)
-	if camera.Channel != 1 {
-		platformSerial += "-" + strconv.FormatInt(int64(camera.Channel), 10)
-	}
 	name := strings.TrimSpace(camera.Name)
 	if name == "" {
-		name = platformSerial
+		name = strings.TrimSpace(camera.DeviceSerial)
 	}
 
 	var device sqlc.Device
@@ -417,7 +412,7 @@ func (s *Service) syncTHCPNCamera(
 			return THCPNCameraSyncResult{}, mapNotFoundOrInternal(err, "mapped camera device not found")
 		}
 		device, err = q.UpdateDevice(ctx, sqlc.UpdateDeviceParams{
-			ID: current.ID, ProductID: optionalString("thcpn_camera"), SerialNo: platformSerial, Name: name, Status: "active",
+			ID: current.ID, ProductID: optionalString("thcpn_camera"), Name: name, Status: "active",
 		})
 		if err != nil {
 			return THCPNCameraSyncResult{}, mapWriteError(err, "update synced camera")
@@ -429,8 +424,8 @@ func (s *Service) syncTHCPNCamera(
 			}
 		}
 	} else if errors.Is(err, pgx.ErrNoRows) {
-		device, err = q.UpsertCameraDevice(ctx, sqlc.UpsertCameraDeviceParams{
-			ProductID: optionalString("thcpn_camera"), SerialNo: platformSerial, Name: name,
+		device, err = q.CreateCameraDevice(ctx, sqlc.CreateCameraDeviceParams{
+			ProductID: optionalString("thcpn_camera"), Name: name,
 		})
 		if err != nil {
 			return THCPNCameraSyncResult{}, mapWriteError(err, "create synced camera")
@@ -1164,22 +1159,18 @@ func (s *Service) upsertTHCPNPlatformDevice(ctx context.Context, q *sqlc.Queries
 	if productID == "" {
 		productID = defaultTHCPNProductID
 	}
-	serialNo := strings.TrimSpace(input.SerialNo)
-	if serialNo == "" && external.SN != nil {
-		serialNo = strings.TrimSpace(*external.SN)
-	}
-	if serialNo == "" && external.UUID != nil {
-		serialNo = strings.TrimSpace(*external.UUID)
-	}
-	if serialNo == "" {
-		serialNo = fmt.Sprintf("thcpn-%d", input.ExternalDeviceID)
-	}
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
 		name = strings.TrimSpace(external.Name)
 	}
+	if name == "" && external.SN != nil {
+		name = strings.TrimSpace(*external.SN)
+	}
+	if name == "" && external.UUID != nil {
+		name = strings.TrimSpace(*external.UUID)
+	}
 	if name == "" {
-		name = serialNo
+		name = fmt.Sprintf("THCPN 设备 %d", input.ExternalDeviceID)
 	}
 
 	existingRef, err := q.GetDeviceSourceRefByExternal(ctx, sqlc.GetDeviceSourceRefByExternalParams{
@@ -1195,7 +1186,6 @@ func (s *Service) upsertTHCPNPlatformDevice(ctx context.Context, q *sqlc.Queries
 		device, err := q.UpdateDevice(ctx, sqlc.UpdateDeviceParams{
 			ID:        current.ID,
 			ProductID: optionalString(productID),
-			SerialNo:  serialNo,
 			Name:      name,
 			Status:    current.Status,
 		})
@@ -1218,7 +1208,6 @@ func (s *Service) upsertTHCPNPlatformDevice(ctx context.Context, q *sqlc.Queries
 
 	device, err := q.CreateDevice(ctx, sqlc.CreateDeviceParams{
 		ProductID: optionalString(productID),
-		SerialNo:  serialNo,
 		Name:      name,
 	})
 	if err != nil {

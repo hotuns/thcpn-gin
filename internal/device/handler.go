@@ -37,7 +37,6 @@ type createDeviceRequest struct {
 	ProjectID    string   `json:"project_id"`
 	SiteID       string   `json:"site_id"`
 	ProductID    string   `json:"product_id"`
-	SerialNo     string   `json:"serial_no"`
 	Name         string   `json:"name"`
 	Capabilities []string `json:"capabilities"`
 }
@@ -46,7 +45,6 @@ type updateDeviceRequest struct {
 	ProjectID    *string   `json:"project_id"`
 	SiteID       *string   `json:"site_id"`
 	ProductID    *string   `json:"product_id"`
-	SerialNo     *string   `json:"serial_no"`
 	Name         *string   `json:"name"`
 	Status       *string   `json:"status"`
 	DeviceType   *string   `json:"device_type"`
@@ -190,7 +188,6 @@ func (h *Handler) AdminUpdate(c *gin.Context) {
 	result, err := h.service.AdminUpdate(c.Request.Context(), AdminUpdateInput{
 		DeviceID:     deviceID,
 		ProductID:    req.ProductID,
-		SerialNo:     req.SerialNo,
 		Name:         req.Name,
 		Status:       req.Status,
 		DeviceType:   req.DeviceType,
@@ -749,7 +746,6 @@ func (h *Handler) Create(c *gin.Context) {
 		ProjectID:    projectID,
 		SiteID:       siteID,
 		ProductID:    req.ProductID,
-		SerialNo:     req.SerialNo,
 		Name:         req.Name,
 		Capabilities: req.Capabilities,
 		ActorUserID:  actor.UserID,
@@ -882,7 +878,6 @@ func (h *Handler) Update(c *gin.Context) {
 		ProjectID:    projectID,
 		SiteID:       siteID,
 		ProductID:    req.ProductID,
-		SerialNo:     req.SerialNo,
 		Name:         req.Name,
 		Status:       req.Status,
 		Capabilities: req.Capabilities,

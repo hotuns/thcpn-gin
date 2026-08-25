@@ -374,7 +374,7 @@ func parseRequiredTime(c *gin.Context, name string) (time.Time, bool) {
 
 func (h *Handler) Docs(c *gin.Context) {
 	c.Header("Content-Type", "text/html; charset=utf-8")
-	c.String(http.StatusOK, `<!doctype html><html><head><meta charset="utf-8"><title>THCPN Open API</title><link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css"></head><body><div id="swagger-ui"></div><script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script><script>SwaggerUIBundle({url:'/api/v1/open/openapi.yaml',dom_id:'#swagger-ui',deepLinking:true,persistAuthorization:true})</script></body></html>`)
+	c.String(http.StatusOK, `<!doctype html><html><head><meta charset="utf-8"><title>In-situ EcoCloud Open API</title><link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css"></head><body><div id="swagger-ui"></div><script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script><script>SwaggerUIBundle({url:'/api/v1/open/openapi.yaml',dom_id:'#swagger-ui',deepLinking:true,persistAuthorization:true})</script></body></html>`)
 }
 func (h *Handler) Spec(c *gin.Context) { c.File("docs/openapi.yaml") }
 

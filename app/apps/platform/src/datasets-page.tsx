@@ -920,7 +920,7 @@ function DatasetForm({
                 <option value="">选择设备</option>
                 {datasetSelectableDevices.map((item) => (
                   <option key={String(item.id)} value={String(item.id)}>
-                    {String(item.name)} · {String(item.serial_no)}
+                    {String(item.name)} · SN {String(item.serial_no)}
                   </option>
                 ))}
               </select>

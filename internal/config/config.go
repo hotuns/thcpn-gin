@@ -118,6 +118,7 @@ type QueryLimitsConfig struct {
 }
 
 type BillingConfig struct {
+	Enabled                         bool  `yaml:"enabled"`
 	ProfessionalAnnualPriceCents    int64 `yaml:"professional_annual_price_cents"`
 	ProfessionalDefaultMonths       int   `yaml:"professional_default_months"`
 	BaseHistoryDays                 int   `yaml:"base_history_days"`
@@ -238,6 +239,7 @@ func Default() Config {
 			MaxMediaPageSize: 100,
 		},
 		Billing: BillingConfig{
+			Enabled:                         false,
 			ProfessionalAnnualPriceCents:    200000,
 			ProfessionalDefaultMonths:       12,
 			BaseHistoryDays:                 90,
@@ -647,6 +649,11 @@ func applyEnv(cfg *Config) {
 	if value := strings.TrimSpace(os.Getenv("EMAIL_MAX_VERIFY_ATTEMPTS")); value != "" {
 		if attempts, err := strconv.Atoi(value); err == nil {
 			cfg.Email.MaxVerifyAttempts = attempts
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("BILLING_ENABLED")); value != "" {
+		if enabled, err := strconv.ParseBool(value); err == nil {
+			cfg.Billing.Enabled = enabled
 		}
 	}
 	if value := strings.TrimSpace(os.Getenv("OBJECT_STORE_PROVIDER")); value != "" {

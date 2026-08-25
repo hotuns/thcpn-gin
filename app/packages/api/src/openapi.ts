@@ -1318,8 +1318,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Create or update an Ezviz camera device
-         * @description Requires a valid administrator bearer token. Creates or updates a system-level camera Device, stores Ezviz binding metadata, adds the `video_stream` capability, and can optionally assign the camera to a Workspace.
+         * Create an Ezviz camera device
+         * @description Requires a valid administrator bearer token. Creates a camera Device with a platform-generated EC-######## serial number, stores Ezviz identity in the camera binding, adds the `video_stream` capability, and can optionally assign the camera to a Workspace.
          */
         post: operations["adminCreateCamera"];
         delete?: never;
@@ -4725,7 +4725,6 @@ export interface components {
         };
         CreateCameraRequest: {
             product_id?: string;
-            serial_no: string;
             name: string;
             device_serial: string;
             /**
@@ -4856,10 +4855,9 @@ export interface components {
             project_id?: components["schemas"]["UUID"];
             site_id?: components["schemas"]["UUID"];
         };
-        /** @description System admin update for device asset fields. Assignment, topology relations, and lifecycle are managed separately. */
+        /** @description System admin update for mutable device asset fields. Platform serial numbers are generated once and cannot be edited. Assignment, topology relations, and lifecycle are managed separately. */
         AdminUpdateDeviceRequest: {
             product_id?: string;
-            serial_no?: string;
             name?: string;
             status?: components["schemas"]["DeviceStatus"];
             device_type?: components["schemas"]["DeviceTopologyRole"];

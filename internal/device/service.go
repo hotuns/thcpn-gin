@@ -115,7 +115,6 @@ type CreateInput struct {
 	ProjectID    *uuid.UUID
 	SiteID       *uuid.UUID
 	ProductID    string
-	SerialNo     string
 	Name         string
 	Capabilities []string
 	ActorUserID  uuid.UUID
@@ -132,7 +131,6 @@ type UpdateInput struct {
 	ProjectID    *uuid.UUID
 	SiteID       *uuid.UUID
 	ProductID    *string
-	SerialNo     *string
 	Name         *string
 	Status       *string
 	Capabilities *[]string
@@ -141,7 +139,6 @@ type UpdateInput struct {
 type AdminUpdateInput struct {
 	DeviceID     uuid.UUID
 	ProductID    *string
-	SerialNo     *string
 	Name         *string
 	Status       *string
 	DeviceType   *string
@@ -240,7 +237,6 @@ func NewService(db *pgxpool.Pool) *Service {
 }
 
 func (s *Service) Create(ctx context.Context, input CreateInput) (Device, error) {
-	serialNo := strings.TrimSpace(input.SerialNo)
 	name := strings.TrimSpace(input.Name)
 	if input.WorkspaceID == uuid.Nil {
 		return Device{}, apperr.New(apperr.KindInvalidArgument, "workspace id is required")
@@ -250,9 +246,6 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Device, error)
 	}
 	if input.SiteID != nil && input.ProjectID == nil {
 		return Device{}, apperr.New(apperr.KindInvalidArgument, "project_id is required when site_id is set")
-	}
-	if serialNo == "" {
-		return Device{}, apperr.New(apperr.KindInvalidArgument, "serial_no is required")
 	}
 	if name == "" {
 		return Device{}, apperr.New(apperr.KindInvalidArgument, "device name is required")
@@ -279,7 +272,6 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Device, error)
 	}
 	created, err := q.CreateDevice(ctx, sqlc.CreateDeviceParams{
 		ProductID: nullableTrimmedString(input.ProductID),
-		SerialNo:  serialNo,
 		Name:      name,
 	})
 	if err != nil {
@@ -846,7 +838,7 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (Device, error)
 	if siteID != nil && projectID == nil {
 		return Device{}, apperr.New(apperr.KindInvalidArgument, "project_id is required when site_id is set")
 	}
-	if input.ProductID != nil || input.SerialNo != nil || input.Name != nil || input.Status != nil || input.Capabilities != nil {
+	if input.ProductID != nil || input.Name != nil || input.Status != nil || input.Capabilities != nil {
 		return Device{}, apperr.New(apperr.KindInvalidArgument, "only project_id and site_id can be updated by workspace users")
 	}
 
@@ -873,9 +865,6 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (Device, error)
 func (s *Service) AdminUpdate(ctx context.Context, input AdminUpdateInput) (Device, error) {
 	if input.DeviceID == uuid.Nil {
 		return Device{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
-	}
-	if input.SerialNo != nil && strings.TrimSpace(*input.SerialNo) == "" {
-		return Device{}, apperr.New(apperr.KindInvalidArgument, "serial_no is required")
 	}
 	if input.Name != nil && strings.TrimSpace(*input.Name) == "" {
 		return Device{}, apperr.New(apperr.KindInvalidArgument, "device name is required")
@@ -924,10 +913,6 @@ func (s *Service) AdminUpdate(ctx context.Context, input AdminUpdateInput) (Devi
 	if input.ProductID != nil {
 		productID = nullableTrimmedString(*input.ProductID)
 	}
-	serialNo := current.SerialNo
-	if input.SerialNo != nil {
-		serialNo = strings.TrimSpace(*input.SerialNo)
-	}
 	name := current.Name
 	if input.Name != nil {
 		name = strings.TrimSpace(*input.Name)
@@ -940,7 +925,6 @@ func (s *Service) AdminUpdate(ctx context.Context, input AdminUpdateInput) (Devi
 	updated, err := q.UpdateDevice(ctx, sqlc.UpdateDeviceParams{
 		ID:        input.DeviceID,
 		ProductID: productID,
-		SerialNo:  serialNo,
 		Name:      name,
 		Status:    status,
 	})

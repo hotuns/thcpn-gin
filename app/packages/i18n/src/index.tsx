@@ -52,8 +52,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   };
   useEffect(() => {
     const update = (language: string) => {
-      document.documentElement.lang = normalizeLocale(language);
+      const locale = normalizeLocale(language);
+      document.documentElement.lang = locale;
       document.documentElement.dir = "ltr";
+      document.title = instance.t("appTitle", { lng: locale });
     };
     update(instance.language);
     instance.on("languageChanged", update);

@@ -58,7 +58,6 @@ type Camera struct {
 
 type CreateInput struct {
 	ProductID             string
-	SerialNo              string
 	Name                  string
 	DeviceSerial          string
 	ChannelNo             int32
@@ -129,11 +128,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Camera, error)
 	if input.ActorUserID == uuid.Nil {
 		return Camera{}, apperr.New(apperr.KindInvalidArgument, "actor user id is required")
 	}
-	serialNo := strings.TrimSpace(input.SerialNo)
 	name := strings.TrimSpace(input.Name)
-	if serialNo == "" {
-		return Camera{}, apperr.New(apperr.KindInvalidArgument, "serial_no is required")
-	}
 	if name == "" {
 		return Camera{}, apperr.New(apperr.KindInvalidArgument, "camera name is required")
 	}
@@ -165,9 +160,8 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Camera, error)
 	}()
 	q := s.queries.WithTx(tx)
 
-	device, err := q.UpsertCameraDevice(ctx, sqlc.UpsertCameraDeviceParams{
+	device, err := q.CreateCameraDevice(ctx, sqlc.CreateCameraDeviceParams{
 		ProductID: nullableTrimmedString(input.ProductID),
-		SerialNo:  serialNo,
 		Name:      name,
 	})
 	if err != nil {

@@ -35,6 +35,12 @@ type AccessGrantPermission struct {
 	PermissionID  uuid.UUID `json:"permission_id"`
 }
 
+type AnnouncementRead struct {
+	AnnouncementID uuid.UUID          `json:"announcement_id"`
+	UserID         uuid.UUID          `json:"user_id"`
+	ReadAt         pgtype.Timestamptz `json:"read_at"`
+}
+
 // 统一不可变操作日志，记录普通用户或系统管理员的动作、资源、结果和 request ID。
 type AuditLog struct {
 	ID           uuid.UUID  `json:"id"`
@@ -197,7 +203,7 @@ type DatasetSource struct {
 type Device struct {
 	ID        uuid.UUID `json:"id"`
 	ProductID *string   `json:"product_id"`
-	// 平台唯一设备序列号。
+	// 平台生成的永久设备序列号，格式为 EC-########，与外部数据源标识无关。
 	SerialNo    string             `json:"serial_no"`
 	Name        string             `json:"name"`
 	Status      string             `json:"status"`
@@ -717,6 +723,21 @@ type SystemAdminRefreshSession struct {
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 }
 
+type SystemAnnouncement struct {
+	ID           uuid.UUID          `json:"id"`
+	Title        string             `json:"title"`
+	Content      string             `json:"content"`
+	Level        string             `json:"level"`
+	AudienceType string             `json:"audience_type"`
+	WorkspaceID  *uuid.UUID         `json:"workspace_id"`
+	Status       string             `json:"status"`
+	PublishedAt  pgtype.Timestamptz `json:"published_at"`
+	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
+	CreatedBy    uuid.UUID          `json:"created_by"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
 // 平台普通用户主表，保存身份、联系方式、账号状态和认证版本，不保存密码正文。
 type User struct {
 	ID              uuid.UUID          `json:"id"`
@@ -755,6 +776,20 @@ type UserMfaTotp struct {
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 }
 
+type UserNotification struct {
+	ID          uuid.UUID          `json:"id"`
+	UserID      uuid.UUID          `json:"user_id"`
+	WorkspaceID *uuid.UUID         `json:"workspace_id"`
+	Category    string             `json:"category"`
+	Level       string             `json:"level"`
+	Title       string             `json:"title"`
+	Content     string             `json:"content"`
+	ActionUrl   *string            `json:"action_url"`
+	ReadAt      pgtype.Timestamptz `json:"read_at"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
 // 平台租户边界，保存工作区名称、类型、所有者和状态。
 type Workspace struct {
 	ID               uuid.UUID          `json:"id"`
@@ -765,6 +800,27 @@ type Workspace struct {
 	Status           string             `json:"status"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
+type WorkspaceApiKey struct {
+	ID          uuid.UUID          `json:"id"`
+	WorkspaceID uuid.UUID          `json:"workspace_id"`
+	Name        string             `json:"name"`
+	KeyPrefix   string             `json:"key_prefix"`
+	SecretHash  string             `json:"secret_hash"`
+	CreatedBy   uuid.UUID          `json:"created_by"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
+	LastUsedAt  pgtype.Timestamptz `json:"last_used_at"`
+	RevokedAt   pgtype.Timestamptz `json:"revoked_at"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type WorkspaceApiUsageDaily struct {
+	ApiKeyID     uuid.UUID          `json:"api_key_id"`
+	UsageDate    pgtype.Date        `json:"usage_date"`
+	RequestCount int64              `json:"request_count"`
+	LastUsedAt   pgtype.Timestamptz `json:"last_used_at"`
 }
 
 type WorkspaceBillingAccount struct {

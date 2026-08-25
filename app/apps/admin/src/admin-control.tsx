@@ -36,6 +36,7 @@ import {
   ShieldCheck,
   UserPlus,
 } from "lucide-react";
+import { billingEnabled } from "./features";
 
 const text = (value: unknown, fallback = "—") => value === undefined || value === null || value === "" ? fallback : String(value);
 const shortId = (value: unknown) => text(value).slice(0, 8);
@@ -153,7 +154,8 @@ export function AdminWorkspaceDetailPage() {
   const queryClient = useQueryClient();
   const workspace = useQuery({ queryKey: ["admin", "workspace", workspaceId], queryFn: () => api.admin.workspaces.get(workspaceId), enabled: Boolean(workspaceId) });
   const switcher = useQuery({ queryKey: ["admin", "workspace-switcher"], queryFn: () => api.admin.workspaces.list({ page_size: 100, sort: "name", order: "asc" }) });
-  const tab = params.get("tab") ?? "overview";
+  const requestedTab = params.get("tab") ?? "overview";
+  const tab = !billingEnabled && requestedTab === "billing" ? "overview" : requestedTab;
   const back = `/admin/workspaces${params.get("from") ? `?${params.get("from")}` : ""}`;
   const setTab = (value: string) => { const next = new URLSearchParams(params); next.set("tab", value); setParams(next, { replace: true }); };
   const switchWorkspace = (id: string) => navigate(`/admin/workspaces/${id}?tab=overview&from=${encodeURIComponent(params.get("from") ?? "")}`);
@@ -172,7 +174,7 @@ export function AdminWorkspaceDetailPage() {
     <Panel className="governance-detail-panel">
       <Tabs activeKey={tab} onChange={setTab} items={[
         { key: "overview", label: "概览", children: <Overview workspace={item} /> },
-        { key: "billing", label: "计费", children: <Billing workspaceId={workspaceId} /> },
+        ...(billingEnabled ? [{ key: "billing", label: "计费", children: <Billing workspaceId={workspaceId} /> }] : []),
         { key: "members", label: "成员与权限", children: <Members {...context} /> },
         { key: "resources", label: "资源层级", children: <Resources {...context} /> },
         { key: "sharing", label: "共享与邀请", children: <Sharing {...context} /> },

@@ -503,7 +503,7 @@ function PlacementEditor({ device, projects, sites, busy, onClose, onSubmit }: {
           <div className="panel-header">
             <div>
               <h2 className="panel-title">调整设备归属</h2>
-              <div className="panel-kicker">{device.name} · {device.serial_no}</div>
+              <div className="panel-kicker">{device.name} · SN {device.serial_no}</div>
             </div>
             <Button variant="secondary" onClick={onClose}><X size={14} />关闭</Button>
           </div>

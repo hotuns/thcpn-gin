@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	totpIssuer      = "THCPN"
+	totpIssuer      = "In-situ EcoCloud"
 	totpDigits      = 6
 	totpPeriod      = 30
 	totpWindow      = 1

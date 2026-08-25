@@ -74,23 +74,21 @@ func (q *Queries) CloseActiveDeviceAssignment(ctx context.Context, arg CloseActi
 const createDevice = `-- name: CreateDevice :one
 INSERT INTO devices (
     product_id,
-    serial_no,
     name,
     status,
     activated_at
 )
-VALUES ($1, $2, $3, 'active', now())
+VALUES ($1, $2, 'active', now())
 RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type
 `
 
 type CreateDeviceParams struct {
 	ProductID *string `json:"product_id"`
-	SerialNo  string  `json:"serial_no"`
 	Name      string  `json:"name"`
 }
 
 func (q *Queries) CreateDevice(ctx context.Context, arg CreateDeviceParams) (Device, error) {
-	row := q.db.QueryRow(ctx, createDevice, arg.ProductID, arg.SerialNo, arg.Name)
+	row := q.db.QueryRow(ctx, createDevice, arg.ProductID, arg.Name)
 	var i Device
 	err := row.Scan(
 		&i.ID,
@@ -938,9 +936,8 @@ func (q *Queries) ListSystemDeviceAssets(ctx context.Context) ([]ListSystemDevic
 const updateDevice = `-- name: UpdateDevice :one
 UPDATE devices
 SET product_id = $2,
-    serial_no = $3,
-    name = $4,
-    status = $5,
+    name = $3,
+    status = $4,
     updated_at = now()
 WHERE id = $1
 RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type
@@ -949,7 +946,6 @@ RETURNING id, product_id, serial_no, name, status, activated_at, created_at, upd
 type UpdateDeviceParams struct {
 	ID        uuid.UUID `json:"id"`
 	ProductID *string   `json:"product_id"`
-	SerialNo  string    `json:"serial_no"`
 	Name      string    `json:"name"`
 	Status    string    `json:"status"`
 }
@@ -958,7 +954,6 @@ func (q *Queries) UpdateDevice(ctx context.Context, arg UpdateDeviceParams) (Dev
 	row := q.db.QueryRow(ctx, updateDevice,
 		arg.ID,
 		arg.ProductID,
-		arg.SerialNo,
 		arg.Name,
 		arg.Status,
 	)

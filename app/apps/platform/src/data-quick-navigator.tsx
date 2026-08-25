@@ -9,6 +9,15 @@ export type DataQuickNavItem = {
   level: 0 | 1;
 };
 
+export function scrollToDataSection(id: string) {
+  document.getElementById(id)?.scrollIntoView({
+    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? "auto"
+      : "smooth",
+    block: "start",
+  });
+}
+
 export function buildDataQuickNavItems(imageStreams: DataStream[]): DataQuickNavItem[] {
   return [
     { id: "data-section-metrics", label: "查询条件", level: 0 },
@@ -24,13 +33,18 @@ export function buildDataQuickNavItems(imageStreams: DataStream[]): DataQuickNav
 }
 
 export function DataQuickNavigator({
-  imageStreams,
+  imageStreams = [],
+  items: customItems,
 }: {
-  imageStreams: DataStream[];
+  imageStreams?: DataStream[];
+  items?: DataQuickNavItem[];
 }) {
   const [activeId, setActiveId] = useState("data-section-metrics");
   const [open, setOpen] = useState(false);
-  const items = useMemo(() => buildDataQuickNavItems(imageStreams), [imageStreams]);
+  const items = useMemo(
+    () => customItems ?? buildDataQuickNavItems(imageStreams),
+    [customItems, imageStreams],
+  );
 
   useEffect(() => {
     let frame = 0;
@@ -73,12 +87,7 @@ export function DataQuickNavigator({
   }, [open]);
 
   const goTo = (id: string, pointerActivated: boolean) => {
-    document.getElementById(id)?.scrollIntoView({
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-        ? "auto"
-        : "smooth",
-      block: "start",
-    });
+    scrollToDataSection(id);
     setActiveId(id);
     setOpen(false);
     if (pointerActivated && window.matchMedia("(min-width: 1280px)").matches)

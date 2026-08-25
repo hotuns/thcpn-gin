@@ -11,6 +11,44 @@ import (
 	"github.com/google/uuid"
 )
 
+const createCameraDevice = `-- name: CreateCameraDevice :one
+INSERT INTO devices (
+    product_id,
+    name,
+    status,
+    activated_at,
+    lifecycle_status,
+    lifecycle_updated_at,
+    device_type
+)
+VALUES ($1, $2, 'active', now(), 'online', now(), 'camera')
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type
+`
+
+type CreateCameraDeviceParams struct {
+	ProductID *string `json:"product_id"`
+	Name      string  `json:"name"`
+}
+
+func (q *Queries) CreateCameraDevice(ctx context.Context, arg CreateCameraDeviceParams) (Device, error) {
+	row := q.db.QueryRow(ctx, createCameraDevice, arg.ProductID, arg.Name)
+	var i Device
+	err := row.Scan(
+		&i.ID,
+		&i.ProductID,
+		&i.SerialNo,
+		&i.Name,
+		&i.Status,
+		&i.ActivatedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LifecycleStatus,
+		&i.LifecycleUpdatedAt,
+		&i.DeviceType,
+	)
+	return i, err
+}
+
 const getCameraBindingByDevice = `-- name: GetCameraBindingByDevice :one
 SELECT id, device_id, provider, device_serial, channel_no, default_quality, is_encrypted, validate_code_secret_ref, status, created_at, updated_at
 FROM camera_bindings
@@ -164,58 +202,6 @@ func (q *Queries) UpsertCameraBinding(ctx context.Context, arg UpsertCameraBindi
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const upsertCameraDevice = `-- name: UpsertCameraDevice :one
-INSERT INTO devices (
-    product_id,
-    serial_no,
-    name,
-    status,
-    activated_at,
-    lifecycle_status,
-    lifecycle_updated_at,
-    device_type
-)
-VALUES ($1, $2, $3, 'active', now(), 'online', now(), 'camera')
-ON CONFLICT (serial_no)
-DO UPDATE SET
-    product_id = EXCLUDED.product_id,
-    name = EXCLUDED.name,
-    status = 'active',
-    lifecycle_status = CASE
-        WHEN devices.lifecycle_status = 'inbound' THEN 'online'
-        ELSE devices.lifecycle_status
-    END,
-    lifecycle_updated_at = COALESCE(devices.lifecycle_updated_at, now()),
-    device_type = 'camera',
-    updated_at = now()
-RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type
-`
-
-type UpsertCameraDeviceParams struct {
-	ProductID *string `json:"product_id"`
-	SerialNo  string  `json:"serial_no"`
-	Name      string  `json:"name"`
-}
-
-func (q *Queries) UpsertCameraDevice(ctx context.Context, arg UpsertCameraDeviceParams) (Device, error) {
-	row := q.db.QueryRow(ctx, upsertCameraDevice, arg.ProductID, arg.SerialNo, arg.Name)
-	var i Device
-	err := row.Scan(
-		&i.ID,
-		&i.ProductID,
-		&i.SerialNo,
-		&i.Name,
-		&i.Status,
-		&i.ActivatedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.LifecycleStatus,
-		&i.LifecycleUpdatedAt,
-		&i.DeviceType,
 	)
 	return i, err
 }

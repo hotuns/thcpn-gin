@@ -1,6 +1,6 @@
-# THCPN 科研物联网平台
+# In-situ EcoCloud（原位生态云）
 
-THCPN 是面向生态监测与科研设备的数据平台，提供设备接入、遥测与图片查看、数据处理、数据导出、工作区协作、订阅权益和系统后台管理。
+In-situ EcoCloud（原位生态云）是基于野外原位站点感知数据的生态监测云平台，提供设备接入、遥测与图片查看、数据处理、数据导出、工作区协作、订阅权益和系统后台管理。THCPN 仅指系统接入的源数据库。
 
 ## 项目组成
 
@@ -42,6 +42,14 @@ PLATFORM_PUBLIC_URL=https://你的平台域名
 ```bash
 docker compose up -d --build
 ```
+
+首次部署可通过服务器命令创建系统管理员：
+
+```bash
+docker compose exec api adminctl create --name "系统管理员" --email admin@example.com
+```
+
+命令会输出一次性生成的初始密码。后续管理员账号可在系统后台的“管理员账号”页面维护。
 
 启动时会先等待 PostgreSQL 就绪并自动执行数据库迁移，随后启动 API、Worker、数据处理服务和两个前端。
 

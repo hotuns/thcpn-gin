@@ -47,6 +47,7 @@ import (
 	"thcpn-gin/internal/publicdevice"
 	"thcpn-gin/internal/site"
 	smsx "thcpn-gin/internal/sms"
+	"thcpn-gin/internal/systemadmin"
 	"thcpn-gin/internal/task"
 	"thcpn-gin/internal/telemetry"
 	"thcpn-gin/internal/user"
@@ -101,20 +102,25 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	userService := user.NewService(deps.Postgres)
 	workspaceService := workspace.NewService(deps.Postgres)
 	const bytesPerGB int64 = 1024 * 1024 * 1024
-	billingService := billing.NewService(deps.Postgres, billing.Policy{
-		ProfessionalAnnualPriceCents:    cfg.Billing.ProfessionalAnnualPriceCents,
-		ProfessionalDefaultMonths:       cfg.Billing.ProfessionalDefaultMonths,
-		BaseHistoryDays:                 cfg.Billing.BaseHistoryDays,
-		BaseExportDays:                  cfg.Billing.BaseExportDays,
-		MonthlyDownloadLimitBytes:       cfg.Billing.MonthlyDownloadLimitGB * bytesPerGB,
-		TrafficPackSizeBytes:            cfg.Billing.TrafficPackSizeGB * bytesPerGB,
-		TrafficPackPriceCents:           cfg.Billing.TrafficPackPriceCents,
-		ExpiryNoticeDays:                cfg.Billing.ExpiryNoticeDays,
-		DownloadUsageWarningPercentages: cfg.Billing.DownloadUsageWarningPercentages,
-	})
+	var billingService *billing.Service
+	if cfg.Billing.Enabled {
+		billingService = billing.NewService(deps.Postgres, billing.Policy{
+			ProfessionalAnnualPriceCents:    cfg.Billing.ProfessionalAnnualPriceCents,
+			ProfessionalDefaultMonths:       cfg.Billing.ProfessionalDefaultMonths,
+			BaseHistoryDays:                 cfg.Billing.BaseHistoryDays,
+			BaseExportDays:                  cfg.Billing.BaseExportDays,
+			MonthlyDownloadLimitBytes:       cfg.Billing.MonthlyDownloadLimitGB * bytesPerGB,
+			TrafficPackSizeBytes:            cfg.Billing.TrafficPackSizeGB * bytesPerGB,
+			TrafficPackPriceCents:           cfg.Billing.TrafficPackPriceCents,
+			ExpiryNoticeDays:                cfg.Billing.ExpiryNoticeDays,
+			DownloadUsageWarningPercentages: cfg.Billing.DownloadUsageWarningPercentages,
+		})
+	}
 	permissionChecker := permission.NewChecker(sqlc.New(deps.Postgres))
 	permissionCatalogService := permission.NewCatalogService(deps.Postgres)
 	auditService := audit.NewService(deps.Postgres)
+	systemAdminService := systemadmin.NewService(deps.Postgres)
+	systemAdminHandler := systemadmin.NewHandler(systemAdminService, auditService)
 	platformLogHandler := platformlog.NewHandler(deps.PlatformLogs, auditService)
 	memberService := member.NewService(deps.Postgres)
 	accessGrantService := accessgrant.NewService(deps.Postgres)
@@ -129,9 +135,13 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	thcpnLogSigner := objectstore.NewSigner(cfg.THCPNLogObjectStore, cfg.Auth.JWTSecret)
 	objectStore := objectstore.NewStore(cfg.ObjectStore)
 	dataSourceService := datasource.NewService(deps.Postgres, objectStore)
-	dataSourceService.SetBilling(billingService)
+	if billingService != nil {
+		dataSourceService.SetBilling(billingService)
+	}
 	telemetryService := telemetry.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil), cfg.QueryLimits, computedStreamService)
-	telemetryService.SetBilling(billingService)
+	if billingService != nil {
+		telemetryService.SetBilling(billingService)
+	}
 	openAPIService := openapiaccess.NewService(deps.Postgres, billingService)
 	datasetService := dataset.NewService(deps.Postgres, dataset.QueryDependencies{
 		DataSources: dataSourceService,
@@ -162,12 +172,18 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 		return result, nil
 	})
 	mediaService := media.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil), objectSigner, cfg.QueryLimits, objectStore)
-	mediaService.SetBilling(billingService)
+	if billingService != nil {
+		mediaService.SetBilling(billingService)
+	}
 	publicDeviceService := publicdevice.NewService(deps.Postgres)
 	exportService := export.NewService(deps.Postgres, objectSigner, cfg.Export)
-	exportService.SetBilling(billingService)
+	if billingService != nil {
+		exportService.SetBilling(billingService)
+	}
 	processingService := processing.NewService(deps.Postgres, processing.NewClient(cfg.Processing.ProcessorURL), objectSigner)
-	processingService.SetBilling(billingService, objectStore)
+	if billingService != nil {
+		processingService.SetBilling(billingService, objectStore)
+	}
 	notificationService := notification.NewService(deps.Postgres)
 	tokenManager := auth.NewTokenManager(cfg.Auth.JWTSecret, time.Duration(cfg.Auth.AccessTokenTTLMinutes)*time.Minute)
 	smsSender, err := newSMSSender(cfg.SMS, deps.Logger)
@@ -190,7 +206,10 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	adminAuthHandler := adminauth.NewHandler(adminAuthService)
 	userHandler := user.NewHandler(userService, auditService)
 	workspaceHandler := workspace.NewHandlerWithChecker(workspaceService, permissionChecker, auditService)
-	billingHandler := billing.NewHandler(billingService, permissionChecker, auditService)
+	var billingHandler *billing.Handler
+	if billingService != nil {
+		billingHandler = billing.NewHandler(billingService, permissionChecker, auditService)
+	}
 	memberHandler := member.NewHandler(memberService, permissionChecker, auditService)
 	accessGrantHandler := accessgrant.NewHandler(accessGrantService, permissionChecker, auditService)
 	permissionCatalogHandler := permission.NewCatalogHandler(permissionCatalogService)
@@ -293,7 +312,9 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.GET("/workspaces", workspaceHandler.List)
 	authed.POST("/workspaces", workspaceHandler.Create)
 	authed.PATCH("/workspaces/:workspace_id", workspaceHandler.UpdateName)
-	authed.GET("/workspaces/:workspace_id/billing", billingHandler.Get)
+	if billingHandler != nil {
+		authed.GET("/workspaces/:workspace_id/billing", billingHandler.Get)
+	}
 	authed.GET("/workspaces/:workspace_id/api-keys", openAPIHandler.List)
 	authed.POST("/workspaces/:workspace_id/api-keys", openAPIHandler.Create)
 	authed.DELETE("/workspaces/:workspace_id/api-keys/:key_id", openAPIHandler.Revoke)
@@ -307,6 +328,12 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.PATCH("/announcements/:id/status", notificationHandler.AdminSetAnnouncementStatus)
 	admin.POST("/notifications", notificationHandler.AdminSend)
 	admin.GET("/users", adminUserHandler.List)
+	admin.GET("/administrators", systemAdminHandler.List)
+	admin.POST("/administrators", systemAdminHandler.Create)
+	admin.PATCH("/administrators/:admin_id/status", systemAdminHandler.Status)
+	admin.POST("/administrators/:admin_id/unlock", systemAdminHandler.Unlock)
+	admin.POST("/administrators/:admin_id/sessions/revoke-all", systemAdminHandler.RevokeSessions)
+	admin.POST("/administrators/:admin_id/temporary-password", systemAdminHandler.ResetPassword)
 	admin.POST("/users", adminUserHandler.Create)
 	admin.GET("/users/:user_id", adminUserHandler.Get)
 	admin.PATCH("/users/:user_id", adminUserHandler.Update)
@@ -326,11 +353,13 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.GET("/workspaces/:workspace_id", workspaceHandler.AdminGet)
 	admin.PATCH("/workspaces/:workspace_id/status", workspaceHandler.RequireAdminReason(), workspaceHandler.AdminUpdateStatus)
 	admin.POST("/workspaces/:workspace_id/transfer-owner", workspaceHandler.RequireAdminReason(), workspaceHandler.AdminTransferOwner)
-	admin.GET("/workspaces/:workspace_id/billing", billingHandler.AdminGet)
-	admin.GET("/billing/workspaces", billingHandler.AdminRisks)
-	admin.GET("/workspaces/:workspace_id/billing/history", billingHandler.AdminHistory)
-	admin.POST("/workspaces/:workspace_id/billing/grants", workspaceHandler.RequireAdminReason(), billingHandler.AdminGrantProfessional)
-	admin.POST("/workspaces/:workspace_id/billing/traffic-packs", workspaceHandler.RequireAdminReason(), billingHandler.AdminAddTrafficPack)
+	if billingHandler != nil {
+		admin.GET("/workspaces/:workspace_id/billing", billingHandler.AdminGet)
+		admin.GET("/billing/workspaces", billingHandler.AdminRisks)
+		admin.GET("/workspaces/:workspace_id/billing/history", billingHandler.AdminHistory)
+		admin.POST("/workspaces/:workspace_id/billing/grants", workspaceHandler.RequireAdminReason(), billingHandler.AdminGrantProfessional)
+		admin.POST("/workspaces/:workspace_id/billing/traffic-packs", workspaceHandler.RequireAdminReason(), billingHandler.AdminAddTrafficPack)
+	}
 	admin.GET("/projects", projectHandler.AdminList)
 	admin.GET("/sites", siteHandler.AdminList)
 	admin.GET("/sites/:site_id/environment", deviceClassificationHandler.AdminGetSite)

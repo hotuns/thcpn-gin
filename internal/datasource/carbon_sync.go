@@ -199,12 +199,12 @@ func (s *Service) SyncAllCarbonDevices(ctx context.Context, input SyncAllCarbonD
 
 func (s *Service) syncCarbonDevice(ctx context.Context, q *sqlc.Queries, source sqlc.DataSource, external CarbonDevice, information *CarbonDeviceInformation, actorID uuid.UUID) (CarbonDeviceSyncResult, error) {
 	serialNo := strings.TrimSpace(external.SN)
-	if serialNo == "" {
-		return CarbonDeviceSyncResult{}, apperr.New(apperr.KindDataSource, "carbon device serial number is empty")
-	}
 	name := strings.TrimSpace(external.Name)
 	if name == "" {
 		name = serialNo
+	}
+	if name == "" {
+		name = fmt.Sprintf("碳汇设备 %d", external.ID)
 	}
 	ref, refErr := q.GetDeviceSourceRefByExternal(ctx, sqlc.GetDeviceSourceRefByExternalParams{
 		DataSourceID: source.ID, AdapterCode: AdapterCarbonSink, ExternalDeviceID: external.ID,
@@ -216,7 +216,7 @@ func (s *Service) syncCarbonDevice(ctx context.Context, q *sqlc.Queries, source 
 		if err != nil {
 			return CarbonDeviceSyncResult{}, mapNotFoundOrInternal(err, "mapped carbon device not found")
 		}
-		device, err = q.UpdateDevice(ctx, sqlc.UpdateDeviceParams{ID: device.ID, ProductID: optionalString("carbon_sink_v2"), SerialNo: serialNo, Name: name, Status: device.Status})
+		device, err = q.UpdateDevice(ctx, sqlc.UpdateDeviceParams{ID: device.ID, ProductID: optionalString("carbon_sink_v2"), Name: name, Status: device.Status})
 		if err != nil {
 			return CarbonDeviceSyncResult{}, mapWriteError(err, "update carbon device")
 		}
@@ -225,7 +225,7 @@ func (s *Service) syncCarbonDevice(ctx context.Context, q *sqlc.Queries, source 
 			return CarbonDeviceSyncResult{}, mapWriteError(err, "update carbon device type")
 		}
 	} else if errors.Is(refErr, pgx.ErrNoRows) {
-		device, err = q.CreateDevice(ctx, sqlc.CreateDeviceParams{ProductID: optionalString("carbon_sink_v2"), SerialNo: serialNo, Name: name})
+		device, err = q.CreateDevice(ctx, sqlc.CreateDeviceParams{ProductID: optionalString("carbon_sink_v2"), Name: name})
 		if err != nil {
 			return CarbonDeviceSyncResult{}, mapWriteError(err, "create carbon device")
 		}

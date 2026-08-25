@@ -1,7 +1,6 @@
--- name: UpsertCameraDevice :one
+-- name: CreateCameraDevice :one
 INSERT INTO devices (
     product_id,
-    serial_no,
     name,
     status,
     activated_at,
@@ -9,19 +8,7 @@ INSERT INTO devices (
     lifecycle_updated_at,
     device_type
 )
-VALUES ($1, $2, $3, 'active', now(), 'online', now(), 'camera')
-ON CONFLICT (serial_no)
-DO UPDATE SET
-    product_id = EXCLUDED.product_id,
-    name = EXCLUDED.name,
-    status = 'active',
-    lifecycle_status = CASE
-        WHEN devices.lifecycle_status = 'inbound' THEN 'online'
-        ELSE devices.lifecycle_status
-    END,
-    lifecycle_updated_at = COALESCE(devices.lifecycle_updated_at, now()),
-    device_type = 'camera',
-    updated_at = now()
+VALUES ($1, $2, 'active', now(), 'online', now(), 'camera')
 RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type;
 
 -- name: UpsertCameraBinding :one

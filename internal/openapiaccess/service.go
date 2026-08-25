@@ -83,8 +83,10 @@ func (s *Service) Create(ctx context.Context, workspaceID, userID uuid.UUID, nam
 	if expiresAt != nil && !expiresAt.After(time.Now().UTC()) {
 		return CreatedAPIKey{}, apperr.New(apperr.KindInvalidArgument, "expires_at must be in the future")
 	}
-	if err := s.billing.RequireProfessional(ctx, workspaceID); err != nil {
-		return CreatedAPIKey{}, err
+	if s.billing != nil {
+		if err := s.billing.RequireProfessional(ctx, workspaceID); err != nil {
+			return CreatedAPIKey{}, err
+		}
 	}
 	random := make([]byte, 32)
 	if _, err := rand.Read(random); err != nil {
@@ -144,8 +146,10 @@ func (s *Service) Authenticate(ctx context.Context, secret string) (APIKey, erro
 	if item.RevokedAt != nil || (item.ExpiresAt != nil && !item.ExpiresAt.After(now)) {
 		return APIKey{}, apperr.New(apperr.KindUnauthorized, "api key is inactive")
 	}
-	if err = s.billing.RequireProfessional(ctx, item.WorkspaceID); err != nil {
-		return APIKey{}, apperr.New(apperr.KindPermissionDenied, "workspace professional plan is inactive")
+	if s.billing != nil {
+		if err = s.billing.RequireProfessional(ctx, item.WorkspaceID); err != nil {
+			return APIKey{}, apperr.New(apperr.KindPermissionDenied, "workspace professional plan is inactive")
+		}
 	}
 	if !s.allow(item.ID, now) {
 		return APIKey{}, apperr.New(apperr.KindRateLimited, "api key rate limit exceeded")

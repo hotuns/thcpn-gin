@@ -1,12 +1,11 @@
 -- name: CreateDevice :one
 INSERT INTO devices (
     product_id,
-    serial_no,
     name,
     status,
     activated_at
 )
-VALUES ($1, $2, $3, 'active', now())
+VALUES ($1, $2, 'active', now())
 RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type;
 
 -- name: GetDevice :one
@@ -17,9 +16,8 @@ WHERE id = $1;
 -- name: UpdateDevice :one
 UPDATE devices
 SET product_id = $2,
-    serial_no = $3,
-    name = $4,
-    status = $5,
+    name = $3,
+    status = $4,
     updated_at = now()
 WHERE id = $1
 RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type;

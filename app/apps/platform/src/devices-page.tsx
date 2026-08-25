@@ -58,6 +58,7 @@ import { CarbonDevicePage } from "./carbon-device-page";
 import { SamplingProfilePanel } from "./sampling-profile";
 import { DeviceCombobox } from "./device-combobox";
 import { ComputedStreamsPanel, DeviceMetadataPanel } from "./device-computed-data";
+import { GatewayNodeData } from "./gateway-node-data";
 
 type DeviceCategory = "gateway" | "gateway_node" | "camera" | "carbon_sink" | "standalone";
 type Category = "all" | Exclude<DeviceCategory, "gateway_node">;
@@ -527,7 +528,6 @@ function DeviceRows({
           <div className="cell-sub">{deviceLifecycleLabel(device.lifecycle_status)}</div>
         </td>
         <td>
-          <DeviceDataSummary device={device} />
           {!camera && (
             <>
               <DeviceVitalIndicators
@@ -645,34 +645,6 @@ const compactSourceLocation = (
   if (source.lat === undefined || source.lon === undefined) return "暂无定位";
   return `${source.lat.toFixed(4)}, ${source.lon.toFixed(4)}`;
 };
-
-function DeviceDataSummary({ device }: { device: Device }) {
-  const items =
-    deviceCategory(device) === "camera"
-      ? [{ key: "video", label: "实时视频", icon: Eye }]
-      : [
-          ...(device.capabilities.includes("telemetry")
-            ? [{ key: "telemetry", label: "遥测数据", icon: Gauge }]
-            : []),
-          ...(device.capabilities.includes("image_capture")
-            ? [{ key: "image", label: "图片", icon: Eye }]
-            : []),
-        ];
-  return (
-    <div className="device-data-summary">
-      {items.length ? (
-        items.map(({ key, label, icon: Icon }) => (
-          <span key={key}>
-            <Icon size={12} />
-            {label}
-          </span>
-        ))
-      ) : (
-        <span>暂无数据能力</span>
-      )}
-    </div>
-  );
-}
 
 function DeviceVitalIndicators({
   attributes,
@@ -896,7 +868,7 @@ export function DeviceCenterDetailPage() {
         ]
       : [
           ...(!carbonDevice ? [{ id: "overview" as DeviceTab, label: "概览" }] : []),
-          { id: "data", label: "数据" },
+          { id: "data", label: deviceCategory(device) === "gateway" ? "节点数据" : "数据" },
           { id: "profile", label: "资料" },
           { id: "config", label: "配置" },
           { id: "sharing", label: "分享" },
@@ -909,7 +881,7 @@ export function DeviceCenterDetailPage() {
         <div>
           <h1>{device.name}</h1>
           <p>
-            {device.serial_no} ·{" "}
+            SN {device.serial_no} ·{" "}
             {deviceTopologyRoleLabel(
               device.topology_role || device.device_type,
             )}
@@ -938,7 +910,7 @@ export function DeviceCenterDetailPage() {
           {deviceLifecycleLabel(device.lifecycle_status)}
         </Badge>
         <span>{deviceStatusLabel(device.status)}</span>
-        <span className="mono">{device.id}</span>
+        <span className="mono">ID {device.id}</span>
       </div>
       <div className="settings-tabs device-detail-tabs">
         {tabs.map((item) => (
@@ -962,6 +934,8 @@ export function DeviceCenterDetailPage() {
           workspaceId={detailWorkspaceId}
           onOpenData={() => setParams({ tab: "data" })}
         />
+      ) : tab === "data" && deviceCategory(device) === "gateway" ? (
+        <GatewayNodeData gateway={device} workspaceId={detailWorkspaceId} />
       ) : tab === "data" ? (
         <DeviceDataPage deviceId={device.id} embedded />
       ) : tab === "video" ? (
@@ -1160,14 +1134,14 @@ function GatewayOverview({
   return <div className="gateway-overview">
     <section className="gateway-overview-hero">
       <div className="gateway-overview-hero-main"><div className="gateway-overview-icon"><RadioTower size={22}/></div><div><span>组网站数据概览</span><h2>{device.name}</h2><p>网关与下挂节点的连接、数据接入和最近活动</p></div></div>
-      <div className="gateway-overview-hero-meta"><Badge tone={device.lifecycle_status === "online" ? "success" : "warning"}>{device.lifecycle_status === "online" ? "网关在线" : deviceLifecycleLabel(device.lifecycle_status)}</Badge><span className="mono">{device.serial_no || device.id}</span></div>
+      <div className="gateway-overview-hero-meta"><Badge tone={device.lifecycle_status === "online" ? "success" : "warning"}>{device.lifecycle_status === "online" ? "网关在线" : deviceLifecycleLabel(device.lifecycle_status)}</Badge><span className="mono">SN {device.serial_no}</span></div>
     </section>
     <div className="gateway-overview-kpis"><div><span>下挂节点</span><strong>{children.length}</strong><small>个节点</small></div><div><span>连接正常</span><strong>{onlineCount}</strong><small>/ {children.length || 0}</small></div><div><span>最近有数据</span><strong>{reportingCount}</strong><small>个节点</small></div><div className={attentionCount ? "is-warning" : "is-good"}><span>需要关注</span><strong>{attentionCount}</strong><small>{attentionCount ? "离线或无响应" : "全部正常"}</small></div></div>
     <div className="gateway-overview-grid section-gap">
       <Panel className="gateway-health-panel"><div className="panel-header"><div><h2 className="panel-title">节点健康度</h2><div className="panel-kicker">根据设备状态和最近源库响应判断</div></div><CircleCheck size={18}/></div><div className="gateway-health-content"><div className="gateway-health-score"><strong>{healthPercent}<small>%</small></strong><span>连接健康度</span><div className="gateway-health-bar"><i style={{width:`${healthPercent}%`}}/></div></div><div className="gateway-health-breakdown"><div><span><i className="is-online"/>在线</span><strong>{onlineCount}</strong></div><div><span><i className="is-attention"/>需关注</span><strong>{attentionCount}</strong></div><div><span><i className="is-reporting"/>有数据响应</span><strong>{reportingCount}</strong></div></div></div></Panel>
       <Panel className="gateway-pulse-panel"><div className="panel-header"><div><h2 className="panel-title">数据接入</h2><div className="panel-kicker">最近一次同步状态</div></div><DatabaseZap size={18}/></div><div className="gateway-pulse-stat"><div><strong>{reportingPercent}<small>%</small></strong><span>节点响应率</span></div><div className="gateway-pulse-bar"><i style={{width:`${reportingPercent}%`}}/></div><p>{reportingCount ? `已读取 ${reportingCount} 个节点的源设备状态` : "正在等待节点状态"}</p><Button variant="secondary" onClick={onOpenData}>查看组网站数据 <MoveRight size={14}/></Button></div></Panel>
     </div>
-    <Panel className="gateway-nodes-panel"><div className="panel-header"><div><h2 className="panel-title">节点数据状态</h2><div className="panel-kicker">展示最近 8 个节点，可进入节点查看完整数据</div></div><Badge tone="neutral">{children.length} 个节点</Badge></div>{children.length ? <div className="gateway-node-table"><div className="gateway-node-table-head"><span>节点</span><span>连接</span><span>信号 / 电量</span><span>最近响应</span><span></span></div>{visibleChildren.map(({device: child}, index) => { const runtime = childRuntimeQueries[index]; const attrs = runtime?.data?.attributes; const signal = inferSignalReading(firstNumericAttribute(attrs, ["rssi", "signal", "signal_strength"])); const battery = inferBatteryReading(firstNumericAttribute(attrs, ["battery", "bat", "voltage"])); const sourceUpdatedAt = runtime?.data?.source_device?.updated_at ?? child.updated_at; const isOnline = child.lifecycle_status === "online" || child.status === "active"; return <Link className="gateway-node-row" key={child.id} to={`/devices/${child.id}`}><div className="gateway-node-name"><span className={`gateway-node-dot ${isOnline ? "is-online" : "is-offline"}`}/><div><strong>{child.name}</strong><small className="mono">{child.serial_no || child.id}</small></div></div><Badge tone={isOnline ? "success" : "warning"}>{isOnline ? "在线" : "离线"}</Badge><div className="gateway-node-vitals"><span>{signal.valueLabel}</span><span>{battery.valueLabel}</span></div><time>{overviewTime(sourceUpdatedAt)}</time><MoveRight size={15}/></Link>; })}</div> : <StateView type="empty" title="暂无下挂节点" description="当前组网站还没有可见的网关节点。"/>}{children.length > visibleChildren.length && <div className="gateway-node-table-foot"><span>还有 {children.length - visibleChildren.length} 个节点未展开</span><Button variant="secondary" onClick={onOpenData}>查看全部数据</Button></div>}</Panel>
+    <Panel className="gateway-nodes-panel"><div className="panel-header"><div><h2 className="panel-title">节点数据状态</h2><div className="panel-kicker">展示最近 8 个节点，可进入节点按时间查看完整数据</div></div><Badge tone="neutral">{children.length} 个节点</Badge></div>{children.length ? <div className="gateway-node-table"><div className="gateway-node-table-head"><span>节点</span><span>连接</span><span>信号 / 电量</span><span>最近响应</span><span></span></div>{visibleChildren.map(({device: child}, index) => { const runtime = childRuntimeQueries[index]; const attrs = runtime?.data?.attributes; const signal = inferSignalReading(firstNumericAttribute(attrs, ["rssi", "signal", "signal_strength"])); const battery = inferBatteryReading(firstNumericAttribute(attrs, ["battery", "bat", "voltage"])); const sourceUpdatedAt = runtime?.data?.source_device?.updated_at ?? child.updated_at; const isOnline = child.lifecycle_status === "online" || child.status === "active"; return <Link className="gateway-node-row" key={child.id} to={`/devices/${child.id}?tab=data`}><div className="gateway-node-name"><span className={`gateway-node-dot ${isOnline ? "is-online" : "is-offline"}`}/><div><strong>{child.name}</strong><small className="mono">SN {child.serial_no}</small></div></div><Badge tone={isOnline ? "success" : "warning"}>{isOnline ? "在线" : "离线"}</Badge><div className="gateway-node-vitals"><span>{signal.valueLabel}</span><span>{battery.valueLabel}</span></div><time>{overviewTime(sourceUpdatedAt)}</time><MoveRight size={15}/></Link>; })}</div> : <StateView type="empty" title="暂无下挂节点" description="当前组网站还没有可见的网关节点。"/>}{children.length > visibleChildren.length && <div className="gateway-node-table-foot"><span>还有 {children.length - visibleChildren.length} 个节点未展开</span><Button variant="secondary" onClick={onOpenData}>查看全部数据</Button></div>}</Panel>
     {attentionCount > 0 && <div className="gateway-overview-note"><CircleAlert size={16}/><span>{attentionCount} 个节点当前未在线，建议检查 LoRa 链路或设备供电。</span></div>}
   </div>;
 }
@@ -1829,7 +1803,7 @@ function DeviceDetail({
         <div>
           <h2 className="panel-title">设备详情 · {device?.name}</h2>
           <div className="panel-kicker mono">
-            {device?.serial_no} · {device?.id}
+            SN {device?.serial_no} · ID {device?.id}
           </div>
         </div>
         <div className="header-actions">
@@ -1996,7 +1970,7 @@ function DeviceChildren({
           <div>
             <div className="cell-title">{device.name}</div>
             <div className="cell-sub mono">
-              {device.serial_no} · {device.id}
+              SN {device.serial_no} · ID {device.id}
             </div>
           </div>
           <div>
@@ -2116,7 +2090,7 @@ function DeviceActionForm({
                 : "转移设备"}
           </h2>
           <div className="panel-kicker">
-            {device.name} · {device.serial_no}
+            {device.name} · SN {device.serial_no}
           </div>
         </div>
         <Button variant="secondary" onClick={onClose}>

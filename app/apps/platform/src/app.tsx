@@ -29,6 +29,7 @@ import {
   Workflow,
   X,
 } from "lucide-react";
+import { billingEnabled } from "./features";
 import {
   api,
   commonStatusLabel,
@@ -53,7 +54,7 @@ import {
   StateView,
 } from "@thcpn/ui";
 import { AccountMenu, WorkspaceMenu } from "./shell-menus";
-import { useLocale } from "@thcpn/i18n";
+import { LanguageSwitcher, useLocale } from "@thcpn/i18n";
 const DevicesPage = lazy(() =>
   import("./devices-page").then((module) => ({ default: module.DevicesPage })),
 );
@@ -122,7 +123,7 @@ const PublicDevicePage = lazy(() =>
 
 const navGroups = [
   {
-    label: "运行",
+    key: "operations",
     items: [
       { to: "/dashboard", key: "overview", icon: Gauge },
       { to: "/devices", key: "devices", icon: Boxes },
@@ -130,7 +131,7 @@ const navGroups = [
     ],
   },
   {
-    label: "数据",
+    key: "data",
     items: [
       { to: "/data-compare", key: "compare", icon: BarChart3 },
       { to: "/datasets", key: "datasets", icon: Table2 },
@@ -139,10 +140,12 @@ const navGroups = [
     ],
   },
   {
-    label: "管理",
+    key: "management",
     items: [
       { to: "/workspaces", key: "workspaces", icon: Building2 },
-      { to: "/subscription", key: "subscription", icon: CreditCard },
+      ...(billingEnabled
+        ? [{ to: "/subscription", key: "subscription", icon: CreditCard }]
+        : []),
     ],
   },
 ];
@@ -165,15 +168,15 @@ function Shell() {
       : location.pathname === "/devices"
       ? t("platform:navigation.devices")
       : location.pathname.startsWith("/devices/")
-        ? "设备详情"
+        ? t("platform:navigation.deviceDetails")
       : location.pathname === "/datasets"
           ? t("platform:navigation.datasets")
           : location.pathname === "/datasets/new"
-            ? "创建数据集"
+            ? t("platform:navigation.createDataset")
             : location.pathname.endsWith("/edit")
-              ? "编辑数据集"
+              ? t("platform:navigation.editDataset")
               : location.pathname.startsWith("/datasets/")
-                ? "数据集详情"
+                ? t("platform:navigation.datasetDetails")
           : location.pathname === "/data-compare"
             ? t("platform:navigation.compare")
           : location.pathname === "/exports"
@@ -234,16 +237,16 @@ function Shell() {
       )}
       <aside
         className={`sidebar ${mobileOpen ? "open" : ""}`}
-        aria-label="主导航"
+        aria-label={t("mainNavigation")}
       >
         <div className="sidebar-brand-row">
           <Brand />
           <div className="desktop-sidebar-toggle">
             <IconButton
-              label="收起侧栏"
-              onClick={() => setSidebarCollapsed(true)}
+              label={sidebarCollapsed ? t("openNavigation") : t("closeNavigation")}
+              onClick={() => setSidebarCollapsed((current) => !current)}
             >
-              <PanelLeftClose size={18} />
+              {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
             </IconButton>
           </div>
           <div className="mobile-close">
@@ -269,8 +272,8 @@ function Shell() {
         />
         <nav style={{ display: "grid", gap: 20 }}>
           {navGroups.map((group) => (
-            <div className="nav-group" key={group.label}>
-              <div className="nav-title">{group.label}</div>
+            <div className="nav-group" key={group.key}>
+              <div className="nav-title">{t(`platform:navigationGroups.${group.key}`)}</div>
               {group.items.map((item) => {
                 const Icon = item.icon;
                 return (
@@ -281,9 +284,10 @@ function Shell() {
                     className={({ isActive }) =>
                       `nav-item ${isActive ? "active" : ""}`
                     }
+                    title={t(`platform:navigation.${item.key}`)}
                   >
                     <Icon size={16} />
-                    {t(`platform:navigation.${item.key}`)}
+                    <span>{t(`platform:navigation.${item.key}`)}</span>
                   </NavLink>
                 );
               })}
@@ -317,7 +321,7 @@ function Shell() {
           <div className="topbar-left">
             <div className="desktop-sidebar-open">
               <IconButton
-                label="展开侧栏"
+                label={t("openNavigation")}
                 onClick={() => setSidebarCollapsed(false)}
               >
                 <PanelLeftOpen size={18} />
@@ -325,7 +329,7 @@ function Shell() {
             </div>
             <MobileMenuButton onClick={() => setMobileOpen(true)} />
             <div className="topbar-context">
-              <span className="mono">THCPN / </span>
+              <span className="mono">{t("platform:brand")} / </span>
               {workspace.current?.name ?? t("platform:navigation.workspaces")}
               {routeLabel && (
                 <>
@@ -335,10 +339,13 @@ function Shell() {
               )}
             </div>
           </div>
-          <Link className="topbar-notification" to="/notifications" aria-label="通知中心">
-            <Bell size={18} />
-            {(notificationSummary.data ?? 0) > 0 && <span>{Math.min(notificationSummary.data ?? 0, 99)}</span>}
-          </Link>
+          <div className="topbar-actions">
+            <LanguageSwitcher compact />
+            <Link className="topbar-notification" to="/notifications" aria-label={t("platform:navigation.notifications")}>
+              <Bell size={18} />
+              {(notificationSummary.data ?? 0) > 0 && <span>{Math.min(notificationSummary.data ?? 0, 99)}</span>}
+            </Link>
+          </div>
         </header>
         <main className="page">
           <Outlet />
@@ -598,7 +605,9 @@ export function PlatformApp() {
             <Route path="/processing" element={<ProcessingPage />} />
             <Route path="/processing/:taskId" element={<ProcessingTaskDetailPage />} />
             <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/subscription" element={<SubscriptionPage />} />
+            {billingEnabled ? (
+              <Route path="/subscription" element={<SubscriptionPage />} />
+            ) : null}
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/account" element={<AccountPage />} />
             <Route path="*" element={<RootRedirect />} />

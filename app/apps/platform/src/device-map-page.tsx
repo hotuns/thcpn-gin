@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, LocateFixed, MapPinned, Satellite, X } from "lucide-react";
+import { ChevronRight, LocateFixed, MapPinned, Satellite, SlidersHorizontal, X } from "lucide-react";
 import { api, deviceTopologyRoleLabel, formatApiError, type DeviceMapItem } from "@thcpn/api";
 import { DeviceMap, tiandituImageryStyle } from "@thcpn/device-map";
 import { Button, StateView } from "@thcpn/ui";
@@ -12,6 +12,9 @@ export function DeviceMapPage() {
   const [ecosystem, setEcosystem] = useState("");
   const [observation, setObservation] = useState("");
   const [selectedId, setSelectedId] = useState("");
+  const [consoleCollapsed, setConsoleCollapsed] = useState(
+    () => localStorage.getItem("ecocloud:device-map-console-collapsed") === "true",
+  );
   const catalog = useQuery({ queryKey: ["device-taxonomy"], queryFn: api.devices.taxonomy });
   const query = useQuery({
     queryKey: workspaceQueryKey(currentId, "device-map", String(includeChildren)),
@@ -38,6 +41,9 @@ export function DeviceMapPage() {
   useEffect(() => {
     if (selectedId && !rows.some((item) => item.device_id === selectedId)) setSelectedId("");
   }, [rows, selectedId]);
+  useEffect(() => {
+    localStorage.setItem("ecocloud:device-map-console-collapsed", String(consoleCollapsed));
+  }, [consoleCollapsed]);
 
   return (
     <div className="immersive-device-map">
@@ -49,36 +55,47 @@ export function DeviceMapPage() {
         onSelect={setSelectedId}
       />
 
-      <section className="device-map-console" aria-label="地图筛选">
-        <div className="device-map-console-head">
-          <div className="device-map-title-mark"><Satellite size={15} /></div>
-          <div>
-            <span>{current?.name ?? "当前工作区"}</span>
-            <h1>设备地图</h1>
-          </div>
-        </div>
-        <div className="device-map-summary" aria-label="设备统计">
-          <div><strong>{rows.length}</strong><span>设备</span></div>
-          <div><strong>{located}</strong><span>已定位</span></div>
-          <div><strong>{rows.length - located}</strong><span>未定位</span></div>
-          <div><strong>{unclassified}</strong><span>未分类</span></div>
-        </div>
-        <div className="device-map-filters">
-          <select value={ecosystem} onChange={(event) => setEcosystem(event.target.value)} aria-label="生态类型">
-            <option value="">全部生态类型</option>
-            {terms.filter((term) => term.kind === "ecosystem").map((term) => <option key={term.id} value={term.id}>{term.name_zh}</option>)}
-          </select>
-          <select value={observation} onChange={(event) => setObservation(event.target.value)} aria-label="观测对象">
-            <option value="">全部观测对象</option>
-            {terms.filter((term) => term.kind === "observation_object").map((term) => <option key={term.id} value={term.id}>{term.name_zh}</option>)}
-          </select>
-          <label className="device-map-child-toggle">
-            <input type="checkbox" checked={includeChildren} onChange={(event) => setIncludeChildren(event.target.checked)} />
-            <i aria-hidden="true" />
-            <span>显示子节点</span>
-          </label>
-        </div>
-        {!token && !import.meta.env.VITE_MAP_STYLE_URL ? <div className="device-map-token-note">配置天地图 Token 后显示影像底图</div> : null}
+      <section className={`device-map-console ${consoleCollapsed ? "is-collapsed" : ""}`} aria-label="地图筛选">
+        {consoleCollapsed ? (
+          <button type="button" className="device-map-console-toggle" aria-expanded="false" aria-label="展开地图筛选" title="展开地图筛选" onClick={() => setConsoleCollapsed(false)}>
+            <SlidersHorizontal size={18} />
+          </button>
+        ) : (
+          <>
+            <div className="device-map-console-head">
+              <div className="device-map-title-mark"><Satellite size={15} /></div>
+              <div>
+                <span>{current?.name ?? "当前工作区"}</span>
+                <h1>设备地图</h1>
+              </div>
+              <button type="button" className="device-map-console-collapse" aria-expanded="true" aria-label="收起地图筛选" title="收起地图筛选" onClick={() => setConsoleCollapsed(true)}>
+                <ChevronRight size={17} />
+              </button>
+            </div>
+            <div className="device-map-summary" aria-label="设备统计">
+              <div><strong>{rows.length}</strong><span>设备</span></div>
+              <div><strong>{located}</strong><span>已定位</span></div>
+              <div><strong>{rows.length - located}</strong><span>未定位</span></div>
+              <div><strong>{unclassified}</strong><span>未分类</span></div>
+            </div>
+            <div className="device-map-filters">
+              <select value={ecosystem} onChange={(event) => setEcosystem(event.target.value)} aria-label="生态类型">
+                <option value="">全部生态类型</option>
+                {terms.filter((term) => term.kind === "ecosystem").map((term) => <option key={term.id} value={term.id}>{term.name_zh}</option>)}
+              </select>
+              <select value={observation} onChange={(event) => setObservation(event.target.value)} aria-label="观测对象">
+                <option value="">全部观测对象</option>
+                {terms.filter((term) => term.kind === "observation_object").map((term) => <option key={term.id} value={term.id}>{term.name_zh}</option>)}
+              </select>
+              <label className="device-map-child-toggle">
+                <input type="checkbox" checked={includeChildren} onChange={(event) => setIncludeChildren(event.target.checked)} />
+                <i aria-hidden="true" />
+                <span>显示子节点</span>
+              </label>
+            </div>
+            {!token && !import.meta.env.VITE_MAP_STYLE_URL ? <div className="device-map-token-note">配置天地图 Token 后显示影像底图</div> : null}
+          </>
+        )}
       </section>
 
       {query.isLoading ? <div className="device-map-state"><StateView type="loading" title="正在加载设备地图" description="正在读取设备位置。" /></div> : null}
@@ -100,7 +117,7 @@ function DeviceMapDetail({ item, onClose }: { item: DeviceMapItem; onClose: () =
       <button type="button" className="device-map-detail-close" onClick={onClose} aria-label="关闭设备信息"><X size={16} /></button>
       <span className={`device-map-detail-status ${item.status === "active" ? "is-active" : ""}`}>{item.status === "active" ? "在线资产" : item.status}</span>
       <h2>{item.name}</h2>
-      <p className="mono">{item.serial_no}</p>
+      <p className="mono">SN {item.serial_no}</p>
       <dl>
         <div><dt>设备类型</dt><dd>{deviceTopologyRoleLabel(item.device_type)}</dd></div>
         <div><dt>生态类型</dt><dd>{item.environment.ecosystem?.name_zh ?? "未分类"}</dd></div>

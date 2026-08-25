@@ -467,7 +467,7 @@ func (p *Processor) renderDeviceBatchZIP(ctx context.Context, job Job, cfg batch
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	quality := make([]qualityReportRow, 0)
-	if err := writeBytesFile(zw, "README.txt", []byte("THCPN 数据导出\n时间均为北京时间（+08:00）；generation-report.csv 仅描述本次文件生成情况。\n")); err != nil {
+	if err := writeBytesFile(zw, "README.txt", []byte("原位生态云数据导出\n时间均为北京时间（+08:00）；generation-report.csv 仅描述本次文件生成情况。\n")); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(cfg.GatewayID) != "" {
@@ -1245,7 +1245,7 @@ func (p *Processor) renderCarbonStationZIP(ctx context.Context, job Job, cfg car
 	}
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
-	if err := writeBytesFile(zw, "README.txt", []byte("THCPN 碳汇站数据导出\n时间均为北京时间（+08:00）；空文件表示所选范围内没有对应数据。\n")); err != nil {
+	if err := writeBytesFile(zw, "README.txt", []byte("原位生态云碳汇站数据导出\n时间均为北京时间（+08:00）；空文件表示所选范围内没有对应数据。\n")); err != nil {
 		return nil, err
 	}
 	var manifest bytes.Buffer

@@ -14,7 +14,6 @@ import {
   Check,
   ChevronDown,
   Copy,
-  Database,
   FileWarning,
   Inbox,
   Menu,
@@ -467,12 +466,12 @@ export function Brand({ admin = false }: { admin?: boolean }) {
   return (
     <div className="brand">
       <div className="brand-mark">
-        <Database size={17} />
+        <img src="/brand/insitu-ecocloud-logo.png" alt="" />
       </div>
       <div>
-        <div className="brand-name">THCPN</div>
+        <div className="brand-name">In-situ EcoCloud</div>
         <div className="brand-sub">
-          {admin ? "SYSTEM CONTROL" : "RESEARCH NETWORK"}
+          {admin ? "SYSTEM CONTROL" : "原位生态云"}
         </div>
       </div>
     </div>

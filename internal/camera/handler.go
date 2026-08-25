@@ -23,11 +23,10 @@ type Handler struct {
 
 type createCameraRequest struct {
 	ProductID             string `json:"product_id"`
-	SerialNo              string `json:"serial_no"`
 	Name                  string `json:"name"`
 	DeviceSerial          string `json:"device_serial"`
 	ChannelNo             int32  `json:"channel_no"`
-	DefaultQuality         string `json:"default_quality"`
+	DefaultQuality        string `json:"default_quality"`
 	IsEncrypted           bool   `json:"is_encrypted"`
 	ValidateCodeSecretRef string `json:"validate_code_secret_ref"`
 	TargetWorkspaceID     string `json:"target_workspace_id"`
@@ -38,7 +37,7 @@ type createCameraRequest struct {
 type updateCameraRequest struct {
 	DeviceSerial          *string `json:"device_serial"`
 	ChannelNo             *int32  `json:"channel_no"`
-	DefaultQuality         *string `json:"default_quality"`
+	DefaultQuality        *string `json:"default_quality"`
 	IsEncrypted           *bool   `json:"is_encrypted"`
 	ValidateCodeSecretRef *string `json:"validate_code_secret_ref"`
 	Status                *string `json:"status"`
@@ -76,11 +75,10 @@ func (h *Handler) AdminCreate(c *gin.Context) {
 	}
 	result, err := h.service.Create(c.Request.Context(), CreateInput{
 		ProductID:             req.ProductID,
-		SerialNo:              req.SerialNo,
 		Name:                  req.Name,
 		DeviceSerial:          req.DeviceSerial,
 		ChannelNo:             req.ChannelNo,
-		DefaultQuality:         req.DefaultQuality,
+		DefaultQuality:        req.DefaultQuality,
 		IsEncrypted:           req.IsEncrypted,
 		ValidateCodeSecretRef: req.ValidateCodeSecretRef,
 		Status:                "active",
@@ -143,7 +141,7 @@ func (h *Handler) AdminUpdate(c *gin.Context) {
 		DeviceID:              deviceID,
 		DeviceSerial:          req.DeviceSerial,
 		ChannelNo:             req.ChannelNo,
-		DefaultQuality:         req.DefaultQuality,
+		DefaultQuality:        req.DefaultQuality,
 		IsEncrypted:           req.IsEncrypted,
 		ValidateCodeSecretRef: req.ValidateCodeSecretRef,
 		Status:                req.Status,

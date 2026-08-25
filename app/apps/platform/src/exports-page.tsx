@@ -804,7 +804,7 @@ function GroupExportForm({
                     </span>
                     <span>
                       <strong>{value(item, "name")}</strong>
-                      <small>{value(item, "serial_no")}</small>
+                      <small>SN {value(item, "serial_no")}</small>
                     </span>
                   </label>
                 );

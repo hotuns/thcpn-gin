@@ -7,6 +7,7 @@ import { useAuth } from "@thcpn/auth";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, PageHeader, Panel, StateView } from "@thcpn/ui";
 import { AccessControlTab } from "./access-control";
+import { billingEnabled } from "./features";
 
 const text = (value: unknown, fallback = "—") =>
   value === undefined || value === null || value === ""
@@ -20,8 +21,9 @@ export function SettingsPage() {
   const tab = params.get("tab") ?? "resources";
   if (tab === "security")
     return <Navigate to="/account?tab=security" replace />;
-  if (tab === "billing")
+  if (billingEnabled && tab === "billing")
     return <Navigate to="/subscription" replace />;
+  if (tab === "billing") return <Navigate to="/settings" replace />;
   const tabs = [
     { id: "resources", label: "基础资料" },
     { id: "access", label: "访问控制" },
@@ -572,7 +574,7 @@ function AuditTab() {
       addResource(["site"], item.id, item.name),
     );
     (devices.data?.items ?? []).forEach((item) =>
-      addResource(["device"], item.id, `${item.name} · ${item.serial_no}`),
+      addResource(["device"], item.id, `${item.name} · SN ${item.serial_no}`),
     );
     (datasets.data?.items ?? []).forEach((item) =>
       addResource(["dataset"], item.id, item.name),

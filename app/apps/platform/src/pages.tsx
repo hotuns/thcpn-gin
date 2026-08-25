@@ -10,7 +10,7 @@ import {
   DeviceMedia,
   isCameraDevice,
 } from "./device-media";
-import { DataQuickNavigator } from "./data-quick-navigator";
+import { DataQuickNavigator, scrollToDataSection } from "./data-quick-navigator";
 import {
   DeviceQueryActions,
   querySelectedTelemetry,
@@ -75,7 +75,15 @@ export function DeviceDataPage({
     queryFn: () => api.devices.list(currentId!),
     enabled: Boolean(currentId),
   });
-  const devices = devicesQuery.data?.items ?? [];
+  const fixedDeviceQuery = useQuery({
+    queryKey: ["device", fixedDeviceId, "data-page"],
+    queryFn: () => api.devices.get(fixedDeviceId!),
+    enabled: Boolean(fixedDeviceId),
+  });
+  const workspaceDevices = devicesQuery.data?.items ?? [];
+  const devices = fixedDeviceQuery.data && !workspaceDevices.some((item) => item.id === fixedDeviceQuery.data?.id)
+    ? [fixedDeviceQuery.data, ...workspaceDevices]
+    : workspaceDevices;
   const selectedDevice = devices.find((item) => item.id === deviceId);
   useEffect(() => {
     if (fixedDeviceId) {
@@ -279,6 +287,7 @@ export function DeviceDataPage({
     setAppliedEndTime(endTime);
     setAppliedStreamIds(selectedStreamIds);
     setAppliedImageStreamIds(selectedImageStreamIds);
+    window.requestAnimationFrame(() => scrollToDataSection("data-section-trend"));
   };
   const reorderSelectedStreams = (nextIds: string[]) => {
     setSelectedStreamIds(nextIds);
@@ -333,14 +342,14 @@ export function DeviceDataPage({
                 >
                   {devices.map((device) => (
                     <option key={device.id} value={device.id}>
-                      {device.name} · {device.serial_no}
+                      {device.name} · SN {device.serial_no}
                     </option>
                   ))}
                 </select>
               </label>
               <div className="camera-identity">
                 <Badge tone="info">海康视频</Badge>
-                <span className="mono">{selectedDevice.serial_no}</span>
+                <span className="mono">SN {selectedDevice.serial_no}</span>
               </div>
             </div>
           </Panel>

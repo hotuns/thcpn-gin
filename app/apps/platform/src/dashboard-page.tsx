@@ -188,7 +188,7 @@ export function DashboardPage() {
             <div className="series-row" key={device.id}>
               <div>
                 <div className="cell-title">{device.name}</div>
-                <div className="cell-sub mono">{device.serial_no}</div>
+                <div className="cell-sub mono">SN {device.serial_no}</div>
               </div>
               <Badge tone={device.status === "active" ? "success" : "warning"}>
                 {deviceStatusLabel(device.status)}

@@ -8,6 +8,7 @@ import {
 import { Link } from "react-router-dom";
 import {
   Check,
+  Building2,
   ChevronDown,
   ChevronUp,
   LogOut,
@@ -96,6 +97,7 @@ export function WorkspaceMenu({
         aria-controls="workspace-switcher-card"
         onClick={onToggle}
       >
+        <Building2 className="workspace-trigger-icon" size={18} aria-hidden="true" />
         <span className="workspace-trigger-copy">
           <span className="workspace-label">{t("platform:workspace.current")}</span>
           <strong>{loading ? t("platform:workspace.loading") : current?.name ?? t("platform:workspace.none")}</strong>
@@ -230,8 +232,8 @@ export function AccountMenu({
       >
         <span className="avatar">{(user?.name ?? "U").slice(0, 1)}</span>
         <span className="account-name">
-          <strong>{user?.name ?? "当前用户"}</strong>
-          <small>{user?.email ?? user?.phone ?? "平台账户"}</small>
+          <strong>{user?.name ?? t("platform:account.currentUser")}</strong>
+          <small>{user?.email ?? user?.phone ?? t("platform:account.platformAccount")}</small>
         </span>
         <ChevronUp size={15} aria-hidden="true" />
       </button>

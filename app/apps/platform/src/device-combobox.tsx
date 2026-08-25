@@ -195,7 +195,7 @@ export function DeviceCombobox({
                         onClick={() => selectDevice(gateway.id)}
                       >
                         <strong>{gateway.name}</strong>
-                        <small>{gateway.serial_no || gateway.id} · {children.length} 个节点</small>
+                        <small>SN {gateway.serial_no} · {children.length} 个节点</small>
                       </button>
                       {children.map((child) => (
                         <button
@@ -207,7 +207,7 @@ export function DeviceCombobox({
                           onClick={() => selectDevice(child.id)}
                         >
                           <strong>{child.name}</strong>
-                          <small>{child.serial_no || child.id}</small>
+                          <small>SN {child.serial_no}</small>
                         </button>
                       ))}
                     </div>
@@ -229,7 +229,7 @@ export function DeviceCombobox({
                     onClick={() => selectDevice(item.id)}
                   >
                     <strong>{item.name}</strong>
-                    <small>{item.serial_no || item.id}</small>
+                    <small>SN {item.serial_no}</small>
                   </button>
                 ))}
               </section>

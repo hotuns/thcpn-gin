@@ -229,7 +229,6 @@ export function AdminDevicesPage() {
     if (next === "edit")
       form.setFieldsValue({
         product_id: record.product_id,
-        serial_no: record.serial_no,
         name: record.name,
         status: record.status,
         device_type: record.device_type,
@@ -271,7 +270,6 @@ export function AdminDevicesPage() {
     if (next === "camera")
       form.setFieldsValue({
         name: record.name,
-        serial_no: `${value(record.serial_no, "camera")}-camera`,
         device_serial: "",
         channel_no: 1,
         default_quality: "standard",
@@ -303,7 +301,7 @@ export function AdminDevicesPage() {
     setSelected(null);
     setMode("camera");
     setDetail(null);
-    form.setFieldsValue({ name: "", serial_no: "", device_serial: "", channel_no: 1, default_quality: "standard", is_encrypted: false, validate_code_secret_ref: "", target_workspace_id: undefined, project_id: undefined, site_id: undefined });
+    form.setFieldsValue({ name: "", device_serial: "", channel_no: 1, default_quality: "standard", is_encrypted: false, validate_code_secret_ref: "", target_workspace_id: undefined, project_id: undefined, site_id: undefined });
   };
   const close = () => {
     setMode(null);
@@ -1013,18 +1011,9 @@ function DeviceForm({
   if (mode === "edit")
     return (
       <>
-        <div className="drawer-grid">
-          <Form.Item name="name" label="设备名称" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item
-            name="serial_no"
-            label="序列号"
-            rules={[{ required: true }]}
-          >
-            <Input />
-          </Form.Item>
-        </div>
+        <Form.Item name="name" label="设备名称" rules={[{ required: true }]}>
+          <Input />
+        </Form.Item>
         <Form.Item name="product_id" label="产品 ID">
           <Input />
         </Form.Item>
@@ -1203,22 +1192,13 @@ function DeviceForm({
   if (mode === "camera")
     return (
       <>
-        <div className="drawer-grid">
-          <Form.Item
-            name="name"
-            label="监控站名称"
-            rules={[{ required: true }]}
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item
-            name="serial_no"
-            label="平台序列号"
-            rules={[{ required: true }]}
-          >
-            <Input />
-          </Form.Item>
-        </div>
+        <Form.Item
+          name="name"
+          label="监控站名称"
+          rules={[{ required: true }]}
+        >
+          <Input />
+        </Form.Item>
         <Form.Item
           name="device_serial"
           label="萤石设备序列号"
