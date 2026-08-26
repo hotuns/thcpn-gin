@@ -28,10 +28,8 @@ export function AuthPage({ register = false }: { register?: boolean }) {
   const [mode, setMode] = useState<"password" | "sms">("password");
   const [identifier, setIdentifier] = useState("");
   const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
-  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [smsCode, setSmsCode] = useState("");
   const [mfaCode, setMfaCode] = useState("");
   const [mfaRequired, setMfaRequired] = useState(false);
@@ -92,16 +90,8 @@ export function AuthPage({ register = false }: { register?: boolean }) {
       }
       return;
     }
-    if (register && !phone.trim() && !email.trim()) {
+    if (register && !phone.trim()) {
       setMessage(t("platform:auth.contactRequired"));
-      return;
-    }
-    if (register && !validPassword(password)) {
-      setMessage(t("platform:auth.passwordRule"));
-      return;
-    }
-    if (register && password !== passwordConfirm) {
-      setMessage(t("platform:auth.passwordMismatch"));
       return;
     }
     if (mfaRequired && !/^\d{6}$/.test(mfaCode)) {
@@ -112,11 +102,10 @@ export function AuthPage({ register = false }: { register?: boolean }) {
     try {
       if (register)
         finish(
-          await api.auth.register({
+          await api.auth.smsLogin({
+            phone: phone.trim(),
+            code: smsCode,
             name: name.trim(),
-            phone: phone.trim() || undefined,
-            email: email.trim() || undefined,
-            password,
           }),
         );
       else if (mode === "sms")
@@ -248,22 +237,36 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             {register ? (
               <>
                 <label className="field">
-                  <span className="field-label">
-                    {t("platform:auth.phone")} <span className="muted">({t("platform:auth.contactHint")})</span>
-                  </span>
+                  <span className="field-label">{t("platform:auth.phone")}</span>
                   <input
+                    required
                     value={phone}
                     onChange={(event) => setPhone(event.target.value)}
                   />
                 </label>
-                <label className="field">
-                  <span className="field-label">{t("platform:auth.email")}</span>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                  />
-                </label>
+                <div className="sms-row">
+                  <label className="field">
+                    <span className="field-label">{t("platform:auth.smsCode")}</span>
+                    <input
+                      required
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={smsCode}
+                      onChange={(event) =>
+                        setSmsCode(event.target.value.replace(/\D/g, ""))
+                      }
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={!phone.trim() || busy || cooldown > 0}
+                    onClick={() => void sendSms()}
+                  >
+                    <MessageSquareText size={14} />
+                    {cooldown > 0 ? `${cooldown}s` : t("platform:auth.send")}
+                  </Button>
+                </div>
               </>
             ) : mode === "sms" ? (
               <>
@@ -309,7 +312,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                 />
               </label>
             )}
-            {(register || mode === "password") && (
+            {!register && mode === "password" && (
               <label className="field">
                 <span className="field-label">{t("platform:auth.password")}</span>
                 <input
@@ -319,17 +322,6 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                   type="password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                />
-              </label>
-            )}
-            {register && (
-              <label className="field">
-                <span className="field-label">{t("platform:auth.confirmPassword")}</span>
-                <input
-                  required
-                  type="password"
-                  value={passwordConfirm}
-                  onChange={(event) => setPasswordConfirm(event.target.value)}
                 />
               </label>
             )}

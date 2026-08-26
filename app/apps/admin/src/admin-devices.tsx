@@ -104,6 +104,9 @@ export function AdminDevicesPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [bulkLifecycleOpen, setBulkLifecycleOpen] = useState(false);
+  const [bulkLifecycleStatus, setBulkLifecycleStatus] = useState("");
+  const [bulkLifecycleNote, setBulkLifecycleNote] = useState("");
   const [selected, setSelected] = useState<JsonRecord | null>(null);
   const [mode, setMode] = useState<Mode>(null);
   const [busy, setBusy] = useState(false);
@@ -220,6 +223,38 @@ export function AdminDevicesPage() {
         }
       },
     });
+  };
+
+  const runBatchLifecycle = async () => {
+    if (!bulkLifecycleStatus || !selectedRows.length) return;
+    setBusy(true);
+    setFeedback("");
+    try {
+      const results = await Promise.allSettled(
+        selectedRows.map((item) =>
+          api.admin.updateLifecycle(value(item.id, ""), {
+            lifecycle_status: bulkLifecycleStatus,
+            note: bulkLifecycleNote,
+          }),
+        ),
+      );
+      const failedKeys = results.flatMap((result, index) =>
+        result.status === "rejected"
+          ? [value(selectedRows[index]?.id, "")]
+          : [],
+      );
+      const succeeded = results.length - failedKeys.length;
+      setFeedback(
+        failedKeys.length
+          ? `批量设置生命周期完成：成功 ${succeeded} 台，失败 ${failedKeys.length} 台`
+          : `已批量设置 ${succeeded} 台设备的生命周期`,
+      );
+      setSelectedRowKeys(failedKeys);
+      setBulkLifecycleOpen(false);
+      await query.refetch();
+    } finally {
+      setBusy(false);
+    }
   };
 
   const open = (next: Exclude<Mode, null>, record: JsonRecord) => {
@@ -553,6 +588,7 @@ export function AdminDevicesPage() {
             <Space wrap>
               <Button loading={busy} onClick={() => void runBatch("activate")}>批量启用</Button>
               <Button danger loading={busy} onClick={() => void runBatch("disable")}>批量停用</Button>
+              <Button loading={busy} onClick={() => { setBulkLifecycleStatus(""); setBulkLifecycleNote(""); setBulkLifecycleOpen(true); }}>批量设置生命周期</Button>
               <Button loading={busy} onClick={() => void runBatch("unassign")}>解除分配</Button>
               <Button type="text" disabled={busy} onClick={() => setSelectedRowKeys([])}>清空选择</Button>
             </Space>
@@ -626,6 +662,28 @@ export function AdminDevicesPage() {
           />
         )}
       </Panel>
+      <Modal
+        title={`批量设置生命周期 · ${selectedRows.length} 台`}
+        open={bulkLifecycleOpen}
+        onCancel={() => setBulkLifecycleOpen(false)}
+        onOk={() => void runBatchLifecycle()}
+        okText="确认设置"
+        confirmLoading={busy}
+        okButtonProps={{ disabled: !bulkLifecycleStatus }}
+      >
+        <Form layout="vertical">
+          <Form.Item label="新生命周期" required>
+            <Select
+              value={bulkLifecycleStatus || undefined}
+              onChange={setBulkLifecycleStatus}
+              options={deviceLifecycleOptions.map((item) => ({ value: item.value, label: deviceLifecycleLabel(item.value) }))}
+            />
+          </Form.Item>
+          <Form.Item label="变更说明">
+            <Input.TextArea rows={4} value={bulkLifecycleNote} onChange={(event) => setBulkLifecycleNote(event.target.value)} placeholder="记录本次状态变化的原因" />
+          </Form.Item>
+        </Form>
+      </Modal>
       {managementOverlays}
     </>
   );
