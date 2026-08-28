@@ -29,14 +29,14 @@ export function ProcessingPage() {
     catch (error) { setFeedback(formatApiError(error).message); }
   };
   return <>
-    <PageHeader eyebrow="数据" title="数据处理" description="配置系统内置处理器，将设备数据转为可追溯的派生指标和文件。" actions={<Button onClick={() => setCreating(true)}><Plus size={15}/>创建处理任务</Button>} />
+    <PageHeader eyebrow="数据" title="数据处理" description="配置系统内置处理器，将设备数据转为可追溯的派生指标和文件。" actions={<Button data-onboarding="processing-create" onClick={() => setCreating(true)}><Plus size={15}/>创建处理任务</Button>} />
     {feedback && <div className="command-note">{feedback}</div>}
-    <div className="processing-summary">
+    <div className="processing-summary" data-onboarding="processing-summary">
       <div><strong>{tasks.data?.items.filter((item) => item.status === "active").length ?? "—"}</strong><span>运行中</span></div>
       <div><strong>{processors.data?.items.filter((item) => item.enabled).length ?? "—"}</strong><span>可用处理器</span></div>
       <div><strong>{tasks.data?.items.length ?? "—"}</strong><span>全部任务</span></div>
     </div>
-    <Panel className="section-gap">
+    <Panel className="section-gap" data-onboarding="processing-list">
       <div className="panel-header"><div><h2 className="panel-title">处理任务</h2><div className="panel-kicker">任务关键配置按版本保存，归档后仍保留历史结果</div></div><Workflow size={17}/></div>
       {tasks.isLoading ? <StateView type="loading" title="正在加载处理任务" description="" /> : tasks.isError ? <StateView type="error" title="处理任务加载失败" description={formatApiError(tasks.error).message} /> : !tasks.data?.items.length ? <StateView type="empty" title="暂无处理任务" description="创建任务后，系统会从指定起点自动处理新增数据。" /> :
       <div className="table-wrap"><table className="data-table"><thead><tr><th>任务</th><th>处理器</th><th>目标</th><th>版本</th><th>状态</th><th>操作</th></tr></thead><tbody>{tasks.data.items.map((task) => <tr key={task.id}>

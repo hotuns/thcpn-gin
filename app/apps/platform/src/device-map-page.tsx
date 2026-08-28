@@ -46,7 +46,7 @@ export function DeviceMapPage() {
   }, [consoleCollapsed]);
 
   return (
-    <div className="immersive-device-map">
+    <div className="immersive-device-map" data-onboarding="map-canvas">
       <DeviceMap
         height="100%"
         styleUrl={token ? undefined : import.meta.env.VITE_MAP_STYLE_URL}
@@ -72,13 +72,13 @@ export function DeviceMapPage() {
                 <ChevronRight size={17} />
               </button>
             </div>
-            <div className="device-map-summary" aria-label="设备统计">
+            <div className="device-map-summary" data-onboarding="map-summary" aria-label="设备统计">
               <div><strong>{rows.length}</strong><span>设备</span></div>
               <div><strong>{located}</strong><span>已定位</span></div>
               <div><strong>{rows.length - located}</strong><span>未定位</span></div>
               <div><strong>{unclassified}</strong><span>未分类</span></div>
             </div>
-            <div className="device-map-filters">
+            <div className="device-map-filters" data-onboarding="map-filters">
               <select value={ecosystem} onChange={(event) => setEcosystem(event.target.value)} aria-label="生态类型">
                 <option value="">全部生态类型</option>
                 {terms.filter((term) => term.kind === "ecosystem").map((term) => <option key={term.id} value={term.id}>{term.name_zh}</option>)}

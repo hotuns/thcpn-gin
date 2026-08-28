@@ -143,7 +143,7 @@ function ResourcesTab() {
     );
   return (
     <>
-      <div className="workspace-resource-layout">
+      <div className="workspace-resource-layout" data-onboarding="organization-resources">
       {current && <Panel className="workspace-settings-summary"><div className="workspace-setting-row"><div><strong>组织名称</strong><small>名称会显示在组织切换器和相关页面中</small></div><div className="workspace-setting-value"><span title={current.name}>{current.name}</span><Button variant="secondary" onClick={() => setEditingWorkspace(true)}><Pencil size={13} />编辑</Button></div></div></Panel>}
       <div className="grid grid-2 workspace-resource-grid">
         <Panel>
@@ -624,7 +624,7 @@ function AuditTab() {
       `${text(record.resource_type, "unknown")}:${text(record.resource_id, "")}`,
     ) ?? resourceTypeLabel(text(record.resource_type));
   return (
-    <Panel>
+    <Panel data-onboarding="organization-audit">
       <div className="panel-header">
         <div>
           <h2 className="panel-title">审计事件</h2>

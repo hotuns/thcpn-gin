@@ -507,7 +507,7 @@ function Workspaces() {
           />
         </Panel>
       ) : (
-        <Panel>
+        <Panel data-onboarding="organization-list">
           <div className="table-wrap">
             <table className="data-table">
               <thead>

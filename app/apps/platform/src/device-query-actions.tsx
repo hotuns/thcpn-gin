@@ -172,7 +172,7 @@ export function DeviceQueryActions({
     }, 0);
   };
   return (
-    <Panel className="section-gap stream-selector query-condition-panel">
+    <Panel className="section-gap stream-selector query-condition-panel" data-onboarding="device-query">
       <div className="panel-header">
         <div>
           <h2 className="panel-title">查询条件</h2>

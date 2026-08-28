@@ -211,6 +211,64 @@ export const resources = {
         resetPassword: "重置密码",
         resetSuccess: "密码已重置，请使用新密码登录",
       },
+      onboarding: {
+        eyebrow: "快速上手",
+        title: "你想了解哪个模块？",
+        introduction: "选择一个模块，教程会带你进入对应页面并讲解完整操作流程，不会替你提交或修改任何数据。",
+        close: "关闭使用教程",
+        later: "稍后再看",
+        exit: "退出教程",
+        previous: "上一步",
+        next: "下一步",
+        finish: "完成",
+        unavailable: "当前页面没有可演示的内容，可能尚无数据或当前账号没有对应权限。你仍可继续了解操作流程。",
+        modules: {
+          claim: { title: "添加设备", description: "认领设备并分配到项目和样地", steps: [
+            { title: "从设备中心开始", description: "设备中心集中展示当前组织的全部设备。添加新设备前，可以先确认它是否已经存在。" },
+            { title: "进入设备认领", description: "点击“认领设备”进入接入流程。教程只介绍入口，不会自动认领设备。" },
+            { title: "验证设备身份", description: "输入设备序列号与认领码，先验证设备是否可被当前账号认领。" },
+            { title: "设置设备归属", description: "验证通过后选择目标组织、项目和样地，再由你确认认领。提交前不会产生任何变更。" },
+          ] },
+          deviceData: { title: "查看设备数据", description: "查询指标、明细和采集图片", steps: [
+            { title: "筛选目标设备", description: "可按名称、序列号、设备类型、项目和样地快速定位设备。" },
+            { title: "打开设备数据", description: "选择设备行中的“查看数据”，进入该设备的数据页面。教程会用当前列表中的第一台设备演示。" },
+            { title: "切换设备功能", description: "设备详情按数据、资料、配置、分享和记录等页签组织，不同设备类型会显示适用的功能。" },
+            { title: "设置数据查询条件", description: "在数据页选择时间范围、指标和图片通道并搜索；下方会分别展示趋势、明细与采集图片。" },
+          ] },
+          map: { title: "设备地图", description: "查看位置、分类和未定位设备", steps: [
+            { title: "浏览设备分布", description: "地图汇总当前组织中有坐标的设备，点击标记可以查看设备资料。" },
+            { title: "筛选地图设备", description: "通过生态类型、观测对象和子节点开关缩小地图范围。筛选只改变当前视图。" },
+            { title: "检查定位状态", description: "统计区域会显示设备总数、已定位、未定位和未分类数量，便于补充设备资料。" },
+          ] },
+          compare: { title: "数据对比", description: "跨设备、指标和时间范围分析", steps: [
+            { title: "设置对比条件", description: "每个对比项可以选择不同设备、数据指标以及开始和结束时间。" },
+            { title: "添加多个对比项", description: "继续添加对比项后统一查询，适合比较不同站点或不同时间范围。" },
+            { title: "阅读对比结果", description: "结果区提供原始值与归一化趋势、统计摘要和明细，便于识别变化与差异。" },
+          ] },
+          datasets: { title: "数据集", description: "保存可复用的数据查询定义", steps: [
+            { title: "管理已有数据集", description: "数据集保存数据来源、时间范围与字段定义，可用于预览、分享和导出。" },
+            { title: "创建数据集", description: "从创建入口进入分步编辑页；教程不会替你保存数据集。" },
+            { title: "选择数据来源", description: "在编辑页选择设备或数据流，并确定需要纳入的数据指标或图片通道。" },
+            { title: "检查并保存", description: "确认名称、时间范围和来源摘要后再保存，避免创建范围错误的数据集。" },
+          ] },
+          processing: { title: "数据处理", description: "生成派生指标和处理文件", steps: [
+            { title: "创建处理任务", description: "创建任务时选择处理器、目标资源、输入数据和处理参数；教程不会打开或提交表单。" },
+            { title: "了解任务状态", description: "摘要显示运行中任务、可用处理器和任务总数，便于快速判断处理能力。" },
+            { title: "查看处理结果", description: "任务列表保留配置版本与状态。进入任务可查看成果趋势、关联图像和执行记录。" },
+          ] },
+          exports: { title: "数据导出", description: "生成并下载数据与图片成果", steps: [
+            { title: "新建导出任务", description: "根据标准站、组网站或碳汇站选择对应流程，再设置设备、时间范围和导出内容。" },
+            { title: "掌握任务进度", description: "摘要区汇总全部、处理中、已完成和失败任务，导出在后台异步生成。" },
+            { title: "下载导出成果", description: "任务列表展示目标、范围、状态和有效期；任务成功后可从操作区下载成果文件。" },
+          ] },
+          organization: { title: "管理组织", description: "管理项目、样地、成员与权限", steps: [
+            { title: "选择和管理组织", description: "组织隔离设备、数据集和导出任务。可在这里切换或创建组织。" },
+            { title: "维护基础资料", description: "组织设置中可以修改名称，并管理研究项目、现场样地和设备元数据。" },
+            { title: "配置访问权限", description: "访问控制用于邀请成员并分配角色或资源范围，只有具备权限的账号可以修改。" },
+            { title: "查看审计日志", description: "审计日志记录组织内的重要操作及对象，便于追踪设备和数据变更。" },
+          ] },
+        },
+      },
     },
     admin: {
       navigation: {
@@ -497,6 +555,19 @@ export const resources = {
         forgotPassword: "Forgot password",
         resetPassword: "Reset password",
         resetSuccess: "Password reset. Sign in with your new password.",
+      },
+      onboarding: {
+        eyebrow: "QUICK START", title: "What would you like to learn?", introduction: "Choose a module to visit its page and learn the workflow. The tour never submits or changes data for you.", close: "Close guide", later: "Maybe later", exit: "Exit guide", previous: "Previous", next: "Next", finish: "Finish", unavailable: "This item is not available on the current page, possibly because there is no data or your account lacks permission. You can still continue the guide.",
+        modules: {
+          claim: { title: "Add devices", description: "Claim devices and assign their location", steps: [{ title: "Start in Devices", description: "Devices lists all assets in the current organization. Check whether a device already exists before adding it." }, { title: "Open device claiming", description: "Use Claim device to start onboarding. The guide never claims a device automatically." }, { title: "Verify device identity", description: "Enter the serial number and claim code to verify that the device can be claimed." }, { title: "Assign the device", description: "After verification, choose its organization, project, and site, then confirm the claim yourself." }] },
+          deviceData: { title: "View device data", description: "Query metrics, details, and images", steps: [{ title: "Find a device", description: "Filter by name, serial number, device type, project, or site." }, { title: "Open device data", description: "Use View data on a device row. The guide uses the first visible device for the demonstration." }, { title: "Navigate device features", description: "Device details are organized into data, profile, configuration, sharing, and activity tabs as applicable." }, { title: "Set query conditions", description: "Choose a time range, metrics, and image channels, then search to load trends, details, and captured images." }] },
+          map: { title: "Device map", description: "Explore locations and classification", steps: [{ title: "Explore device locations", description: "The map shows located devices in the current organization. Select a marker for details." }, { title: "Filter map devices", description: "Filter by ecosystem, observation object, or child-node visibility." }, { title: "Review location status", description: "The summary separates located, unlocated, and unclassified devices." }] },
+          compare: { title: "Compare data", description: "Analyze devices, metrics, and ranges", steps: [{ title: "Set comparison conditions", description: "Each item can use a different device, metric, and time range." }, { title: "Add comparison items", description: "Add more items and query them together to compare sites or periods." }, { title: "Read comparison results", description: "Review raw and normalized trends, statistics, and details." }] },
+          datasets: { title: "Datasets", description: "Save reusable data queries", steps: [{ title: "Manage datasets", description: "Datasets preserve sources, ranges, and fields for preview, sharing, and export." }, { title: "Create a dataset", description: "Open the step-by-step editor. The guide never saves a dataset." }, { title: "Choose sources", description: "Select devices or streams and the metrics or image channels to include." }, { title: "Review and save", description: "Confirm the name, time range, and source summary before saving." }] },
+          processing: { title: "Data processing", description: "Create derived metrics and files", steps: [{ title: "Create a processing task", description: "Choose a processor, target, inputs, and parameters. The guide never submits the form." }, { title: "Understand task status", description: "The summary shows active tasks, available processors, and total tasks." }, { title: "Review outputs", description: "Open a task to inspect result trends, related images, and execution history." }] },
+          exports: { title: "Data exports", description: "Generate and download data and images", steps: [{ title: "Create an export", description: "Choose the device system, targets, time range, and export content." }, { title: "Track progress", description: "The summary groups all, running, completed, and failed exports." }, { title: "Download results", description: "The task list shows target, range, status, and expiry; completed files can be downloaded from its actions." }] },
+          organization: { title: "Manage organization", description: "Manage projects, sites, members, and access", steps: [{ title: "Choose an organization", description: "Organizations separate devices, datasets, and exports. Switch or create one here." }, { title: "Maintain resources", description: "Update the organization name and manage projects, sites, and device metadata." }, { title: "Configure access", description: "Invite members and assign roles or resource scopes when permitted." }, { title: "Review audit logs", description: "Audit logs record important actions and affected resources." }] },
+        },
       },
     },
     admin: {

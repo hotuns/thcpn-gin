@@ -188,14 +188,14 @@ export function DatasetsPage() {
               <RefreshCw size={14} />
               刷新
             </Button>
-            <Button onClick={() => navigate("/datasets/new")}>
+            <Button data-onboarding="dataset-create" onClick={() => navigate("/datasets/new")}>
               <Plus size={14} />
               创建数据集
             </Button>
           </div>
         }
       />
-      <Panel>
+      <Panel data-onboarding="dataset-list">
         <div className="dataset-toolbar">
           <div className="filter-input">
             <input
@@ -950,7 +950,7 @@ function DatasetForm({
             </label>
           </div>
         </section>
-        <section className="dataset-editor-section dataset-sources">
+        <section className="dataset-editor-section dataset-sources" data-onboarding="dataset-sources">
           <div className="dataset-editor-section-heading">
             <div className="dataset-step-heading">
               <span>2</span>
@@ -1127,7 +1127,7 @@ function DatasetForm({
           </div>
         </section>
         </div>
-        <aside className="dataset-builder-summary">
+        <aside className="dataset-builder-summary" data-onboarding="dataset-save">
           <div className="dataset-builder-summary-heading"><span>3</span><div><h2>检查并保存</h2><p>确认范围与来源后创建数据集</p></div></div>
           <dl>
             <div><dt>数据类型</dt><dd>{datasetTypeLabel(dataType)}</dd></div>

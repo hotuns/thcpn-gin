@@ -180,7 +180,7 @@ export function AccessControlTab() {
         : (query.data?.items.length ?? 0);
   return (
     <>
-      <Panel className="access-guide">
+      <Panel className="access-guide" data-onboarding="organization-access">
         <div className="access-guide-heading">
           <div>
             <h2 className="panel-title">先选择访问方式</h2>

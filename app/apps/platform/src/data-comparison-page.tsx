@@ -288,7 +288,7 @@ export function DataComparisonPage() {
   return (
     <>
       <PageHeader title="数据对比" />
-      <Panel className={`comparison-conditions section-gap ${editingConditions ? "is-editing" : "is-collapsed"}`}>
+      <Panel data-onboarding="comparison-conditions" className={`comparison-conditions section-gap ${editingConditions ? "is-editing" : "is-collapsed"}`}>
         {editingConditions ? (
           <>
             <div className="panel-header comparison-panel-header">
@@ -328,7 +328,7 @@ export function DataComparisonPage() {
                     removable={drafts.length > 1}
                   />
                 ))}
-                <button type="button" className="comparison-add-row" disabled={drafts.length >= MAX_COMPARISONS} onClick={addComparison}>
+                <button type="button" data-onboarding="comparison-add" className="comparison-add-row" disabled={drafts.length >= MAX_COMPARISONS} onClick={addComparison}>
                   <Plus size={14} />{drafts.length >= MAX_COMPARISONS ? `已达到 ${MAX_COMPARISONS} 项上限` : "添加对比项"}
                 </button>
               </div>
@@ -356,7 +356,7 @@ export function DataComparisonPage() {
 
       {applied.length ? (
         <>
-          <Panel className="section-gap comparison-result-panel">
+          <Panel data-onboarding="comparison-results" className="section-gap comparison-result-panel">
             <div className="panel-header">
               <div>
                 <h2 className="panel-title">

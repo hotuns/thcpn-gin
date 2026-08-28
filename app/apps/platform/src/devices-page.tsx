@@ -273,7 +273,7 @@ export function DevicesPage() {
   );
   if (!currentId)
     return (
-      <Panel>
+      <Panel data-onboarding="device-list">
         <StateView
           type="empty"
           title="请选择组织"
@@ -299,7 +299,7 @@ export function DevicesPage() {
             {listParams.get("notice")}
           </div>
         )}
-        <div className="device-filter-bar">
+        <div className="device-filter-bar" data-onboarding="device-filters">
           <div className="device-filter-main-row">
             <div className="filter-input">
               <Search size={15} />
@@ -315,7 +315,7 @@ export function DevicesPage() {
                 <RefreshCw size={14} />
                 刷新
               </Button>
-              <Button onClick={() => navigate("/claim")}>
+              <Button data-onboarding="claim-entry" onClick={() => navigate("/claim")}>
                 <ScanLine size={14} />
                 认领设备
               </Button>
@@ -560,7 +560,7 @@ function DeviceRows({
         </td>
         <td>
           <div className="device-actions">
-            <Button onClick={() => onOpen()}>
+            <Button data-onboarding={camera ? undefined : "device-data-entry"} data-onboarding-route={camera ? undefined : `/devices/${encodeURIComponent(device.id)}?tab=data`} onClick={() => onOpen()}>
               <Eye size={13} />
               {deviceCategory(device) === "camera" ? "查看视频" : "查看数据"}
             </Button>
@@ -982,7 +982,7 @@ function DeviceDetailTabs({ tabs, activeTab, onChange }: { tabs: Array<{ id: Dev
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, [activeTab, tabs.length]);
-  return <div ref={barRef} className="settings-tabs device-detail-tabs t-tabs">
+  return <div ref={barRef} className="settings-tabs device-detail-tabs t-tabs" data-onboarding="device-tabs">
     <span ref={pillRef} className="t-tabs-pill" aria-hidden="true" />
     {tabs.map((item) => <button type="button" role="tab" aria-selected={activeTab === item.id} key={item.id} className={activeTab === item.id ? "active t-tab" : "t-tab"} onClick={() => onChange(item.id)}>{item.label}</button>)}
   </div>;

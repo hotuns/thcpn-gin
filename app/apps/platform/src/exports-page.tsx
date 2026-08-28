@@ -239,14 +239,14 @@ export function ExportsPage() {
               <RefreshCw size={14} />
               刷新
             </Button>
-            <Button onClick={() => setSystem(system ? null : "standard")}>
+            <Button data-onboarding="export-create" onClick={() => setSystem(system ? null : "standard")}>
               <Plus size={14} />
               {system ? "收起创建" : "新建导出"}
             </Button>
           </div>
         }
       />
-      <div className="export-summary">
+      <div className="export-summary" data-onboarding="export-summary">
         <div>
           <span className="export-summary-icon">
             <FileArchive size={16} />
@@ -316,7 +316,7 @@ export function ExportsPage() {
           )}
         </div>
       )}
-      <Panel className="section-gap export-list-panel">
+      <Panel className="section-gap export-list-panel" data-onboarding="export-list">
         <div className="export-toolbar">
           <div>
             <div className="export-view-switch">

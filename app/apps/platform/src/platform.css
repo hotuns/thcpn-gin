@@ -5073,6 +5073,68 @@ body::-webkit-scrollbar-corner,
   box-shadow: 0 0 0 4px rgb(141 215 179 / 25%);
   pointer-events: none;
 }
+.onboarding-directory {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 1202;
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 28px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line));
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: 0 28px 80px rgb(4 18 13 / 34%);
+  transform: translate(-50%, -50%);
+}
+.onboarding-directory h2 { margin: 10px 36px 8px 0; font-size: 26px; }
+.onboarding-directory > p { margin: 0; color: var(--muted); line-height: 1.7; }
+.onboarding-module-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 22px;
+}
+.onboarding-module-grid > button {
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  gap: 3px 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--text);
+  text-align: left;
+  background: var(--surface-muted);
+  cursor: pointer;
+}
+.onboarding-module-grid > button:hover,
+.onboarding-module-grid > button:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.onboarding-module-grid > button > span {
+  grid-row: 1 / span 2;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+}
+.onboarding-module-grid strong { align-self: end; font-size: 14px; }
+.onboarding-module-grid small { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.onboarding-directory-skip {
+  margin-top: 18px;
+  padding: 7px 0;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
 .onboarding-bubble {
   position: fixed;
   top: 50%;
@@ -5109,6 +5171,7 @@ body::-webkit-scrollbar-corner,
 }
 .onboarding-bubble h2 { margin: 10px 32px 8px 0; font-size: 20px; }
 .onboarding-bubble p { margin: 0; color: var(--muted); line-height: 1.7; }
+.onboarding-unavailable { display: block; margin-top: 12px; color: var(--warning); line-height: 1.55; }
 .onboarding-actions {
   display: flex;
   align-items: center;
@@ -5132,6 +5195,8 @@ body::-webkit-scrollbar-corner,
 .onboarding-primary:focus-visible { outline: 3px solid var(--blue-soft); outline-offset: 2px; }
 
 @media (max-width: 760px) {
+  .onboarding-directory { padding: 22px 18px; }
+  .onboarding-module-grid { grid-template-columns: 1fr; }
   .onboarding-bubble,
   .onboarding-bubble.is-targeted {
     top: auto !important;
@@ -8708,6 +8773,22 @@ body::-webkit-scrollbar-corner,
   gap: 14px;
   padding: 18px 20px;
 }
+.account-security-dialog { width: min(680px, 100%); }
+.security-dialog-body {
+  display: grid;
+  gap: 14px;
+  padding: 18px 20px 20px;
+}
+.security-dialog-body .security-form { padding: 0; }
+.security-dialog-status { display: flex; justify-content: flex-end; }
+.security-session-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.security-dialog-body .session-list {
+  max-height: min(460px, calc(100vh - 220px));
+  overflow: auto;
+  border: 1px solid var(--soft-line);
+  border-radius: 8px;
+}
+.security-dialog-body .session-list > div:first-child { border-top: 0; }
 .security-form input {
   min-height: 38px;
   padding: 0 10px;
@@ -8771,14 +8852,18 @@ body::-webkit-scrollbar-corner,
   display: grid;
 }
 .session-list > div {
-  min-height: 78px;
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 20px;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 14px;
+  padding: 16px;
   border-top: 1px solid var(--soft-line);
 }
+.session-copy { min-width: 0; display: grid; gap: 7px; }
+.session-client { overflow-wrap: anywhere; color: var(--ink); font-size: 12px; line-height: 1.5; }
+.session-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.session-id { overflow-wrap: anywhere; color: var(--muted); font-size: 10px; line-height: 1.4; }
+.session-list > div > .btn { align-self: center; }
 .session-icon {
   width: 34px;
   height: 34px;
@@ -9491,10 +9576,11 @@ body::-webkit-scrollbar-corner,
     grid-template-columns: 1fr;
   }
   .session-list > div {
-    grid-template-columns: auto 1fr;
+    grid-template-columns: 34px minmax(0, 1fr);
   }
-  .session-list > div > button {
+  .session-list > div > .btn {
     grid-column: 1 / -1;
+    justify-self: stretch;
   }
 }
 @media (max-width: 680px) {
