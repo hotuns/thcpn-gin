@@ -34,6 +34,9 @@
 .admin-account-identity { min-width: 190px; display: grid; gap: 3px; }
 .admin-account-identity strong { color: var(--ink); font-size: 12px; }
 .admin-account-identity span { color: var(--muted); font-size: 10px; }
+.admin-password-form { display: grid; gap: 16px; padding-top: 8px; }
+.admin-password-form label { display: grid; gap: 7px; color: var(--ink); font-size: 12px; font-weight: 700; }
+.admin-password-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .workspace-tabs { margin-inline: 14px; }
 .workspace-tabs .ant-tabs-nav { margin-bottom: 18px; }
 .billing-overview-cards { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; margin-bottom: 16px; }

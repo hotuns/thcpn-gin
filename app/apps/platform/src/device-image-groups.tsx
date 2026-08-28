@@ -4,12 +4,13 @@ import {
   useIsFetching,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Download, RefreshCw, RotateCcw, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
+import { Clock3, Download, Film, RefreshCw, RotateCcw, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
 import { PhotoSlider } from "react-photo-view";
 import type { DataStream, Device, MediaItem } from "@thcpn/api";
 import { api, formatApiError } from "@thcpn/api";
 import { Badge, Button, Panel, StateView } from "@thcpn/ui";
 import { workspaceQueryKey } from "@thcpn/workspace";
+import { DeviceGifMaker } from "./device-gif-maker";
 
 const displayTime = (input: string) =>
   new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", {
@@ -55,11 +56,16 @@ export function DeviceMedia({
     [availableImageStreams, imageStreamIds],
   );
   const streamSignature = imageStreams.map((item) => item.id).join(",");
+  const [activeStreamId, setActiveStreamId] = useState(imageStreams[0]?.id ?? "");
   const [stats, setStats] = useState<ImageGroupStats>({});
   const queryPrefix = workspaceQueryKey(workspaceId, "device", device.id, "images");
   const refreshing = useIsFetching({ queryKey: queryPrefix }) > 0;
 
   useEffect(() => setStats({}), [device.id, endTime, startTime, streamSignature]);
+  useEffect(() => {
+    if (!imageStreams.some((item) => item.id === activeStreamId))
+      setActiveStreamId(imageStreams[0]?.id ?? "");
+  }, [activeStreamId, imageStreams]);
   useEffect(() => onStatsChange?.(stats), [onStatsChange, stats]);
 
   const updateStats = useCallback((streamId: string, next: ImageGroupStat) => {
@@ -77,13 +83,8 @@ export function DeviceMedia({
     });
   }, []);
 
-  const knownTotal = imageStreams.reduce(
-    (sum, stream) => sum + (stats[stream.id]?.total ?? 0),
-    0,
-  );
-  const totalsReady = imageStreams.every(
-    (stream) => stats[stream.id]?.total !== null && stats[stream.id]?.total !== undefined,
-  );
+  const activeStream = imageStreams.find((item) => item.id === activeStreamId) ?? imageStreams[0];
+  const activeTotal = activeStream ? stats[activeStream.id]?.total : undefined;
 
   return (
     <div id="data-section-images" className="data-page-anchor section-gap">
@@ -95,7 +96,7 @@ export function DeviceMedia({
           </div>
           <div className="header-actions">
             <Badge tone="info">
-              {totalsReady ? `${knownTotal} 张` : `${imageStreams.length} 类`}
+              {activeTotal === null || activeTotal === undefined ? `${imageStreams.length} 类` : `${activeTotal} 张`}
             </Badge>
             <Button
               variant="secondary"
@@ -108,18 +109,34 @@ export function DeviceMedia({
           </div>
         </div>
         {imageStreams.length ? (
-          <div className="media-groups">
-            {imageStreams.map((stream) => (
+          <div className="media-image-browser">
+            <div className="media-image-tabs" role="tablist" aria-label="图片类型">
+              {imageStreams.map((stream) => (
+                <button
+                  id={`data-image-${stream.id}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={stream.id === activeStream?.id}
+                  aria-controls={`data-image-panel-${stream.id}`}
+                  className={stream.id === activeStream?.id ? "active" : undefined}
+                  key={stream.id}
+                  onClick={() => setActiveStreamId(stream.id)}
+                >
+                  {stream.name}
+                </button>
+              ))}
+            </div>
+            {activeStream && (
               <DeviceImageGroup
-                key={stream.id}
+                key={activeStream.id}
                 workspaceId={workspaceId}
                 device={device}
-                stream={stream}
+                stream={activeStream}
                 startTime={startTime}
                 endTime={endTime}
                 onStatsChange={updateStats}
               />
-            ))}
+            )}
           </div>
         ) : (
           <StateView
@@ -153,6 +170,7 @@ function DeviceImageGroup({
   const [feedback, setFeedback] = useState("");
   const [busyId, setBusyId] = useState("");
   const [previewIndex, setPreviewIndex] = useState(-1);
+  const [gifOpen, setGifOpen] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const query = useInfiniteQuery({
     queryKey: workspaceQueryKey(
@@ -236,10 +254,13 @@ function DeviceImageGroup({
   };
 
   return (
-    <section id={`data-image-${stream.id}`} className="media-group data-page-anchor">
+    <section id={`data-image-panel-${stream.id}`} className="media-group" role="tabpanel" aria-labelledby={`data-image-${stream.id}`}>
       <div className="media-group-title">
         <h3>{stream.name}</h3>
-        <span>{total === null ? "加载中" : `${total} 张`}</span>
+        <div className="media-group-actions">
+          <span>{total === null ? "加载中" : `${total} 张`}</span>
+          <Button variant="secondary" disabled={!total} onClick={() => setGifOpen(true)}><Film size={13} />制作 GIF</Button>
+        </div>
       </div>
       {feedback && <div className="command-note media-feedback">{feedback}</div>}
       {query.isLoading ? (
@@ -315,6 +336,7 @@ function DeviceImageGroup({
           </div>
         )}
       />
+      {gifOpen && <DeviceGifMaker device={device} stream={stream} startTime={startTime} endTime={endTime} onClose={() => setGifOpen(false)} />}
     </section>
   );
 }
@@ -333,7 +355,7 @@ function MediaCard({ item, onPreview }: { item: MediaItem; onPreview: () => void
       >
         <img src={item.thumbnail_url || item.preview_url} alt={`${displayTime(item.captured_at)}采集图片`} loading="lazy" />
       </div>
-      <div className="media-card-body"><div className="cell-sub">{displayTime(item.captured_at)}</div></div>
+      <div className="media-card-time"><Clock3 size={12} /><time dateTime={item.captured_at}>{displayTime(item.captured_at)}</time></div>
     </article>
   );
 }

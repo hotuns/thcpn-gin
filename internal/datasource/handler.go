@@ -124,11 +124,16 @@ type updateTHCPNDeviceConfigRequest struct {
 }
 
 type updateSamplingProfileRequest struct {
-	Mode             string `json:"mode"`
-	DataMinutes      []int  `json:"data_minutes"`
-	ImageMinute      *int   `json:"image_minute"`
-	ImageHours       []int  `json:"image_hours"`
-	ExpectedConfigID int64  `json:"expected_config_id"`
+	Mode              string `json:"mode"`
+	DataMinutes       []int  `json:"data_minutes"`
+	DataHours         []int  `json:"data_hours"`
+	UploadMinutes     []int  `json:"upload_minutes"`
+	UploadHours       []int  `json:"upload_hours"`
+	ImageMinute       *int   `json:"image_minute"`
+	ImageHours        []int  `json:"image_hours"`
+	ImageUploadMinute *int   `json:"image_upload_minute"`
+	ImageUploadHours  []int  `json:"image_upload_hours"`
+	ExpectedConfigID  int64  `json:"expected_config_id"`
 }
 
 func NewHandler(service *Service, checker *permission.Checker, auditServices ...*audit.Service) *Handler {
@@ -342,8 +347,10 @@ func (h *Handler) UpdateSamplingProfile(c *gin.Context) {
 	}
 	previous, _ := h.service.GetSamplingProfile(c.Request.Context(), deviceID)
 	result, err := h.service.UpdateSamplingProfile(c.Request.Context(), SamplingProfileUpdateInput{
-		DeviceID: deviceID, Mode: req.Mode, DataMinutes: req.DataMinutes, ImageMinute: req.ImageMinute,
-		ImageHours: req.ImageHours, ExpectedConfigID: req.ExpectedConfigID, ActorUserID: actor.UserID,
+		DeviceID: deviceID, Mode: req.Mode, DataMinutes: req.DataMinutes, DataHours: req.DataHours,
+		UploadMinutes: req.UploadMinutes, UploadHours: req.UploadHours, ImageMinute: req.ImageMinute,
+		ImageHours: req.ImageHours, ImageUploadMinute: req.ImageUploadMinute, ImageUploadHours: req.ImageUploadHours,
+		ExpectedConfigID: req.ExpectedConfigID, ActorUserID: actor.UserID,
 	})
 	if err != nil {
 		if !h.record(c, audit.RecordInput{ActorType: audit.ActorUser, ActorID: audit.UserActorID(actor.UserID),
@@ -883,7 +890,7 @@ func (h *Handler) AdminGetTHCPNDeviceConfig(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := h.service.GetTHCPNDeviceConfig(c.Request.Context(), deviceID)
+	result, err := h.service.GetDeviceConfig(c.Request.Context(), deviceID)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -1041,7 +1048,7 @@ func (h *Handler) AdminUpdateTHCPNDeviceConfig(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
-	result, err := h.service.UpdateTHCPNDeviceConfig(c.Request.Context(), UpdateTHCPNDeviceConfigInput{
+	result, err := h.service.UpdateDeviceConfig(c.Request.Context(), UpdateTHCPNDeviceConfigInput{
 		DeviceID: deviceID, DataJSON: req.DataJSON, ImageJSON: req.ImageJSON, ControlJSON: req.ControlJSON,
 		ExpectedConfigID: req.ExpectedConfigID, ActorUserID: actor.UserID,
 	})

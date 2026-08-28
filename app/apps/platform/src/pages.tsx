@@ -309,9 +309,9 @@ export function DeviceDataPage({
       <>
         {!embedded && (
           <PageHeader
-            eyebrow="工作区 / 遥测"
+            eyebrow="工作区 / 设备数据"
             title="设备数据"
-            description="按设备和时间范围查询遥测数据。"
+            description="按设备和时间范围查询设备数据。"
           />
         )}
         <WorkspaceMissing />
@@ -361,9 +361,9 @@ export function DeviceDataPage({
     <>
       {!embedded && (
         <PageHeader
-          eyebrow="工作区 / 遥测"
+          eyebrow="工作区 / 设备数据"
           title="设备数据"
-          description="查看设备遥测趋势、明细和采集图片。"
+          description="查看设备数据趋势、明细和采集图片。"
         />
       )}
       {devicesQuery.isLoading ? (
@@ -420,7 +420,7 @@ export function DeviceDataPage({
           <Panel>
             <div className="panel-header">
               <div>
-                <h2 className="panel-title">遥测趋势</h2>
+                <h2 className="panel-title">数据趋势</h2>
                 <div className="panel-kicker">
                   各指标独立量程，共享所选时间范围
                 </div>
@@ -478,7 +478,7 @@ export function DeviceDataPage({
                         sourceIds: appliedStreamIds,
                         startTime: appliedStartTime,
                         endTime: appliedEndTime,
-                        name: `${selectedDevice?.name ?? "设备"}遥测数据`,
+                        name: `${selectedDevice?.name ?? "设备"}设备数据`,
                       }),
                     )
                   }
@@ -513,7 +513,7 @@ export function DeviceDataPage({
               <StateView
                 type="empty"
                 title="没有可视化数据"
-                description="当前时间范围内没有数值遥测点。"
+                description="当前时间范围内没有数值数据点。"
               />
             )}
           </Panel>
@@ -526,7 +526,7 @@ export function DeviceDataPage({
             >
               <summary>
                 <div>
-                  <h2 className="panel-title">遥测明细</h2>
+                  <h2 className="panel-title">数据明细</h2>
                   <div className="panel-kicker">展开后加载原始宽表数据</div>
                 </div>
                 <Badge tone="neutral">
@@ -534,7 +534,7 @@ export function DeviceDataPage({
                 </Badge>
               </summary>
               {detailTelemetryQuery.isLoading ? (
-                <StateView type="loading" title="正在加载遥测明细" description="正在读取原始数据点。" />
+                <StateView type="loading" title="正在加载数据明细" description="正在读取原始数据点。" />
               ) : detailTelemetryQuery.error ? (
                 <StateView
                   type="error"
@@ -571,7 +571,7 @@ export function DeviceDataPage({
                 <StateView
                   type="empty"
                   title="暂无明细"
-                  description="当前时间范围内没有遥测明细。"
+                  description="当前时间范围内没有数据明细。"
                 />
               )}
             </details>
@@ -607,7 +607,7 @@ function TelemetryLoading() {
   return (
     <div
       className="telemetry-loading"
-      aria-label="正在生成遥测趋势"
+      aria-label="正在生成数据趋势"
       aria-busy="true"
     >
       <div className="telemetry-loading-head">

@@ -233,13 +233,13 @@ export function DeviceQueryActions({
       {loading ? (
         <StateView
           type="loading"
-          title="正在加载遥测指标"
+          title="正在加载数据指标"
           description="正在读取设备可查询的数据指标。"
         />
       ) : error ? (
         <StateView
           type="error"
-          title="遥测指标加载失败"
+          title="数据指标加载失败"
           description={formatApiError(error).message}
           requestId={formatApiError(error).requestId}
         />
@@ -288,7 +288,7 @@ export function DeviceQueryActions({
           ))}
         </div>
       ) : (
-        <StateView type="empty" title="没有遥测指标" description="当前设备尚未同步可查询的遥测指标。" />
+        <StateView type="empty" title="没有数据指标" description="当前设备尚未同步可查询的数据指标。" />
       )}
       <div className="query-metric-heading query-image-heading">
         <div>

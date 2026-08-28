@@ -4,18 +4,26 @@ import { PhotoSlider } from "react-photo-view";
 import {
   ArrowDown,
   ArrowUp,
+  Building2,
+  Droplets,
   ExternalLink,
   FileText,
   FolderKanban,
   ImagePlus,
   Leaf,
+  Mountain,
   MapPin,
   MapPinned,
   Pencil,
   Star,
+  Sprout,
+  Sun,
   Tags,
   Target,
   Trash2,
+  TreePine,
+  Waves,
+  Wheat,
   X,
 } from "lucide-react";
 import {
@@ -35,6 +43,8 @@ const value = (input: unknown, fallback = "—") =>
   input === undefined || input === null || input === ""
     ? fallback
     : String(input);
+
+const ecosystemIconMap = { "tree-pine": TreePine, sprout: Sprout, wheat: Wheat, waves: Waves, sun: Sun, "building-2": Building2, droplets: Droplets, mountain: Mountain, leaf: Leaf };
 
 export function DeviceProfileTab({
   workspaceId,
@@ -441,11 +451,14 @@ function TaxonomyTags({ values, empty = "未设置" }: { values: string[]; empty
 
 function EnvironmentOverview({ environment, loading }: { environment?: DeviceEnvironment; loading: boolean }) {
   const values = environment?.effective;
+  const EcosystemIcon = ecosystemIconMap[values?.ecosystem?.icon as keyof typeof ecosystemIconMap] ?? Leaf;
   return (
     <section className="device-profile-group device-profile-observation">
       <div className="device-profile-group-heading">
-        <Leaf size={16} />
-        <h3>观测资料</h3>
+        <div>
+          <Leaf size={16} />
+          <h3>观测资料</h3>
+        </div>
       </div>
       {loading ? (
         <div className="device-profile-observation-loading">正在加载观测资料…</div>
@@ -453,7 +466,7 @@ function EnvironmentOverview({ environment, loading }: { environment?: DeviceEnv
         <>
           <div className="device-profile-ecosystem">
             <span>生态类型</span>
-            <strong>{values?.ecosystem?.name_zh ?? "未分类"}</strong>
+            <strong><EcosystemIcon size={14} />{values?.ecosystem?.name_zh ?? "未分类"}</strong>
           </div>
           <div className="device-profile-taxonomy-row">
             <span><Target size={14} />观测对象</span>

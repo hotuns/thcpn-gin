@@ -6,8 +6,9 @@ import (
 )
 
 type SendRequest struct {
-	Phone string
-	Code  string
+	Phone        string
+	Code         string
+	TemplateCode string
 }
 
 type Sender interface {

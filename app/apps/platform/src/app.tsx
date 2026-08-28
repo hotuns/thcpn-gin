@@ -12,6 +12,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import {
+  AlertTriangle,
   BarChart3,
   Bell,
   Boxes,
@@ -19,6 +20,7 @@ import {
   CreditCard,
   Download,
   Gauge,
+  HelpCircle,
   Home,
   MapPinned,
   PanelLeftClose,
@@ -32,6 +34,7 @@ import {
 import { billingEnabled } from "./features";
 import {
   api,
+  apiErrorEvent,
   commonStatusLabel,
   formatApiError,
   roleTemplateLabel,
@@ -54,6 +57,7 @@ import {
   StateView,
 } from "@thcpn/ui";
 import { AccountMenu, WorkspaceMenu } from "./shell-menus";
+import { OnboardingTour } from "./onboarding-tour";
 import { LanguageSwitcher, useLocale } from "@thcpn/i18n";
 const DevicesPage = lazy(() =>
   import("./devices-page").then((module) => ({ default: module.DevicesPage })),
@@ -153,6 +157,8 @@ const navGroups = [
 function Shell() {
   const { t } = useLocale();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [onboardingSession, setOnboardingSession] = useState(0);
+  const [requestError, setRequestError] = useState<ReturnType<typeof formatApiError> | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem("thcpn:sidebar-collapsed") === "true",
   );
@@ -203,6 +209,13 @@ function Shell() {
   useEffect(() => {
     localStorage.setItem("thcpn:sidebar-collapsed", String(sidebarCollapsed));
   }, [sidebarCollapsed]);
+  useEffect(() => {
+    const showRequestError = (event: Event) => {
+      setRequestError(formatApiError((event as CustomEvent).detail));
+    };
+    window.addEventListener(apiErrorEvent, showRequestError);
+    return () => window.removeEventListener(apiErrorEvent, showRequestError);
+  }, []);
   useEffect(() => {
     if (!mobileOpen) return;
     const previousOverflow = document.body.style.overflow;
@@ -280,6 +293,7 @@ function Shell() {
                   <NavLink
                     key={item.to}
                     to={item.to}
+                    data-onboarding={item.key}
                     onClick={() => setMobileOpen(false)}
                     className={({ isActive }) =>
                       `nav-item ${isActive ? "active" : ""}`
@@ -341,6 +355,9 @@ function Shell() {
           </div>
           <div className="topbar-actions">
             <LanguageSwitcher compact />
+            <IconButton label="打开使用引导" onClick={() => setOnboardingSession((current) => current + 1)}>
+              <HelpCircle size={18} />
+            </IconButton>
             <Link className="topbar-notification" to="/notifications" aria-label={t("platform:navigation.notifications")}>
               <Bell size={18} />
               {(notificationSummary.data ?? 0) > 0 && <span>{Math.min(notificationSummary.data ?? 0, 99)}</span>}
@@ -351,6 +368,18 @@ function Shell() {
           <Outlet />
         </main>
       </div>
+      {user?.id ? <OnboardingTour key={onboardingSession} userId={user.id} startOpen={onboardingSession > 0} /> : null}
+      {requestError ? (
+        <section className="global-request-error" role="alert" aria-live="assertive">
+          <AlertTriangle size={22} />
+          <div>
+            <strong>{requestError.status === 401 ? t("errors.unauthorized") : requestError.status === 403 ? t("errors.permission_denied") : t("requestFailed")}</strong>
+            <p>{requestError.message}</p>
+            {requestError.requestId ? <small>{t("requestId", { id: requestError.requestId })}</small> : null}
+          </div>
+          <CloseButton onClick={() => setRequestError(null)} />
+        </section>
+      ) : null}
     </div>
   );
 }

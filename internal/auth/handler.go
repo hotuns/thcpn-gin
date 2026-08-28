@@ -71,6 +71,12 @@ type changePasswordRequest struct {
 	NewPassword     string `json:"new_password"`
 }
 
+type resetPasswordRequest struct {
+	Phone       string `json:"phone"`
+	Code        string `json:"code"`
+	NewPassword string `json:"new_password"`
+}
+
 func NewHandler(service *Service, auditServices ...*audit.Service) *Handler {
 	var auditService *audit.Service
 	if len(auditServices) > 0 {
@@ -93,6 +99,33 @@ func (h *Handler) SendSMS(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) SendPasswordResetSMS(c *gin.Context) {
+	var req sendSMSRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	result, err := h.service.SendPasswordResetSMS(c.Request.Context(), SendSMSInput{Phone: req.Phone})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) ResetPassword(c *gin.Context) {
+	var req resetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	if err := h.service.ResetPassword(c.Request.Context(), ResetPasswordInput{Phone: req.Phone, Code: req.Code, NewPassword: req.NewPassword}); err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"reset": true})
 }
 
 func (h *Handler) SendEmailVerification(c *gin.Context) {
@@ -342,6 +375,22 @@ func (h *Handler) LoginWithSMS(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) RegisterWithSMS(c *gin.Context) {
+	var req smsLoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	result, err := h.service.RegisterWithSMS(c.Request.Context(), SMSRegisterInput{
+		Phone: req.Phone, Code: req.Code, Name: req.Name, Request: requestInfo(c),
+	})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, result)
 }
 
 func (h *Handler) RegisterWithPassword(c *gin.Context) {

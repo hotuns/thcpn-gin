@@ -89,7 +89,7 @@ export function AdminDevicesPage() {
   const detailConfigQuery = useQuery({
     queryKey: ["admin", "device", deviceId, "config"],
     queryFn: () => api.admin.deviceConfig(deviceId!),
-    enabled: Boolean(detailDevice) && !isCarbonDetail,
+    enabled: Boolean(detailDevice),
   });
   const detailCarbonQuery = useQuery({
     queryKey: ["admin", "device", deviceId, "carbon-overview"],
@@ -767,6 +767,8 @@ function DeviceDetailPanel({
   const children = (childrenData?.items as JsonRecord[] | undefined) ?? [];
   const events = (lifecycleData?.events as JsonRecord[] | undefined) ?? [];
   const capabilities = Array.isArray(device.capabilities) ? device.capabilities.map(String) : [];
+  const capabilityDefinitions = useQuery({ queryKey: ["admin", "metadata", "capabilities"], queryFn: api.admin.metadata });
+  const capabilityNames = new Map((capabilityDefinitions.data?.items ?? []).map((item) => [value(item.code, ""), value(item.name, item.code)]));
   const latestConfig = (configData?.latest_config ?? {}) as JsonRecord;
   const snapshot = (configData?.latest_snapshot ?? {}) as JsonRecord;
   const attributeItems = Object.entries((attributes?.attributes ?? {}) as JsonRecord);
@@ -783,6 +785,7 @@ function DeviceDetailPanel({
         { key: "serial", label: "序列号", children: <span className="mono">{value(device.serial_no)}</span> },
         { key: "product", label: "产品 ID", children: value(device.product_id) },
         { key: "type", label: "设备类型", children: deviceTopologyRoleLabel(value(device.device_type, "")) },
+        { key: "externalId", label: "源库设备 ID", children: <span className="mono">{value(device.external_device_id, "未关联")}</span> },
         { key: "id", label: "设备 ID", span: 2, children: <span className="mono admin-break-value">{value(device.id)}</span> },
         { key: "status", label: "资产状态", children: <Tag color={device.status === "active" ? "green" : "default"}>{deviceStatusLabel(value(device.status, ""))}</Tag> },
         { key: "created", label: "创建时间", children: date(device.created_at) },
@@ -794,11 +797,11 @@ function DeviceDetailPanel({
     <section className="admin-detail-section">
       <div className="admin-detail-section-head"><div><h2>分配关系</h2><span>设备当前所属的工作区与资源位置</span></div><Space><Button onClick={() => onOpen("assign")}>调整分配</Button>{Boolean(device.workspace_id) && <Popconfirm title="解除工作区分配？" description="设备将不再对该工作区可见。" onConfirm={onUnassign}><Button danger>解除分配</Button></Popconfirm>}</Space></div>
       <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }} items={[
-        { key: "workspace", label: "工作区", children: device.workspace_id ? <span className="mono admin-break-value">{value(device.workspace_id)}</span> : <Tag>未分配</Tag> },
-        { key: "project", label: "项目", children: value(device.project_id, "未设置") },
-        { key: "site", label: "样地", children: value(device.site_id, "未设置") },
+        { key: "workspace", label: "工作区", children: device.workspace_id ? value(device.workspace_name) : <Tag>未分配</Tag> },
+        { key: "project", label: "项目", children: value(device.project_name, "未设置") },
+        { key: "site", label: "样地", children: value(device.site_name, "未设置") },
         { key: "assigned", label: "分配时间", children: date(device.assigned_at) },
-        { key: "assignedBy", label: "分配人", span: 2, children: value(device.assigned_by) },
+        { key: "assignedBy", label: "分配人", span: 2, children: value(device.assigned_by_name) },
       ]} />
     </section>
     <section className="admin-detail-section">
@@ -835,23 +838,24 @@ function DeviceDetailPanel({
     </section>
     <section className="admin-detail-section">
       <div className="admin-detail-section-head"><div><h2>设备能力</h2><span>能力决定平台可提供的数据与控制功能</span></div><Button onClick={() => onOpen("capabilities")}>编辑能力</Button></div>
-      <div className="admin-capability-list">{capabilities.length ? capabilities.map((capability) => <Tag key={capability} color="blue">{capability}</Tag>) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未配置设备能力" />}</div>
+      <div className="admin-capability-list">{capabilities.length ? capabilities.map((capability) => <Tag key={capability} color="blue">{capabilityNames.get(capability) ?? capability}</Tag>) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未配置设备能力" />}</div>
     </section>
   </div>;
   const configuration = <div className="admin-device-detail-content">
     <section className="admin-detail-section">
-      <div className="admin-detail-section-head"><div><h2>THCPN 配置</h2><span>源库最新配置与平台同步快照</span></div><Button type="primary" icon={<FileJson size={14} />} onClick={() => onOpen("config")}>编辑完整配置</Button></div>
+      <div className="admin-detail-section-head"><div><h2>{isCarbon ? "碳汇设备配置" : "THCPN 配置"}</h2><span>{isCarbon ? "Carbon 源库最新配置" : "源库最新配置与平台同步快照"}</span></div><Button type="primary" icon={<FileJson size={14} />} onClick={() => onOpen("config")}>编辑完整配置</Button></div>
       {inlineError(configError, "设备配置加载失败")}
       {queryLoading({ loading: configLoading, data: configData, error: configError }) ? <div className="admin-inline-loading">正在加载配置…</div> : configData ? <><Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 4 }} items={[
         { key: "external", label: "外部设备 ID", children: value(configData.external_device_id) },
         { key: "version", label: "配置版本", children: value(latestConfig.version, latestConfig.id) },
         { key: "sourceTime", label: "源库更新时间", children: date(latestConfig.updated_at ?? latestConfig.created_at) },
-        { key: "syncTime", label: "平台同步时间", children: date(snapshot.synced_at) },
+        ...(!isCarbon ? [{ key: "syncTime", label: "平台同步时间", children: date(snapshot.synced_at) }] : []),
         { key: "dataCount", label: "数据指标", children: `${Array.isArray(latestConfig.data_json) ? latestConfig.data_json.length : 0} 项` },
         { key: "imageCount", label: "图片类型", children: `${Array.isArray(latestConfig.image_json) ? latestConfig.image_json.length : 0} 项` },
         { key: "sampling", label: "采集策略", span: 2, children: describeSamplingControl(latestConfig.control_json) },
-      ]} />{latestConfig.id && snapshot.external_config_id && String(latestConfig.id) !== String(snapshot.external_config_id) ? <Alert className="admin-config-warning" type="warning" showIcon title="源配置与平台快照不一致" description="源数据库配置已变化，平台数据流和绑定可能尚未同步。" /> : null}</> : null}
+      ]} />{!isCarbon && latestConfig.id && snapshot.external_config_id && String(latestConfig.id) !== String(snapshot.external_config_id) ? <Alert className="admin-config-warning" type="warning" showIcon title="源配置与平台快照不一致" description="源数据库配置已变化，平台数据流和绑定可能尚未同步。" /> : null}</> : null}
     </section>
+    {!isCarbon && <>
     <section className="admin-detail-section">
       <div className="admin-detail-section-head"><div><h2>源设备实时状态</h2><span>直接读取 THCPN devices 表，不写入平台业务库</span></div></div>
       {inlineError(attributesError, "源设备状态加载失败")}
@@ -870,6 +874,7 @@ function DeviceDetailPanel({
       {inlineError(attributesError, "设备属性加载失败")}
       {queryLoading({ loading: attributesLoading, data: attributes, error: attributesError }) ? <div className="admin-inline-loading">正在加载设备属性…</div> : attributeItems.length ? <div className="admin-attribute-grid">{attributeItems.map(([key, raw]) => { const item = raw as JsonRecord; const parsed = item.parsed_value ?? item.raw_value; const Icon = key === "battery" ? Battery : key === "signal" ? Radio : Settings2; return <div key={key}><Icon size={17} /><span>{key === "battery" ? "电池" : key === "signal" ? "信号" : key}</span><strong>{typeof parsed === "object" ? JSON.stringify(parsed) : value(parsed)}</strong><small>{date(item.sampled_at)}</small></div>; })}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无设备属性" />}
     </section>
+    </>}
   </div>;
   const carbonManagement = <div className="admin-device-detail-content">
     <section className="admin-detail-section">
@@ -897,12 +902,12 @@ function DeviceDetailPanel({
     </section>
     <section className="admin-detail-section">
       <div className="admin-detail-section-head"><div><h2>设备能力</h2><span>管理碳汇站在平台中可使用的功能</span></div><Button onClick={() => onOpen("capabilities")}>编辑能力</Button></div>
-      <div className="admin-capability-list">{capabilities.length ? capabilities.map((capability) => <Tag key={capability} color="blue">{capability}</Tag>) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未配置设备能力" />}</div>
+      <div className="admin-capability-list">{capabilities.length ? capabilities.map((capability) => <Tag key={capability} color="blue">{capabilityNames.get(capability) ?? capability}</Tag>) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未配置设备能力" />}</div>
     </section>
   </div>;
   return <Panel className="admin-device-detail"><div className="admin-device-detail-summary"><div><span>设备 ID</span><strong className="mono">{value(device.id)}</strong></div><div><span>生命周期</span><Tag color="blue">{deviceLifecycleLabel(value(device.lifecycle_status, ""))}</Tag></div><div><span>分配状态</span><strong>{device.workspace_id ? "已分配" : "未分配"}</strong></div><div><span>资产状态</span><Tag color={device.status === "active" ? "green" : "default"}>{deviceStatusLabel(value(device.status, ""))}</Tag></div></div><Tabs className="admin-device-detail-tabs" items={[
     { key: "overview", label: "概览", children: overview },
-    ...(isCarbon ? [{ key: "carbon", label: "碳汇数据", children: carbonManagement }] : [
+    ...(isCarbon ? [{ key: "carbon", label: "碳汇数据", children: carbonManagement }, { key: "configuration", label: "设备配置", children: configuration }] : [
       { key: "topology", label: "拓扑与能力", children: topology },
       { key: "configuration", label: "配置与属性", children: configuration },
       { key: "logs", label: "设备日志", children: <DeviceLogsPanel deviceId={value(device.id, "")} deviceName={value(device.name, "未命名设备")} /> },

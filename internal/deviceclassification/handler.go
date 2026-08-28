@@ -41,6 +41,7 @@ type termRequest struct {
 	ParentID  *string `json:"parent_id"`
 	Status    string  `json:"status"`
 	SortOrder int     `json:"sort_order"`
+	Icon      *string `json:"icon"`
 }
 type bulkRequest struct {
 	DeviceIDs  []string      `json:"device_ids"`
@@ -200,7 +201,7 @@ func (h *Handler) AdminUpsertTerm(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
-	item := Term{Kind: req.Kind, Code: req.Code, NameZH: req.NameZH, NameEN: req.NameEN, Status: req.Status, SortOrder: req.SortOrder}
+	item := Term{Kind: req.Kind, Code: req.Code, NameZH: req.NameZH, NameEN: req.NameEN, Status: req.Status, SortOrder: req.SortOrder, Icon: req.Icon}
 	if req.ID != "" {
 		item.ID, _ = uuid.Parse(req.ID)
 	}
@@ -219,6 +220,24 @@ func (h *Handler) AdminUpsertTerm(c *gin.Context) {
 	}
 	h.record(c, audit.ActorSystemAdmin, actor.UserID, result.ID, "device.taxonomy.update", audit.ResultSuccess, result.Kind+":"+result.Code)
 	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminDeleteTerm(c *gin.Context) {
+	actor, ok := auth.ActorFromContext(c)
+	if !ok {
+		return
+	}
+	id, err := uuid.Parse(c.Param("term_id"))
+	if err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid taxonomy id"))
+		return
+	}
+	if err := h.service.DeleteTerm(c.Request.Context(), id); err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	h.record(c, audit.ActorSystemAdmin, actor.UserID, id, "device.taxonomy.delete", audit.ResultSuccess, "")
+	c.Status(http.StatusNoContent)
 }
 
 func (h *Handler) AdminBulkUpdate(c *gin.Context) {

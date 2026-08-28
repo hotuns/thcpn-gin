@@ -54,7 +54,7 @@ type DatasetPrefill = {
 };
 const datasetTypeLabel = (value: Dataset["data_type"]) =>
   ({
-    telemetry: "遥测数据",
+    telemetry: "设备数据",
     image: "图片",
     video: "视频",
     audio: "音频",
@@ -631,14 +631,12 @@ export function DatasetEditorPage() {
         eyebrow="工作区 / 数据集"
         title={creating ? "创建数据集" : dataset.data?.name ?? "编辑数据集"}
         description={creating ? "定义数据来源、时间范围和数据类型。" : "修改数据集定义；预览页面只展示已保存的范围。"}
-        actions={
-          <div className="header-actions">
-            <Button type="submit" form="dataset-form" disabled={formBusy}>
-              {formBusy ? "保存中…" : "保存数据集"}
-            </Button>
-            {back}
-          </div>
-        }
+        actions={creating ? back : <div className="header-actions">
+          <Button type="submit" form="dataset-form" disabled={formBusy}>
+            {formBusy ? "保存中…" : "保存数据集"}
+          </Button>
+          {back}
+        </div>}
       />
       {feedback && <div className="command-note section-gap">{feedback}</div>}
       <DatasetForm
@@ -648,6 +646,7 @@ export function DatasetEditorPage() {
         prefill={prefill}
         projects={projects.data?.items ?? []}
         devices={devices.data?.items ?? []}
+        busy={formBusy}
         onBusyChange={setFormBusy}
         onDirtyChange={setFormDirty}
         onSaved={async (action, message) => {
@@ -675,6 +674,7 @@ function DatasetForm({
   prefill,
   projects,
   devices,
+  busy,
   onBusyChange,
   onDirtyChange,
   onSaved,
@@ -684,6 +684,7 @@ function DatasetForm({
   prefill?: DatasetPrefill;
   projects: JsonRecord[];
   devices: JsonRecord[];
+  busy: boolean;
   onBusyChange: (busy: boolean) => void;
   onDirtyChange: (dirty: boolean) => void;
   onSaved: (
@@ -884,12 +885,79 @@ function DatasetForm({
   };
   return (
     <div className="section-gap dataset-editor-page">
-      <form id="dataset-form" onSubmit={submit}>
+      <form id="dataset-form" className="dataset-builder" onSubmit={submit}>
+        <div className="dataset-builder-main">
+        <section className="dataset-editor-section">
+          <div className="dataset-editor-section-heading">
+            <div className="dataset-step-heading">
+              <span>1</span>
+              <div>
+                <h2>定义数据集</h2>
+                <p>
+                  {prefill?.sources.length
+                    ? `已带入 ${prefill.sources.length} 个数据指标和查询时间，可继续调整`
+                    : dataset
+                      ? "修改名称、时间范围和关联项目"
+                      : "设置名称和数据覆盖的时间范围"}
+                </p>
+              </div>
+            </div>
+            {dirty && <Badge tone="warning">未保存</Badge>}
+          </div>
+          <div className="dataset-form-grid">
+            <label className="field">
+              <div className="dataset-field-label-row">
+                <span className="field-label">名称</span>
+                <button
+                  type="button"
+                  className="dataset-auto-name"
+                  onClick={() =>
+                    setName(`${datasetTypeLabel(dataType)} ${startTime.slice(0, 10)}`)
+                  }
+                >
+                  <RefreshCw size={11} />
+                  自动生成
+                </button>
+              </div>
+              <input required aria-label="名称" value={name} onChange={(event) => setName(event.target.value)} />
+            </label>
+            <label className="field">
+              <span className="field-label">项目</span>
+              <select value={projectId} disabled={Boolean(dataset)} onChange={(event) => setProjectId(event.target.value)}>
+                <option value="">不关联项目</option>
+                {projects.map((item) => <option key={String(item.id)} value={String(item.id)}>{String(item.name)}</option>)}
+              </select>
+            </label>
+            <label className="field">
+              <span className="field-label">开始时间</span>
+              <input required type="datetime-local" value={startTime} onChange={(event) => setStartTime(event.target.value)} />
+            </label>
+            <label className="field">
+              <span className="field-label">结束时间</span>
+              <input required type="datetime-local" value={endTime} onChange={(event) => setEndTime(event.target.value)} />
+            </label>
+            {dataset && (
+              <label className="field">
+                <span className="field-label">状态</span>
+                <select value={status} onChange={(event) => setStatus(event.target.value as Dataset["status"])}>
+                  {["draft", "published", "locked", "archived"].map((item) => <option key={item} value={item}>{datasetStatusLabel(item as Dataset["status"])}</option>)}
+                </select>
+              </label>
+            )}
+            <label className="field dataset-description">
+              <span className="field-label">描述</span>
+              <input value={description} onChange={(event) => setDescription(event.target.value)} />
+            </label>
+          </div>
+        </section>
         <section className="dataset-editor-section dataset-sources">
           <div className="dataset-editor-section-heading">
-            <div>
-              <h2>数据来源</h2>
-              <p>先选择设备，再批量选择要加入数据集的数据指标。</p>
+            <div className="dataset-step-heading">
+              <span>2</span>
+              <div>
+                <h2>选择数据来源</h2>
+                <p>选择整台设备，或从设备中挑选需要的数据指标和图片。</p>
+              </div>
             </div>
             <span className="dataset-source-count">{sources.length} 个已选择</span>
           </div>
@@ -942,7 +1010,7 @@ function DatasetForm({
               <div className="dataset-stream-picker-header">
                 <div>
                   <strong>
-                    可选{streamKind === "image" ? "图片数据流" : "遥测指标"}
+                    可选{streamKind === "image" ? "图片数据流" : "数据指标"}
                   </strong>
                   <span>
                     {deviceId
@@ -970,7 +1038,7 @@ function DatasetForm({
                   className={streamKind === "telemetry" ? "active" : ""}
                   onClick={() => setStreamKind("telemetry")}
                 >
-                  遥测数据
+                  设备数据
                 </button>
                 <button
                   type="button"
@@ -1011,7 +1079,7 @@ function DatasetForm({
                 </div>
               ) : (
                 <div className="dataset-stream-empty">
-                  该设备暂无可用{streamKind === "image" ? "图片数据流" : "遥测指标"}
+                  该设备暂无可用{streamKind === "image" ? "图片数据流" : "数据指标"}
                 </div>
               )}
               <div className="dataset-stream-picker-actions">
@@ -1027,6 +1095,8 @@ function DatasetForm({
               </div>
             </div>
           )}
+          <div className="dataset-selected-sources">
+            <div><strong>已选内容</strong><span>创建前可随时移除</span></div>
           {sources.length ? (
             <div className="source-chips">
               {sources.map((source) => (
@@ -1052,116 +1122,24 @@ function DatasetForm({
               ))}
             </div>
           ) : (
-            <StateView
-              type="empty"
-              title="尚未选择来源"
-              description="可以添加整台设备，或先选择设备后批量添加多个数据指标。"
-            />
+            <div className="dataset-source-empty">尚未选择来源</div>
           )}
-        </section>
-        <section className="dataset-editor-section">
-          <div className="dataset-editor-section-heading">
-            <div>
-              <h2>基本信息</h2>
-              <p>
-                {prefill?.sources.length
-                  ? `已带入 ${prefill.sources.length} 个数据指标和查询时间，可继续调整`
-                  : dataset
-                    ? "修改名称、时间范围、来源和状态"
-                    : "定义数据集名称、类型和查询范围"}
-              </p>
-            </div>
-            {dirty && <Badge tone="warning">未保存</Badge>}
-          </div>
-          <div className="dataset-form-grid">
-            <label className="field">
-              <div className="dataset-field-label-row">
-                <span className="field-label">名称</span>
-                <button
-                  type="button"
-                  className="dataset-auto-name"
-                  onClick={() =>
-                    setName(`${datasetTypeLabel(dataType)} ${startTime.slice(0, 10)}`)
-                  }
-                >
-                  <RefreshCw size={11} />
-                  自动生成
-                </button>
-              </div>
-              <input
-                required
-                aria-label="名称"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span className="field-label">项目</span>
-              <select
-                value={projectId}
-                disabled={Boolean(dataset)}
-                onChange={(event) => setProjectId(event.target.value)}
-              >
-                <option value="">不关联项目</option>
-                {projects.map((item) => (
-                  <option key={String(item.id)} value={String(item.id)}>
-                    {String(item.name)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span className="field-label">数据类型</span>
-              <div className="dataset-derived-type">
-                <strong>{datasetTypeLabel(dataType)}</strong>
-                <small>根据已选设备、指标和图片自动判断</small>
-              </div>
-            </label>
-            {dataset && (
-              <label className="field">
-                <span className="field-label">状态</span>
-                <select
-                  value={status}
-                  onChange={(event) =>
-                    setStatus(event.target.value as Dataset["status"])
-                  }
-                >
-                  {["draft", "published", "locked", "archived"].map((item) => (
-                    <option key={item} value={item}>
-                      {datasetStatusLabel(item as Dataset["status"])}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <label className="field">
-              <span className="field-label">开始时间</span>
-              <input
-                required
-                type="datetime-local"
-                value={startTime}
-                onChange={(event) => setStartTime(event.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span className="field-label">结束时间</span>
-              <input
-                required
-                type="datetime-local"
-                value={endTime}
-                onChange={(event) => setEndTime(event.target.value)}
-              />
-            </label>
-            <label className="field dataset-description">
-              <span className="field-label">描述</span>
-              <input
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-              />
-            </label>
           </div>
         </section>
-        {error && <div className="form-error dataset-error">{error}</div>}
+        </div>
+        <aside className="dataset-builder-summary">
+          <div className="dataset-builder-summary-heading"><span>3</span><div><h2>检查并保存</h2><p>确认范围与来源后创建数据集</p></div></div>
+          <dl>
+            <div><dt>数据类型</dt><dd>{datasetTypeLabel(dataType)}</dd></div>
+            <div><dt>数据来源</dt><dd>{sources.length ? `${sources.length} 项` : "未选择"}</dd></div>
+            <div><dt>时间范围</dt><dd>{startTime.replace("T", " ")}<span>至</span>{endTime.replace("T", " ")}</dd></div>
+            <div><dt>关联项目</dt><dd>{projects.find((item) => String(item.id) === projectId)?.name?.toString() ?? "未关联"}</dd></div>
+          </dl>
+          {error && <div className="form-error dataset-error">{error}</div>}
+          {!dataset && <Button type="submit" disabled={busy || !name || !sources.length}>
+            {busy ? "保存中…" : "创建数据集"}
+          </Button>}
+        </aside>
       </form>
     </div>
   );
@@ -1355,8 +1333,8 @@ function DatasetPreview({
       {!previewable ? (
         <StateView
           type="empty"
-          title="当前数据集没有遥测预览"
-          description="此页面已展示数据集定义和来源；在线图表目前用于遥测和混合类型数据集。"
+          title="当前数据集没有设备数据预览"
+          description="此页面已展示数据集定义和来源；在线图表目前用于设备数据和混合类型数据集。"
         />
       ) : !validDatasetRange ? (
         <StateView
@@ -1368,7 +1346,7 @@ function DatasetPreview({
         <StateView
           type="loading"
           title="正在生成预览"
-          description="正在读取并整理数据集遥测。"
+          description="正在读取并整理数据集数据。"
         />
       ) : query.error ? (
         <StateView
@@ -1386,7 +1364,7 @@ function DatasetPreview({
           />
           <div className="panel-header dataset-detail-header">
             <div>
-              <h3 className="panel-title">遥测明细</h3>
+              <h3 className="panel-title">数据明细</h3>
               <div className="panel-kicker">每行一个采集时间，每列一个数据指标</div>
             </div>
             <Badge tone="neutral">{points.length} 条</Badge>
@@ -1396,7 +1374,7 @@ function DatasetPreview({
       ) : (
         <StateView
           type="empty"
-          title="没有遥测数据"
+          title="没有设备数据"
           description="数据集可能只包含媒体来源，或所选时间内没有记录。"
         />
       )}

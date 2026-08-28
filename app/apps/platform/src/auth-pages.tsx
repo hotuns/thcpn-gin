@@ -26,6 +26,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [mode, setMode] = useState<"password" | "sms">("password");
+  const [forgotPassword, setForgotPassword] = useState(false);
   const [identifier, setIdentifier] = useState("");
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
@@ -90,7 +91,33 @@ export function AuthPage({ register = false }: { register?: boolean }) {
       }
       return;
     }
-    if (register && !phone.trim()) {
+    if (forgotPassword) {
+      if (!validPassword(password)) {
+        setMessage(t("platform:auth.passwordRule"));
+        return;
+      }
+      if (password !== initialPasswordConfirm) {
+        setMessage(t("platform:auth.passwordMismatch"));
+        return;
+      }
+      setBusy(true);
+      try {
+        await api.auth.resetPassword({ phone: phone.trim(), code: smsCode, new_password: password });
+        setForgotPassword(false);
+        setSmsCode("");
+        setPassword("");
+        setInitialPasswordConfirm("");
+        setMessage(t("platform:auth.resetSuccess"));
+        setSuccess(true);
+      } catch (error) {
+        const value = formatApiError(error);
+        setMessage(`${value.message}${value.requestId ? ` · request id ${value.requestId}` : ""}`);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+    if (register && (!name.trim() || !phone.trim())) {
       setMessage(t("platform:auth.contactRequired"));
       return;
     }
@@ -102,7 +129,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
     try {
       if (register)
         finish(
-          await api.auth.smsLogin({
+          await api.auth.smsRegister({
             phone: phone.trim(),
             code: smsCode,
             name: name.trim(),
@@ -114,7 +141,6 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             phone: phone.trim(),
             code: smsCode,
             ...(mfaCode ? { mfa_code: mfaCode } : {}),
-            ...(name.trim() ? { name: name.trim() } : {}),
           }),
         );
       else
@@ -140,7 +166,9 @@ export function AuthPage({ register = false }: { register?: boolean }) {
     setMessage("");
     setSuccess(false);
     try {
-      const result = await api.auth.smsSend({ phone: phone.trim() });
+      const result = forgotPassword
+        ? await api.auth.sendPasswordResetCode(phone.trim())
+        : await api.auth.smsSend({ phone: phone.trim() });
       setCooldown(result.cooldown_seconds);
       setMessage(
         t("platform:auth.codeSent", { minutes: Math.ceil(result.expires_in / 60) }),
@@ -183,6 +211,8 @@ export function AuthPage({ register = false }: { register?: boolean }) {
           <div className="eyebrow">
             {initialPasswordToken
               ? "FIRST PASSWORD"
+              : forgotPassword
+              ? "RESET PASSWORD"
               : register
               ? "CREATE ACCESS"
               : mfaRequired
@@ -192,13 +222,15 @@ export function AuthPage({ register = false }: { register?: boolean }) {
           <h2 className="auth-heading">
             {initialPasswordToken
               ? t("platform:auth.setupPassword")
+              : forgotPassword
+              ? t("platform:auth.forgotPassword")
               : register
               ? t("platform:auth.createIdentity")
               : mfaRequired
                 ? t("platform:auth.completeMfa")
                 : t("platform:auth.welcome")}
           </h2>
-          {!initialPasswordToken && !register && !mfaRequired && (
+          {!initialPasswordToken && !forgotPassword && !register && !mfaRequired && (
             <div className="auth-mode">
               <button
                 type="button"
@@ -223,6 +255,13 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                 <label className="field"><span className="field-label">{t("platform:auth.newPassword")}</span><input autoFocus required minLength={8} maxLength={128} type="password" value={initialPassword} onChange={(event) => setInitialPassword(event.target.value)} /></label>
                 <label className="field"><span className="field-label">{t("platform:auth.confirmNewPassword")}</span><input required type="password" value={initialPasswordConfirm} onChange={(event) => setInitialPasswordConfirm(event.target.value)} /></label>
               </>
+            ) : forgotPassword ? (
+              <>
+                <label className="field"><span className="field-label">{t("platform:auth.phone")}</span><input required type="tel" inputMode="tel" value={phone} onChange={(event) => setPhone(event.target.value)} /></label>
+                <div className="sms-row"><label className="field"><span className="field-label">{t("platform:auth.smsCode")}</span><input required inputMode="numeric" maxLength={6} value={smsCode} onChange={(event) => setSmsCode(event.target.value.replace(/\D/g, ""))} /></label><Button type="button" variant="secondary" disabled={!phone.trim() || busy || cooldown > 0} onClick={() => void sendSms()}><MessageSquareText size={14} />{cooldown > 0 ? `${cooldown}s` : t("platform:auth.send")}</Button></div>
+                <label className="field"><span className="field-label">{t("platform:auth.newPassword")}</span><input required minLength={8} maxLength={128} type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+                <label className="field"><span className="field-label">{t("platform:auth.confirmNewPassword")}</span><input required type="password" value={initialPasswordConfirm} onChange={(event) => setInitialPasswordConfirm(event.target.value)} /></label>
+              </>
             ) : <>
             {register && (
               <label className="field">
@@ -240,6 +279,8 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                   <span className="field-label">{t("platform:auth.phone")}</span>
                   <input
                     required
+                    type="tel"
+                    inputMode="tel"
                     value={phone}
                     onChange={(event) => setPhone(event.target.value)}
                   />
@@ -274,6 +315,8 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                   <span className="field-label">{t("platform:auth.phone")}</span>
                   <input
                     required
+                    type="tel"
+                    inputMode="tel"
                     value={phone}
                     onChange={(event) => setPhone(event.target.value)}
                   />
@@ -304,16 +347,19 @@ export function AuthPage({ register = false }: { register?: boolean }) {
               </>
             ) : (
               <label className="field">
-                <span className="field-label">{t("platform:auth.phoneOrEmail")}</span>
+                <span className="field-label">{t("platform:auth.phone")}</span>
                 <input
                   required
+                  type="tel"
+                  inputMode="tel"
+                  pattern="[+0-9 -]{6,22}"
                   value={identifier}
                   onChange={(event) => setIdentifier(event.target.value)}
                 />
               </label>
             )}
             {!register && mode === "password" && (
-              <label className="field">
+              <><label className="field">
                 <span className="field-label">{t("platform:auth.password")}</span>
                 <input
                   required
@@ -323,7 +369,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                 />
-              </label>
+              </label><button type="button" className="link auth-forgot-link" onClick={() => { setForgotPassword(true); setMessage(""); setSuccess(false); }}>{t("platform:auth.forgotPassword")}</button></>
             )}
             {mfaRequired && (
               <label className="field mfa-challenge">
@@ -357,6 +403,8 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                   ? t("platform:auth.verifyLogin")
                   : initialPasswordToken
                     ? t("platform:auth.savePassword")
+                    : forgotPassword
+                    ? t("platform:auth.resetPassword")
                     : register
                     ? t("platform:auth.register")
                     : t("platform:auth.loginConsole")}
@@ -376,12 +424,12 @@ export function AuthPage({ register = false }: { register?: boolean }) {
               </Button>
             )}
           </form>
-          <div className="auth-form-footer">
+          {forgotPassword ? <div className="auth-form-footer"><button type="button" className="link" onClick={() => { setForgotPassword(false); setMessage(""); }}>{t("platform:auth.backLogin")}</button></div> : <div className="auth-form-footer">
             <span>{register ? t("platform:auth.hasAccount") : t("platform:auth.noAccount")}</span>
             <Link className="link" to={register ? "/login" : "/register"}>
               {register ? t("platform:auth.backLogin") : t("platform:auth.register")}
             </Link>
-          </div>
+          </div>}
         </div>
       </section>
     </div>

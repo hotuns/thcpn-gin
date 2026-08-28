@@ -18,17 +18,12 @@ export function scrollToDataSection(id: string) {
   });
 }
 
-export function buildDataQuickNavItems(imageStreams: DataStream[]): DataQuickNavItem[] {
+export function buildDataQuickNavItems(_imageStreams: DataStream[]): DataQuickNavItem[] {
   return [
     { id: "data-section-metrics", label: "查询条件", level: 0 },
-    { id: "data-section-trend", label: "遥测趋势", level: 0 },
-    { id: "data-section-detail", label: "遥测明细", level: 0 },
+    { id: "data-section-trend", label: "数据趋势", level: 0 },
+    { id: "data-section-detail", label: "数据明细", level: 0 },
     { id: "data-section-images", label: "设备图片", level: 0 },
-    ...imageStreams.map((stream) => ({
-      id: `data-image-${stream.id}`,
-      label: stream.name,
-      level: 1 as const,
-    })),
   ];
 }
 

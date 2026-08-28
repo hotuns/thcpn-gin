@@ -210,7 +210,7 @@ export function ComputedStreamsPanel({
             ))}
           </div>
         ) : (
-          <StateView type="empty" title="暂无计算指标" description="可使用原始遥测与设备元数据生成查询时计算的数据。" />
+          <StateView type="empty" title="暂无计算指标" description="可使用原始设备数据与设备元数据生成查询时计算的数据。" />
         )}
       </Panel>
       {editing && (

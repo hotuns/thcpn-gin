@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"thcpn-gin/internal/apperr"
@@ -39,6 +40,7 @@ type Term struct {
 	Status        string     `json:"status"`
 	SortOrder     int        `json:"sort_order"`
 	SystemDefined bool       `json:"system_defined"`
+	Icon          *string    `json:"icon,omitempty"`
 }
 
 type Values struct {
@@ -130,7 +132,7 @@ func NewService(db *pgxpool.Pool, loaders ...LocationLoader) *Service {
 }
 
 func (s *Service) Catalog(ctx context.Context, includeInactive bool) ([]Term, error) {
-	query := `SELECT id, kind, code, name_zh, name_en, parent_id, status, sort_order, system_defined FROM device_taxonomy_terms`
+	query := `SELECT id, kind, code, name_zh, name_en, parent_id, status, sort_order, system_defined, icon FROM device_taxonomy_terms`
 	if !includeInactive {
 		query += ` WHERE status = 'active'`
 	}
@@ -143,7 +145,7 @@ func (s *Service) Catalog(ctx context.Context, includeInactive bool) ([]Term, er
 	items := []Term{}
 	for rows.Next() {
 		var item Term
-		if err := rows.Scan(&item.ID, &item.Kind, &item.Code, &item.NameZH, &item.NameEN, &item.ParentID, &item.Status, &item.SortOrder, &item.SystemDefined); err != nil {
+		if err := rows.Scan(&item.ID, &item.Kind, &item.Code, &item.NameZH, &item.NameEN, &item.ParentID, &item.Status, &item.SortOrder, &item.SystemDefined, &item.Icon); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -159,14 +161,17 @@ func (s *Service) UpsertTerm(ctx context.Context, item Term) (Term, error) {
 	if item.Status == "" {
 		item.Status = "active"
 	}
+	if item.Kind != "ecosystem" {
+		item.Icon = nil
+	}
 	if item.ID == uuid.Nil {
-		err := s.db.QueryRow(ctx, `INSERT INTO device_taxonomy_terms (kind, code, name_zh, name_en, parent_id, status, sort_order) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, system_defined`, item.Kind, item.Code, item.NameZH, item.NameEN, item.ParentID, item.Status, item.SortOrder).Scan(&item.ID, &item.SystemDefined)
+		err := s.db.QueryRow(ctx, `INSERT INTO device_taxonomy_terms (kind, code, name_zh, name_en, parent_id, status, sort_order, icon) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, system_defined`, item.Kind, item.Code, item.NameZH, item.NameEN, item.ParentID, item.Status, item.SortOrder, item.Icon).Scan(&item.ID, &item.SystemDefined)
 		if err != nil {
 			return Term{}, apperr.Wrap(apperr.KindInvalidArgument, "create taxonomy term", err)
 		}
 		return item, nil
 	}
-	err := s.db.QueryRow(ctx, `UPDATE device_taxonomy_terms SET name_zh=$2,name_en=$3,parent_id=$4,status=$5,sort_order=$6,updated_at=now() WHERE id=$1 RETURNING kind,code,system_defined`, item.ID, item.NameZH, item.NameEN, item.ParentID, item.Status, item.SortOrder).Scan(&item.Kind, &item.Code, &item.SystemDefined)
+	err := s.db.QueryRow(ctx, `UPDATE device_taxonomy_terms SET name_zh=$2,name_en=$3,parent_id=$4,status=$5,sort_order=$6,icon=COALESCE($7,icon),updated_at=now() WHERE id=$1 RETURNING kind,code,system_defined,icon`, item.ID, item.NameZH, item.NameEN, item.ParentID, item.Status, item.SortOrder, item.Icon).Scan(&item.Kind, &item.Code, &item.SystemDefined, &item.Icon)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Term{}, apperr.New(apperr.KindNotFound, "taxonomy term not found")
 	}
@@ -174,6 +179,21 @@ func (s *Service) UpsertTerm(ctx context.Context, item Term) (Term, error) {
 		return Term{}, apperr.Wrap(apperr.KindInternal, "update taxonomy term", err)
 	}
 	return item, nil
+}
+
+func (s *Service) DeleteTerm(ctx context.Context, id uuid.UUID) error {
+	result, err := s.db.Exec(ctx, `DELETE FROM device_taxonomy_terms WHERE id=$1`, id)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+		return apperr.New(apperr.KindConflict, "taxonomy term is in use and cannot be deleted")
+	}
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "delete taxonomy term", err)
+	}
+	if result.RowsAffected() == 0 {
+		return apperr.New(apperr.KindNotFound, "taxonomy term not found")
+	}
+	return nil
 }
 
 func (s *Service) Get(ctx context.Context, deviceID uuid.UUID) (Environment, error) {
@@ -472,14 +492,14 @@ func (s *Service) loadSiteValues(ctx context.Context, siteID uuid.UUID) (Values,
 
 func (s *Service) term(ctx context.Context, id uuid.UUID) (*Term, error) {
 	var t Term
-	err := s.db.QueryRow(ctx, `SELECT id,kind,code,name_zh,name_en,parent_id,status,sort_order,system_defined FROM device_taxonomy_terms WHERE id=$1`, id).Scan(&t.ID, &t.Kind, &t.Code, &t.NameZH, &t.NameEN, &t.ParentID, &t.Status, &t.SortOrder, &t.SystemDefined)
+	err := s.db.QueryRow(ctx, `SELECT id,kind,code,name_zh,name_en,parent_id,status,sort_order,system_defined,icon FROM device_taxonomy_terms WHERE id=$1`, id).Scan(&t.ID, &t.Kind, &t.Code, &t.NameZH, &t.NameEN, &t.ParentID, &t.Status, &t.SortOrder, &t.SystemDefined, &t.Icon)
 	if err != nil {
 		return nil, err
 	}
 	return &t, nil
 }
 func (s *Service) entityTerms(ctx context.Context, table, column string, id uuid.UUID) ([]Term, error) {
-	rows, err := s.db.Query(ctx, `SELECT t.id,t.kind,t.code,t.name_zh,t.name_en,t.parent_id,t.status,t.sort_order,t.system_defined FROM `+table+` et JOIN device_taxonomy_terms t ON t.id=et.term_id WHERE et.`+column+`=$1 ORDER BY t.sort_order,t.name_zh`, id)
+	rows, err := s.db.Query(ctx, `SELECT t.id,t.kind,t.code,t.name_zh,t.name_en,t.parent_id,t.status,t.sort_order,t.system_defined,t.icon FROM `+table+` et JOIN device_taxonomy_terms t ON t.id=et.term_id WHERE et.`+column+`=$1 ORDER BY t.sort_order,t.name_zh`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -487,7 +507,7 @@ func (s *Service) entityTerms(ctx context.Context, table, column string, id uuid
 	items := []Term{}
 	for rows.Next() {
 		var t Term
-		if err := rows.Scan(&t.ID, &t.Kind, &t.Code, &t.NameZH, &t.NameEN, &t.ParentID, &t.Status, &t.SortOrder, &t.SystemDefined); err != nil {
+		if err := rows.Scan(&t.ID, &t.Kind, &t.Code, &t.NameZH, &t.NameEN, &t.ParentID, &t.Status, &t.SortOrder, &t.SystemDefined, &t.Icon); err != nil {
 			return nil, err
 		}
 		items = append(items, t)

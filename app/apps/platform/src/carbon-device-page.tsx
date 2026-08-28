@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { Activity, Download, RefreshCw } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { Activity, Download, RefreshCw, Search } from "lucide-react";
 import {
   CartesianGrid,
   Line,
@@ -54,13 +54,23 @@ const dateRange = () => {
   return { start: start.toISOString(), end: end.toISOString() };
 };
 
+const formatDateTimeLocal = (value: string) => {
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+};
+
 export function CarbonDevicePage({ device }: { device: Device }) {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedNode = Number(searchParams.get("node_id"));
   const nodeId = requestedNode > 0 ? requestedNode : 1;
   const [field, setField] = useState(searchParams.get("field") ?? "");
   const [selectedPeriod, setSelectedPeriod] = useState(searchParams.get("period") ?? "");
+  const [initialRange] = useState(dateRange);
+  const [startTime, setStartTime] = useState(() => formatDateTimeLocal(initialRange.start));
+  const [endTime, setEndTime] = useState(() => formatDateTimeLocal(initialRange.end));
+  const [range, setRange] = useState(initialRange);
+  const [chartMode, setChartMode] = useState<"compare" | "separate">("separate");
   const periodDetailRef = useRef<HTMLDivElement>(null);
   const setNodeId = (nextNodeId: number) => {
     const next = new URLSearchParams(searchParams);
@@ -73,7 +83,6 @@ export function CarbonDevicePage({ device }: { device: Device }) {
     queryKey: ["carbon", device.id, "overview"],
     queryFn: () => api.carbon.overview(device.id),
   });
-  const range = useMemo(dateRange, []);
   const periods = useQuery({
     queryKey: ["carbon", device.id, "periods", nodeId, range.start, range.end],
     queryFn: () => api.carbon.periods(device.id, { nodeId, start: range.start, end: range.end }),
@@ -116,11 +125,16 @@ export function CarbonDevicePage({ device }: { device: Device }) {
     void flux.refetch();
     if (selectedPeriod) void detail.refetch();
   };
+  const invalidRange = !startTime || !endTime || Date.parse(startTime) >= Date.parse(endTime);
+  const applyRange = () => {
+    if (invalidRange) return;
+    setSelectedPeriod("");
+    setRange({ start: new Date(startTime).toISOString(), end: new Date(endTime).toISOString() });
+  };
   const selectPeriodFromChart = (period: string) => {
     setSelectedPeriod(period);
     requestAnimationFrame(() => periodDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
-  const openExport = () => navigate(`/exports?system=carbon&device=${encodeURIComponent(device.id)}&nodes=${nodeId}&start=${encodeURIComponent(range.start)}&end=${encodeURIComponent(range.end)}`);
   return (
     <div className="carbon-device-page">
       <Panel className="carbon-overview-panel">
@@ -147,24 +161,50 @@ export function CarbonDevicePage({ device }: { device: Device }) {
 
       <Panel className="carbon-flux-panel section-gap">
         <div className="carbon-data-toolbar">
-          <div><h2 className="panel-title">通量成果</h2><div className="panel-kicker">选择节点和地块，NEE、ER、GPP 使用独立坐标系</div></div>
+          <div><h2 className="panel-title">通量成果</h2><div className="panel-kicker">选择节点、地块和时间范围查看 NEE、ER、GPP</div></div>
           <div className="carbon-selects">
             <label><span>节点</span><select value={nodeId} onChange={(event) => setNodeId(Number(event.target.value))}>{Array.from({ length: overview.data?.nodes_count ?? 1 }, (_, index) => <option key={index + 1} value={index + 1}>Node {index + 1}</option>)}</select></label>
             <label><span>地块</span><select value={field} onChange={(event) => setField(event.target.value)} disabled={!fieldOptions.length}>{fieldOptions.length ? fieldOptions.map((value) => <option key={value} value={value}>{value} 地块</option>) : <option value="">暂无地块</option>}</select></label>
-            <Button variant="secondary" onClick={openExport}><Download size={13} />数据导出</Button>
           </div>
         </div>
-        {flux.isLoading ? <StateView type="loading" title="正在读取通量" description="" /> : flux.error ? <StateView type="error" title="通量读取失败" description={formatApiError(flux.error).message} /> : !flux.data?.points.length ? <StateView type="empty" title="暂无通量结果" description="当前节点和时间范围内还没有已计算的 NEE、ER、GPP。" /> : <div className="carbon-metric-grid">{metricDefinitions.map((metric) => <CarbonMetricChart key={metric.key} metric={metric} points={flux.data?.points ?? []} selectedPeriod={selectedPeriod} onSelect={selectPeriodFromChart} />)}</div>}
+        <div className="carbon-query-toolbar">
+          <div className="carbon-time-range">
+            <label><span>开始时间</span><input type="datetime-local" value={startTime} onChange={(event) => setStartTime(event.target.value)} /></label>
+            <label><span>结束时间</span><input type="datetime-local" value={endTime} onChange={(event) => setEndTime(event.target.value)} /></label>
+            <Button disabled={invalidRange} onClick={applyRange}><Search size={14} />查询</Button>
+          </div>
+          <div className="chart-mode" aria-label="通量图表视图">
+            <button type="button" className={chartMode === "separate" ? "active" : ""} onClick={() => setChartMode("separate")}>分指标</button>
+            <button type="button" className={chartMode === "compare" ? "active" : ""} onClick={() => setChartMode("compare")}>叠加对比</button>
+          </div>
+        </div>
+        {invalidRange && <div className="form-error carbon-range-error">结束时间必须晚于开始时间。</div>}
+        {flux.isLoading ? <StateView type="loading" title="正在读取通量" description="" /> : flux.error ? <StateView type="error" title="通量读取失败" description={formatApiError(flux.error).message} /> : !flux.data?.points.length ? <StateView type="empty" title="暂无通量结果" description="当前节点和时间范围内还没有已计算的 NEE、ER、GPP。" /> : chartMode === "separate" ? <div className="carbon-metric-grid">{metricDefinitions.map((metric) => <CarbonMetricChart key={metric.key} metric={metric} points={flux.data?.points ?? []} selectedPeriod={selectedPeriod} onSelect={selectPeriodFromChart} />)}</div> : <CarbonCombinedChart points={flux.data.points} selectedPeriod={selectedPeriod} onSelect={selectPeriodFromChart} />}
       </Panel>
 
       {selectedSummary && <div ref={periodDetailRef} className="carbon-period-detail-anchor"><CarbonPeriodDetail detail={detail.data} loading={detail.isLoading} error={detail.error} /></div>}
 
       <Panel className="carbon-period-panel section-gap">
         <div className="panel-header"><div><h2 className="panel-title">周期与原始采样</h2><div className="panel-kicker">点击一个周期查看 light / black 两个气室的原始曲线</div></div><Download size={17} /></div>
-        {periods.isLoading ? <StateView type="loading" title="正在读取周期" description="" /> : periods.error ? <StateView type="error" title="周期读取失败" description={formatApiError(periods.error).message} /> : !periods.data?.items.length ? <StateView type="empty" title="暂无采样周期" description="该节点最近 7 天没有原始采样记录。" /> : <div className="carbon-period-list">{periods.data.items.map((item) => <button type="button" key={item.period} className={`carbon-period-row ${item.period === selectedPeriod ? "selected" : ""}`} onClick={() => setSelectedPeriod(item.period)}><span><strong>{formatDateTime(item.period_at)}</strong><small className="mono">{item.period}</small></span><span>{item.fields.join("、") || "—"}</span><span>{item.flux_fields.length ? `通量：${item.flux_fields.join("、")}` : "暂无通量"}</span></button>)}</div>}
+        {periods.isLoading ? <StateView type="loading" title="正在读取周期" description="" /> : periods.error ? <StateView type="error" title="周期读取失败" description={formatApiError(periods.error).message} /> : !periods.data?.items.length ? <StateView type="empty" title="暂无采样周期" description="当前时间范围内没有原始采样记录。" /> : <div className="carbon-period-list">{periods.data.items.map((item) => <button type="button" key={item.period} className={`carbon-period-row ${item.period === selectedPeriod ? "selected" : ""}`} onClick={() => setSelectedPeriod(item.period)}><span><strong>{formatDateTime(item.period_at)}</strong><small className="mono">{item.period}</small></span><span>{item.fields.join("、") || "—"}</span><span>{item.flux_fields.length ? `通量：${item.flux_fields.join("、")}` : "暂无通量"}</span></button>)}</div>}
       </Panel>
     </div>
   );
+}
+
+function CarbonCombinedChart({ points, selectedPeriod, onSelect }: { points: CarbonFluxPoint[]; selectedPeriod: string; onSelect: (period: string) => void }) {
+  const data = points.map((point) => ({ ...point, timestamp: Date.parse(point.period_at) }));
+  const selectNearestPoint = (clientX: number, chart: HTMLDivElement) => {
+    const dots = Array.from(chart.querySelectorAll<SVGGElement>(".carbon-combined-dot-hit"));
+    const nearestIndex = dots.reduce((nearest, dot, index) => {
+      const bounds = dot.getBoundingClientRect();
+      const distance = Math.abs(clientX - (bounds.left + bounds.width / 2));
+      return distance < nearest.distance ? { index, distance } : nearest;
+    }, { index: -1, distance: Number.POSITIVE_INFINITY }).index;
+    const point = data[nearestIndex];
+    if (point) onSelect(point.period);
+  };
+  return <section className="carbon-combined-card"><div className="carbon-combined-heading"><div><strong>NEE、ER、GPP 叠加对比</strong><small>μg CO₂·m⁻²·s⁻¹</small></div><div className="carbon-combined-legend">{metricDefinitions.map((metric) => <span key={metric.key}><i style={{ background: metric.color }} />{metric.label}</span>)}</div></div><div className="carbon-chart carbon-combined-chart" aria-label="通量叠加对比趋势图" onMouseDownCapture={(event) => { if (event.button === 0) event.preventDefault(); }} onClickCapture={(event) => { if (event.button === 0) selectNearestPoint(event.clientX, event.currentTarget); }}><ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 12, right: 18, bottom: 4, left: 0 }}><CartesianGrid stroke="var(--soft-line)" vertical={false} /><XAxis dataKey="timestamp" type="number" domain={["dataMin", "dataMax"]} tickFormatter={(value) => formatDateTime(new Date(Number(value)).toISOString())} tick={{ fill: "var(--muted)", fontSize: 10 }} axisLine={false} tickLine={false} /><YAxis tick={{ fill: "var(--muted)", fontSize: 10 }} axisLine={false} tickLine={false} width={48} /><Tooltip labelFormatter={(value) => formatDateTime(new Date(Number(value)).toISOString())} formatter={(value, name) => [formatNumber(Number(value)), String(name).toUpperCase()]} />{metricDefinitions.map((metric, index) => <Line key={metric.key} type="monotone" dataKey={metric.key} name={metric.label} stroke={metric.color} strokeWidth={2} dot={index === 0 ? (props: { cx?: number; cy?: number; payload?: { period?: string } }) => <g className="carbon-combined-dot-hit"><circle cx={props.cx} cy={props.cy} r={14} fill="transparent" stroke="transparent" /><circle cx={props.cx} cy={props.cy} r={props.payload?.period === selectedPeriod ? 5 : 2.5} fill={props.payload?.period === selectedPeriod ? metric.color : "var(--panel)"} stroke={metric.color} strokeWidth={2} /></g> : false} activeDot={false} isAnimationActive={false} />)}</LineChart></ResponsiveContainer></div></section>;
 }
 
 function CarbonMetricChart({ metric, points, selectedPeriod, onSelect }: { metric: typeof metricDefinitions[number]; points: CarbonFluxPoint[]; selectedPeriod: string; onSelect: (period: string) => void }) {

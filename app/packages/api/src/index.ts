@@ -25,7 +25,7 @@ export type AccessibleWorkspace = Workspace & {
 export type Device = Omit<Schema<"Device">, "device_type"> & { device_type: string };
 export type DeviceProfile = Schema<"DeviceProfile">;
 export type DeviceProfileImage = Schema<"DeviceProfileImage">;
-export type DeviceTaxonomyTerm = { id: string; kind: "ecosystem" | "observation_object" | "purpose" | "management" | "deployment"; code: string; name_zh: string; name_en: string; parent_id?: string; status: "active" | "inactive"; sort_order: number; system_defined: boolean };
+export type DeviceTaxonomyTerm = { id: string; kind: "ecosystem" | "observation_object" | "purpose" | "management" | "deployment"; code: string; name_zh: string; name_en: string; parent_id?: string; status: "active" | "inactive"; sort_order: number; system_defined: boolean; icon?: string };
 export type DeviceEnvironmentValues = { ecosystem?: DeviceTaxonomyTerm; observation_objects: DeviceTaxonomyTerm[]; purposes: DeviceTaxonomyTerm[]; management?: DeviceTaxonomyTerm; deployment?: DeviceTaxonomyTerm; altitude_m?: number; commissioned_year?: number; research_tags: string[] };
 export type DeviceEnvironment = { device_id: string; direct: DeviceEnvironmentValues; effective: DeviceEnvironmentValues; overridden_fields: string[]; sources: Record<string, string>; parent_device_id?: string; site_id?: string; updated_at?: string };
 export type SiteEnvironment = { site_id: string; values: DeviceEnvironmentValues; updated_at?: string };
@@ -269,6 +269,14 @@ export class ApiError extends Error {
   }
 }
 
+export const apiErrorEvent = "thcpn:api-error";
+
+const notifyApiError = (error: unknown) => {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(apiErrorEvent, { detail: error }));
+  }
+};
+
 type TokenPair = { accessToken: string; refreshToken: string };
 
 const tokenKey = "thcpn.auth.tokens";
@@ -357,7 +365,13 @@ async function request<T>(
   if (tokens?.accessToken)
     headers.set("Authorization", `Bearer ${tokens.accessToken}`);
 
-  const response = await fetch(`${baseUrl}${path}`, { ...init, headers });
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}${path}`, { ...init, headers });
+  } catch (error) {
+    notifyApiError(error);
+    throw error;
+  }
   try {
     const { body } = await parseResponse(response);
     return body as T;
@@ -386,6 +400,7 @@ async function request<T>(
         storage.clear();
       }
     }
+    notifyApiError(error);
     throw error;
   }
 }
@@ -405,10 +420,20 @@ async function download(path: string): Promise<Blob> {
   const tokens = storage.read();
   if (tokens?.accessToken)
     headers.set("Authorization", `Bearer ${tokens.accessToken}`);
-  const response = await fetch(`${baseUrl}${path}`, { headers });
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}${path}`, { headers });
+  } catch (error) {
+    notifyApiError(error);
+    throw error;
+  }
   if (!response.ok) {
-    await parseResponse(response);
-    throw new ApiError("下载失败", response.status);
+    try {
+      await parseResponse(response);
+    } catch (error) {
+      notifyApiError(error);
+      throw error;
+    }
   }
   return response.blob();
 }
@@ -482,6 +507,8 @@ export const api = {
       jsonRequest<SendCodeResponse>("/api/v1/auth/sms/send", "POST", payload),
     smsLogin: (payload: JsonRecord) =>
       jsonRequest<LoginResponse>("/api/v1/auth/sms/login", "POST", payload),
+    smsRegister: (payload: JsonRecord) =>
+      jsonRequest<LoginResponse>("/api/v1/auth/sms/register", "POST", payload),
     devRegister: (payload: JsonRecord) =>
       jsonRequest<JsonRecord>("/api/v1/auth/register", "POST", payload),
     refresh: (refreshToken: string) =>
@@ -492,6 +519,10 @@ export const api = {
       jsonRequest<LoginResponse>("/api/v1/auth/password/complete-initial", "POST", payload),
     changePassword: (payload: { current_password: string; new_password: string }) =>
       jsonRequest<{ signed_out: boolean }>("/api/v1/auth/password/change", "POST", payload),
+    sendPasswordResetCode: (phone: string) =>
+      jsonRequest<SendCodeResponse>("/api/v1/auth/password/reset/send", "POST", { phone }),
+    resetPassword: (payload: { phone: string; code: string; new_password: string }) =>
+      jsonRequest<{ reset: boolean }>("/api/v1/auth/password/reset", "POST", payload),
     logout: (refreshToken?: string) =>
       jsonRequest<void>(
         "/api/v1/auth/logout",
@@ -527,6 +558,8 @@ export const api = {
       request<AdminLoginResponse>("/api/v1/admin/auth/refresh", { method: "POST", body: JSON.stringify({ refresh_token: refreshToken }) }, false),
     logout: (refreshToken?: string) =>
       request<void>("/api/v1/admin/auth/logout", { method: "POST", body: JSON.stringify({ refresh_token: refreshToken ?? "" }) }, false),
+    changePassword: (payload: { current_password: string; new_password: string }) =>
+      jsonRequest<{ signed_out: boolean }>("/api/v1/admin/auth/password/change", "POST", payload),
     me: () => request<{ admin: AdminUser }>("/api/v1/admin/me"),
   },
   me: Object.assign(
@@ -1207,6 +1240,7 @@ export const api = {
     bulkUpdateDeviceEnvironment: (payload: JsonRecord) => jsonRequest<JsonRecord>("/api/v1/admin/devices/environment/bulk", "POST", payload),
     deviceTaxonomy: () => request<ListResponse<DeviceTaxonomyTerm>>("/api/v1/admin/metadata/device-taxonomy"),
     upsertDeviceTaxonomy: (payload: JsonRecord) => jsonRequest<DeviceTaxonomyTerm>("/api/v1/admin/metadata/device-taxonomy", "POST", payload),
+    deleteDeviceTaxonomy: (id: string) => request<void>(`/api/v1/admin/metadata/device-taxonomy/${encodeURIComponent(id)}`, { method: "DELETE" }),
     deviceMap: (includeChildren = false) => request<DeviceMapResult>(`/api/v1/admin/device-map?include_children=${includeChildren}`),
     sensorTemplates: (id: string, input: JsonRecord = {}) =>
       request<THCPNSensorTemplateListResponse>(

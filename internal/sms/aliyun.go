@@ -79,11 +79,15 @@ func (s *AliyunSender) SendVerificationCode(ctx context.Context, req SendRequest
 		return apperr.Wrap(apperr.KindInternal, "encode aliyun sms template param", err)
 	}
 
+	templateCode := strings.TrimSpace(req.TemplateCode)
+	if templateCode == "" {
+		templateCode = s.templateCode
+	}
 	request := new(dypnsapi.SendSmsVerifyCodeRequest).
 		SetPhoneNumber(req.Phone).
 		SetCountryCode("86").
 		SetSignName(s.signName).
-		SetTemplateCode(s.templateCode).
+		SetTemplateCode(templateCode).
 		SetTemplateParam(string(templateParam)).
 		SetCodeType(1).
 		SetCodeLength(6).

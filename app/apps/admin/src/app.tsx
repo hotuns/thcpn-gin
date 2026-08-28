@@ -23,6 +23,7 @@ import {
   ExternalLink,
   FileText,
   Home,
+  KeyRound,
   MapPinned,
   Megaphone,
   Languages,
@@ -40,8 +41,8 @@ import {
   UserRound,
 	UsersRound,
 } from "lucide-react";
-import { Avatar, Dropdown, Menu, Space, Tooltip, type MenuProps } from "antd";
-import { api, formatApiError } from "@thcpn/api";
+import { Avatar, Dropdown, Input, Menu, Modal, Space, Tooltip, type MenuProps } from "antd";
+import { ApiError, api, formatApiError } from "@thcpn/api";
 import { billingEnabled } from "./features";
 import { useAdminAuth } from "@thcpn/auth";
 import {
@@ -144,6 +145,19 @@ function AdminShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const closePassword = () => {
+    setPasswordOpen(false);
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setPasswordError("");
+  };
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem("thcpn:sidebar-collapsed") === "true",
   );
@@ -182,13 +196,33 @@ function AdminShell() {
     { key: "zh-CN", icon: <Languages size={15} />, label: t("chinese"), extra: locale === "zh-CN" ? "✓" : undefined },
     { key: "en-US", icon: <Languages size={15} />, label: "English", extra: locale === "en-US" ? "✓" : undefined },
     { type: "divider" },
+    { key: "change-password", icon: <KeyRound size={15} />, label: "修改密码" },
     { key: "platform", icon: <ExternalLink size={15} />, label: t("admin:navigation.backPlatform") },
     { key: "logout", danger: true, icon: <LogOut size={15} />, label: t("platform:navigation.logout") },
   ];
   const handleAccountAction: MenuProps["onClick"] = ({ key }) => {
     if (key === "zh-CN" || key === "en-US") void setLocale(key);
+    if (key === "change-password") setPasswordOpen(true);
     if (key === "platform") window.location.assign(`${platformUrl}/dashboard`);
     if (key === "logout") void signOut();
+  };
+  const changePassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setPasswordError("两次输入的新密码不一致");
+      return;
+    }
+    setPasswordBusy(true);
+    setPasswordError("");
+    try {
+      await api.adminAuth.changePassword({ current_password: currentPassword, new_password: newPassword });
+      await signOut();
+      window.location.assign("/admin/login");
+    } catch (error) {
+      setPasswordError(error instanceof ApiError && error.status === 401 ? "当前密码不正确" : formatApiError(error).message);
+    } finally {
+      setPasswordBusy(false);
+    }
   };
   useEffect(() => {
     localStorage.setItem(
@@ -312,6 +346,15 @@ function AdminShell() {
           </Suspense>
         </main>
       </div>
+      <Modal title="修改密码" open={passwordOpen} footer={null} onCancel={closePassword} destroyOnHidden>
+        <form className="admin-password-form" onSubmit={changePassword}>
+          <label>当前密码<Input.Password required autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label>
+          <label>新密码<Input.Password required minLength={8} maxLength={128} autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label>
+          <label>确认新密码<Input.Password required autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>
+          {passwordError && <div className="admin-login-error">{passwordError}</div>}
+          <div className="admin-password-actions"><Button type="button" variant="secondary" onClick={closePassword}>取消</Button><Button type="submit" disabled={passwordBusy || !currentPassword || !newPassword || !confirmPassword}>{passwordBusy ? "保存中…" : "确认修改"}</Button></div>
+        </form>
+      </Modal>
     </div>
   );
 }
@@ -521,7 +564,7 @@ function AdminOverview() {
           <div className="admin-overview-shortcuts">
             <Link to="/admin/sources"><Database size={16} /><span><strong>数据源与同步</strong><small>连接配置、单设备与全量同步</small></span><ChevronRight size={14} /></Link>
             <Link to="/admin/devices"><Boxes size={16} /><span><strong>设备管理</strong><small>拓扑、分配和生命周期</small></span><ChevronRight size={14} /></Link>
-            <Link to="/admin/sensors"><Cpu size={16} /><span><strong>传感器模板</strong><small>协议参数与遥测指标</small></span><ChevronRight size={14} /></Link>
+            <Link to="/admin/sensors"><Cpu size={16} /><span><strong>传感器模板</strong><small>协议参数与数据指标</small></span><ChevronRight size={14} /></Link>
             <Link to="/admin/logs"><Activity size={16} /><span><strong>平台日志</strong><small>错误诊断与请求检索</small></span><ChevronRight size={14} /></Link>
           </div>
         </Panel>

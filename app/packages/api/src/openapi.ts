@@ -328,6 +328,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/password/reset/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a password reset SMS code */
+        post: operations["sendPasswordResetCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reset a password with an SMS code */
+        post: operations["resetPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/refresh": {
         parameters: {
             query?: never;
@@ -1392,6 +1426,23 @@ export interface paths {
         /** Create or update a classification term */
         post: operations["adminUpsertDeviceTaxonomy"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/metadata/device-taxonomy/{term_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete an unused classification term */
+        delete: operations["adminDeleteDeviceTaxonomy"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3824,6 +3875,9 @@ export interface components {
             /** @description Minimum seconds before another code can be requested for the same phone. */
             cooldown_seconds: number;
         };
+        SendSMSRequest: {
+            phone: components["schemas"]["Phone"];
+        };
         SendCodeResponse: {
             sent: boolean;
             /** @description Verification code TTL in seconds. */
@@ -3916,8 +3970,17 @@ export interface components {
             password: string;
         };
         ChangePasswordRequest: {
+            /**
+             * Format: password
+             * @description Required only when the user already has a password.
+             */
+            current_password?: string;
             /** Format: password */
-            current_password: string;
+            new_password: string;
+        };
+        ResetPasswordRequest: {
+            phone: components["schemas"]["Phone"];
+            code: string;
             /** Format: password */
             new_password: string;
         };
@@ -4599,6 +4662,7 @@ export interface components {
             status: "active" | "inactive";
             sort_order: number;
             system_defined: boolean;
+            icon?: string;
         };
         DeviceTaxonomyListResponse: {
             items: components["schemas"]["DeviceTaxonomyTerm"][];
@@ -5269,10 +5333,17 @@ export interface components {
             mode: components["schemas"]["SamplingProfileMode"];
             advanced: boolean;
             data_minutes: number[];
+            data_hours: number[];
+            upload_minutes: number[];
+            upload_hours: number[];
             image_minute?: number;
             image_hours: number[];
+            image_upload_minute?: number;
+            image_upload_hours: number[];
             data_cron: string;
+            upload_cron: string;
             image_cron: string;
+            image_upload_cron: string;
             summary: string;
             /** Format: int64 */
             external_config_id: number;
@@ -5283,8 +5354,13 @@ export interface components {
         UpdateSamplingProfileRequest: {
             mode: components["schemas"]["SamplingProfileMode"];
             data_minutes?: number[];
+            data_hours?: number[];
+            upload_minutes?: number[];
+            upload_hours?: number[];
             image_minute?: number;
             image_hours?: number[];
+            image_upload_minute?: number;
+            image_upload_hours?: number[];
             /** Format: int64 */
             expected_config_id: number;
         };
@@ -6388,6 +6464,56 @@ export interface operations {
             400: components["responses"]["InvalidArgument"];
             401: components["responses"]["Unauthorized"];
             500: components["responses"]["Internal"];
+        };
+    };
+    sendPasswordResetCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendSMSRequest"];
+            };
+        };
+        responses: {
+            /** @description Password reset code sent. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SendCodeResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    resetPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetPasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Password reset and existing sessions revoked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
         };
     };
     refreshAuthToken: {
@@ -8044,6 +8170,27 @@ export interface operations {
                     "application/json": components["schemas"]["DeviceTaxonomyTerm"];
                 };
             };
+        };
+    };
+    adminDeleteDeviceTaxonomy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                term_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Classification term deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Conflict"];
         };
     };
     adminListDeviceMap: {

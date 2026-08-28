@@ -302,7 +302,7 @@ export function GatewayNodeData({
           <StateView
             type="empty"
             title="暂无节点指标"
-            description="下挂节点还没有已启用的遥测指标。"
+            description="下挂节点还没有已启用的数据指标。"
           />
         ) : telemetryLoading ? (
           <StateView

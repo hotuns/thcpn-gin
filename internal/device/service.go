@@ -39,6 +39,11 @@ type Device struct {
 	DeviceType         string     `json:"device_type"`
 	AssignedBy         *uuid.UUID `json:"assigned_by,omitempty"`
 	AssignedAt         *time.Time `json:"assigned_at,omitempty"`
+	WorkspaceName      *string    `json:"workspace_name,omitempty"`
+	ProjectName        *string    `json:"project_name,omitempty"`
+	SiteName           *string    `json:"site_name,omitempty"`
+	AssignedByName     string     `json:"assigned_by_name,omitempty"`
+	ExternalDeviceID   *int64     `json:"external_device_id,omitempty"`
 	Capabilities       []string   `json:"capabilities"`
 	TopologyRole       string     `json:"topology_role"`
 	ChildCount         int64      `json:"child_count"`
@@ -386,7 +391,15 @@ func (s *Service) ListSystemAssets(ctx context.Context) ([]Device, error) {
 		if err != nil {
 			return nil, apperr.Wrap(apperr.KindInternal, "list device capabilities", err)
 		}
-		items = append(items, fromSystemAssetRow(row, capabilities))
+		item := fromSystemAssetRow(row, capabilities)
+		ref, err := s.queries.GetDeviceSourceRefByDevice(ctx, row.ID)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return nil, apperr.Wrap(apperr.KindInternal, "get device source mapping", err)
+		}
+		if err == nil {
+			item.ExternalDeviceID = &ref.ExternalDeviceID
+		}
+		items = append(items, item)
 	}
 	return items, nil
 }
@@ -1736,6 +1749,10 @@ func fromSystemAssetRow(model sqlc.ListSystemDeviceAssetsRow, capabilities []str
 		DeviceType:         model.TopologyRole,
 		AssignedBy:         model.AssignedBy,
 		AssignedAt:         pgTimePtr(model.AssignedAt),
+		WorkspaceName:      model.WorkspaceName,
+		ProjectName:        model.ProjectName,
+		SiteName:           model.SiteName,
+		AssignedByName:     model.AssignedByName,
 		Capabilities:       capabilities,
 		TopologyRole:       model.TopologyRole,
 		ChildCount:         model.ChildCount,

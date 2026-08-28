@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, RefreshCw, Search, Settings2, ShieldCheck } from "lucide-react";
+import { Building2, Droplets, Leaf, Mountain, Plus, RefreshCw, Search, Settings2, ShieldCheck, Sprout, Sun, TreePine, Waves, Wheat } from "lucide-react";
 import {
   Button,
   Drawer,
   Form,
   Input,
   InputNumber,
+  Popconfirm,
   Select,
   Space,
   Table,
@@ -14,9 +15,11 @@ import {
   Tag,
 } from "@thcpn/admin-ui";
 import {
+  ApiError,
   api,
   formatApiError,
   roleTemplateLabel,
+  type DeviceTaxonomyTerm,
   type JsonRecord,
 } from "@thcpn/api";
 import { Badge, PageHeader, Panel, StateView } from "@thcpn/ui";
@@ -33,14 +36,30 @@ const formatTime = (input: unknown) =>
       }).format(new Date(String(input)))
     : "—";
 
+const ecosystemIcons = [
+  { value: "tree-pine", label: "森林", icon: TreePine },
+  { value: "sprout", label: "草地", icon: Sprout },
+  { value: "wheat", label: "农田", icon: Wheat },
+  { value: "waves", label: "湿地", icon: Waves },
+  { value: "sun", label: "荒漠", icon: Sun },
+  { value: "building-2", label: "城市", icon: Building2 },
+  { value: "droplets", label: "水域", icon: Droplets },
+  { value: "mountain", label: "山地", icon: Mountain },
+  { value: "leaf", label: "其他", icon: Leaf },
+] as const;
+const EcosystemIcon = ({ name, size = 16 }: { name?: string; size?: number }) => {
+  const Icon = ecosystemIcons.find((item) => item.value === name)?.icon ?? Leaf;
+  return <Icon size={size} />;
+};
+
 export function AdminMetadataPage() {
-  const [tab, setTab] = useState("capabilities");
+  const [tab, setTab] = useState("profile-options");
   return (
     <>
       <PageHeader
         eyebrow="System / metadata"
         title="元数据"
-        description="维护设备能力目录和系统角色显示信息。代码标识保持稳定，名称和状态可安全调整。"
+        description="维护用户填写设备资料时可选的元数据、设备能力和系统角色。"
         actions={
           <Badge tone="info">
             <ShieldCheck size={13} />
@@ -53,6 +72,11 @@ export function AdminMetadataPage() {
         onChange={setTab}
         items={[
           {
+            key: "profile-options",
+            label: "设备资料选项",
+            children: <ProfileOptions />,
+          },
+          {
             key: "capabilities",
             label: "设备能力",
             children: <Capabilities />,
@@ -62,6 +86,67 @@ export function AdminMetadataPage() {
       />
     </>
   );
+}
+
+function ProfileOptions() {
+  const query = useQuery({ queryKey: ["admin", "device-taxonomy"], queryFn: api.admin.deviceTaxonomy });
+  const [kind, setKind] = useState<"ecosystem" | "observation_object">("ecosystem");
+  const [editing, setEditing] = useState<DeviceTaxonomyTerm | "new" | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const [form] = Form.useForm();
+  const rows = (query.data?.items ?? []).filter((item) => item.kind === kind);
+  const open = (item: DeviceTaxonomyTerm | "new") => {
+    setEditing(item);
+    form.setFieldsValue(item === "new" ? { code: "", name_zh: "", name_en: "", status: "active", sort_order: 100, icon: kind === "ecosystem" ? "leaf" : undefined } : item);
+  };
+  const close = () => { setEditing(null); form.resetFields(); };
+  const save = async () => {
+    setBusy(true); setFeedback("");
+    try {
+      const fields = await form.validateFields();
+      await api.admin.upsertDeviceTaxonomy({ ...fields, kind, id: editing !== "new" ? editing?.id : undefined });
+      setFeedback(editing === "new" ? "选项已新增" : "选项已更新");
+      close(); await query.refetch();
+    } catch (error) {
+      if (!(error as any)?.errorFields) setFeedback(formatApiError(error).message);
+    } finally { setBusy(false); }
+  };
+  const remove = async (item: DeviceTaxonomyTerm) => {
+    try {
+      await api.admin.deleteDeviceTaxonomy(item.id);
+      setFeedback("选项已删除"); await query.refetch();
+    } catch (error) {
+      setFeedback(error instanceof ApiError && error.status === 409 ? "该选项正在被设备或样地使用，不能删除；可以改为停用。" : formatApiError(error).message);
+    }
+  };
+  return <>
+    <Panel>
+      <div className="admin-list-toolbar">
+        <Select value={kind} onChange={setKind} style={{ width: 180 }} options={[{ value: "ecosystem", label: "生态类型" }, { value: "observation_object", label: "观测对象" }]} />
+        <Space><Button icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>刷新</Button><Button type="primary" icon={<Plus size={14} />} onClick={() => open("new")}>新增选项</Button></Space>
+      </div>
+      {feedback && <div className="admin-feedback">{feedback}</div>}
+      {query.isLoading ? <StateView type="loading" title="正在加载设备资料选项" description="正在读取生态类型和观测对象。" /> : query.error ? <StateView type="error" title="设备资料选项加载失败" description={formatApiError(query.error).message} /> : <Table rowKey="id" dataSource={rows} columns={[
+        ...(kind === "ecosystem" ? [{ title: "图标", width: 70, render: (_: unknown, item: DeviceTaxonomyTerm) => <EcosystemIcon name={item.icon} /> }] : []),
+        { title: "名称", render: (_: unknown, item: DeviceTaxonomyTerm) => <div><div className="cell-title">{item.name_zh}</div><div className="cell-sub">{item.name_en}</div></div> },
+        { title: "编码", dataIndex: "code", className: "mono" },
+        { title: "状态", width: 90, render: (_: unknown, item: DeviceTaxonomyTerm) => <Tag color={item.status === "active" ? "green" : "default"}>{item.status === "active" ? "启用" : "停用"}</Tag> },
+        { title: "排序", dataIndex: "sort_order", width: 80 },
+        { title: "操作", width: 150, render: (_: unknown, item: DeviceTaxonomyTerm) => <Space><Button type="link" onClick={() => open(item)}>编辑</Button><Popconfirm title="删除这个选项？" description="已被设备或样地使用的选项无法删除。" onConfirm={() => void remove(item)}><Button type="link" danger>删除</Button></Popconfirm></Space> },
+      ]} pagination={false} />}
+    </Panel>
+    <Drawer title={editing === "new" ? `新增${kind === "ecosystem" ? "生态类型" : "观测对象"}` : "编辑选项"} open={Boolean(editing)} onClose={close} size={420} extra={<Space><Button onClick={close}>取消</Button><Button type="primary" loading={busy} onClick={() => void save()}>保存</Button></Space>}>
+      <Form form={form} layout="vertical">
+        <Form.Item name="code" label="稳定编码" rules={[{ required: true, message: "请输入编码" }]}><Input disabled={editing !== "new"} placeholder="例如 forest" /></Form.Item>
+        <Form.Item name="name_zh" label="中文名称" rules={[{ required: true, message: "请输入中文名称" }]}><Input /></Form.Item>
+        <Form.Item name="name_en" label="英文名称" rules={[{ required: true, message: "请输入英文名称" }]}><Input /></Form.Item>
+        {kind === "ecosystem" && <Form.Item name="icon" label="图标"><Select options={ecosystemIcons.map(({ value, label, icon: Icon }) => ({ value, label: <Space><Icon size={15} />{label}</Space> }))} /></Form.Item>}
+        <Form.Item name="status" label="状态"><Select options={[{ value: "active", label: "启用" }, { value: "inactive", label: "停用" }]} /></Form.Item>
+        <Form.Item name="sort_order" label="排序"><InputNumber precision={0} style={{ width: "100%" }} /></Form.Item>
+      </Form>
+    </Drawer>
+  </>;
 }
 
 function Capabilities() {
@@ -249,7 +334,7 @@ function Capabilities() {
             label="显示名称"
             rules={[{ required: true, message: "请输入显示名称" }]}
           >
-            <Input placeholder="例如 遥测数据" />
+            <Input placeholder="例如 设备数据" />
           </Form.Item>
           <Form.Item name="status" label="状态" rules={[{ required: true }]}>
             <Select

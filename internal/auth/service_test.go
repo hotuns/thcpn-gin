@@ -10,6 +10,17 @@ import (
 	"thcpn-gin/internal/db/sqlc"
 )
 
+func TestPasswordChangeCredentialDecision(t *testing.T) {
+	firstPassword, err := validatePasswordChangeCredential(nil, "")
+	if err != nil || !firstPassword {
+		t.Fatalf("sms-only user should be allowed to set first password: first=%v err=%v", firstPassword, err)
+	}
+	credential := &sqlc.UserCredential{PasswordHash: "$2a$10$invalid"}
+	if _, err := validatePasswordChangeCredential(credential, ""); err == nil {
+		t.Fatal("existing password must still require current password")
+	}
+}
+
 func TestSessionFromSQL(t *testing.T) {
 	sessionID := uuid.New()
 	userAgent := "Codex Browser"

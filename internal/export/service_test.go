@@ -3,8 +3,11 @@ package export
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -13,7 +16,17 @@ import (
 
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/datasource"
+	"thcpn-gin/internal/objectstore"
 )
+
+type exportTestStore struct{ getCalls int }
+
+func (s *exportTestStore) Delete(context.Context, string) error            { return nil }
+func (s *exportTestStore) Put(context.Context, objectstore.PutInput) error { return nil }
+func (s *exportTestStore) Get(context.Context, string) (objectstore.GetResult, error) {
+	s.getCalls++
+	return objectstore.GetResult{}, nil
+}
 
 func TestResolveAction(t *testing.T) {
 	action, resourceType, err := resolveAction("device", "telemetry_csv")
@@ -92,6 +105,19 @@ func TestRenderTelemetryCSV(t *testing.T) {
 	}
 }
 
+func TestRenderWideTelemetryCSVUsesStreamNames(t *testing.T) {
+	body, _, _, err := renderWideTelemetryCSV([]telemetrySeries{
+		{Code: "temp", Name: "空气温度"},
+		{Code: "press", Name: "气压"},
+	})
+	if err != nil {
+		t.Fatalf("render wide csv: %v", err)
+	}
+	if got, want := strings.SplitN(string(body), "\n", 2)[0], "ts,气压,空气温度"; got != want {
+		t.Fatalf("unexpected wide csv header: got %q want %q", got, want)
+	}
+}
+
 func TestRenderTelemetryXLSX(t *testing.T) {
 	streamID := uuid.New()
 	deviceID := uuid.New()
@@ -150,6 +176,29 @@ func TestMediaArchivePathSanitizesAndDeduplicates(t *testing.T) {
 	expectedSecond := "media/" + streamID.String() + "/image_img_001_2.jpg"
 	if first != expectedFirst || second != expectedSecond {
 		t.Fatalf("unexpected archive paths: %q %q", first, second)
+	}
+}
+
+func TestFetchMediaObjectDownloadsAbsoluteURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("image-body"))
+	}))
+	defer server.Close()
+	store := &exportTestStore{}
+	result, err := fetchMediaObject(t.Context(), store, server.Client(), server.URL+"/1206/photo.jpg")
+	if err != nil {
+		t.Fatalf("fetch media object: %v", err)
+	}
+	defer result.Body.Close()
+	body, err := io.ReadAll(result.Body)
+	if err != nil {
+		t.Fatalf("read media object: %v", err)
+	}
+	if string(body) != "image-body" {
+		t.Fatalf("unexpected media body: %q", body)
+	}
+	if store.getCalls != 0 {
+		t.Fatalf("absolute URL must not be passed to object store, got %d calls", store.getCalls)
 	}
 }
 

@@ -54,7 +54,7 @@ export function SubscriptionPage() {
             <div className="pricing-divider" />
             <ul>
               <li><Check size={16} /><span>设备接入、采集和基础管理</span></li>
-              <li><Check size={16} /><span>查看最近 {value.base_history_days} 天遥测数据</span></li>
+              <li><Check size={16} /><span>查看最近 {value.base_history_days} 天设备数据</span></li>
               <li><Check size={16} /><span>查看压缩图片预览</span></li>
               <li><Check size={16} /><span>单设备最近 {value.base_export_days} 天手动导出</span></li>
               <li><Check size={16} /><span>不限设备数量和手动导出次数</span></li>

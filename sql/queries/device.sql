@@ -138,6 +138,10 @@ SELECT
     da.site_id,
     da.assigned_by,
     da.assigned_at,
+    w.name AS workspace_name,
+    p.name AS project_name,
+    s.name AS site_name,
+    COALESCE(u.name, sa.name, '') AS assigned_by_name,
     d.device_type AS topology_role,
     (
         SELECT count(*)::bigint
@@ -148,6 +152,11 @@ SELECT
     ) AS child_count
 FROM devices AS d
 LEFT JOIN device_assignments AS da ON da.device_id = d.id AND da.status = 'active'
+LEFT JOIN workspaces AS w ON w.id = da.workspace_id
+LEFT JOIN projects AS p ON p.id = da.project_id
+LEFT JOIN sites AS s ON s.id = da.site_id
+LEFT JOIN users AS u ON u.id = da.assigned_by AND da.assigned_by_type = 'user'
+LEFT JOIN system_admins AS sa ON sa.id = da.assigned_by AND da.assigned_by_type = 'system_admin'
 ORDER BY d.created_at DESC, d.id DESC;
 
 -- name: ListDevicesByWorkspace :many

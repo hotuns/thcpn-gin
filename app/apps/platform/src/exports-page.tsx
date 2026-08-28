@@ -474,7 +474,9 @@ function ExportSystemChooser({
   onSelect: (value: ExportSystem) => void;
 }) {
   return (
-    <div className="export-system-cards">
+    <section className="export-system-selector">
+      <div className="export-builder-heading"><span>1</span><div><h2>选择导出类型</h2><p>根据设备体系选择对应的导出方式</p></div></div>
+      <div className="export-system-cards">
       {(
         [
           {
@@ -510,7 +512,8 @@ function ExportSystemChooser({
           </button>
         );
       })}
-    </div>
+      </div>
+    </section>
   );
 }
 
@@ -559,23 +562,35 @@ function FormFooter({
   count,
   busy,
   onClose,
+  system,
+  start,
+  end,
+  content,
   label = "创建 ZIP 导出",
 }: {
   count: number;
   busy: boolean;
   onClose: () => void;
+  system: string;
+  start: string;
+  end: string;
+  content: string;
   label?: string;
 }) {
   return (
-    <div className="form-actions">
-      <span className="export-submit-summary">已选 {count} 项</span>
-      <Button type="button" variant="secondary" onClick={onClose}>
-        取消
-      </Button>
-      <Button type="submit" disabled={busy || count === 0}>
-        {busy ? "创建中…" : label}
-      </Button>
-    </div>
+    <aside className="export-builder-summary">
+      <div className="export-builder-heading"><span>3</span><div><h2>检查并创建</h2><p>任务创建后将在下方列表生成文件</p></div></div>
+      <dl>
+        <div><dt>导出类型</dt><dd>{system}</dd></div>
+        <div><dt>导出目标</dt><dd>{count ? `${count} 项` : "未选择"}</dd></div>
+        <div><dt>时间范围</dt><dd>{start.replace("T", " ")}<span>至</span>{end.replace("T", " ")}</dd></div>
+        <div><dt>导出内容</dt><dd>{content}</dd></div>
+      </dl>
+      <div className="export-builder-actions">
+        <Button type="button" variant="secondary" onClick={onClose}>取消</Button>
+        <Button type="submit" disabled={busy || count === 0}>{busy ? "创建中…" : label}</Button>
+      </div>
+    </aside>
   );
 }
 
@@ -624,7 +639,8 @@ function StandardExportForm({
           关闭
         </Button>
       </div>
-      <form onSubmit={submit}>
+      <form className="export-builder" onSubmit={submit}>
+        <div className="export-builder-main">
         <div className="export-picker-layout">
           <EntityPicker
             label="标准站"
@@ -670,7 +686,8 @@ function StandardExportForm({
           title="包含图片"
           description="同时打包设备图片与 image-index.csv"
         />
-        <FormFooter count={selected.length} busy={busy} onClose={onClose} />
+        </div>
+        <FormFooter count={selected.length} busy={busy} onClose={onClose} system="标准站导出" start={start} end={end} content={images ? "设备数据和图片" : "设备数据"} />
       </form>
     </Panel>
   );
@@ -744,7 +761,8 @@ function GroupExportForm({
           关闭
         </Button>
       </div>
-      <form onSubmit={submit}>
+      <form className="export-builder" onSubmit={submit}>
+        <div className="export-builder-main">
         <div className="export-group-layout">
           <EntityPicker
             label="组网站"
@@ -824,7 +842,8 @@ function GroupExportForm({
           title="包含图片"
           description="按节点目录整理图片与索引"
         />
-        <FormFooter count={effective.length} busy={busy} onClose={onClose} />
+        </div>
+        <FormFooter count={effective.length} busy={busy} onClose={onClose} system="组网站导出" start={start} end={end} content={images ? "设备数据和图片" : "设备数据"} />
       </form>
     </Panel>
   );
@@ -913,7 +932,8 @@ function CarbonExportForm({
           关闭
         </Button>
       </div>
-      <form onSubmit={submit}>
+      <form className="export-builder" onSubmit={submit}>
+        <div className="export-builder-main">
         <EntityPicker
           label="碳汇站"
           icon={<Sprout size={16} />}
@@ -1016,10 +1036,15 @@ function CarbonExportForm({
             />
           </div>
         </div>
+        </div>
         <FormFooter
           count={effectiveNodes.length * fields.length}
           busy={busy}
           onClose={onClose}
+          system="碳汇站导出"
+          start={start}
+          end={end}
+          content={[flux ? "通量数据" : "", raw ? "原始采样" : ""].filter(Boolean).join("、") || "未选择"}
         />
       </form>
     </Panel>

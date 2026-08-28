@@ -22,38 +22,57 @@ const (
 )
 
 type SamplingProfileUpdateInput struct {
-	DeviceID         uuid.UUID
-	Mode             string
-	DataMinutes      []int
-	ImageMinute      *int
-	ImageHours       []int
-	ExpectedConfigID int64
-	ActorUserID      uuid.UUID
+	DeviceID          uuid.UUID
+	Mode              string
+	DataMinutes       []int
+	DataHours         []int
+	UploadMinutes     []int
+	UploadHours       []int
+	ImageMinute       *int
+	ImageHours        []int
+	ImageUploadMinute *int
+	ImageUploadHours  []int
+	ExpectedConfigID  int64
+	ActorUserID       uuid.UUID
 }
 
 type SamplingProfileResponse struct {
-	DeviceID         uuid.UUID  `json:"device_id"`
-	Mode             string     `json:"mode"`
-	Advanced         bool       `json:"advanced"`
-	DataMinutes      []int      `json:"data_minutes"`
-	ImageMinute      *int       `json:"image_minute,omitempty"`
-	ImageHours       []int      `json:"image_hours"`
-	DataCron         string     `json:"data_cron"`
-	ImageCron        string     `json:"image_cron"`
-	Summary          string     `json:"summary"`
-	ExternalConfigID int64      `json:"external_config_id"`
-	UpdatedAt        *time.Time `json:"updated_at,omitempty"`
-	DispatchedAt     *time.Time `json:"dispatched_at,omitempty"`
-	CanEdit          bool       `json:"can_edit"`
+	DeviceID          uuid.UUID  `json:"device_id"`
+	Mode              string     `json:"mode"`
+	Advanced          bool       `json:"advanced"`
+	DataMinutes       []int      `json:"data_minutes"`
+	DataHours         []int      `json:"data_hours"`
+	UploadMinutes     []int      `json:"upload_minutes"`
+	UploadHours       []int      `json:"upload_hours"`
+	ImageMinute       *int       `json:"image_minute,omitempty"`
+	ImageHours        []int      `json:"image_hours"`
+	ImageUploadMinute *int       `json:"image_upload_minute,omitempty"`
+	ImageUploadHours  []int      `json:"image_upload_hours"`
+	DataCron          string     `json:"data_cron"`
+	UploadCron        string     `json:"upload_cron"`
+	ImageCron         string     `json:"image_cron"`
+	ImageUploadCron   string     `json:"image_upload_cron"`
+	Summary           string     `json:"summary"`
+	ExternalConfigID  int64      `json:"external_config_id"`
+	UpdatedAt         *time.Time `json:"updated_at,omitempty"`
+	DispatchedAt      *time.Time `json:"dispatched_at,omitempty"`
+	CanEdit           bool       `json:"can_edit"`
 }
 
 type samplingSchedule struct {
-	Mode        string
-	DataMinutes []int
-	ImageMinute int
-	ImageHours  []int
-	DataCron    string
-	ImageCron   string
+	Mode              string
+	DataMinutes       []int
+	DataHours         []int
+	UploadMinutes     []int
+	UploadHours       []int
+	ImageMinute       int
+	ImageHours        []int
+	ImageUploadMinute int
+	ImageUploadHours  []int
+	DataCron          string
+	UploadCron        string
+	ImageCron         string
+	ImageUploadCron   string
 }
 
 var samplingPresets = map[string]samplingSchedule{
@@ -63,6 +82,16 @@ var samplingPresets = map[string]samplingSchedule{
 }
 
 func (s *Service) GetSamplingProfile(ctx context.Context, deviceID uuid.UUID) (SamplingProfileResponse, error) {
+	if s.db == nil {
+		return SamplingProfileResponse{}, apperr.New(apperr.KindInternal, "database is not configured")
+	}
+	ref, err := s.queries.GetDeviceSourceRefByDevice(ctx, deviceID)
+	if err != nil {
+		return SamplingProfileResponse{}, mapNotFoundOrInternal(err, "device source ref not found")
+	}
+	if ref.AdapterCode == AdapterCarbonSink {
+		return s.getCarbonSamplingProfile(ctx, deviceID, ref)
+	}
 	detail, err := s.GetTHCPNDeviceConfig(ctx, deviceID)
 	if err != nil {
 		return SamplingProfileResponse{}, err
@@ -71,8 +100,18 @@ func (s *Service) GetSamplingProfile(ctx context.Context, deviceID uuid.UUID) (S
 }
 
 func (s *Service) UpdateSamplingProfile(ctx context.Context, input SamplingProfileUpdateInput) (SamplingProfileResponse, error) {
+	if s.db == nil {
+		return SamplingProfileResponse{}, apperr.New(apperr.KindInternal, "database is not configured")
+	}
 	if input.ExpectedConfigID <= 0 {
 		return SamplingProfileResponse{}, apperr.New(apperr.KindInvalidArgument, "expected_config_id is required")
+	}
+	ref, err := s.queries.GetDeviceSourceRefByDevice(ctx, input.DeviceID)
+	if err != nil {
+		return SamplingProfileResponse{}, mapNotFoundOrInternal(err, "device source ref not found")
+	}
+	if ref.AdapterCode == AdapterCarbonSink {
+		return s.updateCarbonSamplingProfile(ctx, input, ref)
 	}
 	detail, err := s.GetTHCPNDeviceConfig(ctx, input.DeviceID)
 	if err != nil {
@@ -112,7 +151,22 @@ func samplingScheduleForInput(input SamplingProfileUpdateInput) (samplingSchedul
 	if input.ImageMinute == nil {
 		return samplingSchedule{}, apperr.New(apperr.KindInvalidArgument, "image_minute is required for custom mode")
 	}
+	if input.ImageUploadMinute == nil {
+		return samplingSchedule{}, apperr.New(apperr.KindInvalidArgument, "image_upload_minute is required for custom mode")
+	}
 	dataMinutes, err := normalizeScheduleValues(input.DataMinutes, 0, 59, "data_minutes")
+	if err != nil {
+		return samplingSchedule{}, err
+	}
+	dataHours, err := normalizeScheduleValues(input.DataHours, 0, 23, "data_hours")
+	if err != nil {
+		return samplingSchedule{}, err
+	}
+	uploadMinutes, err := normalizeScheduleValues(input.UploadMinutes, 0, 59, "upload_minutes")
+	if err != nil {
+		return samplingSchedule{}, err
+	}
+	uploadHours, err := normalizeScheduleValues(input.UploadHours, 0, 23, "upload_hours")
 	if err != nil {
 		return samplingSchedule{}, err
 	}
@@ -120,16 +174,33 @@ func samplingScheduleForInput(input SamplingProfileUpdateInput) (samplingSchedul
 	if err != nil {
 		return samplingSchedule{}, err
 	}
+	imageUploadHours, err := normalizeScheduleValues(input.ImageUploadHours, 0, 23, "image_upload_hours")
+	if err != nil {
+		return samplingSchedule{}, err
+	}
 	if *input.ImageMinute < 0 || *input.ImageMinute > 59 {
 		return samplingSchedule{}, apperr.New(apperr.KindInvalidArgument, "image_minute must be between 0 and 59")
 	}
-	return newSamplingSchedule(SamplingProfileCustom, dataMinutes, *input.ImageMinute, imageHours), nil
+	if *input.ImageUploadMinute < 0 || *input.ImageUploadMinute > 59 {
+		return samplingSchedule{}, apperr.New(apperr.KindInvalidArgument, "image_upload_minute must be between 0 and 59")
+	}
+	return newDetailedSamplingSchedule(SamplingProfileCustom, dataMinutes, dataHours, uploadMinutes, uploadHours, *input.ImageMinute, imageHours, *input.ImageUploadMinute, imageUploadHours), nil
 }
 
 func newSamplingSchedule(mode string, dataMinutes []int, imageMinute int, imageHours []int) samplingSchedule {
-	return samplingSchedule{Mode: mode, DataMinutes: append([]int(nil), dataMinutes...), ImageMinute: imageMinute,
-		ImageHours: append([]int(nil), imageHours...), DataCron: joinInts(dataMinutes) + " *",
-		ImageCron: strconv.Itoa(imageMinute) + " " + joinInts(imageHours)}
+	allHours := make([]int, 24)
+	for hour := range allHours {
+		allHours[hour] = hour
+	}
+	return newDetailedSamplingSchedule(mode, dataMinutes, allHours, dataMinutes, allHours, imageMinute, imageHours, imageMinute, imageHours)
+}
+
+func newDetailedSamplingSchedule(mode string, dataMinutes, dataHours, uploadMinutes, uploadHours []int, imageMinute int, imageHours []int, imageUploadMinute int, imageUploadHours []int) samplingSchedule {
+	return samplingSchedule{Mode: mode, DataMinutes: append([]int(nil), dataMinutes...), DataHours: append([]int(nil), dataHours...),
+		UploadMinutes: append([]int(nil), uploadMinutes...), UploadHours: append([]int(nil), uploadHours...), ImageMinute: imageMinute,
+		ImageHours: append([]int(nil), imageHours...), ImageUploadMinute: imageUploadMinute, ImageUploadHours: append([]int(nil), imageUploadHours...),
+		DataCron: scheduleCron(dataMinutes, dataHours), UploadCron: scheduleCron(uploadMinutes, uploadHours),
+		ImageCron: strconv.Itoa(imageMinute) + " " + joinInts(imageHours), ImageUploadCron: strconv.Itoa(imageUploadMinute) + " " + joinInts(imageUploadHours)}
 }
 
 func mergeSamplingSchedule(raw json.RawMessage, schedule samplingSchedule) (json.RawMessage, error) {
@@ -140,9 +211,9 @@ func mergeSamplingSchedule(raw json.RawMessage, schedule samplingSchedule) (json
 		}
 	}
 	control["data_capture_invl"] = schedule.DataCron
-	control["data_upload_invl"] = schedule.DataCron
+	control["data_upload_invl"] = schedule.UploadCron
 	control["img_capture_invl"] = schedule.ImageCron
-	control["img_upload_invl"] = schedule.ImageCron
+	control["img_upload_invl"] = schedule.ImageUploadCron
 	encoded, err := json.Marshal(control)
 	if err != nil {
 		return nil, apperr.Wrap(apperr.KindInternal, "encode sampling profile", err)
@@ -152,7 +223,7 @@ func mergeSamplingSchedule(raw json.RawMessage, schedule samplingSchedule) (json
 
 func samplingProfileFromConfig(deviceID uuid.UUID, config THCPNDeviceConfig) SamplingProfileResponse {
 	response := SamplingProfileResponse{DeviceID: deviceID, Mode: SamplingProfileCustom, Advanced: true,
-		DataMinutes: []int{}, ImageHours: []int{}, ExternalConfigID: config.ID, UpdatedAt: config.UpdatedAt}
+		DataMinutes: []int{}, DataHours: []int{}, UploadMinutes: []int{}, UploadHours: []int{}, ImageHours: []int{}, ImageUploadHours: []int{}, ExternalConfigID: config.ID, UpdatedAt: config.UpdatedAt}
 	var control map[string]any
 	if json.Unmarshal(config.ControlJSON, &control) != nil {
 		response.Summary = "当前为管理员高级自定义计划"
@@ -162,31 +233,47 @@ func samplingProfileFromConfig(deviceID uuid.UUID, config THCPNDeviceConfig) Sam
 	dataUpload, dataUploadOK := control["data_upload_invl"].(string)
 	imageCapture, imageOK := control["img_capture_invl"].(string)
 	imageUpload, imageUploadOK := control["img_upload_invl"].(string)
-	if !dataOK || !dataUploadOK || !imageOK || !imageUploadOK || dataCapture != dataUpload || imageCapture != imageUpload {
+	if !dataOK || !dataUploadOK || !imageOK || !imageUploadOK {
 		response.Summary = "当前为管理员高级自定义计划"
 		return response
 	}
 	dataMinutes, dataHours, ok := parseTwoFieldSchedule(dataCapture)
-	if !ok || len(dataHours) != 1 || dataHours[0] != -1 {
+	if !ok {
 		response.Summary = "当前为管理员高级自定义计划"
 		return response
 	}
+	uploadMinutes, uploadHours, ok := parseTwoFieldSchedule(dataUpload)
+	if !ok {
+		response.Summary = "当前为管理员高级自定义计划"
+		return response
+	}
+	dataHours = expandWildcardHours(dataHours)
+	uploadHours = expandWildcardHours(uploadHours)
 	imageMinutes, imageHours, ok := parseTwoFieldSchedule(imageCapture)
 	if !ok || len(imageMinutes) != 1 || len(imageHours) == 1 && imageHours[0] == -1 {
 		response.Summary = "当前为管理员高级自定义计划"
 		return response
 	}
-	schedule := newSamplingSchedule(SamplingProfileCustom, dataMinutes, imageMinutes[0], imageHours)
+	imageUploadMinutes, imageUploadHours, ok := parseTwoFieldSchedule(imageUpload)
+	if !ok || len(imageUploadMinutes) != 1 || len(imageUploadHours) == 1 && imageUploadHours[0] == -1 {
+		response.Summary = "当前为管理员高级自定义计划"
+		return response
+	}
+	schedule := newDetailedSamplingSchedule(SamplingProfileCustom, dataMinutes, dataHours, uploadMinutes, uploadHours, imageMinutes[0], imageHours, imageUploadMinutes[0], imageUploadHours)
 	for mode, preset := range samplingPresets {
-		if schedule.DataCron == preset.DataCron && schedule.ImageCron == preset.ImageCron {
+		if schedule.DataCron == preset.DataCron && schedule.UploadCron == preset.UploadCron && schedule.ImageCron == preset.ImageCron && schedule.ImageUploadCron == preset.ImageUploadCron {
 			schedule.Mode = mode
 			break
 		}
 	}
 	minute := schedule.ImageMinute
 	response.Mode, response.Advanced = schedule.Mode, false
-	response.DataMinutes, response.ImageMinute, response.ImageHours = schedule.DataMinutes, &minute, schedule.ImageHours
-	response.DataCron, response.ImageCron = schedule.DataCron, schedule.ImageCron
+	response.DataMinutes, response.DataHours = schedule.DataMinutes, schedule.DataHours
+	response.UploadMinutes, response.UploadHours = schedule.UploadMinutes, schedule.UploadHours
+	response.ImageMinute, response.ImageHours = &minute, schedule.ImageHours
+	imageUploadMinute := schedule.ImageUploadMinute
+	response.ImageUploadMinute, response.ImageUploadHours = &imageUploadMinute, schedule.ImageUploadHours
+	response.DataCron, response.UploadCron, response.ImageCron, response.ImageUploadCron = schedule.DataCron, schedule.UploadCron, schedule.ImageCron, schedule.ImageUploadCron
 	response.Summary = samplingScheduleSummary(schedule)
 	return response
 }
@@ -249,7 +336,34 @@ func samplingScheduleSummary(schedule samplingSchedule) string {
 	for _, hour := range schedule.ImageHours {
 		images = append(images, fmt.Sprintf("%02d:%02d", hour, schedule.ImageMinute))
 	}
-	return fmt.Sprintf("每小时 %s 分采集数据；每天 %s 采集图片", strings.Join(data, "、"), strings.Join(images, "、"))
+	upload := make([]string, 0, len(schedule.UploadMinutes))
+	for _, minute := range schedule.UploadMinutes {
+		upload = append(upload, fmt.Sprintf("%02d", minute))
+	}
+	imageUploads := make([]string, 0, len(schedule.ImageUploadHours))
+	for _, hour := range schedule.ImageUploadHours {
+		imageUploads = append(imageUploads, fmt.Sprintf("%02d:%02d", hour, schedule.ImageUploadMinute))
+	}
+	return fmt.Sprintf("数据采集 %s；数据上传 %s；每天 %s 采集图片；每天 %s 上传图片", strings.Join(data, "、"), strings.Join(upload, "、"), strings.Join(images, "、"), strings.Join(imageUploads, "、"))
+}
+
+func expandWildcardHours(hours []int) []int {
+	if len(hours) != 1 || hours[0] != -1 {
+		return hours
+	}
+	result := make([]int, 24)
+	for hour := range result {
+		result[hour] = hour
+	}
+	return result
+}
+
+func scheduleCron(minutes, hours []int) string {
+	hourPart := joinInts(hours)
+	if len(hours) == 24 {
+		hourPart = "*"
+	}
+	return joinInts(minutes) + " " + hourPart
 }
 
 func joinInts(values []int) string {

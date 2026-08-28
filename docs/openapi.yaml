@@ -609,6 +609,46 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/auth/password/reset/send:
+    post:
+      tags: [Auth]
+      operationId: sendPasswordResetCode
+      summary: Send a password reset SMS code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendSMSRequest"
+      responses:
+        "200":
+          description: Password reset code sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendCodeResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/auth/password/reset:
+    post:
+      tags: [Auth]
+      operationId: resetPassword
+      summary: Reset a password with an SMS code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPasswordRequest"
+      responses:
+        "200":
+          description: Password reset and existing sessions revoked.
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /api/v1/auth/refresh:
     post:
       tags:
@@ -1934,6 +1974,16 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/DeviceTaxonomyTerm" } } } }
       responses:
         "200": { description: Saved term., content: { application/json: { schema: { $ref: "#/components/schemas/DeviceTaxonomyTerm" } } } }
+  /api/v1/admin/metadata/device-taxonomy/{term_id}:
+    delete:
+      tags: [Admin]
+      operationId: adminDeleteDeviceTaxonomy
+      summary: Delete an unused classification term
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: term_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+      responses:
+        "204": { description: Classification term deleted. }
+        "409": { $ref: "#/components/responses/Conflict" }
   /api/v1/admin/device-map:
     get:
       tags: [Admin]
@@ -6362,6 +6412,12 @@ components:
           type: integer
           minimum: 1
           description: Minimum seconds before another code can be requested for the same phone.
+    SendSMSRequest:
+      type: object
+      required: [phone]
+      properties:
+        phone:
+          $ref: "#/components/schemas/Phone"
     SendCodeResponse:
       type: object
       required:
@@ -6529,10 +6585,24 @@ components:
           format: password
     ChangePasswordRequest:
       type: object
-      required: [current_password, new_password]
+      required: [new_password]
       properties:
-        current_password: { type: string, format: password }
+        current_password: { type: string, format: password, description: Required only when the user already has a password. }
         new_password: { type: string, format: password, minLength: 8, maxLength: 128 }
+    ResetPasswordRequest:
+      type: object
+      required: [phone, code, new_password]
+      properties:
+        phone:
+          $ref: "#/components/schemas/Phone"
+        code:
+          type: string
+          pattern: ^[0-9]{6}$
+        new_password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
     AdminReasonRequest:
       type: object
       required: [reason]
@@ -7714,6 +7784,7 @@ components:
         status: { type: string, enum: [active, inactive] }
         sort_order: { type: integer }
         system_defined: { type: boolean }
+        icon: { type: string }
     DeviceTaxonomyListResponse:
       type: object
       required: [items]
@@ -9050,7 +9121,7 @@ components:
       enum: [standard, low_power, high_frequency, custom]
     SamplingProfileResponse:
       type: object
-      required: [device_id, mode, advanced, data_minutes, image_hours, data_cron, image_cron, summary, external_config_id, can_edit]
+      required: [device_id, mode, advanced, data_minutes, data_hours, upload_minutes, upload_hours, image_hours, image_upload_hours, data_cron, upload_cron, image_cron, image_upload_cron, summary, external_config_id, can_edit]
       properties:
         device_id: { $ref: "#/components/schemas/UUID" }
         mode: { $ref: "#/components/schemas/SamplingProfileMode" }
@@ -9058,12 +9129,27 @@ components:
         data_minutes:
           type: array
           items: { type: integer, minimum: 0, maximum: 59 }
+        data_hours:
+          type: array
+          items: { type: integer, minimum: 0, maximum: 23 }
+        upload_minutes:
+          type: array
+          items: { type: integer, minimum: 0, maximum: 59 }
+        upload_hours:
+          type: array
+          items: { type: integer, minimum: 0, maximum: 23 }
         image_minute: { type: integer, minimum: 0, maximum: 59 }
         image_hours:
           type: array
           items: { type: integer, minimum: 0, maximum: 23 }
+        image_upload_minute: { type: integer, minimum: 0, maximum: 59 }
+        image_upload_hours:
+          type: array
+          items: { type: integer, minimum: 0, maximum: 23 }
         data_cron: { type: string }
+        upload_cron: { type: string }
         image_cron: { type: string }
+        image_upload_cron: { type: string }
         summary: { type: string }
         external_config_id: { type: integer, format: int64 }
         updated_at: { $ref: "#/components/schemas/Timestamp" }
@@ -9078,8 +9164,25 @@ components:
           type: array
           minItems: 1
           items: { type: integer, minimum: 0, maximum: 59 }
+        data_hours:
+          type: array
+          minItems: 1
+          items: { type: integer, minimum: 0, maximum: 23 }
+        upload_minutes:
+          type: array
+          minItems: 1
+          items: { type: integer, minimum: 0, maximum: 59 }
+        upload_hours:
+          type: array
+          minItems: 1
+          items: { type: integer, minimum: 0, maximum: 23 }
         image_minute: { type: integer, minimum: 0, maximum: 59 }
         image_hours:
+          type: array
+          minItems: 1
+          items: { type: integer, minimum: 0, maximum: 23 }
+        image_upload_minute: { type: integer, minimum: 0, maximum: 59 }
+        image_upload_hours:
           type: array
           minItems: 1
           items: { type: integer, minimum: 0, maximum: 23 }

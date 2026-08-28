@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/url"
 	"path"
 	"path/filepath"
 	"sort"
@@ -57,6 +59,7 @@ type Processor struct {
 	dataSources *datasource.Service
 	runtime     Runtime
 	store       objectstore.Store
+	httpClient  *http.Client
 	cfg         config.ExportConfig
 	logger      *slog.Logger
 	telemetry   *telemetrysvc.Service
@@ -152,6 +155,7 @@ func NewProcessor(db *pgxpool.Pool, dataSources *datasource.Service, runtime Run
 		dataSources: dataSources,
 		runtime:     runtime,
 		store:       store,
+		httpClient:  &http.Client{Timeout: 2 * time.Minute},
 		cfg:         cfg,
 		logger:      logger,
 		telemetry:   telemetryService,
@@ -536,7 +540,7 @@ func (p *Processor) renderDeviceBatchZIP(ctx context.Context, job Job, cfg batch
 				packed := make([]mediaExportItem, 0, len(items))
 				used := map[string]int{}
 				for _, item := range items {
-					result, getErr := p.store.Get(ctx, item.ObjectKey)
+					result, getErr := fetchMediaObject(ctx, p.store, p.httpClient, item.ObjectKey)
 					if getErr != nil || result.Body == nil {
 						detail := "对象存储读取失败"
 						if getErr != nil {
@@ -772,7 +776,7 @@ func (p *Processor) writeMediaItems(ctx context.Context, zw *zip.Writer, items [
 
 		archivePath := mediaArchivePath(items[i], usedPaths)
 		items[i].ArchivePath = archivePath
-		result, err := p.store.Get(ctx, items[i].ObjectKey)
+		result, err := fetchMediaObject(ctx, p.store, p.httpClient, items[i].ObjectKey)
 		if err != nil {
 			return nil, err
 		}
@@ -789,6 +793,30 @@ func (p *Processor) writeMediaItems(ctx context.Context, zw *zip.Writer, items [
 		existing = append(existing, items[i])
 	}
 	return existing, nil
+}
+
+func fetchMediaObject(ctx context.Context, store objectstore.Store, client *http.Client, objectKey string) (objectstore.GetResult, error) {
+	raw := strings.TrimSpace(objectKey)
+	parsed, err := url.Parse(raw)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return store.Get(ctx, raw)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
+	if err != nil {
+		return objectstore.GetResult{}, err
+	}
+	if client == nil {
+		client = http.DefaultClient
+	}
+	response, err := client.Do(req)
+	if err != nil {
+		return objectstore.GetResult{}, err
+	}
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		_ = response.Body.Close()
+		return objectstore.GetResult{}, fmt.Errorf("download media URL: HTTP status %s", response.Status)
+	}
+	return objectstore.GetResult{Body: response.Body, ContentType: response.Header.Get("Content-Type")}, nil
 }
 
 func (p *Processor) queryMedia(ctx context.Context, resourceType string, resourceID uuid.UUID, start time.Time, end time.Time, limit int, mediaType string) ([]mediaExportItem, error) {
@@ -1176,7 +1204,11 @@ func renderWideTelemetryCSV(series []telemetrySeries) ([]byte, []telemetryMetada
 	writer := csv.NewWriter(&buf)
 	header := []string{"ts"}
 	for _, item := range columns {
-		header = append(header, item.Code)
+		name := strings.TrimSpace(item.Name)
+		if name == "" {
+			name = item.Code
+		}
+		header = append(header, name)
 	}
 	if err := writer.Write(header); err != nil {
 		return nil, nil, 0, apperr.Wrap(apperr.KindInternal, "write wide telemetry header", err)

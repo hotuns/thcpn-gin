@@ -82,6 +82,13 @@ type SMSLoginInput struct {
 	Request RequestInfo
 }
 
+type SMSRegisterInput struct {
+	Phone   string
+	Code    string
+	Name    string
+	Request RequestInfo
+}
+
 type PasswordRegisterInput struct {
 	Name     string
 	Phone    string
@@ -117,6 +124,12 @@ type ChangePasswordInput struct {
 	UserID          uuid.UUID
 	CurrentPassword string
 	NewPassword     string
+}
+
+type ResetPasswordInput struct {
+	Phone       string
+	Code        string
+	NewPassword string
 }
 
 type ListSessionsInput struct {
@@ -190,6 +203,31 @@ func (s *Service) SendSMS(ctx context.Context, input SendSMSInput) (SendSMSResul
 		ExpiresIn:       s.smsCfg.CodeTTLSeconds,
 		CooldownSeconds: s.smsCfg.CooldownSeconds,
 	}, nil
+}
+
+func (s *Service) SendPasswordResetSMS(ctx context.Context, input SendSMSInput) (SendSMSResult, error) {
+	phone, err := NormalizePhone(input.Phone)
+	if err != nil {
+		return SendSMSResult{}, err
+	}
+	if _, err := s.queries.FindActiveUserByPhoneForAuth(ctx, &phone); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return SendSMSResult{}, apperr.New(apperr.KindNotFound, "手机号未注册")
+		}
+		return SendSMSResult{}, apperr.Wrap(apperr.KindInternal, "find password reset user", err)
+	}
+	if s.codeStore == nil || s.sender == nil {
+		return SendSMSResult{}, apperr.New(apperr.KindInternal, "sms verification is not configured")
+	}
+	code, err := s.codeStore.Issue(ctx, phone)
+	if err != nil {
+		return SendSMSResult{}, err
+	}
+	if err := s.sender.SendVerificationCode(ctx, smsx.SendRequest{Phone: phone, Code: code, TemplateCode: "100003"}); err != nil {
+		_ = s.codeStore.ClearIssue(ctx, phone)
+		return SendSMSResult{}, err
+	}
+	return SendSMSResult{Sent: true, ExpiresIn: s.smsCfg.CodeTTLSeconds, CooldownSeconds: s.smsCfg.CooldownSeconds}, nil
 }
 
 func (s *Service) SendEmailVerification(ctx context.Context, input SendEmailInput) (SendEmailResult, error) {
@@ -320,8 +358,42 @@ func (s *Service) LoginWithSMS(ctx context.Context, input SMSLoginInput) (LoginR
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return LoginResult{}, apperr.Wrap(apperr.KindInternal, "find user by phone", err)
 	}
+	return LoginResult{}, apperr.New(apperr.KindNotFound, "手机号未注册，请先注册")
+}
 
-	userModel, err = s.createSMSUser(ctx, input.Name, phone)
+func (s *Service) RegisterWithSMS(ctx context.Context, input SMSRegisterInput) (LoginResult, error) {
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		return LoginResult{}, apperr.New(apperr.KindInvalidArgument, "name is required")
+	}
+	phone, err := NormalizePhone(input.Phone)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	code := strings.TrimSpace(input.Code)
+	if code == "" {
+		return LoginResult{}, apperr.New(apperr.KindInvalidArgument, "sms code is required")
+	}
+	if s.codeStore == nil {
+		return LoginResult{}, apperr.New(apperr.KindInternal, "sms code store is not configured")
+	}
+	if verifier, ok := s.sender.(smsx.Verifier); ok {
+		if err := verifier.VerifyVerificationCode(ctx, smsx.VerifyRequest{Phone: phone, Code: code}); err != nil {
+			return LoginResult{}, err
+		}
+		_ = s.codeStore.ClearIssue(ctx, phone)
+	} else if err := s.codeStore.Verify(ctx, phone, code); err != nil {
+		return LoginResult{}, err
+	}
+
+	phonePtr := &phone
+	if _, err := s.queries.FindActiveUserByPhoneForAuth(ctx, phonePtr); err == nil {
+		return LoginResult{}, apperr.New(apperr.KindConflict, "该手机号已注册，请直接登录")
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return LoginResult{}, apperr.Wrap(apperr.KindInternal, "find user by phone", err)
+	}
+
+	userModel, err := s.createSMSUser(ctx, name, phone)
 	if err != nil {
 		return LoginResult{}, err
 	}
@@ -410,21 +482,21 @@ func (s *Service) ChangePassword(ctx context.Context, input ChangePasswordInput)
 	if input.UserID == uuid.Nil {
 		return apperr.New(apperr.KindInvalidArgument, "user id is required")
 	}
-	if strings.TrimSpace(input.CurrentPassword) == "" {
-		return apperr.New(apperr.KindInvalidArgument, "current password is required")
-	}
 	if err := ValidatePassword(input.NewPassword, s.authCfg.Password); err != nil {
 		return err
 	}
 	credential, err := s.queries.GetUserCredential(ctx, input.UserID)
+	var currentCredential *sqlc.UserCredential
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return apperr.New(apperr.KindUnauthorized, "current password is incorrect")
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return apperr.Wrap(apperr.KindInternal, "get user credential", err)
 		}
-		return apperr.Wrap(apperr.KindInternal, "get user credential", err)
+	} else {
+		currentCredential = &credential
 	}
-	if !CheckPassword(credential.PasswordHash, input.CurrentPassword) {
-		return apperr.New(apperr.KindUnauthorized, "current password is incorrect")
+	firstPassword, err := validatePasswordChangeCredential(currentCredential, input.CurrentPassword)
+	if err != nil {
+		return err
 	}
 	passwordHash, err := HashPassword(input.NewPassword)
 	if err != nil {
@@ -435,7 +507,11 @@ func (s *Service) ChangePassword(ctx context.Context, input ChangePasswordInput)
 		return apperr.Wrap(apperr.KindInternal, "begin password change", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, `UPDATE user_credentials SET password_hash = $2, password_updated_at = now(), failed_attempts = 0, locked_until = NULL, updated_at = now(), must_change_password = false WHERE user_id = $1`, input.UserID, passwordHash); err != nil {
+	if firstPassword {
+		if _, err := s.queries.WithTx(tx).CreateUserCredential(ctx, sqlc.CreateUserCredentialParams{UserID: input.UserID, PasswordHash: passwordHash}); err != nil {
+			return mapCredentialWriteError(err, "create user credential")
+		}
+	} else if _, err := tx.Exec(ctx, `UPDATE user_credentials SET password_hash = $2, password_updated_at = now(), failed_attempts = 0, locked_until = NULL, updated_at = now(), must_change_password = false WHERE user_id = $1`, input.UserID, passwordHash); err != nil {
 		return apperr.Wrap(apperr.KindInternal, "update password", err)
 	}
 	if _, err := tx.Exec(ctx, `UPDATE users SET auth_version = auth_version + 1, updated_at = now() WHERE id = $1`, input.UserID); err != nil {
@@ -446,6 +522,73 @@ func (s *Service) ChangePassword(ctx context.Context, input ChangePasswordInput)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return apperr.Wrap(apperr.KindInternal, "commit password change", err)
+	}
+	return nil
+}
+
+func validatePasswordChangeCredential(credential *sqlc.UserCredential, currentPassword string) (bool, error) {
+	if credential == nil {
+		return true, nil
+	}
+	if strings.TrimSpace(currentPassword) == "" {
+		return false, apperr.New(apperr.KindInvalidArgument, "current password is required")
+	}
+	if !CheckPassword(credential.PasswordHash, currentPassword) {
+		return false, apperr.New(apperr.KindUnauthorized, "current password is incorrect")
+	}
+	return false, nil
+}
+
+func (s *Service) ResetPassword(ctx context.Context, input ResetPasswordInput) error {
+	phone, err := NormalizePhone(input.Phone)
+	if err != nil {
+		return err
+	}
+	code := strings.TrimSpace(input.Code)
+	if code == "" {
+		return apperr.New(apperr.KindInvalidArgument, "sms code is required")
+	}
+	if err := ValidatePassword(input.NewPassword, s.authCfg.Password); err != nil {
+		return err
+	}
+	if s.codeStore == nil {
+		return apperr.New(apperr.KindInternal, "sms code store is not configured")
+	}
+	if verifier, ok := s.sender.(smsx.Verifier); ok {
+		if err := verifier.VerifyVerificationCode(ctx, smsx.VerifyRequest{Phone: phone, Code: code}); err != nil {
+			return err
+		}
+		_ = s.codeStore.ClearIssue(ctx, phone)
+	} else if err := s.codeStore.Verify(ctx, phone, code); err != nil {
+		return err
+	}
+	userModel, err := s.queries.FindActiveUserByPhoneForAuth(ctx, &phone)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apperr.New(apperr.KindNotFound, "手机号未注册")
+		}
+		return apperr.Wrap(apperr.KindInternal, "find password reset user", err)
+	}
+	passwordHash, err := HashPassword(input.NewPassword)
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "hash password", err)
+	}
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "begin password reset", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `INSERT INTO user_credentials (user_id, password_hash) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET password_hash = EXCLUDED.password_hash, password_updated_at = now(), failed_attempts = 0, locked_until = NULL, updated_at = now(), must_change_password = false`, userModel.ID, passwordHash); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "reset password", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE users SET auth_version = auth_version + 1, updated_at = now() WHERE id = $1`, userModel.ID); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "invalidate user tokens", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE auth_refresh_sessions SET revoked_at = now(), updated_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, userModel.ID); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "revoke user sessions", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "commit password reset", err)
 	}
 	return nil
 }

@@ -20,6 +20,10 @@ type loginRequest struct {
 type refreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
+type changePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
 
 func (h *Handler) Login(c *gin.Context) {
 	var req loginRequest
@@ -64,6 +68,24 @@ func (h *Handler) Me(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"admin": Admin{ID: actor.UserID.String(), Name: actor.Name, Email: value(actor.Email), Status: actor.Status}})
+}
+
+func (h *Handler) ChangePassword(c *gin.Context) {
+	actor, ok := ActorFromContext(c)
+	if !ok {
+		httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "missing administrator session"))
+		return
+	}
+	var req changePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	if err := h.service.ChangePassword(c.Request.Context(), actor.UserID, req.CurrentPassword, req.NewPassword); err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"signed_out": true})
 }
 
 func value(value *string) string {

@@ -12,6 +12,7 @@ import (
 
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/auth"
+	"thcpn-gin/internal/config"
 )
 
 type Admin struct {
@@ -48,10 +49,46 @@ type Service struct {
 	refreshTTL   time.Duration
 	maxAttempts  int
 	lockDuration time.Duration
+	passwordCfg  config.PasswordConfig
 }
 
-func NewService(db *pgxpool.Pool, tokens *auth.TokenManager, accessTTL, refreshTTL time.Duration) *Service {
-	return &Service{db: db, tokens: tokens, accessTTL: accessTTL, refreshTTL: refreshTTL, maxAttempts: 5, lockDuration: 15 * time.Minute}
+func NewService(db *pgxpool.Pool, tokens *auth.TokenManager, accessTTL, refreshTTL time.Duration, passwordCfg config.PasswordConfig) *Service {
+	return &Service{db: db, tokens: tokens, accessTTL: accessTTL, refreshTTL: refreshTTL, maxAttempts: 5, lockDuration: 15 * time.Minute, passwordCfg: passwordCfg}
+}
+
+func (s *Service) ChangePassword(ctx context.Context, adminID uuid.UUID, currentPassword, newPassword string) error {
+	if strings.TrimSpace(currentPassword) == "" {
+		return apperr.New(apperr.KindInvalidArgument, "current password is required")
+	}
+	if err := auth.ValidatePassword(newPassword, s.passwordCfg); err != nil {
+		return err
+	}
+	var passwordHash string
+	if err := s.db.QueryRow(ctx, `SELECT password_hash FROM system_admins WHERE id = $1`, adminID).Scan(&passwordHash); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "get administrator password", err)
+	}
+	if !auth.CheckPassword(passwordHash, currentPassword) {
+		return apperr.New(apperr.KindUnauthorized, "current password is incorrect")
+	}
+	newHash, err := auth.HashPassword(newPassword)
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "hash administrator password", err)
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "begin administrator password change", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `UPDATE system_admins SET password_hash=$2,failed_attempts=0,locked_until=NULL,updated_at=now() WHERE id=$1`, adminID, newHash); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "change administrator password", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE system_admin_refresh_sessions SET revoked_at=COALESCE(revoked_at,now()),updated_at=now() WHERE admin_id=$1 AND revoked_at IS NULL`, adminID); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "revoke administrator sessions", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "commit administrator password change", err)
+	}
+	return nil
 }
 
 func (s *Service) Login(ctx context.Context, input LoginInput) (LoginResult, error) {
