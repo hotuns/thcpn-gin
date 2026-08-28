@@ -65,7 +65,7 @@ export function DeviceMapPage() {
             <div className="device-map-console-head">
               <div className="device-map-title-mark"><Satellite size={15} /></div>
               <div>
-                <span>{current?.name ?? "当前工作区"}</span>
+                <span>{current?.name ?? "当前组织"}</span>
                 <h1>设备地图</h1>
               </div>
               <button type="button" className="device-map-console-collapse" aria-expanded="true" aria-label="收起地图筛选" title="收起地图筛选" onClick={() => setConsoleCollapsed(true)}>

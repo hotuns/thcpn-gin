@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, CheckCheck, Megaphone } from "lucide-react";
+import { ArrowLeft, Bell, CheckCheck, Megaphone } from "lucide-react";
 import { api, formatApiError, type JsonRecord } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, PageHeader, Panel, StateView } from "@thcpn/ui";
@@ -12,6 +13,7 @@ const time = (input: unknown) => input ? new Date(String(input)).toLocaleString(
 const tone = (level: unknown) => level === "error" ? "danger" : level === "warning" ? "warning" : level === "success" ? "success" : "info";
 
 export function NotificationsPage() {
+  const navigate = useNavigate();
   const { currentId, current } = useWorkspace();
   const client = useQueryClient();
   const [tab, setTab] = useState<"notifications" | "announcements">("notifications");
@@ -23,11 +25,11 @@ export function NotificationsPage() {
   const refreshNotifications = async () => { await Promise.all([client.invalidateQueries({ queryKey: notificationKey }), refreshSummary()]); };
   const refreshAnnouncements = async () => { await Promise.all([client.invalidateQueries({ queryKey: announcementKey }), refreshSummary()]); };
 
-  if (!currentId) return <Panel><StateView type="empty" title="请选择工作区" description="选择工作区后可查看与当前工作相关的提醒和公告。" /></Panel>;
+  if (!currentId) return <Panel><StateView type="empty" title="请选择组织" description="选择组织后可查看与当前工作相关的提醒和公告。" /></Panel>;
   const query = tab === "notifications" ? notifications : announcements;
   const rows = items(query.data);
   return <>
-    <PageHeader eyebrow="Message center" title="通知中心" description={`${current?.name ?? "当前工作区"}的业务提醒与平台公告。`} />
+    <PageHeader eyebrow="Message center" title="通知中心" description={`${current?.name ?? "当前组织"}的业务提醒与平台公告。`} actions={<Button variant="secondary" onClick={() => navigate("/dashboard")}><ArrowLeft size={14} />返回总览</Button>} />
     <div className="notification-page">
       <div className="notification-tabs" role="tablist">
         <button className={tab === "notifications" ? "active" : ""} onClick={() => setTab("notifications")}><Bell size={17} />提醒{unread(notifications.data) > 0 && <span>{unread(notifications.data)}</span>}</button>
@@ -42,7 +44,7 @@ export function NotificationsPage() {
             return <article key={value(item.id)} className={isUnread ? "is-unread" : ""}>
               <div className={`notification-icon ${tone(item.level)}`}>{isAnnouncement ? <Megaphone size={18} /> : <Bell size={18} />}</div>
               <div className="notification-copy">
-                <div className="notification-title"><strong>{value(item.title, "未命名消息")}</strong>{isUnread && <i />}{isAnnouncement && <Badge tone="neutral">{item.audience_type === "workspace" ? "工作区公告" : "平台公告"}</Badge>}</div>
+                <div className="notification-title"><strong>{value(item.title, "未命名消息")}</strong>{isUnread && <i />}{isAnnouncement && <Badge tone="neutral">{item.audience_type === "workspace" ? "组织公告" : "平台公告"}</Badge>}</div>
                 <p>{value(item.content)}</p>
                 <span>{time(item.published_at ?? item.created_at)}</span>
               </div>

@@ -163,15 +163,15 @@ export function DatasetsPage() {
     return (
       <>
         <PageHeader
-          eyebrow="工作区 / 数据集"
+          eyebrow="组织 / 数据集"
           title="数据集"
           description="管理可复用的数据查询定义。"
         />
         <Panel>
           <StateView
             type="empty"
-            title="请选择工作区"
-            description="请先选择工作区，再查看数据集。"
+            title="请选择组织"
+            description="请先选择组织，再查看数据集。"
           />
         </Panel>
       </>
@@ -179,7 +179,7 @@ export function DatasetsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="工作区 / 数据集"
+        eyebrow="组织 / 数据集"
         title="数据集"
         description="将设备或数据流、时间范围和数据类型保存为可预览、分享与导出的查询定义。"
         actions={
@@ -435,7 +435,7 @@ export function DatasetDetailPage() {
       <>
         <PageHeader title="数据集详情" actions={back} />
         <Panel>
-          <StateView type="empty" title="请选择工作区" description="请先选择工作区，再查看数据集详情。" />
+          <StateView type="empty" title="请选择组织" description="请先选择组织，再查看数据集详情。" />
         </Panel>
       </>
     );
@@ -466,7 +466,7 @@ export function DatasetDetailPage() {
   return (
     <>
       <PageHeader
-        eyebrow="工作区 / 数据集"
+        eyebrow="组织 / 数据集"
         title={dataset.data.name}
         description={dataset.data.description || "数据集元信息、来源和数据预览"}
         actions={
@@ -597,7 +597,7 @@ export function DatasetEditorPage() {
       <>
         <PageHeader title={creating ? "创建数据集" : "编辑数据集"} actions={back} />
         <Panel>
-          <StateView type="empty" title="请选择工作区" description="请先选择工作区，再管理数据集。" />
+          <StateView type="empty" title="请选择组织" description="请先选择组织，再管理数据集。" />
         </Panel>
       </>
     );
@@ -628,7 +628,7 @@ export function DatasetEditorPage() {
   return (
     <>
       <PageHeader
-        eyebrow="工作区 / 数据集"
+        eyebrow="组织 / 数据集"
         title={creating ? "创建数据集" : dataset.data?.name ?? "编辑数据集"}
         description={creating ? "定义数据来源、时间范围和数据类型。" : "修改数据集定义；预览页面只展示已保存的范围。"}
         actions={creating ? back : <div className="header-actions">

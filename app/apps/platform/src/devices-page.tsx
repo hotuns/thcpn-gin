@@ -276,8 +276,8 @@ export function DevicesPage() {
       <Panel>
         <StateView
           type="empty"
-          title="请选择工作区"
-          description="请先选择工作区，再查看设备列表。"
+          title="请选择组织"
+          description="请先选择组织，再查看设备列表。"
         />
       </Panel>
     );
@@ -374,7 +374,7 @@ export function DevicesPage() {
           <StateView
             type="loading"
             title="正在加载设备"
-            description="正在读取当前工作区设备资产。"
+            description="正在读取当前组织设备资产。"
           />
         ) : query.error ? (
           <StateView
@@ -431,7 +431,7 @@ export function DevicesPage() {
             description={
               keyword || category !== "all" || projectId || siteId
                 ? "请调整搜索或筛选条件。"
-                : "当前工作区尚未分配系统设备。"
+                : "当前组织尚未分配系统设备。"
             }
           />
         )}
@@ -801,8 +801,8 @@ export function DeviceCenterDetailPage() {
       <Panel>
         <StateView
           type="error"
-          title="设备缺少工作区信息"
-          description="当前设备没有可用的工作区分配或共享授权。"
+          title="设备缺少组织信息"
+          description="当前设备没有可用的组织分配或共享授权。"
           action={<Button onClick={() => navigate("/devices")}>返回设备列表</Button>}
         />
       </Panel>
@@ -989,21 +989,28 @@ function DeviceDetailTabs({ tabs, activeTab, onChange }: { tabs: Array<{ id: Dev
 }
 
 function DeviceProfileOperational({ device, workspaceId }: { device: Device; workspaceId: string }) {
+  const carbonDevice = deviceCategory(device) === "carbon_sink";
   const latestAttributes = useQuery({
     queryKey: workspaceQueryKey(workspaceId, "device", device.id, "latest-attributes"),
     queryFn: () => api.devices.latestAttributes(device.id),
+    enabled: !carbonDevice,
+  });
+  const carbonOverview = useQuery({
+    queryKey: workspaceQueryKey(workspaceId, "device", device.id, "carbon-overview"),
+    queryFn: () => api.carbon.overview(device.id),
+    enabled: carbonDevice,
   });
   return <div className="device-profile-operational">
     <section className="device-profile-runtime-summary">
       <div className="device-profile-section-heading"><div><h3><Gauge size={16} />运行概况</h3><span>能力与设备最新状态</span></div><span title={`最近更新 ${overviewTime(device.updated_at)}`}><Clock3 size={14} aria-hidden="true" />{overviewTime(device.updated_at)}</span></div>
       <div className="device-overview-summary">
         <div className="device-detail-capabilities device-overview-capabilities">{device.capabilities.length ? device.capabilities.map((item) => <span key={item} title={item}><Badge tone="info">{deviceCapabilityLabel(item)}</Badge></span>) : <span className="muted">未声明设备能力</span>}</div>
-        <DeviceVitalIndicators attributes={latestAttributes.data?.attributes} loading={latestAttributes.isLoading} />
+        <DeviceVitalIndicators attributes={latestAttributes.data?.attributes} loading={!carbonDevice && latestAttributes.isLoading} />
       </div>
     </section>
     <section className="device-source-runtime">
-      <div className="device-profile-section-heading"><div><h3><DatabaseZap size={16} />源设备</h3><span>THCPN 实时状态</span></div></div>
-      {latestAttributes.isLoading ? <StateView type="loading" title="正在读取源设备" description="" /> : latestAttributes.error ? <StateView type="error" title="源设备状态不可用" description={formatApiError(latestAttributes.error).message} /> : latestAttributes.data?.source_device ? <dl className="device-source-runtime-grid"><div><dt>运行状态</dt><dd>{sourceDeviceStatus(latestAttributes.data.source_device)}</dd></div><div><dt>当前版本</dt><dd>{text(latestAttributes.data.source_device.current_device_version ?? latestAttributes.data.source_device.version)}</dd></div><div><dt>源库更新时间</dt><dd>{overviewTime(latestAttributes.data.source_device.updated_at)}</dd></div></dl> : <StateView type="empty" title="暂无源设备状态" description="当前设备没有可读取的源库运行信息。" />}
+      <div className="device-profile-section-heading"><div><h3><DatabaseZap size={16} />源设备</h3><span>{carbonDevice ? "碳汇源库状态" : "THCPN 实时状态"}</span></div></div>
+      {carbonDevice ? carbonOverview.isLoading ? <StateView type="loading" title="正在读取碳汇源库" description="" /> : carbonOverview.error ? <StateView type="error" title="碳汇源库状态不可用" description={formatApiError(carbonOverview.error).message} /> : carbonOverview.data ? <dl className="device-source-runtime-grid"><div><dt>电池</dt><dd>{carbonOverview.data.runtime?.battery ? `${carbonOverview.data.runtime.battery}%` : "—"}</dd></div><div><dt>信号</dt><dd>{text(carbonOverview.data.runtime?.signal)}</dd></div><div><dt>网络</dt><dd>{text(carbonOverview.data.runtime?.network)}</dd></div><div><dt>源库更新时间</dt><dd>{overviewTime(carbonOverview.data.refreshed_at)}</dd></div></dl> : <StateView type="empty" title="暂无碳汇源库状态" description="当前设备没有可读取的源库运行信息。" /> : latestAttributes.isLoading ? <StateView type="loading" title="正在读取源设备" description="" /> : latestAttributes.error ? <StateView type="error" title="源设备状态不可用" description={formatApiError(latestAttributes.error).message} /> : latestAttributes.data?.source_device ? <dl className="device-source-runtime-grid"><div><dt>运行状态</dt><dd>{sourceDeviceStatus(latestAttributes.data.source_device)}</dd></div><div><dt>当前版本</dt><dd>{text(latestAttributes.data.source_device.current_device_version ?? latestAttributes.data.source_device.version)}</dd></div><div><dt>源库更新时间</dt><dd>{overviewTime(latestAttributes.data.source_device.updated_at)}</dd></div></dl> : <StateView type="empty" title="暂无源设备状态" description="当前设备没有可读取的源库运行信息。" />}
     </section>
   </div>;
 }
@@ -1239,7 +1246,7 @@ function DeviceActivity({
         <div>
           <h2 className="panel-title">设备操作记录</h2>
           <div className="panel-kicker">
-            最近 500 条工作区审计中的设备相关事件
+            最近 500 条组织审计中的设备相关事件
           </div>
         </div>
         <Badge tone="neutral">{rows.length}</Badge>
@@ -1343,7 +1350,7 @@ function DeviceConfig({
           <div>
             <h2 className="panel-title">危险操作</h2>
             <div className="panel-kicker">
-              解绑后设备资产保留，但不再属于当前工作区
+              解绑后设备资产保留，但不再属于当前组织
             </div>
           </div>
           <Button
@@ -1556,9 +1563,9 @@ function SystemDeviceConfig({
           </Button>
         </section>
         <section>
-          <h3>工作区分配</h3>
+          <h3>组织分配</h3>
           <label className="field">
-            <span className="field-label">目标工作区</span>
+            <span className="field-label">目标组织</span>
             <select
               value={targetWorkspaceId}
               onChange={(e) => setTargetWorkspaceId(e.target.value)}
@@ -1980,7 +1987,7 @@ function DeviceChildren({
       <StateView
         type="empty"
         title="没有可见子节点"
-        description="当前网关没有同工作区且可访问的子设备。"
+        description="当前网关没有同组织且可访问的子设备。"
       />
     );
   return (
@@ -2180,7 +2187,7 @@ function DeviceActionForm({
           ) : (
             <>
               <label className="field">
-                <span className="field-label">目标工作区</span>
+                <span className="field-label">目标组织</span>
                 <select
                   required
                   value={targetWorkspaceId}
@@ -2190,7 +2197,7 @@ function DeviceActionForm({
                     setTargetSiteId("");
                   }}
                 >
-                  <option value="">选择工作区</option>
+                  <option value="">选择组织</option>
                   {workspaces
                     .filter((item) => item.id !== currentWorkspaceId)
                     .map((item) => (
@@ -2240,7 +2247,7 @@ function DeviceActionForm({
                   onChange={(event) => setConfirmed(event.target.checked)}
                 />
                 <span>
-                  我确认历史数据集保留在原工作区，当前版本不会迁移历史数据集。
+                  我确认历史数据集保留在原组织，当前版本不会迁移历史数据集。
                 </span>
               </label>
             </>

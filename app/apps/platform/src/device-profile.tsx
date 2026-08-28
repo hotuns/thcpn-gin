@@ -621,7 +621,7 @@ function ProfileEditor({ profile, environment, terms, busy, onClose, onSubmit }:
               <label className="field profile-editor-field">
                 <span className="field-label">设备描述 <small>{description.length}/500</small></span>
                 <textarea maxLength={500} value={description} onChange={(e) => setDescription(e.target.value)} rows={4} placeholder="说明设备的安装环境、观测任务或维护备注" />
-                <span className="field-hint">仅工作区成员可见，不会写回设备源库。</span>
+                <span className="field-hint">仅组织成员可见，不会写回设备源库。</span>
               </label>
               <label className="field profile-editor-field">
                 <span className="field-label">地址或位置说明</span>

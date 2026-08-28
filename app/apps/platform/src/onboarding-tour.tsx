@@ -3,7 +3,7 @@ import { X } from "lucide-react";
 
 const steps = [
   { title: "欢迎使用原位生态云", description: "这里可以统一管理原位观测设备、查看设备数据并开展数据分析。" },
-  { selector: ".workspace-trigger", title: "选择工作区", description: "先确认当前工作区。设备、项目和数据都会按照工作区隔离。" },
+  { selector: ".workspace-trigger", title: "选择组织", description: "先确认当前组织。设备、项目和数据都会按照组织隔离。" },
   { selector: '[data-onboarding="devices"]', title: "管理设备", description: "进入设备中心，查看设备状态、详细资料、数据趋势和采集图片。" },
   { selector: '[data-onboarding="deviceMap"]', title: "查看设备地图", description: "在地图中查看设备位置，并按生态类型和观测用途筛选。" },
   { selector: '[data-onboarding="compare"]', title: "分析设备数据", description: "选择多个设备和指标，在同一张图表中进行对比分析。" },

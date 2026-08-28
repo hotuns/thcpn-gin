@@ -214,12 +214,12 @@ export function ExportsPage() {
     return (
       <>
         <PageHeader
-          eyebrow="工作区 / 数据导出"
+          eyebrow="组织 / 数据导出"
           title="数据导出"
-          description="请选择工作区后创建导出。"
+          description="请选择组织后创建导出。"
         />
         <Panel>
-          <StateView type="empty" title="请选择工作区" description="" />
+          <StateView type="empty" title="请选择组织" description="" />
         </Panel>
       </>
     );
@@ -230,7 +230,7 @@ export function ExportsPage() {
   return (
     <div className="export-page">
       <PageHeader
-        eyebrow="工作区 / 数据导出"
+        eyebrow="组织 / 数据导出"
         title="数据导出"
         description="标准站、组网站和碳汇站使用各自的创建流程，任务统一在这里生成和下载。"
         actions={
@@ -330,7 +330,7 @@ export function ExportsPage() {
                 className={!mine ? "active" : ""}
                 onClick={() => setMine(false)}
               >
-                工作区全部
+                组织全部
               </button>
             </div>
             <span className="export-list-count">共 {jobs.length} 个任务</span>

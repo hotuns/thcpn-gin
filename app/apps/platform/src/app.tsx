@@ -430,13 +430,13 @@ function Workspaces() {
   return (
     <>
       <PageHeader
-        eyebrow="工作区"
-        title="工作区"
-        description="管理你可以访问的工作区。切换后，只显示所选工作区内的设备、数据集和导出任务。"
+        eyebrow="组织"
+        title="组织"
+        description="管理你可以访问的组织。切换后，只显示所选组织内的设备、数据集和导出任务。"
         actions={
           <Button onClick={() => setShowForm(true)}>
             <Building2 size={15} />
-            创建工作区
+            创建组织
           </Button>
         }
       />
@@ -448,14 +448,14 @@ function Workspaces() {
       {showForm && (
         <Panel style={{ marginBottom: 16 } as React.CSSProperties}>
           <div className="panel-header">
-            <h2 className="panel-title">创建组织工作区</h2>
+            <h2 className="panel-title">创建组织组织</h2>
             <IconButton label="关闭" onClick={() => setShowForm(false)}>
               <X size={16} />
             </IconButton>
           </div>
           <div className="panel-body form-grid" style={{ maxWidth: 520 }}>
             <label className="field">
-              <span className="field-label">工作区名称</span>
+              <span className="field-label">组织名称</span>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -488,7 +488,7 @@ function Workspaces() {
         <Panel>
           <StateView
             type="loading"
-            title="正在加载工作区"
+            title="正在加载组织"
             description="正在从服务端恢复可访问的组织空间。"
           />
         </Panel>
@@ -496,7 +496,7 @@ function Workspaces() {
         <Panel>
           <StateView
             type="error"
-            title="工作区列表加载失败"
+            title="组织列表加载失败"
             description={formatApiError(error).message}
             requestId={formatApiError(error).requestId}
             action={
@@ -512,7 +512,7 @@ function Workspaces() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>工作区</th>
+                  <th>组织</th>
                   <th>类型</th>
                   <th>角色</th>
                   <th>成员状态</th>
@@ -559,7 +559,7 @@ function Workspaces() {
                     <td>
                       <div className="workspace-list-actions">
                         {item.id === currentId ? (
-                          <Badge tone="info">当前工作区</Badge>
+                          <Badge tone="info">当前组织</Badge>
                         ) : (
                           <Button
                             variant="secondary"
@@ -581,8 +581,8 @@ function Workspaces() {
             {!workspaces.length && (
               <StateView
                 type="empty"
-                title="没有可用工作区"
-                description="创建一个组织工作区，或联系管理员加入现有空间。"
+                title="没有可用组织"
+                description="创建一个组织组织，或联系管理员加入现有空间。"
               />
             )}
           </div>

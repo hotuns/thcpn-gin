@@ -66,6 +66,32 @@
   padding: 18px;
 }
 
+.dashboard-metric-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.dashboard-metric-link .metric {
+  height: 100%;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.dashboard-metric-link:hover .metric,
+.dashboard-metric-link:focus-visible .metric {
+  border-color: color-mix(in srgb, var(--blue) 38%, var(--line));
+  box-shadow: 0 18px 42px color-mix(in srgb, var(--blue) 12%, transparent);
+  transform: translateY(-3px);
+}
+
+.dashboard-metric-link:focus-visible {
+  border-radius: 5px;
+  outline: 3px solid color-mix(in srgb, var(--blue) 22%, transparent);
+  outline-offset: 2px;
+}
+
 .dashboard-metrics .metric-top {
   color: #9b7b47;
 }
@@ -9610,6 +9636,9 @@ body::-webkit-scrollbar-corner,
 .device-claim-header h1 {
   margin: 0;
   font-size: 22px;
+}
+.device-claim-header > .btn {
+  margin-left: auto;
 }
 .device-claim-header p,
 .device-claim-device span {

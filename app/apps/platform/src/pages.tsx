@@ -40,8 +40,8 @@ function WorkspaceMissing() {
     <Panel>
       <StateView
         type="empty"
-        title="请选择工作区"
-        description="请先选择工作区，才能读取业务数据。"
+        title="请选择组织"
+        description="请先选择组织，才能读取业务数据。"
       />
     </Panel>
   );
@@ -309,7 +309,7 @@ export function DeviceDataPage({
       <>
         {!embedded && (
           <PageHeader
-            eyebrow="工作区 / 设备数据"
+            eyebrow="组织 / 设备数据"
             title="设备数据"
             description="按设备和时间范围查询设备数据。"
           />
@@ -322,7 +322,7 @@ export function DeviceDataPage({
       <>
         {!embedded && (
           <PageHeader
-            eyebrow="工作区 / 监控站"
+            eyebrow="组织 / 监控站"
             title={selectedDevice.name}
             description="监控站实时视频。播放凭证为短期会话，仅在当前页面使用。"
           />
@@ -361,7 +361,7 @@ export function DeviceDataPage({
     <>
       {!embedded && (
         <PageHeader
-          eyebrow="工作区 / 设备数据"
+          eyebrow="组织 / 设备数据"
           title="设备数据"
           description="查看设备数据趋势、明细和采集图片。"
         />
@@ -387,7 +387,7 @@ export function DeviceDataPage({
           <StateView
             type="empty"
             title="没有可查询设备"
-            description="当前工作区尚未分配设备。"
+            description="当前组织尚未分配设备。"
           />
         </Panel>
       ) : (

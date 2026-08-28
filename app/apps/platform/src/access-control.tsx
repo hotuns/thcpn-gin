@@ -48,7 +48,7 @@ export const permissionsForTemplate = (
 
 const scopeTypeLabel = (value: string) =>
   ({
-    workspace: "整个工作区",
+    workspace: "整个组织",
     project: "项目",
     site: "站点",
     device: "设备",
@@ -151,8 +151,8 @@ export function AccessControlTab() {
       <Panel>
         <StateView
           type="empty"
-          title="请选择工作区"
-          description="请先选择工作区，再管理访问权限。"
+          title="请选择组织"
+          description="请先选择组织，再管理访问权限。"
         />
       </Panel>
     );
@@ -163,7 +163,7 @@ export function AccessControlTab() {
     group: string;
   }>;
   const resources = {
-    workspace: [{ id: currentId, name: current?.name ?? "当前工作区" }],
+    workspace: [{ id: currentId, name: current?.name ?? "当前组织" }],
     project: projects.data?.items ?? [],
     site: sites.data?.items ?? [],
     device: devices.data?.items ?? [],
@@ -190,13 +190,13 @@ export function AccessControlTab() {
         </div>
         <div className="access-guide-grid">
           <div>
-            <strong>工作区成员</strong>
-            <p>对方是长期协作者。加入后按成员角色使用当前工作区。</p>
+            <strong>组织成员</strong>
+            <p>对方是长期协作者。加入后按成员角色使用当前组织。</p>
             <span>适合课题组成员、项目负责人</span>
           </div>
           <div>
             <strong>单项授权</strong>
-            <p>对方不加入工作区，只开放指定项目、站点、设备或数据集。</p>
+            <p>对方不加入组织，只开放指定项目、站点、设备或数据集。</p>
             <span>适合合作单位、临时查看者</span>
           </div>
           <div>
@@ -209,7 +209,7 @@ export function AccessControlTab() {
       <div className="access-summary">
         <div>
           <strong>{summaryCount(members)}</strong>
-          <span>工作区成员</span>
+          <span>组织成员</span>
         </div>
         <div>
           <strong>
@@ -233,7 +233,7 @@ export function AccessControlTab() {
       {feedback && <div className="command-note section-gap">{feedback}</div>}
       <div className="access-layout section-gap">
         <AccessPanel
-          title="工作区成员"
+          title="组织成员"
           subtitle="长期协作关系，按成员角色访问"
           icon={<UserPlus size={16} />}
           action={
@@ -261,7 +261,7 @@ export function AccessControlTab() {
         </AccessPanel>
         <AccessPanel
           title="单项授权"
-          subtitle="不加入工作区，只开放指定资源"
+          subtitle="不加入组织，只开放指定资源"
           icon={<ShieldCheck size={16} />}
           action={
             <Button variant="secondary" onClick={() => open("grant")}>
@@ -323,7 +323,7 @@ export function AccessControlTab() {
       <div className="section-gap">
         <AccessPanel
           title="我收到的访问"
-          subtitle="其他工作区分享给当前账号的资源"
+          subtitle="其他组织分享给当前账号的资源"
           icon={<ShieldCheck size={16} />}
           query={myGrants}
         >
@@ -786,7 +786,7 @@ function AccessForm({
               </h2>
               <div className="panel-kicker">
                 {mode === "member" || mode === "edit-member"
-                  ? "选择成员角色；默认作用于整个工作区"
+                  ? "选择成员角色；默认作用于整个组织"
                   : mode === "grant"
                     ? "选择资源范围，只开放需要的权限"
                     : "对方接受后获得指定范围的访问权限"}

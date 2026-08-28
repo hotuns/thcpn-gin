@@ -1,6 +1,6 @@
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useState, type FormEvent } from "react";
-import { Check, Mail, Moon, Palette, Pencil, Phone, Sun, UserRound, X } from "lucide-react";
+import { ArrowLeft, Check, Mail, Moon, Palette, Pencil, Phone, Sun, UserRound, X } from "lucide-react";
 import { api, commonStatusLabel, formatApiError } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
 import { Badge, Button, CopyId, PageHeader, Panel } from "@thcpn/ui";
@@ -17,6 +17,7 @@ const formatTime = (input?: string) =>
     : "—";
 
 export function AccountPage() {
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") === "security" ? "security" : params.get("tab") === "preferences" ? "preferences" : "profile";
   const { t } = useLocale();
@@ -26,6 +27,7 @@ export function AccountPage() {
         eyebrow={t("platform:navigation.account")}
         title={t("platform:navigation.account")}
         description={t("preferences")}
+        actions={<Button variant="secondary" onClick={() => navigate("/dashboard")}><ArrowLeft size={14} />返回总览</Button>}
       />
       <div className="settings-tabs account-tabs">
         <button

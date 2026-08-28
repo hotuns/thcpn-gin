@@ -71,7 +71,7 @@ export function DeviceSharingTab({ workspaceId, device }: { workspaceId: string;
       <DevicePublicAccessPanel device={device} />
       <div className="device-sharing-note">
         <KeyRound size={16} />
-        <span>这里只管理直接授予当前设备的访问权限。工作区、项目、站点继承权限请在全局访问控制中管理。</span>
+        <span>这里只管理直接授予当前设备的访问权限。组织、项目、站点继承权限请在全局访问控制中管理。</span>
         <Link to="/settings?tab=access"><Button variant="secondary">全局访问控制</Button></Link>
       </div>
       {feedback && <div className="command-note device-feedback">{feedback}</div>}

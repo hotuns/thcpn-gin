@@ -63,7 +63,7 @@ export function ProcessingTaskDetailPage() {
   const task = useQuery({ queryKey: workspaceQueryKey(currentId, "processing-task", taskId), queryFn: () => api.processing.get(currentId!, taskId), enabled: Boolean(currentId && taskId) });
   const executions = useQuery({ queryKey: workspaceQueryKey(currentId, "processing-executions", taskId), queryFn: () => api.processing.executions(currentId!, taskId), enabled: Boolean(currentId && taskId), refetchInterval: (query) => query.state.data?.items.some((item) => ["pending", "queued", "submitted", "running"].includes(item.status)) ? 3000 : false });
   const refresh = () => Promise.all([task.refetch(), executions.refetch()]);
-  if (!currentId) return <Panel><StateView type="empty" title="请选择工作区" description="请先选择工作区，再查看处理任务。" /></Panel>;
+  if (!currentId) return <Panel><StateView type="empty" title="请选择组织" description="请先选择组织，再查看处理任务。" /></Panel>;
   if (task.isLoading) return <Panel><StateView type="loading" title="正在加载处理任务" description="" /></Panel>;
   if (task.error) return <Panel><StateView type="error" title="处理任务加载失败" description={formatApiError(task.error).message} action={<Button variant="secondary" onClick={() => navigate("/processing")}><ArrowLeft size={14}/>返回</Button>} /></Panel>;
   const item = task.data!;

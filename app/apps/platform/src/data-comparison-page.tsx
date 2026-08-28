@@ -283,7 +283,7 @@ export function DataComparisonPage() {
       applied[0].endTime)
     : "";
 
-  if (!currentId) return <Panel><StateView type="empty" title="请选择工作区" description="选择工作区后可以读取设备数据。" /></Panel>;
+  if (!currentId) return <Panel><StateView type="empty" title="请选择组织" description="选择组织后可以读取设备数据。" /></Panel>;
 
   return (
     <>
@@ -307,7 +307,7 @@ export function DataComparisonPage() {
               </div>
             </div>
             {devicesQuery.isLoading ? (
-              <StateView type="loading" title="正在加载设备" description="正在读取当前工作区的设备。" />
+              <StateView type="loading" title="正在加载设备" description="正在读取当前组织的设备。" />
             ) : devicesQuery.error ? (
               <StateView type="error" title="设备加载失败" description={formatApiError(devicesQuery.error).message} requestId={formatApiError(devicesQuery.error).requestId} />
             ) : (

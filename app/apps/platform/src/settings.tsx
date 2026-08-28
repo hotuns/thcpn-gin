@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
-import { Pencil, Plus, Tags, X } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, Tags, X } from "lucide-react";
 import { api, formatApiError, type DeviceTaxonomyTerm, type JsonRecord } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
@@ -32,17 +32,14 @@ export function SettingsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="工作区 / 设置"
-        title="工作区设置"
-        description="管理当前工作区的基础资料、协作关系和审计记录。"
+        eyebrow="组织 / 设置"
+        title="组织设置"
+        description="管理当前组织的基础资料、协作关系和审计记录。"
         actions={
-          <Button
-            variant="secondary"
-            onClick={() => navigate("/workspaces?action=create")}
-          >
-            <Plus size={14} />
-            新建工作区
-          </Button>
+          <div className="header-actions">
+            <Button variant="secondary" onClick={() => navigate("/workspaces")}><ArrowLeft size={14} />返回组织</Button>
+            <Button variant="secondary" onClick={() => navigate("/workspaces?action=create")}><Plus size={14} />新建组织</Button>
+          </div>
         }
       />
       <div className="settings-tabs">
@@ -130,7 +127,7 @@ function ResourcesTab() {
       await api.workspaces.update(currentId, { name });
       await refreshWorkspaces();
       setEditingWorkspace(false);
-      setMessage("工作区名称已更新");
+      setMessage("组织名称已更新");
       return true;
     } catch (error) { showError(error); return false; }
   };
@@ -139,21 +136,21 @@ function ResourcesTab() {
       <Panel>
         <StateView
           type="empty"
-          title="请选择工作区"
-          description="请先选择工作区，再管理基础资料。"
+          title="请选择组织"
+          description="请先选择组织，再管理基础资料。"
         />
       </Panel>
     );
   return (
     <>
       <div className="workspace-resource-layout">
-      {current && <Panel className="workspace-settings-summary"><div className="workspace-setting-row"><div><strong>工作区名称</strong><small>名称会显示在工作区切换器和相关页面中</small></div><div className="workspace-setting-value"><span title={current.name}>{current.name}</span><Button variant="secondary" onClick={() => setEditingWorkspace(true)}><Pencil size={13} />编辑</Button></div></div></Panel>}
+      {current && <Panel className="workspace-settings-summary"><div className="workspace-setting-row"><div><strong>组织名称</strong><small>名称会显示在组织切换器和相关页面中</small></div><div className="workspace-setting-value"><span title={current.name}>{current.name}</span><Button variant="secondary" onClick={() => setEditingWorkspace(true)}><Pencil size={13} />编辑</Button></div></div></Panel>}
       <div className="grid grid-2 workspace-resource-grid">
         <Panel>
           <div className="panel-header">
             <div>
               <h2 className="panel-title">项目</h2>
-              <div className="panel-kicker">工作区下的研究项目</div>
+              <div className="panel-kicker">组织下的研究项目</div>
             </div>
             <div className="resource-panel-actions">
               <Badge tone="info">{projects.data?.items.length ?? 0}</Badge>
@@ -227,7 +224,7 @@ function WorkspaceNameDialog({ name: initialName, onClose, onSave }: { name: str
   const [busy, setBusy] = useState(false);
   useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === "Escape" && !busy) onClose(); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [busy, onClose]);
   const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await onSave(name.trim()); } finally { setBusy(false); } };
-  return <div className="resource-dialog-layer"><button type="button" className="resource-dialog-backdrop" aria-label="关闭工作区名称编辑" onClick={() => !busy && onClose()} /><div className="resource-dialog-shell" role="dialog" aria-modal="true"><Panel className="resource-dialog"><div className="panel-header"><h2 className="panel-title">编辑工作区名称</h2><Button variant="secondary" onClick={onClose} disabled={busy}><X size={14} />关闭</Button></div><form className="resource-dialog-form" onSubmit={submit}><label className="field"><span className="field-label">名称</span><input autoFocus required maxLength={120} value={name} onChange={(event) => setName(event.target.value)} /></label><div className="form-actions"><Button type="button" variant="secondary" onClick={onClose}>取消</Button><Button type="submit" disabled={busy || !name.trim()}>{busy ? "保存中…" : "保存"}</Button></div></form></Panel></div></div>;
+  return <div className="resource-dialog-layer"><button type="button" className="resource-dialog-backdrop" aria-label="关闭组织名称编辑" onClick={() => !busy && onClose()} /><div className="resource-dialog-shell" role="dialog" aria-modal="true"><Panel className="resource-dialog"><div className="panel-header"><h2 className="panel-title">编辑组织名称</h2><Button variant="secondary" onClick={onClose} disabled={busy}><X size={14} />关闭</Button></div><form className="resource-dialog-form" onSubmit={submit}><label className="field"><span className="field-label">名称</span><input autoFocus required maxLength={120} value={name} onChange={(event) => setName(event.target.value)} /></label><div className="form-actions"><Button type="button" variant="secondary" onClick={onClose}>取消</Button><Button type="submit" disabled={busy || !name.trim()}>{busy ? "保存中…" : "保存"}</Button></div></form></Panel></div></div>;
 }
 
 function ResourceRows({
@@ -560,13 +557,13 @@ function AuditTab() {
       const memberUser = member.user as JsonRecord | undefined;
       const name = text(
         memberUser?.name,
-        text(memberUser?.email, text(memberUser?.phone, "工作区成员")),
+        text(memberUser?.email, text(memberUser?.phone, "组织成员")),
       );
       const userId = text(memberUser?.id, text(member.user_id, ""));
       if (userId) actors.set(userId, name);
       addResource(["member", "workspace_member"], member.id, name);
     });
-    addResource(["workspace"], currentId, current?.name ?? "当前工作区");
+    addResource(["workspace"], currentId, current?.name ?? "当前组织");
     (projects.data?.items ?? []).forEach((item) =>
       addResource(["project"], item.id, item.name),
     );
@@ -810,7 +807,7 @@ function NamedAuditValue({
 }
 const resourceTypeLabel = (type: string) =>
   ({
-    workspace: "工作区",
+    workspace: "组织",
     project: "项目",
     site: "站点",
     device: "设备",
