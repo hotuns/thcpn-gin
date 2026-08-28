@@ -56,6 +56,7 @@ export function DeviceCombobox({
   const rootRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
   const [open, setOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [category, setCategory] = useState<DeviceOptionCategory>("all");
   const gateways = useMemo(
@@ -93,11 +94,17 @@ export function DeviceCombobox({
 
   useEffect(() => {
     if (!open) return;
+    const closeMenu = () => {
+      const value = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dropdown-close-dur")) || 150;
+      setOpen(false);
+      setClosing(true);
+      window.setTimeout(() => setClosing(false), value);
+    };
     const outside = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      if (!rootRef.current?.contains(event.target as Node)) closeMenu();
     };
     const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") closeMenu();
     };
     document.addEventListener("mousedown", outside);
     window.addEventListener("keydown", escape);
@@ -110,12 +117,16 @@ export function DeviceCombobox({
   const openMenu = () => {
     setKeyword("");
     setCategory("all");
+    setClosing(false);
     setOpen(true);
   };
   const selectDevice = (deviceId: string) => {
     onChange(deviceId);
     setKeyword("");
     setOpen(false);
+    setClosing(true);
+    const value = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dropdown-close-dur")) || 150;
+    window.setTimeout(() => setClosing(false), value);
   };
   const grouped = categoryOrder
     .filter((id) => id !== "gateway")
@@ -164,8 +175,8 @@ export function DeviceCombobox({
         />
         <ChevronDown size={14} aria-hidden="true" className={`device-quick-switch-chevron ${open ? "open" : ""}`} />
       </div>
-      {open && (
-        <div id={listboxId} className="device-quick-switch-menu" role="listbox">
+      {(open || closing) && (
+        <div id={listboxId} className={`device-quick-switch-menu t-dropdown ${open ? "is-open" : "is-closing"}`} data-origin="top-right" role="listbox">
           <div className="device-option-categories" role="group" aria-label="设备分类">
             {categories.map((item) => (
               <button

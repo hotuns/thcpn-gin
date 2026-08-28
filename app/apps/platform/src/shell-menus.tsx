@@ -56,6 +56,27 @@ function usePopoverDismiss(
   }, [container, onClose, open]);
 }
 
+function useDropdownPresence(open: boolean) {
+  const [visible, setVisible] = useState(open);
+  const [closing, setClosing] = useState(false);
+  useEffect(() => {
+    if (open) {
+      setVisible(true);
+      setClosing(false);
+      return;
+    }
+    if (!visible) return;
+    const value = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dropdown-close-dur")) || 150;
+    setClosing(true);
+    const timer = window.setTimeout(() => {
+      setVisible(false);
+      setClosing(false);
+    }, value);
+    return () => window.clearTimeout(timer);
+  }, [open, visible]);
+  return { visible, className: open ? "is-open" : closing ? "is-closing" : "" };
+}
+
 export function WorkspaceMenu({
   open,
   workspaces,
@@ -79,6 +100,7 @@ export function WorkspaceMenu({
   const labels = domainLabels(t);
   const container = useRef<HTMLDivElement>(null);
   const [keyword, setKeyword] = useState("");
+  const dropdown = useDropdownPresence(open);
   const filtered = useMemo(
     () => filterWorkspaces(workspaces, keyword),
     [keyword, workspaces],
@@ -112,9 +134,10 @@ export function WorkspaceMenu({
         </span>
         <ChevronDown size={15} aria-hidden="true" />
       </button>
-      {open && (
+      {dropdown.visible && (
         <div
-          className="sidebar-popover workspace-popover"
+          className={`sidebar-popover workspace-popover t-dropdown ${dropdown.className}`}
+          data-origin="top-left"
           id="workspace-switcher-card"
           role="dialog"
           aria-label={t("platform:workspace.switch")}
@@ -199,11 +222,12 @@ export function AccountMenu({
 }) {
   const { t } = useLocale();
   const container = useRef<HTMLDivElement>(null);
+  const dropdown = useDropdownPresence(open);
   usePopoverDismiss(open, onClose, container);
   return (
     <div className="account-menu-container" ref={container}>
-      {open && (
-        <div className="sidebar-popover account-popover" role="menu">
+      {dropdown.visible && (
+        <div className={`sidebar-popover account-popover t-dropdown ${dropdown.className}`} data-origin="bottom-left" role="menu">
           <Link to="/account?tab=profile" role="menuitem" onClick={onNavigate}>
             <UserRound size={15} aria-hidden="true" />
             {t("platform:navigation.account")}

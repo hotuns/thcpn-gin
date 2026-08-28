@@ -66,20 +66,14 @@ function PreferencesTab() {
     description: string;
   }> = locale === "zh-CN"
     ? [
-        { value: "pine", label: "松针", description: "深青绿与暖金，沉静精密" },
-        { value: "ocean", label: "海湾", description: "矿物蓝与雾灰，清晰理性" },
-        { value: "clay", label: "陶土", description: "砖红与铜色，温暖稳重" },
-        { value: "aurora", label: "极光", description: "青绿与荧光黄，鲜明高效" },
-        { value: "iris", label: "鸢尾", description: "紫罗兰与莓红，灵动专注" },
-        { value: "obsidian", label: "曜石", description: "近黑与亮黄，强烈克制" },
+        { value: "pine", label: "原位生态", description: "自然青绿与暖金，默认平衡" },
+        { value: "pulse", label: "跃光", description: "亮青、荧光黄与珊瑚橙，鲜明跳跃" },
+        { value: "forest", label: "深林", description: "苔绿、石墨与暗金，深沉专注" },
       ]
     : [
-        { value: "pine", label: "Pine", description: "Deep green with warm gold" },
-        { value: "ocean", label: "Ocean", description: "Mineral blue with mist gray" },
-        { value: "clay", label: "Clay", description: "Brick red with warm copper" },
-        { value: "aurora", label: "Aurora", description: "Teal with electric lime" },
-        { value: "iris", label: "Iris", description: "Violet with berry pink" },
-        { value: "obsidian", label: "Obsidian", description: "Near black with vivid yellow" },
+        { value: "pine", label: "In-situ Eco", description: "Natural teal and warm gold" },
+        { value: "pulse", label: "Pulse", description: "Bright teal, electric lime and coral" },
+        { value: "forest", label: "Deep Forest", description: "Moss, graphite and muted gold" },
       ];
   return <Panel className="preferences-panel">
     <div className="preference-list">
@@ -99,7 +93,7 @@ function PreferencesTab() {
       <div className="preference-row color-theme-preference">
         <div>
           <strong><Palette size={15} />{locale === "zh-CN" ? "颜色主题" : "Color theme"}</strong>
-          <small>{locale === "zh-CN" ? "选择平台界面的强调色与氛围。" : "Choose the platform accent colors and atmosphere."}</small>
+          <small>{locale === "zh-CN" ? "切换完整的页面、面板、导航与强调色体系。" : "Switch the complete surface, navigation and accent system."}</small>
         </div>
         <div className="color-theme-options" role="radiogroup" aria-label={locale === "zh-CN" ? "颜色主题" : "Color theme"}>
           {colorThemeOptions.map((option) => (

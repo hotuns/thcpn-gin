@@ -594,14 +594,14 @@ function Workspaces() {
 
 function RootRedirect() {
   const { user, loading } = useAuth();
-  if (loading) return <div className="app-loading">正在恢复会话…</div>;
+  if (loading) return <div className="app-loading t-shimmer" data-text="正在恢复会话…">正在恢复会话…</div>;
   if (!user) return <Navigate to="/login" replace />;
   return <Navigate to="/dashboard" replace />;
 }
 
 export function PlatformApp() {
   return (
-    <Suspense fallback={<div className="app-loading">正在加载页面…</div>}>
+    <Suspense fallback={<div className="app-loading t-shimmer" data-text="正在加载页面…">正在加载页面…</div>}>
       <Routes>
         <Route path="/login" element={<AuthPage />} />
         <Route path="/register" element={<AuthPage register />} />

@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -26,6 +26,16 @@ const displayTime = (input: unknown) =>
         minute: "2-digit",
       }).format(new Date(String(input)))
     : "—";
+const exportTypeLabel = (type: unknown) =>
+  ({
+    telemetry_csv: "设备数据 CSV",
+    telemetry_excel: "设备数据 Excel",
+    media_zip: "设备图片 ZIP",
+    dataset_zip: "数据集 ZIP",
+    standard_station_zip: "标准站数据包",
+    group_site_zip: "组网站数据包",
+    carbon_station_zip: "碳汇站数据包",
+  })[String(type)] ?? text(type);
 export const countState = (loading: boolean, error: unknown, count?: number) =>
   loading
     ? { value: "…", meta: "正在加载" }
@@ -65,6 +75,47 @@ export function DashboardPage() {
     queryFn: () => api.audit.list(currentId!, 8),
     enabled: Boolean(currentId),
   });
+  const auditResourceNames = useMemo(() => {
+    const names = new Map<string, string>();
+    const add = (types: string[], id: unknown, name: unknown) => {
+      const resourceId = text(id, "");
+      if (!resourceId) return;
+      types.forEach((type) =>
+        names.set(`${type}:${resourceId}`, text(name, resourceId)),
+      );
+    };
+    add(["workspace"], currentId, current?.name);
+    (projects.data?.items ?? []).forEach((item) =>
+      add(["project"], item.id, item.name),
+    );
+    (sites.data?.items ?? []).forEach((item) =>
+      add(["site"], item.id, item.name),
+    );
+    (devices.data?.items ?? []).forEach((item) =>
+      add(["device"], item.id, item.name),
+    );
+    (datasets.data?.items ?? []).forEach((item) =>
+      add(["dataset"], item.id, item.name),
+    );
+    (exports.data?.items ?? []).forEach((item) =>
+      add(["export", "export_job"], item.id, `导出任务 · ${item.export_type}`),
+    );
+    return names;
+  }, [current?.name, currentId, datasets.data, devices.data, exports.data, projects.data, sites.data]);
+  const exportTargetName = (job: NonNullable<typeof exports.data>["items"][number]) => {
+    const deviceIds = Array.isArray(job.request_config?.device_ids)
+      ? job.request_config.device_ids.map(String)
+      : [];
+    const deviceNames = deviceIds
+      .map((id) => auditResourceNames.get(`device:${id}`))
+      .filter((name): name is string => Boolean(name));
+    if (deviceNames.length)
+      return `${deviceNames.slice(0, 2).join("、")}${deviceNames.length > 2 ? ` 等 ${deviceNames.length} 台` : ""}`;
+    return (
+      auditResourceNames.get(`${job.resource_type}:${job.resource_id}`) ??
+      `${job.resource_type} · ${job.resource_id.slice(0, 8)}…`
+    );
+  };
   const queries = [projects, sites, devices, datasets, exports, audit];
   if (workspaceError) {
     const item = formatApiError(workspaceError);
@@ -205,10 +256,10 @@ export function DashboardPage() {
           {exports.data?.items.slice(0, 5).map((job) => (
             <div className="series-row" key={job.id}>
               <div>
-                <div className="cell-title">{job.export_type}</div>
+                <div className="cell-title">{exportTypeLabel(job.export_type)}</div>
                 <div className="cell-sub">
-                  {job.resource_type} ·{" "}
-                  <span className="mono">{job.id.slice(0, 10)}</span>
+                  {exportTargetName(job)} ·{" "}
+                  <span className="mono">{job.id.slice(0, 8)}…</span>
                 </div>
               </div>
               <Badge
@@ -270,9 +321,16 @@ export function DashboardPage() {
                       <div className="cell-sub">{text(item.actor_type)}</div>
                     </td>
                     <td>
-                      {text(item.resource_type)}
-                      <div className="cell-sub mono">
-                        {text(item.resource_id)}
+                      <div className="cell-title">
+                        {auditResourceNames.get(
+                          `${text(item.resource_type, "unknown")}:${text(item.resource_id, "")}`,
+                        ) ?? text(item.resource_type)}
+                      </div>
+                      <div className="cell-sub">
+                        {text(item.resource_type)} ·{" "}
+                        <span className="mono">
+                          {text(item.resource_id).slice(0, 8)}…
+                        </span>
                       </div>
                     </td>
                     <td>

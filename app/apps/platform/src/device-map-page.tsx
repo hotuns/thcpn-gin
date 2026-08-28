@@ -55,7 +55,7 @@ export function DeviceMapPage() {
         onSelect={setSelectedId}
       />
 
-      <section className={`device-map-console ${consoleCollapsed ? "is-collapsed" : ""}`} aria-label="地图筛选">
+      <section className={`device-map-console t-resize ${consoleCollapsed ? "is-collapsed" : ""}`} aria-label="地图筛选">
         {consoleCollapsed ? (
           <button type="button" className="device-map-console-toggle" aria-expanded="false" aria-label="展开地图筛选" title="展开地图筛选" onClick={() => setConsoleCollapsed(false)}>
             <SlidersHorizontal size={18} />

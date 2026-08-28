@@ -6,23 +6,10 @@ import {
   type ReactNode,
 } from "react";
 
-export type ColorTheme =
-  | "pine"
-  | "ocean"
-  | "clay"
-  | "aurora"
-  | "iris"
-  | "obsidian";
+export type ColorTheme = "pine" | "pulse" | "forest";
 
 const colorThemeStorageKey = "thcpn.platform.color-theme";
-const colorThemes: ColorTheme[] = [
-  "pine",
-  "ocean",
-  "clay",
-  "aurora",
-  "iris",
-  "obsidian",
-];
+const colorThemes: ColorTheme[] = ["pine", "pulse", "forest"];
 
 const readColorTheme = (): ColorTheme => {
   const stored = window.localStorage.getItem(colorThemeStorageKey);

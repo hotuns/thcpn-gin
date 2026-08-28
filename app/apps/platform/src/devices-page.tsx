@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import {
   Link,
@@ -450,7 +450,7 @@ export function LegacyDeviceDataRedirect() {
     enabled: Boolean(currentId),
   });
   if (devices.isLoading)
-    return <div className="app-loading">正在打开设备…</div>;
+    return <div className="app-loading t-shimmer" data-text="正在打开设备…">正在打开设备…</div>;
   const device = devices.data?.items.find((item) => item.id === deviceId);
   if (!device)
     return (
@@ -912,20 +912,11 @@ export function DeviceCenterDetailPage() {
         <span>{deviceStatusLabel(device.status)}</span>
         <span className="mono">ID {device.id}</span>
       </div>
-      <div className="settings-tabs device-detail-tabs">
-        {tabs.map((item) => (
-          <button
-            key={item.id}
-            className={tab === item.id ? "active" : ""}
-            onClick={() => setParams({ tab: item.id })}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      <DeviceDetailTabs tabs={tabs} activeTab={tab} onChange={(nextTab) => setParams({ tab: nextTab })} />
       {feedback && (
         <div className="command-note device-feedback">{feedback}</div>
       )}
+      <div className="device-detail-tab-content" key={tab}>
       {carbonDevice && tab === "data" ? (
         <CarbonDevicePage device={device} />
       ) : tab === "overview" ? (
@@ -964,8 +955,37 @@ export function DeviceCenterDetailPage() {
           run={run}
         />
       )}
+      </div>
     </>
   );
+}
+
+function DeviceDetailTabs({ tabs, activeTab, onChange }: { tabs: Array<{ id: DeviceTab; label: string }>; activeTab: DeviceTab; onChange: (tab: DeviceTab) => void }) {
+  const barRef = useRef<HTMLDivElement>(null);
+  const pillRef = useRef<HTMLSpanElement>(null);
+  const movePill = (animate: boolean) => {
+    const bar = barRef.current;
+    const pill = pillRef.current;
+    const active = bar?.querySelector<HTMLButtonElement>("button.active");
+    if (!bar || !pill || !active) return;
+    if (!animate) pill.style.transition = "none";
+    pill.style.transform = `translateX(${active.offsetLeft}px)`;
+    pill.style.width = `${active.offsetWidth}px`;
+    if (!animate) {
+      void pill.offsetWidth;
+      pill.style.transition = "";
+    }
+  };
+  useEffect(() => {
+    requestAnimationFrame(() => movePill(false));
+    const onResize = () => movePill(false);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [activeTab, tabs.length]);
+  return <div ref={barRef} className="settings-tabs device-detail-tabs t-tabs">
+    <span ref={pillRef} className="t-tabs-pill" aria-hidden="true" />
+    {tabs.map((item) => <button type="button" role="tab" aria-selected={activeTab === item.id} key={item.id} className={activeTab === item.id ? "active t-tab" : "t-tab"} onClick={() => onChange(item.id)}>{item.label}</button>)}
+  </div>;
 }
 
 function DeviceProfileOperational({ device, workspaceId }: { device: Device; workspaceId: string }) {
