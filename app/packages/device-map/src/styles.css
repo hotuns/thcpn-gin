@@ -3,6 +3,9 @@
 .device-map-cluster { width: 38px; height: 38px; background: #176f58; }
 .device-map-point { width: 15px; height: 15px; background: #697872; }
 .device-map-point.is-active { background: #24a27d; box-shadow: 0 3px 12px rgba(5,20,16,.4),0 0 0 5px rgba(36,162,125,.2); }
+.device-map-point.has-category-icon { width: 30px; height: 30px; background: #176f58; }
+.device-map-point.has-category-icon.is-active { background: #1b8b6c; }
+.device-map-point.has-category-icon img { width: 17px; height: 17px; pointer-events: none; }
 .device-map-marker:hover { z-index: 2; filter: brightness(1.08); transform: scale(1.1); }
 .device-map-marker:focus-visible { outline: 3px solid rgba(255,255,255,.7); outline-offset: 3px; }
 .device-map-popup { min-width: 180px; display: grid; gap: 4px; color: #17212b; font: 12px/1.4 system-ui,sans-serif; }

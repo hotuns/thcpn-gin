@@ -13,12 +13,11 @@ import (
 	"thcpn-gin/internal/db/sqlc"
 )
 
-func TestCreateRequiresSerialNo(t *testing.T) {
+func TestCreateRequiresName(t *testing.T) {
 	service := NewService(nil)
 
 	_, err := service.Create(context.Background(), CreateInput{
 		WorkspaceID: uuid.New(),
-		Name:        "Station 1",
 		ActorUserID: uuid.New(),
 	})
 	if apperr.KindOf(err) != apperr.KindInvalidArgument {
@@ -33,7 +32,6 @@ func TestCreateRequiresProjectWhenSiteSet(t *testing.T) {
 	_, err := service.Create(context.Background(), CreateInput{
 		WorkspaceID: uuid.New(),
 		SiteID:      &siteID,
-		SerialNo:    "SN001",
 		Name:        "Station 1",
 		ActorUserID: uuid.New(),
 	})
@@ -443,19 +441,9 @@ func TestUpdateCapabilitiesValidation(t *testing.T) {
 func TestAdminUpdateValidation(t *testing.T) {
 	service := NewService(nil)
 
-	_, err := service.AdminUpdate(context.Background(), AdminUpdateInput{
-		SerialNo: stringPtr("SN-001"),
-	})
+	_, err := service.AdminUpdate(context.Background(), AdminUpdateInput{})
 	if apperr.KindOf(err) != apperr.KindInvalidArgument {
 		t.Fatalf("expected invalid argument for missing device, got %v", err)
-	}
-
-	_, err = service.AdminUpdate(context.Background(), AdminUpdateInput{
-		DeviceID: uuid.New(),
-		SerialNo: stringPtr(" "),
-	})
-	if apperr.KindOf(err) != apperr.KindInvalidArgument {
-		t.Fatalf("expected invalid argument for blank serial_no, got %v", err)
 	}
 
 	_, err = service.AdminUpdate(context.Background(), AdminUpdateInput{

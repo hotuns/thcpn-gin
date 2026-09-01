@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, LocateFixed, MapPinned, Satellite, SlidersHorizontal, X } from "lucide-react";
-import { api, deviceTopologyRoleLabel, formatApiError, type DeviceMapItem } from "@thcpn/api";
-import { DeviceMap, tiandituImageryStyle } from "@thcpn/device-map";
+import { Check, ChevronDown, ChevronRight, Leaf, LocateFixed, MapPinned, Satellite, SlidersHorizontal, X } from "lucide-react";
+import { api, deviceTopologyRoleLabel, formatApiError, type DeviceMapItem, type DeviceTaxonomyTerm } from "@thcpn/api";
+import { DeviceMap, iconifyIconUrl, tiandituImageryStyle } from "@thcpn/device-map";
 import { Button, StateView } from "@thcpn/ui";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 
@@ -79,10 +79,7 @@ export function DeviceMapPage() {
               <div><strong>{unclassified}</strong><span>未分类</span></div>
             </div>
             <div className="device-map-filters" data-onboarding="map-filters">
-              <select value={ecosystem} onChange={(event) => setEcosystem(event.target.value)} aria-label="生态类型">
-                <option value="">全部生态类型</option>
-                {terms.filter((term) => term.kind === "ecosystem").map((term) => <option key={term.id} value={term.id}>{term.name_zh}</option>)}
-              </select>
+              <MapDeviceTypeSelect value={ecosystem} options={terms.filter((term) => term.kind === "ecosystem")} onChange={setEcosystem} />
               <select value={observation} onChange={(event) => setObservation(event.target.value)} aria-label="观测对象">
                 <option value="">全部观测对象</option>
                 {terms.filter((term) => term.kind === "observation_object").map((term) => <option key={term.id} value={term.id}>{term.name_zh}</option>)}
@@ -111,7 +108,28 @@ export function DeviceMapPage() {
   );
 }
 
+function MapDeviceTypeSelect({ value, options, onChange }: { value: string; options: DeviceTaxonomyTerm[]; onChange: (value: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((term) => term.id === value);
+  const select = (next: string) => { onChange(next); setOpen(false); };
+  return <div className={`map-device-type-select ${open ? "is-open" : ""}`} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
+    <button type="button" aria-label="设备类型" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+      <MapDeviceTypeIcon term={selected} /><span>{selected?.name_zh ?? "全部设备类型"}</span><ChevronDown size={14} />
+    </button>
+    {open ? <div className="map-device-type-menu" role="listbox">
+      <button type="button" role="option" aria-selected={!value} onClick={() => select("")}><span className="map-device-type-empty" /><span>全部设备类型</span>{!value ? <Check size={13} /> : null}</button>
+      {options.map((term) => <button type="button" role="option" aria-selected={term.id === value} key={term.id} onClick={() => select(term.id)}><MapDeviceTypeIcon term={term} /><span>{term.name_zh}</span>{term.id === value ? <Check size={13} /> : null}</button>)}
+    </div> : null}
+  </div>;
+}
+
+function MapDeviceTypeIcon({ term }: { term?: DeviceTaxonomyTerm }) {
+  const src = iconifyIconUrl(term?.icon);
+  return src ? <img src={src} alt="" /> : <Leaf size={14} />;
+}
+
 function DeviceMapDetail({ item, onClose }: { item: DeviceMapItem; onClose: () => void }) {
+  const deviceTypeIcon = iconifyIconUrl(item.environment.ecosystem?.icon);
   return (
     <aside className="device-map-detail" aria-label="设备信息">
       <button type="button" className="device-map-detail-close" onClick={onClose} aria-label="关闭设备信息"><X size={16} /></button>
@@ -119,8 +137,8 @@ function DeviceMapDetail({ item, onClose }: { item: DeviceMapItem; onClose: () =
       <h2>{item.name}</h2>
       <p className="mono">SN {item.serial_no}</p>
       <dl>
-        <div><dt>设备类型</dt><dd>{deviceTopologyRoleLabel(item.device_type)}</dd></div>
-        <div><dt>生态类型</dt><dd>{item.environment.ecosystem?.name_zh ?? "未分类"}</dd></div>
+        <div><dt>设备形态</dt><dd>{deviceTopologyRoleLabel(item.device_type)}</dd></div>
+        <div><dt>设备类型</dt><dd>{deviceTypeIcon ? <img className="device-map-detail-type-icon" src={deviceTypeIcon} alt="" /> : null}{item.environment.ecosystem?.name_zh ?? "未分类"}</dd></div>
         <div><dt>观测对象</dt><dd>{item.environment.observation_objects.map((term) => term.name_zh).join("、") || "未设置"}</dd></div>
         <div><dt>坐标</dt><dd className="mono">{item.longitude?.toFixed(5)}, {item.latitude?.toFixed(5)}</dd></div>
       </dl>
@@ -139,6 +157,7 @@ function mapPoint(item: DeviceMapItem) {
     longitude: item.longitude,
     child_count: item.child_count,
     ecosystem: item.environment.ecosystem?.name_zh,
+    category_icon: item.environment.ecosystem?.icon,
     purposes: item.environment.observation_objects.map((term) => term.name_zh),
   };
 }

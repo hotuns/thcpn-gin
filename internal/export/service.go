@@ -186,7 +186,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Job, ResolvedR
 		return Job{}, ResolvedResource{}, err
 	}
 	if input.ResourceType == "device_batch" {
-		if err := s.validateDeviceBatch(ctx, resolved.WorkspaceID, resolved.ResourceID, input.ExportType, requestConfig); err != nil {
+		if err := s.validateDeviceBatch(ctx, input.RequestedBy, resolved.WorkspaceID, resolved.ResourceID, input.ExportType, requestConfig); err != nil {
 			return Job{}, ResolvedResource{}, err
 		}
 	}
@@ -437,7 +437,7 @@ func validateCarbonStationConfig(raw []byte) error {
 	return nil
 }
 
-func (s *Service) validateDeviceBatch(ctx context.Context, workspaceID, anchorID uuid.UUID, exportType string, raw []byte) error {
+func (s *Service) validateDeviceBatch(ctx context.Context, requestedBy, workspaceID, anchorID uuid.UUID, exportType string, raw []byte) error {
 	var config struct {
 		DeviceIDs []string `json:"device_ids"`
 	}
@@ -449,6 +449,7 @@ func (s *Service) validateDeviceBatch(ctx context.Context, workspaceID, anchorID
 		wantType = "gateway_node"
 	}
 	seen := map[uuid.UUID]struct{}{}
+	demoBatch := false
 	for index, rawID := range config.DeviceIDs {
 		id, err := uuid.Parse(strings.TrimSpace(rawID))
 		if err != nil || id == uuid.Nil {
@@ -469,7 +470,17 @@ func (s *Service) validateDeviceBatch(ctx context.Context, workspaceID, anchorID
 		if err != nil {
 			return mapNotFoundOrInternal(err, "active device assignment not found")
 		}
-		if assignment.WorkspaceID != workspaceID {
+		selected, err := s.queries.IsDemoDeviceForUser(ctx, requestedBy, id)
+		if err != nil {
+			return apperr.Wrap(apperr.KindInternal, "check demo batch device", err)
+		}
+		if index == 0 {
+			demoBatch = selected
+		}
+		if demoBatch && !selected {
+			return apperr.New(apperr.KindPermissionDenied, "batch device is outside the demo showcase")
+		}
+		if !demoBatch && assignment.WorkspaceID != workspaceID {
 			return apperr.New(apperr.KindPermissionDenied, "batch device is outside the current workspace")
 		}
 		if index == 0 && id != anchorID {

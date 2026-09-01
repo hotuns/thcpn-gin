@@ -135,11 +135,17 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 
-	items, err := h.service.List(c.Request.Context(), ListInput{
-		WorkspaceID: workspaceID,
-		ProjectID:   projectID,
-		SiteID:      siteID,
-	})
+	var items []Device
+	var err error
+	if actor.IsDemo {
+		items, err = h.service.ListDemoShowcase(c.Request.Context(), actor.UserID)
+	} else {
+		items, err = h.service.List(c.Request.Context(), ListInput{
+			WorkspaceID: workspaceID,
+			ProjectID:   projectID,
+			SiteID:      siteID,
+		})
+	}
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -792,6 +798,9 @@ func (h *Handler) Get(c *gin.Context) {
 	}
 
 	result, err := h.service.Get(c.Request.Context(), deviceID)
+	if err != nil && decision.Source == "demo_showcase" && apperr.KindOf(err) == apperr.KindNotFound {
+		result, err = h.service.GetAsset(c.Request.Context(), deviceID)
+	}
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return

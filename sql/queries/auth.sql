@@ -25,13 +25,13 @@ WHERE user_id = $1
 RETURNING user_id, password_hash, password_updated_at, failed_attempts, locked_until, created_at, updated_at, must_change_password;
 
 -- name: FindActiveUserByIdentifier :one
-SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version
+SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version, is_demo
 FROM users
 WHERE status = 'active'
   AND (phone = sqlc.arg(identifier) OR email = sqlc.arg(identifier));
 
 -- name: FindActiveUserByPhoneForAuth :one
-SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version
+SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version, is_demo
 FROM users
 WHERE status = 'active'
   AND phone = sqlc.arg(phone);
@@ -41,7 +41,7 @@ UPDATE users
 SET last_login_at = now(),
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version;
+RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version, is_demo;
 
 -- name: UpdateUserPhoneVerifiedAndLogin :one
 UPDATE users
@@ -49,7 +49,7 @@ SET phone_verified_at = COALESCE(phone_verified_at, now()),
     last_login_at = now(),
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version;
+RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version, is_demo;
 
 -- name: UpdateUserEmailVerified :one
 UPDATE users
@@ -58,7 +58,7 @@ SET email_verified_at = COALESCE(email_verified_at, now()),
 WHERE id = $1
   AND email = $2
   AND status = 'active'
-RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version;
+RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version, is_demo;
 
 -- name: CreateRefreshSession :one
 INSERT INTO auth_refresh_sessions (user_id, refresh_token_hash, user_agent, client_ip, expires_at)

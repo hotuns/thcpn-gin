@@ -61,7 +61,7 @@ func TestTOTPAuthURIIncludesIssuerAndSecret(t *testing.T) {
 	if want := "secret=JBSWY3DPEHPK3PXP"; !strings.Contains(uri, want) {
 		t.Fatalf("expected uri to contain %q, got %q", want, uri)
 	}
-	if want := "issuer=THCPN"; !strings.Contains(uri, want) {
+	if want := "issuer=In-situ+EcoCloud"; !strings.Contains(uri, want) {
 		t.Fatalf("expected uri to contain %q, got %q", want, uri)
 	}
 }

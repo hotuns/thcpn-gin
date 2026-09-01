@@ -4,26 +4,20 @@ import { PhotoSlider } from "react-photo-view";
 import {
   ArrowDown,
   ArrowUp,
-  Building2,
-  Droplets,
+  Check,
+  ChevronDown,
   ExternalLink,
   FileText,
   FolderKanban,
   ImagePlus,
   Leaf,
-  Mountain,
   MapPin,
   MapPinned,
   Pencil,
   Star,
-  Sprout,
-  Sun,
   Tags,
   Target,
   Trash2,
-  TreePine,
-  Waves,
-  Wheat,
   X,
 } from "lucide-react";
 import {
@@ -37,14 +31,13 @@ import {
 } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, Panel, StateView } from "@thcpn/ui";
+import { iconifyIconUrl } from "@thcpn/device-map";
 import { renderPhotoToolbar } from "./device-media";
 
 const value = (input: unknown, fallback = "—") =>
   input === undefined || input === null || input === ""
     ? fallback
     : String(input);
-
-const ecosystemIconMap = { "tree-pine": TreePine, sprout: Sprout, wheat: Wheat, waves: Waves, sun: Sun, "building-2": Building2, droplets: Droplets, mountain: Mountain, leaf: Leaf };
 
 export function DeviceProfileTab({
   workspaceId,
@@ -451,7 +444,7 @@ function TaxonomyTags({ values, empty = "未设置" }: { values: string[]; empty
 
 function EnvironmentOverview({ environment, loading }: { environment?: DeviceEnvironment; loading: boolean }) {
   const values = environment?.effective;
-  const EcosystemIcon = ecosystemIconMap[values?.ecosystem?.icon as keyof typeof ecosystemIconMap] ?? Leaf;
+  const deviceTypeIcon = iconifyIconUrl(values?.ecosystem?.icon);
   return (
     <section className="device-profile-group device-profile-observation">
       <div className="device-profile-group-heading">
@@ -465,8 +458,8 @@ function EnvironmentOverview({ environment, loading }: { environment?: DeviceEnv
       ) : (
         <>
           <div className="device-profile-ecosystem">
-            <span>生态类型</span>
-            <strong><EcosystemIcon size={14} />{values?.ecosystem?.name_zh ?? "未分类"}</strong>
+            <span>设备类型</span>
+            <strong>{deviceTypeIcon ? <img src={deviceTypeIcon} width={14} height={14} alt="" /> : <Leaf size={14} />}{values?.ecosystem?.name_zh ?? "未分类"}</strong>
           </div>
           <div className="device-profile-taxonomy-row">
             <span><Target size={14} />观测对象</span>
@@ -635,7 +628,7 @@ function ProfileEditor({ profile, environment, terms, busy, onClose, onSubmit }:
                 <div><h3>观测资料</h3><p>用于地图筛选、统计分析和设备归类</p></div>
               </div>
               <div className="profile-editor-inheritance-note">开启“设备覆盖”后使用当前设备设置；关闭后继续继承网关或站点。</div>
-              <EnvironmentField label="生态类型" field="ecosystem" overrides={overrides} toggle={toggle}><select disabled={!overrides.has("ecosystem")} value={ecosystem} onChange={(event)=>setEcosystem(event.target.value)}><option value="">未设置</option>{byKind("ecosystem").map((term)=><option key={term.id} value={term.id}>{term.name_zh}</option>)}</select></EnvironmentField>
+              <EnvironmentField label="设备类型" field="ecosystem" overrides={overrides} toggle={toggle}><DeviceTypeSelect disabled={!overrides.has("ecosystem")} options={byKind("ecosystem")} value={ecosystem} onChange={setEcosystem} /></EnvironmentField>
               <EnvironmentMultiField label="观测对象" field="observation_objects" overrides={overrides} toggle={toggle} options={byKind("observation_object")} value={observations} onChange={setObservations} />
               <EnvironmentField label="投运年份" field="commissioned_year" overrides={overrides} toggle={toggle}><input type="number" min="1900" max="2200" disabled={!overrides.has("commissioned_year")} value={year} onChange={(event)=>setYear(event.target.value)}/></EnvironmentField>
               <EnvironmentField label="研究方向 / 标签（逗号分隔）" field="research_tags" overrides={overrides} toggle={toggle}><input disabled={!overrides.has("research_tags")} value={tags} onChange={(event)=>setTags(event.target.value)}/></EnvironmentField>
@@ -651,6 +644,26 @@ function ProfileEditor({ profile, environment, terms, busy, onClose, onSubmit }:
 function EnvironmentField({label,field,overrides,toggle,children}:{label:string;field:string;overrides:Set<string>;toggle:(field:string)=>void;children:ReactNode}) {
   const enabled=overrides.has(field);
   return <div className={`field environment-field ${enabled?"is-overridden":""}`}><div className="field-label"><span>{label}</span><label className="environment-override"><input type="checkbox" checked={enabled} onChange={()=>toggle(field)}/><i aria-hidden="true"/><b>设备覆盖</b></label></div>{children}</div>;
+}
+
+function DeviceTypeSelect({disabled,options,value,onChange}:{disabled:boolean;options:DeviceTaxonomyTerm[];value:string;onChange:(value:string)=>void}) {
+  const [open,setOpen]=useState(false);
+  const selected=options.find((term)=>term.id===value);
+  const select=(next:string)=>{onChange(next);setOpen(false)};
+  return <div className={`device-type-select ${open?"is-open":""}`} onBlur={(event)=>{if(!event.currentTarget.contains(event.relatedTarget))setOpen(false)}}>
+    <button type="button" disabled={disabled} aria-haspopup="listbox" aria-expanded={open} onClick={()=>setOpen((current)=>!current)}>
+      <DeviceTypeOptionIcon term={selected}/><span>{selected?.name_zh??"未设置"}</span><ChevronDown size={15}/>
+    </button>
+    {open?<div className="device-type-select-menu" role="listbox">
+      <button type="button" role="option" aria-selected={!value} onClick={()=>select("")}><span className="device-type-select-empty"/><span>未设置</span>{!value?<Check size={14}/>:null}</button>
+      {options.map((term)=><button type="button" role="option" aria-selected={term.id===value} key={term.id} onClick={()=>select(term.id)}><DeviceTypeOptionIcon term={term}/><span>{term.name_zh}</span>{term.id===value?<Check size={14}/>:null}</button>)}
+    </div>:null}
+  </div>;
+}
+
+function DeviceTypeOptionIcon({term}:{term?:DeviceTaxonomyTerm}) {
+  const src=iconifyIconUrl(term?.icon);
+  return src?<img src={src} alt=""/>:<Leaf size={16}/>;
 }
 
 function EnvironmentMultiField({label,field,overrides,toggle,options,value,onChange}:{label:string;field:string;overrides:Set<string>;toggle:(field:string)=>void;options:DeviceTaxonomyTerm[];value:string[];onChange:(value:string[])=>void}) {

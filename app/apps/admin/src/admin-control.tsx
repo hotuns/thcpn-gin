@@ -23,6 +23,7 @@ import {
   Tabs,
   Tag,
   Tooltip,
+  Upload,
 } from "@thcpn/admin-ui";
 import { api, formatApiError, type JsonRecord } from "@thcpn/api";
 import { Badge, PageHeader, Panel, StateView } from "@thcpn/ui";
@@ -35,6 +36,7 @@ import {
   Search,
   ShieldCheck,
   UserPlus,
+  UploadCloud,
 } from "lucide-react";
 import { billingEnabled } from "./features";
 
@@ -315,5 +317,7 @@ export function AdminSettingsPage() {
   const health = useQuery({ queryKey: ["admin", "settings", "health"], queryFn: api.health, refetchInterval: 30_000 });
   const ready = useQuery({ queryKey: ["admin", "settings", "ready"], queryFn: api.ready, refetchInterval: 30_000 });
   const catalog = useQuery({ queryKey: ["admin", "permissions"], queryFn: api.admin.permissionsCatalog });
-  return <><PageHeader eyebrow="System / settings" title="系统设置" description="查看服务依赖、权限目录和系统元数据。" actions={<Button icon={<RefreshCw size={14} />} onClick={() => { void health.refetch(); void ready.refetch(); void catalog.refetch(); }}>刷新状态</Button>} /><div className="grid grid-3"><Card title="API 服务" extra={<Tag color={health.isError ? "red" : "green"}>{health.isLoading ? "检查中" : health.isError ? "异常" : "正常"}</Tag>}><p>{health.isError ? formatApiError(health.error).message : "健康检查通过"}</p></Card><Card title="数据库与依赖" extra={<Tag color={ready.isError ? "red" : "green"}>{ready.isLoading ? "检查中" : ready.isError ? "异常" : "正常"}</Tag>}><p>{ready.isError ? formatApiError(ready.error).message : "就绪检查通过"}</p></Card><Card title="权限目录" extra={<Tag color={catalog.isError ? "red" : "blue"}>{catalog.isError ? "不可用" : `${catalog.data?.permissions?.length ?? 0} 项`}</Tag>}><p>成员、分享和邀请共用这套权限定义。</p></Card></div></>;
+  return <><PageHeader eyebrow="System / settings" title="系统设置" description="查看服务依赖、权限目录和系统元数据。" actions={<Button icon={<RefreshCw size={14} />} onClick={() => { void health.refetch(); void ready.refetch(); void catalog.refetch(); }}>刷新状态</Button>} /><LoginVisualSettings/><div className="grid grid-3"><Card title="API 服务" extra={<Tag color={health.isError ? "red" : "green"}>{health.isLoading ? "检查中" : health.isError ? "异常" : "正常"}</Tag>}><p>{health.isError ? formatApiError(health.error).message : "健康检查通过"}</p></Card><Card title="数据库与依赖" extra={<Tag color={ready.isError ? "red" : "green"}>{ready.isLoading ? "检查中" : ready.isError ? "异常" : "正常"}</Tag>}><p>{ready.isError ? formatApiError(ready.error).message : "就绪检查通过"}</p></Card><Card title="权限目录" extra={<Tag color={catalog.isError ? "red" : "blue"}>{catalog.isError ? "不可用" : `${catalog.data?.permissions?.length ?? 0} 项`}</Tag>}><p>成员、分享和邀请共用这套权限定义。</p></Card></div></>;
 }
+
+function LoginVisualSettings(){const client=useQueryClient();const {message}=AntApp.useApp();const query=useQuery({queryKey:["admin","login-visuals"],queryFn:api.admin.loginVisuals.list});const upload=async(file:File)=>{try{await api.admin.loginVisuals.upload(file);await client.invalidateQueries({queryKey:["admin","login-visuals"]});void message.success("登录页图片已添加")}catch(error){void message.error(formatApiError(error).message)}return false};const remove=async(id:string)=>{try{await api.admin.loginVisuals.remove(id);await client.invalidateQueries({queryKey:["admin","login-visuals"]});void message.success("登录页图片已删除")}catch(error){void message.error(formatApiError(error).message)}};return <Card className="admin-login-visual-settings" title="登录页图片" extra={<Upload multiple accept="image/jpeg,image/png,image/webp" showUploadList={false} beforeUpload={upload}><Button type="primary" icon={<UploadCloud size={14}/>}>上传图片</Button></Upload>}><p>可配置多张图片，用户登录页将自动轮播。支持 JPEG、PNG、WebP，单张不超过 10 MB。</p>{query.isLoading?<StateView type="loading" title="正在加载登录页图片" description=""/>:query.error?<ErrorState error={query.error} title="登录页图片加载失败"/>:query.data?.items.length?<div className="admin-login-visual-grid">{query.data.items.map((item)=><div key={item.id}><img src={item.url} alt={item.original_filename}/><div><span title={item.original_filename}>{item.original_filename}</span><Button danger size="small" onClick={()=>void remove(item.id)}>删除</Button></div></div>)}</div>:<StateView type="empty" title="尚未配置图片" description="登录页将继续使用默认背景。"/>}</Card>}

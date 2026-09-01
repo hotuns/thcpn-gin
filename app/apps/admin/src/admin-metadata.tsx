@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Building2, Droplets, Leaf, Mountain, Plus, RefreshCw, Search, Settings2, ShieldCheck, Sprout, Sun, TreePine, Waves, Wheat } from "lucide-react";
+import { Leaf, Plus, RefreshCw, Search, Settings2, ShieldCheck } from "lucide-react";
+import { AutoComplete } from "antd";
 import {
   Button,
   Drawer,
@@ -23,6 +24,7 @@ import {
   type JsonRecord,
 } from "@thcpn/api";
 import { Badge, PageHeader, Panel, StateView } from "@thcpn/ui";
+import { iconifyIconUrl } from "@thcpn/device-map";
 
 const value = (input: unknown, fallback = "—") =>
   input === undefined || input === null || input === ""
@@ -36,20 +38,20 @@ const formatTime = (input: unknown) =>
       }).format(new Date(String(input)))
     : "—";
 
-const ecosystemIcons = [
-  { value: "tree-pine", label: "森林", icon: TreePine },
-  { value: "sprout", label: "草地", icon: Sprout },
-  { value: "wheat", label: "农田", icon: Wheat },
-  { value: "waves", label: "湿地", icon: Waves },
-  { value: "sun", label: "荒漠", icon: Sun },
-  { value: "building-2", label: "城市", icon: Building2 },
-  { value: "droplets", label: "水域", icon: Droplets },
-  { value: "mountain", label: "山地", icon: Mountain },
-  { value: "leaf", label: "其他", icon: Leaf },
+const deviceTypeIcons = [
+  { value: "mdi:pine-tree", label: "森林" },
+  { value: "mdi:sprout", label: "草地" },
+  { value: "mdi:barley", label: "农田" },
+  { value: "mdi:waves", label: "湿地" },
+  { value: "mdi:white-balance-sunny", label: "荒漠" },
+  { value: "mdi:city-variant-outline", label: "城市" },
+  { value: "mdi:water", label: "水域" },
+  { value: "mdi:terrain", label: "山地" },
+  { value: "mdi:leaf", label: "其他" },
 ] as const;
 const EcosystemIcon = ({ name, size = 16 }: { name?: string; size?: number }) => {
-  const Icon = ecosystemIcons.find((item) => item.value === name)?.icon ?? Leaf;
-  return <Icon size={size} />;
+  const src = iconifyIconUrl(name);
+  return src ? <img src={src} width={size} height={size} alt="" /> : <Leaf size={size} />;
 };
 
 export function AdminMetadataPage() {
@@ -95,10 +97,11 @@ function ProfileOptions() {
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [form] = Form.useForm();
+  const selectedIcon = Form.useWatch("icon", form);
   const rows = (query.data?.items ?? []).filter((item) => item.kind === kind);
   const open = (item: DeviceTaxonomyTerm | "new") => {
     setEditing(item);
-    form.setFieldsValue(item === "new" ? { code: "", name_zh: "", name_en: "", status: "active", sort_order: 100, icon: kind === "ecosystem" ? "leaf" : undefined } : item);
+    form.setFieldsValue(item === "new" ? { code: "", name_zh: "", name_en: "", status: "active", sort_order: 100, icon: kind === "ecosystem" ? "mdi:leaf" : undefined } : item);
   };
   const close = () => { setEditing(null); form.resetFields(); };
   const save = async () => {
@@ -123,11 +126,11 @@ function ProfileOptions() {
   return <>
     <Panel>
       <div className="admin-list-toolbar">
-        <Select value={kind} onChange={setKind} style={{ width: 180 }} options={[{ value: "ecosystem", label: "生态类型" }, { value: "observation_object", label: "观测对象" }]} />
+        <Select value={kind} onChange={setKind} style={{ width: 180 }} options={[{ value: "ecosystem", label: "设备类型" }, { value: "observation_object", label: "观测对象" }]} />
         <Space><Button icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>刷新</Button><Button type="primary" icon={<Plus size={14} />} onClick={() => open("new")}>新增选项</Button></Space>
       </div>
       {feedback && <div className="admin-feedback">{feedback}</div>}
-      {query.isLoading ? <StateView type="loading" title="正在加载设备资料选项" description="正在读取生态类型和观测对象。" /> : query.error ? <StateView type="error" title="设备资料选项加载失败" description={formatApiError(query.error).message} /> : <Table rowKey="id" dataSource={rows} columns={[
+      {query.isLoading ? <StateView type="loading" title="正在加载设备资料选项" description="正在读取设备类型和观测对象。" /> : query.error ? <StateView type="error" title="设备资料选项加载失败" description={formatApiError(query.error).message} /> : <Table rowKey="id" dataSource={rows} columns={[
         ...(kind === "ecosystem" ? [{ title: "图标", width: 70, render: (_: unknown, item: DeviceTaxonomyTerm) => <EcosystemIcon name={item.icon} /> }] : []),
         { title: "名称", render: (_: unknown, item: DeviceTaxonomyTerm) => <div><div className="cell-title">{item.name_zh}</div><div className="cell-sub">{item.name_en}</div></div> },
         { title: "编码", dataIndex: "code", className: "mono" },
@@ -136,12 +139,12 @@ function ProfileOptions() {
         { title: "操作", width: 150, render: (_: unknown, item: DeviceTaxonomyTerm) => <Space><Button type="link" onClick={() => open(item)}>编辑</Button><Popconfirm title="删除这个选项？" description="已被设备或样地使用的选项无法删除。" onConfirm={() => void remove(item)}><Button type="link" danger>删除</Button></Popconfirm></Space> },
       ]} pagination={false} />}
     </Panel>
-    <Drawer title={editing === "new" ? `新增${kind === "ecosystem" ? "生态类型" : "观测对象"}` : "编辑选项"} open={Boolean(editing)} onClose={close} size={420} extra={<Space><Button onClick={close}>取消</Button><Button type="primary" loading={busy} onClick={() => void save()}>保存</Button></Space>}>
+    <Drawer title={editing === "new" ? `新增${kind === "ecosystem" ? "设备类型" : "观测对象"}` : "编辑选项"} open={Boolean(editing)} onClose={close} size={420} extra={<Space><Button onClick={close}>取消</Button><Button type="primary" loading={busy} onClick={() => void save()}>保存</Button></Space>}>
       <Form form={form} layout="vertical">
         <Form.Item name="code" label="稳定编码" rules={[{ required: true, message: "请输入编码" }]}><Input disabled={editing !== "new"} placeholder="例如 forest" /></Form.Item>
         <Form.Item name="name_zh" label="中文名称" rules={[{ required: true, message: "请输入中文名称" }]}><Input /></Form.Item>
         <Form.Item name="name_en" label="英文名称" rules={[{ required: true, message: "请输入英文名称" }]}><Input /></Form.Item>
-        {kind === "ecosystem" && <Form.Item name="icon" label="图标"><Select options={ecosystemIcons.map(({ value, label, icon: Icon }) => ({ value, label: <Space><Icon size={15} />{label}</Space> }))} /></Form.Item>}
+        {kind === "ecosystem" && <Form.Item name="icon" label="分类图标" rules={[{ pattern: /^[a-z0-9-]+:[a-z0-9-]+$/, message: "请输入有效的 Iconify 标识，例如 mdi:pine-tree" }]}><AutoComplete options={deviceTypeIcons.map(({ value, label }) => ({ value, label: <Space><EcosystemIcon name={value} />{label}<span className="mono">{value}</span></Space> }))}><Input prefix={<EcosystemIcon name={selectedIcon} />} placeholder="输入 Iconify 标识，例如 mdi:pine-tree" /></AutoComplete></Form.Item>}
         <Form.Item name="status" label="状态"><Select options={[{ value: "active", label: "启用" }, { value: "inactive", label: "停用" }]} /></Form.Item>
         <Form.Item name="sort_order" label="排序"><InputNumber precision={0} style={{ width: "100%" }} /></Form.Item>
       </Form>

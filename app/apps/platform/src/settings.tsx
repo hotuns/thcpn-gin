@@ -442,10 +442,10 @@ function ResourceFormDialog({
             <div className="form-section environment-form-section">
               <div className="profile-editor-section-head">
                 <span><Tags size={16} /></span>
-                <div><h3>样地观测资料</h3><p>设备默认继承样地的生态类型、观测对象和研究标签。</p></div>
+                <div><h3>样地观测资料</h3><p>设备默认继承样地的设备类型、观测对象和研究标签。</p></div>
               </div>
               <label className="field">
-                <span className="field-label">生态类型</span>
+                <span className="field-label">设备类型</span>
                 <select value={ecosystem} onChange={(event) => setEcosystem(event.target.value)}>
                   <option value="">未设置</option>
                   {terms.filter((term) => term.kind === "ecosystem" && term.status === "active").map((term) => <option key={term.id} value={term.id}>{term.name_zh}</option>)}

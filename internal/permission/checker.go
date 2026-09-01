@@ -25,6 +25,10 @@ type Store interface {
 	GetWorkspaceMemberPermissionRole(ctx context.Context, arg sqlc.GetWorkspaceMemberPermissionRoleParams) (string, error)
 }
 
+type demoStore interface {
+	IsDemoDeviceForUser(ctx context.Context, userID, deviceID uuid.UUID) (bool, error)
+}
+
 type Checker struct {
 	store Store
 }
@@ -86,6 +90,11 @@ func (c *Checker) Can(ctx context.Context, actor Actor, action string, resource 
 	if c.store == nil {
 		return Decision{}, apperr.New(apperr.KindInternal, "permission checker store is not configured")
 	}
+	if resource.Type == "device" {
+		if decision, checked, checkErr := c.demoDecision(ctx, actor.UserID, resource.ID, action); checked || checkErr != nil {
+			return decision, checkErr
+		}
+	}
 
 	scope, err := c.resolveResource(ctx, resource)
 	if err != nil {
@@ -93,6 +102,25 @@ func (c *Checker) Can(ctx context.Context, actor Actor, action string, resource 
 	}
 	if scope.WorkspaceID == uuid.Nil {
 		return Decision{Allowed: false, Reason: "unsupported resource type"}, nil
+	}
+	if scope.DeviceID != uuid.Nil {
+		demoChecker, supportsDemo := c.store.(demoStore)
+		demoDevice := false
+		var checkErr error
+		if supportsDemo {
+			demoDevice, checkErr = demoChecker.IsDemoDeviceForUser(ctx, actor.UserID, scope.DeviceID)
+		}
+		if checkErr != nil {
+			return Decision{}, apperr.Wrap(apperr.KindInternal, "check demo device access", checkErr)
+		}
+		if demoDevice {
+			switch action {
+			case "device.bind", "device.transfer", "device.unbind", "media.delete":
+				return Decision{Allowed: false, Reason: "demo account destructive action denied", Source: "demo_showcase"}, nil
+			default:
+				return Decision{Allowed: true, Reason: "allowed by demo showcase", Source: "demo_showcase"}, nil
+			}
+		}
 	}
 
 	memberRoleCode, err := c.store.GetWorkspaceMemberPermissionRole(ctx, sqlc.GetWorkspaceMemberPermissionRoleParams{
@@ -137,6 +165,26 @@ func (c *Checker) Can(ctx context.Context, actor Actor, action string, resource 
 	}
 
 	return Decision{Allowed: false, Reason: "permission denied"}, nil
+}
+
+func (c *Checker) demoDecision(ctx context.Context, userID, deviceID uuid.UUID, action string) (Decision, bool, error) {
+	demoChecker, ok := c.store.(demoStore)
+	if !ok {
+		return Decision{}, false, nil
+	}
+	selected, err := demoChecker.IsDemoDeviceForUser(ctx, userID, deviceID)
+	if err != nil {
+		return Decision{}, true, apperr.Wrap(apperr.KindInternal, "check demo device access", err)
+	}
+	if !selected {
+		return Decision{}, false, nil
+	}
+	switch action {
+	case "device.bind", "device.transfer", "device.unbind", "media.delete":
+		return Decision{Allowed: false, Reason: "demo account destructive action denied", Source: "demo_showcase"}, true, nil
+	default:
+		return Decision{Allowed: true, Reason: "allowed by demo showcase", Source: "demo_showcase"}, true, nil
+	}
 }
 
 func (c *Checker) resolveResource(ctx context.Context, resource ResourceRef) (resourceScope, error) {

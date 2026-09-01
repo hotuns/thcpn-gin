@@ -44,6 +44,7 @@ type UserProfile struct {
 	PhoneVerifiedAt *time.Time `json:"phone_verified_at,omitempty"`
 	EmailVerifiedAt *time.Time `json:"email_verified_at,omitempty"`
 	LastLoginAt     *time.Time `json:"last_login_at,omitempty"`
+	IsDemo          bool       `json:"is_demo"`
 }
 
 type Session struct {
@@ -994,6 +995,7 @@ func userProfileFromSQL(model sqlc.User) UserProfile {
 		PhoneVerifiedAt: pgTimePtr(model.PhoneVerifiedAt),
 		EmailVerifiedAt: pgTimePtr(model.EmailVerifiedAt),
 		LastLoginAt:     pgTimePtr(model.LastLoginAt),
+		IsDemo:          model.IsDemo,
 	}
 }
 

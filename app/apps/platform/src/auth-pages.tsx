@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, KeyRound, MessageSquareText } from "lucide-react";
 import { api, formatApiError } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
@@ -41,6 +42,8 @@ export function AuthPage({ register = false }: { register?: boolean }) {
   const [initialPasswordToken, setInitialPasswordToken] = useState("");
   const [initialPassword, setInitialPassword] = useState("");
   const [initialPasswordConfirm, setInitialPasswordConfirm] = useState("");
+  const visuals = useQuery({ queryKey: ["login-visuals"], queryFn: api.auth.loginVisuals, staleTime: 5 * 60_000 });
+  const [visualIndex, setVisualIndex] = useState(0);
   useEffect(() => {
     if (cooldown <= 0) return;
     const timer = window.setInterval(
@@ -49,6 +52,12 @@ export function AuthPage({ register = false }: { register?: boolean }) {
     );
     return () => window.clearInterval(timer);
   }, [cooldown > 0]);
+  useEffect(() => {
+    const count = visuals.data?.items.length ?? 0;
+    if (count < 2) return;
+    const timer = window.setInterval(() => setVisualIndex((value) => (value + 1) % count), 7000);
+    return () => window.clearInterval(timer);
+  }, [visuals.data?.items.length]);
   const next = platformNextPath(
     new URLSearchParams(location.search).get("next"),
   );
@@ -192,19 +201,10 @@ export function AuthPage({ register = false }: { register?: boolean }) {
   return (
     <div className="auth-layout">
       <section className="auth-visual">
+        {visuals.data?.items.length ? <div className="auth-visual-carousel" aria-hidden="true">{visuals.data.items.map((item,index)=><img key={item.id} src={item.url} alt="" className={index===visualIndex?"is-active":""}/>)}</div> : null}
+        {visuals.data?.items.length ? <div className="auth-visual-shade" aria-hidden="true" /> : null}
         <Brand />
         <div className="auth-language"><LanguageSwitcher compact /></div>
-        <div className="auth-copy">
-          <div className="eyebrow" style={{ color: "#a7d0ff" }}>
-            PRECISION CONSOLE
-          </div>
-          <h1 className="auth-title">
-            {t("platform:auth.hero")}
-          </h1>
-          <p className="auth-lede">
-            {t("platform:auth.heroCopy")}
-          </p>
-        </div>
       </section>
       <section className="auth-form-side">
         <div className="auth-card">

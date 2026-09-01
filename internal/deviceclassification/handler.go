@@ -120,7 +120,12 @@ func (h *Handler) Map(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid workspace_id"))
 		return
 	}
-	result, err := h.service.Map(c.Request.Context(), &workspaceID, c.Query("include_children") == "true")
+	var result MapResult
+	if actor.IsDemo {
+		result, err = h.service.MapDemo(c.Request.Context(), actor.UserID, c.Query("include_children") == "true")
+	} else {
+		result, err = h.service.Map(c.Request.Context(), &workspaceID, c.Query("include_children") == "true")
+	}
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return

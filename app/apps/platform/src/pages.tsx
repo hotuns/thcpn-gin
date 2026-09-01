@@ -35,6 +35,16 @@ const formatTime = (value?: string) =>
         second: "2-digit",
       }).format(new Date(value))
     : "—";
+const streamOrderStorageKey = (deviceId: string) =>
+  `ecocloud:device-data-stream-order:${deviceId}`;
+const savedStreamOrder = (deviceId: string) => {
+  try {
+    const value = JSON.parse(localStorage.getItem(streamOrderStorageKey(deviceId)) ?? "[]");
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+};
 function WorkspaceMissing() {
   return (
     <Panel>
@@ -123,12 +133,17 @@ export function DeviceDataPage({
     const defaults = streamsQuery.data.items
         .filter((item) => item.type === "telemetry" && item.status === "active")
         .map((item) => item.id);
+    const storedOrder = savedStreamOrder(deviceId);
+    const orderedDefaults = [
+      ...storedOrder.filter((id) => defaults.includes(id)),
+      ...defaults.filter((id) => !storedOrder.includes(id)),
+    ];
     const imageDefaults = streamsQuery.data.items
       .filter((item) => item.type === "image" && item.status === "active")
       .map((item) => item.id);
-    setSelectedStreamIds(defaults);
+    setSelectedStreamIds(orderedDefaults);
     setSelectedImageStreamIds(imageDefaults);
-    setAppliedStreamIds(defaults);
+    setAppliedStreamIds(orderedDefaults);
     setAppliedImageStreamIds(imageDefaults);
     setSelectionReadyForDevice(deviceId);
   }, [deviceId, selectionReadyForDevice, streamsQuery.data, streamsQuery.isSuccess]);
@@ -290,6 +305,7 @@ export function DeviceDataPage({
     window.requestAnimationFrame(() => scrollToDataSection("data-section-trend"));
   };
   const reorderSelectedStreams = (nextIds: string[]) => {
+    localStorage.setItem(streamOrderStorageKey(deviceId), JSON.stringify(nextIds));
     setSelectedStreamIds(nextIds);
     setAppliedStreamIds((current) => {
       const applied = new Set(current);

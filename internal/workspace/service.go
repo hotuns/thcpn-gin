@@ -32,6 +32,7 @@ type Workspace struct {
 	Status           string    `json:"status"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
+	IsDemoWorkspace  bool      `json:"is_demo_workspace"`
 }
 
 type Role struct {
@@ -236,6 +237,7 @@ func workspaceFromSQL(model sqlc.Workspace) Workspace {
 		Status:           model.Status,
 		CreatedAt:        pgTime(model.CreatedAt),
 		UpdatedAt:        pgTime(model.UpdatedAt),
+		IsDemoWorkspace:  model.IsDemoWorkspace,
 	}
 }
 
@@ -249,6 +251,7 @@ func workspaceFromListRow(row sqlc.ListWorkspacesForUserRow) Workspace {
 		Status:           row.Status,
 		CreatedAt:        pgTime(row.CreatedAt),
 		UpdatedAt:        pgTime(row.UpdatedAt),
+		IsDemoWorkspace:  row.IsDemoWorkspace,
 	}
 }
 

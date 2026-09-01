@@ -25,6 +25,11 @@ type fakePermissionStore struct {
 	device           sqlc.Device
 	deviceAssignment sqlc.DeviceAssignment
 	dataStream       sqlc.DataStream
+	demoDevice       bool
+}
+
+func (f *fakePermissionStore) IsDemoDeviceForUser(context.Context, uuid.UUID, uuid.UUID) (bool, error) {
+	return f.demoDevice, f.err
 }
 
 func (f *fakePermissionStore) GetWorkspaceMemberPermissionRole(_ context.Context, arg sqlc.GetWorkspaceMemberPermissionRoleParams) (string, error) {
@@ -132,6 +137,32 @@ func TestCheckerDeniesMissingMembershipPermission(t *testing.T) {
 	}
 	if decision.Allowed {
 		t.Fatalf("expected denied decision, got %#v", decision)
+	}
+}
+
+func TestCheckerAllowsSelectedDemoDevice(t *testing.T) {
+	store := &fakePermissionStore{demoDevice: true}
+	decision, err := NewChecker(store).Can(context.Background(), Actor{UserID: uuid.New()}, "telemetry.view", ResourceRef{Type: "device", ID: uuid.New()})
+	if err != nil {
+		t.Fatalf("check permission: %v", err)
+	}
+	if !decision.Allowed || decision.Source != "demo_showcase" {
+		t.Fatalf("expected demo showcase access, got %#v", decision)
+	}
+}
+
+func TestCheckerDeniesDemoDeviceDestructiveActions(t *testing.T) {
+	for _, action := range []string{"device.bind", "device.transfer", "device.unbind", "media.delete"} {
+		t.Run(action, func(t *testing.T) {
+			store := &fakePermissionStore{demoDevice: true}
+			decision, err := NewChecker(store).Can(context.Background(), Actor{UserID: uuid.New()}, action, ResourceRef{Type: "device", ID: uuid.New()})
+			if err != nil {
+				t.Fatalf("check permission: %v", err)
+			}
+			if decision.Allowed {
+				t.Fatalf("expected %s to be denied", action)
+			}
+		})
 	}
 }
 

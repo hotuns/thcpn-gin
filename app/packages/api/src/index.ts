@@ -5,12 +5,12 @@ export * from "./sampling-profile";
 type Schema<Name extends keyof components["schemas"]> =
   components["schemas"][Name];
 
-export type User = Schema<"UserProfile">;
+export type User = Schema<"UserProfile"> & { is_demo?: boolean };
 export type SendCodeResponse = Schema<"SendCodeResponse">;
 export type MfaStatus = Schema<"MfaStatusResponse">;
 export type TotpSetup = Schema<"TotpSetupResponse">;
 export type AuthSession = Schema<"AuthSession">;
-export type Workspace = Schema<"Workspace">;
+export type Workspace = Schema<"Workspace"> & { is_demo_workspace?: boolean };
 export type WorkspaceMembership = Schema<"WorkspaceMembership">;
 export type WorkspaceWithMembership = Schema<"WorkspaceWithMembership">;
 export type WorkspaceMember = Schema<"WorkspaceMember">;
@@ -22,7 +22,10 @@ export type AccessibleWorkspace = Workspace & {
   membership: WorkspaceMembership;
 };
 
-export type Device = Omit<Schema<"Device">, "device_type"> & { device_type: string };
+export type Device = Omit<Schema<"Device">, "device_type"> & { device_type: string; source_workspace_name?: string; source_project_name?: string; source_site_name?: string };
+export type DemoShowcaseConfig = { user_id: string; name: string; phone?: string; email?: string; workspace_id: string; workspace_name: string };
+export type DemoShowcaseDevice = { id: string; name: string; serial_no: string; device_type: string; status: string; workspace_id?: string; workspace_name?: string; project_name?: string; site_name?: string; selected: boolean; added_at?: string };
+export type LoginVisual = { id: string; url: string; original_filename: string; created_at: string };
 export type DeviceProfile = Schema<"DeviceProfile">;
 export type DeviceProfileImage = Schema<"DeviceProfileImage">;
 export type DeviceTaxonomyTerm = { id: string; kind: "ecosystem" | "observation_object" | "purpose" | "management" | "deployment"; code: string; name_zh: string; name_en: string; parent_id?: string; status: "active" | "inactive"; sort_order: number; system_defined: boolean; icon?: string };
@@ -482,6 +485,7 @@ export const api = {
       `/api/v1/objects/download${queryString(params as Record<string, string | number | boolean>)}`,
     ),
   auth: {
+    loginVisuals: () => request<ListResponse<LoginVisual>>("/api/v1/auth/login-visuals", {}, false),
     login: (payload: {
       identifier: string;
       password: string;
@@ -1391,6 +1395,18 @@ export const api = {
       sessions: (id: string) => request<ListResponse<JsonRecord>>(`/api/v1/admin/users/${encodeURIComponent(id)}/sessions`),
       activity: (id: string, filters: JsonRecord = {}) => request<ListResponse<JsonRecord>>(`/api/v1/admin/users/${encodeURIComponent(id)}/activity${queryString(filters as Record<string, string | number | boolean>)}`),
       remove: (id: string, payload: JsonRecord) => jsonRequest<void>(`/api/v1/admin/users/${encodeURIComponent(id)}`, "DELETE", payload),
+    },
+    demoShowcase: {
+      get: () => request<DemoShowcaseConfig>("/api/v1/admin/demo-showcase"),
+      configure: (userId: string) => jsonRequest<DemoShowcaseConfig>("/api/v1/admin/demo-showcase", "PUT", { user_id: userId }),
+      devices: (q = "") => request<ListResponse<DemoShowcaseDevice>>(`/api/v1/admin/demo-showcase/devices${queryString({ q })}`),
+      addDevice: (id: string) => request<void>(`/api/v1/admin/demo-showcase/devices/${encodeURIComponent(id)}`, { method: "PUT" }),
+      removeDevice: (id: string) => request<void>(`/api/v1/admin/demo-showcase/devices/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    },
+    loginVisuals: {
+      list: () => request<ListResponse<LoginVisual>>("/api/v1/auth/login-visuals"),
+      upload: (file: File) => { const body = new FormData(); body.append("file", file); return request<LoginVisual>("/api/v1/admin/login-visuals", { method: "POST", body }); },
+      remove: (id: string) => request<void>(`/api/v1/admin/login-visuals/${encodeURIComponent(id)}`, { method: "DELETE" }),
     },
     administrators: {
       list: () => request<ListResponse<JsonRecord>>("/api/v1/admin/administrators"),

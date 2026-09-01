@@ -29,6 +29,7 @@ type Actor struct {
 	Email           *string    `json:"email,omitempty"`
 	Status          string     `json:"status"`
 	IsSystemAdmin   bool       `json:"is_system_admin"`
+	IsDemo          bool       `json:"is_demo"`
 	PhoneVerifiedAt *time.Time `json:"phone_verified_at,omitempty"`
 	EmailVerifiedAt *time.Time `json:"email_verified_at,omitempty"`
 	AuthVersion     int        `json:"-"`

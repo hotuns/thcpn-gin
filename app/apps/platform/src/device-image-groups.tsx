@@ -17,6 +17,13 @@ const displayTime = (input: string) =>
     dateStyle: "medium",
     timeStyle: "medium",
   }).format(new Date(input));
+const imageDay = (input: string) =>
+  new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+  }).format(new Date(input));
 
 export type ImageGroupStat = {
   loaded: number;
@@ -201,6 +208,13 @@ function DeviceImageGroup({
   const images = items.filter(
     (item) => item.media_type === "image" && item.preview_url,
   );
+  const imageDays = Array.from(
+    images.reduce((groups, item) => {
+      const day = imageDay(item.captured_at);
+      groups.set(day, [...(groups.get(day) ?? []), item]);
+      return groups;
+    }, new Map<string, MediaItem[]>()),
+  );
   const total = query.data?.pages[0]?.total ?? (query.isSuccess ? 0 : null);
 
   useEffect(() => {
@@ -282,9 +296,16 @@ function DeviceImageGroup({
           }
         />
       ) : images.length ? (
-        <div className="media-grid">
-          {images.map((item, index) => (
-            <MediaCard key={`${item.data_stream_id}-${item.id}`} item={item} onPreview={() => setPreviewIndex(index)} />
+        <div className="image-day-list media-day-list">
+          {imageDays.map(([day, dayImages]) => (
+            <section className="image-day-row" key={day}>
+              <div className="image-day-heading"><strong>{day}</strong><span>{dayImages.length} 张</span></div>
+              <div className="image-day-scroller media-grid">
+                {dayImages.map((item) => (
+                  <MediaCard key={`${item.data_stream_id}-${item.id}`} item={item} onPreview={() => setPreviewIndex(images.indexOf(item))} />
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       ) : (

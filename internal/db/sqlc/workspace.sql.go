@@ -15,7 +15,7 @@ import (
 const createOrganizationWorkspace = `-- name: CreateOrganizationWorkspace :one
 INSERT INTO workspaces (type, organization_type, name, owner_user_id)
 VALUES ('organization', $1, $2, $3)
-RETURNING id, type, organization_type, name, owner_user_id, status, created_at, updated_at
+RETURNING id, type, organization_type, name, owner_user_id, status, created_at, updated_at, is_demo_workspace
 `
 
 type CreateOrganizationWorkspaceParams struct {
@@ -36,6 +36,7 @@ func (q *Queries) CreateOrganizationWorkspace(ctx context.Context, arg CreateOrg
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IsDemoWorkspace,
 	)
 	return i, err
 }
@@ -43,7 +44,7 @@ func (q *Queries) CreateOrganizationWorkspace(ctx context.Context, arg CreateOrg
 const createPersonalWorkspace = `-- name: CreatePersonalWorkspace :one
 INSERT INTO workspaces (type, name, owner_user_id)
 VALUES ('personal', $1, $2)
-RETURNING id, type, organization_type, name, owner_user_id, status, created_at, updated_at
+RETURNING id, type, organization_type, name, owner_user_id, status, created_at, updated_at, is_demo_workspace
 `
 
 type CreatePersonalWorkspaceParams struct {
@@ -63,6 +64,7 @@ func (q *Queries) CreatePersonalWorkspace(ctx context.Context, arg CreatePersona
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IsDemoWorkspace,
 	)
 	return i, err
 }
@@ -109,7 +111,7 @@ func (q *Queries) CreateWorkspaceMember(ctx context.Context, arg CreateWorkspace
 }
 
 const getWorkspace = `-- name: GetWorkspace :one
-SELECT id, type, organization_type, name, owner_user_id, status, created_at, updated_at
+SELECT id, type, organization_type, name, owner_user_id, status, created_at, updated_at, is_demo_workspace
 FROM workspaces
 WHERE id = $1
 `
@@ -126,6 +128,7 @@ func (q *Queries) GetWorkspace(ctx context.Context, id uuid.UUID) (Workspace, er
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IsDemoWorkspace,
 	)
 	return i, err
 }
@@ -161,7 +164,7 @@ func (q *Queries) GetWorkspaceMember(ctx context.Context, arg GetWorkspaceMember
 }
 
 const listWorkspaces = `-- name: ListWorkspaces :many
-SELECT id, type, organization_type, name, owner_user_id, status, created_at, updated_at
+SELECT id, type, organization_type, name, owner_user_id, status, created_at, updated_at, is_demo_workspace
 FROM workspaces
 ORDER BY created_at DESC, id DESC
 `
@@ -184,6 +187,7 @@ func (q *Queries) ListWorkspaces(ctx context.Context) ([]Workspace, error) {
 			&i.Status,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.IsDemoWorkspace,
 		); err != nil {
 			return nil, err
 		}
@@ -205,6 +209,7 @@ SELECT
     w.status,
     w.created_at,
     w.updated_at,
+    w.is_demo_workspace,
     wm.id AS membership_id,
     wm.status AS membership_status,
     wm.joined_at AS membership_joined_at,
@@ -219,6 +224,7 @@ LEFT JOIN roles tr ON tr.workspace_id IS NULL AND tr.code = wm.template_code
 WHERE wm.user_id = $1
   AND wm.status = 'active'
   AND w.status = 'active'
+  AND ((SELECT is_demo FROM users WHERE id = $1) = false OR w.is_demo_workspace = true)
 ORDER BY w.created_at ASC
 `
 
@@ -231,6 +237,7 @@ type ListWorkspacesForUserRow struct {
 	Status              string             `json:"status"`
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	IsDemoWorkspace     bool               `json:"is_demo_workspace"`
 	MembershipID        uuid.UUID          `json:"membership_id"`
 	MembershipStatus    string             `json:"membership_status"`
 	MembershipJoinedAt  pgtype.Timestamptz `json:"membership_joined_at"`
@@ -259,6 +266,7 @@ func (q *Queries) ListWorkspacesForUser(ctx context.Context, userID uuid.UUID) (
 			&i.Status,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.IsDemoWorkspace,
 			&i.MembershipID,
 			&i.MembershipStatus,
 			&i.MembershipJoinedAt,

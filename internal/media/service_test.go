@@ -79,10 +79,10 @@ func TestItemsFromDatasourceIncludesDeleteURLWhenAllowed(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("expected one item, got %d", len(items))
 	}
-	if items[0].PreviewURL != "https://iot-datas.oss-cn-beijing.aliyuncs.com/raw/img-1.jpg" {
+	if items[0].PreviewURL != "https://iot-datas.oss-cn-beijing.aliyuncs.com/raw/img-1.jpg?x-oss-process=image%2Fresize%2Cw_1600%2Fquality%2CQ_75%2Fformat%2Cwebp" {
 		t.Fatalf("unexpected preview URL: %q", items[0].PreviewURL)
 	}
-	if items[0].ThumbnailURL != "https://iot-datas.oss-cn-beijing.aliyuncs.com/thumbs/img-1.jpg" {
+	if items[0].ThumbnailURL != "https://iot-datas.oss-cn-beijing.aliyuncs.com/raw/img-1.jpg?x-oss-process=image%2Fresize%2Cw_480%2Fquality%2CQ_70%2Fformat%2Cwebp" {
 		t.Fatalf("unexpected thumbnail URL: %q", items[0].ThumbnailURL)
 	}
 	if !items[0].DeleteAllowed || items[0].DeleteURL == nil || !strings.HasPrefix(*items[0].DeleteURL, "/api/v1/media?token=") {

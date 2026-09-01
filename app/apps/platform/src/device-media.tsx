@@ -28,6 +28,13 @@ const displayTime = (input: string) =>
     dateStyle: "medium",
     timeStyle: "medium",
   }).format(new Date(input));
+const imageDay = (input: string) =>
+  new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+  }).format(new Date(input));
 export const tokenFromActionUrl = (input?: string) => {
   if (!input) return "";
   try {
@@ -153,10 +160,24 @@ export function RecentDeviceImages({
         start_time: startTime,
         end_time: endTime,
         page: 1,
-        page_size: 4,
+        page_size: 24,
       }),
   });
+  const streams = useQuery({
+    queryKey: workspaceQueryKey(workspaceId, "device", device.id, "overview", "image-streams"),
+    queryFn: () => api.dataStreams.list(device.id),
+  });
   const images = (query.data?.items ?? []).filter((item) => item.preview_url);
+  const streamNames = new Map(
+    (streams.data?.items ?? []).map((stream) => [stream.id, stream.name]),
+  );
+  const cameraGroups = Array.from(
+    images.reduce((groups, item) => {
+      const name = streamNames.get(item.data_stream_id) ?? "其他图片";
+      groups.set(name, [...(groups.get(name) ?? []), item]);
+      return groups;
+    }, new Map<string, MediaItem[]>()),
+  );
   return (
     <>
       <Panel className="overview-images">
@@ -186,20 +207,38 @@ export function RecentDeviceImages({
             requestId={formatApiError(query.error).requestId}
           />
         ) : images.length ? (
-          <div className="overview-image-grid">
-            {images.map((item, index) => (
-              <button
-                type="button"
-                key={`${item.data_stream_id}-${item.id}`}
-                onClick={() => setPreviewIndex(index)}
-              >
-                <img
-                  src={item.thumbnail_url || item.preview_url}
-                  alt={`${device.name} ${displayTime(item.captured_at)}采集图片`}
-                  loading="lazy"
-                />
-                <span>{displayTime(item.captured_at)}</span>
-              </button>
+          <div className="overview-camera-groups">
+            {cameraGroups.map(([cameraName, cameraImages]) => (
+              <section className="overview-camera-group" key={cameraName}>
+                <div className="overview-camera-heading"><strong>{cameraName}</strong><span>{cameraImages.length} 张</span></div>
+                <div className="image-day-list overview-image-days">
+                  {Array.from(cameraImages.reduce((days, item) => {
+                    const day = imageDay(item.captured_at);
+                    days.set(day, [...(days.get(day) ?? []), item]);
+                    return days;
+                  }, new Map<string, MediaItem[]>())).map(([day, dayImages]) => (
+                    <section className="image-day-row" key={day}>
+                      <div className="image-day-heading"><strong>{day}</strong><span>{dayImages.length} 张</span></div>
+                      <div className="image-day-scroller overview-image-grid">
+                        {dayImages.map((item) => (
+                          <button
+                            type="button"
+                            key={`${item.data_stream_id}-${item.id}`}
+                            onClick={() => setPreviewIndex(images.indexOf(item))}
+                          >
+                            <img
+                              src={item.thumbnail_url || item.preview_url}
+                              alt={`${cameraName} ${displayTime(item.captured_at)}采集图片`}
+                              loading="lazy"
+                            />
+                            <span>{displayTime(item.captured_at)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
         ) : (

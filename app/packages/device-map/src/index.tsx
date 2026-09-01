@@ -5,7 +5,12 @@ import Supercluster from "supercluster";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./styles.css";
 
-export type DeviceMapPoint = { device_id: string; name: string; device_type: string; status: string; latitude?: number; longitude?: number; child_count?: number; ecosystem?: string; purposes?: string[] };
+export type DeviceMapPoint = { device_id: string; name: string; device_type: string; status: string; latitude?: number; longitude?: number; child_count?: number; ecosystem?: string; category_icon?: string; purposes?: string[] };
+
+export function iconifyIconUrl(icon?: string, color = "#176f58") {
+  const match = icon?.trim().match(/^([a-z0-9-]+):([a-z0-9-]+)$/);
+  return match ? `https://api.iconify.design/${match[1]}/${match[2]}.svg?color=${encodeURIComponent(color)}` : "";
+}
 
 export function tiandituImageryStyle(token: string): StyleSpecification {
   const tiles = (layer: "img" | "cia") => Array.from({ length: 8 }, (_, index) =>
@@ -74,6 +79,14 @@ export function DeviceMap({ points, onSelect, height = 520, styleUrl, mapStyle }
             element.addEventListener("click", () => instance.easeTo({ center: feature.geometry.coordinates as [number, number], zoom: index.getClusterExpansionZoom(properties.cluster_id) }));
           } else {
             element.className = `device-map-marker device-map-point ${properties.status === "active" ? "is-active" : ""}`;
+            const iconUrl = iconifyIconUrl(properties.category_icon, "#ffffff");
+            if (iconUrl) {
+              element.classList.add("has-category-icon");
+              const image = document.createElement("img");
+              image.src = iconUrl;
+              image.alt = "";
+              element.append(image);
+            }
             element.title = properties.name;
             element.addEventListener("click", () => onSelect?.(properties.device_id));
           }
@@ -142,6 +155,7 @@ type DeviceMarkerProperties = {
   status: string;
   child_count: number;
   ecosystem: string;
+  category_icon: string;
   purposes: string;
 };
 
@@ -158,6 +172,7 @@ function deviceFeatureCollection(points: DeviceMapPoint[]) {
         status: point.status,
         child_count: point.child_count ?? 0,
         ecosystem: point.ecosystem ?? "",
+        category_icon: point.category_icon ?? "",
         purposes: (point.purposes ?? []).join("、"),
       },
     })),

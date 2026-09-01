@@ -35,6 +35,7 @@ type User struct {
 	PhoneVerifiedAt *time.Time `json:"phone_verified_at,omitempty"`
 	EmailVerifiedAt *time.Time `json:"email_verified_at,omitempty"`
 	LastLoginAt     *time.Time `json:"last_login_at,omitempty"`
+	IsDemo          bool       `json:"is_demo"`
 }
 
 type Workspace struct {
@@ -217,6 +218,7 @@ func (s *Service) LookupActor(ctx context.Context, id uuid.UUID) (auth.Actor, er
 		PhoneVerifiedAt: model.PhoneVerifiedAt,
 		EmailVerifiedAt: model.EmailVerifiedAt,
 		AuthVersion:     authVersion,
+		IsDemo:          model.IsDemo,
 	}, nil
 }
 
@@ -247,6 +249,7 @@ func userFromSQL(model sqlc.User) User {
 		PhoneVerifiedAt: pgTimePtr(model.PhoneVerifiedAt),
 		EmailVerifiedAt: pgTimePtr(model.EmailVerifiedAt),
 		LastLoginAt:     pgTimePtr(model.LastLoginAt),
+		IsDemo:          model.IsDemo,
 	}
 }
 

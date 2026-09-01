@@ -42,10 +42,12 @@ import {
   formatApiError,
   parseTHCPNConfig,
   type Device,
+  type DeviceTaxonomyTerm,
   type JsonRecord,
   type THCPNLatestAttributesResponse,
   type THCPNConfigFields,
 } from "@thcpn/api";
+import { iconifyIconUrl } from "@thcpn/device-map";
 import { useAuth } from "@thcpn/auth";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, Panel, StateView } from "@thcpn/ui";
@@ -190,6 +192,7 @@ export const firmwarePayload = (
 
 export function DevicesPage() {
   const { currentId } = useWorkspace();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [listParams] = useSearchParams();
   const [keyword, setKeyword] = useState("");
@@ -221,6 +224,21 @@ export function DevicesPage() {
       }),
     enabled: Boolean(currentId),
   });
+  const mapQuery = useQuery({
+    queryKey: workspaceQueryKey(currentId, "device-map", "false"),
+    queryFn: () => api.devices.map(currentId!, false),
+    enabled: Boolean(currentId),
+  });
+  const deviceTypeByDevice = useMemo(
+    () =>
+      new Map(
+        (mapQuery.data?.items ?? []).map((item) => [
+          item.device_id,
+          item.environment.ecosystem,
+        ]),
+      ),
+    [mapQuery.data?.items],
+  );
   const all = query.data?.items ?? [];
   const topLevelDevices = useMemo(() => all.filter(isTopLevelDevice), [all]);
   const runtimeDeviceIDs = useMemo(
@@ -315,10 +333,10 @@ export function DevicesPage() {
                 <RefreshCw size={14} />
                 刷新
               </Button>
-              <Button data-onboarding="claim-entry" onClick={() => navigate("/claim")}>
+              {!user?.is_demo && <Button data-onboarding="claim-entry" onClick={() => navigate("/claim")}>
                 <ScanLine size={14} />
                 认领设备
-              </Button>
+              </Button>}
             </div>
           </div>
           <div className="device-filter-scope-row">
@@ -407,12 +425,13 @@ export function DevicesPage() {
                   <DeviceRows
                     key={device.id}
                     device={device}
+                    deviceType={deviceTypeByDevice.get(device.id)}
                     workspaceId={currentId}
                     runtime={runtimeByDevice.get(device.id)}
                     runtimeLoading={runtime.isLoading}
                     expanded={expandedId === device.id}
-                    projectName={projectName(device.project_id)}
-                    siteName={siteName(device.site_id)}
+                    projectName={device.source_project_name || projectName(device.project_id)}
+                    siteName={device.source_site_name || device.source_workspace_name || siteName(device.site_id)}
                     onExpand={() =>
                       setExpandedId(expandedId === device.id ? "" : device.id)
                     }
@@ -464,6 +483,7 @@ export function LegacyDeviceDataRedirect() {
 
 function DeviceRows({
   device,
+  deviceType,
   workspaceId,
   runtime,
   runtimeLoading,
@@ -474,6 +494,7 @@ function DeviceRows({
   onOpen,
 }: {
   device: Device;
+  deviceType?: DeviceTaxonomyTerm;
   workspaceId: string;
   runtime?: THCPNLatestAttributesResponse;
   runtimeLoading: boolean;
@@ -512,6 +533,14 @@ function DeviceRows({
                 <Badge>
                   {deviceTopologyRoleLabel(device.topology_role || device.device_type)}
                 </Badge>
+                {deviceType ? (
+                  <span className="device-type-classification">
+                    {iconifyIconUrl(deviceType.icon) ? (
+                      <img src={iconifyIconUrl(deviceType.icon)} alt="" />
+                    ) : null}
+                    {deviceType.name_zh}
+                  </span>
+                ) : null}
                 <span>SN {device.serial_no}</span>
                 {gateway && <span>{device.child_count} 个节点</span>}
               </div>
@@ -952,6 +981,7 @@ export function DeviceCenterDetailPage() {
             name: item.name,
           }))}
           systemAdmin={false}
+          demoAccount={Boolean(user?.is_demo)}
           run={run}
         />
       )}
@@ -1057,8 +1087,7 @@ function DeviceOverview({
     enabled: hasTelemetry,
   });
   const recentSeries = (telemetry.data?.series ?? [])
-    .filter((series) => series.points.length)
-    .slice(0, 3);
+    .filter((series) => series.points.length);
   const gateway = deviceCategory(device) === "gateway";
   const childItems = children.data?.items ?? [];
   const childRuntimeQueries = useQueries({
@@ -1089,7 +1118,7 @@ function DeviceOverview({
               <div className="panel-header compact-panel-header">
                 <div>
                   <h2 className="panel-title">最近数据</h2>
-                  <div className="panel-kicker">最近 24 小时 · 3 个指标</div>
+                  <div className="panel-kicker">最近 24 小时 · 全部指标</div>
                 </div>
                 <Button variant="secondary" onClick={onOpenData}>
                   查看全部
@@ -1111,6 +1140,7 @@ function DeviceOverview({
               ) : recentSeries.length ? (
                 <TelemetryCharts
                   compact
+                  displayMode="separate"
                   series={recentSeries}
                   startTime={recentRange.startTime}
                   endTime={recentRange.endTime}
@@ -1320,12 +1350,14 @@ function DeviceConfig({
   currentWorkspaceId,
   workspaces,
   systemAdmin,
+  demoAccount,
   run,
 }: {
   device: Device;
   currentWorkspaceId: string;
   workspaces: Array<{ id: string; name: string }>;
   systemAdmin: boolean;
+  demoAccount: boolean;
   run: (
     action: () => Promise<unknown>,
     message: string,
@@ -1345,7 +1377,7 @@ function DeviceConfig({
       {systemAdmin && (
         <SystemDeviceConfig device={device} workspaces={workspaces} run={run} />
       )}
-      <Panel className="section-gap danger-zone">
+      {!demoAccount && <Panel className="section-gap danger-zone">
         <div className="panel-header">
           <div>
             <h2 className="panel-title">危险操作</h2>
@@ -1364,7 +1396,7 @@ function DeviceConfig({
             解绑设备
           </Button>
         </div>
-      </Panel>
+      </Panel>}
     </div>
   );
 }

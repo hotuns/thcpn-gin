@@ -199,6 +199,14 @@ type DatasetSource struct {
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
 
+type DemoShowcaseDevice struct {
+	UserID      uuid.UUID          `json:"user_id"`
+	WorkspaceID uuid.UUID          `json:"workspace_id"`
+	DeviceID    uuid.UUID          `json:"device_id"`
+	AddedBy     uuid.UUID          `json:"added_by"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
 // 平台设备主表，只保存稳定身份、类型和业务生命周期，不缓存源库实时运行属性或设备位置。
 type Device struct {
 	ID        uuid.UUID `json:"id"`
@@ -451,6 +459,7 @@ type DeviceTaxonomyTerm struct {
 	SystemDefined bool               `json:"system_defined"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	Icon          *string            `json:"icon"`
 }
 
 // 异步数据导出任务及结果对象、状态、错误和下载有效期。
@@ -751,6 +760,7 @@ type User struct {
 	EmailVerifiedAt pgtype.Timestamptz `json:"email_verified_at"`
 	LastLoginAt     pgtype.Timestamptz `json:"last_login_at"`
 	AuthVersion     int32              `json:"auth_version"`
+	IsDemo          bool               `json:"is_demo"`
 }
 
 // 普通用户密码凭据和登录锁定状态，一名用户一条记录。
@@ -800,6 +810,7 @@ type Workspace struct {
 	Status           string             `json:"status"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	IsDemoWorkspace  bool               `json:"is_demo_workspace"`
 }
 
 type WorkspaceApiKey struct {

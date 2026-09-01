@@ -24,31 +24,34 @@ type Service struct {
 }
 
 type Device struct {
-	ID                 uuid.UUID  `json:"id"`
-	AssignmentID       *uuid.UUID `json:"assignment_id,omitempty"`
-	WorkspaceID        *uuid.UUID `json:"workspace_id,omitempty"`
-	ProjectID          *uuid.UUID `json:"project_id,omitempty"`
-	SiteID             *uuid.UUID `json:"site_id,omitempty"`
-	ProductID          *string    `json:"product_id,omitempty"`
-	SerialNo           string     `json:"serial_no"`
-	Name               string     `json:"name"`
-	Status             string     `json:"status"`
-	ActivatedAt        *time.Time `json:"activated_at,omitempty"`
-	LifecycleStatus    string     `json:"lifecycle_status"`
-	LifecycleUpdatedAt *time.Time `json:"lifecycle_updated_at,omitempty"`
-	DeviceType         string     `json:"device_type"`
-	AssignedBy         *uuid.UUID `json:"assigned_by,omitempty"`
-	AssignedAt         *time.Time `json:"assigned_at,omitempty"`
-	WorkspaceName      *string    `json:"workspace_name,omitempty"`
-	ProjectName        *string    `json:"project_name,omitempty"`
-	SiteName           *string    `json:"site_name,omitempty"`
-	AssignedByName     string     `json:"assigned_by_name,omitempty"`
-	ExternalDeviceID   *int64     `json:"external_device_id,omitempty"`
-	Capabilities       []string   `json:"capabilities"`
-	TopologyRole       string     `json:"topology_role"`
-	ChildCount         int64      `json:"child_count"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
+	ID                  uuid.UUID  `json:"id"`
+	AssignmentID        *uuid.UUID `json:"assignment_id,omitempty"`
+	WorkspaceID         *uuid.UUID `json:"workspace_id,omitempty"`
+	SourceWorkspaceName string     `json:"source_workspace_name,omitempty"`
+	SourceProjectName   string     `json:"source_project_name,omitempty"`
+	SourceSiteName      string     `json:"source_site_name,omitempty"`
+	ProjectID           *uuid.UUID `json:"project_id,omitempty"`
+	SiteID              *uuid.UUID `json:"site_id,omitempty"`
+	ProductID           *string    `json:"product_id,omitempty"`
+	SerialNo            string     `json:"serial_no"`
+	Name                string     `json:"name"`
+	Status              string     `json:"status"`
+	ActivatedAt         *time.Time `json:"activated_at,omitempty"`
+	LifecycleStatus     string     `json:"lifecycle_status"`
+	LifecycleUpdatedAt  *time.Time `json:"lifecycle_updated_at,omitempty"`
+	DeviceType          string     `json:"device_type"`
+	AssignedBy          *uuid.UUID `json:"assigned_by,omitempty"`
+	AssignedAt          *time.Time `json:"assigned_at,omitempty"`
+	WorkspaceName       *string    `json:"workspace_name,omitempty"`
+	ProjectName         *string    `json:"project_name,omitempty"`
+	SiteName            *string    `json:"site_name,omitempty"`
+	AssignedByName      string     `json:"assigned_by_name,omitempty"`
+	ExternalDeviceID    *int64     `json:"external_device_id,omitempty"`
+	Capabilities        []string   `json:"capabilities"`
+	TopologyRole        string     `json:"topology_role"`
+	ChildCount          int64      `json:"child_count"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
 }
 
 type DeviceOperation struct {
@@ -323,6 +326,18 @@ func (s *Service) Get(ctx context.Context, deviceID uuid.UUID) (Device, error) {
 	return fromAssignedSQL(row, capabilities), nil
 }
 
+func (s *Service) GetAsset(ctx context.Context, deviceID uuid.UUID) (Device, error) {
+	row, err := s.queries.GetDevice(ctx, deviceID)
+	if err != nil {
+		return Device{}, mapNotFoundOrInternal(err, "device not found")
+	}
+	capabilities, err := s.queries.ListDeviceCapabilities(ctx, deviceID)
+	if err != nil {
+		return Device{}, apperr.Wrap(apperr.KindInternal, "list device capabilities", err)
+	}
+	return fromSQL(row, capabilities), nil
+}
+
 func (s *Service) List(ctx context.Context, input ListInput) ([]Device, error) {
 	if input.WorkspaceID == uuid.Nil {
 		return nil, apperr.New(apperr.KindInvalidArgument, "workspace id is required")
@@ -378,6 +393,34 @@ func (s *Service) List(ctx context.Context, input ListInput) ([]Device, error) {
 		return nil, apperr.Wrap(apperr.KindInternal, "list devices", err)
 	}
 	return items, nil
+}
+
+func (s *Service) ListDemoShowcase(ctx context.Context, userID uuid.UUID) ([]Device, error) {
+	rows, err := s.db.Query(ctx, `SELECT dsd.device_id,COALESCE(w.name,''),COALESCE(p.name,''),COALESCE(st.name,'') FROM demo_showcase_devices dsd LEFT JOIN device_assignments da ON da.device_id=dsd.device_id AND da.status='active' LEFT JOIN workspaces w ON w.id=da.workspace_id LEFT JOIN projects p ON p.id=da.project_id LEFT JOIN sites st ON st.id=da.site_id WHERE dsd.user_id=$1 ORDER BY dsd.created_at DESC`, userID)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindInternal, "list demo showcase devices", err)
+	}
+	defer rows.Close()
+	items := []Device{}
+	for rows.Next() {
+		var id uuid.UUID
+		var workspaceName, projectName, siteName string
+		if err := rows.Scan(&id, &workspaceName, &projectName, &siteName); err != nil {
+			return nil, err
+		}
+		item, err := s.Get(ctx, id)
+		if errors.Is(err, pgx.ErrNoRows) || apperr.KindOf(err) == apperr.KindNotFound {
+			item, err = s.GetAsset(ctx, id)
+		}
+		if err != nil {
+			return nil, err
+		}
+		item.SourceWorkspaceName = workspaceName
+		item.SourceProjectName = projectName
+		item.SourceSiteName = siteName
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 func (s *Service) ListSystemAssets(ctx context.Context) ([]Device, error) {

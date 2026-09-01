@@ -28,6 +28,7 @@ import (
 	"thcpn-gin/internal/datastream"
 	"thcpn-gin/internal/db"
 	"thcpn-gin/internal/db/sqlc"
+	"thcpn-gin/internal/demoshowcase"
 	"thcpn-gin/internal/device"
 	"thcpn-gin/internal/deviceclaim"
 	"thcpn-gin/internal/deviceclassification"
@@ -35,6 +36,7 @@ import (
 	emailx "thcpn-gin/internal/email"
 	"thcpn-gin/internal/export"
 	"thcpn-gin/internal/httpx"
+	"thcpn-gin/internal/loginvisual"
 	"thcpn-gin/internal/media"
 	"thcpn-gin/internal/member"
 	"thcpn-gin/internal/notification"
@@ -134,6 +136,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	objectSigner := objectstore.NewSigner(cfg.ObjectStore, cfg.Auth.JWTSecret)
 	thcpnLogSigner := objectstore.NewSigner(cfg.THCPNLogObjectStore, cfg.Auth.JWTSecret)
 	objectStore := objectstore.NewStore(cfg.ObjectStore)
+	loginVisualHandler := loginvisual.NewHandler(loginvisual.NewService(deps.Postgres, objectStore))
 	dataSourceService := datasource.NewService(deps.Postgres, objectStore)
 	if billingService != nil {
 		dataSourceService.SetBilling(billingService)
@@ -198,11 +201,13 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	emailCodeStore := auth.NewEmailCodeStore(deps.Redis, cfg.Auth.JWTSecret, cfg.Email)
 	authService := auth.NewService(deps.Postgres, tokenManager, smsCodeStore, smsSender, emailCodeStore, emailSender, cfg.Auth, cfg.SMS, cfg.Email)
 	adminUserService := adminuser.NewService(deps.Postgres, cfg.Auth.Password)
+	demoShowcaseService := demoshowcase.NewService(deps.Postgres)
 	adminTokenManager := auth.NewTokenManager(cfg.Auth.AdminJWTSecret, time.Duration(cfg.Auth.AccessTokenTTLMinutes)*time.Minute)
 	adminAuthService := adminauth.NewService(deps.Postgres, adminTokenManager, time.Duration(cfg.Auth.AccessTokenTTLMinutes)*time.Minute, time.Duration(cfg.Auth.RefreshTokenTTLDays)*24*time.Hour, cfg.Auth.Password)
 
 	authHandler := auth.NewHandler(authService, auditService)
 	adminUserHandler := adminuser.NewHandler(adminUserService, auditService)
+	demoShowcaseHandler := demoshowcase.NewHandler(demoShowcaseService, auditService)
 	adminAuthHandler := adminauth.NewHandler(adminAuthService)
 	userHandler := user.NewHandler(userService, auditService)
 	workspaceHandler := workspace.NewHandlerWithChecker(workspaceService, permissionChecker, auditService)
@@ -255,6 +260,8 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	api := router.Group("/api/v1")
 	api.GET("/objects/download", objectHandler.Download)
 	api.POST("/auth/sms/send", authHandler.SendSMS)
+	api.GET("/auth/login-visuals", loginVisualHandler.List)
+	api.GET("/auth/login-visuals/:visual_id", loginVisualHandler.Open)
 	api.POST("/auth/sms/login", authHandler.LoginWithSMS)
 	api.POST("/auth/sms/register", authHandler.RegisterWithSMS)
 	api.POST("/auth/password/register", authHandler.RegisterWithPassword)
@@ -293,6 +300,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 
 	authed := api.Group("")
 	authed.Use(authMiddleware)
+	authed.Use(demoAccountGuard())
 	authed.POST("/auth/logout", authHandler.Logout)
 	authed.GET("/notifications", notificationHandler.List)
 	authed.POST("/notifications/read-all", notificationHandler.ReadAll)
@@ -331,6 +339,13 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.PATCH("/announcements/:id/status", notificationHandler.AdminSetAnnouncementStatus)
 	admin.POST("/notifications", notificationHandler.AdminSend)
 	admin.GET("/users", adminUserHandler.List)
+	admin.POST("/login-visuals", loginVisualHandler.Upload)
+	admin.DELETE("/login-visuals/:visual_id", loginVisualHandler.Delete)
+	admin.GET("/demo-showcase", demoShowcaseHandler.Get)
+	admin.PUT("/demo-showcase", demoShowcaseHandler.Configure)
+	admin.GET("/demo-showcase/devices", demoShowcaseHandler.Devices)
+	admin.PUT("/demo-showcase/devices/:device_id", demoShowcaseHandler.Add)
+	admin.DELETE("/demo-showcase/devices/:device_id", demoShowcaseHandler.Remove)
 	admin.GET("/administrators", systemAdminHandler.List)
 	admin.POST("/administrators", systemAdminHandler.Create)
 	admin.PATCH("/administrators/:admin_id/status", systemAdminHandler.Status)
@@ -531,6 +546,23 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.PATCH("/datasets/:dataset_id", datasetHandler.Update)
 	authed.DELETE("/datasets/:dataset_id", datasetHandler.Delete)
 	return nil
+}
+
+func demoAccountGuard() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		actor, ok := auth.ActorFromContext(c)
+		if !ok || !actor.IsDemo {
+			c.Next()
+			return
+		}
+		path := c.Request.URL.Path
+		if (c.Request.Method == http.MethodDelete && (strings.HasPrefix(path, "/api/v1/media") || strings.HasPrefix(path, "/api/v1/devices/"))) || path == "/api/v1/device-claims/claim" {
+			httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "demo account destructive action denied"))
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
 }
 
 func newSMSSender(cfg config.SMSConfig, logger *slog.Logger) (smsx.Sender, error) {

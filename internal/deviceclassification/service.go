@@ -415,6 +415,38 @@ func (s *Service) Map(ctx context.Context, workspaceID *uuid.UUID, includeChildr
 	return result, nil
 }
 
+func (s *Service) MapDemo(ctx context.Context, userID uuid.UUID, includeChildren bool) (MapResult, error) {
+	result, err := s.Map(ctx, nil, includeChildren)
+	if err != nil {
+		return MapResult{}, err
+	}
+	rows, err := s.db.Query(ctx, `SELECT device_id FROM demo_showcase_devices WHERE user_id=$1`, userID)
+	if err != nil {
+		return MapResult{}, apperr.Wrap(apperr.KindInternal, "list demo map devices", err)
+	}
+	defer rows.Close()
+	selected := map[uuid.UUID]struct{}{}
+	for rows.Next() {
+		var deviceID uuid.UUID
+		if err := rows.Scan(&deviceID); err != nil {
+			return MapResult{}, err
+		}
+		selected[deviceID] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return MapResult{}, err
+	}
+	items := make([]MapItem, 0, len(selected))
+	for _, item := range result.Items {
+		if _, ok := selected[item.DeviceID]; ok {
+			items = append(items, item)
+		}
+	}
+	result.Items = items
+	recount(&result)
+	return result, nil
+}
+
 type deviceMetaResult struct{ ParentID, SiteID *uuid.UUID }
 
 func (s *Service) deviceMeta(ctx context.Context, deviceID uuid.UUID) (deviceMetaResult, error) {

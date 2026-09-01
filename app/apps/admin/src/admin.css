@@ -17,6 +17,12 @@
 .admin-sidebar .brand-sub { color: #a7c1d8; }
 .admin-sidebar { gap: 18px; padding-inline: 12px; }
 .admin-sidebar .sidebar-brand-row { padding-inline: 4px; }
+.admin-login-visual-settings { margin-bottom: 16px; }
+.admin-login-visual-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(220px,1fr)); gap: 12px; margin-top: 16px; }
+.admin-login-visual-grid > div { overflow: hidden; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; }
+.admin-login-visual-grid img { width: 100%; aspect-ratio: 16/9; display: block; object-fit: cover; }
+.admin-login-visual-grid > div > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 10px; }
+.admin-login-visual-grid span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .admin-navigation.ant-menu { flex: 1; min-height: 0; overflow-y: auto; background: transparent; border-inline-end: 0 !important; }
 .admin-navigation.ant-menu-dark .ant-menu-item-group-title { padding: 13px 12px 5px; color: #7798b8; font: 700 10px/1.2 "IBM Plex Mono", monospace; letter-spacing: 0; text-transform: uppercase; }
 .admin-navigation.ant-menu-dark .ant-menu-item { height: 38px; margin: 2px 0; padding-inline: 12px !important; color: #c2d4e5; border-radius: 6px; font-size: 12px; font-weight: 600; }
