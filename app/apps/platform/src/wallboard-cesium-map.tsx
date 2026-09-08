@@ -53,13 +53,14 @@ export function WallboardCesiumMap({ devices, mode, selectedDeviceId, onSelectDe
       shouldAnimate: true,
     });
     viewerRef.current = viewer;
+    viewer.scene.globe.baseColor = Color.fromCssColorString("#101518");
     viewer.scene.globe.enableLighting = true;
     viewer.scene.globe.showGroundAtmosphere = true;
     if (viewer.scene.skyAtmosphere) viewer.scene.skyAtmosphere.show = true;
     viewer.scene.fog.enabled = true;
     viewer.imageryLayers.addImageryProvider(tiandituProvider("img_w", token));
     viewer.imageryLayers.addImageryProvider(tiandituProvider("cia_w", token));
-    viewer.camera.setView({ destination: Cartesian3.fromDegrees(15, 18, 20_000_000) });
+    viewer.camera.setView({ destination: Cartesian3.fromDegrees(104, 35, 20_000_000) });
 
     const validDevices = devices.filter(hasCoordinates);
     validDevices.forEach((device) => viewer.entities.add(deviceEntity(device, device.id === selectedDeviceId, mode)));

@@ -10,6 +10,7 @@ import {
 import {
   ChevronDown,
   ChevronRight,
+  Check,
   Clock3,
   ArrowLeft,
   Battery,
@@ -72,6 +73,7 @@ type VitalReading = {
   valueLabel: string;
   description: string;
 };
+type FilterOption = { value: string; label: string };
 const text = (input: unknown, fallback: unknown = "—") =>
   input === undefined || input === null || input === ""
     ? String(fallback)
@@ -190,6 +192,23 @@ export const firmwarePayload = (
   ...(checksum.trim() ? { checksum: checksum.trim() } : {}),
   ...(scheduledAt ? { scheduled_at: new Date(scheduledAt).toISOString() } : {}),
 });
+
+function DeviceFilterSelect({ label, value, options, onChange }: { label: string; value: string; options: FilterOption[]; onChange: (value: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((item) => item.value === value) ?? options[0];
+  const select = (next: string) => {
+    onChange(next);
+    setOpen(false);
+  };
+  return <div className={`device-filter-select ${open ? "is-open" : ""}`} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
+    <button type="button" aria-label={label} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+      <span>{selected?.label}</span><ChevronDown size={15}/>
+    </button>
+    {open ? <div className="device-filter-select-menu" role="listbox">
+      {options.map((item) => <button type="button" role="option" aria-selected={item.value === value} key={item.value || "all"} onClick={() => select(item.value)}><span>{item.label}</span>{item.value === value ? <Check size={14}/> : null}</button>)}
+    </div> : null}
+  </div>;
+}
 
 export function DevicesPage() {
   const { currentId } = useWorkspace();
@@ -345,31 +364,21 @@ export function DevicesPage() {
             </div>
           </div>
           <div className="device-filter-scope-row">
-            <select
+            <DeviceFilterSelect
+              label="筛选项目"
               value={projectId}
-              onChange={(event) => {
-                setProjectId(event.target.value);
+              options={[{ value: "", label: "全部项目" }, ...(projects.data?.items ?? []).map((item) => ({ value: text(item.id), label: text(item.name) }))]}
+              onChange={(value) => {
+                setProjectId(value);
                 setSiteId("");
               }}
-            >
-              <option value="">全部项目</option>
-              {projects.data?.items.map((item) => (
-                <option key={text(item.id)} value={text(item.id)}>
-                  {text(item.name)}
-                </option>
-              ))}
-            </select>
-            <select
+            />
+            <DeviceFilterSelect
+              label="筛选站点"
               value={siteId}
-              onChange={(event) => setSiteId(event.target.value)}
-            >
-              <option value="">全部站点</option>
-              {sites.data?.items.map((item) => (
-                <option key={text(item.id)} value={text(item.id)}>
-                  {text(item.name)}
-                </option>
-              ))}
-            </select>
+              options={[{ value: "", label: "全部站点" }, ...(sites.data?.items ?? []).map((item) => ({ value: text(item.id), label: text(item.name) }))]}
+              onChange={setSiteId}
+            />
             {(projectId || siteId) && <button type="button" className="device-filter-reset" onClick={() => { setProjectId(""); setSiteId(""); }}><X size={13} />重置筛选</button>}
           </div>
         </div>

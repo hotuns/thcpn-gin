@@ -55,7 +55,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
   useEffect(() => {
     const count = visuals.data?.items.length ?? 0;
     if (count < 2) return;
-    const timer = window.setInterval(() => setVisualIndex((value) => (value + 1) % count), 7000);
+    const timer = window.setInterval(() => setVisualIndex((value) => (value + 1) % count), 3000);
     return () => window.clearInterval(timer);
   }, [visuals.data?.items.length]);
   const next = platformNextPath(
