@@ -95,6 +95,15 @@ func (c *Checker) Can(ctx context.Context, actor Actor, action string, resource 
 			return decision, checkErr
 		}
 	}
+	if resource.Type == "data_stream" {
+		stream, streamErr := c.store.GetDataStream(ctx, resource.ID)
+		if streamErr != nil {
+			return Decision{}, apperr.Wrap(apperr.KindNotFound, "data stream not found", streamErr)
+		}
+		if decision, checked, checkErr := c.demoDecision(ctx, actor.UserID, stream.DeviceID, action); checked || checkErr != nil {
+			return decision, checkErr
+		}
+	}
 
 	scope, err := c.resolveResource(ctx, resource)
 	if err != nil {
@@ -114,12 +123,7 @@ func (c *Checker) Can(ctx context.Context, actor Actor, action string, resource 
 			return Decision{}, apperr.Wrap(apperr.KindInternal, "check demo device access", checkErr)
 		}
 		if demoDevice {
-			switch action {
-			case "device.bind", "device.transfer", "device.unbind", "media.delete":
-				return Decision{Allowed: false, Reason: "demo account destructive action denied", Source: "demo_showcase"}, nil
-			default:
-				return Decision{Allowed: true, Reason: "allowed by demo showcase", Source: "demo_showcase"}, nil
-			}
+			return demoDeviceDecision(action), nil
 		}
 	}
 
@@ -179,11 +183,15 @@ func (c *Checker) demoDecision(ctx context.Context, userID, deviceID uuid.UUID, 
 	if !selected {
 		return Decision{}, false, nil
 	}
+	return demoDeviceDecision(action), true, nil
+}
+
+func demoDeviceDecision(action string) Decision {
 	switch action {
-	case "device.bind", "device.transfer", "device.unbind", "media.delete":
-		return Decision{Allowed: false, Reason: "demo account destructive action denied", Source: "demo_showcase"}, true, nil
+	case "device.view", "telemetry.view_realtime", "telemetry.view_history", "telemetry.export", "media.live_view", "media.archive_view", "media.download":
+		return Decision{Allowed: true, Reason: "allowed by demo showcase", Source: "demo_showcase"}
 	default:
-		return Decision{Allowed: true, Reason: "allowed by demo showcase", Source: "demo_showcase"}, true, nil
+		return Decision{Allowed: false, Reason: "demo account device write denied", Source: "demo_showcase"}
 	}
 }
 

@@ -42,7 +42,13 @@ func (h *Handler) Get(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := h.service.Get(c.Request.Context(), deviceID)
+	var result Profile
+	var err error
+	if actor.IsDemo {
+		result, err = h.service.GetDemo(c.Request.Context(), actor.UserID, deviceID)
+	} else {
+		result, err = h.service.Get(c.Request.Context(), deviceID)
+	}
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -53,6 +59,9 @@ func (h *Handler) Get(c *gin.Context) {
 		return
 	}
 	result.CanConfigure = configure.Allowed
+	if !actor.IsDemo {
+		result.CanManagePlacement = configure.Allowed
+	}
 	c.JSON(http.StatusOK, result)
 }
 

@@ -26,6 +26,7 @@ type fakePermissionStore struct {
 	deviceAssignment sqlc.DeviceAssignment
 	dataStream       sqlc.DataStream
 	demoDevice       bool
+	assignmentErr    error
 }
 
 func (f *fakePermissionStore) IsDemoDeviceForUser(context.Context, uuid.UUID, uuid.UUID) (bool, error) {
@@ -86,6 +87,9 @@ func (f *fakePermissionStore) GetActiveDeviceAssignment(_ context.Context, devic
 }
 
 func (f *fakePermissionStore) GetActiveDeviceAssignmentByDataStream(_ context.Context, id uuid.UUID) (sqlc.DeviceAssignment, error) {
+	if f.assignmentErr != nil {
+		return sqlc.DeviceAssignment{}, f.assignmentErr
+	}
 	f.deviceAssignment.DeviceID = f.dataStream.DeviceID
 	return f.deviceAssignment, nil
 }
@@ -142,7 +146,22 @@ func TestCheckerDeniesMissingMembershipPermission(t *testing.T) {
 
 func TestCheckerAllowsSelectedDemoDevice(t *testing.T) {
 	store := &fakePermissionStore{demoDevice: true}
-	decision, err := NewChecker(store).Can(context.Background(), Actor{UserID: uuid.New()}, "telemetry.view", ResourceRef{Type: "device", ID: uuid.New()})
+	decision, err := NewChecker(store).Can(context.Background(), Actor{UserID: uuid.New()}, "telemetry.view_history", ResourceRef{Type: "device", ID: uuid.New()})
+	if err != nil {
+		t.Fatalf("check permission: %v", err)
+	}
+	if !decision.Allowed || decision.Source != "demo_showcase" {
+		t.Fatalf("expected demo showcase access, got %#v", decision)
+	}
+}
+
+func TestCheckerAllowsSelectedDemoChildDataStreamWithoutAssignment(t *testing.T) {
+	store := &fakePermissionStore{
+		dataStream:    sqlc.DataStream{DeviceID: uuid.New()},
+		demoDevice:    true,
+		assignmentErr: pgx.ErrNoRows,
+	}
+	decision, err := NewChecker(store).Can(context.Background(), Actor{UserID: uuid.New()}, "telemetry.view_history", ResourceRef{Type: "data_stream", ID: uuid.New()})
 	if err != nil {
 		t.Fatalf("check permission: %v", err)
 	}
@@ -152,7 +171,7 @@ func TestCheckerAllowsSelectedDemoDevice(t *testing.T) {
 }
 
 func TestCheckerDeniesDemoDeviceDestructiveActions(t *testing.T) {
-	for _, action := range []string{"device.bind", "device.transfer", "device.unbind", "media.delete"} {
+	for _, action := range []string{"device.configure", "device.calibrate", "device.maintain", "device.firmware_upgrade", "device.bind", "device.transfer", "device.unbind", "media.delete", "media.ptz_control"} {
 		t.Run(action, func(t *testing.T) {
 			store := &fakePermissionStore{demoDevice: true}
 			decision, err := NewChecker(store).Can(context.Background(), Actor{UserID: uuid.New()}, action, ResourceRef{Type: "device", ID: uuid.New()})

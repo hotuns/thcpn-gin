@@ -17,6 +17,7 @@ import {
   CircleCheck,
   DatabaseZap,
   Eye,
+  FileText,
   Gauge,
   MapPin,
   MoveRight,
@@ -339,12 +340,11 @@ export function DevicesPage() {
               </Button>
               {!user?.is_demo && <Button data-onboarding="claim-entry" onClick={() => navigate("/claim")}>
                 <ScanLine size={14} />
-                认领设备
+                添加设备
               </Button>}
             </div>
           </div>
           <div className="device-filter-scope-row">
-            <span className="device-filter-label">位置范围</span>
             <select
               value={projectId}
               onChange={(event) => {
@@ -370,6 +370,7 @@ export function DevicesPage() {
                 </option>
               ))}
             </select>
+            {(projectId || siteId) && <button type="button" className="device-filter-reset" onClick={() => { setProjectId(""); setSiteId(""); }}><X size={13} />重置筛选</button>}
           </div>
         </div>
         <div className="device-categories">
@@ -411,16 +412,18 @@ export function DevicesPage() {
               <colgroup>
                 <col className="device-table-name" />
                 <col className="device-table-status" />
-                <col className="device-table-data" />
-                <col className="device-table-location" />
+                <col className="device-table-vitals" />
+                <col className="device-table-report" />
+                <col className="device-table-assignment" />
                 <col className="device-table-actions" />
               </colgroup>
               <thead>
                 <tr>
                   <th>设备</th>
-                  <th>运行状态</th>
-                  <th>数据与上报</th>
-                  <th>位置归属</th>
+                  <th>状态</th>
+                  <th>电量 / 信号</th>
+                  <th>最近上报</th>
+                  <th>项目 / 站点</th>
                   <th>操作</th>
                 </tr>
               </thead>
@@ -433,14 +436,15 @@ export function DevicesPage() {
                     workspaceId={currentId}
                     runtime={runtimeByDevice.get(device.id)}
                     runtimeLoading={runtime.isLoading}
+                    tags={tagsByDevice.get(device.id) ?? []}
                     expanded={expandedId === device.id}
                     projectName={device.source_project_name || projectName(device.project_id)}
                     siteName={device.source_site_name || device.source_workspace_name || siteName(device.site_id)}
                     onExpand={() =>
                       setExpandedId(expandedId === device.id ? "" : device.id)
                     }
-                    onOpen={(id = device.id) =>
-                      navigate(`/devices/${encodeURIComponent(id)}`)
+                    onOpen={(id = device.id, tab) =>
+                      navigate(`/devices/${encodeURIComponent(id)}${tab ? `?tab=${tab}` : ""}`)
                     }
                   />
                 ))}
@@ -491,6 +495,7 @@ function DeviceRows({
   workspaceId,
   runtime,
   runtimeLoading,
+  tags,
   expanded,
   projectName,
   siteName,
@@ -502,11 +507,12 @@ function DeviceRows({
   workspaceId: string;
   runtime?: THCPNLatestAttributesResponse;
   runtimeLoading: boolean;
+  tags: string[];
   expanded: boolean;
   projectName: string;
   siteName: string;
   onExpand: () => void;
-  onOpen: (id?: string) => void;
+  onOpen: (id?: string, tab?: string) => void;
 }) {
   const gateway = deviceCategory(device) === "gateway";
   const camera = deviceCategory(device) === "camera";
@@ -548,61 +554,42 @@ function DeviceRows({
                 <span>SN {device.serial_no}</span>
                 {gateway && <span>{device.child_count} 个节点</span>}
               </div>
+              {tags.length ? <div className="device-row-tags">{tags.slice(0,2).map((tag)=><span key={tag}>{tag}</span>)}{tags.length>2?<span>+{tags.length-2}</span>:null}</div> : null}
             </div>
           </div>
         </td>
         <td>
           <div className="device-operating-state">
-            <Badge tone={deviceRuntimeTone(device, runtime)}>
-              {deviceRuntimeLabel(device, runtime)}
-            </Badge>
+            <Badge tone={deviceRuntimeTone(device, runtime)}>{deviceRuntimeLabel(device, runtime)}</Badge>
             <span>{deviceStatusLabel(device.status)}</span>
           </div>
           <div className="cell-sub">{deviceLifecycleLabel(device.lifecycle_status)}</div>
         </td>
         <td>
-          {!camera && (
-            <>
-              <DeviceVitalIndicators
-                attributes={runtime?.attributes}
-                loading={runtimeLoading}
-              />
-              <div
-                className="device-last-report"
-                title={overviewTime(runtime?.source_device.updated_at)}
-              >
-                <Clock3 size={13} />
-                <span>
-                  {runtime?.source_device.updated_at
-                    ? `最近上报 ${relativeTime(runtime.source_device.updated_at)}`
-                    : "暂无上报时间"}
-                </span>
-              </div>
-            </>
-          )}
+          {!camera?<DeviceVitalIndicators attributes={runtime?.attributes} loading={runtimeLoading}/>:<span className="cell-sub">不适用</span>}
+        </td>
+        <td>
+          {!camera?<div className="device-last-report" title={overviewTime(runtime?.source_device.updated_at)}><Clock3 size={13}/><span>{runtime?.source_device.updated_at?relativeTime(runtime.source_device.updated_at):"暂无上报"}</span></div>:<span className="cell-sub">视频设备</span>}
         </td>
         <td>
           <div className="device-placement-summary">
             <strong>{siteName}</strong>
             <span>{projectName}</span>
-            <small title={runtime?.source_device ? formatSourceLocation(runtime.source_device) : undefined}>
-              <MapPin size={12} />
-              {runtime?.source_device ? compactSourceLocation(runtime.source_device) : "暂无定位"}
-            </small>
           </div>
         </td>
         <td>
           <div className="device-actions">
-            <Button data-onboarding={camera ? undefined : "device-data-entry"} data-onboarding-route={camera ? undefined : `/devices/${encodeURIComponent(device.id)}?tab=data`} onClick={() => onOpen()}>
+            <Button aria-label={camera ? "查看视频" : "查看数据"} title={camera ? "查看视频" : "查看数据"} data-onboarding={camera ? undefined : "device-data-entry"} data-onboarding-route={camera ? undefined : `/devices/${encodeURIComponent(device.id)}?tab=data`} onClick={() => onOpen(undefined,camera?"video":"data")}>
               <Eye size={13} />
-              {deviceCategory(device) === "camera" ? "查看视频" : "查看数据"}
             </Button>
+            <Button aria-label="查看设备资料" title="查看设备资料" variant="secondary" onClick={() => onOpen(undefined,"profile")}><FileText size={13}/></Button>
+            {!camera?<Button aria-label="查看设备配置" title="查看设备配置" variant="secondary" onClick={() => onOpen(undefined,"config")}><Settings2 size={13}/></Button>:null}
           </div>
         </td>
       </tr>
       {expanded && (
         <tr className="children-row">
-          <td colSpan={5}>
+          <td colSpan={6}>
             <DeviceChildren
               workspaceId={workspaceId}
               deviceId={device.id}
@@ -662,21 +649,6 @@ const relativeTime = (input: string) => {
   if (delta < 3_600_000) return `${Math.floor(delta / 60_000)} 分钟前`;
   if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)} 小时前`;
   return `${Math.floor(delta / 86_400_000)} 天前`;
-};
-
-const formatSourceLocation = (
-  source: THCPNLatestAttributesResponse["source_device"],
-) => {
-  if (source.lat === undefined || source.lon === undefined) return "暂无定位";
-  const altitude = source.alt === undefined ? "" : ` · ${source.alt.toFixed(1)} m`;
-  return `${source.lat.toFixed(6)}, ${source.lon.toFixed(6)}${altitude}`;
-};
-
-const compactSourceLocation = (
-  source: THCPNLatestAttributesResponse["source_device"],
-) => {
-  if (source.lat === undefined || source.lon === undefined) return "暂无定位";
-  return `${source.lat.toFixed(4)}, ${source.lon.toFixed(4)}`;
 };
 
 function DeviceVitalIndicators({

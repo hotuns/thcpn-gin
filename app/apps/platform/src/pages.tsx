@@ -19,6 +19,7 @@ import {
 import { TelemetryCharts } from "./telemetry-charts";
 import { TelemetryTable } from "./telemetry-table";
 import { dataComparisonPath, datasetCreatePath } from "./data-workflow";
+import { DeviceCombobox } from "./device-combobox";
 
 const dateTimeLocal = (date: Date) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
@@ -348,20 +349,15 @@ export function DeviceDataPage({
             <div className="camera-only-selector">
               <label className="field">
                 <span className="field-label">监控站</span>
-                <select
+                <DeviceCombobox
+                  devices={devices}
                   value={deviceId}
-                  onChange={(event) => {
-                    const nextId = event.target.value;
+                  ariaLabel="搜索并切换监控站"
+                  onChange={(nextId) => {
                     setDeviceId(nextId);
                     setSearchParams(nextId ? { device: nextId } : {});
                   }}
-                >
-                  {devices.map((device) => (
-                    <option key={device.id} value={device.id}>
-                      {device.name} · SN {device.serial_no}
-                    </option>
-                  ))}
-                </select>
+                />
               </label>
               <div className="camera-identity">
                 <Badge tone="info">海康视频</Badge>

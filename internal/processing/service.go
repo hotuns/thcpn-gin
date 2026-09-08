@@ -349,8 +349,8 @@ FROM processing_results WHERE execution_id=$1 ORDER BY created_at`, executionID)
 	return items, rows.Err()
 }
 
-func (s *Service) PrepareResultDownload(ctx context.Context, workspaceID, resultID, actorID uuid.UUID) (string, time.Time, error) {
-	if s.signer == nil || s.store == nil || s.billing == nil {
+func (s *Service) PrepareResultDownload(ctx context.Context, workspaceID, resultID, actorID uuid.UUID, demo bool) (string, time.Time, error) {
+	if s.signer == nil || s.store == nil || (!demo && s.billing == nil) {
 		return "", time.Time{}, apperr.New(apperr.KindInternal, "processing download is not configured")
 	}
 	var objectKey string
@@ -361,8 +361,10 @@ func (s *Service) PrepareResultDownload(ctx context.Context, workspaceID, result
 	if err != nil {
 		return "", time.Time{}, apperr.Wrap(apperr.KindInternal, "load processing result", err)
 	}
-	if err = s.billing.RequireProfessional(ctx, workspaceID); err != nil {
-		return "", time.Time{}, err
+	if !demo {
+		if err = s.billing.RequireProfessional(ctx, workspaceID); err != nil {
+			return "", time.Time{}, err
+		}
 	}
 	info, err := objectstore.Stat(ctx, s.store, objectKey)
 	if err != nil {
@@ -371,8 +373,10 @@ func (s *Service) PrepareResultDownload(ctx context.Context, workspaceID, result
 	if info.SizeBytes <= 0 {
 		return "", time.Time{}, apperr.New(apperr.KindConflict, "processing artifact size is unavailable")
 	}
-	if err = s.billing.ReserveDownload(ctx, billing.ReserveDownloadInput{WorkspaceID: workspaceID, SourceType: "processing", ResourceID: &resultID, ObjectKey: objectKey, Bytes: info.SizeBytes, ActorUserID: &actorID, IdempotencyKey: "processing:" + resultID.String() + ":" + uuid.NewString()}); err != nil {
-		return "", time.Time{}, err
+	if !demo {
+		if err = s.billing.ReserveDownload(ctx, billing.ReserveDownloadInput{WorkspaceID: workspaceID, SourceType: "processing", ResourceID: &resultID, ObjectKey: objectKey, Bytes: info.SizeBytes, ActorUserID: &actorID, IdempotencyKey: "processing:" + resultID.String() + ":" + uuid.NewString()}); err != nil {
+			return "", time.Time{}, err
+		}
 	}
 	signed, err := s.signer.SignObjectURL(objectKey, 15*time.Minute)
 	if err != nil {
@@ -412,6 +416,9 @@ WHERE code = $1 AND version = $2 AND enabled = true`, input.ProcessorCode, input
 	}
 	if err := json.Unmarshal(manifest, &contract); err != nil {
 		return Task{}, apperr.Wrap(apperr.KindInternal, "decode processor manifest", err)
+	}
+	if err := s.validateTarget(ctx, input.WorkspaceID, input.TargetType, input.TargetID); err != nil {
+		return Task{}, err
 	}
 	if err := s.validateInputCapabilities(ctx, input.WorkspaceID, input.Inputs, contract.RequiredCapability); err != nil {
 		return Task{}, err
@@ -481,8 +488,9 @@ func (s *Service) validateInputCapabilities(ctx context.Context, workspaceID uui
 		err := s.db.QueryRow(ctx, `
 SELECT EXISTS (
   SELECT 1 FROM data_streams ds
-  JOIN device_assignments da ON da.device_id=ds.device_id AND da.status='active'
-  WHERE ds.id=$1 AND da.workspace_id=$2
+  WHERE ds.id=$1 AND ds.status='active'
+    AND (EXISTS (SELECT 1 FROM device_assignments da WHERE da.device_id=ds.device_id AND da.workspace_id=$2 AND da.status='active')
+      OR EXISTS (SELECT 1 FROM demo_showcase_devices dsd WHERE dsd.device_id=ds.device_id AND dsd.workspace_id=$2))
     AND ($3='' OR EXISTS (SELECT 1 FROM device_capabilities dc WHERE dc.device_id=ds.device_id AND dc.capability_code=$3))
 )`, input.SourceID, workspaceID, required).Scan(&allowed)
 		if err != nil {
@@ -494,6 +502,28 @@ SELECT EXISTS (
 			}
 			return apperr.New(apperr.KindInvalidArgument, "input data stream is outside the workspace")
 		}
+	}
+	return nil
+}
+
+func (s *Service) validateTarget(ctx context.Context, workspaceID uuid.UUID, targetType string, targetID uuid.UUID) error {
+	var allowed bool
+	var err error
+	if targetType == "device" {
+		err = s.db.QueryRow(ctx, `SELECT EXISTS (
+			SELECT 1 FROM devices d WHERE d.id=$1 AND (
+				EXISTS (SELECT 1 FROM device_assignments da WHERE da.device_id=d.id AND da.workspace_id=$2 AND da.status='active')
+				OR EXISTS (SELECT 1 FROM demo_showcase_devices dsd WHERE dsd.device_id=d.id AND dsd.workspace_id=$2)
+			)
+		)`, targetID, workspaceID).Scan(&allowed)
+	} else {
+		err = s.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM sites WHERE id=$1 AND workspace_id=$2 AND status='active')`, targetID, workspaceID).Scan(&allowed)
+	}
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "validate processing target", err)
+	}
+	if !allowed {
+		return apperr.New(apperr.KindInvalidArgument, "processing target is outside the workspace")
 	}
 	return nil
 }

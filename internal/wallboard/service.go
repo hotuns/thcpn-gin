@@ -67,19 +67,20 @@ type Config struct {
 	TrendHours         int         `json:"trend_hours"`
 }
 type Device struct {
-	ID             uuid.UUID  `json:"id"`
-	Name           string     `json:"name"`
-	Status         string     `json:"status"`
-	DeviceType     string     `json:"device_type"`
-	SiteID         *uuid.UUID `json:"site_id,omitempty"`
-	SiteName       string     `json:"site_name,omitempty"`
-	Latitude       *float64   `json:"latitude,omitempty"`
-	Longitude      *float64   `json:"longitude,omitempty"`
-	LocationSource string     `json:"location_source"`
-	Battery        *float64   `json:"battery,omitempty"`
-	Signal         *float64   `json:"signal,omitempty"`
-	LastReportedAt *time.Time `json:"last_reported_at,omitempty"`
-	RuntimeError   string     `json:"runtime_error,omitempty"`
+	ID               uuid.UUID  `json:"id"`
+	Name             string     `json:"name"`
+	Status           string     `json:"status"`
+	DeviceType       string     `json:"device_type"`
+	SiteID           *uuid.UUID `json:"site_id,omitempty"`
+	SiteName         string     `json:"site_name,omitempty"`
+	Latitude         *float64   `json:"latitude,omitempty"`
+	Longitude        *float64   `json:"longitude,omitempty"`
+	LocationSource   string     `json:"location_source"`
+	Battery          *float64   `json:"battery,omitempty"`
+	Signal           *float64   `json:"signal,omitempty"`
+	LastReportedAt   *time.Time `json:"last_reported_at,omitempty"`
+	RuntimeError     string     `json:"runtime_error,omitempty"`
+	DemoSiteLocation bool       `json:"-"`
 }
 type Site struct {
 	ID        uuid.UUID `json:"id"`
@@ -448,10 +449,10 @@ func (s *Service) buildSnapshot(ctx context.Context, workspaceID uuid.UUID, cfg 
 		out.Sites = append(out.Sites, v)
 	}
 	siteRows.Close()
-	deviceSQL := `SELECT d.id,d.name,d.status,d.device_type,da.site_id,COALESCE(s.name,''),s.latitude,s.longitude FROM devices d LEFT JOIN device_assignments da ON da.device_id=d.id AND da.workspace_id=$1 AND da.status='active' LEFT JOIN sites s ON s.id=da.site_id WHERE (da.workspace_id=$1 OR EXISTS (SELECT 1 FROM demo_showcase_devices dsd JOIN workspaces w ON w.owner_user_id=dsd.user_id AND w.is_demo_workspace=true AND w.status='active' WHERE dsd.device_id=d.id AND w.id=$1))`
+	deviceSQL := `SELECT d.id,d.name,d.status,d.device_type,COALESCE(dsd.site_id,da.site_id),COALESCE(s.name,''),s.latitude,s.longitude,(dsd.site_id IS NOT NULL AND s.latitude IS NOT NULL AND s.longitude IS NOT NULL) FROM devices d LEFT JOIN device_assignments da ON da.device_id=d.id AND da.workspace_id=$1 AND da.status='active' LEFT JOIN demo_showcase_devices dsd ON dsd.device_id=d.id AND dsd.workspace_id=$1 LEFT JOIN sites s ON s.id=COALESCE(dsd.site_id,da.site_id) WHERE (da.workspace_id=$1 OR dsd.device_id IS NOT NULL)`
 	args := []any{workspaceID}
 	if cfg.SiteID != nil {
-		deviceSQL += ` AND da.site_id=$2`
+		deviceSQL += ` AND COALESCE(dsd.site_id,da.site_id)=$2`
 		args = append(args, *cfg.SiteID)
 	} else if cfg.DeviceID != nil {
 		deviceSQL += ` AND d.id=$2`
@@ -467,7 +468,7 @@ func (s *Service) buildSnapshot(ctx context.Context, workspaceID uuid.UUID, cfg 
 	}
 	for rows.Next() {
 		var v Device
-		if err = rows.Scan(&v.ID, &v.Name, &v.Status, &v.DeviceType, &v.SiteID, &v.SiteName, &v.Latitude, &v.Longitude); err != nil {
+		if err = rows.Scan(&v.ID, &v.Name, &v.Status, &v.DeviceType, &v.SiteID, &v.SiteName, &v.Latitude, &v.Longitude, &v.DemoSiteLocation); err != nil {
 			rows.Close()
 			return out, err
 		}
@@ -557,7 +558,7 @@ func applyRuntime(snapshot *Snapshot, runtime datasource.THCPNDeviceRuntimeBatch
 			if item.SourceDevice.Status != nil && strings.TrimSpace(*item.SourceDevice.Status) != "" {
 				device.Status = strings.ToLower(strings.TrimSpace(*item.SourceDevice.Status))
 			}
-			if item.SourceDevice.Latitude != nil && item.SourceDevice.Longitude != nil {
+			if !device.DemoSiteLocation && item.SourceDevice.Latitude != nil && item.SourceDevice.Longitude != nil {
 				device.Latitude, device.Longitude = item.SourceDevice.Latitude, item.SourceDevice.Longitude
 				device.LocationSource = "device"
 			}

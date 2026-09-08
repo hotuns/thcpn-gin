@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, KeyRound, MessageSquareText } from "lucide-react";
-import { api, formatApiError } from "@thcpn/api";
+import { api, ApiError, formatApiError } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
 import { Brand, Button } from "@thcpn/ui";
 import { LanguageSwitcher, useLocale } from "@thcpn/i18n";
@@ -162,9 +162,13 @@ export function AuthPage({ register = false }: { register?: boolean }) {
         );
     } catch (error) {
       const value = formatApiError(error);
-      if (!register && mfaRequiredMessage(value.message)) setMfaRequired(true);
+      const rawMessage = error instanceof ApiError ? error.message : value.message;
+      if (!register && mfaRequiredMessage(rawMessage)) setMfaRequired(true);
+      const message = !register && mode === "password" && value.status === 401 && !mfaRequiredMessage(rawMessage)
+        ? t("platform:auth.invalidCredentials")
+        : value.message;
       setMessage(
-        `${value.message}${value.requestId ? ` · request id ${value.requestId}` : ""}`,
+        `${message}${value.requestId ? ` · request id ${value.requestId}` : ""}`,
       );
     } finally {
       setBusy(false);

@@ -18,6 +18,7 @@ import {
   api,
   formatApiError,
   type Dataset,
+  type Device,
   type JsonRecord,
   type TelemetrySeries,
 } from "@thcpn/api";
@@ -26,6 +27,7 @@ import { Badge, Button, IconButton, PageHeader, Panel, StateView } from "@thcpn/
 import { TelemetryCharts } from "./telemetry-charts";
 import { TelemetryTable } from "./telemetry-table";
 import { dataComparisonPath } from "./data-workflow";
+import { DeviceCombobox } from "./device-combobox";
 
 type SourceInput = {
   source_type: Dataset["sources"][number]["source_type"];
@@ -980,18 +982,12 @@ function DatasetForm({
           <div className="source-picker">
             <label className="field">
               <span className="field-label">设备</span>
-              <select
-                aria-label="来源设备"
+              <DeviceCombobox
+                devices={datasetSelectableDevices as Device[]}
                 value={deviceId}
-                onChange={(event) => setDeviceId(event.target.value)}
-              >
-                <option value="">选择设备</option>
-                {datasetSelectableDevices.map((item) => (
-                  <option key={String(item.id)} value={String(item.id)}>
-                    {String(item.name)} · SN {String(item.serial_no)}
-                  </option>
-                ))}
-              </select>
+                onChange={setDeviceId}
+                ariaLabel="搜索来源设备"
+              />
             </label>
             {sourceType === "device" && (
               <Button

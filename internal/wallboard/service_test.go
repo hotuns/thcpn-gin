@@ -54,6 +54,20 @@ func TestNumericAttribute(t *testing.T) {
 	}
 }
 
+func TestApplyRuntimeKeepsDemoSiteLocation(t *testing.T) {
+	deviceID := uuid.New()
+	siteLatitude, siteLongitude := 39.9, 116.4
+	deviceLatitude, deviceLongitude := 31.2, 121.5
+	snapshot := Snapshot{Devices: []Device{{ID: deviceID, Latitude: &siteLatitude, Longitude: &siteLongitude, DemoSiteLocation: true}}}
+	applyRuntime(&snapshot, datasource.THCPNDeviceRuntimeBatchResponse{Items: []datasource.THCPNLatestAttributesResponse{{
+		DeviceID:     deviceID,
+		SourceDevice: datasource.THCPNExternalDeviceMetadata{Latitude: &deviceLatitude, Longitude: &deviceLongitude},
+	}}})
+	if snapshot.Devices[0].Latitude != &siteLatitude || snapshot.Devices[0].Longitude != &siteLongitude || snapshot.Devices[0].LocationSource != "site" {
+		t.Fatalf("demo site location was overwritten: %#v", snapshot.Devices[0])
+	}
+}
+
 func TestApplyTemplateSettingsOverridesManifestManagementFields(t *testing.T) {
 	item := Template{Code: "manifest-code", Version: 1, Status: "", Tier: "", DisplayPrice: "", ContactCopy: ""}
 	applyTemplateSettings(&item, "device-monitoring", 2, "published", "premium", "¥9,800 / 年", "联系开通")

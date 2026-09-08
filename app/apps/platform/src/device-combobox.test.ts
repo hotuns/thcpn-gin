@@ -32,4 +32,8 @@ describe("device combobox categories", () => {
     expect(filterDeviceOptions(devices, "CAM-01").map((item) => item.id)).toEqual(["camera-id"]);
     expect(filterDeviceOptions(devices, "station-id").map((item) => item.id)).toEqual(["station-id"]);
   });
+
+  it("searches device tags", () => {
+    expect(filterDeviceOptions(devices, "高寒", "all", new Map([["station-id", ["高寒生态"]]])).map((item) => item.id)).toEqual(["station-id"]);
+  });
 });

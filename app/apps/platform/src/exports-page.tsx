@@ -70,6 +70,7 @@ const pickerOptions = (items: JsonRecord[]): PickerOption[] =>
     id: value(item, "id"),
     label: value(item, "name"),
     description: value(item, "serial_no"),
+    searchText: Array.isArray(item.research_tags) ? item.research_tags.join(" ") : "",
   }));
 const arrayParam = (input: string | null) =>
   input
@@ -169,6 +170,19 @@ export function ExportsPage() {
     queryFn: () => api.devices.list(currentId!),
     enabled: Boolean(currentId),
   });
+  const deviceMap = useQuery({
+    queryKey: workspaceQueryKey(currentId, "device-map", "true"),
+    queryFn: () => api.devices.map(currentId!, true),
+    enabled: Boolean(currentId),
+  });
+  const tagsByDevice = useMemo(
+    () => new Map((deviceMap.data?.items ?? []).map((item) => [item.device_id, item.environment.research_tags])),
+    [deviceMap.data?.items],
+  );
+  const exportDevices = useMemo(
+    () => (devices.data?.items ?? []).map((item) => ({ ...item, research_tags: tagsByDevice.get(item.id) ?? [] })),
+    [devices.data?.items, tagsByDevice],
+  );
   const jobs = useMemo(
     () =>
       (query.data?.items ?? []).filter(
@@ -294,21 +308,22 @@ export function ExportsPage() {
           <ExportSystemChooser selected={system} onSelect={setSystem} />
           {system === "standard" ? (
             <StandardExportForm
-              devices={devices.data?.items ?? []}
+              devices={exportDevices}
               params={params}
               onClose={() => setSystem(null)}
               onCreate={runCreate}
             />
           ) : system === "group" ? (
             <GroupExportForm
-              devices={devices.data?.items ?? []}
+              devices={exportDevices}
+              tagsByDevice={tagsByDevice}
               params={params}
               onClose={() => setSystem(null)}
               onCreate={runCreate}
             />
           ) : (
             <CarbonExportForm
-              devices={devices.data?.items ?? []}
+              devices={exportDevices}
               params={params}
               onClose={() => setSystem(null)}
               onCreate={runCreate}
@@ -695,10 +710,11 @@ function StandardExportForm({
 
 function GroupExportForm({
   devices,
+  tagsByDevice,
   params,
   onClose,
   onCreate,
-}: { devices: JsonRecord[] } & FormCommon) {
+}: { devices: JsonRecord[]; tagsByDevice: Map<string, string[]> } & FormCommon) {
   const gateways = devices.filter(
     (item) => value(item, "device_type") === "gateway",
   );
@@ -714,7 +730,7 @@ function GroupExportForm({
     (item) => item.device as unknown as JsonRecord,
   );
   const filteredNodes = nodes.filter((item) =>
-    `${value(item, "name")} ${value(item, "serial_no")}`
+    `${value(item, "name")} ${value(item, "serial_no")} ${(tagsByDevice.get(value(item, "id")) ?? []).join(" ")}`
       .toLowerCase()
       .includes(keyword.toLowerCase()),
   );

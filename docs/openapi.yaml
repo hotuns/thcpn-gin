@@ -7871,7 +7871,7 @@ components:
         unclassified: { type: integer }
     DeviceProfile:
       type: object
-      required: [device_id, location_source, images, can_configure]
+      required: [device_id, location_source, images, can_configure, can_manage_placement]
       properties:
         device_id: { $ref: "#/components/schemas/UUID" }
         description: { type: string }
@@ -7887,6 +7887,8 @@ components:
           type: array
           items: { $ref: "#/components/schemas/DeviceProfileImage" }
         can_configure:
+          type: boolean
+        can_manage_placement:
           type: boolean
         updated_by: { $ref: "#/components/schemas/UUID" }
         created_at: { $ref: "#/components/schemas/Timestamp" }

@@ -4755,6 +4755,7 @@ export interface components {
             site?: components["schemas"]["DeviceProfileSiteSummary"];
             images: components["schemas"]["DeviceProfileImage"][];
             can_configure: boolean;
+            can_manage_placement: boolean;
             updated_by?: components["schemas"]["UUID"];
             created_at?: components["schemas"]["Timestamp"];
             updated_at?: components["schemas"]["Timestamp"];

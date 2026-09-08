@@ -420,25 +420,37 @@ func (s *Service) MapDemo(ctx context.Context, userID uuid.UUID, includeChildren
 	if err != nil {
 		return MapResult{}, err
 	}
-	rows, err := s.db.Query(ctx, `SELECT device_id FROM demo_showcase_devices WHERE user_id=$1`, userID)
+	rows, err := s.db.Query(ctx, `SELECT dsd.device_id,dsd.site_id,st.latitude,st.longitude FROM demo_showcase_devices dsd LEFT JOIN sites st ON st.id=dsd.site_id WHERE dsd.user_id=$1`, userID)
 	if err != nil {
 		return MapResult{}, apperr.Wrap(apperr.KindInternal, "list demo map devices", err)
 	}
 	defer rows.Close()
-	selected := map[uuid.UUID]struct{}{}
+	type placement struct {
+		siteID              *uuid.UUID
+		latitude, longitude *float64
+	}
+	selected := map[uuid.UUID]placement{}
 	for rows.Next() {
 		var deviceID uuid.UUID
-		if err := rows.Scan(&deviceID); err != nil {
+		var item placement
+		if err := rows.Scan(&deviceID, &item.siteID, &item.latitude, &item.longitude); err != nil {
 			return MapResult{}, err
 		}
-		selected[deviceID] = struct{}{}
+		selected[deviceID] = item
 	}
 	if err := rows.Err(); err != nil {
 		return MapResult{}, err
 	}
 	items := make([]MapItem, 0, len(selected))
 	for _, item := range result.Items {
-		if _, ok := selected[item.DeviceID]; ok {
+		placement, ok := selected[item.DeviceID]
+		if ok {
+			item.SiteID = placement.siteID
+			if placement.latitude != nil && placement.longitude != nil {
+				item.Latitude = placement.latitude
+				item.Longitude = placement.longitude
+				item.LocationSource = "site"
+			}
 			items = append(items, item)
 		}
 	}

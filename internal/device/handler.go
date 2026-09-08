@@ -49,6 +49,24 @@ type updateDeviceRequest struct {
 	Status       *string   `json:"status"`
 	DeviceType   *string   `json:"device_type"`
 	Capabilities *[]string `json:"capabilities"`
+	ProjectIDSet bool      `json:"-"`
+	SiteIDSet    bool      `json:"-"`
+}
+
+func (r *updateDeviceRequest) UnmarshalJSON(data []byte) error {
+	type requestAlias updateDeviceRequest
+	var value requestAlias
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*r = updateDeviceRequest(value)
+	_, r.ProjectIDSet = fields["project_id"]
+	_, r.SiteIDSet = fields["site_id"]
+	return nil
 }
 
 type createCalibrationRequest struct {
@@ -138,7 +156,7 @@ func (h *Handler) List(c *gin.Context) {
 	var items []Device
 	var err error
 	if actor.IsDemo {
-		items, err = h.service.ListDemoShowcase(c.Request.Context(), actor.UserID)
+		items, err = h.service.ListDemoShowcase(c.Request.Context(), actor.UserID, projectID, siteID)
 	} else {
 		items, err = h.service.List(c.Request.Context(), ListInput{
 			WorkspaceID: workspaceID,
@@ -797,9 +815,13 @@ func (h *Handler) Get(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.Get(c.Request.Context(), deviceID)
-	if err != nil && decision.Source == "demo_showcase" && apperr.KindOf(err) == apperr.KindNotFound {
-		result, err = h.service.GetAsset(c.Request.Context(), deviceID)
+	actor, _ := auth.ActorFromContext(c)
+	var result Device
+	var err error
+	if decision.Source == "demo_showcase" {
+		result, err = h.service.GetDemoShowcase(c.Request.Context(), actor.UserID, deviceID)
+	} else {
+		result, err = h.service.Get(c.Request.Context(), deviceID)
 	}
 	if err != nil {
 		httpx.WriteAppError(c, err)
@@ -827,14 +849,21 @@ func (h *Handler) Children(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !h.authorize(c, "device", deviceID, deviceViewAction) {
+	decision, ok := h.authorizeDecision(c, "device", deviceID, deviceViewAction)
+	if !ok {
 		return
 	}
 	actor, ok := actorFromContext(c)
 	if !ok {
 		return
 	}
-	items, err := h.service.ListVisibleChildren(c.Request.Context(), deviceID)
+	var items []DeviceChild
+	var err error
+	if decision.Source == "demo_showcase" {
+		items, err = h.service.ListAdminChildren(c.Request.Context(), deviceID)
+	} else {
+		items, err = h.service.ListVisibleChildren(c.Request.Context(), deviceID)
+	}
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -862,14 +891,34 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
-	if !h.authorize(c, "device", deviceID, deviceConfigureAction) {
-		return
-	}
-	actor, _ := auth.ActorFromContext(c)
-
 	var req updateDeviceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	actor, _ := auth.ActorFromContext(c)
+	if actor.IsDemo {
+		if req.ProductID != nil || req.Name != nil || req.Status != nil || req.DeviceType != nil || req.Capabilities != nil || (!req.ProjectIDSet && !req.SiteIDSet) {
+			httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "demo account device write denied"))
+			return
+		}
+		projectID, ok := parseOptionalUUIDPointer(req.ProjectID, "project_id", c)
+		if !ok {
+			return
+		}
+		siteID, ok := parseOptionalUUIDPointer(req.SiteID, "site_id", c)
+		if !ok {
+			return
+		}
+		result, err := h.service.UpdateDemoPlacement(c.Request.Context(), DemoPlacementInput{UserID: actor.UserID, DeviceID: deviceID, ProjectID: projectID, SiteID: siteID, ProjectIDSet: req.ProjectIDSet, SiteIDSet: req.SiteIDSet})
+		if err != nil {
+			httpx.WriteAppError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, result)
+		return
+	}
+	if !h.authorize(c, "device", deviceID, deviceConfigureAction) {
 		return
 	}
 

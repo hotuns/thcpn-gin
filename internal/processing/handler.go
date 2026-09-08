@@ -108,7 +108,7 @@ func (h *Handler) Create(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if h.billing != nil {
+	if h.billing != nil && !actor.IsDemo {
 		if err := h.billing.RequireProfessional(c.Request.Context(), workspaceID); err != nil {
 			httpx.WriteAppError(c, err)
 			return
@@ -132,7 +132,7 @@ func (h *Handler) Create(c *gin.Context) {
 }
 
 func (h *Handler) SetStatus(c *gin.Context) {
-	workspaceID, _, ok := h.authorize(c, "processing.manage")
+	workspaceID, actor, ok := h.authorize(c, "processing.manage")
 	if !ok {
 		return
 	}
@@ -147,7 +147,7 @@ func (h *Handler) SetStatus(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
-	if req.Status == "active" && h.billing != nil {
+	if req.Status == "active" && h.billing != nil && !actor.IsDemo {
 		if err := h.billing.RequireProfessional(c.Request.Context(), workspaceID); err != nil {
 			httpx.WriteAppError(c, err)
 			return
@@ -170,7 +170,7 @@ func (h *Handler) DownloadResult(c *gin.Context) {
 	if !ok {
 		return
 	}
-	url, expiresAt, err := h.service.PrepareResultDownload(c.Request.Context(), workspaceID, resultID, actor.UserID)
+	url, expiresAt, err := h.service.PrepareResultDownload(c.Request.Context(), workspaceID, resultID, actor.UserID, actor.IsDemo)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return

@@ -14,6 +14,7 @@ import {
   MapPin,
   MapPinned,
   Pencil,
+  Plus,
   Star,
   Tags,
   Target,
@@ -162,7 +163,7 @@ export function DeviceProfileTab({
                   <MapPinned size={16} />
                   <h3>归属与位置</h3>
                 </div>
-                {profile.can_configure ? (
+                {profile.can_manage_placement ? (
                   <button
                     className="device-profile-group-action"
                     type="button"
@@ -585,9 +586,7 @@ function ProfileEditor({ profile, environment, terms, tagOptions, busy, onClose,
   const [ecosystem,setEcosystem]=useState(direct?.ecosystem?.id??effective?.ecosystem?.id??"");
   const [observations,setObservations]=useState(direct?.observation_objects.map((term)=>term.id)??effective?.observation_objects.map((term)=>term.id)??[]);
   const [year,setYear]=useState(String(direct?.commissioned_year??effective?.commissioned_year??""));
-  const [tags,setTags]=useState((direct?.research_tags??effective?.research_tags??[]).join(", "));
-  const selectedTags=tags.split(",").map((value)=>value.trim()).filter(Boolean);
-  const toggleTag=(tag:string)=>setTags((selectedTags.includes(tag)?selectedTags.filter((item)=>item!==tag):[...selectedTags,tag]).join(", "));
+  const [tags,setTags]=useState<string[]>(direct?.research_tags??effective?.research_tags??[]);
   const byKind=(kind:string)=>terms.filter((term)=>term.kind===kind&&term.status==="active");
   const toggle=(field:string)=>setOverrides((current)=>{const next=new Set(current);if(next.has(field))next.delete(field);else next.add(field);return next});
   useEffect(() => {
@@ -600,7 +599,7 @@ function ProfileEditor({ profile, environment, terms, tagOptions, busy, onClose,
     void onSubmit({
       description: description.trim() || null,
       location_text: locationText.trim() || null,
-    },{ecosystem_term_id:ecosystem||null,observation_object_ids:observations,purpose_ids:direct?.purposes.map((term)=>term.id)??[],management_term_id:direct?.management?.id??null,deployment_term_id:direct?.deployment?.id??null,commissioned_year:year?Number(year):null,research_tags:tags.split(",").map((value)=>value.trim()).filter(Boolean),overridden_fields:Array.from(overrides)});
+    },{ecosystem_term_id:ecosystem||null,observation_object_ids:observations,purpose_ids:direct?.purposes.map((term)=>term.id)??[],management_term_id:direct?.management?.id??null,deployment_term_id:direct?.deployment?.id??null,commissioned_year:year?Number(year):null,research_tags:tags,overridden_fields:Array.from(overrides)});
   };
   return (
     <div className="access-drawer-layer">
@@ -637,7 +636,7 @@ function ProfileEditor({ profile, environment, terms, tagOptions, busy, onClose,
               <EnvironmentField label="设备类型" field="ecosystem" overrides={overrides} toggle={toggle}><DeviceTypeSelect disabled={!overrides.has("ecosystem")} options={byKind("ecosystem")} value={ecosystem} onChange={setEcosystem} /></EnvironmentField>
               <EnvironmentMultiField label="观测对象" field="observation_objects" overrides={overrides} toggle={toggle} options={byKind("observation_object")} value={observations} onChange={setObservations} />
               <EnvironmentField label="投运年份" field="commissioned_year" overrides={overrides} toggle={toggle}><input type="number" min="1900" max="2200" disabled={!overrides.has("commissioned_year")} value={year} onChange={(event)=>setYear(event.target.value)}/></EnvironmentField>
-              <EnvironmentField label="研究方向 / 标签" field="research_tags" overrides={overrides} toggle={toggle}><input disabled={!overrides.has("research_tags")} value={tags} placeholder="输入自定义标签，多个标签用逗号分隔" onChange={(event)=>setTags(event.target.value)}/>{tagOptions.length?<div className="taxonomy-choice-grid" aria-disabled={!overrides.has("research_tags")}>{tagOptions.map((tag)=><label key={tag} className={selectedTags.includes(tag)?"selected":""}><input type="checkbox" disabled={!overrides.has("research_tags")} checked={selectedTags.includes(tag)} onChange={()=>toggleTag(tag)}/><span>{tag}</span></label>)}</div>:null}</EnvironmentField>
+              <EnvironmentField label="研究方向 / 标签" field="research_tags" overrides={overrides} toggle={toggle}><ResearchTagEditor disabled={!overrides.has("research_tags")} value={tags} options={tagOptions} onChange={setTags}/></EnvironmentField>
             </div>
             <div className="form-actions"><Button variant="secondary" type="button" onClick={onClose}>取消</Button><Button type="submit" disabled={busy}>{busy ? "保存中…" : "保存资料"}</Button></div>
           </form>
@@ -645,6 +644,23 @@ function ProfileEditor({ profile, environment, terms, tagOptions, busy, onClose,
       </div>
     </div>
   );
+}
+
+function ResearchTagEditor({disabled,value,options,onChange}:{disabled:boolean;value:string[];options:string[];onChange:(value:string[])=>void}) {
+  const [input,setInput]=useState("");
+  const add=()=>{
+    const tags=input.split(/[,，]/).map((tag)=>tag.trim()).filter(Boolean);
+    if(tags.length)onChange(Array.from(new Set([...value,...tags])));
+    setInput("");
+  };
+  return <div className="research-tag-editor">
+    {value.length?<div className="research-tag-list">{value.map((tag)=><span key={tag}>{tag}<button type="button" disabled={disabled} aria-label={`删除标签 ${tag}`} onClick={()=>onChange(value.filter((item)=>item!==tag))}><X size={12}/></button></span>)}</div>:<span className="field-hint">暂无标签</span>}
+    <div className="research-tag-create">
+      <input list="device-research-tag-options" disabled={disabled} value={input} placeholder="输入新标签" onChange={(event)=>setInput(event.target.value)} onKeyDown={(event)=>{if(event.key==="Enter"||event.key===","){event.preventDefault();add()}}}/>
+      <button type="button" disabled={disabled||!input.trim()} onClick={add}><Plus size={14}/>新建</button>
+      <datalist id="device-research-tag-options">{options.filter((tag)=>!value.includes(tag)).map((tag)=><option key={tag} value={tag}/>)}</datalist>
+    </div>
+  </div>;
 }
 
 function EnvironmentField({label,field,overrides,toggle,children}:{label:string;field:string;overrides:Set<string>;toggle:(field:string)=>void;children:ReactNode}) {

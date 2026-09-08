@@ -25,6 +25,19 @@ func TestCreateRequiresName(t *testing.T) {
 	}
 }
 
+func TestUpdateDeviceRequestTracksNullablePlacementFields(t *testing.T) {
+	var request updateDeviceRequest
+	if err := json.Unmarshal([]byte(`{"project_id":null,"site_id":""}`), &request); err != nil {
+		t.Fatalf("unmarshal update request: %v", err)
+	}
+	if !request.ProjectIDSet || !request.SiteIDSet {
+		t.Fatalf("expected placement fields to be marked present: %#v", request)
+	}
+	if request.ProjectID != nil || request.SiteID == nil || *request.SiteID != "" {
+		t.Fatalf("unexpected nullable placement values: %#v", request)
+	}
+}
+
 func TestCreateRequiresProjectWhenSiteSet(t *testing.T) {
 	service := NewService(nil)
 	siteID := uuid.New()

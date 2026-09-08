@@ -50,10 +50,14 @@ export function DeviceMap({ points, onSelect, height = 520, styleUrl, mapStyle }
     const instance = new maplibregl.Map({ container: container.current, style: mapStyle || styleUrl || defaultStyle(), center: [104, 35], zoom: 3, attributionControl: {} });
     map.current = instance;
     instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+    const startDragging = () => instance.getContainer().classList.add("is-dragging");
+    const stopDragging = () => instance.getContainer().classList.remove("is-dragging");
+    instance.on("dragstart", startDragging);
+    instance.on("dragend", stopDragging);
     fit(instance, latestPoints.current);
     const observer = new ResizeObserver(() => instance.resize());
     observer.observe(container.current);
-    return () => { observer.disconnect(); markers.current.forEach((marker) => marker.remove()); markers.current = []; instance.remove(); map.current = null; };
+    return () => { observer.disconnect(); instance.off("dragstart", startDragging); instance.off("dragend", stopDragging); markers.current.forEach((marker) => marker.remove()); markers.current = []; instance.remove(); map.current = null; };
   }, [styleUrl, mapStyle]);
   useEffect(() => {
     let attempts = 0;

@@ -143,7 +143,7 @@ func (h *Handler) CreateFromPlan(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if h.billing != nil {
+	if h.billing != nil && !actor.IsDemo {
 		if err := h.billing.RequireProfessional(c.Request.Context(), workspaceID); err != nil {
 			httpx.WriteAppError(c, err)
 			return

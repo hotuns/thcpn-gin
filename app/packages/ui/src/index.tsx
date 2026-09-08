@@ -168,7 +168,7 @@ export function ChoiceCard({
   );
 }
 
-export type PickerOption = { id: string; label: string; description?: string };
+export type PickerOption = { id: string; label: string; description?: string; searchText?: string };
 
 export function EntityPicker({
   label,
@@ -195,7 +195,7 @@ export function EntityPicker({
   const filtered = useMemo(
     () =>
       options.filter((item) =>
-        `${item.label} ${item.description ?? ""}`
+        `${item.label} ${item.description ?? ""} ${item.searchText ?? ""}`
           .toLowerCase()
           .includes(keyword.toLowerCase()),
       ),

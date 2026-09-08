@@ -43,19 +43,20 @@ type SourceLocation struct {
 type LocationLoader func(context.Context, uuid.UUID) (SourceLocation, bool, error)
 
 type Profile struct {
-	DeviceID          uuid.UUID      `json:"device_id"`
-	Description       *string        `json:"description,omitempty"`
-	LocationText      *string        `json:"location_text,omitempty"`
-	Latitude          *float64       `json:"latitude,omitempty"`
-	Longitude         *float64       `json:"longitude,omitempty"`
-	EffectiveLocation *Location      `json:"effective_location,omitempty"`
-	LocationSource    string         `json:"location_source"`
-	Site              *SiteSummary   `json:"site,omitempty"`
-	Images            []ProfileImage `json:"images"`
-	CanConfigure      bool           `json:"can_configure"`
-	UpdatedBy         *uuid.UUID     `json:"updated_by,omitempty"`
-	CreatedAt         *time.Time     `json:"created_at,omitempty"`
-	UpdatedAt         *time.Time     `json:"updated_at,omitempty"`
+	DeviceID           uuid.UUID      `json:"device_id"`
+	Description        *string        `json:"description,omitempty"`
+	LocationText       *string        `json:"location_text,omitempty"`
+	Latitude           *float64       `json:"latitude,omitempty"`
+	Longitude          *float64       `json:"longitude,omitempty"`
+	EffectiveLocation  *Location      `json:"effective_location,omitempty"`
+	LocationSource     string         `json:"location_source"`
+	Site               *SiteSummary   `json:"site,omitempty"`
+	Images             []ProfileImage `json:"images"`
+	CanConfigure       bool           `json:"can_configure"`
+	CanManagePlacement bool           `json:"can_manage_placement"`
+	UpdatedBy          *uuid.UUID     `json:"updated_by,omitempty"`
+	CreatedAt          *time.Time     `json:"created_at,omitempty"`
+	UpdatedAt          *time.Time     `json:"updated_at,omitempty"`
 }
 
 type Location struct {
@@ -128,6 +129,38 @@ func (s *Service) Get(ctx context.Context, deviceID uuid.UUID) (Profile, error) 
 		return Profile{}, apperr.Wrap(apperr.KindInternal, "get device profile", err)
 	}
 	return s.buildProfile(ctx, q, deviceID, model)
+}
+
+func (s *Service) GetDemo(ctx context.Context, userID, deviceID uuid.UUID) (Profile, error) {
+	result, err := s.Get(ctx, deviceID)
+	if err != nil {
+		return Profile{}, err
+	}
+	var siteID *uuid.UUID
+	var siteName string
+	var latitude, longitude *float64
+	err = s.db.QueryRow(ctx, `SELECT dsd.site_id,COALESCE(st.name,''),st.latitude,st.longitude FROM demo_showcase_devices dsd LEFT JOIN sites st ON st.id=dsd.site_id WHERE dsd.user_id=$1 AND dsd.device_id=$2`, userID, deviceID).Scan(&siteID, &siteName, &latitude, &longitude)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Profile{}, apperr.New(apperr.KindNotFound, "demo device not found")
+	}
+	if err != nil {
+		return Profile{}, apperr.Wrap(apperr.KindInternal, "get demo device site", err)
+	}
+	result.CanManagePlacement = true
+	result.Site = nil
+	if siteID != nil {
+		result.Site = &SiteSummary{ID: *siteID, Name: siteName}
+	}
+	if latitude != nil && longitude != nil {
+		result.Latitude, result.Longitude = latitude, longitude
+		result.LocationSource = "site"
+		result.EffectiveLocation = &Location{LocationText: result.LocationText, Latitude: latitude, Longitude: longitude}
+	} else if result.LocationSource == "site" {
+		result.Latitude, result.Longitude = nil, nil
+		result.LocationSource = "none"
+		result.EffectiveLocation = nil
+	}
+	return result, nil
 }
 
 func (s *Service) Update(ctx context.Context, input UpdateProfileInput) (Profile, error) {

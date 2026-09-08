@@ -7,6 +7,8 @@
 .device-map-point.has-category-icon.is-active { background: #1b8b6c; }
 .device-map-point.has-category-icon img { width: 17px; height: 17px; pointer-events: none; }
 .device-map-marker:hover { z-index: 2; filter: brightness(1.08); transform: scale(1.1); }
+.device-map-canvas.is-dragging .device-map-marker { transition: none; }
+.device-map-canvas.is-dragging .device-map-marker:hover { filter: none; transform: none; }
 .device-map-marker:focus-visible { outline: 3px solid rgba(255,255,255,.7); outline-offset: 3px; }
 .device-map-popup { min-width: 180px; display: grid; gap: 4px; color: #17212b; font: 12px/1.4 system-ui,sans-serif; }
 .device-map-popup strong { font-size: 13px; }

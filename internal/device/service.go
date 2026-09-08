@@ -144,6 +144,15 @@ type UpdateInput struct {
 	Capabilities *[]string
 }
 
+type DemoPlacementInput struct {
+	UserID       uuid.UUID
+	DeviceID     uuid.UUID
+	ProjectID    *uuid.UUID
+	SiteID       *uuid.UUID
+	ProjectIDSet bool
+	SiteIDSet    bool
+}
+
 type AdminUpdateInput struct {
 	DeviceID     uuid.UUID
 	ProductID    *string
@@ -395,8 +404,8 @@ func (s *Service) List(ctx context.Context, input ListInput) ([]Device, error) {
 	return items, nil
 }
 
-func (s *Service) ListDemoShowcase(ctx context.Context, userID uuid.UUID) ([]Device, error) {
-	rows, err := s.db.Query(ctx, `SELECT dsd.device_id,COALESCE(w.name,''),COALESCE(p.name,''),COALESCE(st.name,'') FROM demo_showcase_devices dsd LEFT JOIN device_assignments da ON da.device_id=dsd.device_id AND da.status='active' LEFT JOIN workspaces w ON w.id=da.workspace_id LEFT JOIN projects p ON p.id=da.project_id LEFT JOIN sites st ON st.id=da.site_id WHERE dsd.user_id=$1 ORDER BY dsd.created_at DESC`, userID)
+func (s *Service) ListDemoShowcase(ctx context.Context, userID uuid.UUID, projectID, siteID *uuid.UUID) ([]Device, error) {
+	rows, err := s.db.Query(ctx, `SELECT dsd.device_id FROM demo_showcase_devices dsd WHERE dsd.user_id=$1 AND ($2::uuid IS NULL OR dsd.project_id=$2) AND ($3::uuid IS NULL OR dsd.site_id=$3) ORDER BY dsd.created_at DESC`, userID, projectID, siteID)
 	if err != nil {
 		return nil, apperr.Wrap(apperr.KindInternal, "list demo showcase devices", err)
 	}
@@ -404,23 +413,112 @@ func (s *Service) ListDemoShowcase(ctx context.Context, userID uuid.UUID) ([]Dev
 	items := []Device{}
 	for rows.Next() {
 		var id uuid.UUID
-		var workspaceName, projectName, siteName string
-		if err := rows.Scan(&id, &workspaceName, &projectName, &siteName); err != nil {
+		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
-		item, err := s.Get(ctx, id)
-		if errors.Is(err, pgx.ErrNoRows) || apperr.KindOf(err) == apperr.KindNotFound {
-			item, err = s.GetAsset(ctx, id)
-		}
+		item, err := s.GetDemoShowcase(ctx, userID, id)
 		if err != nil {
 			return nil, err
 		}
-		item.SourceWorkspaceName = workspaceName
-		item.SourceProjectName = projectName
-		item.SourceSiteName = siteName
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (s *Service) GetDemoShowcase(ctx context.Context, userID, deviceID uuid.UUID) (Device, error) {
+	var workspaceID uuid.UUID
+	var projectID, siteID *uuid.UUID
+	var workspaceName, projectName, siteName string
+	err := s.db.QueryRow(ctx, `SELECT dsd.workspace_id,dsd.project_id,dsd.site_id,COALESCE(w.name,''),COALESCE(p.name,''),COALESCE(st.name,'')
+		FROM demo_showcase_devices dsd
+		LEFT JOIN workspaces w ON w.id=dsd.workspace_id
+		LEFT JOIN projects p ON p.id=dsd.project_id
+		LEFT JOIN sites st ON st.id=dsd.site_id
+		WHERE dsd.user_id=$1 AND (dsd.device_id=$2 OR EXISTS (
+			SELECT 1 FROM device_relations dr
+			WHERE dr.parent_device_id=dsd.device_id AND dr.child_device_id=$2
+				AND dr.relation_type='gateway_node' AND dr.status='active'
+		))
+		ORDER BY (dsd.device_id=$2) DESC
+		LIMIT 1`, userID, deviceID).Scan(&workspaceID, &projectID, &siteID, &workspaceName, &projectName, &siteName)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Device{}, apperr.New(apperr.KindNotFound, "demo device not found")
+	}
+	if err != nil {
+		return Device{}, apperr.Wrap(apperr.KindInternal, "get demo device placement", err)
+	}
+	item, err := s.Get(ctx, deviceID)
+	if apperr.KindOf(err) == apperr.KindNotFound {
+		item, err = s.GetAsset(ctx, deviceID)
+	}
+	if err != nil {
+		return Device{}, err
+	}
+	item.AssignmentID = nil
+	item.WorkspaceID = &workspaceID
+	item.WorkspaceName = stringPointer(workspaceName)
+	item.ProjectID = projectID
+	item.SiteID = siteID
+	item.ProjectName = stringPointer(projectName)
+	item.SiteName = stringPointer(siteName)
+	item.SourceWorkspaceName = ""
+	item.SourceProjectName = ""
+	item.SourceSiteName = ""
+	if err := s.db.QueryRow(ctx, `SELECT count(*) FROM device_relations WHERE parent_device_id=$1 AND relation_type='gateway_node' AND status='active'`, deviceID).Scan(&item.ChildCount); err != nil {
+		return Device{}, apperr.Wrap(apperr.KindInternal, "count demo device children", err)
+	}
+	return item, nil
+}
+
+func (s *Service) UpdateDemoPlacement(ctx context.Context, input DemoPlacementInput) (Device, error) {
+	if input.UserID == uuid.Nil || input.DeviceID == uuid.Nil {
+		return Device{}, apperr.New(apperr.KindInvalidArgument, "demo user and device are required")
+	}
+	current, err := s.GetDemoShowcase(ctx, input.UserID, input.DeviceID)
+	if err != nil {
+		return Device{}, err
+	}
+	projectID, siteID := current.ProjectID, current.SiteID
+	if input.ProjectIDSet {
+		projectID = input.ProjectID
+	}
+	if input.SiteIDSet {
+		siteID = input.SiteID
+	}
+	if projectID == nil {
+		siteID = nil
+	}
+	if projectID != nil {
+		var valid bool
+		err = s.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM projects WHERE id=$1 AND workspace_id=$2 AND status='active')`, *projectID, *current.WorkspaceID).Scan(&valid)
+		if err != nil {
+			return Device{}, apperr.Wrap(apperr.KindInternal, "validate demo project", err)
+		}
+		if !valid {
+			return Device{}, apperr.New(apperr.KindInvalidArgument, "project does not belong to demo workspace")
+		}
+	}
+	if siteID != nil {
+		var valid bool
+		err = s.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM sites WHERE id=$1 AND workspace_id=$2 AND project_id=$3 AND status='active')`, *siteID, *current.WorkspaceID, projectID).Scan(&valid)
+		if err != nil {
+			return Device{}, apperr.Wrap(apperr.KindInternal, "validate demo site", err)
+		}
+		if !valid {
+			return Device{}, apperr.New(apperr.KindInvalidArgument, "site does not belong to demo project")
+		}
+	}
+	if _, err = s.db.Exec(ctx, `UPDATE demo_showcase_devices SET project_id=$3,site_id=$4 WHERE user_id=$1 AND device_id=$2`, input.UserID, input.DeviceID, projectID, siteID); err != nil {
+		return Device{}, apperr.Wrap(apperr.KindInternal, "update demo device placement", err)
+	}
+	return s.GetDemoShowcase(ctx, input.UserID, input.DeviceID)
+}
+
+func stringPointer(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 func (s *Service) ListSystemAssets(ctx context.Context) ([]Device, error) {

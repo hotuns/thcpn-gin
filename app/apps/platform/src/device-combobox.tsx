@@ -1,7 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { ChevronDown, Search } from "lucide-react";
 import { api, type Device } from "@thcpn/api";
+import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 
 export type DeviceOptionCategory = "all" | "gateway" | "gateway_node" | "camera" | "carbon_sink" | "standalone";
 
@@ -27,11 +28,12 @@ export function filterDeviceOptions(
   devices: Device[],
   keyword: string,
   category: DeviceOptionCategory = "all",
+  tagsByDevice: Map<string, string[]> = new Map(),
 ) {
   const normalized = keyword.trim().toLowerCase();
   return devices.filter((device) => {
     const categoryMatches = category === "all" || deviceOptionCategory(device) === category;
-    const keywordMatches = !normalized || [device.name, device.serial_no, device.id]
+    const keywordMatches = !normalized || [device.name, device.serial_no, device.id, ...(tagsByDevice.get(device.id) ?? [])]
       .filter(Boolean)
       .some((value) => value.toLowerCase().includes(normalized));
     return categoryMatches && keywordMatches;
@@ -53,12 +55,22 @@ export function DeviceCombobox({
   placeholder?: string;
   className?: string;
 }) {
+  const { currentId } = useWorkspace();
   const rootRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
   const [open, setOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [category, setCategory] = useState<DeviceOptionCategory>("all");
+  const mapQuery = useQuery({
+    queryKey: workspaceQueryKey(currentId, "device-map", "true"),
+    queryFn: () => api.devices.map(currentId!, true),
+    enabled: Boolean(currentId && open),
+  });
+  const tagsByDevice = useMemo(
+    () => new Map((mapQuery.data?.items ?? []).map((item) => [item.device_id, item.environment.research_tags])),
+    [mapQuery.data?.items],
+  );
   const gateways = useMemo(
     () => devices.filter((item) => deviceOptionCategory(item) === "gateway"),
     [devices],
@@ -88,8 +100,9 @@ export function DeviceCombobox({
       devices.filter((item) => deviceOptionCategory(item) !== "gateway_node"),
       keyword,
       category,
+      tagsByDevice,
     ).slice(0, 100),
-    [category, devices, keyword],
+    [category, devices, keyword, tagsByDevice],
   );
 
   useEffect(() => {
@@ -139,11 +152,11 @@ export function DeviceCombobox({
   const normalizedKeyword = keyword.trim().toLowerCase();
   const gatewayGroups = gateways.map((gateway) => {
     const children = childrenByGateway.get(gateway.id) ?? [];
-    const gatewayMatches = !normalizedKeyword || [gateway.name, gateway.serial_no, gateway.id]
+    const gatewayMatches = !normalizedKeyword || [gateway.name, gateway.serial_no, gateway.id, ...(tagsByDevice.get(gateway.id) ?? [])]
       .filter(Boolean)
       .some((item) => item.toLowerCase().includes(normalizedKeyword));
     const matchingChildren = children.filter((child) =>
-      !normalizedKeyword || [child.name, child.serial_no, child.id]
+      !normalizedKeyword || [child.name, child.serial_no, child.id, ...(tagsByDevice.get(child.id) ?? [])]
         .filter(Boolean)
         .some((item) => item.toLowerCase().includes(normalizedKeyword)),
     );

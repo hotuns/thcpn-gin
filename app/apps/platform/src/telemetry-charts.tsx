@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import {
   Area,
-  AreaChart,
+  Bar,
   CartesianGrid,
+  ComposedChart,
   Line,
   LineChart,
-  ReferenceLine,
   ResponsiveContainer,
+  Scatter,
   Tooltip,
   XAxis,
   YAxis,
@@ -16,6 +17,7 @@ import type { TelemetrySeries } from "@thcpn/api";
 import { useLocale } from "@thcpn/i18n";
 
 const chartColors = ["#1769e0", "#16845b", "#d36b12", "#b13e4a", "#6a5ab5"];
+const windDirectionLabel = (value: number) => ["北", "东北", "东", "东南", "南", "西南", "西", "西北"][Math.round((value % 360) / 45) % 8];
 
 export function TelemetryCharts({
   series,
@@ -318,42 +320,45 @@ function TelemetryChart({
   const values = source.map((point) => point.value);
   const min = Math.min(...values);
   const max = Math.max(...values);
-  const average = values.reduce((sum, item) => sum + item, 0) / source.length;
   const latest = source.at(-1);
   const domainPadding = Math.max((max - min) * 0.08, Math.abs(max || 1) * 0.01);
+  const rainfall = series.code.trim().toLowerCase() === "rain";
+  const windDirection = series.code.trim().toLowerCase() === "wind_d";
   return (
     <section className={`telemetry-chart chart-color-${colorIndex % 5}`}>
       <header>
         <div>
           <div className="cell-title">{series.name}</div>
-          <div className="cell-sub mono">
-            {series.code} · {series.source_count || source.length} {t("platform:telemetry.sourcePoints")}
-            {series.sampled ? ` · ${source.length} ${t("platform:telemetry.chartPoints")}` : ""}
+          <div className="chart-meta-row">
+            <div className="cell-sub mono">
+              {series.code} · {t("platform:telemetry.quantity")} {series.source_count || source.length}
+              {series.sampled ? ` · ${source.length} ${t("platform:telemetry.chartPoints")}` : ""}
+            </div>
+            <div className="chart-stats">
+              <span>
+                {t("platform:telemetry.minimum")} <strong>{formatNumber(min, { maximumFractionDigits: 2 })}</strong>
+              </span>
+              <span>
+                {t("platform:telemetry.maximum")} <strong>{formatNumber(max, { maximumFractionDigits: 2 })}</strong>
+              </span>
+            </div>
           </div>
         </div>
         <div className="chart-latest">
-          <strong>{latest ? formatNumber(latest.value, { maximumFractionDigits: 2 }) : "—"}</strong>
-          <span>{series.unit}</span>
+          <small>{t("platform:telemetry.latest")}</small>
+          <div>
+            <strong>{latest ? formatNumber(latest.value, { maximumFractionDigits: 2 }) : "—"}</strong>
+            <span>{series.unit}</span>
+          </div>
         </div>
       </header>
-      <div className="chart-stats">
-        <span>
-          {t("platform:telemetry.minimum")} <strong>{formatNumber(min, { maximumFractionDigits: 2 })}</strong>
-        </span>
-        <span>
-          {t("platform:telemetry.average")}{" "}<strong>{formatNumber(average, { maximumFractionDigits: 2 })}</strong>
-        </span>
-        <span>
-          {t("platform:telemetry.maximum")} <strong>{formatNumber(max, { maximumFractionDigits: 2 })}</strong>
-        </span>
-      </div>
       <div
         className="chart-canvas"
         role="img"
         aria-label={t("platform:telemetry.trend", { name: series.name })}
       >
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart
+          <ComposedChart
             data={data}
             margin={{ top: 12, right: 8, bottom: 2, left: 0 }}
           >
@@ -390,17 +395,12 @@ function TelemetryChart({
               axisLine={{ stroke: "var(--line)" }}
             />
             <YAxis
-              domain={[min - domainPadding, max + domainPadding]}
-              tickFormatter={(value) => formatNumber(value, { maximumFractionDigits: 2 })}
+              domain={windDirection ? [0, 360] : rainfall ? [0, max + domainPadding] : [min - domainPadding, max + domainPadding]}
+              ticks={windDirection ? [0, 45, 90, 135, 180, 225, 270, 315, 360] : undefined}
+              tickFormatter={(value) => windDirection ? windDirectionLabel(Number(value)) : formatNumber(value, { maximumFractionDigits: 2 })}
               width={48}
               tickLine={false}
               axisLine={false}
-            />
-            <ReferenceLine
-              y={average}
-              stroke="var(--chart)"
-              strokeOpacity={0.35}
-              strokeDasharray="4 4"
             />
             <Tooltip
               cursor={{
@@ -412,7 +412,9 @@ function TelemetryChart({
                 formatDateTime(new Date(Number(value)), { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
               }
               formatter={(value) => [
-                `${formatNumber(Number(value), { maximumFractionDigits: 2 })}${series.unit ? ` ${series.unit}` : ""}`,
+                windDirection
+                  ? `${formatNumber(Number(value), { maximumFractionDigits: 2 })}° · ${windDirectionLabel(Number(value))}`
+                  : `${formatNumber(Number(value), { maximumFractionDigits: 2 })}${series.unit ? ` ${series.unit}` : ""}`,
                 series.name,
               ]}
               contentStyle={{
@@ -421,37 +423,44 @@ function TelemetryChart({
                 boxShadow: "0 8px 24px rgba(24,49,73,.12)",
               }}
             />
-            <Area
-              type="monotone"
-              dataKey="value"
-              stroke="var(--chart)"
-              strokeWidth={2}
-              fill={`url(#telemetry-fill-${colorIndex})`}
-              dot={
-                data.length <= 48
-                  ? { r: 2, fill: "white", strokeWidth: 1.5 }
-                  : false
-              }
-              activeDot={{
-                r: 4,
-                fill: "white",
-                stroke: "var(--chart)",
-                strokeWidth: 2,
-              }}
-              isAnimationActive={false}
-              connectNulls={false}
-            />
-          </AreaChart>
+            {windDirection ? (
+              <Scatter dataKey="value" fill="var(--chart)" isAnimationActive={false}/>
+            ) : rainfall ? (
+              <Bar
+                dataKey="value"
+                fill="var(--chart)"
+                maxBarSize={18}
+                isAnimationActive={false}
+              />
+            ) : (
+              <Area
+                type="monotone"
+                dataKey="value"
+                stroke="var(--chart)"
+                strokeWidth={2}
+                fill={`url(#telemetry-fill-${colorIndex})`}
+                dot={
+                  data.length <= 48
+                    ? { r: 2, fill: "white", strokeWidth: 1.5 }
+                    : false
+                }
+                activeDot={{
+                  r: 4,
+                  fill: "white",
+                  stroke: "var(--chart)",
+                  strokeWidth: 2,
+                }}
+                isAnimationActive={false}
+                connectNulls={false}
+              />
+            )}
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
       <div className="chart-legend">
         <span>
           <i className="legend-line" />
           {t("platform:telemetry.realtime")}
-        </span>
-        <span>
-          <i className="legend-average" />
-          {t("platform:telemetry.rangeAverage")} {formatNumber(average, { maximumFractionDigits: 2 })}
         </span>
       </div>
       {series.warnings?.length ? (
