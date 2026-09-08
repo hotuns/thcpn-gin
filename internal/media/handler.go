@@ -97,6 +97,10 @@ func (h *Handler) ListDataStream(c *gin.Context) {
 	if !h.authorize(c, "data_stream", dataStreamID, mediaArchiveViewAction) {
 		return
 	}
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
 	downloadAllowed, ok := h.can(c, "data_stream", dataStreamID, mediaDownloadAction)
 	if !ok {
 		return
@@ -113,6 +117,7 @@ func (h *Handler) ListDataStream(c *gin.Context) {
 	input.DataStreamID = &dataStreamID
 	input.DownloadAllowed = downloadAllowed
 	input.DeleteAllowed = deleteAllowed
+	input.AllowUnassigned = actor.IsDemo
 
 	result, err := h.service.List(c.Request.Context(), input)
 	if err != nil {
