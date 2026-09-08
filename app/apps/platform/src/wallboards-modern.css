@@ -28,7 +28,7 @@
 .wallboard-fleet-operations { display: grid; grid-template-rows: 48% 51%; gap: 1.5%; }
 .wallboard-fleet-operations > .wallboard-screen-panel { height: auto; }
 .wallboard-single-data { display: grid; grid-template-rows: 42% 57%; gap: 1.2%; }
-.wallboard-single-corner { display: grid; grid-template-rows: 34% 24% 40%; gap: 1%; }
+.wallboard-single-corner { display: grid; grid-template-rows: 25% 24% 49%; gap: 1%; }
 .wallboard-single-data > .wallboard-screen-panel, .wallboard-single-corner > .wallboard-screen-panel { height: auto; box-sizing: border-box; }
 .wallboard-single-data > .wallboard-screen-panel { padding: 2% !important; }
 .wallboard-single-data > .wallboard-screen-panel > h2 { margin-bottom: 2% !important; }
@@ -46,8 +46,13 @@
 .wallboard-single-corner > .wallboard-screen-panel { padding: 4% !important; }
 .wallboard-single-corner > .wallboard-screen-panel > h2 { margin-bottom: 4% !important; }
 .wallboard-single-corner .wallboard-single-kpis { gap: 4px; }
-.wallboard-single-corner .wallboard-single-kpis > div { padding: 5px 6px; }
-.wallboard-single-corner > .wallboard-screen-panel:last-child .wallboard-image-grid { height: calc(100% - 22px) !important; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 68px; gap: 5px; overflow-x: hidden; overflow-y: auto; }
+.wallboard-single-corner .wallboard-single-kpis { height: calc(100% - 22px); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+.wallboard-single-corner .wallboard-single-kpis > div { align-content: center; padding: 3px 6px; }
+.wallboard-single-images > .wallboard-screen-panel { height: 100%; box-sizing: border-box; }
+.wallboard-single-images .wallboard-image-grid { height: calc(100% - 28px) !important; grid-template-columns: minmax(0, 1fr); grid-auto-rows: 180px; gap: 8px; overflow-x: hidden; overflow-y: auto; }
+.wallboard-single-images .wallboard-image-grid figure { margin: 0; }
+.wallboard-single-images .wallboard-image-grid img { display: block; width: 100%; }
+.wallboard-single-images .wallboard-image-grid figcaption { padding: 18px 7px 6px; font-size: clamp(7px, 0.5vw, 9px); line-height: 1.35; }
 .wallboard-device-layout .wallboard-bottom { grid-template-columns: minmax(0, 1fr); }
 .wallboard-device-layout .wallboard-bottom .wallboard-stat-table { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 18px; }
 .wallboard-device-layout .wallboard-bottom .wallboard-stat-table > header { grid-column: 1 / -1; }
@@ -72,6 +77,9 @@
 .wallboard-bottom > .wallboard-screen-panel { padding: 2.2% 2.6% !important; }
 .wallboard-bottom > .wallboard-screen-panel h2 { margin-bottom: 2% !important; }
 .wallboard-trend-grid { height: 82%; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(180px, 1fr); gap: 8px; overflow-x: auto; overflow-y: hidden; }
+.wallboard-trend-grid.is-paged { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: row; overflow: hidden; animation: wallboard-trend-page 250ms cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes wallboard-trend-page { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .wallboard-trend-grid.is-paged { animation: none; } }
 .wallboard-trend-item { min-width: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); padding: 8px 9px 3px; border: 1px solid var(--wb-line); border-radius: 5px; background: rgba(255, 255, 255, 0.018); }
 .wallboard-trend-item > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .wallboard-trend-item > header > div { min-width: 0; display: grid; gap: 2px; }
@@ -86,6 +94,12 @@
 .wallboard-device-name small, .wallboard-device-facts dt, .wallboard-metric-list span, .wallboard-metric-list time { color: var(--wb-muted); }
 .wallboard-device-facts dl { grid-template-columns: 47% 53%; gap: clamp(7px, 0.65vw, 12px) 0; }
 .wallboard-device-facts dd { color: #e8edef; }
+.wallboard-single-corner > .wallboard-screen-panel:last-child .wallboard-device-facts { height: calc(100% - 22px); grid-template-rows: auto minmax(0, 1fr) auto; gap: 4%; }
+.wallboard-single-corner > .wallboard-screen-panel:last-child .wallboard-device-name { padding: 0 0 5%; }
+.wallboard-single-corner > .wallboard-screen-panel:last-child .wallboard-device-facts dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.wallboard-single-corner > .wallboard-screen-panel:last-child .wallboard-device-facts dl > div { min-width: 0; display: grid; align-content: center; gap: 3px; padding: 6px; border: 1px solid var(--wb-line); border-radius: 5px; background: rgba(255, 255, 255, 0.025); }
+.wallboard-single-corner > .wallboard-screen-panel:last-child .wallboard-device-facts dt { font-size: clamp(7px, 0.48vw, 9px); }
+.wallboard-single-corner > .wallboard-screen-panel:last-child .wallboard-device-facts dd { overflow: hidden; margin: 0; font-size: clamp(8px, 0.58vw, 11px); font-weight: 560; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .wallboard-status { width: 7px !important; height: 7px !important; }
 .wallboard-status.online { background: var(--wb-accent) !important; box-shadow: 0 0 7px rgba(168, 224, 99, 0.58); }
 .wallboard-status.warning { background: #ff6673 !important; box-shadow: none; }
