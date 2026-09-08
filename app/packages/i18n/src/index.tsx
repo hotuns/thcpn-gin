@@ -23,9 +23,9 @@ export const detectLocale = (): SupportedLocale => {
 };
 
 export const detectTheme = (): ThemeMode => {
-  if (typeof window === "undefined") return "system";
+  if (typeof window === "undefined") return "light";
   const stored = window.localStorage.getItem(themeStorageKey);
-  return stored && supportedThemeModes.includes(stored as ThemeMode) ? stored as ThemeMode : "system";
+  return stored && supportedThemeModes.includes(stored as ThemeMode) ? stored as ThemeMode : "light";
 };
 
 const instance = createInstance();
@@ -40,7 +40,7 @@ void instance.init({
 });
 
 const LocaleContext = createContext(instance);
-const ThemeContext = createContext<{ theme: ThemeMode; resolvedTheme: "light" | "dark"; setTheme: (theme: ThemeMode) => void }>({ theme: "system", resolvedTheme: "light", setTheme: () => undefined });
+const ThemeContext = createContext<{ theme: ThemeMode; resolvedTheme: "light" | "dark"; setTheme: (theme: ThemeMode) => void }>({ theme: "light", resolvedTheme: "light", setTheme: () => undefined });
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<ThemeMode>(detectTheme);

@@ -129,14 +129,21 @@ export type ListResponse<T> = { items: T[]; total?: number; page?: number; page_
 export type JsonRecord = Record<string, unknown>;
 export type ProcessingProcessor = {
   code: string; version: string; name: string; description: string;
-  manifest: { inputs?: Array<{ code: string; name: string; kind: string; required?: boolean; ui?: { calibration_board?: { required?: boolean; shape?: "rectangle"; label?: string } } }>; outputs?: Array<{ code: string; name: string; kind: string; unit?: string }>; triggers?: string[]; parameters?: JsonRecord };
+  manifest: { category?: "image" | "timeseries"; execution?: JsonRecord; alignment?: { mode?: string; tolerance_seconds?: number }; inputs?: Array<{ code: string; name: string; kind: string; required?: boolean; ui?: { calibration_board?: { required?: boolean; shape?: "rectangle"; label?: string } } }>; outputs?: Array<{ code: string; name: string; kind: string; unit?: string }>; triggers?: string[]; parameters?: JsonRecord; ui?: { analysis_roi?: { required?: boolean; shape?: "rectangle"; label?: string } } };
   enabled: boolean; synced_at: string;
+};
+export type ProcessingPlan = {
+  id: string; code: string; name: string; description: string; status: "draft" | "published" | "disabled";
+  current_version: number; published_version?: number; processor_code: string; processor_version: string;
+  processor_manifest: ProcessingProcessor["manifest"]; parameters: JsonRecord; trigger: JsonRecord; target_types: Array<"device" | "site">;
+  created_at: string; updated_at: string;
 };
 export type ProcessingTask = {
   id: string; workspace_id: string; name: string; description: string;
   target_type: "device" | "site"; target_id: string; target_name: string;
   status: "active" | "paused" | "archived"; current_version: number;
   processor_code: string; processor_version: string;
+  plan_id?: string; plan_version?: number; plan_name?: string; plan_snapshot?: JsonRecord;
   processor_manifest: JsonRecord; config: JsonRecord; trigger: JsonRecord;
   start_at: string; inputs?: Array<JsonRecord>; outputs?: Array<{ code: string; name: string; kind: string; unit?: string; content_type?: string }>; created_at: string; updated_at: string;
   last_execution_status?: string; last_execution_at?: string;
@@ -151,6 +158,10 @@ export type ProcessingExecution = {
   observed_at?: string; queued_at?: string; started_at?: string; finished_at?: string;
   error_message: string; inputs?: Array<{ slot_code: string; kind: string; url?: string; observed_at?: string; metadata?: JsonRecord }>; created_at: string; results: ProcessingResult[];
 };
+export type WallboardTemplate = { code: string; version: number; component_key: string; name: string; description: string; cover: string; scene: "organization" | "site" | "device"; default_refresh_seconds: number; config_schema: JsonRecord; sample_data: JsonRecord; status: "published" | "unpublished"; tier: "free" | "premium"; display_price: string; contact_copy: string; can_create: boolean };
+export type Wallboard = { id: string; workspace_id: string; name: string; template_code: string; template_version: number; template_name: string; component_key: string; config: { device_id?: string; device_ids?: string[]; telemetry_stream_ids?: string[]; comparison_stream?: string; image_stream_ids?: string[]; trend_hours?: number }; status: "active" | "archived"; created_by: string; created_at: string; updated_at: string };
+export type WallboardDevice = { id: string; name: string; status: string; device_type: string; site_id?: string; site_name?: string; latitude?: number; longitude?: number; location_source: "device" | "site" | "unconfigured"; battery?: number; signal?: number; last_reported_at?: string; runtime_error?: string };
+export type WallboardSnapshot = { generated_at: string; workspace: { id: string; name: string }; sites: Array<{ id: string; name: string; latitude?: number; longitude?: number }>; devices: WallboardDevice[]; metrics: Array<{ data_stream_id: string; device_id: string; name: string; unit?: string; latest_value?: number; latest_at?: string; points: Array<{ ts: string; value: number }> }>; images: Array<{ data_stream_id: string; name: string; items: MediaItem[] }> };
 export type CarbonNodeStatus = {
   node_id: number;
   status: "has_data" | "no_data";
@@ -590,6 +601,16 @@ export const api = {
     adminList: (filters: JsonRecord = {}) =>
       request<ListResponse<JsonRecord>>(`/api/v1/admin/workspaces${queryString(filters as Record<string, string | number | boolean>)}`),
   },
+  wallboards: {
+    templates: () => request<ListResponse<WallboardTemplate>>("/api/v1/wallboard-templates"),
+    preview: (code: string) => request<{ template: WallboardTemplate; snapshot: WallboardSnapshot }>(`/api/v1/wallboard-templates/${encodeURIComponent(code)}/preview`),
+    list: (workspaceId: string) => request<ListResponse<Wallboard>>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/wallboards`),
+    get: (workspaceId: string, id: string) => request<Wallboard>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/wallboards/${encodeURIComponent(id)}`),
+    create: (workspaceId: string, payload: JsonRecord) => jsonRequest<Wallboard>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/wallboards`, "POST", payload),
+    update: (workspaceId: string, id: string, payload: JsonRecord) => jsonRequest<Wallboard>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/wallboards/${encodeURIComponent(id)}`, "PUT", payload),
+    archive: (workspaceId: string, id: string) => request<void>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/wallboards/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    snapshot: (workspaceId: string, id: string) => request<WallboardSnapshot>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/wallboards/${encodeURIComponent(id)}/snapshot`),
+  },
   notifications: {
     list: (workspaceId?: string, limit = 50) => request<JsonRecord>(`/api/v1/notifications${queryString({ workspace_id: workspaceId, limit })}`),
     read: (id: string) => jsonRequest<void>(`/api/v1/notifications/${encodeURIComponent(id)}/read`, "POST", {}),
@@ -1025,7 +1046,7 @@ export const api = {
       ),
   },
   processing: {
-    processors: () => request<ListResponse<ProcessingProcessor>>("/api/v1/processing/processors"),
+    plans: () => request<ListResponse<ProcessingPlan>>("/api/v1/processing/plans"),
     list: (workspaceId: string) => request<ListResponse<ProcessingTask>>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/processing-tasks`),
     get: (workspaceId: string, taskId: string) => request<ProcessingTask>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/processing-tasks/${encodeURIComponent(taskId)}`),
     executions: (workspaceId: string, taskId: string) => request<ListResponse<ProcessingExecution>>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/processing-tasks/${encodeURIComponent(taskId)}/executions`),
@@ -1089,6 +1110,19 @@ export const api = {
       billingRisks: (risk?: string) => request<ListResponse<JsonRecord>>(`/api/v1/admin/billing/workspaces${queryString({ risk })}`),
     },
     permissionsCatalog: () => request<JsonRecord>("/api/v1/admin/permissions/catalog"),
+    processingPlans: {
+      processors: () => request<ListResponse<ProcessingProcessor>>("/api/v1/admin/processing/processors"),
+      list: () => request<ListResponse<ProcessingPlan>>("/api/v1/admin/processing/plans"),
+      create: (payload: JsonRecord) => jsonRequest<ProcessingPlan>("/api/v1/admin/processing/plans", "POST", payload),
+      update: (id: string, payload: JsonRecord) => jsonRequest<ProcessingPlan>(`/api/v1/admin/processing/plans/${encodeURIComponent(id)}`, "PUT", payload),
+      publish: (id: string) => jsonRequest<ProcessingPlan>(`/api/v1/admin/processing/plans/${encodeURIComponent(id)}/publish`, "POST", {}),
+      disable: (id: string) => jsonRequest<ProcessingPlan>(`/api/v1/admin/processing/plans/${encodeURIComponent(id)}/disable`, "POST", {}),
+    },
+    wallboardTemplates: {
+      list: () => request<ListResponse<WallboardTemplate>>("/api/v1/admin/wallboard-templates"),
+      sync: () => jsonRequest<ListResponse<WallboardTemplate>>("/api/v1/admin/wallboard-templates/sync", "POST", {}),
+      update: (code: string, payload: JsonRecord) => jsonRequest<WallboardTemplate>(`/api/v1/admin/wallboard-templates/${encodeURIComponent(code)}`, "PATCH", payload),
+    },
     announcements: {
       list: () => request<JsonRecord>("/api/v1/admin/announcements"),
       create: (payload: JsonRecord) => jsonRequest<JsonRecord>("/api/v1/admin/announcements", "POST", payload),

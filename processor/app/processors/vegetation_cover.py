@@ -11,12 +11,15 @@ from PIL import Image
 
 from ..contracts import ExecuteRequest, OutputValue
 from ..registry import register
+from .image_regions import crop
 
 MANIFEST = {
     "code": "vegetation_cover",
     "version": "1",
     "name": "植物盖度识别",
     "description": "基于可见光图像的颜色特征识别植物区域，输出植物覆盖度和分类假彩色图。",
+    "category": "image",
+    "execution": {"mode": "media_each_input"},
     "target_types": ["device", "site"],
     "required_capability": "image_capture",
     "inputs": [
@@ -29,6 +32,7 @@ MANIFEST = {
     },
     "alignment": {"mode": "single"},
     "triggers": ["each_input"],
+    "ui": {"analysis_roi": {"required": True, "shape": "rectangle", "label": "分析区域"}},
     "outputs": [
         {"code": "vegetation_cover", "name": "植物盖度", "kind": "metric", "unit": "%"},
         {"code": "summary", "name": "识别摘要", "kind": "record"},
@@ -73,6 +77,8 @@ def run(request: ExecuteRequest) -> list[OutputValue]:
 
     with Image.open(BytesIO(_read(value.url))) as source:
         rgb = np.asarray(source.convert("RGB"), dtype=np.float32) / 255.0
+    roi = request.parameters.get("interaction", {}).get("roi")
+    rgb = crop(rgb, roi, "analysis ROI")
 
     red, green, blue = rgb[..., 0], rgb[..., 1], rgb[..., 2]
     total = red + green + blue + 1e-6

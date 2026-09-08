@@ -31,6 +31,7 @@ type executionCandidate struct {
 	TaskVersion      int32
 	ProcessorCode    string
 	ProcessorVersion string
+	Manifest         json.RawMessage
 	Config           json.RawMessage
 	StartAt          time.Time
 }
@@ -54,7 +55,7 @@ func (e *Engine) ProcessAvailable(ctx context.Context, limit int) (int, error) {
 		limit = 20
 	}
 	rows, err := e.db.Query(ctx, `
-SELECT t.id, t.current_version, v.processor_code, v.processor_version, v.config_json, v.start_at
+SELECT t.id, t.current_version, v.processor_code, v.processor_version, v.processor_manifest_json, v.config_json, v.start_at
 FROM processing_tasks t
 JOIN processing_task_versions v ON v.task_id=t.id AND v.version=t.current_version
 WHERE t.status='active' ORDER BY t.updated_at LIMIT $1`, limit)
@@ -65,7 +66,7 @@ WHERE t.status='active' ORDER BY t.updated_at LIMIT $1`, limit)
 	candidates := []executionCandidate{}
 	for rows.Next() {
 		var item executionCandidate
-		if err := rows.Scan(&item.TaskID, &item.TaskVersion, &item.ProcessorCode, &item.ProcessorVersion, &item.Config, &item.StartAt); err != nil {
+		if err := rows.Scan(&item.TaskID, &item.TaskVersion, &item.ProcessorCode, &item.ProcessorVersion, &item.Manifest, &item.Config, &item.StartAt); err != nil {
 			return 0, apperr.Wrap(apperr.KindInternal, "scan runnable processing task", err)
 		}
 		candidates = append(candidates, item)
@@ -82,6 +83,18 @@ WHERE t.status='active' ORDER BY t.updated_at LIMIT $1`, limit)
 }
 
 func (e *Engine) processTask(ctx context.Context, task executionCandidate) (int, error) {
+	var contract struct {
+		Category  string `json:"category"`
+		Alignment struct {
+			ToleranceSeconds int `json:"tolerance_seconds"`
+		} `json:"alignment"`
+	}
+	if err := json.Unmarshal(task.Manifest, &contract); err != nil {
+		return 0, apperr.Wrap(apperr.KindInternal, "decode processor execution contract", err)
+	}
+	if contract.Category == "timeseries" {
+		return 0, nil
+	}
 	inputs, err := e.taskInputs(ctx, task.TaskID, task.TaskVersion)
 	if err != nil || len(inputs) == 0 {
 		return 0, err
@@ -102,12 +115,16 @@ func (e *Engine) processTask(ctx context.Context, task executionCandidate) (int,
 		streams[input.SlotCode] = result.Items
 	}
 	base := streams[inputs[0].SlotCode]
+	tolerance := time.Duration(contract.Alignment.ToleranceSeconds) * time.Second
+	if tolerance <= 0 {
+		tolerance = 2 * time.Minute
+	}
 	processed := 0
 	for _, anchor := range base {
 		selected := map[string]media.Item{inputs[0].SlotCode: anchor}
 		valid := true
 		for _, input := range inputs[1:] {
-			item, ok := nearestMedia(streams[input.SlotCode], anchor.CapturedAt, 2*time.Minute)
+			item, ok := nearestMedia(streams[input.SlotCode], anchor.CapturedAt, tolerance)
 			if !ok {
 				valid = false
 				break

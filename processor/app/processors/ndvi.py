@@ -11,12 +11,15 @@ from PIL import Image
 
 from ..contracts import ExecuteRequest, OutputValue
 from ..registry import register
+from .image_regions import crop
 
 MANIFEST = {
     "code": "ndvi",
     "version": "1",
     "name": "NDVI",
     "description": "基于红光和近红外图片生成 NDVI 指标与伪彩色图。",
+    "category": "image",
+    "execution": {"mode": "media_nearest"},
     "target_types": ["device", "site"],
     "required_capability": "ndvi_processing",
     "inputs": [
@@ -32,6 +35,7 @@ MANIFEST = {
     },
     "alignment": {"mode": "nearest", "tolerance_seconds": 120},
     "triggers": ["each_input"],
+    "ui": {"analysis_roi": {"required": True, "shape": "rectangle", "label": "分析区域"}},
     "outputs": [
         {"code": "ndvi_mean", "name": "NDVI 均值", "kind": "metric", "unit": "1"},
         {"code": "ndvi_min", "name": "NDVI 最小值", "kind": "metric", "unit": "1"},
@@ -72,6 +76,13 @@ def run(request: ExecuteRequest) -> list[OutputValue]:
     if nir.shape != red.shape:
         image = Image.fromarray(np.clip(nir * 255, 0, 255).astype(np.uint8), mode="L")
         nir = np.asarray(image.resize((red.shape[1], red.shape[0]), Image.Resampling.BILINEAR), dtype=np.float32) / 255.0
+    red_board = crop(red, values["red"].metadata.get("calibration_board"), "red calibration board")
+    nir_board = crop(nir, values["nir"].metadata.get("calibration_board"), "NIR calibration board")
+    red = red / max(float(np.mean(red_board)), 1e-6)
+    nir = nir / max(float(np.mean(nir_board)), 1e-6)
+    roi = request.parameters.get("interaction", {}).get("roi")
+    red = crop(red, roi, "analysis ROI")
+    nir = crop(nir, roi, "analysis ROI")
     ndvi = np.clip((nir - red) / (nir + red + 1e-6), -1.0, 1.0)
     observed_at = values["red"].observed_at
     low = float(np.count_nonzero(ndvi < 0.2) / ndvi.size * 100)

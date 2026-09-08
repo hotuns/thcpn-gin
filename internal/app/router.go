@@ -53,6 +53,7 @@ import (
 	"thcpn-gin/internal/task"
 	"thcpn-gin/internal/telemetry"
 	"thcpn-gin/internal/user"
+	"thcpn-gin/internal/wallboard"
 	"thcpn-gin/internal/workspace"
 )
 
@@ -178,6 +179,10 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	if billingService != nil {
 		mediaService.SetBilling(billingService)
 	}
+	wallboardService := wallboard.NewService(deps.Postgres, telemetryService, mediaService, dataSourceService)
+	if err := wallboardService.Sync(context.Background()); err != nil {
+		return err
+	}
 	publicDeviceService := publicdevice.NewService(deps.Postgres)
 	exportService := export.NewService(deps.Postgres, objectSigner, cfg.Export)
 	if billingService != nil {
@@ -246,7 +251,8 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	mediaHandler := media.NewHandler(mediaService, permissionChecker, auditService)
 	publicDeviceHandler := publicdevice.NewHandler(publicDeviceService, telemetryService, mediaService, permissionChecker, auditService, deps.Redis, cfg.Auth.JWTSecret)
 	exportHandler := export.NewHandler(exportService, permissionChecker, auditService)
-	processingHandler := processing.NewHandler(processingService, permissionChecker, billingService)
+	processingHandler := processing.NewHandler(processingService, permissionChecker, billingService, auditService)
+	wallboardHandler := wallboard.NewHandler(wallboardService, permissionChecker, auditService)
 	notificationHandler := notification.NewHandler(notificationService)
 	if taskClient := task.NewClient(deps.Redis); taskClient != nil {
 		exportHandler.SetJobEnqueuer(taskClient)
@@ -331,6 +337,8 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.DELETE("/workspaces/:workspace_id/api-keys/:key_id", openAPIHandler.Revoke)
 	authed.GET("/permissions/catalog", permissionCatalogHandler.Catalog)
 	authed.GET("/device-taxonomy/catalog", deviceClassificationHandler.Catalog)
+	authed.GET("/wallboard-templates", wallboardHandler.Templates)
+	authed.GET("/wallboard-templates/:code/preview", wallboardHandler.Preview)
 	admin := api.Group("/admin")
 	admin.Use(adminauth.Middleware(adminTokenManager, adminAuthService))
 	admin.GET("/me", adminAuthHandler.Me)
@@ -449,6 +457,15 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.POST("/invitations", workspaceHandler.TenantManagedOperation)
 	admin.DELETE("/invitations/:invitation_id", workspaceHandler.RequireAdminReason(), accessGrantHandler.RevokeInvitation)
 	admin.GET("/audit-logs", auditHandler.List)
+	admin.GET("/processing/processors", processingHandler.AdminProcessors)
+	admin.GET("/processing/plans", processingHandler.AdminPlans)
+	admin.POST("/processing/plans", processingHandler.AdminCreatePlan)
+	admin.PUT("/processing/plans/:plan_id", processingHandler.AdminUpdatePlan)
+	admin.POST("/processing/plans/:plan_id/publish", processingHandler.AdminPublishPlan)
+	admin.POST("/processing/plans/:plan_id/disable", processingHandler.AdminDisablePlan)
+	admin.GET("/wallboard-templates", wallboardHandler.AdminTemplates)
+	admin.POST("/wallboard-templates/sync", wallboardHandler.AdminSync)
+	admin.PATCH("/wallboard-templates/:code", wallboardHandler.AdminUpdate)
 	admin.GET("/platform-logs", platformLogHandler.List)
 	admin.GET("/platform-logs/export", platformLogHandler.Export)
 	admin.GET("/platform-logs/policy", platformLogHandler.Policy)
@@ -474,6 +491,12 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.POST("/invitations/:invitation_id/accept", accessGrantHandler.AcceptInvitation)
 	authed.DELETE("/invitations/:invitation_id", accessGrantHandler.RevokeInvitation)
 	authed.GET("/audit-logs", auditHandler.List)
+	authed.GET("/workspaces/:workspace_id/wallboards", wallboardHandler.List)
+	authed.POST("/workspaces/:workspace_id/wallboards", wallboardHandler.Create)
+	authed.GET("/workspaces/:workspace_id/wallboards/:id", wallboardHandler.Get)
+	authed.PUT("/workspaces/:workspace_id/wallboards/:id", wallboardHandler.Update)
+	authed.DELETE("/workspaces/:workspace_id/wallboards/:id", wallboardHandler.Delete)
+	authed.GET("/workspaces/:workspace_id/wallboards/:id/snapshot", wallboardHandler.Snapshot)
 	authed.GET("/media/download", mediaHandler.Download)
 	authed.DELETE("/media", mediaHandler.Delete)
 	authed.GET("/export-jobs", exportHandler.List)
@@ -535,9 +558,10 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.POST("/datasets", datasetHandler.Create)
 	authed.GET("/datasets/:dataset_id", datasetHandler.Get)
 	authed.GET("/datasets/:dataset_id/telemetry", datasetHandler.QueryTelemetry)
-	authed.GET("/processing/processors", processingHandler.Processors)
+	authed.GET("/processing/plans", processingHandler.Plans)
+	authed.GET("/processing/plans/:plan_id", processingHandler.Plan)
 	authed.GET("/workspaces/:workspace_id/processing-tasks", processingHandler.List)
-	authed.POST("/workspaces/:workspace_id/processing-tasks", processingHandler.Create)
+	authed.POST("/workspaces/:workspace_id/processing-tasks", processingHandler.CreateFromPlan)
 	authed.GET("/workspaces/:workspace_id/processing-tasks/:task_id", processingHandler.Get)
 	authed.GET("/workspaces/:workspace_id/processing-tasks/:task_id/executions", processingHandler.Executions)
 	authed.PATCH("/workspaces/:workspace_id/processing-tasks/:task_id/status", processingHandler.SetStatus)

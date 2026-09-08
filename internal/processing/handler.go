@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/audit"
 	"thcpn-gin/internal/auth"
 	"thcpn-gin/internal/billing"
 	"thcpn-gin/internal/httpx"
@@ -19,6 +20,7 @@ type Handler struct {
 	service *Service
 	checker *permission.Checker
 	billing *billing.Service
+	audit   *audit.Service
 }
 
 type createTaskRequest struct {
@@ -34,12 +36,12 @@ type createTaskRequest struct {
 	Inputs           []TaskInput     `json:"inputs"`
 }
 
-func NewHandler(service *Service, checker *permission.Checker, billingServices ...*billing.Service) *Handler {
-	var billingService *billing.Service
-	if len(billingServices) > 0 {
-		billingService = billingServices[0]
+func NewHandler(service *Service, checker *permission.Checker, billingService *billing.Service, auditServices ...*audit.Service) *Handler {
+	var auditService *audit.Service
+	if len(auditServices) > 0 {
+		auditService = auditServices[0]
 	}
-	return &Handler{service: service, checker: checker, billing: billingService}
+	return &Handler{service: service, checker: checker, billing: billingService, audit: auditService}
 }
 
 func (h *Handler) Processors(c *gin.Context) {

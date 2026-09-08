@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { CalendarDays, Check, Clock3, Download, Film, HardDrive, Images, Timer, X } from "lucide-react";
+import { CalendarDays, Check, Clock3, Download, Film, HardDrive, Images, Maximize2, Timer, X } from "lucide-react";
 import { GIFEncoder, applyPalette, quantize } from "gifenc";
 import type { DataStream, Device, MediaItem } from "@thcpn/api";
 import { api, formatApiError } from "@thcpn/api";
@@ -24,7 +24,7 @@ const formatDuration = (milliseconds: number) => {
 
 const formatEstimatedSize = (frames: number, source: ImageSource) => {
   if (!frames) return "—";
-  const pixels = source === "original" ? 1920 * 1080 : 480 * 360;
+  const pixels = source === "original" ? 1920 * 1080 : 1080 * 810;
   const megabytes = frames * pixels * 0.45 / 1024 / 1024;
   return megabytes < 1 ? `约 ${Math.max(0.1, megabytes).toFixed(1)} MB` : `约 ${megabytes.toFixed(megabytes >= 10 ? 0 : 1)} MB`;
 };
@@ -45,10 +45,11 @@ async function originalUrl(item: MediaItem) {
 }
 
 async function encodeGif(items: MediaItem[], source: ImageSource, delay: number, onProgress: (value: number) => void) {
-  const resolveUrl = (item: MediaItem) => source === "original" ? originalUrl(item) : Promise.resolve(item.thumbnail_url || item.preview_url);
-  const first = await loadFrame(await resolveUrl(items[0]));
-  const width = first.width;
-  const height = first.height;
+  const resolveUrl = (item: MediaItem) => source === "original" ? originalUrl(item) : Promise.resolve(item.preview_url || item.thumbnail_url || "");
+  const first = await loadFrame(await resolveUrl(items[0]!));
+  const outputScale = source === "thumbnail" ? Math.min(1, 1080 / first.width, 1080 / first.height) : 1;
+  const width = Math.round(first.width * outputScale);
+  const height = Math.round(first.height * outputScale);
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -57,13 +58,27 @@ async function encodeGif(items: MediaItem[], source: ImageSource, delay: number,
   const gif = GIFEncoder();
 
   for (let index = 0; index < items.length; index += 1) {
-    const bitmap = index === 0 ? first : await loadFrame(await resolveUrl(items[index]));
+    const bitmap = index === 0 ? first : await loadFrame(await resolveUrl(items[index]!));
     const scale = Math.min(width / bitmap.width, height / bitmap.height);
     const frameWidth = Math.round(bitmap.width * scale);
     const frameHeight = Math.round(bitmap.height * scale);
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, width, height);
     context.drawImage(bitmap, (width - frameWidth) / 2, (height - frameHeight) / 2, frameWidth, frameHeight);
+    const timestamp = displayTime(items[index]!.captured_at);
+    const fontSize = Math.max(12, Math.round(Math.min(width, height) * 0.024));
+    const paddingX = Math.round(fontSize * 0.5);
+    const boxHeight = Math.round(fontSize * 1.5);
+    const margin = Math.max(4, Math.round(fontSize * 0.3));
+    context.font = `600 ${fontSize}px sans-serif`;
+    const boxWidth = Math.ceil(context.measureText(timestamp).width + paddingX * 2);
+    const boxX = margin;
+    const boxY = height - boxHeight - margin;
+    context.fillStyle = "rgba(5, 18, 28, 0.72)";
+    context.fillRect(boxX, boxY, boxWidth, boxHeight);
+    context.fillStyle = "#ffffff";
+    context.textBaseline = "middle";
+    context.fillText(timestamp, boxX + paddingX, boxY + boxHeight / 2);
     bitmap.close();
     const pixels = context.getImageData(0, 0, width, height).data;
     const palette = quantize(pixels, 256);
@@ -94,6 +109,8 @@ export function DeviceGifMaker({ device, stream, startTime, endTime, onClose }: 
   const [progress, setProgress] = useState(0);
   const [resultUrl, setResultUrl] = useState("");
   const [resultSize, setResultSize] = useState(0);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewClosing, setPreviewClosing] = useState(false);
 
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -143,6 +160,8 @@ export function DeviceGifMaker({ device, stream, startTime, endTime, onClose }: 
     if (resultUrl) URL.revokeObjectURL(resultUrl);
     setResultUrl("");
     setResultSize(0);
+    setPreviewOpen(false);
+    setPreviewClosing(false);
   };
   const updateSelection = (next: Set<string>) => { clearResult(); setSelectedIds(next); };
   const toggle = (id: string) => {
@@ -176,6 +195,16 @@ export function DeviceGifMaker({ device, stream, startTime, endTime, onClose }: 
     anchor.download = `${device.serial_no || device.name || "device"}-${stream.name}.gif`.replace(/[^\w\u4e00-\u9fff.-]+/g, "-");
     anchor.click();
   };
+  const openPreview = () => {
+    setPreviewClosing(false);
+    setPreviewOpen(true);
+  };
+  const closePreview = () => {
+    setPreviewOpen(false);
+    setPreviewClosing(true);
+    const closeMs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--modal-close-dur")) || 150;
+    window.setTimeout(() => setPreviewClosing(false), closeMs);
+  };
 
   return createPortal(
     <div className="gif-workspace-layer">
@@ -203,7 +232,7 @@ export function DeviceGifMaker({ device, stream, startTime, endTime, onClose }: 
                 </main>
                 <aside className="gif-settings-panel">
                   <div className="gif-setting-section"><h3>图像来源</h3><div className="gif-source-options">
-                    <button type="button" className={source === "thumbnail" ? "is-active" : ""} onClick={() => { clearResult(); setSource("thumbnail"); }}><Images size={17} /><span><strong>缩略图</strong><small>生成更快，文件较小</small></span></button>
+                    <button type="button" className={source === "thumbnail" ? "is-active" : ""} onClick={() => { clearResult(); setSource("thumbnail"); }}><Images size={17} /><span><strong>缩略图</strong><small>最长边保持 1080 像素</small></span></button>
                     <button type="button" disabled={!originalAvailable} className={source === "original" ? "is-active" : ""} onClick={() => { clearResult(); setSource("original"); }}><HardDrive size={17} /><span><strong>原图</strong><small>{originalAvailable ? "保持原始尺寸与细节" : "当前账户没有原图权限"}</small></span></button>
                   </div></div>
                   <div className="gif-setting-section"><label className="gif-delay-field"><span>每帧停留</span><select value={delay} onChange={(event) => { clearResult(); setDelay(Number(event.target.value)); }}><option value={200}>0.2 秒</option><option value={500}>0.5 秒</option><option value={1000}>1 秒</option><option value={2000}>2 秒</option></select></label></div>
@@ -211,7 +240,7 @@ export function DeviceGifMaker({ device, stream, startTime, endTime, onClose }: 
                   <p className="gif-estimate-note">体积按图像来源与帧数估算，实际大小以生成结果为准。</p>
                   {error && <div className="command-note media-feedback">{error}</div>}
                   <Button className="gif-generate-button" disabled={generating || selectedItems.length < 2} onClick={() => void generate()}><Film size={15} />{generating ? `生成中 ${progress}/${selectedItems.length}` : "生成 GIF"}</Button>
-                  {resultUrl && <div className="gif-result"><img src={resultUrl} alt="生成的 GIF 预览" /><span>实际体积 {(resultSize / 1024 / 1024).toFixed(1)} MB</span><Button onClick={download}><Download size={14} />下载 GIF</Button></div>}
+                  {resultUrl && <><div className="gif-result"><button type="button" className="gif-result-preview" onClick={openPreview}><img src={resultUrl} alt="生成的 GIF 预览" /><span><Maximize2 size={13} />点击预览</span></button><span>实际体积 {(resultSize / 1024 / 1024).toFixed(1)} MB</span><Button onClick={download}><Download size={14} />下载 GIF</Button></div><div className={`gif-preview-layer ${previewOpen || previewClosing ? "is-visible" : ""}`} onClick={closePreview}><div className={`gif-preview-dialog t-modal ${previewOpen ? "is-open" : previewClosing ? "is-closing" : ""}`} role="dialog" aria-modal="true" aria-label="GIF 预览" onClick={(event) => event.stopPropagation()}><button type="button" onClick={closePreview} aria-label="关闭 GIF 预览"><X size={18} /></button><img src={resultUrl} alt="生成的 GIF 大图预览" /></div></div></>}
                 </aside>
               </div>}
       </section>

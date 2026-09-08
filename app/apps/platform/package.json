@@ -17,6 +17,7 @@
     "@thcpn/i18n": "*",
     "@thcpn/ui": "*",
     "@thcpn/workspace": "*",
+    "cesium": "^1.145.0",
     "ezuikit-js": "^9.0.12",
     "gifenc": "^1.0.3",
     "lucide-react": "^0.468.0",

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { detectLocale, normalizeLocale, localeStorageKey } from "./index";
+import { detectLocale, detectTheme, normalizeLocale, localeStorageKey, themeStorageKey } from "./index";
 import { resources } from "./resources";
 import { translateLegacyText } from "./legacy";
 
@@ -25,6 +25,13 @@ describe("i18n resources", () => {
     expect(detectLocale()).toBe("zh-CN");
     localStorage.setItem(localeStorageKey, "invalid");
     expect(detectLocale()).toBe(normalizeLocale(navigator.languages?.[0] ?? navigator.language));
+  });
+
+  it("defaults to light theme and preserves a valid stored preference", () => {
+    localStorage.removeItem(themeStorageKey);
+    expect(detectTheme()).toBe("light");
+    localStorage.setItem(themeStorageKey, "dark");
+    expect(detectTheme()).toBe("dark");
   });
 
   it("translates registered legacy UI text without changing domain names", () => {

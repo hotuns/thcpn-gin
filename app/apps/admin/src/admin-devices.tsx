@@ -68,6 +68,14 @@ export function AdminDevicesPage() {
     queryKey: ["admin", "devices"],
     queryFn: api.admin.devices,
   });
+  const mapQuery = useQuery({
+    queryKey: ["admin", "device-map", false],
+    queryFn: () => api.admin.deviceMap(false),
+  });
+  const tagsByDevice = useMemo(
+    () => new Map((mapQuery.data?.items ?? []).map((item) => [item.device_id, item.environment.research_tags])),
+    [mapQuery.data?.items],
+  );
   const allRows = query.data?.items ?? [];
   const detailDevice = allRows.find((item) => value(item.id, "") === deviceId);
   const isCarbonDetail = categoryOf(detailDevice ?? {}) === "carbon_sink";
@@ -138,7 +146,7 @@ export function AdminDevicesPage() {
     () =>
       topLevelRows.filter((item) => {
         const searchable =
-          `${value(item.name)} ${value(item.serial_no)} ${value(item.id)}`
+          `${value(item.name)} ${value(item.serial_no)} ${value(item.id)} ${(tagsByDevice.get(value(item.id, "")) ?? []).join(" ")}`
             .toLowerCase()
             .includes(keyword.toLowerCase());
         return (
@@ -152,7 +160,7 @@ export function AdminDevicesPage() {
           (category === "all" || categoryOf(item) === category)
         );
       }),
-    [topLevelRows, keyword, status, lifecycle, assignment, category],
+    [topLevelRows, keyword, status, lifecycle, assignment, category, tagsByDevice],
   );
   const id = value(selected?.id, "");
 
@@ -535,7 +543,7 @@ export function AdminDevicesPage() {
             <input
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
-              placeholder="搜索设备名称、序列号或 ID"
+              placeholder="搜索设备名称、序列号、ID 或标签"
             />
           </div>
           <Select

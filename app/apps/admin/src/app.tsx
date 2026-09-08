@@ -25,6 +25,7 @@ import {
   Home,
   KeyRound,
   MapPinned,
+  MonitorUp,
   Megaphone,
   Languages,
   Network,
@@ -39,6 +40,7 @@ import {
   Sun,
   TableProperties,
   UserRound,
+	Workflow,
 	UsersRound,
 } from "lucide-react";
 import { Avatar, Dropdown, Input, Menu, Modal, Space, Tooltip, type MenuProps } from "antd";
@@ -116,6 +118,8 @@ const AdminSettingsPage = lazy(() =>
     default: module.AdminSettingsPage,
   })),
 );
+const AdminProcessingPlansPage = lazy(() => import("./admin-processing-plans").then((module) => ({ default: module.AdminProcessingPlansPage })));
+const AdminWallboardTemplatesPage = lazy(() => import("./admin-wallboard-templates").then((module) => ({ default: module.AdminWallboardTemplatesPage })));
 const SystemAdminsPage = lazy(() => import("./system-admins").then((module) => ({ default: module.SystemAdminsPage })));
 
 const adminNav = [
@@ -133,6 +137,8 @@ const adminNav = [
   { to: "/admin/users", key: "users", icon: UserRound, group: "platform" },
 	{ to: "/admin/administrators", key: "administrators", icon: UsersRound, group: "system" },
   { to: "/admin/metadata", key: "metadata", icon: TableProperties, group: "platform" },
+  { to: "/admin/processing-plans", key: "processingPlans", icon: Workflow, group: "platform" },
+  { to: "/admin/wallboard-templates", key: "wallboardTemplates", icon: MonitorUp, group: "platform" },
   { to: "/admin/settings", key: "settings", icon: Settings, group: "system" },
 ] as const;
 const platformUrl =
@@ -593,6 +599,8 @@ function AdminRoot() {
         <Route path="users/:userId" element={<AdminUserDetailPage />} />
 		<Route path="administrators" element={<SystemAdminsPage />} />
         <Route path="metadata" element={<AdminMetadataPage />} />
+        <Route path="processing-plans" element={<AdminProcessingPlansPage />} />
+        <Route path="wallboard-templates" element={<AdminWallboardTemplatesPage />} />
         <Route path="settings" element={<AdminSettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/admin" replace />} />

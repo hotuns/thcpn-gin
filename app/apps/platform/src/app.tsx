@@ -23,6 +23,7 @@ import {
   HelpCircle,
   Home,
   MapPinned,
+  MonitorUp,
   PanelLeftClose,
   PanelLeftOpen,
   SlidersHorizontal,
@@ -96,6 +97,8 @@ const ExportsPage = lazy(() =>
 );
 const ProcessingPage = lazy(() => import("./processing-page").then((module) => ({ default: module.ProcessingPage })));
 const ProcessingTaskDetailPage = lazy(() => import("./processing-page").then((module) => ({ default: module.ProcessingTaskDetailPage })));
+const WallboardsPage = lazy(() => import("./wallboards-page").then((module) => ({ default: module.WallboardsPage })));
+const WallboardPlayPage = lazy(() => import("./wallboards-page").then((module) => ({ default: module.WallboardPlayPage })));
 const DataComparisonPage = lazy(() =>
   import("./data-comparison-page").then((module) => ({
     default: module.DataComparisonPage,
@@ -141,6 +144,7 @@ const navGroups = [
       { to: "/datasets", key: "datasets", icon: Table2 },
       { to: "/processing", key: "processing", icon: Workflow },
       { to: "/exports", key: "exports", icon: Download },
+      { to: "/wallboards", key: "wallboards", icon: MonitorUp },
     ],
   },
   {
@@ -187,6 +191,8 @@ function Shell() {
             ? t("platform:navigation.compare")
           : location.pathname === "/exports"
             ? t("platform:navigation.exports")
+          : location.pathname.startsWith("/wallboards")
+            ? t("platform:navigation.wallboards")
           : location.pathname.startsWith("/processing")
             ? t("platform:navigation.processing")
             : location.pathname === "/workspaces"
@@ -374,7 +380,7 @@ function Shell() {
           <AlertTriangle size={22} />
           <div>
             <strong>{requestError.status === 401 ? t("errors.unauthorized") : requestError.status === 403 ? t("errors.permission_denied") : t("requestFailed")}</strong>
-            <p>{requestError.message}</p>
+            <p>{user?.is_demo && requestError.status === 403 ? "当前为演示用户，暂无权限执行此操作" : requestError.message}</p>
             {requestError.requestId ? <small>{t("requestId", { id: requestError.requestId })}</small> : null}
           </div>
           <CloseButton onClick={() => setRequestError(null)} />
@@ -633,6 +639,7 @@ export function PlatformApp() {
             <Route path="/exports" element={<ExportsPage />} />
             <Route path="/processing" element={<ProcessingPage />} />
             <Route path="/processing/:taskId" element={<ProcessingTaskDetailPage />} />
+            <Route path="/wallboards" element={<WallboardsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             {billingEnabled ? (
               <Route path="/subscription" element={<SubscriptionPage />} />
@@ -641,6 +648,7 @@ export function PlatformApp() {
             <Route path="/account" element={<AccountPage />} />
             <Route path="*" element={<RootRedirect />} />
           </Route>
+          <Route path="/wallboards/:id/play" element={<WallboardPlayPage />} />
         </Route>
       </Routes>
     </Suspense>

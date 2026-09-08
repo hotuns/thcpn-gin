@@ -95,6 +95,10 @@ type Task struct {
 	CurrentVersion      int32           `json:"current_version"`
 	ProcessorCode       string          `json:"processor_code"`
 	ProcessorVersion    string          `json:"processor_version"`
+	PlanID              *uuid.UUID      `json:"plan_id,omitempty"`
+	PlanVersion         *int32          `json:"plan_version,omitempty"`
+	PlanName            string          `json:"plan_name,omitempty"`
+	PlanSnapshot        json.RawMessage `json:"plan_snapshot,omitempty"`
 	Manifest            json.RawMessage `json:"processor_manifest"`
 	Config              json.RawMessage `json:"config"`
 	Trigger             json.RawMessage `json:"trigger"`
@@ -124,6 +128,9 @@ type CreateInput struct {
 	TargetID         uuid.UUID
 	ProcessorCode    string
 	ProcessorVersion string
+	PlanID           *uuid.UUID
+	PlanVersion      *int32
+	PlanSnapshot     json.RawMessage
 	Config           json.RawMessage
 	Trigger          json.RawMessage
 	StartAt          time.Time
@@ -154,8 +161,53 @@ ON CONFLICT (code, version) DO UPDATE SET
 		if err != nil {
 			return nil, apperr.Wrap(apperr.KindInternal, "sync processor manifest", err)
 		}
+		if err := s.ensureDefaultPlan(ctx, item); err != nil {
+			return nil, err
+		}
 	}
 	return s.ListProcessors(ctx)
+}
+
+func (s *Service) ensureDefaultPlan(ctx context.Context, item ProcessorManifest) error {
+	var contract struct {
+		TargetTypes []string `json:"target_types"`
+		Triggers    []string `json:"triggers"`
+	}
+	if err := json.Unmarshal(item.Raw, &contract); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "decode processor defaults", err)
+	}
+	if len(contract.TargetTypes) == 0 {
+		contract.TargetTypes = []string{"device"}
+	}
+	mode := "each_input"
+	if len(contract.Triggers) > 0 {
+		mode = contract.Triggers[0]
+	}
+	targetTypes, _ := json.Marshal(contract.TargetTypes)
+	trigger, _ := json.Marshal(map[string]string{"mode": mode})
+	planID := uuid.New()
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "begin default processing plan", err)
+	}
+	defer tx.Rollback(ctx)
+	command, err := tx.Exec(ctx, `INSERT INTO processing_plans(id,code,name,description,status,current_version,published_version)
+VALUES($1,$2,$3,$4,'published',1,1) ON CONFLICT(code) DO NOTHING`, planID, item.Code, item.Name, item.Description)
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "create default processing plan", err)
+	}
+	if command.RowsAffected() == 0 {
+		return nil
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO processing_plan_versions(plan_id,version,processor_code,processor_version,processor_manifest_json,parameters_json,trigger_json,target_types_json)
+VALUES($1,1,$2,$3,$4,'{}'::jsonb,$5,$6)`, planID, item.Code, item.Version, item.Raw, trigger, targetTypes)
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "create default processing plan version", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "commit default processing plan", err)
+	}
+	return nil
 }
 
 func (s *Service) ListProcessors(ctx context.Context) ([]ProcessorDefinition, error) {
@@ -179,7 +231,7 @@ FROM processing_processors ORDER BY name, version DESC`)
 func (s *Service) ListTasks(ctx context.Context, workspaceID uuid.UUID) ([]Task, error) {
 	rows, err := s.db.Query(ctx, `
 SELECT t.id, t.workspace_id, t.name, t.description, t.target_type, t.target_id, t.status, t.current_version,
-       v.processor_code, v.processor_version, v.processor_manifest_json, v.config_json, v.trigger_json, v.start_at,
+       v.processor_code, v.processor_version, v.plan_id, v.plan_version, COALESCE(p.name,''), v.plan_snapshot_json, v.processor_manifest_json, v.config_json, v.trigger_json, v.start_at,
        t.created_at, t.updated_at,
        (SELECT e.status FROM processing_executions e WHERE e.task_id=t.id ORDER BY e.created_at DESC LIMIT 1),
        (SELECT e.created_at FROM processing_executions e WHERE e.task_id=t.id ORDER BY e.created_at DESC LIMIT 1),
@@ -187,6 +239,7 @@ SELECT t.id, t.workspace_id, t.name, t.description, t.target_type, t.target_id, 
                           WHEN 'site' THEN COALESCE((SELECT s.name FROM sites s WHERE s.id=t.target_id), '') ELSE '' END
 FROM processing_tasks t
 JOIN processing_task_versions v ON v.task_id = t.id AND v.version = t.current_version
+LEFT JOIN processing_plans p ON p.id=v.plan_id
 WHERE t.workspace_id = $1 ORDER BY t.created_at DESC`, workspaceID)
 	if err != nil {
 		return nil, apperr.Wrap(apperr.KindInternal, "list processing tasks", err)
@@ -196,7 +249,7 @@ WHERE t.workspace_id = $1 ORDER BY t.created_at DESC`, workspaceID)
 	for rows.Next() {
 		var item Task
 		if err := rows.Scan(&item.ID, &item.WorkspaceID, &item.Name, &item.Description, &item.TargetType, &item.TargetID,
-			&item.Status, &item.CurrentVersion, &item.ProcessorCode, &item.ProcessorVersion, &item.Manifest,
+			&item.Status, &item.CurrentVersion, &item.ProcessorCode, &item.ProcessorVersion, &item.PlanID, &item.PlanVersion, &item.PlanName, &item.PlanSnapshot, &item.Manifest,
 			&item.Config, &item.Trigger, &item.StartAt, &item.CreatedAt, &item.UpdatedAt, &item.LastExecutionStatus, &item.LastExecutionAt, &item.TargetName); err != nil {
 			return nil, apperr.Wrap(apperr.KindInternal, "scan processing task", err)
 		}
@@ -209,7 +262,7 @@ func (s *Service) GetTask(ctx context.Context, workspaceID, taskID uuid.UUID) (T
 	var item Task
 	err := s.db.QueryRow(ctx, `
 SELECT t.id, t.workspace_id, t.name, t.description, t.target_type, t.target_id, t.status, t.current_version,
-       v.processor_code, v.processor_version, v.processor_manifest_json, v.config_json, v.trigger_json, v.start_at,
+       v.processor_code, v.processor_version, v.plan_id, v.plan_version, COALESCE(p.name,''), v.plan_snapshot_json, v.processor_manifest_json, v.config_json, v.trigger_json, v.start_at,
        t.created_at, t.updated_at,
        (SELECT e.status FROM processing_executions e WHERE e.task_id=t.id ORDER BY e.created_at DESC LIMIT 1),
        (SELECT e.created_at FROM processing_executions e WHERE e.task_id=t.id ORDER BY e.created_at DESC LIMIT 1),
@@ -217,9 +270,10 @@ SELECT t.id, t.workspace_id, t.name, t.description, t.target_type, t.target_id, 
                           WHEN 'site' THEN COALESCE((SELECT s.name FROM sites s WHERE s.id=t.target_id), '') ELSE '' END
 FROM processing_tasks t
 JOIN processing_task_versions v ON v.task_id = t.id AND v.version = t.current_version
+LEFT JOIN processing_plans p ON p.id=v.plan_id
 WHERE t.workspace_id = $1 AND t.id = $2`, workspaceID, taskID).Scan(
 		&item.ID, &item.WorkspaceID, &item.Name, &item.Description, &item.TargetType, &item.TargetID,
-		&item.Status, &item.CurrentVersion, &item.ProcessorCode, &item.ProcessorVersion, &item.Manifest,
+		&item.Status, &item.CurrentVersion, &item.ProcessorCode, &item.ProcessorVersion, &item.PlanID, &item.PlanVersion, &item.PlanName, &item.PlanSnapshot, &item.Manifest,
 		&item.Config, &item.Trigger, &item.StartAt, &item.CreatedAt, &item.UpdatedAt, &item.LastExecutionStatus, &item.LastExecutionAt, &item.TargetName)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -378,8 +432,8 @@ VALUES ($1,$2,$3,$4,$5,$6,$7)`, taskID, input.WorkspaceID, input.Name, strings.T
 		return Task{}, apperr.Wrap(apperr.KindInternal, "create processing task", err)
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO processing_task_versions
-(task_id, version, processor_code, processor_version, processor_manifest_json, config_json, trigger_json, start_at, created_by)
-VALUES ($1,1,$2,$3,$4,$5,$6,$7,$8)`, taskID, input.ProcessorCode, input.ProcessorVersion, manifest, input.Config, input.Trigger, input.StartAt, input.ActorID)
+(task_id, version, processor_code, processor_version, plan_id, plan_version, plan_snapshot_json, processor_manifest_json, config_json, trigger_json, start_at, created_by)
+VALUES ($1,1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, taskID, input.ProcessorCode, input.ProcessorVersion, input.PlanID, input.PlanVersion, input.PlanSnapshot, manifest, input.Config, input.Trigger, input.StartAt, input.ActorID)
 	if err != nil {
 		return Task{}, apperr.Wrap(apperr.KindInternal, "create processing task version", err)
 	}

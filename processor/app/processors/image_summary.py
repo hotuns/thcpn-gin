@@ -15,6 +15,8 @@ MANIFEST = {
     "version": "1",
     "name": "图片基础统计",
     "description": "读取单张图片并输出尺寸、平均亮度和图片摘要，用于验证数据处理流程。",
+    "category": "image",
+    "execution": {"mode": "media_each_input"},
     "target_types": ["device", "site"],
     "required_capability": "",
     "inputs": [
@@ -27,6 +29,7 @@ MANIFEST = {
     },
     "alignment": {"mode": "single"},
     "triggers": ["each_input"],
+    "ui": {"analysis_roi": {"required": False, "shape": "rectangle"}},
     "outputs": [
         {"code": "width", "name": "图片宽度", "kind": "metric", "unit": "px"},
         {"code": "height", "name": "图片高度", "kind": "metric", "unit": "px"},

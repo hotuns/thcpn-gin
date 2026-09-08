@@ -1,0 +1,1 @@
+-- Test-stage wallboard data is intentionally not restored.

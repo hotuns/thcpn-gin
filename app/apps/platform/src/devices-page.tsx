@@ -239,6 +239,10 @@ export function DevicesPage() {
       ),
     [mapQuery.data?.items],
   );
+  const tagsByDevice = useMemo(
+    () => new Map((mapQuery.data?.items ?? []).map((item) => [item.device_id, item.environment.research_tags])),
+    [mapQuery.data?.items],
+  );
   const all = query.data?.items ?? [];
   const topLevelDevices = useMemo(() => all.filter(isTopLevelDevice), [all]);
   const runtimeDeviceIDs = useMemo(
@@ -283,11 +287,11 @@ export function DevicesPage() {
       topLevelDevices.filter(
         (item) =>
           (category === "all" || deviceCategory(item) === category) &&
-          `${item.name} ${item.serial_no} ${item.id}`
+          `${item.name} ${item.serial_no} ${item.id} ${(tagsByDevice.get(item.id) ?? []).join(" ")}`
             .toLowerCase()
             .includes(keyword.toLowerCase()),
       ),
-    [topLevelDevices, category, keyword],
+    [topLevelDevices, category, keyword, tagsByDevice],
   );
   if (!currentId)
     return (
@@ -325,7 +329,7 @@ export function DevicesPage() {
                 aria-label="搜索设备"
                 value={keyword}
                 onChange={(event) => setKeyword(event.target.value)}
-                placeholder="搜索名称、序列号或 ID"
+                placeholder="搜索名称、序列号、ID 或标签"
               />
             </div>
             <div className="device-filter-actions">

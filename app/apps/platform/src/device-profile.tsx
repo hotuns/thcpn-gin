@@ -71,6 +71,8 @@ export function DeviceProfileTab({
   });
   const environmentQuery = useQuery({ queryKey: workspaceQueryKey(workspaceId,"device",device.id,"environment"), queryFn:()=>api.devices.environment(device.id) });
   const taxonomyQuery = useQuery({ queryKey:["device-taxonomy"], queryFn:api.devices.taxonomy });
+  const mapQuery = useQuery({ queryKey:workspaceQueryKey(workspaceId,"device-map","false"), queryFn:()=>api.devices.map(workspaceId,false) });
+  const tagOptions = Array.from(new Set((mapQuery.data?.items ?? []).flatMap((item)=>item.environment.research_tags))).sort();
   const refresh = async () => {
     await Promise.all([
       client.invalidateQueries({ queryKey }),
@@ -388,6 +390,7 @@ export function DeviceProfileTab({
           profile={profile}
           environment={environmentQuery.data}
           terms={taxonomyQuery.data?.items ?? []}
+          tagOptions={tagOptions}
           busy={busy}
           onClose={() => setEditing(false)}
           onSubmit={async (payload, environmentPayload) => {
@@ -565,10 +568,11 @@ function PlacementEditor({ device, projects, sites, busy, onClose, onSubmit }: {
   );
 }
 
-function ProfileEditor({ profile, environment, terms, busy, onClose, onSubmit }: {
+function ProfileEditor({ profile, environment, terms, tagOptions, busy, onClose, onSubmit }: {
   profile: Awaited<ReturnType<typeof api.devices.profile>>;
   environment?: DeviceEnvironment;
   terms: DeviceTaxonomyTerm[];
+  tagOptions: string[];
   busy: boolean;
   onClose: () => void;
   onSubmit: (payload: JsonRecord, environmentPayload: JsonRecord) => Promise<void>;
@@ -582,6 +586,8 @@ function ProfileEditor({ profile, environment, terms, busy, onClose, onSubmit }:
   const [observations,setObservations]=useState(direct?.observation_objects.map((term)=>term.id)??effective?.observation_objects.map((term)=>term.id)??[]);
   const [year,setYear]=useState(String(direct?.commissioned_year??effective?.commissioned_year??""));
   const [tags,setTags]=useState((direct?.research_tags??effective?.research_tags??[]).join(", "));
+  const selectedTags=tags.split(",").map((value)=>value.trim()).filter(Boolean);
+  const toggleTag=(tag:string)=>setTags((selectedTags.includes(tag)?selectedTags.filter((item)=>item!==tag):[...selectedTags,tag]).join(", "));
   const byKind=(kind:string)=>terms.filter((term)=>term.kind===kind&&term.status==="active");
   const toggle=(field:string)=>setOverrides((current)=>{const next=new Set(current);if(next.has(field))next.delete(field);else next.add(field);return next});
   useEffect(() => {
@@ -631,7 +637,7 @@ function ProfileEditor({ profile, environment, terms, busy, onClose, onSubmit }:
               <EnvironmentField label="设备类型" field="ecosystem" overrides={overrides} toggle={toggle}><DeviceTypeSelect disabled={!overrides.has("ecosystem")} options={byKind("ecosystem")} value={ecosystem} onChange={setEcosystem} /></EnvironmentField>
               <EnvironmentMultiField label="观测对象" field="observation_objects" overrides={overrides} toggle={toggle} options={byKind("observation_object")} value={observations} onChange={setObservations} />
               <EnvironmentField label="投运年份" field="commissioned_year" overrides={overrides} toggle={toggle}><input type="number" min="1900" max="2200" disabled={!overrides.has("commissioned_year")} value={year} onChange={(event)=>setYear(event.target.value)}/></EnvironmentField>
-              <EnvironmentField label="研究方向 / 标签（逗号分隔）" field="research_tags" overrides={overrides} toggle={toggle}><input disabled={!overrides.has("research_tags")} value={tags} onChange={(event)=>setTags(event.target.value)}/></EnvironmentField>
+              <EnvironmentField label="研究方向 / 标签" field="research_tags" overrides={overrides} toggle={toggle}><input disabled={!overrides.has("research_tags")} value={tags} placeholder="输入自定义标签，多个标签用逗号分隔" onChange={(event)=>setTags(event.target.value)}/>{tagOptions.length?<div className="taxonomy-choice-grid" aria-disabled={!overrides.has("research_tags")}>{tagOptions.map((tag)=><label key={tag} className={selectedTags.includes(tag)?"selected":""}><input type="checkbox" disabled={!overrides.has("research_tags")} checked={selectedTags.includes(tag)} onChange={()=>toggleTag(tag)}/><span>{tag}</span></label>)}</div>:null}</EnvironmentField>
             </div>
             <div className="form-actions"><Button variant="secondary" type="button" onClick={onClose}>取消</Button><Button type="submit" disabled={busy}>{busy ? "保存中…" : "保存资料"}</Button></div>
           </form>
