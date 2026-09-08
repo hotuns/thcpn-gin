@@ -290,7 +290,7 @@ function Shell() {
           }}
         />
         <nav style={{ display: "grid", gap: 20 }}>
-          {navGroups.map((group) => ({...group,items:user?.is_demo?group.items.filter((item)=>!["datasets","processing","workspaces","subscription"].includes(item.key)):group.items})).filter((group)=>group.items.length).map((group) => (
+          {navGroups.map((group) => (
             <div className="nav-group" key={group.key}>
               <div className="nav-title">{t(`platform:navigationGroups.${group.key}`)}</div>
               {group.items.map((item) => {

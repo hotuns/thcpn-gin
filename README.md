@@ -82,6 +82,51 @@ docker compose down -v
 
 持久化数据存放在 Compose volumes：PostgreSQL、Redis、处理产物、对象文件和平台日志不会因普通 `docker compose down` 删除。
 
+### 4. 当前生产服务器更新流程
+
+生产服务器 `8.131.103.198` 的部署目录为 `/home/hotuns/thcpn-gin`，使用服务器上的 `.deploy/docker-compose.prebuilt.yml` 加载预编译的 Go 二进制。同步代码和 `.deploy` 产物后，在服务器执行：
+
+```bash
+cd /home/hotuns/thcpn-gin
+
+# 更新后端服务
+docker compose \
+  -f docker-compose.yml \
+  -f .deploy/docker-compose.prebuilt.yml \
+  up -d --build api worker
+
+# API 容器重建后必须重启两个 Nginx 前端，刷新 api 服务地址
+docker compose restart platform admin
+```
+
+如果本次包含前端改动，则直接重建前端，并同时完成 API 地址刷新：
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f .deploy/docker-compose.prebuilt.yml \
+  up -d --build platform admin
+```
+
+部署完成后必须验证容器状态、API 直连和公网反向代理：
+
+```bash
+docker compose ps
+curl -fsS http://127.0.0.1:18081/healthz
+curl -fsS https://www.insitueco.com/healthz
+curl -sS -o /tmp/login.out -w '%{http_code}\n' \
+  -X POST https://www.insitueco.com/api/v1/auth/password/login \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+cat /tmp/login.out
+```
+
+健康检查应返回 `200`。空参数登录应返回业务校验错误 `400`，如果返回 `502`，先检查 `platform`、`admin` 和 `api` 日志，不要把部署视为完成：
+
+```bash
+docker compose logs --since=5m platform admin api
+```
+
 ## 本地开发
 
 本地开发需要 Go、Node.js 24、Docker 和 Make。
