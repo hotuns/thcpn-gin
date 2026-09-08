@@ -116,7 +116,7 @@ function tiandituProvider(path: "img_w" | "cia_w", token: string) {
     style: "default",
     format: "tiles",
     tileMatrixSetID: "w",
-    tileMatrixLabels: Array.from({ length: 18 }, (_, index) => String(index + 1)),
+    tileMatrixLabels: Array.from({ length: 18 }, (_, index) => String(index)),
     subdomains: ["0", "1", "2", "3", "4", "5", "6", "7"],
     maximumLevel: 18,
   });

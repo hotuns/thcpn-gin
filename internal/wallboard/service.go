@@ -533,7 +533,7 @@ func (s *Service) buildSnapshot(ctx context.Context, workspaceID uuid.UUID, cfg 
 		if err = s.db.QueryRow(ctx, `SELECT name FROM data_streams WHERE id=$1`, streamID).Scan(&name); err != nil {
 			return out, apperr.Wrap(apperr.KindInternal, "read image stream", err)
 		}
-		result, e := s.media.List(ctx, media.QueryInput{DataStreamID: &streamID, MediaType: "image", StartTime: imageStart, EndTime: out.GeneratedAt, Page: 1, PageSize: 20})
+		result, e := s.media.List(ctx, media.QueryInput{DataStreamID: &streamID, MediaType: "image", StartTime: imageStart, EndTime: out.GeneratedAt, Page: 1, PageSize: 20, AllowUnassigned: true})
 		if e != nil {
 			return out, e
 		}
