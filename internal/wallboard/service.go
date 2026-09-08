@@ -363,7 +363,7 @@ func (s *Service) validateConfig(ctx context.Context, workspaceID uuid.UUID, sce
 		ids = append(ids, *c.DeviceID)
 	}
 	for _, id := range ids {
-		if err := s.requireWorkspaceRow(ctx, `SELECT 1 FROM device_assignments WHERE device_id=$1 AND workspace_id=$2 AND status='active'`, id, workspaceID); err != nil {
+		if err := s.requireWorkspaceRow(ctx, `SELECT 1 FROM devices d WHERE d.id=$1 AND (EXISTS (SELECT 1 FROM device_assignments da WHERE da.device_id=d.id AND da.workspace_id=$2 AND da.status='active') OR EXISTS (SELECT 1 FROM demo_showcase_devices dsd JOIN workspaces w ON w.owner_user_id=dsd.user_id AND w.is_demo_workspace=true AND w.status='active' WHERE dsd.device_id=d.id AND w.id=$2))`, id, workspaceID); err != nil {
 			return c, err
 		}
 	}
@@ -372,7 +372,7 @@ func (s *Service) validateConfig(ctx context.Context, workspaceID uuid.UUID, sce
 		streamIDs = append(streamIDs, *c.ComparisonStreamID)
 	}
 	for _, id := range streamIDs {
-		if err := s.requireWorkspaceRow(ctx, `SELECT 1 FROM data_streams ds JOIN device_assignments da ON da.device_id=ds.device_id AND da.status='active' WHERE ds.id=$1 AND da.workspace_id=$2 AND ds.status='active'`, id, workspaceID); err != nil {
+		if err := s.requireWorkspaceRow(ctx, `SELECT 1 FROM data_streams ds WHERE ds.id=$1 AND ds.status='active' AND (EXISTS (SELECT 1 FROM device_assignments da WHERE da.device_id=ds.device_id AND da.workspace_id=$2 AND da.status='active') OR EXISTS (SELECT 1 FROM demo_showcase_devices dsd JOIN workspaces w ON w.owner_user_id=dsd.user_id AND w.is_demo_workspace=true AND w.status='active' WHERE dsd.device_id=ds.device_id AND w.id=$2))`, id, workspaceID); err != nil {
 			return c, err
 		}
 	}
@@ -448,7 +448,7 @@ func (s *Service) buildSnapshot(ctx context.Context, workspaceID uuid.UUID, cfg 
 		out.Sites = append(out.Sites, v)
 	}
 	siteRows.Close()
-	deviceSQL := `SELECT d.id,d.name,d.status,d.device_type,da.site_id,COALESCE(s.name,''),s.latitude,s.longitude FROM devices d JOIN device_assignments da ON da.device_id=d.id AND da.status='active' LEFT JOIN sites s ON s.id=da.site_id WHERE da.workspace_id=$1`
+	deviceSQL := `SELECT d.id,d.name,d.status,d.device_type,da.site_id,COALESCE(s.name,''),s.latitude,s.longitude FROM devices d LEFT JOIN device_assignments da ON da.device_id=d.id AND da.workspace_id=$1 AND da.status='active' LEFT JOIN sites s ON s.id=da.site_id WHERE (da.workspace_id=$1 OR EXISTS (SELECT 1 FROM demo_showcase_devices dsd JOIN workspaces w ON w.owner_user_id=dsd.user_id AND w.is_demo_workspace=true AND w.status='active' WHERE dsd.device_id=d.id AND w.id=$1))`
 	args := []any{workspaceID}
 	if cfg.SiteID != nil {
 		deviceSQL += ` AND da.site_id=$2`
