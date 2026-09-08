@@ -58,6 +58,10 @@ func (h *Handler) listDevice(c *gin.Context, mediaType string) {
 	if !h.authorize(c, "device", deviceID, mediaArchiveViewAction) {
 		return
 	}
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
 	downloadAllowed, ok := h.can(c, "device", deviceID, mediaDownloadAction)
 	if !ok {
 		return
@@ -75,6 +79,7 @@ func (h *Handler) listDevice(c *gin.Context, mediaType string) {
 	input.MediaType = mediaType
 	input.DownloadAllowed = downloadAllowed
 	input.DeleteAllowed = deleteAllowed
+	input.AllowUnassigned = actor.IsDemo
 
 	result, err := h.service.List(c.Request.Context(), input)
 	if err != nil {

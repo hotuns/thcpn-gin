@@ -53,6 +53,7 @@ type QueryInput struct {
 	PageSize        int
 	DownloadAllowed bool
 	DeleteAllowed   bool
+	AllowUnassigned bool
 }
 
 type ListResult struct {
@@ -139,7 +140,7 @@ func (s *Service) List(ctx context.Context, input QueryInput) (ListResult, error
 	if input.DataStreamID != nil {
 		return s.listDataStream(ctx, *input.DataStreamID, input.DeviceID, input.MediaType, input.StartTime, input.EndTime, page, pageSize, input.DownloadAllowed, input.DeleteAllowed)
 	}
-	return s.listDevice(ctx, *input.DeviceID, input.MediaType, input.StartTime, input.EndTime, page, pageSize, input.DownloadAllowed, input.DeleteAllowed)
+	return s.listDevice(ctx, *input.DeviceID, input.MediaType, input.StartTime, input.EndTime, page, pageSize, input.DownloadAllowed, input.DeleteAllowed, input.AllowUnassigned)
 }
 
 func (s *Service) PrepareDownload(ctx context.Context, token string, actorIDs ...uuid.UUID) (DownloadResult, error) {
@@ -247,7 +248,7 @@ func (s *Service) DeleteMediaObject(ctx context.Context, target MediaTarget) (De
 	}, nil
 }
 
-func (s *Service) listDevice(ctx context.Context, deviceID uuid.UUID, mediaType string, start time.Time, end time.Time, page int, pageSize int, downloadAllowed bool, deleteAllowed bool) (ListResult, error) {
+func (s *Service) listDevice(ctx context.Context, deviceID uuid.UUID, mediaType string, start time.Time, end time.Time, page int, pageSize int, downloadAllowed bool, deleteAllowed bool, allowUnassigned bool) (ListResult, error) {
 	if deviceID == uuid.Nil {
 		return ListResult{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
 	}
@@ -258,11 +259,17 @@ func (s *Service) listDevice(ctx context.Context, deviceID uuid.UUID, mediaType 
 	_ = device
 	assignment, err := s.queries.GetActiveDeviceAssignment(ctx, deviceID)
 	if err != nil {
-		return ListResult{}, mapNotFoundOrInternal(err, "active device assignment not found")
-	}
-	downloadAllowed, err = s.professionalDownloadAllowed(ctx, assignment.WorkspaceID, downloadAllowed)
-	if err != nil {
-		return ListResult{}, err
+		if allowUnassigned && errors.Is(err, pgx.ErrNoRows) {
+			downloadAllowed = false
+			deleteAllowed = false
+		} else {
+			return ListResult{}, mapNotFoundOrInternal(err, "active device assignment not found")
+		}
+	} else {
+		downloadAllowed, err = s.professionalDownloadAllowed(ctx, assignment.WorkspaceID, downloadAllowed)
+		if err != nil {
+			return ListResult{}, err
+		}
 	}
 	streams, err := s.queries.ListDataStreamsByDevice(ctx, deviceID)
 	if err != nil {
