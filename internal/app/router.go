@@ -189,9 +189,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 		exportService.SetBilling(billingService)
 	}
 	processingService := processing.NewService(deps.Postgres, processing.NewClient(cfg.Processing.ProcessorURL), objectSigner)
-	if billingService != nil {
-		processingService.SetBilling(billingService, objectStore)
-	}
+	processingService.SetBilling(billingService, objectStore)
 	notificationService := notification.NewService(deps.Postgres)
 	tokenManager := auth.NewTokenManager(cfg.Auth.JWTSecret, time.Duration(cfg.Auth.AccessTokenTTLMinutes)*time.Minute)
 	smsSender, err := newSMSSender(cfg.SMS, deps.Logger)

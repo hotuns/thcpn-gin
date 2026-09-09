@@ -1052,6 +1052,7 @@ export const api = {
     executions: (workspaceId: string, taskId: string) => request<ListResponse<ProcessingExecution>>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/processing-tasks/${encodeURIComponent(taskId)}/executions`),
     create: (workspaceId: string, payload: JsonRecord) => jsonRequest<ProcessingTask>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/processing-tasks`, "POST", payload),
     status: (workspaceId: string, taskId: string, status: string) => jsonRequest<ProcessingTask>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/processing-tasks/${encodeURIComponent(taskId)}/status`, "PATCH", { status }),
+    artifact: (url: string) => request<{ url: string; expires_at: string }>(url),
   },
   accessGrants: {
     list: (

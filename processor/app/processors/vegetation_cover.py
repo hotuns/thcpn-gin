@@ -6,12 +6,16 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
+import joblib
 import numpy as np
+import pandas as pd
 from PIL import Image
 
 from ..contracts import ExecuteRequest, OutputValue
 from ..registry import register
 from .image_regions import crop
+
+MODEL_PATH = Path(__file__).with_name("random_forest_model.joblib")
 
 MANIFEST = {
     "code": "vegetation_cover",
@@ -76,26 +80,27 @@ def run(request: ExecuteRequest) -> list[OutputValue]:
         raise ValueError("visible-light image input is required")
 
     with Image.open(BytesIO(_read(value.url))) as source:
-        rgb = np.asarray(source.convert("RGB"), dtype=np.float32) / 255.0
+        rgb = np.asarray(source.convert("RGB"), dtype=np.uint8)
     roi = request.parameters.get("interaction", {}).get("roi")
     rgb = crop(rgb, roi, "analysis ROI")
 
-    red, green, blue = rgb[..., 0], rgb[..., 1], rgb[..., 2]
-    total = red + green + blue + 1e-6
-    red_norm, green_norm, blue_norm = red / total, green / total, blue / total
-    excess_green = 2.0 * green_norm - red_norm - blue_norm
-    threshold = 0.10
-    vegetation = (
-        (excess_green >= threshold)
-        & (green >= red * 1.03)
-        & (green >= blue * 1.02)
-        & (green >= 0.08)
-    )
+    pixels = rgb.reshape(-1, 3)
+    frame = pd.DataFrame(pixels, columns=["R", "G", "B"])
+    frame[["R", "G", "B"]] = frame[["R", "G", "B"]].replace(0, 1e-10).astype(float)
+    total = frame["R"] + frame["G"] + frame["B"]
+    frame["rr"] = 3 * frame["R"] / total
+    frame["rg"] = 3 * frame["G"] / total
+    frame["rb"] = 3 * frame["B"] / total
+    frame["gr_ratio"] = frame["G"] / frame["R"]
+    frame["gb_ratio"] = frame["G"] / frame["B"]
+    frame["br_ratio"] = frame["B"] / frame["R"]
+    features = ["R", "G", "B", "rr", "rg", "rb", "gr_ratio", "gb_ratio", "br_ratio"]
+    vegetation = joblib.load(MODEL_PATH).predict(frame[features]).reshape(rgb.shape[:2]) == "veg"
 
     coverage = float(np.count_nonzero(vegetation) / vegetation.size * 100.0)
-    false_color = np.empty((*vegetation.shape, 3), dtype=np.uint8)
-    false_color[vegetation] = (35, 210, 80)
-    false_color[~vegetation] = (190, 45, 145)
+    false_color = np.zeros((*vegetation.shape, 3), dtype=np.uint8)
+    false_color[vegetation] = (0, 255, 0)
+    false_color[~vegetation] = (255, 255, 0)
     artifact_url = _save_artifact(request, Image.fromarray(false_color, mode="RGB"))
 
     return [
@@ -110,8 +115,7 @@ def run(request: ExecuteRequest) -> list[OutputValue]:
             code="summary",
             kind="record",
             value={
-                "method": "visible_normalized_excess_green",
-                "threshold": round(threshold, 4),
+                "method": "random_forest_rgb",
                 "vegetation_pixels": int(np.count_nonzero(vegetation)),
                 "total_pixels": int(vegetation.size),
             },

@@ -138,7 +138,7 @@ function ProcessingResultsView({ executions, outputNames }: { executions: Proces
     <div className="processing-outcome-chart" aria-label={`${selected?.name ?? "成果"}趋势图`} onMouseDownCapture={(event) => { if (event.button === 0) event.preventDefault(); }} onClickCapture={(event) => { if (event.button === 0) selectNearestChartPoint(event.clientX, event.currentTarget); }}><ResponsiveContainer width="100%" height="100%"><LineChart data={selectedPoints} margin={{ top: 18, right: 24, bottom: 8, left: 0 }}><CartesianGrid stroke="var(--soft-line)" vertical={false}/><XAxis dataKey="timestamp" type="number" domain={["dataMin", "dataMax"]} tickFormatter={(value) => displayOutcomeDate(new Date(Number(value)).toISOString())} tick={{ fill: "var(--muted)", fontSize: 10 }} axisLine={false} tickLine={false}/><YAxis tick={{ fill: "var(--muted)", fontSize: 10 }} axisLine={false} tickLine={false} width={52}/><Tooltip formatter={(value) => [Number(value).toLocaleString(document.documentElement.lang || "zh-CN"), selected?.name ?? "成果值"]} labelFormatter={(value) => displayTime(new Date(Number(value)).toISOString())}/><Line dataKey="value" name={selected?.name} stroke="var(--blue)" strokeWidth={2} dot={(props: any) => { const point = props.payload as ProcessingMetricPoint; const active = point.executionId === selectedPoint?.executionId; return <g className="processing-outcome-dot-hit"><circle cx={props.cx} cy={props.cy} r={18} fill="transparent" stroke="transparent"/><circle cx={props.cx} cy={props.cy} r={active ? 5 : 4} fill={active ? "var(--blue)" : "var(--panel)"} stroke="var(--blue)" strokeWidth={2} className="processing-outcome-dot"/></g>; }} activeDot={false} isAnimationActive={false}/></LineChart></ResponsiveContainer></div>
     <section ref={mediaSectionRef} className="processing-outcome-media">
       <div className="processing-outcome-media-head"><div><span>关联图像</span><strong>{displayTime(selectedPoint?.observedAt)}</strong></div><div><strong>{selectedPoint?.value.toLocaleString(document.documentElement.lang || "zh-CN")}<small>{selectedPoint?.unit}</small></strong><span>{selectedInputs.length} 张输入 · {selectedArtifacts.length} 张处理结果</span></div></div>
-      {selectedInputs.length || selectedArtifacts.length ? <div className="processing-outcome-media-grid">{selectedInputs.map((input) => <ResultArtwork key={`${selectedExecution?.id}-${input.slot_code}`} url={input.url} eyebrow="输入图像" name={input.slot_code || "输入"}/>)}{selectedArtifacts.map((result) => <ResultArtwork key={result.id} url={result.url} eyebrow="处理结果" name={outputNames.get(result.output_code) ?? result.output_code}/>)}</div> : <StateView type="empty" title="该成果没有关联图像" description="当前执行只产生了数值成果。" />}
+      {selectedInputs.length || selectedArtifacts.length ? <div className="processing-outcome-media-grid">{selectedInputs.map((input) => <ResultArtwork key={`${selectedExecution?.id}-${input.slot_code}`} url={input.url} eyebrow="输入图像" name={input.slot_code || "输入"}/>)}{selectedArtifacts.map((result) => <ResultArtwork key={result.id} url={result.url} eyebrow="处理结果" name={outputNames.get(result.output_code) ?? result.output_code} prepare/>)}</div> : <StateView type="empty" title="该成果没有关联图像" description="当前执行只产生了数值成果。" />}
     </section>
   </div>;
 }
@@ -151,7 +151,7 @@ function ExecutionRow({ execution, outputNames, initiallyOpen }: { execution: Pr
   const artifacts = execution.results.filter((result) => result.kind === "artifact");
   const records = execution.results.filter((result) => result.kind === "record");
   const hasResults = execution.results.length > 0;
-  return <details className={`processing-execution is-${execution.status}`} open={initiallyOpen}><summary><div className="processing-execution-main"><Badge tone={executionTone(execution.status) as any}>{executionStatusLabel[execution.status] ?? execution.status}</Badge><div><strong>{displayTime(execution.observed_at ?? execution.created_at)}</strong><span>{execution.status === "success" ? `${execution.results.length} 项结果` : execution.error_message || "等待处理结果"}</span></div></div><div className="processing-execution-meta"><span className="mono">v{execution.task_version}</span><span>{execution.finished_at ? displayTime(execution.finished_at) : "尚未完成"}</span><ChevronDown size={16}/></div></summary>{execution.error_message && <div className="processing-execution-error"><strong>执行失败</strong><span>{execution.error_message}</span></div>}{hasResults && <div className={`processing-result-layout ${artifacts.length || executionInputs.some((input) => input.url) ? "has-visuals" : "no-visuals"}`}><div className="processing-result-visuals">{executionInputs.filter((input) => input.url).map((input) => <ResultArtwork key={`${execution.id}-${input.slot_code}`} url={input.url!} eyebrow="输入图像" name={input.slot_code || "输入"}/>) }{artifacts.map((result) => <ResultArtwork key={result.id} url={result.url} eyebrow="处理结果" name={outputNames.get(result.output_code) ?? result.output_code}/>)}</div><aside className="processing-result-sidebar"><div className="processing-metric-list">{metrics.map((result) => <ResultValue key={result.id} result={result} name={outputNames.get(result.output_code) ?? result.output_code} />)}</div>{records.map((result) => <ResultValue key={result.id} result={result} name={outputNames.get(result.output_code) ?? result.output_code} />)}<div className="processing-result-source mono">{execution.input_key}</div></aside></div>}</details>;
+  return <details className={`processing-execution is-${execution.status}`} open={initiallyOpen}><summary><div className="processing-execution-main"><Badge tone={executionTone(execution.status) as any}>{executionStatusLabel[execution.status] ?? execution.status}</Badge><div><strong>{displayTime(execution.observed_at ?? execution.created_at)}</strong><span>{execution.status === "success" ? `${execution.results.length} 项结果` : execution.error_message || "等待处理结果"}</span></div></div><div className="processing-execution-meta"><span className="mono">v{execution.task_version}</span><span>{execution.finished_at ? displayTime(execution.finished_at) : "尚未完成"}</span><ChevronDown size={16}/></div></summary>{execution.error_message && <div className="processing-execution-error"><strong>执行失败</strong><span>{execution.error_message}</span></div>}{hasResults && <div className={`processing-result-layout ${artifacts.length || executionInputs.some((input) => input.url) ? "has-visuals" : "no-visuals"}`}><div className="processing-result-visuals">{executionInputs.filter((input) => input.url).map((input) => <ResultArtwork key={`${execution.id}-${input.slot_code}`} url={input.url!} eyebrow="输入图像" name={input.slot_code || "输入"}/>) }{artifacts.map((result) => <ResultArtwork key={result.id} url={result.url} eyebrow="处理结果" name={outputNames.get(result.output_code) ?? result.output_code} prepare/>)}</div><aside className="processing-result-sidebar"><div className="processing-metric-list">{metrics.map((result) => <ResultValue key={result.id} result={result} name={outputNames.get(result.output_code) ?? result.output_code} />)}</div>{records.map((result) => <ResultValue key={result.id} result={result} name={outputNames.get(result.output_code) ?? result.output_code} />)}<div className="processing-result-source mono">{execution.input_key}</div></aside></div>}</details>;
 }
 
 function ResultValue({ result, name }: { result: ProcessingResult; name: string }) {
@@ -159,13 +159,16 @@ function ResultValue({ result, name }: { result: ProcessingResult; name: string 
   return <details className="processing-result processing-result-record"><summary><span>{name}</span><span>查看详情</span></summary><dl>{Object.entries(result.record ?? {}).map(([key, value]) => <div key={key}><dt>{recordFieldLabel(key)}</dt><dd>{String(value)}</dd></div>)}</dl><code>{result.output_code}</code></details>;
 }
 
-function ResultArtwork({ url, eyebrow, name }: { url?: string; eyebrow: string; name: string }) {
+function ResultArtwork({ url, eyebrow, name, prepare = false }: { url?: string; eyebrow: string; name: string; prepare?: boolean }) {
   const [failed, setFailed] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const prepared = useQuery({ queryKey: ["processing-artifact", url], queryFn: () => api.processing.artifact(url!), enabled: Boolean(prepare && url) });
+  const imageUrl = prepare ? prepared.data?.url : url;
+  useEffect(() => { setFailed(false); }, [imageUrl]);
   const download = () => {
-    if (!url) return;
+    if (!imageUrl) return;
     const anchor = document.createElement("a");
-    anchor.href = url;
+    anchor.href = imageUrl;
     anchor.download = name;
     anchor.rel = "noopener";
     anchor.click();
@@ -174,16 +177,16 @@ function ResultArtwork({ url, eyebrow, name }: { url?: string; eyebrow: string; 
     <div className="processing-result-artwork">
       <div className="processing-result-artwork-head">
         <div><span>{eyebrow}</span><strong>{name}</strong></div>
-        {url && !failed && <button type="button" className="processing-result-preview" onClick={() => setPreviewOpen(true)} title="全屏预览"><Eye size={15}/><span>查看原图</span></button>}
+        {imageUrl && !failed && <button type="button" className="processing-result-preview" onClick={() => setPreviewOpen(true)} title="全屏预览"><Eye size={15}/><span>查看原图</span></button>}
       </div>
-      <div className="processing-result-image">{url && !failed ? <img src={url} alt={name} onError={() => setFailed(true)}/> : <div><FileImage size={24}/><span>图像暂不可用</span></div>}</div>
+      <div className="processing-result-image">{imageUrl && !failed ? <img src={imageUrl} alt={name} onError={() => setFailed(true)}/> : <div><FileImage size={24}/><span>{prepared.isLoading ? "图像加载中" : "图像暂不可用"}</span></div>}</div>
     </div>
     <PhotoSlider
       visible={previewOpen}
       onClose={() => setPreviewOpen(false)}
       photoWrapClassName="thcpn-photo-wrap"
       index={0}
-      images={url ? [{ key: `${eyebrow}-${name}`, src: url, overlay: <div className="photo-preview-caption"><strong>{name}</strong><span>{eyebrow}</span></div> }] : []}
+      images={imageUrl ? [{ key: `${eyebrow}-${name}`, src: imageUrl, overlay: <div className="photo-preview-caption"><strong>{name}</strong><span>{eyebrow}</span></div> }] : []}
       toolbarRender={(props) => renderPhotoToolbar({ ...props, onDownload: download })}
     />
   </>;
