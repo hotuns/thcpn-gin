@@ -24,12 +24,13 @@ type Props = {
   devices: WallboardDevice[];
   mode: "single" | "multi";
   selectedDeviceId?: string;
+  focusRequest?: number;
   onSelectDevice?: (id: string) => void;
 };
 
 const CHINA_VIEW = Cartesian3.fromDegrees(104, 35, 6_500_000);
 
-export function WallboardCesiumMap({ devices, mode, selectedDeviceId, onSelectDevice }: Props) {
+export function WallboardCesiumMap({ devices, mode, selectedDeviceId, focusRequest, onSelectDevice }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Viewer | null>(null);
   const onSelectRef = useRef(onSelectDevice);
@@ -68,7 +69,8 @@ export function WallboardCesiumMap({ devices, mode, selectedDeviceId, onSelectDe
     handler.setInputAction((event: { position: Cartesian2 }) => {
       const picked = viewer.scene.pick(event.position);
       const id = picked?.id instanceof Entity ? picked.id.id : undefined;
-      if (id) onSelectRef.current?.(id);
+      const device = validDevices.find((item) => item.id === id);
+      if (device) onSelectRef.current?.(device.id);
     }, ScreenSpaceEventType.LEFT_CLICK);
 
     let rotating = true;
@@ -80,7 +82,8 @@ export function WallboardCesiumMap({ devices, mode, selectedDeviceId, onSelectDe
     viewer.clock.onTick.addEventListener(rotate);
     const intro = window.setTimeout(() => {
       rotating = false;
-      flyToDevices(viewer, validDevices, mode);
+      const selectedDevice = validDevices.find((item) => item.id === selectedDeviceId);
+      flyToDevices(viewer, selectedDevice ? [selectedDevice] : validDevices, mode);
     }, 1800);
 
     return () => {
@@ -104,6 +107,12 @@ export function WallboardCesiumMap({ devices, mode, selectedDeviceId, onSelectDe
       point.outlineColor = new ConstantProperty(selected ? Color.WHITE : markerColor(device).withAlpha(0.55));
     }
   }, [devices, selectedDeviceId]);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    const device = devices.filter(hasCoordinates).find((item) => item.id === selectedDeviceId);
+    if (viewer && device && mode === "multi") flyToDevice(viewer, device);
+  }, [devices, focusRequest, mode, selectedDeviceId]);
 
   if (!token) return <div className="wallboard-map-error">未配置 VITE_TIANDITU_TOKEN，无法加载天地图影像和注记。</div>;
   return <div ref={hostRef} className="wallboard-cesium" data-testid="wallboard-cesium" />;
@@ -191,4 +200,8 @@ function flyToDevices(viewer: Viewer, devices: Array<WallboardDevice & { latitud
   }
   const entities = devices.map((device) => viewer.entities.getById(device.id)).filter((entity): entity is Entity => Boolean(entity));
   void viewer.flyTo(entities, { duration: 2.5, offset: new HeadingPitchRange(0, CesiumMath.toRadians(-65), 0) });
+}
+
+function flyToDevice(viewer: Viewer, device: WallboardDevice & { latitude: number; longitude: number }) {
+  viewer.camera.flyTo({ destination: Cartesian3.fromDegrees(device.longitude, device.latitude, 180_000), duration: 1.4 });
 }

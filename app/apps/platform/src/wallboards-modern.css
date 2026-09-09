@@ -133,7 +133,7 @@
 .wallboard-fleet-focus > footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 7%; border-top: 1px solid var(--wb-line); }
 .wallboard-fleet-focus > footer strong { color: #cbd3d7; font-size: clamp(7px, 0.52vw, 9px); font-weight: 500; white-space: nowrap; }
 .wallboard-attention-list button { min-height: 31px; border-bottom: 1px solid var(--wb-line); transition: background-color 140ms ease; }
-.wallboard-fleet-rail .wallboard-attention-list { max-height: calc(100% - 24px); overflow: hidden; }
+.wallboard-fleet-rail .wallboard-attention-list { max-height: calc(100% - 24px); overflow-y: auto; }
 .wallboard-attention-list button:hover { background: rgba(255, 255, 255, 0.035); }
 .wallboard-attention-list button.selected { background: rgba(168, 224, 99, 0.07); }
 .wallboard-attention-list small { color: #dba891; }
