@@ -58,7 +58,7 @@ func (e *Engine) ProcessAvailable(ctx context.Context, limit int) (int, error) {
 SELECT t.id, t.current_version, v.processor_code, v.processor_version, v.processor_manifest_json, v.config_json, v.start_at
 FROM processing_tasks t
 JOIN processing_task_versions v ON v.task_id=t.id AND v.version=t.current_version
-WHERE t.status='active' ORDER BY t.updated_at LIMIT $1`, limit)
+WHERE t.status='active' ORDER BY t.updated_at`)
 	if err != nil {
 		return 0, apperr.Wrap(apperr.KindInternal, "list runnable processing tasks", err)
 	}
@@ -73,16 +73,19 @@ WHERE t.status='active' ORDER BY t.updated_at LIMIT $1`, limit)
 	}
 	processed := 0
 	for _, candidate := range candidates {
-		count, err := e.processTask(ctx, candidate)
+		count, err := e.processTask(ctx, candidate, limit-processed)
 		processed += count
 		if err != nil {
 			return processed, err
+		}
+		if processed >= limit {
+			break
 		}
 	}
 	return processed, nil
 }
 
-func (e *Engine) processTask(ctx context.Context, task executionCandidate) (int, error) {
+func (e *Engine) processTask(ctx context.Context, task executionCandidate, limit int) (int, error) {
 	var contract struct {
 		Category  string `json:"category"`
 		Alignment struct {
@@ -107,12 +110,19 @@ func (e *Engine) processTask(ctx context.Context, task executionCandidate) (int,
 	end := time.Now().UTC()
 	streams := make(map[string][]media.Item, len(inputs))
 	for _, input := range inputs {
-		result, err := e.media.List(ctx, media.QueryInput{DataStreamID: input.SourceID, MediaType: "image", StartTime: task.StartAt, EndTime: end, Page: 1, PageSize: 100})
-		if err != nil {
-			return 0, err
+		items := make([]media.Item, 0, 100)
+		for page := 1; ; page++ {
+			result, err := e.media.List(ctx, media.QueryInput{DataStreamID: input.SourceID, MediaType: "image", StartTime: task.StartAt, EndTime: end, Page: page, PageSize: 100, AllowUnassigned: true})
+			if err != nil {
+				return 0, err
+			}
+			items = append(items, result.Items...)
+			if len(result.Items) < result.PageSize || len(items) >= result.Total {
+				break
+			}
 		}
-		sort.Slice(result.Items, func(i, j int) bool { return result.Items[i].CapturedAt.Before(result.Items[j].CapturedAt) })
-		streams[input.SlotCode] = result.Items
+		sort.Slice(items, func(i, j int) bool { return items[i].CapturedAt.Before(items[j].CapturedAt) })
+		streams[input.SlotCode] = items
 	}
 	base := streams[inputs[0].SlotCode]
 	tolerance := time.Duration(contract.Alignment.ToleranceSeconds) * time.Second
@@ -121,6 +131,9 @@ func (e *Engine) processTask(ctx context.Context, task executionCandidate) (int,
 	}
 	processed := 0
 	for _, anchor := range base {
+		if processed >= limit {
+			break
+		}
 		selected := map[string]media.Item{inputs[0].SlotCode: anchor}
 		valid := true
 		for _, input := range inputs[1:] {
