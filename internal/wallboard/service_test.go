@@ -10,25 +10,13 @@ import (
 	"thcpn-gin/internal/datasource"
 )
 
-func TestCatalogIncludesStableInitialTemplates(t *testing.T) {
+func TestCatalogIsEmpty(t *testing.T) {
 	items, err := catalog()
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]string{
-		"device-monitoring": "device-monitoring-v1",
-		"fleet-overview":    "fleet-overview-v1",
-	}
-	if len(items) != len(want) {
-		t.Fatalf("got %d templates, want %d", len(items), len(want))
-	}
-	for _, item := range items {
-		if item.Version != 1 || want[item.Code] != item.ComponentKey {
-			t.Fatalf("unexpected template: %#v", item)
-		}
-		if len(item.ConfigSchema) == 0 || len(item.SampleData) == 0 {
-			t.Fatalf("template %s is missing schema or sample data", item.Code)
-		}
+	if len(items) != 0 {
+		t.Fatalf("got %d templates, want none", len(items))
 	}
 }
 
@@ -70,8 +58,8 @@ func TestApplyRuntimeKeepsDemoSiteLocation(t *testing.T) {
 
 func TestApplyTemplateSettingsOverridesManifestManagementFields(t *testing.T) {
 	item := Template{Code: "manifest-code", Version: 1, Status: "", Tier: "", DisplayPrice: "", ContactCopy: ""}
-	applyTemplateSettings(&item, "device-monitoring", 2, "published", "premium", "¥9,800 / 年", "联系开通")
-	if item.Code != "device-monitoring" || item.Version != 2 || item.Status != "published" || item.Tier != "premium" || item.DisplayPrice != "¥9,800 / 年" || item.ContactCopy != "联系开通" {
+	applyTemplateSettings(&item, "template-code", 2, "published", "premium", "¥9,800 / 年", "联系开通")
+	if item.Code != "template-code" || item.Version != 2 || item.Status != "published" || item.Tier != "premium" || item.DisplayPrice != "¥9,800 / 年" || item.ContactCopy != "联系开通" {
 		t.Fatalf("database settings were not preserved: %#v", item)
 	}
 }

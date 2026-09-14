@@ -58,6 +58,25 @@ func TestNormalizeAdapterConfigDefaults(t *testing.T) {
 	}
 }
 
+func TestNormalizeSourceFamily(t *testing.T) {
+	carbon := " carbon "
+	got, err := normalizeSourceFamily(&carbon)
+	if err != nil || got == nil || *got != sourceFamilyCarbon {
+		t.Fatalf("normalize carbon source family = %#v, %v", got, err)
+	}
+
+	empty := " "
+	got, err = normalizeSourceFamily(&empty)
+	if err != nil || got != nil {
+		t.Fatalf("normalize empty source family = %#v, %v", got, err)
+	}
+
+	invalid := "legacy"
+	if _, err := normalizeSourceFamily(&invalid); apperr.KindOf(err) != apperr.KindInvalidArgument {
+		t.Fatalf("expected invalid source family error, got %v", err)
+	}
+}
+
 func TestNormalizeBindingAdapterCodeRules(t *testing.T) {
 	base := CreateDataStreamBindingInput{
 		AdapterCode:       AdapterGenericColumns,

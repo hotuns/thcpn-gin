@@ -41,12 +41,6 @@ type SyncAllTHCPNDevicesInput struct {
 	ActorUserID  uuid.UUID
 }
 
-type SyncTHCPNCameraInput struct {
-	DataSourceID     uuid.UUID
-	ExternalCameraID int64
-	ActorUserID      uuid.UUID
-}
-
 type SyncTHCPNGatewayInput struct {
 	DataSourceID      uuid.UUID
 	ExternalGatewayID int64
@@ -72,7 +66,6 @@ type THCPNGatewaySyncResult struct {
 
 type THCPNDeviceSyncFailure struct {
 	ExternalDeviceID int64  `json:"external_device_id"`
-	ResourceType     string `json:"resource_type,omitempty"`
 	Error            string `json:"error"`
 }
 
@@ -86,26 +79,7 @@ type THCPNAllDevicesSyncResult struct {
 	Failed         int                      `json:"failed"`
 	Relations      int                      `json:"relations"`
 	TopologyFailed int                      `json:"topology_failed"`
-	CamerasTotal   int                      `json:"cameras_total"`
-	CamerasSynced  int                      `json:"cameras_synced"`
-	CamerasFailed  int                      `json:"cameras_failed"`
 	Failures       []THCPNDeviceSyncFailure `json:"failures,omitempty"`
-}
-
-type THCPNExternalCamera struct {
-	ID           int64      `json:"id"`
-	DeviceSerial string     `json:"device_serial"`
-	Name         string     `json:"name"`
-	Channel      int32      `json:"channel"`
-	Poster       string     `json:"poster"`
-	CreatedAt    *time.Time `json:"created_at,omitempty"`
-	UpdatedAt    *time.Time `json:"updated_at,omitempty"`
-}
-
-type THCPNCameraSyncResult struct {
-	Device    SyncedDevice        `json:"device"`
-	SourceRef DeviceSourceRef     `json:"source_ref"`
-	Camera    THCPNExternalCamera `json:"external_camera"`
 }
 
 type thcpnExternalDeviceIndex struct {
@@ -349,111 +323,6 @@ func (s *Service) SyncTHCPNStandardStation(ctx context.Context, input SyncTHCPNS
 	return result, nil
 }
 
-func (s *Service) SyncTHCPNCamera(ctx context.Context, input SyncTHCPNCameraInput) (THCPNCameraSyncResult, error) {
-	if input.ActorUserID == uuid.Nil {
-		return THCPNCameraSyncResult{}, apperr.New(apperr.KindInvalidArgument, "actor user id is required")
-	}
-	if input.ExternalCameraID <= 0 {
-		return THCPNCameraSyncResult{}, apperr.New(apperr.KindInvalidArgument, "external_camera_id is required")
-	}
-	if s.db == nil {
-		return THCPNCameraSyncResult{}, apperr.New(apperr.KindInternal, "database is not configured")
-	}
-	source, err := s.loadTHCPNSyncDataSource(ctx, input.DataSourceID)
-	if err != nil {
-		return THCPNCameraSyncResult{}, err
-	}
-	deviceDB, err := NewRuntime(nil).openMySQL(ctx, dataSourceFromSQL(source))
-	if err != nil {
-		return THCPNCameraSyncResult{}, err
-	}
-	defer deviceDB.Close()
-
-	camera, err := readTHCPNExternalCamera(ctx, deviceDB, input.ExternalCameraID)
-	if err != nil {
-		return THCPNCameraSyncResult{}, err
-	}
-	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return THCPNCameraSyncResult{}, apperr.Wrap(apperr.KindInternal, "begin thcpn camera sync transaction", err)
-	}
-	defer tx.Rollback(ctx)
-	result, err := s.syncTHCPNCamera(ctx, s.queries.WithTx(tx), source.ID, camera)
-	if err != nil {
-		return THCPNCameraSyncResult{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return THCPNCameraSyncResult{}, apperr.Wrap(apperr.KindInternal, "commit thcpn camera sync transaction", err)
-	}
-	return result, nil
-}
-
-func (s *Service) syncTHCPNCamera(
-	ctx context.Context,
-	q *sqlc.Queries,
-	dataSourceID uuid.UUID,
-	camera THCPNExternalCamera,
-) (THCPNCameraSyncResult, error) {
-	if strings.TrimSpace(camera.DeviceSerial) == "" || camera.Channel <= 0 {
-		return THCPNCameraSyncResult{}, apperr.New(apperr.KindDataSource, "thcpn camera serial and channel are required")
-	}
-	name := strings.TrimSpace(camera.Name)
-	if name == "" {
-		name = strings.TrimSpace(camera.DeviceSerial)
-	}
-
-	var device sqlc.Device
-	ref, err := q.GetDeviceSourceRefByExternal(ctx, sqlc.GetDeviceSourceRefByExternalParams{
-		DataSourceID: dataSourceID, AdapterCode: AdapterTHCPNCamera, ExternalDeviceID: camera.ID,
-	})
-	if err == nil {
-		current, err := q.GetDevice(ctx, ref.DeviceID)
-		if err != nil {
-			return THCPNCameraSyncResult{}, mapNotFoundOrInternal(err, "mapped camera device not found")
-		}
-		device, err = q.UpdateDevice(ctx, sqlc.UpdateDeviceParams{
-			ID: current.ID, ProductID: optionalString("thcpn_camera"), Name: name, Status: "active",
-		})
-		if err != nil {
-			return THCPNCameraSyncResult{}, mapWriteError(err, "update synced camera")
-		}
-		if device.DeviceType != "camera" {
-			device, err = q.UpdateDeviceType(ctx, sqlc.UpdateDeviceTypeParams{ID: device.ID, DeviceType: "camera"})
-			if err != nil {
-				return THCPNCameraSyncResult{}, mapWriteError(err, "update synced camera type")
-			}
-		}
-	} else if errors.Is(err, pgx.ErrNoRows) {
-		device, err = q.CreateCameraDevice(ctx, sqlc.CreateCameraDeviceParams{
-			ProductID: optionalString("thcpn_camera"), Name: name,
-		})
-		if err != nil {
-			return THCPNCameraSyncResult{}, mapWriteError(err, "create synced camera")
-		}
-	} else {
-		return THCPNCameraSyncResult{}, apperr.Wrap(apperr.KindInternal, "lookup camera source ref", err)
-	}
-
-	if _, err := q.UpsertCameraBinding(ctx, sqlc.UpsertCameraBindingParams{
-		DeviceID: device.ID, DeviceSerial: camera.DeviceSerial, ChannelNo: camera.Channel,
-		DefaultQuality: "hd", IsEncrypted: false, Status: "active",
-	}); err != nil {
-		return THCPNCameraSyncResult{}, mapWriteError(err, "upsert synced camera binding")
-	}
-	if err := addDeviceCapabilityIfMissing(ctx, q, device.ID, "video_stream"); err != nil {
-		return THCPNCameraSyncResult{}, err
-	}
-	sourceRef, err := q.UpsertDeviceSourceRef(ctx, sqlc.UpsertDeviceSourceRefParams{
-		DeviceID: device.ID, DataSourceID: dataSourceID, AdapterCode: AdapterTHCPNCamera, ExternalDeviceID: camera.ID,
-	})
-	if err != nil {
-		return THCPNCameraSyncResult{}, mapWriteError(err, "upsert camera source ref")
-	}
-	return THCPNCameraSyncResult{
-		Device: syncedDeviceFromSQL(device, nil), SourceRef: deviceSourceRefFromSQL(sourceRef), Camera: camera,
-	}, nil
-}
-
 // SyncAllTHCPNDevices imports every non-deleted row from the source devices
 // table. Each device is committed independently so one incomplete external
 // configuration does not roll back the rest of the import.
@@ -482,15 +351,10 @@ func (s *Service) SyncAllTHCPNDevices(ctx context.Context, input SyncAllTHCPNDev
 	if err != nil {
 		return THCPNAllDevicesSyncResult{}, err
 	}
-	cameras, err := readAllTHCPNExternalCameras(ctx, deviceDB)
-	if err != nil {
-		return THCPNAllDevicesSyncResult{}, err
-	}
 	gatewayIDs, nodeIDs := indexTHCPNTopology(topology)
 	result := THCPNAllDevicesSyncResult{
 		DataSourceID: input.DataSourceID,
 		Total:        len(externalDevices),
-		CamerasTotal: len(cameras),
 		Failures:     make([]THCPNDeviceSyncFailure, 0),
 	}
 	for _, externalDevice := range externalDevices {
@@ -569,32 +433,6 @@ func (s *Service) SyncAllTHCPNDevices(ctx context.Context, input SyncAllTHCPNDev
 	result.Relations = relationCount
 	result.TopologyFailed = len(topologyFailures)
 	result.Failures = append(result.Failures, topologyFailures...)
-	for _, camera := range cameras {
-		tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
-		if err != nil {
-			result.CamerasFailed++
-			result.Failures = append(result.Failures, THCPNDeviceSyncFailure{
-				ExternalDeviceID: camera.ID, ResourceType: "camera", Error: apperr.MessageOf(err),
-			})
-			continue
-		}
-		if _, err := s.syncTHCPNCamera(ctx, s.queries.WithTx(tx), source.ID, camera); err != nil {
-			_ = tx.Rollback(ctx)
-			result.CamerasFailed++
-			result.Failures = append(result.Failures, THCPNDeviceSyncFailure{
-				ExternalDeviceID: camera.ID, ResourceType: "camera", Error: apperr.MessageOf(err),
-			})
-			continue
-		}
-		if err := tx.Commit(ctx); err != nil {
-			result.CamerasFailed++
-			result.Failures = append(result.Failures, THCPNDeviceSyncFailure{
-				ExternalDeviceID: camera.ID, ResourceType: "camera", Error: apperr.MessageOf(err),
-			})
-			continue
-		}
-		result.CamerasSynced++
-	}
 	return result, nil
 }
 
@@ -909,6 +747,14 @@ func jsonSemanticallyEqual(left, right json.RawMessage) bool {
 }
 
 func (s *Service) loadTHCPNSyncDataSource(ctx context.Context, dataSourceID uuid.UUID) (sqlc.DataSource, error) {
+	return s.loadMySQLDataSourceForFamily(ctx, dataSourceID, sourceFamilyTHCPN)
+}
+
+func (s *Service) loadCarbonSyncDataSource(ctx context.Context, dataSourceID uuid.UUID) (sqlc.DataSource, error) {
+	return s.loadMySQLDataSourceForFamily(ctx, dataSourceID, sourceFamilyCarbon)
+}
+
+func (s *Service) loadMySQLDataSourceForFamily(ctx context.Context, dataSourceID uuid.UUID, family string) (sqlc.DataSource, error) {
 	if dataSourceID == uuid.Nil {
 		return sqlc.DataSource{}, apperr.New(apperr.KindInvalidArgument, "data_source_id is required")
 	}
@@ -917,10 +763,13 @@ func (s *Service) loadTHCPNSyncDataSource(ctx context.Context, dataSourceID uuid
 		return sqlc.DataSource{}, mapNotFoundOrInternal(err, "data source not found")
 	}
 	if source.Type != "mysql" {
-		return sqlc.DataSource{}, apperr.New(apperr.KindInvalidArgument, "thcpn standard station sync requires mysql data source")
+		return sqlc.DataSource{}, apperr.New(apperr.KindInvalidArgument, "source family requires mysql data source")
 	}
 	if source.Status != "active" {
 		return sqlc.DataSource{}, apperr.New(apperr.KindInvalidArgument, "data source is not active")
+	}
+	if source.SourceFamily == nil || *source.SourceFamily != family {
+		return sqlc.DataSource{}, apperr.New(apperr.KindInvalidArgument, "data source family does not support this operation")
 	}
 	return source, nil
 }
@@ -1535,65 +1384,6 @@ ORDER BY id ASC`
 		return nil, apperr.Wrap(apperr.KindDataSource, "read thcpn external devices", err)
 	}
 	return devices, nil
-}
-
-type thcpnCameraScanner interface {
-	Scan(...any) error
-}
-
-func scanTHCPNExternalCamera(scanner thcpnCameraScanner) (THCPNExternalCamera, error) {
-	var camera THCPNExternalCamera
-	var createdAt, updatedAt sql.NullTime
-	if err := scanner.Scan(
-		&camera.ID, &camera.DeviceSerial, &camera.Name, &camera.Channel, &camera.Poster, &createdAt, &updatedAt,
-	); err != nil {
-		return THCPNExternalCamera{}, err
-	}
-	camera.CreatedAt = nullTimePtr(createdAt)
-	camera.UpdatedAt = nullTimePtr(updatedAt)
-	return camera, nil
-}
-
-func readTHCPNExternalCamera(ctx context.Context, db *sql.DB, externalCameraID int64) (THCPNExternalCamera, error) {
-	const query = `
-SELECT id, device_serial, COALESCE(name, ''), channel, poster, created_at, updated_at
-FROM cameras
-WHERE id = ?
-  AND deleted_at IS NULL
-LIMIT 1`
-	camera, err := scanTHCPNExternalCamera(db.QueryRowContext(ctx, query, externalCameraID))
-	if errors.Is(err, sql.ErrNoRows) {
-		return THCPNExternalCamera{}, apperr.New(apperr.KindNotFound, "thcpn external camera not found")
-	}
-	if err != nil {
-		return THCPNExternalCamera{}, apperr.Wrap(apperr.KindDataSource, "read thcpn external camera", err)
-	}
-	return camera, nil
-}
-
-func readAllTHCPNExternalCameras(ctx context.Context, db *sql.DB) ([]THCPNExternalCamera, error) {
-	const query = `
-SELECT id, device_serial, COALESCE(name, ''), channel, poster, created_at, updated_at
-FROM cameras
-WHERE deleted_at IS NULL
-ORDER BY id ASC`
-	rows, err := db.QueryContext(ctx, query)
-	if err != nil {
-		return nil, apperr.Wrap(apperr.KindDataSource, "read thcpn external cameras", err)
-	}
-	defer rows.Close()
-	items := make([]THCPNExternalCamera, 0)
-	for rows.Next() {
-		camera, err := scanTHCPNExternalCamera(rows)
-		if err != nil {
-			return nil, apperr.Wrap(apperr.KindDataSource, "scan thcpn external camera", err)
-		}
-		items = append(items, camera)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, apperr.Wrap(apperr.KindDataSource, "read thcpn external cameras", err)
-	}
-	return items, nil
 }
 
 func readAllTHCPNGatewayTopology(ctx context.Context, db *sql.DB) ([]thcpnGatewayTopology, error) {

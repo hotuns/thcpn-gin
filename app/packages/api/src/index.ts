@@ -1142,6 +1142,18 @@ export const api = {
         "PATCH",
         payload,
       ),
+    createSourceDevice: (id: string, payload: JsonRecord) =>
+      jsonRequest<JsonRecord>(
+        `/api/v1/admin/data-sources/${encodeURIComponent(id)}/devices`,
+        "POST",
+        payload,
+      ),
+    retrySourceDeviceSync: (id: string, payload: JsonRecord) =>
+      jsonRequest<JsonRecord>(
+        `/api/v1/admin/data-sources/${encodeURIComponent(id)}/devices/sync`,
+        "POST",
+        payload,
+      ),
     syncStation: (id: string, payload: JsonRecord) =>
       jsonRequest<JsonRecord>(
         `/api/v1/admin/data-sources/${encodeURIComponent(id)}/thcpn-standard-station/devices`,
@@ -1176,12 +1188,48 @@ export const api = {
         "POST",
         payload,
       ),
-    syncCamera: (id: string, payload: JsonRecord) =>
-      jsonRequest<JsonRecord>(
-        `/api/v1/admin/data-sources/${encodeURIComponent(id)}/thcpn-standard-station/cameras`,
-        "POST",
-        payload,
-      ),
+    loraWANV2Health: (id: string) =>
+      request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/health`),
+    loraWANV2Gateways: (id: string, input: JsonRecord = {}) =>
+      request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways${queryString(input as Record<string, string | number | boolean>)}`),
+    createLoRaWANV2Gateway: (id: string, payload: JsonRecord) =>
+      jsonRequest<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways`, "POST", payload),
+    loraWANV2Gateway: (id: string, sn: string) =>
+      request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}`),
+    syncLoRaWANV2Gateway: (id: string, sn: string) =>
+      jsonRequest<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/sync`, "POST", {}),
+    syncAllLoRaWANV2Gateways: (id: string) =>
+      jsonRequest<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/sync-all`, "POST", {}),
+    loraWANV2Firmwares: (id: string, input: JsonRecord = {}) =>
+      request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/firmwares${queryString(input as Record<string, string | number | boolean>)}`),
+    createLoRaWANV2Firmware: (id: string, sn: string, payload: JsonRecord) =>
+      jsonRequest<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/firmwares`, "POST", payload),
+    loraWANV2Firmware: (id: string, firmwareID: string | number) =>
+      request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/firmwares/${encodeURIComponent(String(firmwareID))}`),
+    deleteLoRaWANV2Firmware: (id: string, firmwareID: string | number) =>
+      request<void>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/firmwares/${encodeURIComponent(String(firmwareID))}`, { method: "DELETE" }),
+    loraWANV2GatewayConfigs: (id: string, sn: string, input: JsonRecord = {}) =>
+      request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/configs${queryString(input as Record<string, string | number | boolean>)}`),
+    createLoRaWANV2GatewayConfig: (id: string, sn: string, payload: JsonRecord) =>
+      jsonRequest<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/configs`, "POST", payload),
+    loraWANV2GatewayConfig: (id: string, sn: string, configID: string | number) =>
+      request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/configs/${encodeURIComponent(String(configID))}`),
+    loraWANV2NodeSensorConfigs: (id: string, sn: string, node: number, input: JsonRecord = {}) =>
+      request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/nodes/${node}/sensor-configs${queryString(input as Record<string, string | number | boolean>)}`),
+    createLoRaWANV2NodeSensorConfig: (id: string, sn: string, node: number, payload: JsonRecord) =>
+      jsonRequest<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/nodes/${node}/sensor-configs`, "POST", payload),
+    latestLoRaWANV2NodeSensorConfig: (id: string, sn: string, node: number) =>
+      request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/nodes/${node}/sensor-configs/latest`),
+    loraWANV2NodeSensorConfig: (id: string, sn: string, node: number, configID: string | number) =>
+      request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/nodes/${node}/sensor-configs/${encodeURIComponent(String(configID))}`),
+    createLoRaWANV2NodeTimeConfig: (id: string, sn: string, node: number, payload: JsonRecord) =>
+      jsonRequest<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/nodes/${node}/time-config`, "POST", payload),
+    loraWANV2GatewayLogs: (id: string, sn: string, input: JsonRecord = {}) =>
+      request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/logs${queryString(input as Record<string, string | number | boolean>)}`),
+    loraWANV2NodeData: (id: string, sn: string, node: number, input: JsonRecord = {}) =>
+      request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/nodes/${node}/data${queryString(input as Record<string, string | number | boolean>)}`),
+    loraWANV2GatewayInfos: (id: string, sn: string, input: JsonRecord = {}) =>
+      request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/infos${queryString(input as Record<string, string | number | boolean>)}`),
     devices: () =>
       request<ListResponse<Record<string, unknown>>>("/api/v1/admin/devices"),
     ensureDeviceClaimCredentials: () =>
@@ -1199,6 +1247,33 @@ export const api = {
     deviceAttributes: (id: string) =>
       request<THCPNLatestAttributesResponse>(
         `/api/v1/admin/devices/${encodeURIComponent(id)}/attributes/latest`,
+      ),
+    deviceDataStreams: (id: string) =>
+      request<ListResponse<DataStream>>(
+        `/api/v1/admin/data-streams?device_id=${encodeURIComponent(id)}`,
+      ),
+    dataStreamTelemetry: (
+      id: string,
+      input: {
+        startTime: string;
+        endTime: string;
+        limit?: number;
+        adaptive?: boolean;
+        targetPoints?: number;
+      },
+    ) =>
+      request<TelemetryQueryResponse>(
+        `/api/v1/admin/data-streams/${encodeURIComponent(id)}/telemetry${queryString({
+          start_time: input.startTime,
+          end_time: input.endTime,
+          limit: input.limit,
+          adaptive: input.adaptive,
+          target_points: input.targetPoints,
+        })}`,
+      ),
+    deviceImages: (id: string, input: Record<string, string | number>) =>
+      request<MediaListResponse>(
+        `/api/v1/admin/devices/${encodeURIComponent(id)}/media/images${queryString(input)}`,
       ),
     carbonOverview: (id: string) =>
       request<CarbonOverview>(

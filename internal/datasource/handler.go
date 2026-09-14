@@ -40,15 +40,17 @@ type Handler struct {
 }
 
 type createDataSourceRequest struct {
-	WorkspaceID  string `json:"workspace_id"`
-	Name         string `json:"name"`
-	Type         string `json:"type"`
-	DsnSecretRef string `json:"dsn_secret_ref"`
+	WorkspaceID  string  `json:"workspace_id"`
+	Name         string  `json:"name"`
+	Type         string  `json:"type"`
+	SourceFamily *string `json:"source_family"`
+	DsnSecretRef string  `json:"dsn_secret_ref"`
 }
 
 type updateDataSourceRequest struct {
 	Name         *string `json:"name"`
 	Type         *string `json:"type"`
+	SourceFamily *string `json:"source_family"`
 	DsnSecretRef *string `json:"dsn_secret_ref"`
 	Status       *string `json:"status"`
 }
@@ -108,12 +110,21 @@ type syncTHCPNGatewayRequest struct {
 	ExternalGatewayID int64 `json:"external_gateway_id"`
 }
 
-type syncTHCPNCameraRequest struct {
-	ExternalCameraID int64 `json:"external_camera_id"`
-}
-
 type syncCarbonDeviceRequest struct {
 	ExternalDeviceID int64 `json:"external_device_id"`
+}
+
+type createSourceDeviceRequest struct {
+	SourceKind string `json:"source_kind"`
+	Name       string `json:"name"`
+	ICCID      string `json:"iccid"`
+	Version    string `json:"version"`
+	NodesCount *int64 `json:"nodes_count"`
+}
+
+type retrySourceDeviceSyncRequest struct {
+	SourceKind     string `json:"source_kind"`
+	SourceDeviceID int64  `json:"source_device_id"`
 }
 
 type updateTHCPNDeviceConfigRequest struct {
@@ -607,6 +618,7 @@ func (h *Handler) AdminCreateDataSource(c *gin.Context) {
 	result, err := h.service.CreateDataSource(c.Request.Context(), CreateDataSourceInput{
 		Name:         req.Name,
 		Type:         req.Type,
+		SourceFamily: req.SourceFamily,
 		DsnSecretRef: req.DsnSecretRef,
 		ActorAdminID: actor.UserID,
 	})
@@ -633,11 +645,74 @@ func (h *Handler) AdminUpdateDataSource(c *gin.Context) {
 		DataSourceID: dataSourceID,
 		Name:         req.Name,
 		Type:         req.Type,
+		SourceFamily: req.SourceFamily,
 		DsnSecretRef: req.DsnSecretRef,
 		Status:       req.Status,
 	})
 	if err != nil {
 		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminCreateSourceDevice(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	dataSourceID, ok := parseUUIDParam(c, "data_source_id")
+	if !ok {
+		return
+	}
+	var req createSourceDeviceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	result, err := h.service.CreateSourceDevice(c.Request.Context(), CreateSourceDeviceInput{
+		DataSourceID: dataSourceID, SourceKind: req.SourceKind, Name: req.Name, ICCID: req.ICCID,
+		Version: req.Version, NodesCount: req.NodesCount, ActorUserID: actor.UserID,
+	})
+	if err != nil {
+		_ = h.record(c, audit.RecordInput{ActorType: audit.ActorUser, ActorID: audit.UserActorID(actor.UserID), Action: "data_source.device.create", ResourceType: "data_source", ResourceID: audit.ResourceID(dataSourceID), Result: audit.ResultFailure, Reason: apperr.MessageOf(err)})
+		httpx.WriteAppError(c, err)
+		return
+	}
+	auditResult, reason := audit.ResultSuccess, fmt.Sprintf("source_device_id=%d; sn=%s; kind=%s", result.SourceDeviceID, result.SN, result.SourceKind)
+	if result.SyncError != "" {
+		auditResult, reason = audit.ResultFailure, reason+"; sync_error="+result.SyncError
+	}
+	if !h.record(c, audit.RecordInput{ActorType: audit.ActorUser, ActorID: audit.UserActorID(actor.UserID), Action: "data_source.device.create", ResourceType: "data_source", ResourceID: audit.ResourceID(dataSourceID), Result: auditResult, Reason: reason}) {
+		return
+	}
+	c.JSON(http.StatusCreated, result)
+}
+
+func (h *Handler) AdminRetrySourceDeviceSync(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	dataSourceID, ok := parseUUIDParam(c, "data_source_id")
+	if !ok {
+		return
+	}
+	var req retrySourceDeviceSyncRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	result, err := h.service.RetryCreatedSourceDeviceSync(c.Request.Context(), dataSourceID, req.SourceKind, req.SourceDeviceID, actor.UserID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	auditResult := audit.ResultSuccess
+	if result.SyncError != "" {
+		auditResult = audit.ResultFailure
+	}
+	if !h.record(c, audit.RecordInput{ActorType: audit.ActorUser, ActorID: audit.UserActorID(actor.UserID), Action: "data_source.device.sync_retry", ResourceType: "data_source", ResourceID: audit.ResourceID(dataSourceID), Result: auditResult, Reason: fmt.Sprintf("source_device_id=%d; kind=%s; %s", result.SourceDeviceID, result.SourceKind, result.SyncError)}) {
 		return
 	}
 	c.JSON(http.StatusOK, result)
@@ -780,41 +855,10 @@ func (h *Handler) AdminSyncAllTHCPNDevices(c *gin.Context) {
 		ResourceID:   audit.ResourceID(dataSourceID),
 		Result:       audit.ResultSuccess,
 		Reason: fmt.Sprintf(
-			"total=%d; synced=%d; created=%d; updated=%d; unconfigured=%d; failed=%d; relations=%d; topology_failed=%d; cameras=%d; cameras_failed=%d",
+			"total=%d; synced=%d; created=%d; updated=%d; unconfigured=%d; failed=%d; relations=%d; topology_failed=%d",
 			result.Total, result.Synced, result.Created, result.Updated, result.Unconfigured,
-			result.Failed, result.Relations, result.TopologyFailed, result.CamerasSynced, result.CamerasFailed,
+			result.Failed, result.Relations, result.TopologyFailed,
 		),
-	}) {
-		return
-	}
-	c.JSON(http.StatusOK, result)
-}
-
-func (h *Handler) AdminSyncTHCPNCamera(c *gin.Context) {
-	actor, ok := actorFromContext(c)
-	if !ok {
-		return
-	}
-	dataSourceID, ok := parseUUIDParam(c, "data_source_id")
-	if !ok {
-		return
-	}
-	var req syncTHCPNCameraRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
-		return
-	}
-	result, err := h.service.SyncTHCPNCamera(c.Request.Context(), SyncTHCPNCameraInput{
-		DataSourceID: dataSourceID, ExternalCameraID: req.ExternalCameraID, ActorUserID: actor.UserID,
-	})
-	if err != nil {
-		httpx.WriteAppError(c, err)
-		return
-	}
-	if !h.record(c, audit.RecordInput{
-		ActorType: audit.ActorUser, ActorID: audit.UserActorID(actor.UserID),
-		Action: "thcpn.camera.sync", ResourceType: "device", ResourceID: audit.ResourceID(result.Device.ID),
-		Result: audit.ResultSuccess,
 	}) {
 		return
 	}

@@ -1659,6 +1659,60 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/admin/data-sources/{data_source_id}/devices:
+    parameters:
+      - $ref: "#/components/parameters/DataSourceID"
+    post:
+      tags: [Admin]
+      operationId: adminCreateSourceDevice
+      summary: Create and synchronize a device in a source database
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSourceDeviceRequest"
+      responses:
+        "201":
+          description: Source device created. A sync_error means the source transaction committed but platform synchronization must be retried.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedSourceDevice"
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/admin/data-sources/{data_source_id}/devices/sync:
+    parameters:
+      - $ref: "#/components/parameters/DataSourceID"
+    post:
+      tags: [Admin]
+      operationId: adminRetrySourceDeviceSync
+      summary: Retry synchronization for a created source device
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RetrySourceDeviceSyncRequest"
+      responses:
+        "200":
+          description: Synchronization result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedSourceDevice"
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "500": { $ref: "#/components/responses/Internal" }
   /api/v1/admin/data-sources/{data_source_id}/thcpn-standard-station/devices:
     parameters:
       - $ref: "#/components/parameters/DataSourceID"
@@ -1710,8 +1764,8 @@ paths:
       summary: Sync all THCPN devices from the external devices table
       description: >
         Requires a valid administrator bearer token. Reads all non-deleted rows from the external THCPN MySQL
-        `devices` and `cameras` tables plus active `gate_node` topology. Each asset is synchronized independently
-        and the response reports partial failures. Devices and cameras remain unassigned to a Workspace.
+        `devices` table plus active `gate_node` topology. Each asset is synchronized independently and the response
+        reports partial failures. Devices remain unassigned to a Workspace.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1779,42 +1833,183 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/Internal"
-  /api/v1/admin/data-sources/{data_source_id}/thcpn-standard-station/cameras:
-    parameters:
-      - $ref: "#/components/parameters/DataSourceID"
-    post:
-      tags:
-        - Admin
-      operationId: adminSyncTHCPNCamera
-      summary: Sync one camera from the external THCPN cameras table
-      description: >
-        Reads one non-deleted cameras row and synchronizes an unassigned camera Device,
-        Ezviz camera binding and stable source reference.
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SyncTHCPNCameraRequest"
+  /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/health:
+    parameters: [{$ref: "#/components/parameters/DataSourceID"}]
+    get:
+      tags: [Admin]
+      operationId: adminLoRaWANV2Health
+      summary: Verify LoRaWAN V2 connectivity and authentication
+      security: [{bearerAuth: []}, {devUserHeader: []}]
       responses:
-        "200":
-          description: THCPN camera synchronized.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/THCPNCameraSyncResult"
-        "400":
-          $ref: "#/components/responses/InvalidArgument"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/PermissionDenied"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/Internal"
+        "200": {description: Upstream PING payload, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}
+        "400": {$ref: "#/components/responses/InvalidArgument"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/PermissionDenied"}
+        "500": {$ref: "#/components/responses/Internal"}
+  /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways:
+    parameters: [{$ref: "#/components/parameters/DataSourceID"}]
+    get:
+      tags: [Admin]
+      operationId: adminListLoRaWANV2Gateways
+      summary: List LoRaWAN V2 gateways
+      security: [{bearerAuth: []}, {devUserHeader: []}]
+      parameters: [{$ref: "#/components/parameters/Page"}, {$ref: "#/components/parameters/PageSize"}]
+      responses: {"200": {description: Gateway list payload, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
+    post:
+      tags: [Admin]
+      operationId: adminCreateLoRaWANV2Gateway
+      summary: Create a LoRaWAN V2 gateway and synchronize it into the platform
+      security: [{bearerAuth: []}, {devUserHeader: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2CreateGatewayRequest"}}}}
+      responses: {"201": {description: Gateway creation and synchronization result, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "400": {$ref: "#/components/responses/InvalidArgument"}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
+  /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/sync-all:
+    parameters: [{$ref: "#/components/parameters/DataSourceID"}]
+    post:
+      tags: [Admin]
+      operationId: adminSyncAllLoRaWANV2Gateways
+      summary: Synchronize every LoRaWAN V2 gateway without deleting missing platform devices
+      security: [{bearerAuth: []}, {devUserHeader: []}]
+      responses: {"200": {description: Synchronization summary, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
+  /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}:
+    parameters: [{$ref: "#/components/parameters/DataSourceID"}, {$ref: "#/components/parameters/LoRaWANV2GatewaySN"}]
+    get:
+      tags: [Admin]
+      operationId: adminGetLoRaWANV2Gateway
+      summary: Get a LoRaWAN V2 gateway
+      security: [{bearerAuth: []}, {devUserHeader: []}]
+      responses: {"200": {description: Gateway payload, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "404": {$ref: "#/components/responses/NotFound"}, "500": {$ref: "#/components/responses/Internal"}}
+  /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/sync:
+    parameters: [{$ref: "#/components/parameters/DataSourceID"}, {$ref: "#/components/parameters/LoRaWANV2GatewaySN"}]
+    post:
+      tags: [Admin]
+      operationId: adminSyncLoRaWANV2Gateway
+      summary: Synchronize one LoRaWAN V2 gateway into the platform
+      security: [{bearerAuth: []}, {devUserHeader: []}]
+      responses: {"200": {description: Synchronization result, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
+  /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/firmwares:
+    parameters: [{$ref: "#/components/parameters/DataSourceID"}]
+    get:
+      tags: [Admin]
+      operationId: adminListLoRaWANV2Firmwares
+      summary: List LoRaWAN V2 firmwares
+      security: [{bearerAuth: []}, {devUserHeader: []}]
+      parameters: [{name: device_sn, in: query, schema: {type: string}}, {$ref: "#/components/parameters/Page"}, {$ref: "#/components/parameters/PageSize"}]
+      responses: {"200": {description: Firmware list payload, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
+  /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/firmwares/{firmware_id}:
+    parameters: [{$ref: "#/components/parameters/DataSourceID"}, {$ref: "#/components/parameters/LoRaWANV2FirmwareID"}]
+    get:
+      tags: [Admin]
+      operationId: adminGetLoRaWANV2Firmware
+      summary: Get a LoRaWAN V2 firmware
+      security: [{bearerAuth: []}, {devUserHeader: []}]
+      responses: {"200": {description: Firmware payload, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "404": {$ref: "#/components/responses/NotFound"}, "500": {$ref: "#/components/responses/Internal"}}
+    delete:
+      tags: [Admin]
+      operationId: adminDeleteLoRaWANV2Firmware
+      summary: Delete a LoRaWAN V2 firmware
+      security: [{bearerAuth: []}, {devUserHeader: []}]
+      responses: {"200": {description: Firmware deleted, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "404": {$ref: "#/components/responses/NotFound"}, "500": {$ref: "#/components/responses/Internal"}}
+  /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/firmwares:
+    parameters: [{$ref: "#/components/parameters/DataSourceID"}, {$ref: "#/components/parameters/LoRaWANV2GatewaySN"}]
+    post:
+      tags: [Admin]
+      operationId: adminCreateLoRaWANV2Firmware
+      summary: Create LoRaWAN V2 gateway firmware
+      security: [{bearerAuth: []}, {devUserHeader: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}
+      responses: {"201": {description: Firmware payload, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "400": {$ref: "#/components/responses/InvalidArgument"}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
+  /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/configs:
+    parameters: [{$ref: "#/components/parameters/DataSourceID"}, {$ref: "#/components/parameters/LoRaWANV2GatewaySN"}]
+    get:
+      tags: [Admin]
+      operationId: adminListLoRaWANV2GatewayConfigs
+      summary: List gateway configuration history
+      security: [{bearerAuth: []}, {devUserHeader: []}]
+      parameters: [{$ref: "#/components/parameters/Page"}, {$ref: "#/components/parameters/PageSize"}]
+      responses: {"200": {description: Gateway configuration list, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
+    post:
+      tags: [Admin]
+      operationId: adminCreateLoRaWANV2GatewayConfig
+      summary: Create a gateway configuration from a JSON object
+      security: [{bearerAuth: []}, {devUserHeader: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}
+      responses: {"201": {description: Gateway configuration payload, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "400": {$ref: "#/components/responses/InvalidArgument"}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
+  /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/configs/{config_id}:
+    parameters: [{$ref: "#/components/parameters/DataSourceID"}, {$ref: "#/components/parameters/LoRaWANV2GatewaySN"}, {$ref: "#/components/parameters/LoRaWANV2ConfigID"}]
+    get:
+      tags: [Admin]
+      operationId: adminGetLoRaWANV2GatewayConfig
+      summary: Get gateway configuration
+      security: [{bearerAuth: []}, {devUserHeader: []}]
+      responses: {"200": {description: Gateway configuration payload, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "404": {$ref: "#/components/responses/NotFound"}, "500": {$ref: "#/components/responses/Internal"}}
+  /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/nodes/{node_index}/sensor-configs:
+    parameters: [{$ref: "#/components/parameters/DataSourceID"}, {$ref: "#/components/parameters/LoRaWANV2GatewaySN"}, {$ref: "#/components/parameters/LoRaWANV2NodeIndex"}]
+    get:
+      tags: [Admin]
+      operationId: adminListLoRaWANV2NodeSensorConfigs
+      summary: List node sensor configuration history
+      security: [{bearerAuth: []}, {devUserHeader: []}]
+      parameters: [{$ref: "#/components/parameters/Page"}, {$ref: "#/components/parameters/PageSize"}]
+      responses: {"200": {description: Node sensor configuration list, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
+    post:
+      tags: [Admin]
+      operationId: adminCreateLoRaWANV2NodeSensorConfig
+      summary: Create node sensor configuration from a JSON object
+      security: [{bearerAuth: []}, {devUserHeader: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}
+      responses: {"201": {description: Node sensor configuration payload, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "400": {$ref: "#/components/responses/InvalidArgument"}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
+  /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/nodes/{node_index}/sensor-configs/latest:
+    parameters: [{$ref: "#/components/parameters/DataSourceID"}, {$ref: "#/components/parameters/LoRaWANV2GatewaySN"}, {$ref: "#/components/parameters/LoRaWANV2NodeIndex"}]
+    get:
+      tags: [Admin]
+      operationId: adminGetLatestLoRaWANV2NodeSensorConfig
+      summary: Get the latest node sensor configuration
+      security: [{bearerAuth: []}, {devUserHeader: []}]
+      responses: {"200": {description: Node sensor configuration payload, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "404": {$ref: "#/components/responses/NotFound"}, "500": {$ref: "#/components/responses/Internal"}}
+  /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/nodes/{node_index}/sensor-configs/{config_id}:
+    parameters: [{$ref: "#/components/parameters/DataSourceID"}, {$ref: "#/components/parameters/LoRaWANV2GatewaySN"}, {$ref: "#/components/parameters/LoRaWANV2NodeIndex"}, {$ref: "#/components/parameters/LoRaWANV2ConfigID"}]
+    get:
+      tags: [Admin]
+      operationId: adminGetLoRaWANV2NodeSensorConfig
+      summary: Get node sensor configuration
+      security: [{bearerAuth: []}, {devUserHeader: []}]
+      responses: {"200": {description: Node sensor configuration payload, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "404": {$ref: "#/components/responses/NotFound"}, "500": {$ref: "#/components/responses/Internal"}}
+  /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/nodes/{node_index}/time-config:
+    parameters: [{$ref: "#/components/parameters/DataSourceID"}, {$ref: "#/components/parameters/LoRaWANV2GatewaySN"}, {$ref: "#/components/parameters/LoRaWANV2NodeIndex"}]
+    post:
+      tags: [Admin]
+      operationId: adminCreateLoRaWANV2NodeTimeConfig
+      summary: Create node time configuration
+      security: [{bearerAuth: []}, {devUserHeader: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}
+      responses: {"200": {description: Upstream acknowledgement, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "400": {$ref: "#/components/responses/InvalidArgument"}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
+  /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/logs:
+    parameters: [{$ref: "#/components/parameters/DataSourceID"}, {$ref: "#/components/parameters/LoRaWANV2GatewaySN"}]
+    get:
+      tags: [Admin]
+      operationId: adminListLoRaWANV2GatewayLogs
+      summary: List gateway logs
+      security: [{bearerAuth: []}, {devUserHeader: []}]
+      parameters: [{name: start_at, in: query, schema: {type: string, format: date}}, {name: end_at, in: query, schema: {type: string, format: date}}, {$ref: "#/components/parameters/Page"}, {$ref: "#/components/parameters/PageSize"}]
+      responses: {"200": {description: Gateway log list, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
+  /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/nodes/{node_index}/data:
+    parameters: [{$ref: "#/components/parameters/DataSourceID"}, {$ref: "#/components/parameters/LoRaWANV2GatewaySN"}, {$ref: "#/components/parameters/LoRaWANV2NodeIndex"}]
+    get:
+      tags: [Admin]
+      operationId: adminListLoRaWANV2NodeData
+      summary: List node records
+      security: [{bearerAuth: []}, {devUserHeader: []}]
+      parameters: [{name: start_at, in: query, schema: {type: integer, format: int64}}, {name: end_at, in: query, schema: {type: integer, format: int64}}, {name: metrics, in: query, schema: {type: string}}, {$ref: "#/components/parameters/Page"}, {$ref: "#/components/parameters/PageSize"}]
+      responses: {"200": {description: Node data list, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
+  /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/infos:
+    parameters: [{$ref: "#/components/parameters/DataSourceID"}, {$ref: "#/components/parameters/LoRaWANV2GatewaySN"}]
+    get:
+      tags: [Admin]
+      operationId: adminListLoRaWANV2GatewayInfos
+      summary: List gateway telemetry records
+      security: [{bearerAuth: []}, {devUserHeader: []}]
+      parameters: [{name: start_at, in: query, schema: {type: integer, format: int64}}, {name: end_at, in: query, schema: {type: integer, format: int64}}, {$ref: "#/components/parameters/Page"}, {$ref: "#/components/parameters/PageSize"}]
+      responses: {"200": {description: Gateway data list, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
   /api/v1/admin/cameras:
     post:
       tags:
@@ -2570,6 +2765,71 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/THCPNSensorTemplate" }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/admin/data-streams:
+    get:
+      tags: [Admin]
+      operationId: adminListDeviceDataStreams
+      summary: List data streams for administrator device status inspection
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: device_id, in: query, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+      responses:
+        "200":
+          description: Device data streams.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/DataStream" } }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/admin/data-streams/{data_stream_id}/telemetry:
+    get:
+      tags: [Admin]
+      operationId: adminQueryDataStreamTelemetry
+      summary: Query one data stream for administrator device status inspection
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: data_stream_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+        - { name: start_time, in: query, required: true, schema: { $ref: "#/components/schemas/Timestamp" } }
+        - { name: end_time, in: query, required: true, schema: { $ref: "#/components/schemas/Timestamp" } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: adaptive, in: query, schema: { type: boolean } }
+        - { name: target_points, in: query, schema: { type: integer, minimum: 1 } }
+      responses:
+        "200":
+          description: Telemetry query result.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TelemetryQueryResponse" }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/admin/devices/{device_id}/media/images:
+    get:
+      tags: [Admin]
+      operationId: adminListDeviceImages
+      summary: List recent device images for administrator status inspection
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: device_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+        - { name: start_time, in: query, required: true, schema: { $ref: "#/components/schemas/Timestamp" } }
+        - { name: end_time, in: query, required: true, schema: { $ref: "#/components/schemas/Timestamp" } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: page_size, in: query, schema: { type: integer, minimum: 1 } }
+      responses:
+        "200":
+          description: Device image page with temporary preview URLs.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MediaListResponse" }
         "400": { $ref: "#/components/responses/InvalidArgument" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "500": { $ref: "#/components/responses/Internal" }
@@ -5909,6 +6169,35 @@ components:
         type: string
         format: uuid
       description: Data source UUID.
+    LoRaWANV2GatewaySN:
+      name: gateway_sn
+      in: path
+      required: true
+      schema: {type: string}
+      description: LoRaWAN V2 gateway SN.
+    LoRaWANV2NodeIndex:
+      name: node_index
+      in: path
+      required: true
+      schema: {type: integer, minimum: 1, maximum: 255}
+    LoRaWANV2ConfigID:
+      name: config_id
+      in: path
+      required: true
+      schema: {type: integer, format: int64, minimum: 0}
+    LoRaWANV2FirmwareID:
+      name: firmware_id
+      in: path
+      required: true
+      schema: {type: integer, format: int64, minimum: 0}
+    Page:
+      name: page
+      in: query
+      schema: {type: integer, minimum: 1, default: 1}
+    PageSize:
+      name: page_size
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 50, default: 10}
     DataStreamBindingID:
       name: binding_id
       in: path
@@ -6202,6 +6491,10 @@ components:
         - active
         - disabled
         - archived
+    DataSourceFamily:
+      type: string
+      description: Business source family used to select supported device operations.
+      enum: [thcpn, carbon, lorawan_v2]
     DataStreamBindingPayloadType:
       type: string
       enum:
@@ -6216,6 +6509,7 @@ components:
         - generic_media
         - http_api
         - thcpn_legacy_mysql
+        - lorawan_v2
     DataStreamBindingStatus:
       type: string
       enum:
@@ -8617,6 +8911,8 @@ components:
         - id
         - name
         - type
+        - source_family
+        - source_family_locked
         - dsn_secret_ref
         - status
         - created_by
@@ -8629,6 +8925,13 @@ components:
           type: string
         type:
           $ref: "#/components/schemas/DataSourceType"
+        source_family:
+          allOf:
+            - $ref: "#/components/schemas/DataSourceFamily"
+          nullable: true
+        source_family_locked:
+          type: boolean
+          description: True when source associations or stream bindings prevent changing source_family.
         dsn_secret_ref:
           type: string
           description: Reference to an external secret containing the DSN. The raw DSN is not stored in the platform database.
@@ -8660,6 +8963,10 @@ components:
           type: string
         type:
           $ref: "#/components/schemas/DataSourceType"
+        source_family:
+          allOf:
+            - $ref: "#/components/schemas/DataSourceFamily"
+          nullable: true
         dsn_secret_ref:
           type: string
     UpdateDataSourceRequest:
@@ -8669,10 +8976,75 @@ components:
           type: string
         type:
           $ref: "#/components/schemas/DataSourceType"
+        source_family:
+          allOf:
+            - $ref: "#/components/schemas/DataSourceFamily"
+          nullable: true
         dsn_secret_ref:
           type: string
         status:
           $ref: "#/components/schemas/DataSourceStatus"
+    LoRaWANV2Payload:
+      type: object
+      additionalProperties: true
+      description: Payload returned by the LoRaWAN V2 OpenAPI service. Configuration content is intentionally preserved as raw JSON.
+    LoRaWANV2CreateGatewayRequest:
+      type: object
+      required: [sn, node_count]
+      properties:
+        sn: {type: string}
+        node_count: {type: integer, minimum: 1, maximum: 254}
+    CreateSourceDeviceRequest:
+      type: object
+      required: [source_kind, name]
+      properties:
+        source_kind:
+          type: string
+          enum: [thcpn_standard, thcpn_gateway, thcpn_node, carbon]
+        name:
+          type: string
+        iccid:
+          type: string
+          description: Required for THCPN devices.
+        version:
+          type: string
+          enum: ["1.0", "2.0"]
+          default: "2.0"
+          description: Required for THCPN devices.
+        nodes_count:
+          type: integer
+          format: int64
+          minimum: 1
+          default: 16
+          description: Required for Carbon devices.
+    RetrySourceDeviceSyncRequest:
+      type: object
+      required: [source_kind, source_device_id]
+      properties:
+        source_kind:
+          type: string
+          enum: [thcpn_standard, thcpn_gateway, thcpn_node, carbon]
+        source_device_id:
+          type: integer
+          format: int64
+          minimum: 1
+    CreatedSourceDevice:
+      type: object
+      required: [data_source_id, source_device_id, sn, source_kind]
+      properties:
+        data_source_id:
+          $ref: "#/components/schemas/UUID"
+        source_device_id:
+          type: integer
+          format: int64
+        sn:
+          type: string
+        source_kind:
+          type: string
+        platform_device_id:
+          $ref: "#/components/schemas/UUID"
+        sync_error:
+          type: string
     SyncTHCPNStandardStationRequest:
       type: object
       required:
@@ -8694,9 +9066,6 @@ components:
         - failed
         - relations
         - topology_failed
-        - cameras_total
-        - cameras_synced
-        - cameras_failed
       properties:
         data_source_id:
           $ref: "#/components/schemas/UUID"
@@ -8720,12 +9089,6 @@ components:
         topology_failed:
           type: integer
           description: Number of gateway topology groups that could not be synchronized.
-        cameras_total:
-          type: integer
-        cameras_synced:
-          type: integer
-        cameras_failed:
-          type: integer
         failures:
           type: array
           items:
@@ -8737,57 +9100,8 @@ components:
               external_device_id:
                 type: integer
                 format: int64
-              resource_type:
-                type: string
               error:
                 type: string
-    SyncTHCPNCameraRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - external_camera_id
-      properties:
-        external_camera_id:
-          type: integer
-          format: int64
-          minimum: 1
-    THCPNCameraSyncResult:
-      type: object
-      required:
-        - device
-        - source_ref
-        - external_camera
-      properties:
-        device:
-          $ref: "#/components/schemas/SyncedDevice"
-        source_ref:
-          $ref: "#/components/schemas/DeviceSourceRef"
-        external_camera:
-          type: object
-          required:
-            - id
-            - device_serial
-            - name
-            - channel
-            - poster
-          properties:
-            id:
-              type: integer
-              format: int64
-            device_serial:
-              type: string
-            name:
-              type: string
-            channel:
-              type: integer
-            poster:
-              type: string
-            created_at:
-              type: string
-              format: date-time
-            updated_at:
-              type: string
-              format: date-time
     SyncTHCPNGatewayRequest:
       type: object
       required:

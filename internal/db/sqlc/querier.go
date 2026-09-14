@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
@@ -104,6 +105,7 @@ type Querier interface {
 	GetWorkspaceMember(ctx context.Context, arg GetWorkspaceMemberParams) (WorkspaceMember, error)
 	GetWorkspaceMemberDetail(ctx context.Context, arg GetWorkspaceMemberDetailParams) (GetWorkspaceMemberDetailRow, error)
 	GetWorkspaceMemberPermissionRole(ctx context.Context, arg GetWorkspaceMemberPermissionRoleParams) (string, error)
+	HasDataSourceFamilyReferences(ctx context.Context, dataSourceID uuid.UUID) (pgtype.Bool, error)
 	HasWorkspacePermission(ctx context.Context, arg HasWorkspacePermissionParams) (bool, error)
 	IsAccessTokenBlacklisted(ctx context.Context, tokenHash string) (bool, error)
 	ListAccessGrantsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]ListAccessGrantsByWorkspaceRow, error)
@@ -195,6 +197,7 @@ type Querier interface {
 	UpsertDeviceProfile(ctx context.Context, arg UpsertDeviceProfileParams) (DeviceProfile, error)
 	UpsertDeviceRelation(ctx context.Context, arg UpsertDeviceRelationParams) (UpsertDeviceRelationRow, error)
 	UpsertDeviceSourceRef(ctx context.Context, arg UpsertDeviceSourceRefParams) (DeviceSourceRef, error)
+	UpsertLoRaWANV2Metadata(ctx context.Context, arg UpsertLoRaWANV2MetadataParams) error
 	UpsertUserTOTPSetup(ctx context.Context, arg UpsertUserTOTPSetupParams) (UserMfaTotp, error)
 }
 

@@ -1250,6 +1250,46 @@ export interface paths {
         patch: operations["adminUpdateDataSource"];
         trace?: never;
     };
+    "/api/v1/admin/data-sources/{data_source_id}/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create and synchronize a device in a source database */
+        post: operations["adminCreateSourceDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/devices/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry synchronization for a created source device */
+        post: operations["adminRetrySourceDeviceSync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/data-sources/{data_source_id}/thcpn-standard-station/devices": {
         parameters: {
             query?: never;
@@ -1287,7 +1327,7 @@ export interface paths {
         put?: never;
         /**
          * Sync all THCPN devices from the external devices table
-         * @description Requires a valid administrator bearer token. Reads all non-deleted rows from the external THCPN MySQL `devices` and `cameras` tables plus active `gate_node` topology. Each asset is synchronized independently and the response reports partial failures. Devices and cameras remain unassigned to a Workspace.
+         * @description Requires a valid administrator bearer token. Reads all non-deleted rows from the external THCPN MySQL `devices` table plus active `gate_node` topology. Each asset is synchronized independently and the response reports partial failures. Devices remain unassigned to a Workspace.
          */
         post: operations["adminSyncAllTHCPNDevices"];
         delete?: never;
@@ -1319,7 +1359,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/data-sources/{data_source_id}/thcpn-standard-station/cameras": {
+    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+            };
+            cookie?: never;
+        };
+        /** Verify LoRaWAN V2 connectivity and authentication */
+        get: operations["adminLoRaWANV2Health"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+            };
+            cookie?: never;
+        };
+        /** List LoRaWAN V2 gateways */
+        get: operations["adminListLoRaWANV2Gateways"];
+        put?: never;
+        /** Create a LoRaWAN V2 gateway and synchronize it into the platform */
+        post: operations["adminCreateLoRaWANV2Gateway"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/sync-all": {
         parameters: {
             query?: never;
             header?: never;
@@ -1331,11 +1412,323 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Sync one camera from the external THCPN cameras table
-         * @description Reads one non-deleted cameras row and synchronizes an unassigned camera Device, Ezviz camera binding and stable source reference.
-         */
-        post: operations["adminSyncTHCPNCamera"];
+        /** Synchronize every LoRaWAN V2 gateway without deleting missing platform devices */
+        post: operations["adminSyncAllLoRaWANV2Gateways"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+            };
+            cookie?: never;
+        };
+        /** Get a LoRaWAN V2 gateway */
+        get: operations["adminGetLoRaWANV2Gateway"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Synchronize one LoRaWAN V2 gateway into the platform */
+        post: operations["adminSyncLoRaWANV2Gateway"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/firmwares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+            };
+            cookie?: never;
+        };
+        /** List LoRaWAN V2 firmwares */
+        get: operations["adminListLoRaWANV2Firmwares"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/firmwares/{firmware_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                firmware_id: components["parameters"]["LoRaWANV2FirmwareID"];
+            };
+            cookie?: never;
+        };
+        /** Get a LoRaWAN V2 firmware */
+        get: operations["adminGetLoRaWANV2Firmware"];
+        put?: never;
+        post?: never;
+        /** Delete a LoRaWAN V2 firmware */
+        delete: operations["adminDeleteLoRaWANV2Firmware"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/firmwares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create LoRaWAN V2 gateway firmware */
+        post: operations["adminCreateLoRaWANV2Firmware"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/configs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+            };
+            cookie?: never;
+        };
+        /** List gateway configuration history */
+        get: operations["adminListLoRaWANV2GatewayConfigs"];
+        put?: never;
+        /** Create a gateway configuration from a JSON object */
+        post: operations["adminCreateLoRaWANV2GatewayConfig"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/configs/{config_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+                config_id: components["parameters"]["LoRaWANV2ConfigID"];
+            };
+            cookie?: never;
+        };
+        /** Get gateway configuration */
+        get: operations["adminGetLoRaWANV2GatewayConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/nodes/{node_index}/sensor-configs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+                node_index: components["parameters"]["LoRaWANV2NodeIndex"];
+            };
+            cookie?: never;
+        };
+        /** List node sensor configuration history */
+        get: operations["adminListLoRaWANV2NodeSensorConfigs"];
+        put?: never;
+        /** Create node sensor configuration from a JSON object */
+        post: operations["adminCreateLoRaWANV2NodeSensorConfig"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/nodes/{node_index}/sensor-configs/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+                node_index: components["parameters"]["LoRaWANV2NodeIndex"];
+            };
+            cookie?: never;
+        };
+        /** Get the latest node sensor configuration */
+        get: operations["adminGetLatestLoRaWANV2NodeSensorConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/nodes/{node_index}/sensor-configs/{config_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+                node_index: components["parameters"]["LoRaWANV2NodeIndex"];
+                config_id: components["parameters"]["LoRaWANV2ConfigID"];
+            };
+            cookie?: never;
+        };
+        /** Get node sensor configuration */
+        get: operations["adminGetLoRaWANV2NodeSensorConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/nodes/{node_index}/time-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+                node_index: components["parameters"]["LoRaWANV2NodeIndex"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create node time configuration */
+        post: operations["adminCreateLoRaWANV2NodeTimeConfig"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+            };
+            cookie?: never;
+        };
+        /** List gateway logs */
+        get: operations["adminListLoRaWANV2GatewayLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/nodes/{node_index}/data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+                node_index: components["parameters"]["LoRaWANV2NodeIndex"];
+            };
+            cookie?: never;
+        };
+        /** List node records */
+        get: operations["adminListLoRaWANV2NodeData"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/infos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+            };
+            cookie?: never;
+        };
+        /** List gateway telemetry records */
+        get: operations["adminListLoRaWANV2GatewayInfos"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1822,6 +2215,57 @@ export interface paths {
         put?: never;
         /** Create a platform sensor template */
         post: operations["adminCreateSensorTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-streams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List data streams for administrator device status inspection */
+        get: operations["adminListDeviceDataStreams"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-streams/{data_stream_id}/telemetry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Query one data stream for administrator device status inspection */
+        get: operations["adminQueryDataStreamTelemetry"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/media/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List recent device images for administrator status inspection */
+        get: operations["adminListDeviceImages"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3802,13 +4246,18 @@ export interface components {
         DataSourceType: "postgres" | "mysql" | "clickhouse" | "http_api" | "file";
         /** @enum {string} */
         DataSourceStatus: "active" | "disabled" | "archived";
+        /**
+         * @description Business source family used to select supported device operations.
+         * @enum {string}
+         */
+        DataSourceFamily: "thcpn" | "carbon" | "lorawan_v2";
         /** @enum {string} */
         DataStreamBindingPayloadType: "columns" | "json" | "media";
         /**
          * @description Adapter selected for this data stream binding. Generic adapters use table/field mapping; special adapters use `adapter_config`.
          * @enum {string}
          */
-        DataStreamBindingAdapterCode: "generic_columns" | "generic_media" | "http_api" | "thcpn_legacy_mysql";
+        DataStreamBindingAdapterCode: "generic_columns" | "generic_media" | "http_api" | "thcpn_legacy_mysql" | "lorawan_v2";
         /** @enum {string} */
         DataStreamBindingStatus: "active" | "disabled" | "archived";
         /** @enum {string} */
@@ -5069,6 +5518,9 @@ export interface components {
             id: components["schemas"]["UUID"];
             name: string;
             type: components["schemas"]["DataSourceType"];
+            source_family: components["schemas"]["DataSourceFamily"] | null;
+            /** @description True when source associations or stream bindings prevent changing source_family. */
+            source_family_locked: boolean;
             /** @description Reference to an external secret containing the DSN. The raw DSN is not stored in the platform database. */
             dsn_secret_ref: string;
             status: components["schemas"]["DataSourceStatus"];
@@ -5082,13 +5534,57 @@ export interface components {
         AdminCreateDataSourceRequest: {
             name: string;
             type: components["schemas"]["DataSourceType"];
+            source_family?: components["schemas"]["DataSourceFamily"] | null;
             dsn_secret_ref: string;
         };
         UpdateDataSourceRequest: {
             name?: string;
             type?: components["schemas"]["DataSourceType"];
+            source_family?: components["schemas"]["DataSourceFamily"] | null;
             dsn_secret_ref?: string;
             status?: components["schemas"]["DataSourceStatus"];
+        };
+        /** @description Payload returned by the LoRaWAN V2 OpenAPI service. Configuration content is intentionally preserved as raw JSON. */
+        LoRaWANV2Payload: {
+            [key: string]: unknown;
+        };
+        LoRaWANV2CreateGatewayRequest: {
+            sn: string;
+            node_count: number;
+        };
+        CreateSourceDeviceRequest: {
+            /** @enum {string} */
+            source_kind: "thcpn_standard" | "thcpn_gateway" | "thcpn_node" | "carbon";
+            name: string;
+            /** @description Required for THCPN devices. */
+            iccid?: string;
+            /**
+             * @description Required for THCPN devices.
+             * @default 2.0
+             * @enum {string}
+             */
+            version: "1.0" | "2.0";
+            /**
+             * Format: int64
+             * @description Required for Carbon devices.
+             * @default 16
+             */
+            nodes_count: number;
+        };
+        RetrySourceDeviceSyncRequest: {
+            /** @enum {string} */
+            source_kind: "thcpn_standard" | "thcpn_gateway" | "thcpn_node" | "carbon";
+            /** Format: int64 */
+            source_device_id: number;
+        };
+        CreatedSourceDevice: {
+            data_source_id: components["schemas"]["UUID"];
+            /** Format: int64 */
+            source_device_id: number;
+            sn: string;
+            source_kind: string;
+            platform_device_id?: components["schemas"]["UUID"];
+            sync_error?: string;
         };
         SyncTHCPNStandardStationRequest: {
             /**
@@ -5111,35 +5607,11 @@ export interface components {
             relations: number;
             /** @description Number of gateway topology groups that could not be synchronized. */
             topology_failed: number;
-            cameras_total: number;
-            cameras_synced: number;
-            cameras_failed: number;
             failures?: {
                 /** Format: int64 */
                 external_device_id: number;
-                resource_type?: string;
                 error: string;
             }[];
-        };
-        SyncTHCPNCameraRequest: {
-            /** Format: int64 */
-            external_camera_id: number;
-        };
-        THCPNCameraSyncResult: {
-            device: components["schemas"]["SyncedDevice"];
-            source_ref: components["schemas"]["DeviceSourceRef"];
-            external_camera: {
-                /** Format: int64 */
-                id: number;
-                device_serial: string;
-                name: string;
-                channel: number;
-                poster: string;
-                /** Format: date-time */
-                created_at?: string;
-                /** Format: date-time */
-                updated_at?: string;
-            };
         };
         SyncTHCPNGatewayRequest: {
             /**
@@ -6033,6 +6505,13 @@ export interface components {
         DataStreamID: string;
         /** @description Data source UUID. */
         DataSourceID: string;
+        /** @description LoRaWAN V2 gateway SN. */
+        LoRaWANV2GatewaySN: string;
+        LoRaWANV2NodeIndex: number;
+        LoRaWANV2ConfigID: number;
+        LoRaWANV2FirmwareID: number;
+        Page: number;
+        PageSize: number;
         /** @description Data stream binding UUID. */
         DataStreamBindingID: string;
         /** @description Dataset UUID. */
@@ -7856,6 +8335,68 @@ export interface operations {
             500: components["responses"]["Internal"];
         };
     };
+    adminCreateSourceDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSourceDeviceRequest"];
+            };
+        };
+        responses: {
+            /** @description Source device created. A sync_error means the source transaction committed but platform synchronization must be retried. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedSourceDevice"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminRetrySourceDeviceSync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetrySourceDeviceSyncRequest"];
+            };
+        };
+        responses: {
+            /** @description Synchronization result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedSourceDevice"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
     adminSyncTHCPNStandardStationDevice: {
         parameters: {
             query?: never;
@@ -7954,7 +8495,63 @@ export interface operations {
             500: components["responses"]["Internal"];
         };
     };
-    adminSyncTHCPNCamera: {
+    adminLoRaWANV2Health: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Upstream PING payload */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminListLoRaWANV2Gateways: {
+        parameters: {
+            query?: {
+                page?: components["parameters"]["Page"];
+                page_size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gateway list payload */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminCreateLoRaWANV2Gateway: {
         parameters: {
             query?: never;
             header?: never;
@@ -7966,23 +8563,580 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SyncTHCPNCameraRequest"];
+                "application/json": components["schemas"]["LoRaWANV2CreateGatewayRequest"];
             };
         };
         responses: {
-            /** @description THCPN camera synchronized. */
-            200: {
+            /** @description Gateway creation and synchronization result */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["THCPNCameraSyncResult"];
+                    "application/json": components["schemas"]["LoRaWANV2Payload"];
                 };
             };
             400: components["responses"]["InvalidArgument"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminSyncAllLoRaWANV2Gateways: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Synchronization summary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminGetLoRaWANV2Gateway: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gateway payload */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminSyncLoRaWANV2Gateway: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Synchronization result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminListLoRaWANV2Firmwares: {
+        parameters: {
+            query?: {
+                device_sn?: string;
+                page?: components["parameters"]["Page"];
+                page_size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Firmware list payload */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminGetLoRaWANV2Firmware: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                firmware_id: components["parameters"]["LoRaWANV2FirmwareID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Firmware payload */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminDeleteLoRaWANV2Firmware: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                firmware_id: components["parameters"]["LoRaWANV2FirmwareID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Firmware deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminCreateLoRaWANV2Firmware: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoRaWANV2Payload"];
+            };
+        };
+        responses: {
+            /** @description Firmware payload */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminListLoRaWANV2GatewayConfigs: {
+        parameters: {
+            query?: {
+                page?: components["parameters"]["Page"];
+                page_size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gateway configuration list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminCreateLoRaWANV2GatewayConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoRaWANV2Payload"];
+            };
+        };
+        responses: {
+            /** @description Gateway configuration payload */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminGetLoRaWANV2GatewayConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+                config_id: components["parameters"]["LoRaWANV2ConfigID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gateway configuration payload */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminListLoRaWANV2NodeSensorConfigs: {
+        parameters: {
+            query?: {
+                page?: components["parameters"]["Page"];
+                page_size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+                node_index: components["parameters"]["LoRaWANV2NodeIndex"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Node sensor configuration list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminCreateLoRaWANV2NodeSensorConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+                node_index: components["parameters"]["LoRaWANV2NodeIndex"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoRaWANV2Payload"];
+            };
+        };
+        responses: {
+            /** @description Node sensor configuration payload */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminGetLatestLoRaWANV2NodeSensorConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+                node_index: components["parameters"]["LoRaWANV2NodeIndex"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Node sensor configuration payload */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminGetLoRaWANV2NodeSensorConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+                node_index: components["parameters"]["LoRaWANV2NodeIndex"];
+                config_id: components["parameters"]["LoRaWANV2ConfigID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Node sensor configuration payload */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminCreateLoRaWANV2NodeTimeConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+                node_index: components["parameters"]["LoRaWANV2NodeIndex"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoRaWANV2Payload"];
+            };
+        };
+        responses: {
+            /** @description Upstream acknowledgement */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminListLoRaWANV2GatewayLogs: {
+        parameters: {
+            query?: {
+                start_at?: string;
+                end_at?: string;
+                page?: components["parameters"]["Page"];
+                page_size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gateway log list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminListLoRaWANV2NodeData: {
+        parameters: {
+            query?: {
+                start_at?: number;
+                end_at?: number;
+                metrics?: string;
+                page?: components["parameters"]["Page"];
+                page_size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+                node_index: components["parameters"]["LoRaWANV2NodeIndex"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Node data list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminListLoRaWANV2GatewayInfos: {
+        parameters: {
+            query?: {
+                start_at?: number;
+                end_at?: number;
+                page?: components["parameters"]["Page"];
+                page_size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+                /** @description LoRaWAN V2 gateway SN. */
+                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gateway data list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
             500: components["responses"]["Internal"];
         };
     };
@@ -8801,6 +9955,95 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["THCPNSensorTemplate"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminListDeviceDataStreams: {
+        parameters: {
+            query: {
+                device_id: components["schemas"]["UUID"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device data streams. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["DataStream"][];
+                    };
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminQueryDataStreamTelemetry: {
+        parameters: {
+            query: {
+                start_time: components["schemas"]["Timestamp"];
+                end_time: components["schemas"]["Timestamp"];
+                limit?: number;
+                adaptive?: boolean;
+                target_points?: number;
+            };
+            header?: never;
+            path: {
+                data_stream_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Telemetry query result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelemetryQueryResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminListDeviceImages: {
+        parameters: {
+            query: {
+                start_time: components["schemas"]["Timestamp"];
+                end_time: components["schemas"]["Timestamp"];
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path: {
+                device_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device image page with temporary preview URLs. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaListResponse"];
                 };
             };
             400: components["responses"]["InvalidArgument"];

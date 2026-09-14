@@ -121,6 +121,8 @@ func (r *Runtime) QueryTelemetry(ctx context.Context, source DataSource, req Tel
 		return r.queryHTTPAPITelemetry(ctx, source, req)
 	case AdapterTHCPNLegacy:
 		return r.queryThcpnLegacyMySQLTelemetry(ctx, source, req)
+	case AdapterLoRaWANV2:
+		return r.queryLoRaWANV2Telemetry(ctx, source, req)
 	case AdapterGenericMedia:
 		return TelemetryResult{}, apperr.New(apperr.KindDataSource, "generic_media adapter does not support telemetry queries")
 	default:
@@ -163,10 +165,15 @@ func (r *Runtime) QueryTelemetryBatch(ctx context.Context, source DataSource, re
 		binding DataStreamBinding
 	}
 	groups := make(map[string][]thcpnBatchMetric)
+	loraBindings := make([]DataStreamBinding, 0)
 	fallback := make([]fallbackItem, 0)
 	for _, binding := range req.Bindings {
 		if binding.Status != "active" {
 			return result, apperr.New(apperr.KindDataSource, "data stream binding is not active")
+		}
+		if binding.AdapterCode == AdapterLoRaWANV2 {
+			loraBindings = append(loraBindings, binding)
+			continue
 		}
 		if binding.AdapterCode != AdapterTHCPNLegacy {
 			fallback = append(fallback, fallbackItem{binding: binding})
@@ -194,6 +201,9 @@ func (r *Runtime) QueryTelemetryBatch(ctx context.Context, source DataSource, re
 		}
 		result.SourceScans += batchResult.SourceScans
 		result.RowsRead += batchResult.RowsRead
+	}
+	if err := r.queryLoRaWANV2TelemetryBatch(ctx, source, req, loraBindings, &result); err != nil {
+		return result, err
 	}
 	for _, item := range fallback {
 		telemetryResult, queryErr := r.QueryTelemetry(ctx, source, TelemetryQuery{

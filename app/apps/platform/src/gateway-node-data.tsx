@@ -9,7 +9,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Search } from "lucide-react";
+import { GripVertical, Search } from "lucide-react";
 import {
   api,
   formatApiError,
@@ -20,6 +20,8 @@ import {
 import { workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, Panel, StateView } from "@thcpn/ui";
 import { DataQuickNavigator, scrollToDataSection } from "./data-quick-navigator";
+import { useChartZoom } from "./chart-zoom";
+import { TelemetryCharts } from "./telemetry-charts";
 
 const colors = [
   "#1769e0",
@@ -41,6 +43,8 @@ const localTime = (date: Date) =>
     .slice(0, 16);
 const metricKey = (stream: DataStream) =>
   `${stream.code}\u0000${stream.unit ?? ""}`;
+const metricOrderStorageKey = (nodeId: string) =>
+  `ecocloud:gateway-node-data-stream-order:${nodeId}`;
 type Metric = {
   key: string;
   code: string;
@@ -57,6 +61,7 @@ export function GatewayNodeData({
   gateway: Device;
   workspaceId: string;
 }) {
+  const lorawan = gateway.product_id === "lorawan_v2_gateway";
   const children = useQuery({
     queryKey: workspaceQueryKey(
       workspaceId,
@@ -66,8 +71,50 @@ export function GatewayNodeData({
       "gateway-data",
     ),
     queryFn: () => api.devices.children(gateway.id),
+    enabled: !lorawan,
   });
-  const nodes = children.data?.items.map((item) => item.device) ?? [];
+  const gatewayStreams = useQuery({
+    queryKey: workspaceQueryKey(
+      workspaceId,
+      "device",
+      gateway.id,
+      "streams",
+      "gateway-data",
+    ),
+    queryFn: () => api.dataStreams.list(gateway.id),
+    enabled: lorawan,
+    staleTime: 60_000,
+  });
+  const lorawanNodeStreams = useMemo(() => {
+    const result = new Map<number, DataStream[]>();
+    for (const stream of gatewayStreams.data?.items ?? []) {
+      const match = /^lora_node_(\d+)_/.exec(stream.code);
+      if (!match || stream.type !== "telemetry" || stream.status !== "active") continue;
+      const index = Number(match[1]);
+      result.set(index, [
+        ...(result.get(index) ?? []),
+        {
+          ...stream,
+          code: stream.code.replace(/^lora_node_\d+_/, ""),
+          name: stream.name.replace(/^节点 \d+ · /, ""),
+        },
+      ]);
+    }
+    return result;
+  }, [gatewayStreams.data?.items]);
+  const nodes = lorawan
+    ? [...lorawanNodeStreams.keys()].sort((left, right) => left - right).map(
+        (index): Device => ({
+          ...gateway,
+          id: `${gateway.id}:node:${index}`,
+          name: `节点 ${index}`,
+          serial_no: `${gateway.serial_no}-${index}`,
+          device_type: "gateway_node",
+          topology_role: "gateway_node",
+          child_count: 0,
+        }),
+      )
+    : children.data?.items.map((item) => item.device) ?? [];
   const streamQueries = useQueries({
     queries: nodes.map((node) => ({
       queryKey: workspaceQueryKey(
@@ -78,6 +125,7 @@ export function GatewayNodeData({
         "gateway-data",
       ),
       queryFn: () => api.dataStreams.list(node.id),
+      enabled: !lorawan,
       staleTime: 60_000,
     })),
   });
@@ -86,38 +134,102 @@ export function GatewayNodeData({
       new Map(
         nodes.map((node, index) => [
           node.id,
-          (streamQueries[index]?.data?.items ?? []).filter(
-            (stream) =>
-              stream.type === "telemetry" && stream.status === "active",
-          ),
+          lorawan
+            ? lorawanNodeStreams.get(Number(node.id.split(":").at(-1))) ?? []
+            : (streamQueries[index]?.data?.items ?? []).filter(
+                (stream) =>
+                  stream.type === "telemetry" && stream.status === "active",
+              ),
         ]),
       ),
-    [nodes, streamQueries],
+    [lorawan, lorawanNodeStreams, nodes, streamQueries],
   );
-  const metrics = useMemo(() => metricOptions(streamsByNode), [streamsByNode]);
+  const [selectedNode, setSelectedNode] = useState("");
+  const metricStreams = useMemo(
+    () => lorawan && selectedNode
+      ? new Map([[selectedNode, streamsByNode.get(selectedNode) ?? []]])
+      : streamsByNode,
+    [lorawan, selectedNode, streamsByNode],
+  );
+  const metrics = useMemo(() => metricOptions(metricStreams), [metricStreams]);
+  const metricSignature = metrics.map((item) => item.key).join("\u0001");
   const [selected, setSelected] = useState("");
+  const [selectedMetrics, setSelectedMetrics] = useState<string[]>([]);
+  const [draggedMetric, setDraggedMetric] = useState("");
   const [start, setStart] = useState(() =>
     localTime(new Date(Date.now() - 7 * 86_400_000)),
   );
   const [end, setEnd] = useState(() => localTime(new Date()));
-  const [applied, setApplied] = useState({ metric: "", start, end });
+  const [applied, setApplied] = useState({
+    node: "",
+    metric: "",
+    metrics: [] as string[],
+    start,
+    end,
+  });
+
+  useEffect(() => {
+    if (!lorawan || !nodes.length) return;
+    setSelectedNode((current) =>
+      nodes.some((node) => node.id === current) ? current : nodes[0].id,
+    );
+  }, [lorawan, nodes]);
 
   useEffect(() => {
     if (!metrics.length) return;
+    const availableKeys = metrics.map((item) => item.key);
+    let savedKeys: string[] = [];
+    if (lorawan) {
+      try {
+        const value = JSON.parse(
+          localStorage.getItem(metricOrderStorageKey(selectedNode)) ?? "[]",
+        );
+        if (Array.isArray(value)) {
+          savedKeys = value.filter(
+            (key): key is string =>
+              typeof key === "string" && availableKeys.includes(key),
+          );
+        }
+      } catch {
+        savedKeys = [];
+      }
+    }
+    const metricKeys = [
+      ...savedKeys,
+      ...availableKeys.filter((key) => !savedKeys.includes(key)),
+    ];
+    if (lorawan) setSelectedMetrics(metricKeys);
     setSelected((current) =>
       metrics.some((item) => item.key === current) ? current : metrics[0].key,
     );
     setApplied((current) =>
-      metrics.some((item) => item.key === current.metric)
+      (lorawan
+        ? current.metrics.some((key) => metricKeys.includes(key))
+        : metrics.some((item) => item.key === current.metric)) &&
+      (!lorawan || nodes.some((node) => node.id === current.node))
         ? current
-        : { ...current, metric: metrics[0].key },
+        : {
+            ...current,
+            node: lorawan ? selectedNode : current.node,
+            metric: metrics[0].key,
+            metrics: lorawan ? metricKeys : current.metrics,
+          },
     );
-  }, [metrics]);
+  }, [lorawan, metricSignature, selectedNode]);
 
-  const selectedStreams = nodes.flatMap((device) => {
-    const stream = streamsByNode
-      .get(device.id)
-      ?.find((item) => metricKey(item) === applied.metric);
+  const selectedStreams = nodes.filter((device) => !lorawan || device.id === applied.node).flatMap((device) => {
+    const streams = streamsByNode.get(device.id) ?? [];
+    if (lorawan) {
+      return streams
+        .filter((item) => applied.metrics.includes(metricKey(item)))
+        .sort(
+          (left, right) =>
+            applied.metrics.indexOf(metricKey(left)) -
+            applied.metrics.indexOf(metricKey(right)),
+        )
+        .map((stream) => ({ device, stream }));
+    }
+    const stream = streams.find((item) => metricKey(item) === applied.metric);
     return stream ? [{ device, stream }] : [];
   });
   const telemetry = useQueries({
@@ -147,7 +259,11 @@ export function GatewayNodeData({
             ),
           ),
         }),
-      enabled: Boolean(applied.metric && applied.start && applied.end),
+      enabled: Boolean(
+        (lorawan ? applied.metrics.length : applied.metric) &&
+          applied.start &&
+          applied.end,
+      ),
     })),
   });
   const series = selectedStreams.flatMap(({ device }, index): NodeSeries[] => {
@@ -155,29 +271,48 @@ export function GatewayNodeData({
     return item ? [{ device, series: item }] : [];
   });
   const streamsLoading =
-    children.isLoading || streamQueries.some((query) => query.isLoading);
+    children.isLoading || gatewayStreams.isLoading || streamQueries.some((query) => query.isLoading);
   const streamsError =
-    children.error ?? streamQueries.find((query) => query.error)?.error;
+    children.error ?? gatewayStreams.error ?? streamQueries.find((query) => query.error)?.error;
   const telemetryLoading = telemetry.some(
     (query) => query.isLoading || query.isFetching,
   );
   const telemetryError = telemetry.find((query) => query.error)?.error;
   const invalid = !start || !end || Date.parse(start) >= Date.parse(end);
   const dirty =
-    selected !== applied.metric ||
+    (lorawan && selectedNode !== applied.node) ||
+    (lorawan
+      ? selectedMetrics.join("\u0001") !== applied.metrics.join("\u0001")
+      : selected !== applied.metric) ||
     start !== applied.start ||
     end !== applied.end;
   const activeMetric = metrics.find((item) => item.key === applied.metric);
+  const orderedMetrics = [
+    ...selectedMetrics
+      .map((key) => metrics.find((item) => item.key === key))
+      .filter((item) => item !== undefined),
+    ...metrics.filter((item) => !selectedMetrics.includes(item.key)),
+  ];
   const preset = (hours: number) => {
     const nextEnd = new Date();
     setEnd(localTime(nextEnd));
     setStart(localTime(new Date(nextEnd.getTime() - hours * 3_600_000)));
   };
   const search = () => {
-    setApplied({ metric: selected, start, end });
+    setApplied({ node: selectedNode, metric: selected, metrics: selectedMetrics, start, end });
     window.requestAnimationFrame(() =>
       scrollToDataSection("gateway-node-results"),
     );
+  };
+  const moveSelectedMetric = (target: string) => {
+    if (!draggedMetric || draggedMetric === target) return;
+    const from = selectedMetrics.indexOf(draggedMetric);
+    const to = selectedMetrics.indexOf(target);
+    if (from < 0 || to < 0) return;
+    const next = [...selectedMetrics];
+    next.splice(to, 0, next.splice(from, 1)[0]);
+    localStorage.setItem(metricOrderStorageKey(selectedNode), JSON.stringify(next));
+    setSelectedMetrics(next);
   };
 
   return (
@@ -189,13 +324,13 @@ export function GatewayNodeData({
               <div>
                 <h2 className="panel-title">节点数据查询</h2>
                 <div className="panel-kicker">
-                  同一指标、同一时间范围，对比当前网关下全部节点
+                  {lorawan ? "选择一个节点和数据指标后查询数据" : "同一指标、同一时间范围，对比当前网关下全部节点"}
                 </div>
               </div>
               <div className="header-actions">
                 {dirty && <Badge tone="warning">条件未应用</Badge>}
                 <Button
-                  disabled={invalid || !selected || telemetryLoading}
+                  disabled={invalid || (lorawan ? !selectedNode || !selectedMetrics.length : !selected) || telemetryLoading}
                   onClick={search}
                 >
                   <Search size={14} />
@@ -204,6 +339,12 @@ export function GatewayNodeData({
               </div>
             </div>
             <div className="gateway-node-query-fields">
+          {lorawan && <label className="field">
+            <span className="field-label">节点</span>
+            <select value={selectedNode} onChange={(event) => setSelectedNode(event.target.value)} disabled={!nodes.length}>
+              {nodes.map((node) => <option key={node.id} value={node.id}>{node.name}</option>)}
+            </select>
+          </label>}
           <label className="field">
             <span className="field-label">开始时间</span>
             <input
@@ -220,7 +361,7 @@ export function GatewayNodeData({
               onChange={(event) => setEnd(event.target.value)}
             />
           </label>
-          <label className="field">
+          {!lorawan && <label className="field">
             <span className="field-label">对比指标</span>
             <select
               value={selected}
@@ -230,12 +371,72 @@ export function GatewayNodeData({
               {metrics.map((metric) => (
                 <option key={metric.key} value={metric.key}>
                   {metric.name} · {metric.code}
-                  {metric.unit ? `（${metric.unit}）` : ""} · {metric.nodeCount}{" "}
-                  个节点
+                  {metric.unit ? `（${metric.unit}）` : ""} · {metric.nodeCount} 个节点
                 </option>
               ))}
             </select>
-          </label>
+          </label>}
+          {lorawan && <fieldset className="gateway-node-metric-field">
+            <legend className="field-label">数据指标</legend>
+            <div className="gateway-node-metric-heading">
+              <small>拖动已选指标可调整下方图表顺序</small>
+              <div className="header-actions">
+                <Badge tone="info">已选 {selectedMetrics.length}</Badge>
+                <Button
+                  variant="secondary"
+                  disabled={!metrics.length}
+                  onClick={() => setSelectedMetrics(
+                    selectedMetrics.length === metrics.length
+                      ? []
+                      : metrics.map((item) => item.key),
+                  )}
+                >
+                  {selectedMetrics.length === metrics.length && selectedMetrics.length ? "清空" : "全选"}
+                </Button>
+              </div>
+            </div>
+            <div className="gateway-node-metric-checks">
+              {orderedMetrics.map((metric) => (
+                <label
+                  key={metric.key}
+                  className={selectedMetrics.includes(metric.key) ? "selected" : ""}
+                  draggable={selectedMetrics.includes(metric.key)}
+                  onDragStart={(event) => {
+                    if (!selectedMetrics.includes(metric.key)) return;
+                    setDraggedMetric(metric.key);
+                    event.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragOver={(event) => {
+                    if (!draggedMetric || !selectedMetrics.includes(metric.key)) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    moveSelectedMetric(metric.key);
+                  }}
+                  onDragEnd={() => {
+                    setDraggedMetric("");
+                  }}
+                >
+                  <GripVertical className="stream-drag-handle" size={13} aria-hidden="true" />
+                  <input
+                    type="checkbox"
+                    checked={selectedMetrics.includes(metric.key)}
+                    onChange={(event) => setSelectedMetrics((current) =>
+                      event.target.checked
+                        ? [...current, metric.key]
+                        : current.filter((key) => key !== metric.key),
+                    )}
+                  />
+                  <span>
+                    <strong>{metric.name}</strong>
+                    <small>{metric.code}{metric.unit ? ` · ${metric.unit}` : ""}</small>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>}
             </div>
             <div className="range-presets">
           <span>快捷范围</span>
@@ -267,17 +468,17 @@ export function GatewayNodeData({
           <Panel className="gateway-node-chart-panel">
         <div className="panel-header">
           <div>
-            <h2 className="panel-title">全部节点趋势对比</h2>
+            <h2 className="panel-title">{lorawan ? `${nodes.find((node) => node.id === applied.node)?.name ?? "节点"} 数据趋势` : "全部节点趋势对比"}</h2>
             <div className="panel-kicker">
-              {activeMetric
+              {lorawan
+                ? (applied.metrics.length ? `${applied.metrics.length} 个数据指标` : "等待选择指标")
+                : activeMetric
                 ? `${activeMetric.name}${activeMetric.unit ? ` · ${activeMetric.unit}` : ""}`
                 : "等待选择指标"}{" "}
-              · 纵轴使用统一真实量程
+              {lorawan ? "" : " · 纵轴使用统一真实量程"}
             </div>
           </div>
-          <Badge tone="info">
-            {selectedStreams.length} / {nodes.length} 个节点
-          </Badge>
+          <Badge tone="info">{lorawan ? `${nodes.length} 个节点可选` : `${selectedStreams.length} / ${nodes.length} 个节点`}</Badge>
         </div>
         {streamsLoading ? (
           <StateView
@@ -308,7 +509,7 @@ export function GatewayNodeData({
           <StateView
             type="loading"
             title="正在查询节点数据"
-            description={`正在读取 ${selectedStreams.length} 个节点的同一指标。`}
+            description={lorawan ? "正在读取所选节点的数据。" : `正在读取 ${selectedStreams.length} 个节点的同一指标。`}
           />
         ) : telemetryError ? (
           <StateView
@@ -317,7 +518,13 @@ export function GatewayNodeData({
             description={formatApiError(telemetryError).message}
             requestId={formatApiError(telemetryError).requestId}
           />
-        ) : series.some((item) => item.series.points.length) ? (
+        ) : series.some((item) => item.series.points.length) ? lorawan ? (
+          <TelemetryCharts
+            series={series.map((item) => item.series)}
+            startTime={applied.start}
+            endTime={applied.end}
+          />
+        ) : (
           <ComparisonChart
             items={series}
             start={applied.start}
@@ -328,7 +535,7 @@ export function GatewayNodeData({
           <StateView
             type="empty"
             title="当前范围没有节点数据"
-            description="可以调整时间范围或切换对比指标后重新搜索。"
+            description={lorawan ? "可以调整时间范围或切换数据指标后重新搜索。" : "可以调整时间范围或切换对比指标后重新搜索。"}
           />
         )}
           </Panel>
@@ -379,6 +586,7 @@ function ComparisonChart({
   end: string;
   unit: string;
 }) {
+  const zoom = useChartZoom(Date.parse(start), Date.parse(end));
   const data = useMemo(() => {
     const rows = new Map<number, Record<string, number>>();
     items.forEach(({ device, series }) =>
@@ -414,6 +622,9 @@ function ComparisonChart({
         className="gateway-node-chart"
         role="img"
         aria-label="网关全部节点趋势对比图"
+        title="滚轮缩放，双击恢复完整范围"
+        onWheel={zoom.onWheel}
+        onDoubleClick={zoom.resetZoom}
       >
         <ResponsiveContainer width="100%" height="100%">
           <LineChart
@@ -428,7 +639,8 @@ function ComparisonChart({
             <XAxis
               type="number"
               dataKey="time"
-              domain={[Date.parse(start), Date.parse(end)]}
+              domain={zoom.domain}
+              allowDataOverflow
               tickFormatter={date}
               minTickGap={54}
               tickLine={false}

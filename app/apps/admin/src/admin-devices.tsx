@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import type { FormInstance } from "antd";
 import { Activity, Battery, Copy, FileJson, GitBranch, Pencil, Printer, Radio, RefreshCw, Search, Settings2, Trash2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
@@ -54,6 +54,7 @@ type Mode =
   | "firmware"
   | "camera"
   | "camera-edit"
+  | "create-device"
   | null;
 const value = (input: unknown, fallback: unknown = "—"): string =>
   input === undefined || input === null || input === ""
@@ -61,9 +62,16 @@ const value = (input: unknown, fallback: unknown = "—"): string =>
     : String(input);
 const categoryOf = (item: JsonRecord) =>
   value(item.topology_role || item.device_type, "standalone");
+const deviceModelLabel = (item: JsonRecord) =>
+  value(item.device_type) === "gateway"
+    ? value(item.product_id) === "lorawan_v2_gateway"
+      ? "LoRa V2 网关"
+      : "THCPN 组网站网关"
+    : deviceTopologyRoleLabel(value(item.device_type, ""));
 
 export function AdminDevicesPage() {
   const { deviceId } = useParams();
+  const navigate = useNavigate();
   const query = useQuery({
     queryKey: ["admin", "devices"],
     queryFn: api.admin.devices,
@@ -79,15 +87,16 @@ export function AdminDevicesPage() {
   const allRows = query.data?.items ?? [];
   const detailDevice = allRows.find((item) => value(item.id, "") === deviceId);
   const isCarbonDetail = categoryOf(detailDevice ?? {}) === "carbon_sink";
+  const isLoRaV2Detail = value(detailDevice?.product_id, "") === "lorawan_v2_gateway";
   const detailAttributesQuery = useQuery({
     queryKey: ["admin", "device", deviceId, "attributes"],
     queryFn: () => api.admin.deviceAttributes(deviceId!),
-    enabled: Boolean(detailDevice) && !isCarbonDetail,
+    enabled: Boolean(detailDevice) && !isCarbonDetail && !isLoRaV2Detail,
   });
   const detailChildrenQuery = useQuery({
     queryKey: ["admin", "device", deviceId, "children"],
     queryFn: () => api.admin.deviceChildren(deviceId!),
-    enabled: Boolean(detailDevice) && !isCarbonDetail,
+    enabled: Boolean(detailDevice) && !isCarbonDetail && !isLoRaV2Detail,
   });
   const detailLifecycleQuery = useQuery({
     queryKey: ["admin", "device", deviceId, "lifecycle"],
@@ -97,7 +106,7 @@ export function AdminDevicesPage() {
   const detailConfigQuery = useQuery({
     queryKey: ["admin", "device", deviceId, "config"],
     queryFn: () => api.admin.deviceConfig(deviceId!),
-    enabled: Boolean(detailDevice),
+    enabled: Boolean(detailDevice) && !isLoRaV2Detail,
   });
   const detailCarbonQuery = useQuery({
     queryKey: ["admin", "device", deviceId, "carbon-overview"],
@@ -117,8 +126,14 @@ export function AdminDevicesPage() {
   const [bulkLifecycleNote, setBulkLifecycleNote] = useState("");
   const [selected, setSelected] = useState<JsonRecord | null>(null);
   const [mode, setMode] = useState<Mode>(null);
+  const sourceQuery = useQuery({
+    queryKey: ["admin", "sources", "device-create"],
+    queryFn: api.admin.sources,
+    enabled: mode === "create-device",
+  });
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [createdSourceDevice, setCreatedSourceDevice] = useState<JsonRecord | null>(null);
   const [detail, setDetail] = useState<unknown>(null);
   const [configConflict, setConfigConflict] = useState(false);
   const [configResult, setConfigResult] = useState<{
@@ -340,15 +355,18 @@ export function AdminDevicesPage() {
         .catch(showError);
     }
   };
-  const openCameraCreate = () => {
+  const openDeviceCreate = () => {
     setSelected(null);
-    setMode("camera");
     setDetail(null);
-    form.setFieldsValue({ name: "", device_serial: "", channel_no: 1, default_quality: "standard", is_encrypted: false, validate_code_secret_ref: "", target_workspace_id: undefined, project_id: undefined, site_id: undefined });
+    setFeedback("");
+    setCreatedSourceDevice(null);
+    setMode("create-device");
+    form.resetFields();
   };
   const close = () => {
     setMode(null);
     setDetail(null);
+    setCreatedSourceDevice(null);
     form.resetFields();
   };
   const loadDetail = async (
@@ -387,11 +405,12 @@ export function AdminDevicesPage() {
     );
   };
   const submit = async () => {
+    if (busy) return;
     setBusy(true);
     setFeedback("");
     try {
       const fields = await form.validateFields();
-      if (!selected && mode !== "camera") throw new Error("请先选择设备");
+      if (!selected && mode !== "camera" && mode !== "create-device") throw new Error("请先选择设备");
       if (mode === "edit") await api.admin.updateDevice(id, fields);
       if (mode === "assign") await api.admin.assignDevice(id, fields);
       if (mode === "calibration")
@@ -428,6 +447,47 @@ export function AdminDevicesPage() {
         setConfigResult({ deviceName: value(selected?.name, id), response });
       }
       if (mode === "camera") await api.admin.createCamera(fields);
+      if (mode === "create-device") {
+        const sourceKind = String(fields.source_kind ?? "");
+        if (sourceKind === "camera") {
+          const cameraFields: JsonRecord = {
+            name: fields.name,
+            device_serial: fields.device_serial,
+            channel_no: fields.channel_no,
+            default_quality: fields.default_quality,
+            is_encrypted: fields.is_encrypted,
+            validate_code_secret_ref: fields.validate_code_secret_ref,
+            target_workspace_id: fields.target_workspace_id,
+            project_id: fields.project_id,
+            site_id: fields.site_id,
+          };
+          const created = await api.admin.createCamera(cameraFields);
+          const cameraDevice = (created.device ?? {}) as JsonRecord;
+          const createdDeviceID = String(cameraDevice.id ?? "").trim();
+          if (!createdDeviceID) throw new Error("监控站已创建，但未返回平台设备 ID");
+          close();
+          await query.refetch();
+          navigate(`/admin/devices/${encodeURIComponent(createdDeviceID)}`);
+          return;
+        }
+        const dataSourceID = String(fields.data_source_id ?? "").trim();
+        if (!dataSourceID) throw new Error("请选择数据源");
+        const sourceFields = { ...fields };
+        delete sourceFields.data_source_id;
+        const created = await api.admin.createSourceDevice(dataSourceID, sourceFields);
+        if (created.sync_error) {
+          setCreatedSourceDevice(created);
+          setFeedback("源库设备已创建，平台同步失败，可重试同步");
+          await query.refetch();
+          return;
+        }
+        const createdDeviceID = String(created.platform_device_id ?? "").trim();
+        if (!createdDeviceID) throw new Error("源库设备已创建，但未返回平台设备 ID");
+        close();
+        await query.refetch();
+        navigate(`/admin/devices/${encodeURIComponent(createdDeviceID)}`);
+        return;
+      }
       if (mode === "camera-edit") await api.admin.updateCamera(id, fields);
       if (mode === "child")
         setChildren((current) => {
@@ -448,6 +508,44 @@ export function AdminDevicesPage() {
           setFeedback("源数据库配置已被其他操作更新。当前草稿已保留，请复制草稿后重新加载最新配置。");
         } else showError(error);
       }
+    } finally {
+      setBusy(false);
+    }
+  };
+  const retryCreatedSourceDevice = async () => {
+    if (busy || !createdSourceDevice) return;
+    const dataSourceID = String(createdSourceDevice.data_source_id ?? "").trim();
+    const sourceDeviceID = Number(createdSourceDevice.source_device_id);
+    const sourceKind = String(createdSourceDevice.source_kind ?? "").trim();
+    if (!dataSourceID || !Number.isSafeInteger(sourceDeviceID) || sourceDeviceID <= 0 || !sourceKind) {
+      setFeedback("创建结果缺少重试所需的源设备信息");
+      return;
+    }
+    setBusy(true);
+    setFeedback("");
+    try {
+      const response = await api.admin.retrySourceDeviceSync(dataSourceID, {
+        source_kind: sourceKind,
+        source_device_id: sourceDeviceID,
+      });
+      const result: JsonRecord = {
+        ...createdSourceDevice,
+        ...response,
+        data_source_id: dataSourceID,
+        sn: response.sn ?? createdSourceDevice.sn,
+      };
+      setCreatedSourceDevice(result);
+      if (result.sync_error) {
+        setFeedback("平台同步仍未完成，请检查失败原因后重试");
+        return;
+      }
+      const createdDeviceID = String(result.platform_device_id ?? "").trim();
+      if (!createdDeviceID) throw new Error("同步已完成，但未返回平台设备 ID");
+      close();
+      await query.refetch();
+      navigate(`/admin/devices/${encodeURIComponent(createdDeviceID)}`);
+    } catch (error) {
+      showError(error);
     } finally {
       setBusy(false);
     }
@@ -508,12 +606,13 @@ export function AdminDevicesPage() {
   const managementOverlays = (
     <>
       {configResult ? <ConfigApplyResult result={configResult} onClose={() => setConfigResult(null)} /> : null}
-      <Drawer title={drawerTitle(mode, selected)} open={Boolean(mode)} onClose={close} size={mode === "config" ? 1180 : 620} extra={mode === "attributes" ? <Button onClick={close}>关闭</Button> : <Space><Button onClick={close}>取消</Button><Button type="primary" danger={mode === "config"} loading={busy} onClick={() => void submit()}>保存</Button></Space>}>
+      <Drawer title={drawerTitle(mode, selected)} open={Boolean(mode)} onClose={close} size={mode === "config" ? 1180 : 620} extra={mode === "attributes" ? <Button onClick={close}>关闭</Button> : <Space><Button onClick={close}>取消</Button><Button type="primary" danger={mode === "config"} loading={busy} onClick={() => void (mode === "create-device" && createdSourceDevice?.sync_error ? retryCreatedSourceDevice() : submit())}>{mode === "create-device" && createdSourceDevice?.sync_error ? "重试同步" : mode === "create-device" ? "创建设备" : "保存"}</Button></Space>}>
         {mode === "config" && configConflict ? <Alert className="config-conflict-alert" type="warning" showIcon title="源配置已变化，当前草稿尚未保存" description="复制草稿后重新加载最新配置；系统不会强制覆盖其他操作写入的版本。" action={<Space orientation="vertical"><Button size="small" onClick={() => void navigator.clipboard.writeText(JSON.stringify(parseTHCPNConfig(form.getFieldsValue() as THCPNConfigFields), null, 2))}>复制草稿</Button><Button size="small" type="primary" onClick={() => { setConfigConflict(false); void loadDetail("config", selected); }}>重新加载</Button></Space>} /> : null}
-        <Form form={form} layout="vertical"><DeviceForm mode={mode} form={form} devices={allRows} deviceId={id} /></Form>
+        <Form form={form} layout="vertical">{mode === "create-device" ? <DeviceCreateForm form={form} sources={sourceQuery.data?.items ?? []} sourcesLoading={sourceQuery.isLoading} /> : <DeviceForm mode={mode} form={form} devices={allRows} deviceId={id} />}</Form>
+        {mode === "create-device" && createdSourceDevice?.sync_error ? <Alert type="warning" showIcon title="源库设备已创建，但平台同步失败" description={<div>源库 ID {value(createdSourceDevice.source_device_id)} · SN {value(createdSourceDevice.sn)}<br />{value(createdSourceDevice.sync_error)}</div>} /> : null}
         <StructuredDetail mode={mode} detail={detail} busy={busy} onRemove={(childId) => selected && void removeChild(value(selected.id, ""), childId)} />
         {mode === "config" && detail ? <ConfigContext detail={detail as JsonRecord} /> : null}
-        <div className="drawer-note"><Settings2 size={15} />{mode === "config" ? "高级配置会写入外部设备库，并刷新平台数据流与绑定。提交前请确认 JSON 结构。" : "所有操作都作用于标题中显示的当前设备；完成后设备列表会自动刷新。"}</div>
+        <div className="drawer-note"><Settings2 size={15} />{mode === "config" ? "高级配置会写入外部设备库，并刷新平台数据流与绑定。提交前请确认 JSON 结构。" : mode === "create-device" ? "源库设备会在源数据库中生成 SN 和空配置；监控站只在平台中创建。" : "所有操作都作用于标题中显示的当前设备；完成后设备列表会自动刷新。"}</div>
       </Drawer>
     </>
   );
@@ -525,7 +624,7 @@ export function AdminDevicesPage() {
     if (!device) return <StateView type="empty" title="设备不存在" description="该设备可能已被删除或尚未同步。" action={<Button><Link to="/admin/devices">返回设备列表</Link></Button>} />;
     const isCamera = categoryOf(device) === "camera";
     const refreshDetail = () => void Promise.all([query.refetch(), detailLifecycleQuery.refetch(), ...(isCarbonDetail ? [detailCarbonQuery.refetch()] : [detailAttributesQuery.refetch(), detailChildrenQuery.refetch(), detailConfigQuery.refetch()])]);
-    return <><PageHeader eyebrow="System / devices / detail" title={value(device.name, "未命名设备")} description={`${value(device.serial_no, device.id)} · ${deviceTopologyRoleLabel(categoryOf(device))}`} actions={<Space><Button><Link to="/admin/devices">返回列表</Link></Button><Button type="primary" icon={<Pencil size={14} />} onClick={() => open("edit", device)}>编辑资料</Button><Button icon={<RefreshCw size={14} />} onClick={refreshDetail}>刷新</Button></Space>} />{feedback && <div className="admin-feedback section-gap">{feedback}</div>}<DeviceDetailPanel device={device} isCamera={isCamera} isCarbon={isCarbonDetail} carbonData={detailCarbonQuery.data as unknown as JsonRecord | undefined} carbonLoading={detailCarbonQuery.isLoading} carbonError={detailCarbonQuery.error} attributes={detailAttributesQuery.data as unknown as JsonRecord | undefined} attributesLoading={detailAttributesQuery.isLoading} attributesError={detailAttributesQuery.error} childrenData={detailChildrenQuery.data as unknown as JsonRecord | undefined} childrenLoading={detailChildrenQuery.isLoading} childrenError={detailChildrenQuery.error} lifecycleData={detailLifecycleQuery.data as JsonRecord | undefined} lifecycleLoading={detailLifecycleQuery.isLoading} lifecycleError={detailLifecycleQuery.error} configData={detailConfigQuery.data as JsonRecord | undefined} configLoading={detailConfigQuery.isLoading} configError={detailConfigQuery.error} onOpen={(next) => open(next, device)} onUnassign={() => void unassign(device)} />{managementOverlays}</>;
+    return <><PageHeader eyebrow="System / devices / detail" title={value(device.name, "未命名设备")} description={`${value(device.serial_no, device.id)} · ${deviceModelLabel(device)}`} actions={<Space><Button><Link to="/admin/devices">返回列表</Link></Button><Button type="primary" icon={<Pencil size={14} />} onClick={() => open("edit", device)}>编辑资料</Button><Button icon={<RefreshCw size={14} />} onClick={refreshDetail}>刷新</Button></Space>} />{feedback && <div className="admin-feedback section-gap">{feedback}</div>}<DeviceDetailPanel device={device} isCamera={isCamera} isCarbon={isCarbonDetail} carbonData={detailCarbonQuery.data as unknown as JsonRecord | undefined} carbonLoading={detailCarbonQuery.isLoading} carbonError={detailCarbonQuery.error} attributes={detailAttributesQuery.data as unknown as JsonRecord | undefined} attributesLoading={detailAttributesQuery.isLoading} attributesError={detailAttributesQuery.error} childrenData={detailChildrenQuery.data as unknown as JsonRecord | undefined} childrenLoading={detailChildrenQuery.isLoading} childrenError={detailChildrenQuery.error} lifecycleData={detailLifecycleQuery.data as JsonRecord | undefined} lifecycleLoading={detailLifecycleQuery.isLoading} lifecycleError={detailLifecycleQuery.error} configData={detailConfigQuery.data as JsonRecord | undefined} configLoading={detailConfigQuery.isLoading} configError={detailConfigQuery.error} onOpen={(next) => open(next, device)} onUnassign={() => void unassign(device)} />{managementOverlays}</>;
   }
 
   return (
@@ -534,7 +633,7 @@ export function AdminDevicesPage() {
         eyebrow="System / devices"
         title="系统设备"
         description="统一管理标准站、组网站、碳汇站和监控站。"
-        actions={<Space><Button type="primary" onClick={openCameraCreate}>创建监控站</Button><Button icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>刷新</Button></Space>}
+        actions={<Space><Button type="primary" onClick={openDeviceCreate}>创建设备</Button><Button icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>刷新</Button></Space>}
       />
       <Panel>
         <div className="admin-device-filters">
@@ -792,7 +891,7 @@ function DeviceDetailPanel({
       <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }} items={[
         { key: "serial", label: "序列号", children: <span className="mono">{value(device.serial_no)}</span> },
         { key: "product", label: "产品 ID", children: value(device.product_id) },
-        { key: "type", label: "设备类型", children: deviceTopologyRoleLabel(value(device.device_type, "")) },
+        { key: "type", label: "设备类型", children: deviceModelLabel(device) },
         { key: "externalId", label: "源库设备 ID", children: <span className="mono">{value(device.external_device_id, "未关联")}</span> },
         { key: "id", label: "设备 ID", span: 2, children: <span className="mono admin-break-value">{value(device.id)}</span> },
         { key: "status", label: "资产状态", children: <Tag color={device.status === "active" ? "green" : "default"}>{deviceStatusLabel(value(device.status, ""))}</Tag> },
@@ -915,12 +1014,116 @@ function DeviceDetailPanel({
   </div>;
   return <Panel className="admin-device-detail"><div className="admin-device-detail-summary"><div><span>设备 ID</span><strong className="mono">{value(device.id)}</strong></div><div><span>生命周期</span><Tag color="blue">{deviceLifecycleLabel(value(device.lifecycle_status, ""))}</Tag></div><div><span>分配状态</span><strong>{device.workspace_id ? "已分配" : "未分配"}</strong></div><div><span>资产状态</span><Tag color={device.status === "active" ? "green" : "default"}>{deviceStatusLabel(value(device.status, ""))}</Tag></div></div><Tabs className="admin-device-detail-tabs" items={[
     { key: "overview", label: "概览", children: overview },
+    { key: "data", label: "设备数据", children: <AdminDeviceDataPanel device={device} /> },
     ...(isCarbon ? [{ key: "carbon", label: "碳汇数据", children: carbonManagement }, { key: "configuration", label: "设备配置", children: configuration }] : [
       { key: "topology", label: "拓扑与能力", children: topology },
       { key: "configuration", label: "配置与属性", children: configuration },
       { key: "logs", label: "设备日志", children: <DeviceLogsPanel deviceId={value(device.id, "")} deviceName={value(device.name, "未命名设备")} /> },
     ]),
   ]} /></Panel>;
+}
+
+function AdminDeviceDataPanel({ device }: { device: JsonRecord }) {
+  const deviceId = value(device.id, "");
+  const childGateway = categoryOf(device) === "gateway" && value(device.product_id, "") !== "lorawan_v2_gateway";
+  const range = useMemo(() => {
+    const end = new Date();
+    return {
+      startTime: new Date(end.getTime() - 24 * 60 * 60 * 1000).toISOString(),
+      endTime: end.toISOString(),
+    };
+  }, [deviceId]);
+  const children = useQuery({
+    queryKey: ["admin", "device", deviceId, "data-children"],
+    queryFn: () => api.admin.deviceChildren(deviceId),
+    enabled: childGateway,
+  });
+  const dataDevices = childGateway
+    ? ((children.data?.items ?? []).map((item) => (item.device ?? item) as JsonRecord))
+    : [device];
+  const streamQueries = useQueries({
+    queries: dataDevices.map((item) => ({
+      queryKey: ["admin", "device", value(item.id, ""), "data-streams"],
+      queryFn: () => api.admin.deviceDataStreams(value(item.id, "")),
+    })),
+  });
+  const activeStreams = dataDevices.flatMap((owner, index) =>
+    (streamQueries[index]?.data?.items ?? [])
+      .filter((item) => item.type === "telemetry" && item.status === "active")
+      .map((stream) => ({ stream, owner })),
+  );
+  const telemetry = useQueries({
+    queries: activeStreams.map(({ stream }) => ({
+      queryKey: ["admin", "data-stream", stream.id, "latest", range.startTime, range.endTime],
+      queryFn: () => api.admin.dataStreamTelemetry(stream.id, {
+        ...range,
+        limit: 240,
+        adaptive: true,
+        targetPoints: 2,
+      }),
+    })),
+  });
+  const imageRangeStart = useMemo(
+    () => new Date(Date.parse(range.endTime) - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    [range.endTime],
+  );
+  const imageQueries = useQueries({
+    queries: dataDevices.map((item) => ({
+      queryKey: ["admin", "device", value(item.id, ""), "recent-images", imageRangeStart, range.endTime],
+      queryFn: () => api.admin.deviceImages(value(item.id, ""), {
+        start_time: imageRangeStart,
+        end_time: range.endTime,
+        page: 1,
+        page_size: 24,
+      }),
+    })),
+  });
+  const images = dataDevices.flatMap((owner, index) =>
+    (imageQueries[index]?.data?.items ?? [])
+      .filter((item) => item.preview_url)
+      .map((item) => ({ ...item, ownerName: value(owner.name, owner.serial_no) })),
+  );
+  const date = (input?: string) => input
+    ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", {
+        dateStyle: "medium",
+        timeStyle: "medium",
+      }).format(new Date(input))
+    : "—";
+  const rows = activeStreams.map(({ stream, owner }, index) => {
+    const series = telemetry[index]?.data?.series[0];
+    const point = series?.points.at(-1);
+    const node = /^lora_node_(\d+)_/.exec(stream.code)?.[1];
+    return {
+      key: stream.id,
+      node: node ? `节点 ${node}` : childGateway ? value(owner.name, owner.serial_no) : "设备",
+      name: stream.name,
+      code: stream.code,
+      unit: stream.unit,
+      value: point?.value,
+      time: point?.ts,
+      count: series?.source_count ?? 0,
+      complete: series?.complete,
+      loading: telemetry[index]?.isLoading,
+      error: telemetry[index]?.error,
+    };
+  });
+  return <div className="admin-device-detail-content"><section className="admin-detail-section">
+    <div className="admin-detail-section-head"><div><h2>最近设备数据</h2><span>最近 24 小时 · 只读状态检查</span></div><Tag color="blue">{activeStreams.length} 个指标</Tag></div>
+    {children.error || streamQueries.find((query) => query.error)?.error ? <Alert type="warning" showIcon title="数据流加载失败" description={formatApiError(children.error ?? streamQueries.find((query) => query.error)?.error).message} /> : null}
+    {children.isLoading || streamQueries.some((query) => query.isLoading) ? <div className="admin-inline-loading">正在读取设备数据流…</div> : rows.length ? <Table rowKey="key" size="small" pagination={{ pageSize: 20 }} dataSource={rows} columns={[
+      { title: "节点", width: 150, render: (_, item) => item.node },
+      { title: "数据指标", render: (_, item) => <div><strong>{item.name}</strong><div className="cell-sub mono">{item.code}</div></div> },
+      { title: "最新值", width: 160, render: (_, item) => item.loading ? "读取中…" : item.error ? <Tag color="red">读取失败</Tag> : item.value === undefined ? "—" : <span className="mono">{item.value.toLocaleString(undefined, { maximumFractionDigits: 4 })}{item.unit ? ` ${item.unit}` : ""}</span> },
+      { title: "最近上报", width: 190, render: (_, item) => date(item.time) },
+      { title: "24 小时数据", width: 140, render: (_, item) => item.error ? formatApiError(item.error).message : `${item.count} 条${item.complete === false ? "（未完整扫描）" : ""}` },
+    ]} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={categoryOf(device) === "camera" ? "监控站没有数值数据流，请在配置中检查视频绑定" : "当前设备没有可读取的数值数据流"} />}
+  </section>
+  {imageQueries.some((query) => query.isLoading) || images.length || imageQueries.find((query) => query.error) ? <section className="admin-detail-section">
+    <div className="admin-detail-section-head"><div><h2>最近图片</h2><span>最近 7 天 · 只读预览</span></div><Tag color="blue">{images.length} 张</Tag></div>
+    {imageQueries.find((query) => query.error)?.error ? <Alert type="warning" showIcon title="图片加载失败" description={formatApiError(imageQueries.find((query) => query.error)?.error).message} /> : null}
+    {imageQueries.some((query) => query.isLoading) ? <div className="admin-inline-loading">正在读取设备图片…</div> : <div className="admin-device-image-grid">{images.map((item) => <a key={`${item.data_stream_id}-${item.id}`} href={item.preview_url} target="_blank" rel="noreferrer"><img src={item.thumbnail_url || item.preview_url} alt={`${item.ownerName} ${date(item.captured_at)}`} loading="lazy"/><span>{item.ownerName}</span><small>{date(item.captured_at)}</small></a>)}</div>}
+  </section> : null}
+  </div>;
 }
 
 function ClaimCredentialSection({ device, date }: { device: JsonRecord; date: (input: unknown) => string }) {
@@ -979,7 +1182,7 @@ function columns() {
       width: 130,
       render: (_: unknown, row: JsonRecord) => (
         <div>
-          {deviceTopologyRoleLabel(value(row.device_type, ""))}
+          {deviceModelLabel(row)}
           <div className="cell-sub">
             {row.child_count
               ? `${row.child_count} 个子节点`
@@ -1050,17 +1253,17 @@ function DeviceForm({
   const workspaces = useQuery({
     queryKey: ["admin", "workspaces", "assignment"],
     queryFn: api.workspaces.adminList,
-    enabled: mode === "assign" || mode === "camera",
+    enabled: mode === "assign",
   });
   const projects = useQuery({
     queryKey: ["admin", "projects", workspaceId],
     queryFn: () => api.projects.adminList(workspaceId),
-    enabled: Boolean(workspaceId) && (mode === "assign" || mode === "camera"),
+    enabled: Boolean(workspaceId) && mode === "assign",
   });
   const sites = useQuery({
     queryKey: ["admin", "sites", workspaceId, projectId],
     queryFn: () => api.sites.adminList(workspaceId, projectId),
-    enabled: Boolean(workspaceId) && (mode === "assign" || mode === "camera"),
+    enabled: Boolean(workspaceId) && mode === "assign",
   });
   const capabilityDefinitions = useQuery({
     queryKey: ["admin", "metadata", "capabilities"],
@@ -1260,62 +1463,7 @@ function DeviceForm({
         <THCPNVisualConfigEditor deviceId={deviceId} form={form} />
       </>
     );
-  if (mode === "camera")
-    return (
-      <>
-        <Form.Item
-          name="name"
-          label="监控站名称"
-          rules={[{ required: true }]}
-        >
-          <Input />
-        </Form.Item>
-        <Form.Item
-          name="device_serial"
-          label="萤石设备序列号"
-          rules={[{ required: true, message: "请输入萤石设备序列号" }]}
-        >
-          <Input />
-        </Form.Item>
-        <CameraBindingFields />
-        <Form.Item name="target_workspace_id" label="目标工作区">
-          <Select
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            loading={workspaces.isLoading}
-            options={workspaceOptions}
-            placeholder="可选，留空则只创建系统资产"
-            onChange={() =>
-              form.setFieldsValue({ project_id: undefined, site_id: undefined })
-            }
-          />
-        </Form.Item>
-        <div className="drawer-grid">
-          <Form.Item name="project_id" label="项目">
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              disabled={!workspaceId}
-              loading={projects.isLoading}
-              options={projectOptions}
-              onChange={() => form.setFieldValue("site_id", undefined)}
-            />
-          </Form.Item>
-          <Form.Item name="site_id" label="站点">
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              disabled={!workspaceId}
-              loading={sites.isLoading}
-              options={siteOptions}
-            />
-          </Form.Item>
-        </div>
-      </>
-    );
+  if (mode === "camera") return <CameraCreateFields form={form} />;
   if (mode === "attributes") return null;
   return (
     <>
@@ -1594,6 +1742,228 @@ function ConfigApplyResult({
   );
 }
 
+type SourceCreationKind =
+  | "thcpn_standard"
+  | "thcpn_gateway"
+  | "thcpn_node"
+  | "carbon"
+  | "camera";
+
+const sourceFamilyForCreationKind = (kind: SourceCreationKind | undefined) =>
+  kind === "carbon" ? "carbon" : kind && kind !== "camera" ? "thcpn" : undefined;
+
+function DeviceCreateForm({
+  form,
+  sources,
+  sourcesLoading,
+}: {
+  form: FormInstance<any>;
+  sources: JsonRecord[];
+  sourcesLoading: boolean;
+}) {
+  const sourceKind = Form.useWatch("source_kind", form) as SourceCreationKind | undefined;
+  const sourceFamily = sourceFamilyForCreationKind(sourceKind);
+  const availableSources = useMemo(
+    () =>
+      sources.filter(
+        (source) =>
+          source.status === "active" && source.source_family === sourceFamily,
+      ),
+    [sourceFamily, sources],
+  );
+
+  useEffect(() => {
+    if (!sourceFamily) return;
+    const selectedSourceID = String(form.getFieldValue("data_source_id") ?? "");
+    if (availableSources.length === 1) {
+      form.setFieldValue("data_source_id", String(availableSources[0].id));
+    } else if (
+      !availableSources.some(
+        (source) => String(source.id) === selectedSourceID,
+      )
+    ) {
+      form.setFieldValue("data_source_id", undefined);
+    }
+  }, [availableSources, form, sourceFamily, sourceKind]);
+
+  const changeSourceKind = (kind: SourceCreationKind) => {
+    form.setFieldsValue({
+      source_kind: kind,
+      data_source_id: undefined,
+      name: "",
+      iccid: undefined,
+      version: kind.startsWith("thcpn_") ? "2.0" : undefined,
+      nodes_count: kind === "carbon" ? 16 : undefined,
+      device_serial: "",
+      channel_no: kind === "camera" ? 1 : undefined,
+      default_quality: kind === "camera" ? "standard" : undefined,
+      is_encrypted: kind === "camera" ? false : undefined,
+      validate_code_secret_ref: "",
+      target_workspace_id: undefined,
+      project_id: undefined,
+      site_id: undefined,
+    });
+  };
+
+  const showSourcePicker = Boolean(sourceFamily);
+  const noMatchingSource =
+    showSourcePicker && !sourcesLoading && availableSources.length === 0;
+  return (
+    <>
+      <Form.Item
+        name="source_kind"
+        label="设备类型"
+        rules={[{ required: true, message: "请选择设备类型" }]}
+      >
+        <Select
+          placeholder="请选择设备类型"
+          onChange={changeSourceKind}
+          options={[
+            { value: "thcpn_standard", label: "标准站" },
+            { value: "thcpn_gateway", label: "网关" },
+            { value: "thcpn_node", label: "节点" },
+            { value: "carbon", label: "碳汇站" },
+            { value: "camera", label: "监控站" },
+          ]}
+        />
+      </Form.Item>
+      {showSourcePicker ? (
+        <Form.Item
+          name="data_source_id"
+          label="数据源"
+          rules={[{ required: true, message: "请选择数据源" }]}
+        >
+          <Select
+            placeholder="请选择已启用的数据源"
+            loading={sourcesLoading}
+            disabled={noMatchingSource}
+            options={availableSources.map((source) => ({
+              value: String(source.id),
+              label: `${value(source.name, "未命名数据源")} · ${value(source.id)}`,
+            }))}
+          />
+        </Form.Item>
+      ) : null}
+      {noMatchingSource ? (
+        <Alert
+          type="warning"
+          showIcon
+          title="没有可用的数据源"
+          description={
+            <Link to="/admin/sources">前往数据源管理，配置并启用匹配的数据源。</Link>
+          }
+        />
+      ) : null}
+      {sourceKind === "thcpn_standard" || sourceKind === "thcpn_gateway" || sourceKind === "thcpn_node" ? (
+        <>
+          <Form.Item name="name" label="设备名称" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="iccid" label="ICCID" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="version" label="版本" rules={[{ required: true }]}>
+            <Select options={[{ value: "1.0", label: "1.0" }, { value: "2.0", label: "2.0" }]} />
+          </Form.Item>
+        </>
+      ) : null}
+      {sourceKind === "carbon" ? (
+        <>
+          <Form.Item name="name" label="设备名称" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="nodes_count" label="节点数" rules={[{ required: true }]}>
+            <InputNumber min={1} precision={0} style={{ width: "100%" }} />
+          </Form.Item>
+        </>
+      ) : null}
+      {sourceKind === "camera" ? <CameraCreateFields form={form} /> : null}
+    </>
+  );
+}
+
+function CameraCreateFields({ form }: { form: FormInstance<any> }) {
+  const workspaceId = Form.useWatch("target_workspace_id", form);
+  const projectId = Form.useWatch("project_id", form);
+  const workspaces = useQuery({
+    queryKey: ["admin", "workspaces", "camera-create"],
+    queryFn: api.workspaces.adminList,
+  });
+  const projects = useQuery({
+    queryKey: ["admin", "projects", "camera-create", workspaceId],
+    queryFn: () => api.projects.adminList(workspaceId),
+    enabled: Boolean(workspaceId),
+  });
+  const sites = useQuery({
+    queryKey: ["admin", "sites", "camera-create", workspaceId, projectId],
+    queryFn: () => api.sites.adminList(workspaceId, projectId),
+    enabled: Boolean(workspaceId),
+  });
+  const workspaceOptions = (workspaces.data?.items ?? []).map((item) => ({
+    value: value(item.id, ""),
+    label: value(item.name, value(item.id)),
+  }));
+  const projectOptions = (projects.data?.items ?? []).map((item) => ({
+    value: value(item.id, ""),
+    label: value(item.name, value(item.id)),
+  }));
+  const siteOptions = (sites.data?.items ?? []).map((item) => ({
+    value: value(item.id, ""),
+    label: value(item.name, value(item.id)),
+  }));
+  return (
+    <>
+      <Form.Item name="name" label="监控站名称" rules={[{ required: true }]}>
+        <Input />
+      </Form.Item>
+      <Form.Item
+        name="device_serial"
+        label="萤石设备序列号"
+        rules={[{ required: true, message: "请输入萤石设备序列号" }]}
+      >
+        <Input />
+      </Form.Item>
+      <CameraBindingFields />
+      <Form.Item name="target_workspace_id" label="目标工作区">
+        <Select
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          loading={workspaces.isLoading}
+          options={workspaceOptions}
+          placeholder="可选，留空则只创建系统资产"
+          onChange={() =>
+            form.setFieldsValue({ project_id: undefined, site_id: undefined })
+          }
+        />
+      </Form.Item>
+      <div className="drawer-grid">
+        <Form.Item name="project_id" label="项目">
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            disabled={!workspaceId}
+            loading={projects.isLoading}
+            options={projectOptions}
+            onChange={() => form.setFieldValue("site_id", undefined)}
+          />
+        </Form.Item>
+        <Form.Item name="site_id" label="站点">
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            disabled={!workspaceId}
+            loading={sites.isLoading}
+            options={siteOptions}
+          />
+        </Form.Item>
+      </div>
+    </>
+  );
+}
+
 function CameraBindingFields({ editing = false }: { editing?: boolean }) {
   return (
     <>
@@ -1639,6 +2009,7 @@ function CameraBindingFields({ editing = false }: { editing?: boolean }) {
 }
 
 function drawerTitle(mode: Mode, selected: JsonRecord | null) {
+  if (mode === "create-device") return "创建设备";
   if (mode === "camera" && !selected) return "创建监控站";
   const name = value(selected?.name, "设备");
   return (

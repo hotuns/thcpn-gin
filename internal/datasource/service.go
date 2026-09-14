@@ -29,6 +29,10 @@ const (
 	AdapterTHCPNLegacy    = "thcpn_legacy_mysql"
 	AdapterTHCPNCamera    = "thcpn_legacy_camera"
 	AdapterCarbonSink     = "carbon_sink_mysql"
+	AdapterLoRaWANV2      = "lorawan_v2"
+	sourceFamilyTHCPN     = "thcpn"
+	sourceFamilyCarbon    = "carbon"
+	sourceFamilyLoRaWANV2 = "lorawan_v2"
 )
 
 type Service struct {
@@ -134,14 +138,16 @@ type MediaRecord struct {
 }
 
 type DataSource struct {
-	ID           uuid.UUID `json:"id"`
-	Name         string    `json:"name"`
-	Type         string    `json:"type"`
-	DsnSecretRef string    `json:"dsn_secret_ref"`
-	Status       string    `json:"status"`
-	CreatedBy    uuid.UUID `json:"created_by"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID                 uuid.UUID `json:"id"`
+	Name               string    `json:"name"`
+	Type               string    `json:"type"`
+	SourceFamily       *string   `json:"source_family"`
+	SourceFamilyLocked bool      `json:"source_family_locked"`
+	DsnSecretRef       string    `json:"dsn_secret_ref"`
+	Status             string    `json:"status"`
+	CreatedBy          uuid.UUID `json:"created_by"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 type DataStreamBinding struct {
@@ -167,6 +173,7 @@ type DataStreamBinding struct {
 type CreateDataSourceInput struct {
 	Name         string
 	Type         string
+	SourceFamily *string
 	DsnSecretRef string
 	ActorAdminID uuid.UUID
 }
@@ -175,6 +182,7 @@ type UpdateDataSourceInput struct {
 	DataSourceID uuid.UUID
 	Name         *string
 	Type         *string
+	SourceFamily *string
 	DsnSecretRef *string
 	Status       *string
 }
@@ -222,6 +230,10 @@ func NewService(db *pgxpool.Pool, stores ...objectstore.Store) *Service {
 func (s *Service) CreateDataSource(ctx context.Context, input CreateDataSourceInput) (DataSource, error) {
 	name := strings.TrimSpace(input.Name)
 	sourceType := strings.TrimSpace(input.Type)
+	sourceFamily, err := normalizeSourceFamily(input.SourceFamily)
+	if err != nil {
+		return DataSource{}, err
+	}
 	dsnSecretRef := strings.TrimSpace(input.DsnSecretRef)
 	if input.ActorAdminID == uuid.Nil {
 		return DataSource{}, apperr.New(apperr.KindInvalidArgument, "actor admin id is required")
@@ -232,6 +244,9 @@ func (s *Service) CreateDataSource(ctx context.Context, input CreateDataSourceIn
 	if !isValidDataSourceType(sourceType) {
 		return DataSource{}, apperr.New(apperr.KindInvalidArgument, "invalid data source type")
 	}
+	if err := validateSourceFamilyType(sourceFamily, sourceType); err != nil {
+		return DataSource{}, err
+	}
 	if dsnSecretRef == "" {
 		return DataSource{}, apperr.New(apperr.KindInvalidArgument, "dsn_secret_ref is required")
 	}
@@ -239,6 +254,7 @@ func (s *Service) CreateDataSource(ctx context.Context, input CreateDataSourceIn
 	created, err := s.queries.CreateDataSource(ctx, sqlc.CreateDataSourceParams{
 		Name:         name,
 		Type:         sourceType,
+		SourceFamily: sourceFamily,
 		DsnSecretRef: dsnSecretRef,
 		CreatedBy:    input.ActorAdminID,
 	})
@@ -256,7 +272,7 @@ func (s *Service) GetDataSource(ctx context.Context, dataSourceID uuid.UUID) (Da
 	if err != nil {
 		return DataSource{}, mapNotFoundOrInternal(err, "data source not found")
 	}
-	return dataSourceFromSQL(row), nil
+	return s.dataSourceForResponse(ctx, row)
 }
 
 func (s *Service) ListDataSources(ctx context.Context) ([]DataSource, error) {
@@ -266,7 +282,11 @@ func (s *Service) ListDataSources(ctx context.Context) ([]DataSource, error) {
 	}
 	items := make([]DataSource, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, dataSourceFromSQL(row))
+		item, err := s.dataSourceForResponse(ctx, row)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
 	}
 	return items, nil
 }
@@ -316,17 +336,38 @@ func (s *Service) UpdateDataSource(ctx context.Context, input UpdateDataSourceIn
 		}
 	}
 
+	sourceFamily := current.SourceFamily
+	if input.SourceFamily != nil {
+		sourceFamily, err = normalizeSourceFamily(input.SourceFamily)
+		if err != nil {
+			return DataSource{}, err
+		}
+		if !sameSourceFamily(current.SourceFamily, sourceFamily) {
+			locked, err := s.queries.HasDataSourceFamilyReferences(ctx, input.DataSourceID)
+			if err != nil {
+				return DataSource{}, apperr.Wrap(apperr.KindInternal, "check data source family references", err)
+			}
+			if locked.Bool {
+				return DataSource{}, apperr.New(apperr.KindInvalidArgument, "data source family cannot change while source references or bindings exist")
+			}
+		}
+	}
+	if err := validateSourceFamilyType(sourceFamily, sourceType); err != nil {
+		return DataSource{}, err
+	}
+
 	updated, err := s.queries.UpdateDataSource(ctx, sqlc.UpdateDataSourceParams{
 		ID:           input.DataSourceID,
 		Name:         name,
 		Type:         sourceType,
+		SourceFamily: sourceFamily,
 		DsnSecretRef: dsnSecretRef,
 		Status:       status,
 	})
 	if err != nil {
 		return DataSource{}, mapWriteError(err, "update data source")
 	}
-	return dataSourceFromSQL(updated), nil
+	return s.dataSourceForResponse(ctx, updated)
 }
 
 func (s *Service) CreateDataStreamBinding(ctx context.Context, input CreateDataStreamBindingInput) (DataStreamBinding, error) {
@@ -595,7 +636,7 @@ func normalizeBinding(input CreateDataStreamBindingInput, status string) (normal
 
 func normalizeBindingMapping(input CreateDataStreamBindingInput, adapterCode string) (*string, *string, *string, *string, *string, error) {
 	switch adapterCode {
-	case AdapterHTTPAPI, AdapterTHCPNLegacy:
+	case AdapterHTTPAPI, AdapterTHCPNLegacy, AdapterLoRaWANV2:
 		tableName, err := optionalIdentifier(input.TableName, "table_name")
 		if err != nil {
 			return nil, nil, nil, nil, nil, err
@@ -745,7 +786,7 @@ func validateAdapterConfig(adapterCode string, raw []byte) error {
 
 func isValidAdapterCode(value string) bool {
 	switch value {
-	case AdapterGenericColumns, AdapterGenericMedia, AdapterHTTPAPI, AdapterTHCPNLegacy:
+	case AdapterGenericColumns, AdapterGenericMedia, AdapterHTTPAPI, AdapterTHCPNLegacy, AdapterLoRaWANV2:
 		return true
 	default:
 		return false
@@ -769,6 +810,10 @@ func validateAdapterPayload(adapterCode string, payloadType string) error {
 	case AdapterTHCPNLegacy:
 		if !isValidPayloadType(payloadType) {
 			return apperr.New(apperr.KindInvalidArgument, "invalid payload_type")
+		}
+	case AdapterLoRaWANV2:
+		if payloadType != "json" {
+			return apperr.New(apperr.KindInvalidArgument, "lorawan_v2 requires json payload_type")
 		}
 	}
 	return nil
@@ -795,6 +840,11 @@ func validateAdapterSourceCompatibility(adapterCode string, sourceType string) e
 			return apperr.New(apperr.KindInvalidArgument, "thcpn_legacy_mysql adapter requires mysql data source type")
 		}
 		return nil
+	case AdapterLoRaWANV2:
+		if sourceType != "http_api" {
+			return apperr.New(apperr.KindInvalidArgument, "lorawan_v2 adapter requires http_api data source type")
+		}
+		return nil
 	default:
 		return apperr.New(apperr.KindInvalidArgument, "invalid adapter_code")
 	}
@@ -807,6 +857,40 @@ func isValidDataSourceType(value string) bool {
 	default:
 		return false
 	}
+}
+
+func normalizeSourceFamily(value *string) (*string, error) {
+	if value == nil {
+		return nil, nil
+	}
+	family := strings.TrimSpace(*value)
+	if family == "" {
+		return nil, nil
+	}
+	if family != sourceFamilyTHCPN && family != sourceFamilyCarbon && family != sourceFamilyLoRaWANV2 {
+		return nil, apperr.New(apperr.KindInvalidArgument, "invalid source_family")
+	}
+	return &family, nil
+}
+
+func validateSourceFamilyType(family *string, sourceType string) error {
+	if family == nil {
+		return nil
+	}
+	if *family == sourceFamilyLoRaWANV2 && sourceType == "http_api" {
+		return nil
+	}
+	if (*family == sourceFamilyTHCPN || *family == sourceFamilyCarbon) && sourceType == "mysql" {
+		return nil
+	}
+	return apperr.New(apperr.KindInvalidArgument, "source family is incompatible with data source type")
+}
+
+func sameSourceFamily(left, right *string) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
 }
 
 func isValidPayloadType(value string) bool {
@@ -832,12 +916,23 @@ func dataSourceFromSQL(model sqlc.DataSource) DataSource {
 		ID:           model.ID,
 		Name:         model.Name,
 		Type:         model.Type,
+		SourceFamily: model.SourceFamily,
 		DsnSecretRef: model.DsnSecretRef,
 		Status:       model.Status,
 		CreatedBy:    model.CreatedBy,
 		CreatedAt:    pgTime(model.CreatedAt),
 		UpdatedAt:    pgTime(model.UpdatedAt),
 	}
+}
+
+func (s *Service) dataSourceForResponse(ctx context.Context, model sqlc.DataSource) (DataSource, error) {
+	result := dataSourceFromSQL(model)
+	locked, err := s.queries.HasDataSourceFamilyReferences(ctx, model.ID)
+	if err != nil {
+		return DataSource{}, apperr.Wrap(apperr.KindInternal, "check data source family references", err)
+	}
+	result.SourceFamilyLocked = locked.Bool
+	return result, nil
 }
 
 func bindingFromCreateRow(model sqlc.DataStreamBinding) DataStreamBinding {

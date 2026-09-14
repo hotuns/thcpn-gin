@@ -130,6 +130,7 @@ type DataSource struct {
 	CreatedBy    uuid.UUID          `json:"created_by"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	SourceFamily *string            `json:"source_family"`
 }
 
 // 设备数据通道目录，包括源库原始通道和查询时计算通道。
@@ -205,6 +206,8 @@ type DemoShowcaseDevice struct {
 	DeviceID    uuid.UUID          `json:"device_id"`
 	AddedBy     uuid.UUID          `json:"added_by"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	ProjectID   *uuid.UUID         `json:"project_id"`
+	SiteID      *uuid.UUID         `json:"site_id"`
 }
 
 // 平台设备主表，只保存稳定身份、类型和业务生命周期，不缓存源库实时运行属性或设备位置。
@@ -507,6 +510,27 @@ type InvitationPermission struct {
 	PermissionID uuid.UUID `json:"permission_id"`
 }
 
+type LoginVisual struct {
+	ID               uuid.UUID          `json:"id"`
+	ObjectKey        string             `json:"object_key"`
+	OriginalFilename string             `json:"original_filename"`
+	ContentType      string             `json:"content_type"`
+	SizeBytes        int64              `json:"size_bytes"`
+	SortOrder        int32              `json:"sort_order"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+}
+
+type LorawanV2DeviceRef struct {
+	ID           uuid.UUID          `json:"id"`
+	DeviceID     uuid.UUID          `json:"device_id"`
+	DataSourceID uuid.UUID          `json:"data_source_id"`
+	GatewaySn    string             `json:"gateway_sn"`
+	Status       string             `json:"status"`
+	SyncedAt     pgtype.Timestamptz `json:"synced_at"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
 // 稳定权限字典，按资源类型和动作定义权限 code。
 type Permission struct {
 	ID           uuid.UUID `json:"id"`
@@ -536,6 +560,32 @@ type ProcessingExecution struct {
 	FinishedAt          pgtype.Timestamptz `json:"finished_at"`
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ProcessingPlan struct {
+	ID               uuid.UUID          `json:"id"`
+	Code             string             `json:"code"`
+	Name             string             `json:"name"`
+	Description      string             `json:"description"`
+	Status           string             `json:"status"`
+	CurrentVersion   int32              `json:"current_version"`
+	PublishedVersion pgtype.Int4        `json:"published_version"`
+	CreatedBy        *uuid.UUID         `json:"created_by"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ProcessingPlanVersion struct {
+	PlanID                uuid.UUID          `json:"plan_id"`
+	Version               int32              `json:"version"`
+	ProcessorCode         string             `json:"processor_code"`
+	ProcessorVersion      string             `json:"processor_version"`
+	ProcessorManifestJson []byte             `json:"processor_manifest_json"`
+	ParametersJson        []byte             `json:"parameters_json"`
+	TriggerJson           []byte             `json:"trigger_json"`
+	TargetTypesJson       []byte             `json:"target_types_json"`
+	CreatedBy             *uuid.UUID         `json:"created_by"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
 }
 
 type ProcessingProcessor struct {
@@ -612,6 +662,9 @@ type ProcessingTaskVersion struct {
 	EffectiveAt           pgtype.Timestamptz `json:"effective_at"`
 	CreatedBy             uuid.UUID          `json:"created_by"`
 	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	PlanID                *uuid.UUID         `json:"plan_id"`
+	PlanVersion           pgtype.Int4        `json:"plan_version"`
+	PlanSnapshotJson      []byte             `json:"plan_snapshot_json"`
 }
 
 // 工作区下的项目主数据。
@@ -798,6 +851,39 @@ type UserNotification struct {
 	ReadAt      pgtype.Timestamptz `json:"read_at"`
 	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type Wallboard struct {
+	ID              uuid.UUID          `json:"id"`
+	WorkspaceID     uuid.UUID          `json:"workspace_id"`
+	Name            string             `json:"name"`
+	TemplateCode    string             `json:"template_code"`
+	TemplateVersion int32              `json:"template_version"`
+	ConfigJson      []byte             `json:"config_json"`
+	Status          string             `json:"status"`
+	CreatedBy       uuid.UUID          `json:"created_by"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
+type WallboardTemplate struct {
+	Code           string             `json:"code"`
+	CurrentVersion int32              `json:"current_version"`
+	Status         string             `json:"status"`
+	Tier           string             `json:"tier"`
+	DisplayPrice   string             `json:"display_price"`
+	ContactCopy    string             `json:"contact_copy"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+type WallboardTemplateVersion struct {
+	TemplateCode     string             `json:"template_code"`
+	Version          int32              `json:"version"`
+	ManifestJson     []byte             `json:"manifest_json"`
+	ConfigSchemaJson []byte             `json:"config_schema_json"`
+	SampleDataJson   []byte             `json:"sample_data_json"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 }
 
 // 平台租户边界，保存工作区名称、类型、所有者和状态。

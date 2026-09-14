@@ -726,9 +726,13 @@ function GroupExportForm({
     queryFn: () => api.devices.children(gatewayId),
     enabled: Boolean(gatewayId),
   });
-  const nodes = (children.data?.items ?? []).map(
-    (item) => item.device as unknown as JsonRecord,
-  );
+  const gateway = gateways.find((item) => value(item, "id") === gatewayId);
+  const lorawan = value(gateway ?? {}, "product_id") === "lorawan_v2_gateway";
+  const nodes = lorawan && gateway
+    ? [gateway]
+    : (children.data?.items ?? []).map(
+        (item) => item.device as unknown as JsonRecord,
+      );
   const filteredNodes = nodes.filter((item) =>
     `${value(item, "name")} ${value(item, "serial_no")} ${(tagsByDevice.get(value(item, "id")) ?? []).join(" ")}`
       .toLowerCase()
@@ -748,7 +752,6 @@ function GroupExportForm({
     setKeyword("");
   };
   const effective = selected ?? nodes.map((item) => value(item, "id"));
-  const gateway = gateways.find((item) => value(item, "id") === gatewayId);
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);

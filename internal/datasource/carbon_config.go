@@ -194,7 +194,7 @@ func (s *Service) updateCarbonSamplingProfile(ctx context.Context, input Samplin
 }
 
 func (s *Service) openCarbonConfigDB(ctx context.Context, dataSourceID uuid.UUID) (*sql.DB, error) {
-	source, err := s.loadTHCPNSyncDataSource(ctx, dataSourceID)
+	source, err := s.loadCarbonSyncDataSource(ctx, dataSourceID)
 	if err != nil {
 		return nil, err
 	}

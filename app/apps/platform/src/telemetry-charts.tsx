@@ -15,6 +15,7 @@ import {
 import { ChartNoAxesCombined, PanelsTopLeft } from "lucide-react";
 import type { TelemetrySeries } from "@thcpn/api";
 import { useLocale } from "@thcpn/i18n";
+import { useChartZoom } from "./chart-zoom";
 
 const chartColors = ["#1769e0", "#16845b", "#d36b12", "#b13e4a", "#6a5ab5"];
 const windDirectionLabel = (value: number) => ["北", "东北", "东", "东南", "南", "西南", "西", "西北"][Math.round((value % 360) / 45) % 8];
@@ -103,6 +104,7 @@ export function TelemetryCharts({
           allSeries={available}
           startTime={startTime}
           endTime={endTime}
+          zoomable={!compact}
         />
       ) : (
         <div className="telemetry-charts">
@@ -113,6 +115,7 @@ export function TelemetryCharts({
               colorIndex={available.indexOf(item)}
               startTime={startTime}
               endTime={endTime}
+              zoomable={!compact}
             />
           ))}
         </div>
@@ -131,11 +134,13 @@ function ComparisonChart({
   allSeries,
   startTime,
   endTime,
+  zoomable,
 }: {
   series: TelemetrySeries[];
   allSeries: TelemetrySeries[];
   startTime: string;
   endTime: string;
+  zoomable: boolean;
 }) {
   const { t, formatNumber, formatDateTime } = useLocale();
   const { data, stats } = useMemo(() => {
@@ -181,6 +186,7 @@ function ComparisonChart({
   );
   const sampled = series.some((item) => item.sampled);
   const complete = series.every((item) => item.complete);
+  const zoom = useChartZoom(Date.parse(startTime), Date.parse(endTime));
   return (
     <div className="comparison-chart">
       <div className="comparison-summary">
@@ -202,6 +208,9 @@ function ComparisonChart({
         className="comparison-canvas"
         role="img"
         aria-label={t("platform:telemetry.normalizedChart")}
+        title="滚轮缩放，双击恢复完整范围"
+        onWheel={zoomable ? zoom.onWheel : undefined}
+        onDoubleClick={zoomable ? zoom.resetZoom : undefined}
       >
         <ResponsiveContainer width="100%" height="100%">
           <LineChart
@@ -216,7 +225,8 @@ function ComparisonChart({
             <XAxis
               type="number"
               dataKey="time"
-              domain={[Date.parse(startTime), Date.parse(endTime)]}
+              domain={zoomable ? zoom.domain : [Date.parse(startTime), Date.parse(endTime)]}
+              allowDataOverflow={zoomable}
               tickFormatter={(value) =>
                 formatDateTime(new Date(value), { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
               }
@@ -299,11 +309,13 @@ function TelemetryChart({
   colorIndex,
   startTime,
   endTime,
+  zoomable,
 }: {
   series: TelemetrySeries;
   colorIndex: number;
   startTime: string;
   endTime: string;
+  zoomable: boolean;
 }) {
   const { t, formatNumber, formatDateTime } = useLocale();
   const source = series.points
@@ -324,6 +336,7 @@ function TelemetryChart({
   const domainPadding = Math.max((max - min) * 0.08, Math.abs(max || 1) * 0.01);
   const rainfall = series.code.trim().toLowerCase() === "rain";
   const windDirection = series.code.trim().toLowerCase() === "wind_d";
+  const zoom = useChartZoom(Date.parse(startTime), Date.parse(endTime));
   return (
     <section className={`telemetry-chart chart-color-${colorIndex % 5}`}>
       <header>
@@ -356,6 +369,9 @@ function TelemetryChart({
         className="chart-canvas"
         role="img"
         aria-label={t("platform:telemetry.trend", { name: series.name })}
+        title="滚轮缩放，双击恢复完整范围"
+        onWheel={zoomable ? zoom.onWheel : undefined}
+        onDoubleClick={zoomable ? zoom.resetZoom : undefined}
       >
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
@@ -386,7 +402,8 @@ function TelemetryChart({
             <XAxis
               type="number"
               dataKey="time"
-              domain={[Date.parse(startTime), Date.parse(endTime)]}
+              domain={zoomable ? zoom.domain : [Date.parse(startTime), Date.parse(endTime)]}
+              allowDataOverflow={zoomable}
               tickFormatter={(value) =>
                 formatDateTime(new Date(value), { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
               }

@@ -79,7 +79,7 @@ func (s *Service) ListCarbonDevices(ctx context.Context, dataSourceID uuid.UUID)
 	if dataSourceID == uuid.Nil {
 		return nil, apperr.New(apperr.KindInvalidArgument, "data_source_id is required")
 	}
-	source, err := s.loadTHCPNSyncDataSource(ctx, dataSourceID)
+	source, err := s.loadCarbonSyncDataSource(ctx, dataSourceID)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +95,7 @@ func (s *Service) SyncCarbonDevice(ctx context.Context, input SyncCarbonDeviceIn
 	if err := validateCarbonSyncInput(input.DataSourceID, input.ExternalDeviceID, input.ActorUserID); err != nil {
 		return CarbonDeviceSyncResult{}, err
 	}
-	source, err := s.loadTHCPNSyncDataSource(ctx, input.DataSourceID)
+	source, err := s.loadCarbonSyncDataSource(ctx, input.DataSourceID)
 	if err != nil {
 		return CarbonDeviceSyncResult{}, err
 	}
@@ -142,7 +142,7 @@ func (s *Service) SyncAllCarbonDevices(ctx context.Context, input SyncAllCarbonD
 	if input.DataSourceID == uuid.Nil || input.ActorUserID == uuid.Nil {
 		return result, apperr.New(apperr.KindInvalidArgument, "data source and actor are required")
 	}
-	source, err := s.loadTHCPNSyncDataSource(ctx, input.DataSourceID)
+	source, err := s.loadCarbonSyncDataSource(ctx, input.DataSourceID)
 	if err != nil {
 		return result, err
 	}

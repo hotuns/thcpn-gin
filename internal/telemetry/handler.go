@@ -99,6 +99,24 @@ func (h *Handler) QueryDataStream(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+func (h *Handler) AdminQueryDataStream(c *gin.Context) {
+	dataStreamID, ok := parseUUIDParam(c, "data_stream_id")
+	if !ok {
+		return
+	}
+	input, ok := parseQuery(c)
+	if !ok {
+		return
+	}
+	input.DataStreamID = &dataStreamID
+	result, err := h.service.Query(c.Request.Context(), input)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
 func parseQuery(c *gin.Context) (QueryInput, bool) {
 	start, ok := parseTimeQuery(c, "start_time")
 	if !ok {

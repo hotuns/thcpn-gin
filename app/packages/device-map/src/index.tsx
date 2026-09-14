@@ -39,12 +39,14 @@ function defaultStyle(): StyleSpecification {
   };
 }
 
-export function DeviceMap({ points, onSelect, height = 520, styleUrl, mapStyle }: { points: DeviceMapPoint[]; onSelect?: (id: string) => void; height?: number | string; styleUrl?: string; mapStyle?: StyleSpecification }) {
+export function DeviceMap({ points, onSelect, selectedDeviceId, height = 520, styleUrl, mapStyle }: { points: DeviceMapPoint[]; onSelect?: (id: string) => void; selectedDeviceId?: string; height?: number | string; styleUrl?: string; mapStyle?: StyleSpecification }) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
   const markers = useRef<maplibregl.Marker[]>([]);
   const latestPoints = useRef(points);
+  const latestSelected = useRef(selectedDeviceId);
   latestPoints.current = points;
+  latestSelected.current = selectedDeviceId;
   useEffect(() => {
     if (!container.current || map.current) return;
     const instance = new maplibregl.Map({ container: container.current, style: mapStyle || styleUrl || defaultStyle(), center: [104, 35], zoom: 3, attributionControl: {} });
@@ -82,7 +84,7 @@ export function DeviceMap({ points, onSelect, height = 520, styleUrl, mapStyle }
             element.title = `${properties.point_count} 台设备`;
             element.addEventListener("click", () => instance.easeTo({ center: feature.geometry.coordinates as [number, number], zoom: index.getClusterExpansionZoom(properties.cluster_id) }));
           } else {
-            element.className = `device-map-marker device-map-point ${properties.status === "active" ? "is-active" : ""}`;
+            element.className = `device-map-marker device-map-point ${properties.status === "active" ? "is-active" : ""} ${properties.device_id === latestSelected.current ? "is-selected" : ""}`;
             const iconUrl = iconifyIconUrl(properties.category_icon, "#ffffff");
             if (iconUrl) {
               element.classList.add("has-category-icon");
@@ -117,7 +119,7 @@ export function DeviceMap({ points, onSelect, height = 520, styleUrl, mapStyle }
       markers.current.forEach((marker) => marker.remove());
       markers.current = [];
     };
-  }, [points]);
+  }, [points, selectedDeviceId]);
   return <div ref={container} className="device-map-canvas" style={{ height }} />;
 }
 

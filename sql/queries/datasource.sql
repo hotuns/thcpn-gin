@@ -1,15 +1,15 @@
 -- name: CreateDataSource :one
-INSERT INTO data_sources (name, type, dsn_secret_ref, created_by)
-VALUES ($1, $2, $3, $4)
-RETURNING id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at;
+INSERT INTO data_sources (name, type, source_family, dsn_secret_ref, created_by)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at, source_family;
 
 -- name: GetDataSource :one
-SELECT id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at
+SELECT id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at, source_family
 FROM data_sources
 WHERE id = $1;
 
 -- name: ListDataSources :many
-SELECT id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at
+SELECT id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at, source_family
 FROM data_sources
 ORDER BY created_at DESC, id DESC;
 
@@ -17,11 +17,23 @@ ORDER BY created_at DESC, id DESC;
 UPDATE data_sources
 SET name = $2,
     type = $3,
-    dsn_secret_ref = $4,
-    status = $5,
+    source_family = $4,
+    dsn_secret_ref = $5,
+    status = $6,
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at;
+RETURNING id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at, source_family;
+
+-- name: HasDataSourceFamilyReferences :one
+SELECT EXISTS (
+    SELECT 1 FROM device_source_refs AS ref WHERE ref.data_source_id = $1
+)
+OR EXISTS (
+    SELECT 1 FROM lorawan_v2_device_refs AS ref WHERE ref.data_source_id = $1
+)
+OR EXISTS (
+    SELECT 1 FROM data_stream_bindings AS binding WHERE binding.data_source_id = $1
+);
 
 -- name: CreateDataStreamBinding :one
 INSERT INTO data_stream_bindings (

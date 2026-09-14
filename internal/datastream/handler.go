@@ -67,6 +67,19 @@ func (h *Handler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
+func (h *Handler) AdminList(c *gin.Context) {
+	deviceID, ok := parseUUIDValue(c.Query("device_id"), "device_id", c)
+	if !ok {
+		return
+	}
+	items, err := h.service.ListByDevice(c.Request.Context(), deviceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
 func (h *Handler) Create(c *gin.Context) {
 	httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "data streams are created by system sync"))
 }

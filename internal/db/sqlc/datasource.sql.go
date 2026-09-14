@@ -9,17 +9,19 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createDataSource = `-- name: CreateDataSource :one
-INSERT INTO data_sources (name, type, dsn_secret_ref, created_by)
-VALUES ($1, $2, $3, $4)
-RETURNING id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at
+INSERT INTO data_sources (name, type, source_family, dsn_secret_ref, created_by)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at, source_family
 `
 
 type CreateDataSourceParams struct {
 	Name         string    `json:"name"`
 	Type         string    `json:"type"`
+	SourceFamily *string   `json:"source_family"`
 	DsnSecretRef string    `json:"dsn_secret_ref"`
 	CreatedBy    uuid.UUID `json:"created_by"`
 }
@@ -28,6 +30,7 @@ func (q *Queries) CreateDataSource(ctx context.Context, arg CreateDataSourcePara
 	row := q.db.QueryRow(ctx, createDataSource,
 		arg.Name,
 		arg.Type,
+		arg.SourceFamily,
 		arg.DsnSecretRef,
 		arg.CreatedBy,
 	)
@@ -41,6 +44,7 @@ func (q *Queries) CreateDataSource(ctx context.Context, arg CreateDataSourcePara
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceFamily,
 	)
 	return i, err
 }
@@ -226,7 +230,7 @@ func (q *Queries) GetActiveDataStreamBinding(ctx context.Context, dataStreamID u
 }
 
 const getDataSource = `-- name: GetDataSource :one
-SELECT id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at
+SELECT id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at, source_family
 FROM data_sources
 WHERE id = $1
 `
@@ -243,6 +247,7 @@ func (q *Queries) GetDataSource(ctx context.Context, id uuid.UUID) (DataSource, 
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceFamily,
 	)
 	return i, err
 }
@@ -279,8 +284,27 @@ func (q *Queries) GetDataStreamBinding(ctx context.Context, id uuid.UUID) (DataS
 	return i, err
 }
 
+const hasDataSourceFamilyReferences = `-- name: HasDataSourceFamilyReferences :one
+SELECT EXISTS (
+    SELECT 1 FROM device_source_refs AS ref WHERE ref.data_source_id = $1
+)
+OR EXISTS (
+    SELECT 1 FROM lorawan_v2_device_refs AS ref WHERE ref.data_source_id = $1
+)
+OR EXISTS (
+    SELECT 1 FROM data_stream_bindings AS binding WHERE binding.data_source_id = $1
+)
+`
+
+func (q *Queries) HasDataSourceFamilyReferences(ctx context.Context, dataSourceID uuid.UUID) (pgtype.Bool, error) {
+	row := q.db.QueryRow(ctx, hasDataSourceFamilyReferences, dataSourceID)
+	var column_1 pgtype.Bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const listDataSources = `-- name: ListDataSources :many
-SELECT id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at
+SELECT id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at, source_family
 FROM data_sources
 ORDER BY created_at DESC, id DESC
 `
@@ -303,6 +327,7 @@ func (q *Queries) ListDataSources(ctx context.Context) ([]DataSource, error) {
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SourceFamily,
 		); err != nil {
 			return nil, err
 		}
@@ -364,17 +389,19 @@ const updateDataSource = `-- name: UpdateDataSource :one
 UPDATE data_sources
 SET name = $2,
     type = $3,
-    dsn_secret_ref = $4,
-    status = $5,
+    source_family = $4,
+    dsn_secret_ref = $5,
+    status = $6,
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at
+RETURNING id, name, type, dsn_secret_ref, status, created_by, created_at, updated_at, source_family
 `
 
 type UpdateDataSourceParams struct {
 	ID           uuid.UUID `json:"id"`
 	Name         string    `json:"name"`
 	Type         string    `json:"type"`
+	SourceFamily *string   `json:"source_family"`
 	DsnSecretRef string    `json:"dsn_secret_ref"`
 	Status       string    `json:"status"`
 }
@@ -384,6 +411,7 @@ func (q *Queries) UpdateDataSource(ctx context.Context, arg UpdateDataSourcePara
 		arg.ID,
 		arg.Name,
 		arg.Type,
+		arg.SourceFamily,
 		arg.DsnSecretRef,
 		arg.Status,
 	)
@@ -397,6 +425,7 @@ func (q *Queries) UpdateDataSource(ctx context.Context, arg UpdateDataSourcePara
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceFamily,
 	)
 	return i, err
 }

@@ -2,11 +2,9 @@ package wallboard
 
 import (
 	"context"
-	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -20,9 +18,6 @@ import (
 	"thcpn-gin/internal/media"
 	"thcpn-gin/internal/telemetry"
 )
-
-//go:embed templates/*.json
-var templateFiles embed.FS
 
 type Template struct {
 	Code                  string          `json:"code"`
@@ -126,24 +121,7 @@ func NewService(db *pgxpool.Pool, telemetryService *telemetry.Service, mediaServ
 }
 
 func catalog() ([]Template, error) {
-	entries, err := templateFiles.ReadDir("templates")
-	if err != nil {
-		return nil, err
-	}
-	items := make([]Template, 0, len(entries))
-	for _, entry := range entries {
-		b, err := templateFiles.ReadFile("templates/" + entry.Name())
-		if err != nil {
-			return nil, err
-		}
-		var item Template
-		if err = json.Unmarshal(b, &item); err != nil {
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	sort.Slice(items, func(i, j int) bool { return items[i].Code < items[j].Code })
-	return items, nil
+	return []Template{}, nil
 }
 
 func (s *Service) Sync(ctx context.Context) error {

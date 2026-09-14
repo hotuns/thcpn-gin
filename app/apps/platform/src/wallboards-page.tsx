@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
-import { Activity, Archive, Battery, Eye, Image as ImageIcon, MapPinOff, Maximize2, MonitorUp, Plus, Radio, RefreshCw, Signal, TriangleAlert, X } from "lucide-react";
+import { Activity, Archive, Battery, Eye, Image as ImageIcon, MapPinOff, Maximize2, MonitorUp, Radio, RefreshCw, Signal, TriangleAlert, X } from "lucide-react";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api, formatApiError, type DataStream, type Wallboard, type WallboardSnapshot, type WallboardTemplate } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
@@ -24,12 +24,12 @@ export function WallboardsPage() {
   const refresh = () => client.invalidateQueries({ queryKey: workspaceQueryKey(currentId, "wallboards") });
   const archive = async (item: Wallboard) => { if (!currentId || !window.confirm(`确认归档“${item.name}”？`)) return; try { await api.wallboards.archive(currentId, item.id); await refresh(); } catch (error) { setMessage(formatApiError(error).message); } };
   return <>
-    <PageHeader eyebrow="展示" title="大屏展示" description="从模板创建组织大屏，绑定站点、设备和数据后进入全屏播放。" actions={<Button onClick={() => document.getElementById("wallboard-catalog")?.scrollIntoView({ behavior: "smooth" })}><Plus size={15}/>创建大屏</Button>} />
+    <PageHeader eyebrow="展示" title="大屏展示" description="组织大屏模板将在此处提供。" />
     {message && <div className="command-note">{message}</div>}
     <Panel><div className="panel-header"><div><h2 className="panel-title">我的大屏</h2><div className="panel-kicker">大屏配置和模板版本在创建时冻结</div></div><MonitorUp size={18}/></div>
-      {boards.isLoading ? <StateView type="loading" title="正在加载大屏" description=""/> : boards.isError ? <StateView type="error" title="大屏加载失败" description={formatApiError(boards.error).message}/> : !boardItems.filter((item) => item.status === "active").length ? <StateView type="empty" title="还没有大屏" description="从下方模板目录选择一个免费模板开始配置。"/> : <div className="wallboard-list">{boardItems.filter((item) => item.status === "active").map((item) => <article key={item.id} className="wallboard-instance-card"><div className="wallboard-cover wallboard-cover-device"><MonitorUp size={30}/></div><div><Badge tone="info">{item.template_name}</Badge><h3>{item.name}</h3><p>模板 v{item.template_version} · 更新于 {new Date(item.updated_at).toLocaleString()}</p></div><div className="wallboard-card-actions"><Button variant="secondary" onClick={() => setEditing(item)}>编辑</Button><Button variant="secondary" onClick={() => navigate(`/wallboards/${item.id}/play?preview=1`)}><Eye size={14}/>预览</Button><Button onClick={() => navigate(`/wallboards/${item.id}/play`)}><Maximize2 size={14}/>播放</Button><Button variant="secondary" onClick={() => void archive(item)}><Archive size={14}/>归档</Button></div></article>)}</div>}
+      {boards.isLoading ? <StateView type="loading" title="正在加载大屏" description=""/> : boards.isError ? <StateView type="error" title="大屏加载失败" description={formatApiError(boards.error).message}/> : !boardItems.filter((item) => item.status === "active").length ? <StateView type="empty" title="还没有大屏" description="当前没有可用模板。"/> : <div className="wallboard-list">{boardItems.filter((item) => item.status === "active").map((item) => <article key={item.id} className="wallboard-instance-card"><div className="wallboard-cover wallboard-cover-device"><MonitorUp size={30}/></div><div><Badge tone="info">{item.template_name}</Badge><h3>{item.name}</h3><p>模板 v{item.template_version} · 更新于 {new Date(item.updated_at).toLocaleString()}</p></div><div className="wallboard-card-actions"><Button variant="secondary" onClick={() => setEditing(item)}>编辑</Button><Button variant="secondary" onClick={() => navigate(`/wallboards/${item.id}/play?preview=1`)}><Eye size={14}/>预览</Button><Button onClick={() => navigate(`/wallboards/${item.id}/play`)}><Maximize2 size={14}/>播放</Button><Button variant="secondary" onClick={() => void archive(item)}><Archive size={14}/>归档</Button></div></article>)}</div>}
     </Panel>
-    <section id="wallboard-catalog" className="section-gap"><div className="section-heading"><div><span>模板目录</span><h2>选择展示方式</h2></div></div>{templates.isLoading ? <StateView type="loading" title="正在加载模板" description=""/> : templates.isError ? <StateView type="error" title="模板加载失败" description={formatApiError(templates.error).message}/> : <div className="wallboard-template-grid">{templates.data?.items.map((item) => <article className={`wallboard-template-card wallboard-cover-${item.cover}`} key={item.code}><div className="wallboard-template-preview"><TemplateBackdrop kind={item.cover}/><Badge tone={item.tier === "free" ? "success" : "warning"}>{item.tier === "free" ? "免费模板" : item.display_price || "高级模板"}</Badge></div><div className="wallboard-template-copy"><h3>{item.name}</h3><p>{item.description}</p><div><Button variant="secondary" onClick={() => setPreview(item)}><Eye size={14}/>示例预览</Button>{item.can_create ? <Button onClick={() => setSelected(item)}>使用模板</Button> : <Button variant="secondary" disabled>{item.contact_copy || "联系开通"}</Button>}</div></div></article>)}</div>}</section>
+    <section id="wallboard-catalog" className="section-gap"><div className="section-heading"><div><span>模板目录</span><h2>选择展示方式</h2></div></div>{templates.isLoading ? <StateView type="loading" title="正在加载模板" description=""/> : templates.isError ? <StateView type="error" title="模板加载失败" description={formatApiError(templates.error).message}/> : !templates.data?.items?.length ? <StateView type="empty" title="暂无可用模板" description=""/> : <div className="wallboard-template-grid">{templates.data.items.map((item) => <article className={`wallboard-template-card wallboard-cover-${item.cover}`} key={item.code}><div className="wallboard-template-preview"><TemplateBackdrop kind={item.cover}/><Badge tone={item.tier === "free" ? "success" : "warning"}>{item.tier === "free" ? "免费模板" : item.display_price || "高级模板"}</Badge></div><div className="wallboard-template-copy"><h3>{item.name}</h3><p>{item.description}</p><div><Button variant="secondary" onClick={() => setPreview(item)}><Eye size={14}/>示例预览</Button>{item.can_create ? <Button onClick={() => setSelected(item)}>使用模板</Button> : <Button variant="secondary" disabled>{item.contact_copy || "联系开通"}</Button>}</div></div></article>)}</div>}</section>
     {(selected || editing) && currentId && <WallboardEditor workspaceId={currentId} template={selected ?? templates.data?.items.find((item) => item.code === editing?.template_code) ?? null} wallboard={editing} onClose={() => { setSelected(null); setEditing(null); }} onSaved={async (item) => { setSelected(null); setEditing(null); await refresh(); navigate(`/wallboards/${item.id}/play?preview=1`); }}/>} 
     {preview && <TemplatePreview template={preview} onClose={() => setPreview(null)}/>} 
   </>;
@@ -71,12 +71,11 @@ export function WallboardPlayPage() {
   const displaySnapshot = snapshot.data ?? lastGood;
   if (board.isLoading || (!displaySnapshot && snapshot.isLoading)) return <div className="wallboard-player-state">正在加载大屏…</div>; if (board.isError || (!displaySnapshot && snapshot.isError)) return <div className="wallboard-player-state">大屏加载失败 <Button onClick={() => navigate("/wallboards")}>返回</Button></div>;
   const template = { component_key: board.data!.component_key, name: board.data!.template_name } as WallboardTemplate;
-  return <main className="wallboard-player"><div className="wallboard-player-toolbar"><strong>{board.data!.name}</strong>{failed && <span className="wallboard-refresh-error">数据更新失败，保留 {lastGood ? new Date(lastGood.generated_at).toLocaleTimeString() : "上次"} 数据</span>}<Button variant="secondary" onClick={() => void snapshot.refetch()}><RefreshCw size={14}/>刷新</Button><Button variant="secondary" onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()}><Maximize2 size={14}/>全屏</Button><Button variant="secondary" onClick={() => navigate("/wallboards")}><X size={14}/>退出</Button></div><div className="wallboard-stage"><WallboardCanvas template={template} snapshot={displaySnapshot!} trendHours={board.data!.config.trend_hours}/></div></main>;
+  return <main className="wallboard-player"><div className="wallboard-player-toolbar"><strong>{board.data!.name}</strong>{failed && <span className="wallboard-refresh-error">数据更新失败，保留 {lastGood ? new Date(lastGood.generated_at).toLocaleTimeString() : "上次"} 数据</span>}<Button variant="secondary" onClick={() => void snapshot.refetch()}><RefreshCw size={14}/>刷新</Button><Button variant="secondary" onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()}><Maximize2 size={14}/>全屏</Button><Button variant="secondary" onClick={() => navigate("/wallboards")}><X size={14}/>退出</Button></div><div className="wallboard-stage"><WallboardCanvas template={template} snapshot={displaySnapshot!}/></div></main>;
 }
 
-function WallboardCanvas({ template, snapshot, trendHours = 24 }: { template: WallboardTemplate; snapshot: WallboardSnapshot; trendHours?: number }) {
-  const multi = template.component_key === "fleet-overview-v1";
-  return multi ? <FleetWallboard template={template} snapshot={snapshot} trendHours={trendHours}/> : <SingleDeviceWallboard template={template} snapshot={snapshot}/>;
+function WallboardCanvas({ template, snapshot }: { template: WallboardTemplate; snapshot: WallboardSnapshot }) {
+  return <SingleDeviceWallboard template={template} snapshot={snapshot}/>;
 }
 
 function WallboardHeader({ template, snapshot }: { template: WallboardTemplate; snapshot: WallboardSnapshot }) {
@@ -93,36 +92,6 @@ function SingleDeviceWallboard({ template, snapshot }: { template: WallboardTemp
   </div><div className="wallboard-bottom"><ScreenPanel title="指标统计"><MetricStatistics metrics={snapshot.metrics}/></ScreenPanel></div></div>;
 }
 
-function FleetWallboard({ template, snapshot, trendHours }: { template: WallboardTemplate; snapshot: WallboardSnapshot; trendHours: number }) {
-  const [selectedId, setSelectedId] = useState(snapshot.devices[0]?.id ?? "");
-  const [focusRequest, setFocusRequest] = useState(0);
-  useEffect(() => { if (!snapshot.devices.some((item) => item.id === selectedId)) setSelectedId(snapshot.devices[0]?.id ?? ""); }, [snapshot.devices, selectedId]);
-  const selectDevice = (id: string) => { setSelectedId(id); setFocusRequest((value) => value + 1); };
-  const selected = snapshot.devices.find((item) => item.id === selectedId) ?? snapshot.devices[0];
-  const streams = useQuery({ queryKey: ["wallboard-selected-streams", selected?.id], queryFn: () => api.dataStreams.list(selected!.id), enabled: Boolean(selected?.id) });
-  const telemetryStreamIds = streams.data?.items.filter((item) => item.type === "telemetry" && item.status === "active").map((item) => item.id) ?? [];
-  const endTime = snapshot.generated_at;
-  const startTime = new Date(new Date(endTime).getTime() - trendHours * 60 * 60 * 1000).toISOString();
-  const telemetry = useQuery({ queryKey: ["wallboard-selected-telemetry", selected?.id, telemetryStreamIds.join(","), startTime, endTime], queryFn: () => api.telemetry.device(selected!.id, { startTime, endTime, adaptive: true, targetPoints: 240, dataStreamIds: telemetryStreamIds }), enabled: Boolean(selected?.id && telemetryStreamIds.length) });
-  const media = useQuery({ queryKey: ["wallboard-selected-images", selected?.id, endTime], queryFn: () => api.media.images(selected!.id, { page: 1, page_size: 20 }), enabled: Boolean(selected?.id) });
-  const streamNames = new Map(streams.data?.items.map((item) => [item.id, item.name]) ?? []);
-  const selectedMetrics: WallboardSnapshot["metrics"] = telemetry.data ? telemetry.data.series.map((series) => ({ ...series, device_id: selected!.id, latest_value: series.points.at(-1)?.value, latest_at: series.points.at(-1)?.ts })) : snapshot.metrics.filter((metric) => metric.device_id === selected?.id);
-  const selectedImages = media.data ? media.data.items.map((item) => ({ ...item, stream: streamNames.get(item.data_stream_id) ?? "设备图片" })) : latestImageItems(snapshot).filter((item) => item.device_id === selected?.id);
-  const online = snapshot.devices.filter(isOnline).length;
-  const offline = snapshot.devices.length - online;
-  const alarms = snapshot.devices.filter((item) => item.status === "alarm" || item.status === "warning").length;
-  const unavailable = snapshot.devices.filter((item) => Boolean(item.runtime_error)).length;
-  const warning = snapshot.devices.filter(needsAttention).length;
-  const unlocated = snapshot.devices.filter((item) => !hasLocation(item)).length;
-  const sites = new Set(snapshot.devices.map((item) => item.site_name).filter(Boolean));
-  const onlineRate = snapshot.devices.length ? Math.round(online / snapshot.devices.length * 100) : 0;
-  return <div className="wallboard-canvas wallboard-fleet-layout"><WallboardHeader template={template} snapshot={snapshot}/><div className="wallboard-fleet-dashboard">
-    <aside className="wallboard-fleet-rail"><ScreenPanel title="全域运行概览"><div className="wallboard-fleet-kpis"><Kpi label="设备总数" value={snapshot.devices.length}/><Kpi label="在线率" value={`${onlineRate}%`}/><Kpi label="覆盖站点" value={sites.size}/><Kpi label="待关注" value={warning}/></div><div className="wallboard-fleet-health"><span><i className="online"/>在线 {online}</span><span><i/>离线 {offline}</span><span><i className="alarm"/>告警 {alarms}</span><span><i className="unavailable"/>不可用 {unavailable}</span></div></ScreenPanel><ScreenPanel title={`设备列表 · ${snapshot.devices.length}`}><div className="wallboard-attention-list">{snapshot.devices.map((device) => <button type="button" className={device.id === selected?.id ? "selected" : ""} key={device.id} onClick={() => selectDevice(device.id)}><span className={`wallboard-status ${statusClass(device)}`}/><strong>{device.name}</strong><small>{deviceStatusText(device)}</small></button>)}{!snapshot.devices.length && <EmptyLine text="暂无设备"/>}</div></ScreenPanel></aside>
-    <main className="wallboard-fleet-center"><section className="wallboard-map-panel"><div className="wallboard-map-summary"><span>设备空间分布</span><small>{snapshot.devices.length - unlocated} 个有效点位 · {unlocated} 台未定位</small></div><WallboardCesiumMap devices={snapshot.devices} mode="multi" selectedDeviceId={selected?.id} focusRequest={focusRequest} onSelectDevice={selectDevice}/>{unlocated > 0 && <LocationNotice count={unlocated}/>}</section><TrendPanel metrics={selectedMetrics}/></main>
-    <aside className="wallboard-fleet-media"><ScreenPanel title="当前设备">{selected ? <FleetDeviceFocus device={selected}/> : <EmptyLine text="暂无设备"/>}</ScreenPanel><ImagePanel items={selectedImages} limit={5}/></aside>
-  </div></div>;
-}
-
 function ScreenPanel({ title, children }: { title: string; children: ReactNode }) { return <section className="wallboard-screen-panel"><h2>{title}</h2>{children}</section>; }
 function Kpi({ label, value }: { label: string; value: string | number }) { return <div><span>{label}</span><strong>{value}</strong></div>; }
 function MetricStatistics({ metrics }: { metrics: WallboardSnapshot["metrics"] }) {
@@ -130,9 +99,6 @@ function MetricStatistics({ metrics }: { metrics: WallboardSnapshot["metrics"] }
 }
 function DeviceFacts({ device }: { device: WallboardSnapshot["devices"][number] }) {
   return <div className="wallboard-device-facts"><div className="wallboard-device-name"><span className={`wallboard-status ${statusClass(device)}`}/><div><strong>{device.name}</strong><small>{device.device_type}</small></div></div><dl><div><dt>所属站点</dt><dd>{device.site_name || "未关联"}</dd></div><div><dt>运行状态</dt><dd>{device.runtime_error ? "运行信息不可用" : isOnline(device) ? "在线" : "离线"}</dd></div><div><dt><Battery/>电量</dt><dd>{formatPercent(device.battery)}</dd></div><div><dt><Signal/>信号</dt><dd>{formatPercent(device.signal)}</dd></div><div><dt><Radio/>最近上报</dt><dd>{formatDateTime(device.last_reported_at)}</dd></div><div><dt>位置来源</dt><dd>{device.location_source === "device" ? "设备上报" : device.location_source === "site" ? "站点坐标" : "未配置"}</dd></div></dl>{device.runtime_error && <div className="wallboard-runtime-warning"><TriangleAlert/> {device.runtime_error}</div>}</div>;
-}
-function FleetDeviceFocus({ device }: { device: WallboardSnapshot["devices"][number] }) {
-  return <div className="wallboard-fleet-focus"><header><div><span className={`wallboard-status ${statusClass(device)}`}/><strong>{device.name}</strong></div><small>{device.site_name || "未关联站点"}</small></header><div><Kpi label="运行状态" value={device.runtime_error ? "不可用" : isOnline(device) ? "在线" : "离线"}/><Kpi label="电量" value={formatPercent(device.battery)}/><Kpi label="信号" value={formatPercent(device.signal)}/></div><footer><span>最近上报</span><strong>{formatDateTime(device.last_reported_at)}</strong></footer></div>;
 }
 function TrendPanel({ metrics, devices = [], pageSize }: { metrics: WallboardSnapshot["metrics"]; devices?: WallboardSnapshot["devices"]; pageSize?: number }) {
   const [page, setPage] = useState(0);
@@ -149,10 +115,7 @@ function LocationNotice({ count }: { count: number }) { return <div className="w
 function EmptyLine({ text, icon }: { text: string; icon?: ReactNode }) { return <div className="wallboard-empty">{icon}{text}</div>; }
 function hasLocation(device: WallboardSnapshot["devices"][number]) { return Number.isFinite(device.latitude) && Number.isFinite(device.longitude); }
 function isOnline(device: WallboardSnapshot["devices"][number]) { return device.status === "online" || device.status === "active"; }
-function needsAttention(device: WallboardSnapshot["devices"][number]) { return Boolean(device.runtime_error) || !isOnline(device) || device.status === "alarm" || device.status === "warning"; }
 function statusClass(device: WallboardSnapshot["devices"][number]) { return device.runtime_error ? "unavailable" : device.status === "alarm" || device.status === "warning" ? "warning" : isOnline(device) ? "online" : "offline"; }
-function attentionReason(device: WallboardSnapshot["devices"][number]) { return device.runtime_error ? "运行信息不可用" : device.status === "alarm" || device.status === "warning" ? "设备告警" : "设备离线"; }
-function deviceStatusText(device: WallboardSnapshot["devices"][number]) { return needsAttention(device) ? attentionReason(device) : "设备在线"; }
 function formatPercent(value?: number) { return value == null ? "--" : `${Math.round(value)}%`; }
 function formatNumber(value?: number) { return value == null ? "--" : Number(value.toFixed(2)).toString(); }
 function formatDateTime(value?: string) { if (!value) return "--"; const date = new Date(value); return Number.isNaN(date.getTime()) ? "--" : date.toLocaleString(); }

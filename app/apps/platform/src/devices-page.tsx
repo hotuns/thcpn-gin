@@ -46,6 +46,7 @@ import {
   type Device,
   type DeviceTaxonomyTerm,
   type JsonRecord,
+  type TelemetrySeries,
   type THCPNLatestAttributesResponse,
   type THCPNConfigFields,
 } from "@thcpn/api";
@@ -99,6 +100,12 @@ export const deviceCategory = (
 export const isTopLevelDevice = (
   device: Pick<Device, "topology_role" | "device_type">,
 ) => deviceCategory(device) !== "gateway_node";
+const deviceModelLabel = (device: Pick<Device, "device_type" | "product_id">) =>
+  device.device_type === "gateway"
+    ? device.product_id === "lorawan_v2_gateway"
+      ? "LoRa V2 网关"
+      : "THCPN 组网站网关"
+    : deviceTopologyRoleLabel(device.device_type);
 const numericAttributeValue = (
   attribute?: THCPNLatestAttributesResponse["attributes"][string],
 ) => {
@@ -550,7 +557,7 @@ function DeviceRows({
               </button>
               <div className="device-identity-meta">
                 <Badge>
-                  {deviceTopologyRoleLabel(device.topology_role || device.device_type)}
+                  {deviceModelLabel(device)}
                 </Badge>
                 {deviceType ? (
                   <span className="device-type-classification">
@@ -561,7 +568,7 @@ function DeviceRows({
                   </span>
                 ) : null}
                 <span>SN {device.serial_no}</span>
-                {gateway && <span>{device.child_count} 个节点</span>}
+                {gateway && <span>{device.product_id === "lorawan_v2_gateway" ? "节点按数据流管理" : `${device.child_count} 个节点`}</span>}
               </div>
               {tags.length ? <div className="device-row-tags">{tags.slice(0,2).map((tag)=><span key={tag}>{tag}</span>)}{tags.length>2?<span>+{tags.length-2}</span>:null}</div> : null}
             </div>
@@ -896,9 +903,7 @@ export function DeviceCenterDetailPage() {
           <h1>{device.name}</h1>
           <p>
             SN {device.serial_no} ·{" "}
-            {deviceTopologyRoleLabel(
-              device.topology_role || device.device_type,
-            )}
+            {deviceModelLabel(device)}
           </p>
         </div>
         <div className="device-detail-actions">
@@ -1039,10 +1044,13 @@ function DeviceOverview({
   workspaceId: string;
   onOpenData: () => void;
 }) {
+  const lorawan = device.product_id === "lorawan_v2_gateway";
   const children = useQuery({
     queryKey: workspaceQueryKey(workspaceId, "device", device.id, "children"),
     queryFn: () => api.devices.children(device.id),
-    enabled: deviceCategory(device) === "gateway",
+    enabled:
+      deviceCategory(device) === "gateway" &&
+      device.product_id !== "lorawan_v2_gateway",
   });
   const recentRange = useMemo(() => {
     const end = new Date();
@@ -1069,7 +1077,31 @@ function DeviceOverview({
         ...recentRange,
         limit: 240,
       }),
-    enabled: hasTelemetry,
+    enabled: hasTelemetry && !lorawan,
+  });
+  const lorawanStreams = useQuery({
+    queryKey: workspaceQueryKey(workspaceId, "device", device.id, "overview", "streams"),
+    queryFn: () => api.dataStreams.list(device.id),
+    enabled: lorawan,
+    staleTime: 60_000,
+  });
+  const lorawanTelemetry = useQueries({
+    queries: (lorawanStreams.data?.items ?? [])
+      .filter((item) => item.type === "telemetry" && item.status === "active" && /^lora_node_\d+_/.test(item.code))
+      .map((stream) => ({
+        queryKey: workspaceQueryKey(workspaceId, "device", device.id, "overview", "telemetry", stream.id, recentRange.startTime, recentRange.endTime),
+        queryFn: () => api.telemetry.dataStream(stream.id, {
+          ...recentRange,
+          limit: 240,
+          adaptive: true,
+          targetPoints: 240,
+        }),
+      })),
+  });
+  const metadata = useQuery({
+    queryKey: workspaceQueryKey(workspaceId, "device", device.id, "overview", "metadata"),
+    queryFn: () => api.devices.metadata(device.id),
+    enabled: device.product_id === "lorawan_v2_gateway",
   });
   const recentSeries = (telemetry.data?.series ?? [])
     .filter((series) => series.points.length);
@@ -1085,6 +1117,18 @@ function DeviceOverview({
       : [],
   });
   if (gateway) {
+    if (device.product_id === "lorawan_v2_gateway") {
+      return <LoRaWANV2Overview
+        device={device}
+        series={lorawanTelemetry.flatMap((query) => query.data?.series ?? [])}
+        loading={lorawanStreams.isLoading || lorawanTelemetry.some((query) => query.isLoading) || metadata.isLoading}
+        error={lorawanStreams.error ?? lorawanTelemetry.find((query) => query.error)?.error ?? metadata.error}
+        configuredNodeCount={Number(
+          metadata.data?.items.find((item) => item.key === "lorawan_v2_nodes_count")?.value ?? 0,
+        )}
+        onOpenData={onOpenData}
+      />;
+    }
     return <GatewayOverview
       device={device}
       children={childItems}
@@ -1154,6 +1198,69 @@ function DeviceOverview({
       )}
     </>
   );
+}
+
+function LoRaWANV2Overview({
+  device,
+  series,
+  loading,
+  error,
+  configuredNodeCount,
+  onOpenData,
+}: {
+  device: Device;
+  series: TelemetrySeries[];
+  loading: boolean;
+  error: unknown;
+  configuredNodeCount: number;
+  onOpenData: () => void;
+}) {
+  const nodes = new Map<number, { index: number; series: TelemetrySeries[] }>();
+  for (const item of series) {
+    const match = /^lora_node_(\d+)_/.exec(item.code);
+    if (!match) continue;
+    const index = Number(match[1]);
+    const node = nodes.get(index) ?? { index, series: [] };
+    node.series.push(item);
+    nodes.set(index, node);
+  }
+  const nodeItems = [...nodes.values()].sort((left, right) => left.index - right.index);
+  const nodeRows = nodeItems.map((node) => {
+    const metric = (name: string) =>
+      node.series.find((item) => item.code === `lora_node_${node.index}_${name}`);
+    const latest = node.series
+      .flatMap((item) => item.points)
+      .sort((left, right) => Date.parse(right.ts) - Date.parse(left.ts))[0];
+    return {
+      ...node,
+      latest,
+      rssi: metric("rssi")?.points.at(-1),
+      battery: metric("battery")?.points.at(-1),
+      pointCount: node.series.reduce((count, item) => count + item.points.length, 0),
+    };
+  });
+  const reportingNodes = nodeRows.filter((node) => node.latest).length;
+  const metricCount = series.filter((item) => /^lora_node_\d+_/.test(item.code)).length;
+  const pointCount = nodeRows.reduce((count, node) => count + node.pointCount, 0);
+  const latestReport = nodeRows
+    .map((node) => node.latest?.ts)
+    .filter((value): value is string => Boolean(value))
+    .sort((left, right) => Date.parse(right) - Date.parse(left))[0];
+  const totalNodes = Math.max(configuredNodeCount, nodeItems.length);
+  return <div className="gateway-overview lorawan-v2-overview">
+    <section className="gateway-overview-hero">
+      <div className="gateway-overview-hero-main"><div className="gateway-overview-icon"><RadioTower size={22}/></div><div><span>LORAWAN V2 数据概览</span><h2>{device.name}</h2><p>节点不创建独立设备，状态来自最近 24 小时实际上报数据</p></div></div>
+      <div className="gateway-overview-hero-meta"><Badge tone={reportingNodes ? "success" : "warning"}>{reportingNodes ? "最近有数据" : "暂无近期数据"}</Badge><span className="mono">SN {device.serial_no}</span></div>
+    </section>
+    {loading ? <Panel><StateView type="loading" title="正在读取 LoRa V2 概览" description="正在汇总节点最近 24 小时的实际数据。" /></Panel> : error ? <Panel><StateView type="error" title="LoRa V2 概览加载失败" description={formatApiError(error).message} requestId={formatApiError(error).requestId} /></Panel> : <>
+      <div className="gateway-overview-kpis"><div><span>配置节点</span><strong>{totalNodes}</strong><small>个节点</small></div><div><span>发现节点</span><strong>{nodeItems.length}</strong><small>有可查询指标</small></div><div><span>最近有数据</span><strong>{reportingNodes}</strong><small>最近 24 小时</small></div><div><span>数据点</span><strong>{pointCount.toLocaleString()}</strong><small>{metricCount} 条节点指标</small></div></div>
+      <div className="gateway-overview-grid section-gap">
+        <Panel className="gateway-health-panel"><div className="panel-header"><div><h2 className="panel-title">节点数据覆盖</h2><div className="panel-kicker">按配置节点与实际发现节点统计</div></div><CircleCheck size={18}/></div><div className="gateway-health-content"><div className="gateway-health-score"><strong>{totalNodes ? Math.round((reportingNodes / totalNodes) * 100) : 0}<small>%</small></strong><span>24 小时上报覆盖率</span><div className="gateway-health-bar"><i style={{width:`${totalNodes ? Math.round((reportingNodes / totalNodes) * 100) : 0}%`}}/></div></div><div className="gateway-health-breakdown"><div><span><i className="is-online"/>配置节点</span><strong>{totalNodes}</strong></div><div><span><i className="is-reporting"/>发现指标</span><strong>{metricCount}</strong></div><div><span><i className="is-attention"/>未发现数据</span><strong>{Math.max(0, totalNodes - reportingNodes)}</strong></div></div></div></Panel>
+        <Panel className="gateway-pulse-panel"><div className="panel-header"><div><h2 className="panel-title">最近数据接入</h2><div className="panel-kicker">来自 LoRa V2 节点数据接口</div></div><DatabaseZap size={18}/></div><div className="gateway-pulse-stat"><div><strong>{reportingNodes}<small> / {totalNodes}</small></strong><span>有上报节点</span></div><p>最近上报：{latestReport ? overviewTime(latestReport) : "—"}</p><p>最近 24 小时共读取 {pointCount.toLocaleString()} 个有效数据点。</p><Button variant="secondary" onClick={onOpenData}>查看节点数据 <MoveRight size={14}/></Button></div></Panel>
+      </div>
+      <Panel className="gateway-nodes-panel"><div className="panel-header"><div><h2 className="panel-title">节点实时状态</h2><div className="panel-kicker">信号、电量和时间均取自各节点最后一条实际数据</div></div><Badge tone="neutral">{nodeRows.length} 个已发现节点</Badge></div>{nodeRows.length ? <div className="gateway-node-table"><div className="gateway-node-table-head"><span>节点</span><span>数据状态</span><span>信号 / 电量</span><span>最近上报</span><span></span></div>{nodeRows.map((node) => <button type="button" className="gateway-node-row lorawan-v2-node-row" key={node.index} onClick={onOpenData}><div className="gateway-node-name"><span className={`gateway-node-dot ${node.latest ? "is-online" : "is-offline"}`}/><div><strong>节点 {node.index}</strong><small>{node.series.length} 个数据指标 · {node.pointCount.toLocaleString()} 点</small></div></div><Badge tone={node.latest ? "success" : "warning"}>{node.latest ? "有数据" : "无数据"}</Badge><div className="gateway-node-vitals"><span>{node.rssi ? `${node.rssi.value} dBm` : "信号 —"}</span><span>{node.battery ? `${node.battery.value}${node.series.find((item) => item.code.endsWith("_battery"))?.unit ? ` ${node.series.find((item) => item.code.endsWith("_battery"))?.unit}` : ""}` : "电量 —"}</span></div><time>{node.latest ? overviewTime(node.latest.ts) : "—"}</time><MoveRight size={15}/></button>)}</div> : <StateView type="empty" title="暂无节点数据" description="当前网关最近 24 小时没有发现可展示的节点数据。" />}</Panel>
+    </>}
+  </div>;
 }
 
 function GatewayOverview({

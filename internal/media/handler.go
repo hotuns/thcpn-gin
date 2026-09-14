@@ -43,6 +43,26 @@ func (h *Handler) ListDeviceImages(c *gin.Context) {
 	h.listDevice(c, "image")
 }
 
+func (h *Handler) AdminListDeviceImages(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	input, ok := parseListQuery(c)
+	if !ok {
+		return
+	}
+	input.DeviceID = &deviceID
+	input.MediaType = "image"
+	input.AllowUnassigned = true
+	result, err := h.service.List(c.Request.Context(), input)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
 func (h *Handler) ListDeviceVideos(c *gin.Context) {
 	h.listDevice(c, "video")
 }
