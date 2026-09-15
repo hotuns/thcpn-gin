@@ -123,7 +123,6 @@ func createTHCPNSourceDevice(ctx context.Context, source sqlc.DataSource, input 
 	if err != nil {
 		return 0, "", err
 	}
-	defer db.Close()
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, "", apperr.Wrap(apperr.KindDataSource, "begin thcpn device creation", err)
@@ -169,7 +168,6 @@ func createCarbonSourceDevice(ctx context.Context, source sqlc.DataSource, input
 	if err != nil {
 		return 0, "", err
 	}
-	defer db.Close()
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, "", apperr.Wrap(apperr.KindDataSource, "begin carbon device creation", err)
@@ -211,7 +209,10 @@ func (s *Service) syncCreatedTHCPNDevice(ctx context.Context, source sqlc.DataSo
 	if err != nil {
 		return THCPNStandardStationSyncResult{}, err
 	}
-	defer db.Close()
+	input, err = prepareTHCPNSync(ctx, db, input)
+	if err != nil {
+		return THCPNStandardStationSyncResult{}, err
+	}
 	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return THCPNStandardStationSyncResult{}, apperr.Wrap(apperr.KindInternal, "begin created thcpn device sync", err)
@@ -222,7 +223,7 @@ func (s *Service) syncCreatedTHCPNDevice(ctx context.Context, source sqlc.DataSo
 			_ = tx.Rollback(ctx)
 		}
 	}()
-	result, err := s.syncTHCPNDevice(ctx, s.queries.WithTx(tx), source, db, input)
+	result, err := s.syncTHCPNDevice(ctx, s.queries.WithTx(tx), source, input)
 	if err != nil {
 		return THCPNStandardStationSyncResult{}, err
 	}

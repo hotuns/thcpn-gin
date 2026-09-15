@@ -59,6 +59,8 @@ import { DeviceDataPage } from "./pages";
 import { TelemetryCharts } from "./telemetry-charts";
 import { DeviceProfileTab } from "./device-profile";
 import { DeviceSharingTab } from "./device-sharing";
+import { GatewayOverview } from "./gateway-overview";
+import { CarbonDeviceOverview } from "./carbon-device-page";
 import { CarbonDevicePage } from "./carbon-device-page";
 import { SamplingProfilePanel } from "./sampling-profile";
 import { DeviceCombobox } from "./device-combobox";
@@ -100,9 +102,9 @@ export const deviceCategory = (
 export const isTopLevelDevice = (
   device: Pick<Device, "topology_role" | "device_type">,
 ) => deviceCategory(device) !== "gateway_node";
-const deviceModelLabel = (device: Pick<Device, "device_type" | "product_id">) =>
+const deviceModelLabel = (device: Pick<Device, "device_type" | "source_family">) =>
   device.device_type === "gateway"
-    ? device.product_id === "lorawan_v2_gateway"
+    ? device.source_family === "lorawan_v2"
       ? "LoRa V2 网关"
       : "THCPN 组网站网关"
     : deviceTopologyRoleLabel(device.device_type);
@@ -568,7 +570,7 @@ function DeviceRows({
                   </span>
                 ) : null}
                 <span>SN {device.serial_no}</span>
-                {gateway && <span>{device.product_id === "lorawan_v2_gateway" ? "节点按数据流管理" : `${device.child_count} 个节点`}</span>}
+                {gateway && <span>{`${device.child_count} 个节点`}</span>}
               </div>
               {tags.length ? <div className="device-row-tags">{tags.slice(0,2).map((tag)=><span key={tag}>{tag}</span>)}{tags.length>2?<span>+{tags.length-2}</span>:null}</div> : null}
             </div>
@@ -718,15 +720,13 @@ export const deviceDetailTab = (
   const allowed: DeviceTab[] = camera
     ? ["video", "profile", "activity"]
     : carbon
-      ? ["data", "profile", "config", "sharing", "activity"]
+      ? ["overview", "data", "profile", "config", "sharing", "activity"]
       : ["overview", "data", "profile", "config", "sharing", "activity"];
   return requested && allowed.includes(requested as DeviceTab)
     ? (requested as DeviceTab)
     : camera
       ? "video"
-      : carbon
-        ? "data"
-        : "overview";
+      : "overview";
 };
 export const legacyDeviceTarget = (device: Device) =>
   `/devices/${encodeURIComponent(device.id)}?tab=${isCameraDevice(device) ? "video" : "data"}`;
@@ -835,7 +835,7 @@ export function DeviceCenterDetailPage() {
     return (
       <Navigate
         replace
-        to={`/devices/${encodeURIComponent(device.id)}?tab=${encodeURIComponent(tab)}`}
+        to={`/devices/${encodeURIComponent(device.id)}?${new URLSearchParams({ ...Object.fromEntries(params), tab })}`}
       />
     );
   const workspaceDeviceItems = workspaceDevices.data?.items ?? [];
@@ -888,7 +888,7 @@ export function DeviceCenterDetailPage() {
           { id: "activity", label: "记录" },
         ]
       : [
-          ...(!carbonDevice ? [{ id: "overview" as DeviceTab, label: "概览" }] : []),
+          { id: "overview" as DeviceTab, label: "概览" },
           { id: "data", label: deviceCategory(device) === "gateway" ? "节点数据" : "数据" },
           { id: "profile", label: "资料" },
           { id: "config", label: "配置" },
@@ -931,7 +931,7 @@ export function DeviceCenterDetailPage() {
         <span>{deviceStatusLabel(device.status)}</span>
         <span className="mono">ID {device.id}</span>
       </div>
-      <DeviceDetailTabs tabs={tabs} activeTab={tab} onChange={(nextTab) => setParams({ tab: nextTab })} />
+      <DeviceDetailTabs tabs={tabs} activeTab={tab} onChange={(nextTab) => setParams((current) => { const next = new URLSearchParams(current); next.set("tab", nextTab); return next; })} />
       {feedback && (
         <div className="command-note device-feedback">{feedback}</div>
       )}
@@ -942,7 +942,7 @@ export function DeviceCenterDetailPage() {
         <DeviceOverview
           device={device}
           workspaceId={detailWorkspaceId}
-          onOpenData={() => setParams({ tab: "data" })}
+          onOpenData={() => setParams((current) => { const next = new URLSearchParams(current); next.set("tab", "data"); return next; })}
         />
       ) : tab === "data" && deviceCategory(device) === "gateway" ? (
         <GatewayNodeData gateway={device} workspaceId={detailWorkspaceId} />
@@ -1013,13 +1013,14 @@ function DeviceProfileOperational({ device, workspaceId }: { device: Device; wor
   const latestAttributes = useQuery({
     queryKey: workspaceQueryKey(workspaceId, "device", device.id, "latest-attributes"),
     queryFn: () => api.devices.latestAttributes(device.id),
-    enabled: !carbonDevice,
+    enabled: device.source_family === "thcpn",
   });
   const carbonOverview = useQuery({
     queryKey: workspaceQueryKey(workspaceId, "device", device.id, "carbon-overview"),
     queryFn: () => api.carbon.overview(device.id),
     enabled: carbonDevice,
   });
+  if (device.source_family === "lorawan_v2") return <Panel><div className="panel-header"><h3>设备接入</h3><Badge tone={device.source_status === "active" ? "success" : "warning"}>{device.source_status === "active" ? "已启用" : "已停用"}</Badge></div><p>LoRaWAN V2 组网站 · {device.child_count} 个节点</p></Panel>;
   return <div className="device-profile-operational">
     <section className="device-profile-runtime-summary">
       <div className="device-profile-section-heading"><div><h3><Gauge size={16} />运行概况</h3><span>能力与设备最新状态</span></div><span title={`最近更新 ${overviewTime(device.updated_at)}`}><Clock3 size={14} aria-hidden="true" />{overviewTime(device.updated_at)}</span></div>
@@ -1035,7 +1036,13 @@ function DeviceProfileOperational({ device, workspaceId }: { device: Device; wor
   </div>;
 }
 
-function DeviceOverview({
+function DeviceOverview(props: { device: Device; workspaceId: string; onOpenData: () => void }) {
+  if (props.device.device_type === "gateway") return <GatewayOverview device={props.device} workspaceId={props.workspaceId}/>;
+  if (props.device.device_type === "carbon_sink") return <CarbonDeviceOverview device={props.device}/>;
+  return <StandardDeviceOverview {...props}/>;
+}
+
+function StandardDeviceOverview({
   device,
   workspaceId,
   onOpenData,
@@ -1044,24 +1051,16 @@ function DeviceOverview({
   workspaceId: string;
   onOpenData: () => void;
 }) {
-  const lorawan = device.product_id === "lorawan_v2_gateway";
-  const children = useQuery({
-    queryKey: workspaceQueryKey(workspaceId, "device", device.id, "children"),
-    queryFn: () => api.devices.children(device.id),
-    enabled:
-      deviceCategory(device) === "gateway" &&
-      device.product_id !== "lorawan_v2_gateway",
-  });
   const recentRange = useMemo(() => {
     const end = new Date();
-    const start = new Date(end.getTime() - 24 * 60 * 60 * 1000);
+    const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
     return { startTime: start.toISOString(), endTime: end.toISOString() };
   }, [device.id]);
   const camera = isCameraDevice(device);
   const hasTelemetry =
-    !camera && device.capabilities.some((item) => item.includes("telemetry"));
+    !camera && device.features?.includes("telemetry");
   const hasImages =
-    !camera && device.capabilities.some((item) => item.includes("image"));
+    !camera && device.features?.includes("media");
   const telemetry = useQuery({
     queryKey: workspaceQueryKey(
       workspaceId,
@@ -1077,65 +1076,10 @@ function DeviceOverview({
         ...recentRange,
         limit: 240,
       }),
-    enabled: hasTelemetry && !lorawan,
-  });
-  const lorawanStreams = useQuery({
-    queryKey: workspaceQueryKey(workspaceId, "device", device.id, "overview", "streams"),
-    queryFn: () => api.dataStreams.list(device.id),
-    enabled: lorawan,
-    staleTime: 60_000,
-  });
-  const lorawanTelemetry = useQueries({
-    queries: (lorawanStreams.data?.items ?? [])
-      .filter((item) => item.type === "telemetry" && item.status === "active" && /^lora_node_\d+_/.test(item.code))
-      .map((stream) => ({
-        queryKey: workspaceQueryKey(workspaceId, "device", device.id, "overview", "telemetry", stream.id, recentRange.startTime, recentRange.endTime),
-        queryFn: () => api.telemetry.dataStream(stream.id, {
-          ...recentRange,
-          limit: 240,
-          adaptive: true,
-          targetPoints: 240,
-        }),
-      })),
-  });
-  const metadata = useQuery({
-    queryKey: workspaceQueryKey(workspaceId, "device", device.id, "overview", "metadata"),
-    queryFn: () => api.devices.metadata(device.id),
-    enabled: device.product_id === "lorawan_v2_gateway",
+    enabled: hasTelemetry,
   });
   const recentSeries = (telemetry.data?.series ?? [])
     .filter((series) => series.points.length);
-  const gateway = deviceCategory(device) === "gateway";
-  const childItems = children.data?.items ?? [];
-  const childRuntimeQueries = useQueries({
-    queries: gateway
-      ? childItems.slice(0, 8).map(({ device: child }) => ({
-          queryKey: workspaceQueryKey(workspaceId, "device", child.id, "latest-attributes", "gateway-overview"),
-          queryFn: () => api.devices.latestAttributes(child.id),
-          staleTime: 30_000,
-        }))
-      : [],
-  });
-  if (gateway) {
-    if (device.product_id === "lorawan_v2_gateway") {
-      return <LoRaWANV2Overview
-        device={device}
-        series={lorawanTelemetry.flatMap((query) => query.data?.series ?? [])}
-        loading={lorawanStreams.isLoading || lorawanTelemetry.some((query) => query.isLoading) || metadata.isLoading}
-        error={lorawanStreams.error ?? lorawanTelemetry.find((query) => query.error)?.error ?? metadata.error}
-        configuredNodeCount={Number(
-          metadata.data?.items.find((item) => item.key === "lorawan_v2_nodes_count")?.value ?? 0,
-        )}
-        onOpenData={onOpenData}
-      />;
-    }
-    return <GatewayOverview
-      device={device}
-      children={childItems}
-      childRuntimeQueries={childRuntimeQueries}
-      onOpenData={onOpenData}
-    />;
-  }
   return (
     <>
       {(hasTelemetry || hasImages) && (
@@ -1147,7 +1091,7 @@ function DeviceOverview({
               <div className="panel-header compact-panel-header">
                 <div>
                   <h2 className="panel-title">最近数据</h2>
-                  <div className="panel-kicker">最近 24 小时 · 全部指标</div>
+                  <div className="panel-kicker">最近七天 · 全部指标</div>
                 </div>
                 <Button variant="secondary" onClick={onOpenData}>
                   查看全部
@@ -1178,7 +1122,7 @@ function DeviceOverview({
                 <StateView
                   type="empty"
                   title="最近没有设备数据"
-                  description="最近 24 小时内没有可显示的数值指标。"
+                  description="最近七天内没有可显示的数值指标。"
                 />
               )}
             </Panel>
@@ -1189,7 +1133,7 @@ function DeviceOverview({
               device={device}
               endTime={recentRange.endTime}
               startTime={new Date(
-                Date.parse(recentRange.endTime) - 7 * 24 * 60 * 60 * 1000,
+                Date.parse(recentRange.endTime) - 7 * 7 * 24 * 60 * 60 * 1000,
               ).toISOString()}
               onOpenData={onOpenData}
             />
@@ -1198,109 +1142,6 @@ function DeviceOverview({
       )}
     </>
   );
-}
-
-function LoRaWANV2Overview({
-  device,
-  series,
-  loading,
-  error,
-  configuredNodeCount,
-  onOpenData,
-}: {
-  device: Device;
-  series: TelemetrySeries[];
-  loading: boolean;
-  error: unknown;
-  configuredNodeCount: number;
-  onOpenData: () => void;
-}) {
-  const nodes = new Map<number, { index: number; series: TelemetrySeries[] }>();
-  for (const item of series) {
-    const match = /^lora_node_(\d+)_/.exec(item.code);
-    if (!match) continue;
-    const index = Number(match[1]);
-    const node = nodes.get(index) ?? { index, series: [] };
-    node.series.push(item);
-    nodes.set(index, node);
-  }
-  const nodeItems = [...nodes.values()].sort((left, right) => left.index - right.index);
-  const nodeRows = nodeItems.map((node) => {
-    const metric = (name: string) =>
-      node.series.find((item) => item.code === `lora_node_${node.index}_${name}`);
-    const latest = node.series
-      .flatMap((item) => item.points)
-      .sort((left, right) => Date.parse(right.ts) - Date.parse(left.ts))[0];
-    return {
-      ...node,
-      latest,
-      rssi: metric("rssi")?.points.at(-1),
-      battery: metric("battery")?.points.at(-1),
-      pointCount: node.series.reduce((count, item) => count + item.points.length, 0),
-    };
-  });
-  const reportingNodes = nodeRows.filter((node) => node.latest).length;
-  const metricCount = series.filter((item) => /^lora_node_\d+_/.test(item.code)).length;
-  const pointCount = nodeRows.reduce((count, node) => count + node.pointCount, 0);
-  const latestReport = nodeRows
-    .map((node) => node.latest?.ts)
-    .filter((value): value is string => Boolean(value))
-    .sort((left, right) => Date.parse(right) - Date.parse(left))[0];
-  const totalNodes = Math.max(configuredNodeCount, nodeItems.length);
-  return <div className="gateway-overview lorawan-v2-overview">
-    <section className="gateway-overview-hero">
-      <div className="gateway-overview-hero-main"><div className="gateway-overview-icon"><RadioTower size={22}/></div><div><span>LORAWAN V2 数据概览</span><h2>{device.name}</h2><p>节点不创建独立设备，状态来自最近 24 小时实际上报数据</p></div></div>
-      <div className="gateway-overview-hero-meta"><Badge tone={reportingNodes ? "success" : "warning"}>{reportingNodes ? "最近有数据" : "暂无近期数据"}</Badge><span className="mono">SN {device.serial_no}</span></div>
-    </section>
-    {loading ? <Panel><StateView type="loading" title="正在读取 LoRa V2 概览" description="正在汇总节点最近 24 小时的实际数据。" /></Panel> : error ? <Panel><StateView type="error" title="LoRa V2 概览加载失败" description={formatApiError(error).message} requestId={formatApiError(error).requestId} /></Panel> : <>
-      <div className="gateway-overview-kpis"><div><span>配置节点</span><strong>{totalNodes}</strong><small>个节点</small></div><div><span>发现节点</span><strong>{nodeItems.length}</strong><small>有可查询指标</small></div><div><span>最近有数据</span><strong>{reportingNodes}</strong><small>最近 24 小时</small></div><div><span>数据点</span><strong>{pointCount.toLocaleString()}</strong><small>{metricCount} 条节点指标</small></div></div>
-      <div className="gateway-overview-grid section-gap">
-        <Panel className="gateway-health-panel"><div className="panel-header"><div><h2 className="panel-title">节点数据覆盖</h2><div className="panel-kicker">按配置节点与实际发现节点统计</div></div><CircleCheck size={18}/></div><div className="gateway-health-content"><div className="gateway-health-score"><strong>{totalNodes ? Math.round((reportingNodes / totalNodes) * 100) : 0}<small>%</small></strong><span>24 小时上报覆盖率</span><div className="gateway-health-bar"><i style={{width:`${totalNodes ? Math.round((reportingNodes / totalNodes) * 100) : 0}%`}}/></div></div><div className="gateway-health-breakdown"><div><span><i className="is-online"/>配置节点</span><strong>{totalNodes}</strong></div><div><span><i className="is-reporting"/>发现指标</span><strong>{metricCount}</strong></div><div><span><i className="is-attention"/>未发现数据</span><strong>{Math.max(0, totalNodes - reportingNodes)}</strong></div></div></div></Panel>
-        <Panel className="gateway-pulse-panel"><div className="panel-header"><div><h2 className="panel-title">最近数据接入</h2><div className="panel-kicker">来自 LoRa V2 节点数据接口</div></div><DatabaseZap size={18}/></div><div className="gateway-pulse-stat"><div><strong>{reportingNodes}<small> / {totalNodes}</small></strong><span>有上报节点</span></div><p>最近上报：{latestReport ? overviewTime(latestReport) : "—"}</p><p>最近 24 小时共读取 {pointCount.toLocaleString()} 个有效数据点。</p><Button variant="secondary" onClick={onOpenData}>查看节点数据 <MoveRight size={14}/></Button></div></Panel>
-      </div>
-      <Panel className="gateway-nodes-panel"><div className="panel-header"><div><h2 className="panel-title">节点实时状态</h2><div className="panel-kicker">信号、电量和时间均取自各节点最后一条实际数据</div></div><Badge tone="neutral">{nodeRows.length} 个已发现节点</Badge></div>{nodeRows.length ? <div className="gateway-node-table"><div className="gateway-node-table-head"><span>节点</span><span>数据状态</span><span>信号 / 电量</span><span>最近上报</span><span></span></div>{nodeRows.map((node) => <button type="button" className="gateway-node-row lorawan-v2-node-row" key={node.index} onClick={onOpenData}><div className="gateway-node-name"><span className={`gateway-node-dot ${node.latest ? "is-online" : "is-offline"}`}/><div><strong>节点 {node.index}</strong><small>{node.series.length} 个数据指标 · {node.pointCount.toLocaleString()} 点</small></div></div><Badge tone={node.latest ? "success" : "warning"}>{node.latest ? "有数据" : "无数据"}</Badge><div className="gateway-node-vitals"><span>{node.rssi ? `${node.rssi.value} dBm` : "信号 —"}</span><span>{node.battery ? `${node.battery.value}${node.series.find((item) => item.code.endsWith("_battery"))?.unit ? ` ${node.series.find((item) => item.code.endsWith("_battery"))?.unit}` : ""}` : "电量 —"}</span></div><time>{node.latest ? overviewTime(node.latest.ts) : "—"}</time><MoveRight size={15}/></button>)}</div> : <StateView type="empty" title="暂无节点数据" description="当前网关最近 24 小时没有发现可展示的节点数据。" />}</Panel>
-    </>}
-  </div>;
-}
-
-function GatewayOverview({
-  device,
-  children,
-  childRuntimeQueries,
-  onOpenData,
-}: {
-  device: Device;
-  children: Array<{ device: Device }>;
-  childRuntimeQueries: Array<ReturnType<typeof useQuery<THCPNLatestAttributesResponse>>>;
-  onOpenData: () => void;
-}) {
-  const onlineCount = children.filter(({ device: child }) => child.lifecycle_status === "online" || child.status === "active").length;
-  const attentionCount = children.length - onlineCount;
-  const reportingCount = childRuntimeQueries.filter((query) => query.data?.source_device?.updated_at).length;
-  const healthPercent = children.length ? Math.round((onlineCount / children.length) * 100) : 0;
-  const reportingPercent = children.length ? Math.round((reportingCount / Math.min(children.length, 8)) * 100) : 0;
-  const visibleChildren = children.slice(0, 8);
-  return <div className="gateway-overview">
-    <section className="gateway-overview-hero">
-      <div className="gateway-overview-hero-main"><div className="gateway-overview-icon"><RadioTower size={22}/></div><div><span>组网站数据概览</span><h2>{device.name}</h2><p>网关与下挂节点的连接、数据接入和最近活动</p></div></div>
-      <div className="gateway-overview-hero-meta"><Badge tone={device.lifecycle_status === "online" ? "success" : "warning"}>{device.lifecycle_status === "online" ? "网关在线" : deviceLifecycleLabel(device.lifecycle_status)}</Badge><span className="mono">SN {device.serial_no}</span></div>
-    </section>
-    <div className="gateway-overview-kpis"><div><span>下挂节点</span><strong>{children.length}</strong><small>个节点</small></div><div><span>连接正常</span><strong>{onlineCount}</strong><small>/ {children.length || 0}</small></div><div><span>最近有数据</span><strong>{reportingCount}</strong><small>个节点</small></div><div className={attentionCount ? "is-warning" : "is-good"}><span>需要关注</span><strong>{attentionCount}</strong><small>{attentionCount ? "离线或无响应" : "全部正常"}</small></div></div>
-    <div className="gateway-overview-grid section-gap">
-      <Panel className="gateway-health-panel"><div className="panel-header"><div><h2 className="panel-title">节点健康度</h2><div className="panel-kicker">根据设备状态和最近源库响应判断</div></div><CircleCheck size={18}/></div><div className="gateway-health-content"><div className="gateway-health-score"><strong>{healthPercent}<small>%</small></strong><span>连接健康度</span><div className="gateway-health-bar"><i style={{width:`${healthPercent}%`}}/></div></div><div className="gateway-health-breakdown"><div><span><i className="is-online"/>在线</span><strong>{onlineCount}</strong></div><div><span><i className="is-attention"/>需关注</span><strong>{attentionCount}</strong></div><div><span><i className="is-reporting"/>有数据响应</span><strong>{reportingCount}</strong></div></div></div></Panel>
-      <Panel className="gateway-pulse-panel"><div className="panel-header"><div><h2 className="panel-title">数据接入</h2><div className="panel-kicker">最近一次同步状态</div></div><DatabaseZap size={18}/></div><div className="gateway-pulse-stat"><div><strong>{reportingPercent}<small>%</small></strong><span>节点响应率</span></div><div className="gateway-pulse-bar"><i style={{width:`${reportingPercent}%`}}/></div><p>{reportingCount ? `已读取 ${reportingCount} 个节点的源设备状态` : "正在等待节点状态"}</p><Button variant="secondary" onClick={onOpenData}>查看组网站数据 <MoveRight size={14}/></Button></div></Panel>
-    </div>
-    <Panel className="gateway-nodes-panel"><div className="panel-header"><div><h2 className="panel-title">节点数据状态</h2><div className="panel-kicker">展示最近 8 个节点，可进入节点按时间查看完整数据</div></div><Badge tone="neutral">{children.length} 个节点</Badge></div>{children.length ? <div className="gateway-node-table"><div className="gateway-node-table-head"><span>节点</span><span>连接</span><span>信号 / 电量</span><span>最近响应</span><span></span></div>{visibleChildren.map(({device: child}, index) => { const runtime = childRuntimeQueries[index]; const attrs = runtime?.data?.attributes; const signal = inferSignalReading(firstNumericAttribute(attrs, ["rssi", "signal", "signal_strength"])); const battery = inferBatteryReading(firstNumericAttribute(attrs, ["battery", "bat", "voltage"])); const sourceUpdatedAt = runtime?.data?.source_device?.updated_at ?? child.updated_at; const isOnline = child.lifecycle_status === "online" || child.status === "active"; return <Link className="gateway-node-row" key={child.id} to={`/devices/${child.id}?tab=data`}><div className="gateway-node-name"><span className={`gateway-node-dot ${isOnline ? "is-online" : "is-offline"}`}/><div><strong>{child.name}</strong><small className="mono">SN {child.serial_no}</small></div></div><Badge tone={isOnline ? "success" : "warning"}>{isOnline ? "在线" : "离线"}</Badge><div className="gateway-node-vitals"><span>{signal.valueLabel}</span><span>{battery.valueLabel}</span></div><time>{overviewTime(sourceUpdatedAt)}</time><MoveRight size={15}/></Link>; })}</div> : <StateView type="empty" title="暂无下挂节点" description="当前组网站还没有可见的网关节点。"/>}{children.length > visibleChildren.length && <div className="gateway-node-table-foot"><span>还有 {children.length - visibleChildren.length} 个节点未展开</span><Button variant="secondary" onClick={onOpenData}>查看全部数据</Button></div>}</Panel>
-    {attentionCount > 0 && <div className="gateway-overview-note"><CircleAlert size={16}/><span>{attentionCount} 个节点当前未在线，建议检查 LoRa 链路或设备供电。</span></div>}
-  </div>;
-}
-
-function firstNumericAttribute(attributes: THCPNLatestAttributesResponse["attributes"] | undefined, keys: string[]) {
-  for (const key of keys) {
-    const value = numericAttributeValue(attributes?.[key]);
-    if (value !== null) return value;
-  }
-  return null;
 }
 
 function DeviceActivity({
@@ -1457,15 +1298,15 @@ function DeviceConfig({
   ) => Promise<boolean>;
 }) {
   const streams = useQuery({ queryKey: workspaceQueryKey(currentWorkspaceId, "device", device.id, "streams", "config"), queryFn: () => api.dataStreams.list(device.id) });
-  const profile = useQuery({ queryKey: workspaceQueryKey(currentWorkspaceId, "device", device.id, "profile", "config-access"), queryFn: () => api.devices.profile(device.id) });
+  const context = useQuery({ queryKey: workspaceQueryKey(currentWorkspaceId, "device", device.id, "context"), queryFn: () => api.devices.context(device.id) });
   return (
     <div className="device-config-workspace">
       <div className="device-config-heading"><div><h2>数据配置</h2><p>管理设备业务参数、计算公式与采样方式</p></div><Badge tone="neutral">{streams.data?.items.length ?? 0} 个数据流</Badge></div>
       <div className="device-config-data-grid">
         <ComputedStreamsPanel workspaceId={currentWorkspaceId} deviceId={device.id} streams={streams.data?.items ?? []} />
-        <DeviceMetadataPanel workspaceId={currentWorkspaceId} deviceId={device.id} canConfigure={Boolean(profile.data?.can_configure)} />
+        <DeviceMetadataPanel workspaceId={currentWorkspaceId} deviceId={device.id} canConfigure={Boolean(context.data?.actions.configure)} />
       </div>
-      <SamplingProfilePanel deviceId={device.id} workspaceId={currentWorkspaceId} carbon={device.device_type === "carbon_sink"} />
+      {device.features?.includes("sampling") && <SamplingProfilePanel deviceId={device.id} workspaceId={currentWorkspaceId} carbon={device.device_type === "carbon_sink"} />}
       {systemAdmin && (
         <SystemDeviceConfig device={device} workspaces={workspaces} run={run} />
       )}

@@ -17,7 +17,9 @@ import (
 	"thcpn-gin/internal/billing"
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/db/sqlc"
+	"thcpn-gin/internal/device"
 	"thcpn-gin/internal/objectstore"
+	"thcpn-gin/internal/permission"
 )
 
 const (
@@ -28,6 +30,7 @@ const (
 )
 
 type Service struct {
+	devices *device.Service
 	queries *sqlc.Queries
 	signer  *objectstore.Signer
 	cfg     config.ExportConfig
@@ -91,6 +94,7 @@ func NewService(db *pgxpool.Pool, signer *objectstore.Signer, cfg config.ExportC
 		cfg.FileTTLHours = 72
 	}
 	return &Service{
+		devices: device.NewService(db),
 		queries: sqlc.New(db),
 		signer:  signer,
 		cfg:     cfg,
@@ -438,15 +442,54 @@ func validateCarbonStationConfig(raw []byte) error {
 }
 
 func (s *Service) validateDeviceBatch(ctx context.Context, requestedBy, workspaceID, anchorID uuid.UUID, exportType string, raw []byte) error {
-	var config struct {
-		DeviceIDs []string `json:"device_ids"`
-	}
+	var config batchExportConfig
 	if err := json.Unmarshal(raw, &config); err != nil || len(config.DeviceIDs) == 0 {
 		return apperr.New(apperr.KindInvalidArgument, "device_ids are required for batch export")
 	}
 	wantType := "standalone"
 	if exportType == "group_site_zip" {
 		wantType = "gateway_node"
+		gatewayID, err := uuid.Parse(config.GatewayID)
+		if err != nil {
+			return apperr.New(apperr.KindInvalidArgument, "valid gateway_id is required")
+		}
+		nodes, err := s.devices.ListGatewayNodes(ctx, gatewayID)
+		if err != nil {
+			return err
+		}
+		allowed := map[string]bool{}
+		for _, node := range nodes {
+			allowed[node.Key] = true
+		}
+		if len(config.NodeTargets) == 0 {
+			return apperr.New(apperr.KindInvalidArgument, "node_targets are required")
+		}
+		selected := map[string]bool{}
+		deviceIDs := map[string]bool{}
+		for _, target := range config.NodeTargets {
+			key := target.Key()
+			if !allowed[key] || selected[key] {
+				return apperr.New(apperr.KindInvalidArgument, "invalid or duplicate node target for gateway")
+			}
+			selected[key] = true
+			if target.Kind == "device" {
+				deviceIDs[target.DeviceID.String()] = true
+			} else {
+				deviceIDs[gatewayID.String()] = true
+				wantType = "gateway"
+			}
+		}
+		if len(deviceIDs) != len(config.DeviceIDs) {
+			return apperr.New(apperr.KindInvalidArgument, "device_ids must match node targets")
+		}
+		for _, id := range config.DeviceIDs {
+			if !deviceIDs[id] {
+				return apperr.New(apperr.KindInvalidArgument, "device_ids must match node targets")
+			}
+		}
+		if wantType == "gateway" && config.IncludeImages {
+			return apperr.New(apperr.KindInvalidArgument, "indexed nodes do not support image export")
+		}
 	}
 	seen := map[uuid.UUID]struct{}{}
 	demoBatch := false
@@ -459,6 +502,19 @@ func (s *Service) validateDeviceBatch(ctx context.Context, requestedBy, workspac
 			return apperr.New(apperr.KindInvalidArgument, "device_ids must not contain duplicates")
 		}
 		seen[id] = struct{}{}
+		actions := []string{ActionTelemetryExport}
+		if config.IncludeImages {
+			actions = append(actions, ActionMediaDownload)
+		}
+		for _, action := range actions {
+			decision, err := permission.NewChecker(s.queries).Can(ctx, permission.Actor{UserID: requestedBy}, action, permission.ResourceRef{Type: "device", ID: id})
+			if err != nil {
+				return err
+			}
+			if !decision.Allowed {
+				return apperr.New(apperr.KindPermissionDenied, "permission denied for selected export device")
+			}
+		}
 		device, err := s.queries.GetDevice(ctx, id)
 		if err != nil {
 			return mapNotFoundOrInternal(err, "batch device not found")

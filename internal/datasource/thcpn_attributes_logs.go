@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/db/sqlc"
 )
 
 const (
@@ -76,7 +77,6 @@ func (s *Service) LatestTHCPNDeviceAttributes(ctx context.Context, deviceID uuid
 	if err != nil {
 		return THCPNLatestAttributesResponse{}, err
 	}
-	defer db.Close()
 	sourceDevice, err := readTHCPNExternalDevice(ctx, db, ref.ExternalDeviceID)
 	if err != nil {
 		return THCPNLatestAttributesResponse{}, err
@@ -138,7 +138,6 @@ func (s *Service) ListTHCPNDeviceLogs(ctx context.Context, input THCPNDeviceLogL
 	if err != nil {
 		return THCPNDeviceLogListResponse{}, err
 	}
-	defer db.Close()
 	tables, err := existingTHCPNTables(ctx, db, thcpnLogTablePrefix)
 	if err != nil {
 		return THCPNDeviceLogListResponse{}, err
@@ -193,7 +192,6 @@ func (s *Service) GetTHCPNDeviceLog(ctx context.Context, deviceID uuid.UUID, log
 	if err != nil {
 		return THCPNDeviceLog{}, err
 	}
-	defer db.Close()
 	tables, err := existingTHCPNTables(ctx, db, thcpnLogTablePrefix)
 	if err != nil {
 		return THCPNDeviceLog{}, err
@@ -239,7 +237,7 @@ func (s *Service) openTHCPNDevice(ctx context.Context, deviceID uuid.UUID) (*sql
 	if err != nil {
 		return nil, DeviceSourceRef{}, err
 	}
-	return db, deviceSourceRefFromSQL(refRow), nil
+	return db, deviceSourceRefFromSQL(sqlc.UpsertNumericDeviceSourceRefRow(refRow)), nil
 }
 
 func queryLatestTHCPNAttribute(ctx context.Context, db *sql.DB, table string, deviceID int64, attribute string) (THCPNAttributeValue, bool, error) {

@@ -71,7 +71,6 @@ func (s *Service) THCPNDeviceRuntime(ctx context.Context, deviceIDs []uuid.UUID)
 			continue
 		}
 		items, failures := readTHCPNRuntimeSource(ctx, db, sourceRefs, result.RefreshedAt)
-		db.Close()
 		result.Items = append(result.Items, items...)
 		result.Failures = append(result.Failures, failures...)
 	}
@@ -80,7 +79,7 @@ func (s *Service) THCPNDeviceRuntime(ctx context.Context, deviceIDs []uuid.UUID)
 
 func (s *Service) runtimeRefs(ctx context.Context, deviceIDs []uuid.UUID) ([]thcpnLocationRef, error) {
 	rows, err := s.db.Query(ctx, `
-SELECT device_id, data_source_id, external_device_id
+SELECT device_id, data_source_id, external_key::bigint
 FROM device_source_refs
 WHERE status='active' AND adapter_code=$1 AND device_id=ANY($2::uuid[])`, AdapterTHCPNLegacy, deviceIDs)
 	if err != nil {

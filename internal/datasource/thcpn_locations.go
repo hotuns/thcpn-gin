@@ -31,7 +31,7 @@ func (s *Service) LiveTHCPNDeviceLocations(ctx context.Context, deviceIDs []uuid
 		return result, nil
 	}
 	rows, err := s.db.Query(ctx, `
-SELECT device_id, data_source_id, external_device_id
+SELECT device_id, data_source_id, external_key::bigint
 FROM device_source_refs
 WHERE status='active' AND adapter_code=$1 AND device_id=ANY($2::uuid[])`,
 		AdapterTHCPNLegacy, deviceIDs)
@@ -63,7 +63,6 @@ WHERE status='active' AND adapter_code=$1 AND device_id=ANY($2::uuid[])`,
 			continue
 		}
 		err = readTHCPNLocations(ctx, db, refs, result)
-		db.Close()
 		if err != nil {
 			continue
 		}

@@ -226,49 +226,70 @@ func (c *loraWANV2Client) getGateway(ctx context.Context, sn string) (LoRaWANV2G
 	return item, nil
 }
 
-func (c *loraWANV2Client) listRecords(ctx context.Context, cfg loraWANV2TelemetryConfig, start, end time.Time, limit int) ([]loraWANV2Record, bool, error) {
-	if limit <= 0 {
-		return nil, false, apperr.New(apperr.KindInvalidArgument, "limit must be greater than 0")
-	}
+func (c *loraWANV2Client) scanRecords(ctx context.Context, cfg loraWANV2TelemetryConfig, start, end time.Time, limit int, visit func(loraWANV2Record)) (int, bool, error) {
 	path := "/device/" + url.PathEscape(cfg.GatewaySN) + "/infos"
 	if cfg.NodeIndex != nil {
 		path = "/device/" + url.PathEscape(cfg.GatewaySN) + "/node/" + strconv.Itoa(*cfg.NodeIndex) + "/data"
 	}
-	records := make([]loraWANV2Record, 0, limit)
-	page, complete := 1, false
-	for len(records) < limit {
+	count := 0
+	var previousPage string
+	for page := 1; ; page++ {
+		if err := ctx.Err(); err != nil {
+			return count, false, err
+		}
 		query := loraWANV2PageQuery(page, loraWANV2MaxPageSize)
 		query.Set("start_at", strconv.FormatInt(start.UTC().Unix(), 10))
 		query.Set("end_at", strconv.FormatInt(end.UTC().Unix(), 10))
 		payload, err := c.request(ctx, http.MethodGet, path, query, nil)
 		if err != nil {
-			return nil, false, err
+			return count, false, err
 		}
 		var result struct {
 			Data       []map[string]json.RawMessage `json:"data"`
 			Pagination loraWANV2Pagination          `json:"pagination"`
 		}
 		if err := json.Unmarshal(payload, &result); err != nil {
-			return nil, false, apperr.New(apperr.KindDataSource, "invalid lorawan_v2 data response")
+			return count, false, apperr.New(apperr.KindDataSource, "invalid lorawan_v2 data response")
 		}
+		if result.Pagination.CurrentPage != 0 && result.Pagination.CurrentPage != page {
+			return count, false, apperr.New(apperr.KindDataSource, "lorawan_v2 returned an unexpected page")
+		}
+		pageData, _ := json.Marshal(result.Data)
+		if len(result.Data) > 0 && string(pageData) == previousPage {
+			return count, false, apperr.New(apperr.KindDataSource, "lorawan_v2 pagination did not advance")
+		}
+		previousPage = string(pageData)
 		for _, raw := range result.Data {
+			if limit > 0 && count >= limit {
+				return count, false, nil
+			}
 			ts, err := loraWANV2Timestamp(raw["ts"])
 			if err != nil {
-				continue
+				return count, false, apperr.New(apperr.KindDataSource, "lorawan_v2 record has an invalid timestamp")
 			}
-			records = append(records, loraWANV2Record{Timestamp: ts, Values: raw})
-			if len(records) >= limit {
-				break
-			}
+			visit(loraWANV2Record{Timestamp: ts, Values: raw})
+			count++
 		}
-		if len(result.Data) < loraWANV2MaxPageSize || (result.Pagination.TotalPage > 0 && page >= result.Pagination.TotalPage) {
-			complete = true
-			break
+		if (result.Pagination.TotalPage > 0 && page >= result.Pagination.TotalPage) || (result.Pagination.TotalPage == 0 && len(result.Data) < loraWANV2MaxPageSize) {
+			return count, true, nil
 		}
-		page++
+		if len(result.Data) == 0 {
+			return count, false, apperr.New(apperr.KindDataSource, "lorawan_v2 returned an empty intermediate page")
+		}
+		if limit > 0 && count >= limit {
+			return count, false, nil
+		}
 	}
+}
+
+func (c *loraWANV2Client) listRecords(ctx context.Context, cfg loraWANV2TelemetryConfig, start, end time.Time, limit int) ([]loraWANV2Record, bool, error) {
+	if limit <= 0 {
+		return nil, false, apperr.New(apperr.KindInvalidArgument, "limit must be greater than 0")
+	}
+	records := make([]loraWANV2Record, 0, min(limit, loraWANV2MaxPageSize))
+	_, complete, err := c.scanRecords(ctx, cfg, start, end, limit, func(record loraWANV2Record) { records = append(records, record) })
 	sort.SliceStable(records, func(i, j int) bool { return records[i].Timestamp.Before(records[j].Timestamp) })
-	return records, complete, nil
+	return records, complete, err
 }
 
 func loraWANV2PageQuery(page, pageSize int) url.Values {
@@ -441,8 +462,9 @@ func (s *Service) SyncAllLoRaWANV2Gateways(ctx context.Context, input SyncAllLoR
 		}
 		result.Total += len(gateways)
 		for _, gateway := range gateways {
+			reportSyncProgress(ctx, result)
 			var existing uuid.UUID
-			lookupErr := s.db.QueryRow(ctx, `SELECT device_id FROM lorawan_v2_device_refs WHERE data_source_id=$1 AND gateway_sn=$2`, source.ID, gateway.SN).Scan(&existing)
+			lookupErr := s.db.QueryRow(ctx, `SELECT device_id FROM device_source_refs WHERE data_source_id=$1 AND external_key=$2 AND adapter_code='lorawan_v2'`, source.ID, gateway.SN).Scan(&existing)
 			_, syncErr := s.syncLoRaWANV2Gateway(ctx, source, client, gateway, input.ActorUserID)
 			if syncErr != nil {
 				result.Failed++
@@ -467,6 +489,20 @@ func (s *Service) SyncAllLoRaWANV2Gateways(ctx context.Context, input SyncAllLoR
 }
 
 func (s *Service) syncLoRaWANV2Gateway(ctx context.Context, source sqlc.DataSource, client *loraWANV2Client, gateway LoRaWANV2Gateway, actorID uuid.UUID) (LoRaWANV2GatewaySyncResult, error) {
+	unlock, err := s.lockSourceSync(ctx, source.ID.String()+"/lorawan_v2/"+gateway.SN)
+	if err != nil {
+		return LoRaWANV2GatewaySyncResult{}, err
+	}
+	defer unlock()
+	gateway, err = client.getGateway(ctx, gateway.SN)
+	if err != nil {
+		return LoRaWANV2GatewaySyncResult{}, err
+	}
+	specs, err := loraWANV2DiscoverStreams(ctx, client, gateway)
+	if err != nil {
+		return LoRaWANV2GatewaySyncResult{}, err
+	}
+
 	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return LoRaWANV2GatewaySyncResult{}, apperr.Wrap(apperr.KindInternal, "begin lorawan_v2 gateway sync", err)
@@ -479,7 +515,7 @@ func (s *Service) syncLoRaWANV2Gateway(ctx context.Context, source sqlc.DataSour
 	}()
 	q := s.queries.WithTx(tx)
 	var ref LoRaWANV2GatewayRef
-	lookupErr := tx.QueryRow(ctx, `SELECT device_id, data_source_id, gateway_sn, status, synced_at FROM lorawan_v2_device_refs WHERE data_source_id=$1 AND gateway_sn=$2`, source.ID, gateway.SN).Scan(&ref.DeviceID, &ref.DataSourceID, &ref.GatewaySN, &ref.Status, &ref.SyncedAt)
+	lookupErr := tx.QueryRow(ctx, `SELECT device_id, data_source_id, external_key, status, synced_at FROM device_source_refs WHERE data_source_id=$1 AND external_key=$2 AND adapter_code='lorawan_v2'`, source.ID, gateway.SN).Scan(&ref.DeviceID, &ref.DataSourceID, &ref.GatewaySN, &ref.Status, &ref.SyncedAt)
 	name := "LoRa 网关 " + gateway.SN
 	var device sqlc.Device
 	if lookupErr == nil {
@@ -505,15 +541,11 @@ func (s *Service) syncLoRaWANV2Gateway(ctx context.Context, source sqlc.DataSour
 	if err := q.UpsertLoRaWANV2Metadata(ctx, sqlc.UpsertLoRaWANV2MetadataParams{DeviceID: device.ID, Key: "lorawan_v2_nodes_count", Name: "LoRa 节点数", ValueType: "number", Column5: []byte(strconv.Itoa(gateway.NodeCount)), CreatedBy: actorID}); err != nil {
 		return LoRaWANV2GatewaySyncResult{}, mapWriteError(err, "upsert lorawan_v2 node count")
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO lorawan_v2_device_refs (device_id, data_source_id, gateway_sn, status, synced_at) VALUES ($1,$2,$3,'active',now()) ON CONFLICT (data_source_id, gateway_sn) DO UPDATE SET device_id=EXCLUDED.device_id,status='active',synced_at=now(),updated_at=now()`, device.ID, source.ID, gateway.SN); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO device_source_refs (device_id, data_source_id, adapter_code, external_key, status, synced_at) VALUES ($1,$2,'lorawan_v2',$3,'active',now()) ON CONFLICT (data_source_id, adapter_code, external_key) DO UPDATE SET device_id=EXCLUDED.device_id,status='active',synced_at=now(),updated_at=now()`, device.ID, source.ID, gateway.SN); err != nil {
 		return LoRaWANV2GatewaySyncResult{}, apperr.Wrap(apperr.KindInternal, "upsert lorawan_v2 gateway reference", err)
 	}
-	if err := tx.QueryRow(ctx, `SELECT device_id, data_source_id, gateway_sn, status, synced_at FROM lorawan_v2_device_refs WHERE data_source_id=$1 AND gateway_sn=$2`, source.ID, gateway.SN).Scan(&ref.DeviceID, &ref.DataSourceID, &ref.GatewaySN, &ref.Status, &ref.SyncedAt); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT device_id, data_source_id, external_key, status, synced_at FROM device_source_refs WHERE data_source_id=$1 AND external_key=$2 AND adapter_code='lorawan_v2'`, source.ID, gateway.SN).Scan(&ref.DeviceID, &ref.DataSourceID, &ref.GatewaySN, &ref.Status, &ref.SyncedAt); err != nil {
 		return LoRaWANV2GatewaySyncResult{}, apperr.Wrap(apperr.KindInternal, "read lorawan_v2 gateway reference", err)
-	}
-	specs, err := loraWANV2DiscoverStreams(ctx, client, gateway)
-	if err != nil {
-		return LoRaWANV2GatewaySyncResult{}, err
 	}
 	streams := make([]SyncedDataStream, 0, len(specs))
 	bindings := make([]DataStreamBinding, 0, len(specs))
@@ -529,6 +561,19 @@ func (s *Service) syncLoRaWANV2Gateway(ctx context.Context, source sqlc.DataSour
 		streams = append(streams, syncedDataStreamFromSQL(stream))
 		bindings = append(bindings, binding)
 	}
+	activeCodes := make([]string, 0, len(specs))
+	for _, spec := range specs {
+		activeCodes = append(activeCodes, spec.Code)
+	}
+	if _, err := tx.Exec(ctx, `WITH stale AS (
+  SELECT ds.id FROM data_streams ds JOIN data_stream_bindings b ON b.data_stream_id=ds.id
+  WHERE ds.device_id=$1 AND b.data_source_id=$2 AND b.adapter_code='lorawan_v2' AND b.status='active'
+   AND b.adapter_config_json ? 'node_index' AND NOT (ds.code=ANY($3::text[]))
+ ), disabled AS (UPDATE data_stream_bindings SET status='disabled',updated_at=now() WHERE data_stream_id IN (SELECT id FROM stale) AND status='active' RETURNING data_stream_id)
+ UPDATE data_streams SET status='disabled',updated_at=now() WHERE id IN (SELECT data_stream_id FROM disabled)`, device.ID, source.ID, activeCodes); err != nil {
+		return LoRaWANV2GatewaySyncResult{}, apperr.Wrap(apperr.KindInternal, "disable removed node metrics", err)
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return LoRaWANV2GatewaySyncResult{}, apperr.Wrap(apperr.KindInternal, "commit lorawan_v2 gateway sync", err)
 	}
@@ -537,88 +582,115 @@ func (s *Service) syncLoRaWANV2Gateway(ctx context.Context, source sqlc.DataSour
 }
 
 func loraWANV2DiscoverStreams(ctx context.Context, client *loraWANV2Client, gateway LoRaWANV2Gateway) ([]loraWANV2StreamSpec, error) {
-	seen := map[string]loraWANV2StreamSpec{}
-	end, start := time.Now().UTC(), time.Now().UTC().AddDate(0, 0, -3)
-	collect := func(nodeIndex *int) error {
-		units := map[string]string{}
-		if nodeIndex != nil {
-			units = loraWANV2NodeMetricUnits(ctx, client, gateway.SN, *nodeIndex)
+	if gateway.NodeCount < 0 || gateway.NodeCount > 254 {
+		return nil, apperr.New(apperr.KindDataSource, "invalid lorawan_v2 node count")
+	}
+	specs := []loraWANV2StreamSpec{}
+	seen := map[string]string{}
+	appendMetrics := func(node *int, units map[string]string) error {
+		keys := make([]string, 0, len(units))
+		for key := range units {
+			keys = append(keys, key)
 		}
-		records, _, err := client.listRecords(ctx, loraWANV2TelemetryConfig{GatewaySN: gateway.SN, NodeIndex: nodeIndex}, start, end, 1)
-		if err != nil {
-			if nodeIndex != nil {
-				return nil
-			}
-			return err
-		}
-		if len(records) == 0 {
-			return nil
-		}
-		for key, raw := range records[0].Values {
-			if key == "ts" || key == "meta" {
-				continue
-			}
-			if _, ok := loraWANV2Number(raw); !ok {
-				continue
-			}
+		sort.Strings(keys)
+		for _, key := range keys {
 			prefix, name := "gateway", "网关"
-			if nodeIndex != nil {
-				prefix, name = "node_"+strconv.Itoa(*nodeIndex), "节点 "+strconv.Itoa(*nodeIndex)
+			if node != nil {
+				prefix, name = "node_"+strconv.Itoa(*node), "节点 "+strconv.Itoa(*node)
 			}
 			code := loraWANV2StreamCode(prefix, key)
-			cfg, _ := json.Marshal(loraWANV2TelemetryConfig{GatewaySN: gateway.SN, NodeIndex: nodeIndex, Metric: key})
-			seen[code] = loraWANV2StreamSpec{Code: code, Name: name + " · " + key, Unit: units[key], AdapterConfig: cfg}
+			if previous, ok := seen[code]; ok && previous != key {
+				return apperr.New(apperr.KindDataSource, "lorawan_v2 metric codes collide: "+previous+" / "+key)
+			}
+			seen[code] = key
+			cfg, _ := json.Marshal(loraWANV2TelemetryConfig{GatewaySN: gateway.SN, NodeIndex: node, Metric: key})
+			specs = append(specs, loraWANV2StreamSpec{Code: code, Name: name + " · " + key, Unit: units[key], AdapterConfig: cfg})
 		}
 		return nil
 	}
-	if err := collect(nil); err != nil {
+	end := time.Now().UTC()
+	records, _, err := client.listRecords(ctx, loraWANV2TelemetryConfig{GatewaySN: gateway.SN}, end.AddDate(0, 0, -3), end, 1)
+	if err != nil {
 		return nil, err
 	}
-	for node := 1; node <= gateway.NodeCount; node++ {
-		index := node
-		if err := collect(&index); err != nil {
+	gatewayMetrics := map[string]string{}
+	for _, record := range records {
+		for key, raw := range record.Values {
+			if key != "ts" && key != "meta" {
+				if _, ok := loraWANV2Number(raw); ok {
+					gatewayMetrics[key] = ""
+				}
+			}
+		}
+	}
+	if err := appendMetrics(nil, gatewayMetrics); err != nil {
+		return nil, err
+	}
+	for index := 1; index <= gateway.NodeCount; index++ {
+		units, err := loraWANV2NodeMetricUnits(ctx, client, gateway.SN, index)
+		if err != nil {
+			return nil, apperr.Wrap(apperr.KindDataSource, "read node "+strconv.Itoa(index)+" sensor configuration", err)
+		}
+		if err := appendMetrics(&index, units); err != nil {
 			return nil, err
 		}
 	}
-	result := make([]loraWANV2StreamSpec, 0, len(seen))
-	for _, spec := range seen {
-		result = append(result, spec)
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].Code < result[j].Code })
-	return result, nil
+	return specs, nil
 }
 
-func loraWANV2NodeMetricUnits(ctx context.Context, client *loraWANV2Client, gatewaySN string, nodeIndex int) map[string]string {
-	result := map[string]string{}
+func loraWANV2NodeMetricUnits(ctx context.Context, client *loraWANV2Client, gatewaySN string, nodeIndex int) (map[string]string, error) {
 	payload, err := client.request(ctx, http.MethodGet, "/device/"+url.PathEscape(gatewaySN)+"/node/"+strconv.Itoa(nodeIndex)+"/sensor_config/latest", url.Values{}, nil)
 	if err != nil {
-		return result
+		return nil, err
 	}
+	return parseLoRaWANV2MetricUnits(payload)
+}
+
+func parseLoRaWANV2MetricUnits(payload json.RawMessage) (map[string]string, error) {
 	var config struct {
-		Content any `json:"content"`
+		Content json.RawMessage `json:"content"`
 	}
-	if json.Unmarshal(payload, &config) != nil {
-		return result
+	if err := json.Unmarshal(payload, &config); err != nil {
+		return nil, apperr.New(apperr.KindDataSource, "invalid lorawan_v2 sensor configuration")
 	}
-	var scan func(any)
-	scan = func(value any) {
-		items, ok := value.([]any)
-		if !ok {
-			return
-		}
+	if len(config.Content) == 0 || string(config.Content) == "null" {
+		return nil, apperr.New(apperr.KindDataSource, "lorawan_v2 sensor configuration has no content")
+	}
+	var content []any
+	if err := json.Unmarshal(config.Content, &content); err != nil {
+		return nil, apperr.New(apperr.KindDataSource, "lorawan_v2 sensor configuration must be an array")
+	}
+	result := map[string]string{}
+	var scan func([]any) error
+	scan = func(items []any) error {
 		if len(items) >= 3 {
 			key, keyOK := items[0].(string)
+			_, ruleOK := items[1].(string)
 			unit, unitOK := items[2].(string)
-			if keyOK && unitOK && strings.TrimSpace(key) != "" {
+			if keyOK && ruleOK && unitOK && strings.TrimSpace(key) != "" {
+				if _, exists := result[key]; exists {
+					return apperr.New(apperr.KindDataSource, "duplicate lorawan_v2 metric: "+key)
+				}
 				result[key] = strings.TrimSpace(unit)
+				return nil
 			}
 		}
 		for _, item := range items {
-			scan(item)
+			if nested, ok := item.([]any); ok {
+				if err := scan(nested); err != nil {
+					return err
+				}
+			}
 		}
+		return nil
 	}
-	scan(config.Content)
-	return result
+	if err := scan(content); err != nil {
+		return nil, err
+	}
+	if len(content) > 0 && len(result) == 0 {
+		return nil, apperr.New(apperr.KindDataSource, "unrecognized lorawan_v2 sensor configuration")
+	}
+	return result, nil
 }
 
 func loraWANV2StreamCode(prefix, metric string) string {
@@ -688,12 +760,11 @@ func (r *Runtime) queryLoRaWANV2Telemetry(ctx context.Context, source DataSource
 	if err != nil {
 		return TelemetryResult{}, err
 	}
-	records, complete, err := client.listRecords(ctx, cfg, req.Start, req.End, req.Limit)
+	results, _, err := queryLoRaWANV2Metrics(ctx, client, cfg, []string{cfg.Metric}, req.Start, req.End, req.Limit, req.Adaptive, req.TargetPoints)
 	if err != nil {
 		return TelemetryResult{}, err
 	}
-	points := loraWANV2Points(records, cfg.Metric)
-	return TelemetryResult{Points: points, SourceCount: len(points), Complete: complete}, nil
+	return results[cfg.Metric], nil
 }
 
 func (r *Runtime) queryLoRaWANV2TelemetryBatch(ctx context.Context, source DataSource, req TelemetryBatchQuery, bindings []DataStreamBinding, result *TelemetryBatchResult) error {
@@ -723,15 +794,24 @@ func (r *Runtime) queryLoRaWANV2TelemetryBatch(ctx context.Context, source DataS
 		}{binding, cfg})
 	}
 	for _, group := range groups {
-		records, complete, err := client.listRecords(ctx, group[0].config, req.Start, req.End, req.Limit)
+		metrics := make([]string, 0, len(group))
+		for _, item := range group {
+			metrics = append(metrics, item.config.Metric)
+		}
+		series, rows, err := queryLoRaWANV2Metrics(ctx, client, group[0].config, metrics, req.Start, req.End, req.Limit, req.Adaptive, req.TargetPoints)
 		if err != nil {
-			return err
+			if result.Errors == nil {
+				result.Errors = map[uuid.UUID]string{}
+			}
+			for _, item := range group {
+				result.Errors[item.binding.DataStreamID] = apperr.MessageOf(err)
+			}
+			continue
 		}
 		result.SourceScans++
-		result.RowsRead += len(records)
+		result.RowsRead += rows
 		for _, item := range group {
-			points := loraWANV2Points(records, item.config.Metric)
-			result.Series[item.binding.DataStreamID] = TelemetryResult{Points: points, SourceCount: len(points), Complete: complete}
+			result.Series[item.binding.DataStreamID] = series[item.config.Metric]
 		}
 	}
 	return nil
@@ -749,7 +829,7 @@ func loraWANV2Points(records []loraWANV2Record, metric string) []TelemetryPoint 
 
 func (s *Service) LoRaWANV2GatewayForDevice(ctx context.Context, deviceID uuid.UUID) (LoRaWANV2GatewayRef, error) {
 	var ref LoRaWANV2GatewayRef
-	err := s.db.QueryRow(ctx, `SELECT device_id, data_source_id, gateway_sn, status, synced_at FROM lorawan_v2_device_refs WHERE device_id=$1 AND status='active' ORDER BY synced_at DESC LIMIT 1`, deviceID).Scan(&ref.DeviceID, &ref.DataSourceID, &ref.GatewaySN, &ref.Status, &ref.SyncedAt)
+	err := s.db.QueryRow(ctx, `SELECT device_id, data_source_id, external_key, status, synced_at FROM device_source_refs WHERE device_id=$1 AND adapter_code='lorawan_v2' AND status='active'`, deviceID).Scan(&ref.DeviceID, &ref.DataSourceID, &ref.GatewaySN, &ref.Status, &ref.SyncedAt)
 	if err != nil {
 		return ref, mapNotFoundOrInternal(err, "lorawan_v2 device reference not found")
 	}

@@ -4,6 +4,436 @@
  */
 
 export interface paths {
+    "/api/v1/admin/data-sources/{data_source_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue full source synchronization */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    data_source_id: components["schemas"]["UUID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Success */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SourceOperation"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/source-operations/{operation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read source operation */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    operation_id: components["schemas"]["UUID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SourceOperation"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List recent source operations */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    data_source_id: components["schemas"]["UUID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SourceOperationList"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/config/resync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reconcile platform configuration without repeating source writes */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    device_id: components["schemas"]["UUID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["UpdateTHCPNDeviceConfigResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/config/resync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reconcile platform configuration without repeating source writes */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    device_id: components["schemas"]["UUID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["UpdateTHCPNDeviceConfigResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/source-config/{config_kind}": {
+        parameters: {
+            query?: {
+                node_index?: number;
+            };
+            header?: never;
+            path: {
+                device_id: components["schemas"]["UUID"];
+                config_kind: "gateway" | "sensor" | "time";
+            };
+            cookie?: never;
+        };
+        /** Read source configuration using a platform device target */
+        get: {
+            parameters: {
+                query?: {
+                    node_index?: number;
+                    latest?: boolean;
+                    page?: number;
+                    page_size?: number;
+                };
+                header?: never;
+                path: {
+                    device_id: components["schemas"]["UUID"];
+                    config_kind: "gateway" | "sensor" | "time";
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Source configuration history or latest configuration; time history is unsupported */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Write source configuration and report source and platform stages separately */
+        post: {
+            parameters: {
+                query?: {
+                    node_index?: number;
+                };
+                header?: never;
+                path: {
+                    device_id: components["schemas"]["UUID"];
+                    config_kind: "gateway" | "sensor" | "time";
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            responses: {
+                /** @description Source accepted; inspect write_state for platform result */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            write_state: components["schemas"]["ConfigWriteState"];
+                            payload: {
+                                [key: string]: unknown;
+                            };
+                            warnings?: components["schemas"]["QueryWarning"][];
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read device interaction and allowed actions */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    device_id: components["schemas"]["UUID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DeviceInteractionContext"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/nodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List gateway nodes with explicit targets and streams */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    device_id: components["schemas"]["UUID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GatewayNodeList"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read device interaction and allowed actions */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    device_id: components["schemas"]["UUID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DeviceInteractionContext"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/nodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List gateway nodes with explicit targets and streams */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    device_id: components["schemas"]["UUID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GatewayNodeList"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -1327,7 +1757,7 @@ export interface paths {
         put?: never;
         /**
          * Sync all THCPN devices from the external devices table
-         * @description Requires a valid administrator bearer token. Reads all non-deleted rows from the external THCPN MySQL `devices` table plus active `gate_node` topology. Each asset is synchronized independently and the response reports partial failures. Devices remain unassigned to a Workspace.
+         * @description Requires a valid administrator bearer token. Reads all non-deleted rows from the external THCPN MySQL `devices` table plus active `gate_node` topology. Each asset is synchronized independently and the response returns an operation ID; progress and partial failures are available through source operations. Devices remain unassigned to a Workspace.
          */
         post: operations["adminSyncAllTHCPNDevices"];
         delete?: never;
@@ -2052,6 +2482,46 @@ export interface paths {
         };
         /** List THCPN device logs */
         get: operations["adminListTHCPNDeviceLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/lorawan-v2/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /** List LoRaWAN V2 gateway logs for a platform device */
+        get: operations["adminListDeviceLoRaWANV2GatewayLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/lorawan-v2/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /** Resolve the LoRaWAN V2 source and gateway for a platform device */
+        get: operations["adminGetDeviceLoRaWANV2Context"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5008,6 +5478,12 @@ export interface components {
             workspace_id?: components["schemas"]["UUID"];
             project_id?: components["schemas"]["UUID"];
             site_id?: components["schemas"]["UUID"];
+            /** @description External identity from the active management source mapping; gateway SN for LoRaWAN V2. */
+            external_key?: string;
+            /** @enum {string} */
+            source_family?: "thcpn" | "carbon" | "lorawan_v2";
+            source_status?: string;
+            features?: string[];
             product_id?: string;
             serial_no: string;
             name: string;
@@ -5353,6 +5829,58 @@ export interface components {
             synced_at: components["schemas"]["Timestamp"];
             created_at: components["schemas"]["Timestamp"];
             updated_at: components["schemas"]["Timestamp"];
+        };
+        ConfigWriteState: {
+            operation_id: components["schemas"]["UUID"];
+            /** @enum {string} */
+            source: "pending" | "accepted" | "failed" | "unknown";
+            /** @enum {string} */
+            platform: "pending" | "synced" | "failed";
+            /** @enum {string} */
+            device: "unknown";
+        };
+        SourceOperationList: {
+            items: components["schemas"]["SourceOperation"][];
+        };
+        SourceOperation: {
+            id: components["schemas"]["UUID"];
+            data_source_id: components["schemas"]["UUID"];
+            device_id?: components["schemas"]["UUID"];
+            /** @enum {string} */
+            kind: "sync_all" | "config_update";
+            /** @enum {string} */
+            status: "queued" | "running" | "completed" | "partial" | "failed" | "unknown" | "reconciled";
+            result: {
+                [key: string]: unknown;
+            };
+            error?: string;
+            created_at: components["schemas"]["Timestamp"];
+            updated_at: components["schemas"]["Timestamp"];
+        };
+        DeviceNodeTarget: {
+            /** @enum {string} */
+            kind: "device";
+            device_id: components["schemas"]["UUID"];
+        } | {
+            /** @enum {string} */
+            kind: "gateway_node";
+            gateway_device_id: components["schemas"]["UUID"];
+            node_index: number;
+        };
+        GatewayNode: {
+            key: string;
+            name: string;
+            target: components["schemas"]["DeviceNodeTarget"];
+            streams: components["schemas"]["DataStream"][];
+        };
+        GatewayNodeList: {
+            items: components["schemas"]["GatewayNode"][];
+        };
+        DeviceInteractionContext: {
+            device: components["schemas"]["Device"];
+            actions: {
+                [key: string]: boolean;
+            };
         };
         DeviceChild: {
             relation: components["schemas"]["DeviceRelation"];
@@ -5802,6 +6330,11 @@ export interface components {
         /** @enum {string} */
         SamplingProfileMode: "standard" | "low_power" | "high_frequency" | "custom";
         SamplingProfileResponse: {
+            warnings?: {
+                code?: string;
+                message?: string;
+            }[];
+            write_state?: components["schemas"]["ConfigWriteState"];
             device_id: components["schemas"]["UUID"];
             mode: components["schemas"]["SamplingProfileMode"];
             advanced: boolean;
@@ -5851,6 +6384,7 @@ export interface components {
             expected_config_id: number;
         };
         UpdateTHCPNDeviceConfigResponse: {
+            write_state?: components["schemas"]["ConfigWriteState"];
             device_id: components["schemas"]["UUID"];
             data_source_id: components["schemas"]["UUID"];
             /** Format: int64 */
@@ -5961,6 +6495,8 @@ export interface components {
             count?: number;
         };
         TelemetrySeries: {
+            /** @description Failure for this series; successful series remain available. */
+            error?: string;
             data_stream_id: components["schemas"]["UUID"];
             code: string;
             name: string;
@@ -6072,7 +6608,7 @@ export interface components {
             resource_type: components["schemas"]["ExportResourceType"];
             resource_id: components["schemas"]["UUID"];
             export_type: components["schemas"]["ExportType"];
-            /** @description Worker input such as `start_time`, `end_time`, `limit`, `media_type`, or future export-specific options. */
+            /** @description Worker input. Group exports require gateway_id, node_targets (DeviceNodeTarget array), matching device_ids, start_time and end_time. Indexed LoRaWAN nodes do not support include_images. */
             request_config?: {
                 [key: string]: unknown;
             };
@@ -8446,13 +8982,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Full THCPN device synchronization completed, possibly with per-device failures. */
-            200: {
+            /** @description Synchronization queued. Poll the returned source operation. */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SyncAllTHCPNDevicesResult"];
+                    "application/json": components["schemas"]["SourceOperation"];
                 };
             };
             400: components["responses"]["InvalidArgument"];
@@ -8594,13 +9130,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Synchronization summary */
-            200: {
+            /** @description Synchronization queued */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                    "application/json": components["schemas"]["SourceOperation"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -9666,6 +10202,69 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminListDeviceLoRaWANV2GatewayLogs: {
+        parameters: {
+            query?: {
+                start_at?: string;
+                end_at?: string;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description LoRaWAN V2 gateway log response from the configured source. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminGetDeviceLoRaWANV2Context: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description LoRaWAN V2 device source mapping. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
             500: components["responses"]["Internal"];
         };
     };

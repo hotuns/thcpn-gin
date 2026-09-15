@@ -92,7 +92,10 @@ func TestLoRaWANV2NodeMetricUnits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	units := loraWANV2NodeMetricUnits(context.Background(), client, "GW-1", 1)
+	units, err := loraWANV2NodeMetricUnits(context.Background(), client, "GW-1", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if units["temp"] != "℃" || units["humi"] != "RH%" {
 		t.Fatalf("unexpected units: %#v", units)
 	}
@@ -148,5 +151,93 @@ func TestLoRaWANV2RecordPaginationUsesTheUpstreamLimit(t *testing.T) {
 	}
 	if len(records) != 75 || !complete || len(pages) != 2 || pages[0] != 1 || pages[1] != 2 {
 		t.Fatalf("unexpected pagination: records=%d complete=%t pages=%v", len(records), complete, pages)
+	}
+}
+
+func TestLoRaWANV2TruncatedPageIsIncomplete(t *testing.T) {
+	for _, limit := range []int{1, 10, 29, 30} {
+		t.Run(strconv.Itoa(limit), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				data := make([]map[string]any, 30)
+				for i := range data {
+					data[i] = map[string]any{"ts": 1760000000 + i, "temp": i}
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "payload": map[string]any{"pagination": map[string]any{"total_page": 1, "total_count": 30}, "data": data}})
+			}))
+			defer server.Close()
+			client, err := newLoRaWANV2Client(context.Background(), staticResolver(`{"base_url":"`+server.URL+`","username":"reader","password":"secret"}`), DataSource{Type: "http_api"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			records, complete, err := client.listRecords(context.Background(), loraWANV2TelemetryConfig{GatewaySN: "GW"}, time.Unix(1750000000, 0), time.Unix(1770000000, 0), limit)
+			if err != nil || len(records) != limit || complete != (limit == 30) {
+				t.Fatalf("limit=%d records=%d complete=%t err=%v", limit, len(records), complete, err)
+			}
+		})
+	}
+}
+
+func TestLoRaWANV2AdaptiveReadsWholeRangeAndSparseMetrics(t *testing.T) {
+	pages := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pages++
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		data := make([]map[string]any, 50)
+		for i := range data {
+			index := (page-1)*50 + i
+			data[i] = map[string]any{"ts": 1760000000 + index, "temp": index}
+			if index%10 == 0 {
+				data[i]["sparse"] = index
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "payload": map[string]any{"pagination": map[string]any{"current_page": page, "total_page": 2}, "data": data}})
+	}))
+	defer server.Close()
+	client, err := newLoRaWANV2Client(context.Background(), staticResolver(`{"base_url":"`+server.URL+`","username":"reader","password":"secret"}`), DataSource{Type: "http_api"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	series, rows, err := queryLoRaWANV2Metrics(context.Background(), client, loraWANV2TelemetryConfig{GatewaySN: "GW"}, []string{"temp", "sparse"}, time.Unix(1760000000, 0), time.Unix(1760000100, 0), 10, true, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dense := series["temp"]
+	if pages != 2 || rows != 100 || !dense.Complete || !dense.Sampled || dense.SourceCount != 100 || len(dense.Points) > 10 || dense.Points[len(dense.Points)-1].Value != 99 {
+		t.Fatalf("unexpected adaptive result: %#v, pages=%d rows=%d", dense, pages, rows)
+	}
+	if series["sparse"].SourceCount != 10 || !series["sparse"].Complete || len(series["sparse"].Warnings) != 1 {
+		t.Fatalf("unexpected sparse result: %#v", series["sparse"])
+	}
+}
+
+func TestLoRaWANV2DiscoveryUsesConfigurationWithoutRecentNodeData(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/device/GW/infos" {
+			_, _ = w.Write([]byte(`{"success":true,"payload":{"data":[],"pagination":{"total_page":1}}}`))
+			return
+		}
+		if r.URL.Path == "/device/GW/node/1/sensor_config/latest" {
+			_, _ = w.Write([]byte(`{"success":true,"payload":{"content":[["485",["request",[["temp","rule","℃"],["humi","rule","%"]]]]]}}`))
+			return
+		}
+		t.Errorf("unexpected data discovery request: %s", r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	client, err := newLoRaWANV2Client(context.Background(), staticResolver(`{"base_url":"`+server.URL+`","username":"reader","password":"secret"}`), DataSource{Type: "http_api"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	streams, err := loraWANV2DiscoverStreams(context.Background(), client, LoRaWANV2Gateway{SN: "GW", NodeCount: 1})
+	if err != nil || len(streams) != 2 {
+		t.Fatalf("streams=%#v err=%v", streams, err)
+	}
+}
+
+func TestLoRaWANV2ConfigurationRejectsUnrecognizedAndDuplicateMetrics(t *testing.T) {
+	for _, raw := range []string{`{"content":{}}`, `{"content":[["unknown"]]}`, `{"content":[["temp","r","℃"],["temp","r","℃"]]}`} {
+		if _, err := parseLoRaWANV2MetricUnits(json.RawMessage(raw)); err == nil {
+			t.Fatalf("accepted invalid config: %s", raw)
+		}
 	}
 }

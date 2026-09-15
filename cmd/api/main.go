@@ -12,6 +12,7 @@ import (
 
 	"thcpn-gin/internal/app"
 	"thcpn-gin/internal/config"
+	"thcpn-gin/internal/datasource"
 	"thcpn-gin/internal/db"
 	"thcpn-gin/internal/logger"
 	"thcpn-gin/internal/tracing"
@@ -57,6 +58,7 @@ func run() int {
 		return 1
 	}
 	defer pg.Close()
+	defer datasource.CloseDataSourceConnections()
 
 	redisClient, err := db.NewRedis(ctx, cfg.Redis)
 	if err != nil {

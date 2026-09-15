@@ -14,6 +14,7 @@ import (
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/datasource"
 	"thcpn-gin/internal/db"
+	"thcpn-gin/internal/deviceclaim"
 	"thcpn-gin/internal/export"
 	"thcpn-gin/internal/logger"
 	"thcpn-gin/internal/media"
@@ -64,6 +65,7 @@ func run() int {
 		return 1
 	}
 	defer pg.Close()
+	defer datasource.CloseDataSourceConnections()
 
 	redisClient, err := db.NewRedis(ctx, cfg.Redis)
 	if err != nil {
@@ -76,7 +78,8 @@ func run() int {
 		}
 	}()
 
-	dataSourceService := datasource.NewService(pg)
+	dataSourceService := datasource.NewService(pg, objectstore.NewStore(cfg.ObjectStore))
+	dataSourceService.SetSyncClaimEnsurer(deviceclaim.NewService(pg, cfg.Auth.JWTSecret))
 	computedStreamService := computedstream.NewService(pg)
 	telemetryService := telemetry.NewService(pg, dataSourceService, datasource.NewRuntime(nil), cfg.QueryLimits, computedStreamService)
 	processor := export.NewProcessor(
@@ -112,6 +115,7 @@ func run() int {
 
 	concurrency := envInt("WORKER_CONCURRENCY", 5)
 	server, mux := task.NewExportServer(redisClient, processor, log, concurrency, processingEngine)
+	task.RegisterSourceSyncHandler(mux, dataSourceService)
 	taskClient := task.NewClient(redisClient)
 	defer taskClient.Close()
 	startProcessingScan(ctx, taskClient, log, time.Duration(cfg.Processing.PollSeconds)*time.Second)

@@ -87,7 +87,6 @@ func (s *Service) ListTHCPNSensorTemplates(ctx context.Context, input THCPNSenso
 	if input.DeviceID != uuid.Nil {
 		db, ref, err := s.openTHCPNDevice(ctx, input.DeviceID)
 		if err == nil {
-			defer db.Close()
 			if externalDevice, readErr := readTHCPNExternalDevice(ctx, db, ref.ExternalDeviceID); readErr == nil {
 				externalDeviceType = externalDevice.DeviceType
 			}
@@ -194,7 +193,6 @@ func (s *Service) ImportTHCPNSensorTemplates(ctx context.Context, dataSourceID, 
 	if err != nil {
 		return THCPNSensorTemplateImportResult{}, err
 	}
-	defer sourceDB.Close()
 	rows, err := sourceDB.QueryContext(ctx, `SELECT sensor_type, description, port, port_num, sensor, port_nums, params
 FROM sensors WHERE deleted_at IS NULL ORDER BY sensor_type, id`)
 	if err != nil {

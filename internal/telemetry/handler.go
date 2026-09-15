@@ -229,3 +229,27 @@ func parseUUIDParam(c *gin.Context, name string) (uuid.UUID, bool) {
 	}
 	return id, true
 }
+
+func (h *Handler) AdminQueryDevice(c *gin.Context) {
+	id, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	input, ok := parseQuery(c)
+	if !ok {
+		return
+	}
+	input.DeviceID = &id
+	var err error
+	input.DataStreamIDs, err = parseDataStreamIDs(c.Query("data_stream_ids"))
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	result, err := h.service.Query(c.Request.Context(), input)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}

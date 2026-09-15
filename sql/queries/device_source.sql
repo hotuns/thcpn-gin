@@ -1,44 +1,43 @@
--- name: UpsertDeviceSourceRef :one
+-- name: UpsertNumericDeviceSourceRef :one
 INSERT INTO device_source_refs (
     device_id,
     data_source_id,
     adapter_code,
-    external_device_id,
+    external_key,
     status,
     synced_at
 )
-VALUES ($1, $2, $3, $4, 'active', now())
-ON CONFLICT (data_source_id, adapter_code, external_device_id)
+VALUES ($1, $2, $3, sqlc.arg(external_device_id)::bigint::text, 'active', now())
+ON CONFLICT (data_source_id, adapter_code, external_key)
 DO UPDATE SET
     device_id = EXCLUDED.device_id,
     status = 'active',
     synced_at = now(),
     updated_at = now()
-RETURNING id, device_id, data_source_id, adapter_code, external_device_id, status, synced_at, created_at, updated_at;
+RETURNING id, device_id, data_source_id, adapter_code, external_key::bigint AS external_device_id, status, synced_at, created_at, updated_at;
 
--- name: GetDeviceSourceRefByExternal :one
-SELECT id, device_id, data_source_id, adapter_code, external_device_id, status, synced_at, created_at, updated_at
+-- name: GetNumericDeviceSourceRefByExternal :one
+SELECT id, device_id, data_source_id, adapter_code, external_key::bigint AS external_device_id, status, synced_at, created_at, updated_at
 FROM device_source_refs
 WHERE data_source_id = $1
   AND adapter_code = $2
-  AND external_device_id = $3;
+  AND external_key = sqlc.arg(external_device_id)::bigint::text;
 
--- name: GetDeviceSourceRefByDevice :one
-SELECT id, device_id, data_source_id, adapter_code, external_device_id, status, synced_at, created_at, updated_at
+-- name: GetNumericDeviceSourceRefByDevice :one
+SELECT id, device_id, data_source_id, adapter_code, external_key::bigint AS external_device_id, status, synced_at, created_at, updated_at
 FROM device_source_refs
 WHERE device_id = $1
+  AND adapter_code IN ('thcpn_legacy_mysql', 'thcpn_legacy_camera', 'carbon_sink_mysql')
   AND status = 'active'
-ORDER BY synced_at DESC, id DESC
-LIMIT 1;
+;
 
 -- name: GetActiveTHCPNDeviceSourceRefByDevice :one
-SELECT id, device_id, data_source_id, adapter_code, external_device_id, status, synced_at, created_at, updated_at
+SELECT id, device_id, data_source_id, adapter_code, external_key::bigint AS external_device_id, status, synced_at, created_at, updated_at
 FROM device_source_refs
 WHERE device_id = $1
   AND adapter_code = 'thcpn_legacy_mysql'
   AND status = 'active'
-ORDER BY synced_at DESC, id DESC
-LIMIT 1;
+;
 
 -- name: UpsertDeviceConfigSnapshot :one
 INSERT INTO device_config_snapshots (

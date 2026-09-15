@@ -448,10 +448,10 @@ export function DeviceDataPage({
                         start: new Date(appliedStartTime).toISOString(),
                         end: new Date(appliedEndTime).toISOString(),
                       });
-                      if (type === "standalone") exportParams.set("devices", selectedDevice.id);
+                      if (type === "standalone") exportParams.set("nodes", `device:${selectedDevice.id}`);
                       else {
                         exportParams.set("gateway", String((selectedDevice as unknown as Record<string, unknown>).parent_device_id ?? selectedDevice.id));
-                        if (type === "gateway_node") exportParams.set("devices", selectedDevice.id);
+                        if (type === "gateway_node") exportParams.set("nodes", `device:${selectedDevice.id}`);
                       }
                       navigate(`/exports?${exportParams}`);
                     }}

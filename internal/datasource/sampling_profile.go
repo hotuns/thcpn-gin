@@ -37,26 +37,28 @@ type SamplingProfileUpdateInput struct {
 }
 
 type SamplingProfileResponse struct {
-	DeviceID          uuid.UUID  `json:"device_id"`
-	Mode              string     `json:"mode"`
-	Advanced          bool       `json:"advanced"`
-	DataMinutes       []int      `json:"data_minutes"`
-	DataHours         []int      `json:"data_hours"`
-	UploadMinutes     []int      `json:"upload_minutes"`
-	UploadHours       []int      `json:"upload_hours"`
-	ImageMinute       *int       `json:"image_minute,omitempty"`
-	ImageHours        []int      `json:"image_hours"`
-	ImageUploadMinute *int       `json:"image_upload_minute,omitempty"`
-	ImageUploadHours  []int      `json:"image_upload_hours"`
-	DataCron          string     `json:"data_cron"`
-	UploadCron        string     `json:"upload_cron"`
-	ImageCron         string     `json:"image_cron"`
-	ImageUploadCron   string     `json:"image_upload_cron"`
-	Summary           string     `json:"summary"`
-	ExternalConfigID  int64      `json:"external_config_id"`
-	UpdatedAt         *time.Time `json:"updated_at,omitempty"`
-	DispatchedAt      *time.Time `json:"dispatched_at,omitempty"`
-	CanEdit           bool       `json:"can_edit"`
+	WriteState        *ConfigWriteState `json:"write_state,omitempty"`
+	Warnings          []QueryWarning    `json:"warnings,omitempty"`
+	DeviceID          uuid.UUID         `json:"device_id"`
+	Mode              string            `json:"mode"`
+	Advanced          bool              `json:"advanced"`
+	DataMinutes       []int             `json:"data_minutes"`
+	DataHours         []int             `json:"data_hours"`
+	UploadMinutes     []int             `json:"upload_minutes"`
+	UploadHours       []int             `json:"upload_hours"`
+	ImageMinute       *int              `json:"image_minute,omitempty"`
+	ImageHours        []int             `json:"image_hours"`
+	ImageUploadMinute *int              `json:"image_upload_minute,omitempty"`
+	ImageUploadHours  []int             `json:"image_upload_hours"`
+	DataCron          string            `json:"data_cron"`
+	UploadCron        string            `json:"upload_cron"`
+	ImageCron         string            `json:"image_cron"`
+	ImageUploadCron   string            `json:"image_upload_cron"`
+	Summary           string            `json:"summary"`
+	ExternalConfigID  int64             `json:"external_config_id"`
+	UpdatedAt         *time.Time        `json:"updated_at,omitempty"`
+	DispatchedAt      *time.Time        `json:"dispatched_at,omitempty"`
+	CanEdit           bool              `json:"can_edit"`
 }
 
 type samplingSchedule struct {
@@ -85,7 +87,7 @@ func (s *Service) GetSamplingProfile(ctx context.Context, deviceID uuid.UUID) (S
 	if s.db == nil {
 		return SamplingProfileResponse{}, apperr.New(apperr.KindInternal, "database is not configured")
 	}
-	ref, err := s.queries.GetDeviceSourceRefByDevice(ctx, deviceID)
+	ref, err := s.queries.GetNumericDeviceSourceRefByDevice(ctx, deviceID)
 	if err != nil {
 		return SamplingProfileResponse{}, mapNotFoundOrInternal(err, "device source ref not found")
 	}
@@ -106,7 +108,7 @@ func (s *Service) UpdateSamplingProfile(ctx context.Context, input SamplingProfi
 	if input.ExpectedConfigID <= 0 {
 		return SamplingProfileResponse{}, apperr.New(apperr.KindInvalidArgument, "expected_config_id is required")
 	}
-	ref, err := s.queries.GetDeviceSourceRefByDevice(ctx, input.DeviceID)
+	ref, err := s.queries.GetNumericDeviceSourceRefByDevice(ctx, input.DeviceID)
 	if err != nil {
 		return SamplingProfileResponse{}, mapNotFoundOrInternal(err, "device source ref not found")
 	}
@@ -136,6 +138,8 @@ func (s *Service) UpdateSamplingProfile(ctx context.Context, input SamplingProfi
 		return SamplingProfileResponse{}, err
 	}
 	response := samplingProfileFromConfig(input.DeviceID, updated.Config)
+	response.WriteState = updated.WriteState
+	response.Warnings = updated.Warnings
 	now := time.Now().UTC()
 	response.DispatchedAt = &now
 	return response, nil

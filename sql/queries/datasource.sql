@@ -29,9 +29,6 @@ SELECT EXISTS (
     SELECT 1 FROM device_source_refs AS ref WHERE ref.data_source_id = $1
 )
 OR EXISTS (
-    SELECT 1 FROM lorawan_v2_device_refs AS ref WHERE ref.data_source_id = $1
-)
-OR EXISTS (
     SELECT 1 FROM data_stream_bindings AS binding WHERE binding.data_source_id = $1
 );
 

@@ -62,6 +62,179 @@ tags:
   - name: AuditLogs
     description: Sensitive operation audit log APIs
 paths:
+  /api/v1/admin/data-sources/{data_source_id}/sync:
+    post:
+      tags: [Admin]
+      summary: Queue full source synchronization
+      parameters:
+        - in: path
+          name: data_source_id
+          required: true
+          schema: { $ref: "#/components/schemas/UUID" }
+      responses:
+        "202":
+          description: Success
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SourceOperation" }
+  /api/v1/admin/source-operations/{operation_id}:
+    get:
+      tags: [Admin]
+      summary: Read source operation
+      parameters:
+        - in: path
+          name: operation_id
+          required: true
+          schema: { $ref: "#/components/schemas/UUID" }
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SourceOperation" }
+  /api/v1/admin/data-sources/{data_source_id}/operations:
+    get:
+      tags: [Admin]
+      summary: List recent source operations
+      parameters:
+        - in: path
+          name: data_source_id
+          required: true
+          schema: { $ref: "#/components/schemas/UUID" }
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SourceOperationList" }
+  /api/v1/admin/devices/{device_id}/config/resync:
+    post:
+      tags: [Admin]
+      summary: Reconcile platform configuration without repeating source writes
+      parameters:
+        - in: path
+          name: device_id
+          required: true
+          schema: { $ref: "#/components/schemas/UUID" }
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UpdateTHCPNDeviceConfigResponse" }
+  /api/v1/devices/{device_id}/config/resync:
+    post:
+      tags: [Devices]
+      summary: Reconcile platform configuration without repeating source writes
+      parameters:
+        - in: path
+          name: device_id
+          required: true
+          schema: { $ref: "#/components/schemas/UUID" }
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UpdateTHCPNDeviceConfigResponse" }
+  /api/v1/admin/devices/{device_id}/source-config/{config_kind}:
+    parameters:
+      - { in: path, name: device_id, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+      - { in: path, name: config_kind, required: true, schema: { type: string, enum: [gateway, sensor, time] } }
+      - { in: query, name: node_index, schema: { type: integer, minimum: 1, maximum: 254 } }
+    get:
+      tags: [Admin]
+      summary: Read source configuration using a platform device target
+      parameters:
+        - { in: query, name: latest, schema: { type: boolean } }
+        - { in: query, name: page, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: page_size, schema: { type: integer, minimum: 1, maximum: 50 } }
+      responses:
+        "200":
+          description: Source configuration history or latest configuration; time history is unsupported
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+    post:
+      tags: [Admin]
+      summary: Write source configuration and report source and platform stages separately
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "200":
+          description: Source accepted; inspect write_state for platform result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [write_state, payload]
+                properties:
+                  write_state: { $ref: "#/components/schemas/ConfigWriteState" }
+                  payload: { type: object, additionalProperties: true }
+                  warnings: { type: array, items: { $ref: "#/components/schemas/QueryWarning" } }
+  /api/v1/admin/devices/{device_id}/context:
+    get:
+      tags: [Admin]
+      summary: Read device interaction and allowed actions
+      parameters:
+        - in: path
+          name: device_id
+          required: true
+          schema: { $ref: "#/components/schemas/UUID" }
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceInteractionContext" }
+  /api/v1/admin/devices/{device_id}/nodes:
+    get:
+      tags: [Admin]
+      summary: List gateway nodes with explicit targets and streams
+      parameters:
+        - in: path
+          name: device_id
+          required: true
+          schema: { $ref: "#/components/schemas/UUID" }
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GatewayNodeList" }
+  /api/v1/devices/{device_id}/context:
+    get:
+      tags: [Devices]
+      summary: Read device interaction and allowed actions
+      parameters:
+        - in: path
+          name: device_id
+          required: true
+          schema: { $ref: "#/components/schemas/UUID" }
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceInteractionContext" }
+  /api/v1/devices/{device_id}/nodes:
+    get:
+      tags: [Devices]
+      summary: List gateway nodes with explicit targets and streams
+      parameters:
+        - in: path
+          name: device_id
+          required: true
+          schema: { $ref: "#/components/schemas/UUID" }
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GatewayNodeList" }
   /healthz:
     get:
       tags:
@@ -1765,7 +1938,7 @@ paths:
       description: >
         Requires a valid administrator bearer token. Reads all non-deleted rows from the external THCPN MySQL
         `devices` table plus active `gate_node` topology. Each asset is synchronized independently and the response
-        reports partial failures. Devices remain unassigned to a Workspace.
+        returns an operation ID; progress and partial failures are available through source operations. Devices remain unassigned to a Workspace.
       security:
         - bearerAuth: []
         - devUserHeader: []
@@ -1777,12 +1950,12 @@ paths:
               type: object
               additionalProperties: false
       responses:
-        "200":
-          description: Full THCPN device synchronization completed, possibly with per-device failures.
+        "202":
+          description: Synchronization queued. Poll the returned source operation.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SyncAllTHCPNDevicesResult"
+                $ref: "#/components/schemas/SourceOperation"
         "400":
           $ref: "#/components/responses/InvalidArgument"
         "401":
@@ -1869,7 +2042,7 @@ paths:
       operationId: adminSyncAllLoRaWANV2Gateways
       summary: Synchronize every LoRaWAN V2 gateway without deleting missing platform devices
       security: [{bearerAuth: []}, {devUserHeader: []}]
-      responses: {"200": {description: Synchronization summary, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
+      responses: {"202": {description: Synchronization queued, content: {application/json: {schema: {$ref: "#/components/schemas/SourceOperation"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
   /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}:
     parameters: [{$ref: "#/components/parameters/DataSourceID"}, {$ref: "#/components/parameters/LoRaWANV2GatewaySN"}]
     get:
@@ -2469,6 +2642,80 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/PermissionDenied"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/devices/{device_id}/lorawan-v2/logs:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags:
+        - Admin
+      operationId: adminListDeviceLoRaWANV2GatewayLogs
+      summary: List LoRaWAN V2 gateway logs for a platform device
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: start_at
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_at
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        "200":
+          description: LoRaWAN V2 gateway log response from the configured source.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/devices/{device_id}/lorawan-v2/context:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags:
+        - Admin
+      operationId: adminGetDeviceLoRaWANV2Context
+      summary: Resolve the LoRaWAN V2 source and gateway for a platform device
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: LoRaWAN V2 device source mapping.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/Internal"
   /api/v1/admin/devices/{device_id}/logs/{log_uuid}/preview:
@@ -7922,6 +8169,17 @@ components:
           $ref: "#/components/schemas/UUID"
         site_id:
           $ref: "#/components/schemas/UUID"
+        external_key:
+          type: string
+          description: External identity from the active management source mapping; gateway SN for LoRaWAN V2.
+        source_family:
+          type: string
+          enum: [thcpn, carbon, lorawan_v2]
+        source_status:
+          type: string
+        features:
+          type: array
+          items: {type: string}
         product_id:
           type: string
         serial_no:
@@ -8538,6 +8796,70 @@ components:
           $ref: "#/components/schemas/Timestamp"
         updated_at:
           $ref: "#/components/schemas/Timestamp"
+    ConfigWriteState:
+      type: object
+      required: [operation_id, source, platform, device]
+      properties:
+        operation_id: { $ref: "#/components/schemas/UUID" }
+        source: { type: string, enum: [pending, accepted, failed, unknown] }
+        platform: { type: string, enum: [pending, synced, failed] }
+        device: { type: string, enum: [unknown] }
+    SourceOperationList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/SourceOperation" } }
+    SourceOperation:
+      type: object
+      required: [id, data_source_id, kind, status, result, created_at, updated_at]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        data_source_id: { $ref: "#/components/schemas/UUID" }
+        device_id: { $ref: "#/components/schemas/UUID" }
+        kind: { type: string, enum: [sync_all, config_update] }
+        status: { type: string, enum: [queued, running, completed, partial, failed, unknown, reconciled] }
+        result: { type: object, additionalProperties: true }
+        error: { type: string }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+    DeviceNodeTarget:
+      oneOf:
+        - type: object
+          required: [kind, device_id]
+          properties:
+            kind: { type: string, enum: [device] }
+            device_id: { $ref: "#/components/schemas/UUID" }
+        - type: object
+          required: [kind, gateway_device_id, node_index]
+          properties:
+            kind: { type: string, enum: [gateway_node] }
+            gateway_device_id: { $ref: "#/components/schemas/UUID" }
+            node_index: { type: integer, minimum: 1, maximum: 254 }
+    GatewayNode:
+      type: object
+      required: [key, name, target, streams]
+      properties:
+        key: { type: string }
+        name: { type: string }
+        target: { $ref: "#/components/schemas/DeviceNodeTarget" }
+        streams:
+          type: array
+          items: { $ref: "#/components/schemas/DataStream" }
+    GatewayNodeList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/GatewayNode" }
+    DeviceInteractionContext:
+      type: object
+      required: [device, actions]
+      properties:
+        device: { $ref: "#/components/schemas/Device" }
+        actions:
+          type: object
+          additionalProperties: { type: boolean }
     DeviceChild:
       type: object
       required:
@@ -9439,6 +9761,11 @@ components:
       type: object
       required: [device_id, mode, advanced, data_minutes, data_hours, upload_minutes, upload_hours, image_hours, image_upload_hours, data_cron, upload_cron, image_cron, image_upload_cron, summary, external_config_id, can_edit]
       properties:
+        warnings:
+          type: array
+          items: { type: object, properties: { code: {type: string}, message: {type: string} } }
+        write_state:
+          $ref: "#/components/schemas/ConfigWriteState"
         device_id: { $ref: "#/components/schemas/UUID" }
         mode: { $ref: "#/components/schemas/SamplingProfileMode" }
         advanced: { type: boolean }
@@ -9539,6 +9866,8 @@ components:
         - data_streams
         - bindings
       properties:
+        write_state:
+          $ref: "#/components/schemas/ConfigWriteState"
         device_id:
           $ref: "#/components/schemas/UUID"
         data_source_id:
@@ -9832,6 +10161,9 @@ components:
         - sampled
         - complete
       properties:
+        error:
+          type: string
+          description: Failure for this series; successful series remain available.
         data_stream_id:
           $ref: "#/components/schemas/UUID"
         code:
@@ -10115,7 +10447,7 @@ components:
         request_config:
           type: object
           additionalProperties: true
-          description: Worker input such as `start_time`, `end_time`, `limit`, `media_type`, or future export-specific options.
+          description: Worker input. Group exports require gateway_id, node_targets (DeviceNodeTarget array), matching device_ids, start_time and end_time. Indexed LoRaWAN nodes do not support include_images.
         status:
           $ref: "#/components/schemas/ExportStatus"
         file_object_key:

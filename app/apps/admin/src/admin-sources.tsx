@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
@@ -27,6 +27,8 @@ type SyncAction = "single" | "full";
 type THCPNSingleAction = "station" | "gateway";
 type SourceFamily = "thcpn" | "carbon" | "lorawan_v2";
 type SyncOutcome = { action: SyncAction; result: JsonRecord };
+type SyncStatus = "idle" | "running" | "success" | "error";
+type SyncLog = { time: string; message: string; status: Exclude<SyncStatus, "idle" | "running"> | "info" };
 
 const string = (input: unknown, fallback: unknown = "—"): string =>
   input === undefined || input === null || input === ""
@@ -62,6 +64,10 @@ export function AdminSourcesPage() {
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState("");
   const [syncOutcome, setSyncOutcome] = useState<SyncOutcome | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
+  const [syncStartedAt, setSyncStartedAt] = useState<number | null>(null);
+  const [syncElapsed, setSyncElapsed] = useState(0);
+  const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
   const [loraSource, setLoraSource] = useState<JsonRecord | null>(null);
   const [sourceForm] = Form.useForm();
   const [syncForm] = Form.useForm();
@@ -88,6 +94,22 @@ export function AdminSourcesPage() {
       })),
     [carbonDevices.data],
   );
+
+  useEffect(() => {
+    if (!syncBusy || syncStartedAt === null) return;
+    const timer = window.setInterval(() => setSyncElapsed(Math.floor((Date.now() - syncStartedAt) / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, [syncBusy, syncStartedAt]);
+
+  const resetSyncProgress = () => {
+    setSyncStatus("idle");
+    setSyncStartedAt(null);
+    setSyncElapsed(0);
+    setSyncLogs([]);
+  };
+  const appendSyncLog = (message: string, status: SyncLog["status"] = "info") => {
+    setSyncLogs((current) => [...current, { time: new Date().toLocaleTimeString(), message, status }]);
+  };
 
   const openSourceForm = (next: Exclude<SourceMode, null>, source?: JsonRecord) => {
     setEditingSource(source ?? null);
@@ -153,40 +175,60 @@ export function AdminSourcesPage() {
     setTHCPNSingleAction("station");
     setSyncFeedback("");
     setSyncOutcome(null);
+    resetSyncProgress();
     syncForm.resetFields();
   };
   const closeSync = () => {
     setSyncSource(null);
     setSyncFeedback("");
     setSyncOutcome(null);
+    resetSyncProgress();
     syncForm.resetFields();
   };
   const changeSyncAction = (action: SyncAction) => {
     setSyncAction(action);
     setSyncFeedback("");
     setSyncOutcome(null);
+    resetSyncProgress();
     syncForm.resetFields();
   };
   const changeTHCPNSingleAction = (action: THCPNSingleAction) => {
     setTHCPNSingleAction(action);
     setSyncFeedback("");
     setSyncOutcome(null);
+    resetSyncProgress();
     syncForm.resetFields();
   };
   const runSync = async () => {
     if (!syncSource || !syncFamily) return;
+    let values: Record<string, number> = {};
+    if (syncAction === "single") {
+      try {
+        values = await syncForm.validateFields();
+      } catch {
+        return;
+      }
+    }
+    const startedAt = Date.now();
     setSyncBusy(true);
     setSyncFeedback("");
     setSyncOutcome(null);
+    setSyncStatus("running");
+    setSyncStartedAt(startedAt);
+    setSyncElapsed(0);
+    setSyncLogs([]);
+    appendSyncLog(syncAction === "full" ? "开始全量同步" : "开始单设备同步");
+    appendSyncLog("同步请求已提交，正在读取源库并更新平台设备");
     try {
       const sourceID = string(syncSource.id);
       let result: JsonRecord;
       if (syncAction === "full") {
-        result = syncFamily === "thcpn"
-          ? await api.admin.syncAllDevices(sourceID)
-          : await api.admin.syncAllCarbonDevices(sourceID);
+        const operation = await api.admin.startSourceSync(sourceID);
+        setSyncFeedback(`同步任务已提交：${operation.id}。可关闭窗口，稍后查看同步记录。`);
+        appendSyncLog("任务已进入后台队列", "success");
+        setSyncStatus("success");
+        return;
       } else {
-        const values = await syncForm.validateFields();
         if (syncFamily === "thcpn") {
           result = thcpnSingleAction === "station"
             ? await api.admin.syncStation(sourceID, { external_device_id: values.external_device_id })
@@ -197,14 +239,20 @@ export function AdminSourcesPage() {
           });
         }
       }
+      appendSyncLog("设备、数据流和来源绑定已处理");
       setSyncOutcome({ action: syncAction, result });
       setSyncFeedback("同步已完成");
       await query.refetch();
+      appendSyncLog("同步完成，数据源列表已刷新", "success");
+      setSyncStatus("success");
     } catch (error) {
-      if ((error as { errorFields?: unknown }).errorFields) return;
       const detail = formatApiError(error);
-      setSyncFeedback(`${detail.message}${detail.requestId ? ` · request id ${detail.requestId}` : ""}`);
+      const message = `${detail.message}${detail.requestId ? ` · request id ${detail.requestId}` : ""}`;
+      setSyncFeedback(message);
+      appendSyncLog(message, "error");
+      setSyncStatus("error");
     } finally {
+      setSyncElapsed(Math.floor((Date.now() - startedAt) / 1000));
       setSyncBusy(false);
     }
   };
@@ -366,13 +414,27 @@ export function AdminSourcesPage() {
         </Form>
         <div className="drawer-note">
           <Network size={15} />
+          {syncSource && <SourceOperationHistory sourceID={string(syncSource.id)} />}
           {syncAction === "full" ? "全量同步会更新源库中的已存在设备、配置和数据流；不会导入监控站。" : syncFamily === "thcpn" ? "标准站按设备 ID 同步；网关同步会同时处理其节点和拓扑。" : "选择一个 Carbon v2 源库设备后同步到平台。"}
         </div>
+        {syncStatus !== "idle" ? <SyncProgress status={syncStatus} startedAt={syncStartedAt} elapsed={syncElapsed} logs={syncLogs} /> : null}
         {syncFeedback && <div className="admin-feedback">{syncFeedback}</div>}
         {syncOutcome ? (syncOutcome.action === "full" ? <FullSyncResult result={syncOutcome.result} /> : <SingleSyncResult result={syncOutcome.result} />) : null}
       </Drawer>
     </>
   );
+}
+
+function SyncProgress({ status, startedAt, elapsed, logs }: { status: SyncStatus; startedAt: number | null; elapsed: number; logs: SyncLog[] }) {
+  const label = status === "running" ? "同步中" : status === "success" ? "已完成" : "失败";
+  const color = status === "running" ? "processing" : status === "success" ? "green" : "red";
+  const duration = elapsed < 60 ? `${elapsed} 秒` : `${Math.floor(elapsed / 60)} 分 ${elapsed % 60} 秒`;
+  return <section className={`sync-progress sync-progress-${status}`}>
+    <div className="sync-progress-head"><strong>同步进度</strong><Tag color={color}>{label}</Tag></div>
+    <div className="sync-progress-track"><span /></div>
+    <div className="sync-progress-meta"><span>开始时间：{startedAt ? new Date(startedAt).toLocaleTimeString() : "—"}</span><span>已用时间：{duration}</span></div>
+    <div className="sync-progress-logs">{logs.map((log, index) => <div className={`sync-log-${log.status}`} key={`${log.time}-${index}`}><time>{log.time}</time><span>{log.message}</span></div>)}</div>
+  </section>;
 }
 
 function SourceFields({ editing, familyLocked, onFamilyChange }: { editing: boolean; familyLocked: boolean; onFamilyChange: (family: SourceFamily | undefined) => void }) {
@@ -444,7 +506,7 @@ function LoRaWANV2Drawer({ source, onClose }: { source: JsonRecord | null; onClo
         case "create_gateway": response = await api.admin.createLoRaWANV2Gateway(sourceID, { sn: values.gateway_sn, node_count: Number(values.node_count) }); break;
         case "get_gateway": response = await api.admin.loraWANV2Gateway(sourceID, values.gateway_sn); break;
         case "sync_gateway": response = await api.admin.syncLoRaWANV2Gateway(sourceID, values.gateway_sn); break;
-        case "sync_all": response = await api.admin.syncAllLoRaWANV2Gateways(sourceID); break;
+        case "sync_all": response = await api.admin.startSourceSync(sourceID); break;
         case "list_firmwares": response = await api.admin.loraWANV2Firmwares(sourceID, query); break;
         case "create_firmware": response = await api.admin.createLoRaWANV2Firmware(sourceID, values.gateway_sn, payload); break;
         case "get_firmware": response = await api.admin.loraWANV2Firmware(sourceID, values.firmware_id); break;
@@ -468,6 +530,7 @@ function LoRaWANV2Drawer({ source, onClose }: { source: JsonRecord | null; onClo
     } finally { setBusy(false); }
   };
   return <Drawer title={`LoRa V2 管理 · ${string(source?.name)}`} open={Boolean(source)} onClose={onClose} size={720} extra={<Space><Button onClick={onClose}>关闭</Button><Button type="primary" loading={busy} onClick={() => void run()}>执行</Button></Space>}>
+    <SourceOperationHistory sourceID={sourceID} />
     <Form form={form} layout="vertical" initialValues={{ operation: "health", query_json: "{}", payload_json: "{}", node_count: 1, node_index: 1 }}>
       <Form.Item name="operation" label="操作"><Select options={loraOperationOptions} /></Form.Item>
       {requiresGateway || operation === "create_gateway" ? <Form.Item name="gateway_sn" label="网关 SN" rules={[{ required: true, message: "请输入网关 SN" }]}><Input /></Form.Item> : null}
@@ -490,4 +553,10 @@ function parseLoRaJSONObject(raw: unknown, label: string): JsonRecord {
     if (!value || Array.isArray(value) || typeof value !== "object") throw new Error();
     return value as JsonRecord;
   } catch { throw new Error(`${label}必须是 JSON 对象`); }
+}
+
+function SourceOperationHistory({ sourceID }: { sourceID: string }) {
+ const query = useQuery({ queryKey: ["admin", "source-operations", sourceID], queryFn: () => api.admin.sourceOperations(sourceID), enabled: Boolean(sourceID), refetchInterval: 3000 });
+ const labels: Record<string,string> = { queued: "排队中", running: "同步中", completed: "完成", partial: "部分失败", failed: "失败", unknown: "结果未知", reconciled: "已恢复" };
+ return <div aria-label="同步记录"><h3>最近操作</h3>{query.error && <div role="alert">{formatApiError(query.error).message}</div>}{query.data?.items.slice(0, 10).map((op) => <div key={op.id}><Tag>{labels[op.status] ?? op.status}</Tag><span>{new Date(op.created_at).toLocaleString()} · {op.kind === "sync_all" ? "全量同步" : "配置更新"}</span><details><summary>进度与结果</summary><pre>{JSON.stringify(op.result, null, 2)}</pre>{op.error}</details></div>)}</div>;
 }

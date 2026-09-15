@@ -41,6 +41,8 @@ import {
 import { THCPNVisualConfigEditor } from "./thcpn-config-editor";
 import { configChangeSummary, configDraftFromDetail, duplicateSensorWarnings, parseAdvancedConfig, validateVisualConfig } from "./thcpn-config-model";
 import { DeviceLogsPanel } from "./device-logs-panel";
+import { LoRaWANV2LogsPanel } from "./lorawan-v2-logs-panel";
+import { LoRaWANV2ConfigPanel } from "./lorawan-v2-config-panel";
 
 type Mode =
   | "edit"
@@ -64,10 +66,12 @@ const categoryOf = (item: JsonRecord) =>
   value(item.topology_role || item.device_type, "standalone");
 const deviceModelLabel = (item: JsonRecord) =>
   value(item.device_type) === "gateway"
-    ? value(item.product_id) === "lorawan_v2_gateway"
+    ? value(item.source_family, "") === "lorawan_v2"
       ? "LoRa V2 网关"
       : "THCPN 组网站网关"
     : deviceTopologyRoleLabel(value(item.device_type, ""));
+const deviceModelOf = (item: JsonRecord) =>
+  value(item.source_family, "") === "lorawan_v2" ? "lorawan_v2_gateway" : categoryOf(item);
 
 export function AdminDevicesPage() {
   const { deviceId } = useParams();
@@ -87,7 +91,7 @@ export function AdminDevicesPage() {
   const allRows = query.data?.items ?? [];
   const detailDevice = allRows.find((item) => value(item.id, "") === deviceId);
   const isCarbonDetail = categoryOf(detailDevice ?? {}) === "carbon_sink";
-  const isLoRaV2Detail = value(detailDevice?.product_id, "") === "lorawan_v2_gateway";
+  const isLoRaV2Detail = value(detailDevice?.source_family, "") === "lorawan_v2";
   const detailAttributesQuery = useQuery({
     queryKey: ["admin", "device", deviceId, "attributes"],
     queryFn: () => api.admin.deviceAttributes(deviceId!),
@@ -114,6 +118,7 @@ export function AdminDevicesPage() {
     enabled: Boolean(detailDevice) && isCarbonDetail,
   });
   const [keyword, setKeyword] = useState("");
+  const [deviceModel, setDeviceModel] = useState("");
   const [status, setStatus] = useState("");
   const [lifecycle, setLifecycle] = useState("");
   const [assignment, setAssignment] = useState("");
@@ -166,6 +171,7 @@ export function AdminDevicesPage() {
             .includes(keyword.toLowerCase());
         return (
           searchable &&
+          (!deviceModel || deviceModelOf(item) === deviceModel) &&
           (!status || item.status === status) &&
           (!lifecycle || item.lifecycle_status === lifecycle) &&
           (!assignment ||
@@ -175,7 +181,7 @@ export function AdminDevicesPage() {
           (category === "all" || categoryOf(item) === category)
         );
       }),
-    [topLevelRows, keyword, status, lifecycle, assignment, category, tagsByDevice],
+    [topLevelRows, keyword, deviceModel, status, lifecycle, assignment, category, tagsByDevice],
   );
   const id = value(selected?.id, "");
 
@@ -647,6 +653,19 @@ export function AdminDevicesPage() {
           </div>
           <Select
             allowClear
+            placeholder="设备类型"
+            value={deviceModel || undefined}
+            onChange={(item) => setDeviceModel(item ?? "")}
+            options={[
+              { value: "standalone", label: "标准站" },
+              { value: "gateway", label: "THCPN 组网站网关" },
+              { value: "lorawan_v2_gateway", label: "LoRa V2 网关" },
+              { value: "carbon_sink", label: "碳汇站" },
+              { value: "camera", label: "监控站" },
+            ]}
+          />
+          <Select
+            allowClear
             placeholder="资产状态"
             value={status || undefined}
             onChange={(item) => setStatus(item ?? "")}
@@ -892,7 +911,7 @@ function DeviceDetailPanel({
         { key: "serial", label: "序列号", children: <span className="mono">{value(device.serial_no)}</span> },
         { key: "product", label: "产品 ID", children: value(device.product_id) },
         { key: "type", label: "设备类型", children: deviceModelLabel(device) },
-        { key: "externalId", label: "源库设备 ID", children: <span className="mono">{value(device.external_device_id, "未关联")}</span> },
+        { key: "externalId", label: device.source_family === "lorawan_v2" ? "源端网关 SN" : "源库设备 ID", children: <span className="mono">{value(device.source_family === "lorawan_v2" ? device.external_key : device.external_device_id, "未关联")}</span> },
         { key: "id", label: "设备 ID", span: 2, children: <span className="mono admin-break-value">{value(device.id)}</span> },
         { key: "status", label: "资产状态", children: <Tag color={device.status === "active" ? "green" : "default"}>{deviceStatusLabel(value(device.status, ""))}</Tag> },
         { key: "created", label: "创建时间", children: date(device.created_at) },
@@ -1015,7 +1034,10 @@ function DeviceDetailPanel({
   return <Panel className="admin-device-detail"><div className="admin-device-detail-summary"><div><span>设备 ID</span><strong className="mono">{value(device.id)}</strong></div><div><span>生命周期</span><Tag color="blue">{deviceLifecycleLabel(value(device.lifecycle_status, ""))}</Tag></div><div><span>分配状态</span><strong>{device.workspace_id ? "已分配" : "未分配"}</strong></div><div><span>资产状态</span><Tag color={device.status === "active" ? "green" : "default"}>{deviceStatusLabel(value(device.status, ""))}</Tag></div></div><Tabs className="admin-device-detail-tabs" items={[
     { key: "overview", label: "概览", children: overview },
     { key: "data", label: "设备数据", children: <AdminDeviceDataPanel device={device} /> },
-    ...(isCarbon ? [{ key: "carbon", label: "碳汇数据", children: carbonManagement }, { key: "configuration", label: "设备配置", children: configuration }] : [
+    ...(value(device.source_family, "") === "lorawan_v2" ? [
+      { key: "configuration", label: "LoRa 配置", children: <LoRaWANV2ConfigPanel deviceId={value(device.id, "")} /> },
+      { key: "logs", label: "网关日志", children: <LoRaWANV2LogsPanel deviceId={value(device.id, "")} deviceName={value(device.name, "未命名设备")} /> },
+    ] : isCarbon ? [{ key: "carbon", label: "碳汇数据", children: carbonManagement }, { key: "configuration", label: "设备配置", children: configuration }] : [
       { key: "topology", label: "拓扑与能力", children: topology },
       { key: "configuration", label: "配置与属性", children: configuration },
       { key: "logs", label: "设备日志", children: <DeviceLogsPanel deviceId={value(device.id, "")} deviceName={value(device.name, "未命名设备")} /> },
@@ -1025,7 +1047,7 @@ function DeviceDetailPanel({
 
 function AdminDeviceDataPanel({ device }: { device: JsonRecord }) {
   const deviceId = value(device.id, "");
-  const childGateway = categoryOf(device) === "gateway" && value(device.product_id, "") !== "lorawan_v2_gateway";
+  const childGateway = categoryOf(device) === "gateway";
   const range = useMemo(() => {
     const end = new Date();
     return {
@@ -1035,40 +1057,33 @@ function AdminDeviceDataPanel({ device }: { device: JsonRecord }) {
   }, [deviceId]);
   const children = useQuery({
     queryKey: ["admin", "device", deviceId, "data-children"],
-    queryFn: () => api.admin.deviceChildren(deviceId),
+    queryFn: () => api.admin.deviceNodes(deviceId),
     enabled: childGateway,
   });
   const dataDevices = childGateway
-    ? ((children.data?.items ?? []).map((item) => (item.device ?? item) as JsonRecord))
+    ? ((children.data?.items ?? []).map((item) => ({id:item.target.kind === "device" ? item.target.device_id : item.target.gateway_device_id,name:item.name}) as JsonRecord))
     : [device];
   const streamQueries = useQueries({
     queries: dataDevices.map((item) => ({
       queryKey: ["admin", "device", value(item.id, ""), "data-streams"],
       queryFn: () => api.admin.deviceDataStreams(value(item.id, "")),
+ enabled: !childGateway,
     })),
   });
-  const activeStreams = dataDevices.flatMap((owner, index) =>
-    (streamQueries[index]?.data?.items ?? [])
-      .filter((item) => item.type === "telemetry" && item.status === "active")
-      .map((stream) => ({ stream, owner })),
-  );
-  const telemetry = useQueries({
-    queries: activeStreams.map(({ stream }) => ({
-      queryKey: ["admin", "data-stream", stream.id, "latest", range.startTime, range.endTime],
-      queryFn: () => api.admin.dataStreamTelemetry(stream.id, {
-        ...range,
-        limit: 240,
-        adaptive: true,
-        targetPoints: 2,
-      }),
-    })),
-  });
+  const activeStreams = childGateway
+    ? (children.data?.items ?? []).flatMap((node) => node.streams.map((stream) => ({stream,owner:{name:node.name,id:stream.device_id} as JsonRecord})))
+    : dataDevices.flatMap((owner,index) => (streamQueries[index]?.data?.items ?? []).filter((stream) => stream.type === "telemetry" && stream.status === "active").map((stream) => ({stream,owner})));
+  const telemetryGroups = [...new Set(activeStreams.map(({stream}) => stream.device_id))].map((id) => ({id,streams:activeStreams.filter(({stream}) => stream.device_id === id).map(({stream}) => stream.id)}));
+  const telemetry = useQueries({ queries: telemetryGroups.map((group) => ({
+    queryKey:["admin","device",group.id,"recent-telemetry",group.streams.join(","),range.startTime,range.endTime],
+    queryFn:() => api.admin.deviceTelemetry(group.id,{...range,dataStreamIds:group.streams,targetPoints:2}),
+  })) });
   const imageRangeStart = useMemo(
     () => new Date(Date.parse(range.endTime) - 7 * 24 * 60 * 60 * 1000).toISOString(),
     [range.endTime],
   );
   const imageQueries = useQueries({
-    queries: dataDevices.map((item) => ({
+    queries: dataDevices.filter(() => value(device.source_family, "") !== "lorawan_v2").map((item) => ({
       queryKey: ["admin", "device", value(item.id, ""), "recent-images", imageRangeStart, range.endTime],
       queryFn: () => api.admin.deviceImages(value(item.id, ""), {
         start_time: imageRangeStart,
@@ -1090,12 +1105,12 @@ function AdminDeviceDataPanel({ device }: { device: JsonRecord }) {
       }).format(new Date(input))
     : "—";
   const rows = activeStreams.map(({ stream, owner }, index) => {
-    const series = telemetry[index]?.data?.series[0];
+    const query = telemetry[telemetryGroups.findIndex((group) => group.id === stream.device_id)];
+    const series = query?.data?.series.find((item) => item.data_stream_id === stream.id);
     const point = series?.points.at(-1);
-    const node = /^lora_node_(\d+)_/.exec(stream.code)?.[1];
     return {
       key: stream.id,
-      node: node ? `节点 ${node}` : childGateway ? value(owner.name, owner.serial_no) : "设备",
+      node: childGateway ? value(owner.name, owner.serial_no) : "设备",
       name: stream.name,
       code: stream.code,
       unit: stream.unit,
@@ -1103,8 +1118,8 @@ function AdminDeviceDataPanel({ device }: { device: JsonRecord }) {
       time: point?.ts,
       count: series?.source_count ?? 0,
       complete: series?.complete,
-      loading: telemetry[index]?.isLoading,
-      error: telemetry[index]?.error,
+      loading: query?.isLoading,
+      error: query?.error ?? series?.error,
     };
   });
   return <div className="admin-device-detail-content"><section className="admin-detail-section">
@@ -1684,7 +1699,19 @@ function ConfigApplyResult({
   result: { deviceName: string; response: JsonRecord };
   onClose: () => void;
 }) {
+  const [recovered, setRecovered] = useState(false);
+  const [recovering, setRecovering] = useState(false);
+  const [recoveryError, setRecoveryError] = useState("");
   const response = result.response;
+  const writeState = response.write_state as JsonRecord | undefined;
+  const needsRecovery = Boolean(writeState && writeState.platform !== "synced" && !recovered);
+  const recover = async () => {
+    setRecovering(true);
+    setRecoveryError("");
+    try { await api.admin.reconcileDeviceConfig(String(response.device_id)); setRecovered(true); }
+    catch (error) { setRecoveryError(formatApiError(error).message); }
+    finally { setRecovering(false); }
+  };
   const count = (key: string) =>
     Array.isArray(response[key]) ? response[key].length : 0;
   const warnings = Array.isArray(response.warnings)
@@ -1698,18 +1725,20 @@ function ConfigApplyResult({
           <h2 className="panel-title">配置应用结果 · {result.deviceName}</h2>
           <div className="panel-kicker">
             外部配置版本 {value(config.version, value(config.id))}{" "}
-            已写入并同步至平台
+            {needsRecovery ? "源端已接受，平台同步失败" : "已同步至平台"}；设备是否应用尚未确认
           </div>
         </div>
         <Space>
           <Tag color={warnings.length ? "orange" : "green"}>
-            {warnings.length ? `${warnings.length} 条警告` : "应用成功"}
+            {needsRecovery ? "需要恢复同步" : recovered ? "同步已恢复" : warnings.length ? `${warnings.length} 条警告` : "平台同步成功"}
           </Tag>
+          {needsRecovery && <Button loading={recovering} onClick={recover}>重新同步平台</Button>}
           <Button type="text" onClick={onClose}>
             关闭
           </Button>
         </Space>
       </div>
+      {recoveryError && <div role="alert">{recoveryError}</div>}
       <div className="sync-result-metrics">
         <div>
           <strong>{count("data_streams")}</strong>

@@ -441,8 +441,8 @@ type DeviceSourceRef struct {
 	DataSourceID uuid.UUID `json:"data_source_id"`
 	AdapterCode  string    `json:"adapter_code"`
 	// 设备在对应外部数据源中的数值 ID。
-	ExternalDeviceID int64  `json:"external_device_id"`
-	Status           string `json:"status"`
+	ExternalKey string `json:"external_key"`
+	Status      string `json:"status"`
 	// 最近一次确认该映射或同步设备主记录的时间。
 	SyncedAt  pgtype.Timestamptz `json:"synced_at"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
@@ -518,17 +518,6 @@ type LoginVisual struct {
 	SizeBytes        int64              `json:"size_bytes"`
 	SortOrder        int32              `json:"sort_order"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
-}
-
-type LorawanV2DeviceRef struct {
-	ID           uuid.UUID          `json:"id"`
-	DeviceID     uuid.UUID          `json:"device_id"`
-	DataSourceID uuid.UUID          `json:"data_source_id"`
-	GatewaySn    string             `json:"gateway_sn"`
-	Status       string             `json:"status"`
-	SyncedAt     pgtype.Timestamptz `json:"synced_at"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
 // 稳定权限字典，按资源类型和动作定义权限 code。
@@ -755,6 +744,20 @@ type SiteEnvironmentProfile struct {
 type SiteEnvironmentTerm struct {
 	SiteID uuid.UUID `json:"site_id"`
 	TermID uuid.UUID `json:"term_id"`
+}
+
+type SourceOperation struct {
+	ID           uuid.UUID          `json:"id"`
+	DataSourceID uuid.UUID          `json:"data_source_id"`
+	DeviceID     *uuid.UUID         `json:"device_id"`
+	Kind         string             `json:"kind"`
+	Status       string             `json:"status"`
+	Request      []byte             `json:"request"`
+	Result       []byte             `json:"result"`
+	Error        string             `json:"error"`
+	ActorID      uuid.UUID          `json:"actor_id"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
 // 系统管理员独立账号，与普通用户和工作区成员身份隔离。

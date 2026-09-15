@@ -2,7 +2,6 @@ package datasource
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -96,26 +95,7 @@ func (h *Handler) AdminSyncLoRaWANV2Gateway(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-func (h *Handler) AdminSyncAllLoRaWANV2Gateways(c *gin.Context) {
-	actor, ok := actorFromContext(c)
-	if !ok {
-		return
-	}
-	id, ok := parseUUIDParam(c, "data_source_id")
-	if !ok {
-		return
-	}
-	result, err := h.service.SyncAllLoRaWANV2Gateways(c.Request.Context(), SyncAllLoRaWANV2GatewaysInput{DataSourceID: id, ActorUserID: actor.UserID})
-	if err != nil {
-		h.recordLoRaWANV2(c, actor.UserID, id, "lorawan_v2.gateway.sync_all", audit.ResultFailure, apperr.MessageOf(err))
-		httpx.WriteAppError(c, err)
-		return
-	}
-	if !h.recordLoRaWANV2(c, actor.UserID, id, "lorawan_v2.gateway.sync_all", audit.ResultSuccess, fmt.Sprintf("total=%d; synced=%d; created=%d; updated=%d; failed=%d", result.Total, result.Synced, result.Created, result.Updated, result.Failed)) {
-		return
-	}
-	c.JSON(http.StatusOK, result)
-}
+func (h *Handler) AdminSyncAllLoRaWANV2Gateways(c *gin.Context) { h.AdminStartSourceSync(c) }
 
 func (h *Handler) AdminListLoRaWANV2Firmwares(c *gin.Context) {
 	h.adminLoRaWANV2Get(c, "/firmwares", loraWANV2FirmwareQuery(c))
@@ -155,6 +135,35 @@ func (h *Handler) AdminCreateLoRaWANV2NodeTimeConfig(c *gin.Context) {
 }
 func (h *Handler) AdminListLoRaWANV2GatewayLogs(c *gin.Context) {
 	h.adminLoRaWANV2GatewayGet(c, "/logs")
+}
+func (h *Handler) AdminListDeviceLoRaWANV2GatewayLogs(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	ref, err := h.service.LoRaWANV2GatewayForDevice(c.Request.Context(), deviceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	payload, err := h.service.LoRaWANV2Request(c.Request.Context(), ref.DataSourceID, http.MethodGet, "/device/"+url.PathEscape(ref.GatewaySN)+"/logs", loraWANV2AllowedQuery(c), nil)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	writeLoRaWANV2Payload(c, http.StatusOK, payload)
+}
+func (h *Handler) AdminGetDeviceLoRaWANV2Context(c *gin.Context) {
+	deviceID, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	ref, err := h.service.LoRaWANV2GatewayForDevice(c.Request.Context(), deviceID)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, ref)
 }
 func (h *Handler) AdminListLoRaWANV2NodeData(c *gin.Context) { h.adminLoRaWANV2NodeGet(c, "/data") }
 func (h *Handler) AdminListLoRaWANV2GatewayInfos(c *gin.Context) {

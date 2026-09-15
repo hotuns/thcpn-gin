@@ -786,84 +786,9 @@ func (h *Handler) AdminSyncCarbonDevice(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-func (h *Handler) AdminSyncAllCarbonDevices(c *gin.Context) {
-	actor, ok := actorFromContext(c)
-	if !ok {
-		return
-	}
-	dataSourceID, ok := parseUUIDParam(c, "data_source_id")
-	if !ok {
-		return
-	}
-	result, err := h.service.SyncAllCarbonDevices(c.Request.Context(), SyncAllCarbonDevicesInput{
-		DataSourceID: dataSourceID, ActorUserID: actor.UserID,
-	})
-	if err != nil {
-		httpx.WriteAppError(c, err)
-		return
-	}
-	if err := h.ensureClaimCredentials(c.Request.Context()); err != nil {
-		httpx.WriteAppError(c, err)
-		return
-	}
-	if !h.record(c, audit.RecordInput{
-		ActorType: audit.ActorUser, ActorID: audit.UserActorID(actor.UserID),
-		Action: "carbon.devices.full_sync", ResourceType: "data_source", ResourceID: audit.ResourceID(dataSourceID),
-		Result: audit.ResultSuccess,
-		Reason: fmt.Sprintf("total=%d; synced=%d; created=%d; updated=%d; failed=%d", result.Total, result.Synced, result.Created, result.Updated, result.Failed),
-	}) {
-		return
-	}
-	c.JSON(http.StatusOK, result)
-}
+func (h *Handler) AdminSyncAllCarbonDevices(c *gin.Context) { h.AdminStartSourceSync(c) }
 
-func (h *Handler) AdminSyncAllTHCPNDevices(c *gin.Context) {
-	actor, ok := actorFromContext(c)
-	if !ok {
-		return
-	}
-	dataSourceID, ok := parseUUIDParam(c, "data_source_id")
-	if !ok {
-		return
-	}
-	// Accept an optional empty JSON object so clients can consistently submit
-	// POST requests without inventing assignment or metadata fields.
-	if c.Request.Body != nil {
-		var body json.RawMessage
-		if err := c.ShouldBindJSON(&body); err != nil && err != io.EOF {
-			httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
-			return
-		}
-	}
-	result, err := h.service.SyncAllTHCPNDevices(c.Request.Context(), SyncAllTHCPNDevicesInput{
-		DataSourceID: dataSourceID,
-		ActorUserID:  actor.UserID,
-	})
-	if err != nil {
-		httpx.WriteAppError(c, err)
-		return
-	}
-	if err := h.ensureClaimCredentials(c.Request.Context()); err != nil {
-		httpx.WriteAppError(c, err)
-		return
-	}
-	if !h.record(c, audit.RecordInput{
-		ActorType:    audit.ActorUser,
-		ActorID:      audit.UserActorID(actor.UserID),
-		Action:       "thcpn.devices.full_sync",
-		ResourceType: "data_source",
-		ResourceID:   audit.ResourceID(dataSourceID),
-		Result:       audit.ResultSuccess,
-		Reason: fmt.Sprintf(
-			"total=%d; synced=%d; created=%d; updated=%d; unconfigured=%d; failed=%d; relations=%d; topology_failed=%d",
-			result.Total, result.Synced, result.Created, result.Updated, result.Unconfigured,
-			result.Failed, result.Relations, result.TopologyFailed,
-		),
-	}) {
-		return
-	}
-	c.JSON(http.StatusOK, result)
-}
+func (h *Handler) AdminSyncAllTHCPNDevices(c *gin.Context) { h.AdminStartSourceSync(c) }
 
 func (h *Handler) AdminSyncTHCPNGateway(c *gin.Context) {
 	actor, ok := actorFromContext(c)

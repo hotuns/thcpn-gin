@@ -20,6 +20,7 @@ import {
   type Device,
 } from "@thcpn/api";
 import { Badge, Button, Panel, StateView } from "@thcpn/ui";
+import { DeviceQueryToolbar } from "./device-query-toolbar";
 import { useChartZoom } from "./chart-zoom";
 
 const metricDefinitions = [
@@ -170,8 +171,7 @@ export function CarbonDevicePage({ device }: { device: Device }) {
         </div>
         <div className="carbon-query-toolbar">
           <div className="carbon-time-range">
-            <label><span>开始时间</span><input type="datetime-local" value={startTime} onChange={(event) => setStartTime(event.target.value)} /></label>
-            <label><span>结束时间</span><input type="datetime-local" value={endTime} onChange={(event) => setEndTime(event.target.value)} /></label>
+            <DeviceQueryToolbar range={{start:startTime,end:endTime}} onChange={(next) => {setStartTime(next.start);setEndTime(next.end);}}/>
             <Button disabled={invalidRange} onClick={applyRange}><Search size={14} />查询</Button>
           </div>
           <div className="chart-mode" aria-label="通量图表视图">
@@ -248,4 +248,11 @@ function CarbonPeriodDetail({ detail, loading, error }: { detail?: CarbonPeriodD
 function CarbonRawChart({ data, title, unit, lines }: { data: Array<Record<string, unknown>>; title: string; unit: string; lines: Array<{ key: string; name: string; color: string }> }) {
   const zoom = useChartZoom(Number(data[0]?.elapsed ?? 0), Number(data.at(-1)?.elapsed ?? 0));
   return <section className="carbon-raw-chart"><div className="carbon-raw-chart-title"><strong>{title}</strong><span>相对阶段秒数 · {unit}</span></div><div className="carbon-raw-chart-body" title="滚轮缩放，双击恢复完整范围" onWheel={zoom.onWheel} onDoubleClick={zoom.resetZoom}><ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}><CartesianGrid stroke="var(--soft-line)" vertical={false} /><XAxis dataKey="elapsed" type="number" domain={zoom.domain} allowDataOverflow tickFormatter={(value) => `${Math.round(Number(value))}s`} tick={{ fill: "var(--muted)", fontSize: 10 }} /><YAxis tick={{ fill: "var(--muted)", fontSize: 10 }} width={48} /><Tooltip labelFormatter={(value) => `${Math.round(Number(value))}s`} formatter={(value, name) => [formatNumber(Number(value)), String(name)]} />{lines.map((line) => <Line key={line.key} dataKey={line.key} name={line.name} stroke={line.color} strokeWidth={1.7} dot={false} connectNulls isAnimationActive={false} />)}</LineChart></ResponsiveContainer></div></section>;
+}
+
+export function CarbonDeviceOverview({ device }: { device: Device }) {
+  const overview = useQuery({ queryKey: ["carbon", device.id, "overview"], queryFn: () => api.carbon.overview(device.id) });
+  return <Panel><div className="panel-header"><div><h2 className="panel-title">碳汇站概览</h2><div className="panel-kicker">采样与通量计算情况</div></div><Button variant="secondary" onClick={() => void overview.refetch()}>刷新</Button></div>
+    {overview.isLoading ? <StateView type="loading" title="正在读取概览" description="正在读取采样与通量状态。"/> : overview.error ? <StateView type="error" title="概览读取失败" description={formatApiError(overview.error).message}/> : <><div className="gateway-overview-kpis"><div><span>观测节点</span><strong>{overview.data?.nodes_count ?? 0}</strong></div><div><span>最近采样</span><strong>{formatDateTime(overview.data?.latest_sample_at)}</strong></div><div><span>最近通量</span><strong>{formatDateTime(overview.data?.latest_flux_at)}</strong></div></div><div className="carbon-node-grid">{overview.data?.nodes.map((node) => <div className="carbon-node-card" key={node.node_id}><strong>Node {node.node_id}</strong><Badge tone={node.status === "has_data" ? "success" : "neutral"}>{node.status === "has_data" ? "有近期数据" : "无近期数据"}</Badge><small>采样 {formatDateTime(node.latest_sample_at)}</small><small>通量 {formatDateTime(node.latest_flux_at)}</small></div>)}</div></>}
+  </Panel>;
 }

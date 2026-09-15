@@ -87,7 +87,6 @@ func (s *Service) ListCarbonDevices(ctx context.Context, dataSourceID uuid.UUID)
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
 	return readAllCarbonDevices(ctx, db)
 }
 
@@ -103,7 +102,6 @@ func (s *Service) SyncCarbonDevice(ctx context.Context, input SyncCarbonDeviceIn
 	if err != nil {
 		return CarbonDeviceSyncResult{}, err
 	}
-	defer db.Close()
 	external, err := readCarbonDevice(ctx, db, input.ExternalDeviceID)
 	if err != nil {
 		return CarbonDeviceSyncResult{}, err
@@ -150,17 +148,17 @@ func (s *Service) SyncAllCarbonDevices(ctx context.Context, input SyncAllCarbonD
 	if err != nil {
 		return result, err
 	}
-	defer db.Close()
 	devices, err := readAllCarbonDevices(ctx, db)
 	if err != nil {
 		return result, err
 	}
 	result.Total = len(devices)
 	for _, external := range devices {
+		reportSyncProgress(ctx, result)
 		if err := ctx.Err(); err != nil {
 			return result, apperr.Wrap(apperr.KindInternal, "carbon full sync canceled", err)
 		}
-		_, lookupErr := s.queries.GetDeviceSourceRefByExternal(ctx, sqlc.GetDeviceSourceRefByExternalParams{
+		_, lookupErr := s.queries.GetNumericDeviceSourceRefByExternal(ctx, sqlc.GetNumericDeviceSourceRefByExternalParams{
 			DataSourceID: input.DataSourceID, AdapterCode: AdapterCarbonSink, ExternalDeviceID: external.ID,
 		})
 		existed := lookupErr == nil
@@ -169,23 +167,21 @@ func (s *Service) SyncAllCarbonDevices(ctx context.Context, input SyncAllCarbonD
 			result.Failures = append(result.Failures, CarbonDeviceSyncFailure{ExternalDeviceID: external.ID, Error: apperr.MessageOf(lookupErr)})
 			continue
 		}
-		tx, txErr := s.db.BeginTx(ctx, pgx.TxOptions{})
-		if txErr != nil {
-			return result, apperr.Wrap(apperr.KindInternal, "begin carbon full sync", txErr)
-		}
 		information, infoErr := readCarbonDeviceInformation(ctx, db, external.ID)
 		if infoErr != nil {
-			_ = tx.Rollback(ctx)
 			result.Failed++
 			result.Failures = append(result.Failures, CarbonDeviceSyncFailure{ExternalDeviceID: external.ID, Error: apperr.MessageOf(infoErr)})
 			continue
 		}
 		config, configErr := readLatestCarbonDeviceConfig(ctx, db, external.ID)
 		if configErr != nil {
-			_ = tx.Rollback(ctx)
 			result.Failed++
 			result.Failures = append(result.Failures, CarbonDeviceSyncFailure{ExternalDeviceID: external.ID, Error: apperr.MessageOf(configErr)})
 			continue
+		}
+		tx, txErr := s.db.BeginTx(ctx, pgx.TxOptions{})
+		if txErr != nil {
+			return result, apperr.Wrap(apperr.KindInternal, "begin carbon full sync", txErr)
 		}
 		item, syncErr := s.syncCarbonDevice(ctx, s.queries.WithTx(tx), source, external, information, config, input.ActorUserID)
 		if syncErr == nil {
@@ -218,7 +214,7 @@ func (s *Service) syncCarbonDevice(ctx context.Context, q *sqlc.Queries, source 
 	if name == "" {
 		name = fmt.Sprintf("碳汇设备 %d", external.ID)
 	}
-	ref, refErr := q.GetDeviceSourceRefByExternal(ctx, sqlc.GetDeviceSourceRefByExternalParams{
+	ref, refErr := q.GetNumericDeviceSourceRefByExternal(ctx, sqlc.GetNumericDeviceSourceRefByExternalParams{
 		DataSourceID: source.ID, AdapterCode: AdapterCarbonSink, ExternalDeviceID: external.ID,
 	})
 	var device sqlc.Device
@@ -248,7 +244,7 @@ func (s *Service) syncCarbonDevice(ctx context.Context, q *sqlc.Queries, source 
 	} else {
 		return CarbonDeviceSyncResult{}, apperr.Wrap(apperr.KindInternal, "lookup carbon device source ref", refErr)
 	}
-	ref, err = q.UpsertDeviceSourceRef(ctx, sqlc.UpsertDeviceSourceRefParams{DeviceID: device.ID, DataSourceID: source.ID, AdapterCode: AdapterCarbonSink, ExternalDeviceID: external.ID})
+	syncedRef, err := q.UpsertNumericDeviceSourceRef(ctx, sqlc.UpsertNumericDeviceSourceRefParams{DeviceID: device.ID, DataSourceID: source.ID, AdapterCode: AdapterCarbonSink, ExternalDeviceID: external.ID})
 	if err != nil {
 		return CarbonDeviceSyncResult{}, mapWriteError(err, "upsert carbon device source ref")
 	}
@@ -267,7 +263,7 @@ func (s *Service) syncCarbonDevice(ctx context.Context, q *sqlc.Queries, source 
 	if err != nil {
 		return CarbonDeviceSyncResult{}, mapWriteError(err, "upsert carbon device config snapshot")
 	}
-	return CarbonDeviceSyncResult{Device: syncedDeviceFromSQL(device, nil), SourceRef: deviceSourceRefFromSQL(ref), ExternalDevice: external, NodesCount: external.NodesCount, ConfigSnapshot: deviceConfigSnapshotFromSQL(snapshot)}, nil
+	return CarbonDeviceSyncResult{Device: syncedDeviceFromSQL(device, nil), SourceRef: deviceSourceRefFromSQL(syncedRef), ExternalDevice: external, NodesCount: external.NodesCount, ConfigSnapshot: deviceConfigSnapshotFromSQL(snapshot)}, nil
 }
 
 func syncCarbonDeviceInformation(ctx context.Context, q *sqlc.Queries, deviceID uuid.UUID, information *CarbonDeviceInformation, actorID uuid.UUID) error {

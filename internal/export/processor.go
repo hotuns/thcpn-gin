@@ -29,6 +29,7 @@ import (
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/datasource"
 	"thcpn-gin/internal/db/sqlc"
+	"thcpn-gin/internal/device"
 	"thcpn-gin/internal/metrics"
 	"thcpn-gin/internal/objectstore"
 	telemetrysvc "thcpn-gin/internal/telemetry"
@@ -55,6 +56,7 @@ type Runtime interface {
 }
 
 type Processor struct {
+	devices     *device.Service
 	queries     *sqlc.Queries
 	dataSources *datasource.Service
 	runtime     Runtime
@@ -75,13 +77,14 @@ type requestConfig struct {
 }
 
 type batchExportConfig struct {
-	StartTime     time.Time `json:"start_time"`
-	EndTime       time.Time `json:"end_time"`
-	DeviceIDs     []string  `json:"device_ids"`
-	GatewayID     string    `json:"gateway_id"`
-	GatewayName   string    `json:"gateway_name"`
-	IncludeData   bool      `json:"include_data"`
-	IncludeImages bool      `json:"include_images"`
+	NodeTargets   []device.NodeTarget `json:"node_targets,omitempty"`
+	StartTime     time.Time           `json:"start_time"`
+	EndTime       time.Time           `json:"end_time"`
+	DeviceIDs     []string            `json:"device_ids"`
+	GatewayID     string              `json:"gateway_id"`
+	GatewayName   string              `json:"gateway_name"`
+	IncludeData   bool                `json:"include_data"`
+	IncludeImages bool                `json:"include_images"`
 }
 
 type carbonStationExportConfig struct {
@@ -151,6 +154,7 @@ func NewProcessor(db *pgxpool.Pool, dataSources *datasource.Service, runtime Run
 		telemetryService = telemetryServices[0]
 	}
 	return &Processor{
+		devices:     device.NewService(db),
 		queries:     sqlc.New(db),
 		dataSources: dataSources,
 		runtime:     runtime,
@@ -468,6 +472,18 @@ func parseCarbonStationExportConfig(raw json.RawMessage) (carbonStationExportCon
 }
 
 func (p *Processor) renderDeviceBatchZIP(ctx context.Context, job Job, cfg batchExportConfig) ([]byte, error) {
+	validator := &Service{queries: p.queries, devices: p.devices}
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if err := validator.validateDeviceBatch(ctx, job.RequestedBy, job.WorkspaceID, job.ResourceID, job.ExportType, raw); err != nil {
+		return nil, err
+	}
+
+	if len(cfg.NodeTargets) > 0 && cfg.NodeTargets[0].Kind == "gateway_node" {
+		return p.renderIndexedNodeZIP(ctx, cfg)
+	}
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	quality := make([]qualityReportRow, 0)
@@ -619,7 +635,7 @@ func (p *Processor) queryTelemetryStreamFull(ctx context.Context, stream sqlc.Da
 		if err != nil {
 			return telemetrySeries{}, err
 		}
-		if result.Complete || len(result.Points) < limit {
+		if result.Complete {
 			break
 		}
 		if limit >= 10_000_000 {
@@ -627,7 +643,7 @@ func (p *Processor) queryTelemetryStreamFull(ctx context.Context, stream sqlc.Da
 		}
 		limit *= 2
 	}
-	if !result.Complete && len(result.Points) >= limit {
+	if !result.Complete {
 		return telemetrySeries{}, apperr.New(apperr.KindDataSource, "telemetry export is incomplete")
 	}
 	unit := ""
@@ -994,6 +1010,9 @@ func (p *Processor) queryTelemetry(ctx context.Context, resourceType string, res
 		}
 		items := make([]telemetrySeries, 0, len(result.Series))
 		for _, series := range result.Series {
+			if series.Error != "" {
+				return nil, apperr.New(apperr.KindDataSource, "telemetry export failed: "+series.Error)
+			}
 			points := make([]datasource.TelemetryPoint, 0, len(series.Points))
 			for _, point := range series.Points {
 				points = append(points, datasource.TelemetryPoint{Timestamp: point.Timestamp, Value: point.Value, Quality: point.Quality})
@@ -1563,4 +1582,69 @@ func truncateError(value string, max int) string {
 		return value[:max]
 	}
 	return value
+}
+
+func (p *Processor) renderIndexedNodeZIP(ctx context.Context, cfg batchExportConfig) ([]byte, error) {
+	gatewayID, err := uuid.Parse(cfg.GatewayID)
+	if err != nil {
+		return nil, err
+	}
+	nodes, err := p.devices.ListGatewayNodes(ctx, gatewayID)
+	if err != nil {
+		return nil, err
+	}
+	selected := map[string]bool{}
+	for _, target := range cfg.NodeTargets {
+		selected[target.Key()] = true
+	}
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	report := []qualityReportRow{}
+	for _, node := range nodes {
+		if !selected[node.Key] {
+			continue
+		}
+		delete(selected, node.Key)
+		series := []telemetrySeries{}
+		for _, stream := range node.Streams {
+			row, err := p.queries.GetDataStream(ctx, stream.ID)
+			if err != nil {
+				return nil, err
+			}
+			item, err := p.queryTelemetryStreamFull(ctx, row, cfg.StartTime, cfg.EndTime)
+			if err != nil {
+				return nil, err
+			}
+			series = append(series, item)
+		}
+		folder := fmt.Sprintf("node-%d", *node.Target.NodeIndex)
+		body, metadata, count, err := renderWideTelemetryCSV(series)
+		if err != nil {
+			return nil, err
+		}
+		if err := writeBytesFile(zw, path.Join(folder, "data.csv"), body); err != nil {
+			return nil, err
+		}
+		if err := writeMetadataCSV(zw, path.Join(folder, "metadata.csv"), metadata); err != nil {
+			return nil, err
+		}
+		report = append(report, qualityReportRow{gatewayID.String(), folder, node.Name, "packed", count, ""})
+	}
+	if len(selected) > 0 {
+		return nil, apperr.New(apperr.KindInvalidArgument, "selected node no longer exists")
+	}
+	raw, err := json.MarshalIndent(map[string]any{"gateway_id": gatewayID, "gateway_name": cfg.GatewayName, "node_targets": cfg.NodeTargets}, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	if err := writeBytesFile(zw, "gateway.json", raw); err != nil {
+		return nil, err
+	}
+	if err := writeQualityReportCSV(zw, report); err != nil {
+		return nil, err
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }

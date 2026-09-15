@@ -34,6 +34,10 @@ export type DeviceEnvironment = { device_id: string; direct: DeviceEnvironmentVa
 export type SiteEnvironment = { site_id: string; values: DeviceEnvironmentValues; updated_at?: string };
 export type DeviceMapItem = { device_id: string; name: string; serial_no: string; device_type: string; status: string; workspace_id?: string; site_id?: string; latitude?: number; longitude?: number; location_source: string; child_count: number; environment: DeviceEnvironmentValues };
 export type DeviceMapResult = { items: DeviceMapItem[]; total: number; located: number; unlocated: number; unclassified: number };
+export type SourceOperation = Schema<"SourceOperation">;
+export type GatewayNode = Schema<"GatewayNode">;
+export type DeviceNodeTarget = Schema<"DeviceNodeTarget">;
+export type DeviceInteractionContext = Schema<"DeviceInteractionContext">;
 export type DeviceChild = Schema<"DeviceChild">;
 export type DataStream = Schema<"DataStream"> & { computed?: boolean };
 export type DeviceMetadata = {
@@ -836,6 +840,9 @@ export const api = {
         `/api/v1/devices/${encodeURIComponent(id)}/profile/images/${encodeURIComponent(imageId)}`,
         { method: "DELETE" },
       ),
+    nodes: (id: string) => request<Schema<"GatewayNodeList">>(`/api/v1/devices/${encodeURIComponent(id)}/nodes`),
+    reconcileConfig: (id: string) => jsonRequest<JsonRecord>(`/api/v1/devices/${encodeURIComponent(id)}/config/resync`, "POST", {}),
+    context: (id: string) => request<DeviceInteractionContext>(`/api/v1/devices/${encodeURIComponent(id)}/context`),
     children: (id: string) =>
       request<ListResponse<DeviceChild>>(
         `/api/v1/devices/${encodeURIComponent(id)}/children`,
@@ -1226,6 +1233,19 @@ export const api = {
       jsonRequest<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/nodes/${node}/time-config`, "POST", payload),
     loraWANV2GatewayLogs: (id: string, sn: string, input: JsonRecord = {}) =>
       request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/logs${queryString(input as Record<string, string | number | boolean>)}`),
+    deviceLoRaWANV2GatewayLogs: (id: string, input: JsonRecord = {}) =>
+      request<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/logs${queryString(input as Record<string, string | number | boolean>)}`),
+    deviceNodes: (id: string) => request<Schema<"GatewayNodeList">>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes`),
+    reconcileDeviceConfig: (id: string) => jsonRequest<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/config/resync`, "POST", {}),
+    startSourceSync: (id: string) => request<SourceOperation>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/sync`, { method: "POST" }),
+    deviceSourceConfig: (id: string, kind: "gateway" | "sensor", input: JsonRecord = {}) => request<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/source-config/${kind}${queryString(input as Record<string, string | number | boolean>)}`),
+    updateDeviceSourceConfig: (id: string, kind: "gateway" | "sensor" | "time", body: JsonRecord, nodeIndex?: number) => jsonRequest<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/source-config/${kind}${queryString({ node_index: nodeIndex })}`, "POST", body),
+    sourceOperations: (id: string) => request<ListResponse<SourceOperation>>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/operations`),
+    sourceOperation: (id: string) => request<SourceOperation>(`/api/v1/admin/source-operations/${encodeURIComponent(id)}`),
+    deviceContext: (id: string) => request<DeviceInteractionContext>(`/api/v1/admin/devices/${encodeURIComponent(id)}/context`),
+    deviceTelemetry: (id: string, input: {startTime:string;endTime:string;dataStreamIds:string[];targetPoints?:number}) => request<TelemetryQueryResponse>(`/api/v1/admin/devices/${encodeURIComponent(id)}/telemetry${queryString({start_time:input.startTime,end_time:input.endTime,data_stream_ids:input.dataStreamIds.join(","),adaptive:true,target_points:input.targetPoints ?? 2,limit:500})}`),
+    deviceLoRaWANV2Context: (id: string) =>
+      request<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/context`),
     loraWANV2NodeData: (id: string, sn: string, node: number, input: JsonRecord = {}) =>
       request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/nodes/${node}/data${queryString(input as Record<string, string | number | boolean>)}`),
     loraWANV2GatewayInfos: (id: string, sn: string, input: JsonRecord = {}) =>

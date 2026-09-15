@@ -58,6 +58,7 @@ type QueryResult struct {
 }
 
 type Series struct {
+	Error         string    `json:"error,omitempty"`
 	DataStreamID  uuid.UUID `json:"data_stream_id"`
 	Code          string    `json:"code"`
 	Name          string    `json:"name"`
@@ -330,6 +331,11 @@ func (s *Service) queryComputedSeriesWithStreams(ctx context.Context, definition
 	if err != nil {
 		return Series{}, err
 	}
+	for _, dependency := range dependencySeries {
+		if dependency.Error != "" {
+			return Series{}, apperr.New(apperr.KindDataSource, "computed stream dependency failed: "+dependency.Error)
+		}
+	}
 	metadata, err := s.computed.NumericMetadata(ctx, definition.DeviceID)
 	if err != nil {
 		return Series{}, err
@@ -465,12 +471,19 @@ func (s *Service) querySeriesBatch(ctx context.Context, streams []sqlc.DataStrea
 		group.bindings = append(group.bindings, binding)
 	}
 	results := make(map[uuid.UUID]datasource.TelemetryResult, len(streams))
+	failures := map[uuid.UUID]string{}
 	for _, group := range groups {
 		batch, err := batchRuntime.QueryTelemetryBatch(ctx, group.source, datasource.TelemetryBatchQuery{
 			Bindings: group.bindings, Start: start, End: end, Limit: limit, Adaptive: adaptive, TargetPoints: targetPoints,
 		})
 		if err != nil {
-			return nil, err
+			for _, stream := range group.streams {
+				failures[stream.ID] = apperr.MessageOf(err)
+			}
+			continue
+		}
+		for id, failure := range batch.Errors {
+			failures[id] = failure
 		}
 		for id, result := range batch.Series {
 			results[id] = result
@@ -478,6 +491,10 @@ func (s *Service) querySeriesBatch(ctx context.Context, streams []sqlc.DataStrea
 	}
 	items := make([]Series, 0, len(streams))
 	for _, stream := range streams {
+		if failure, ok := failures[stream.ID]; ok {
+			items = append(items, Series{DataStreamID: stream.ID, Code: stream.Code, Name: stream.Name, Unit: stream.Unit, Points: []Point{}, Error: failure})
+			continue
+		}
 		points, ok := results[stream.ID]
 		if !ok {
 			return nil, apperr.New(apperr.KindDataSource, "batch telemetry result is missing a data stream")

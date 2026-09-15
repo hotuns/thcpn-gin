@@ -8,6 +8,8 @@ import {
 } from "@thcpn/api";
 import { Badge, Button, Panel, StateView } from "@thcpn/ui";
 
+import { DeviceQueryToolbar } from "./device-query-toolbar";
+
 type QueryInput = { startTime: string; endTime: string };
 const totalRawPointBudget = 20_000;
 const totalChartPointBudget = 6_000;
@@ -186,28 +188,7 @@ export function DeviceQueryActions({
           </Button>
         </div>
       </div>
-      <div className="query-bar query-condition-fields">
-        <label className="field">
-          <span className="field-label">开始时间</span>
-          <input type="datetime-local" value={startTime} onChange={(event) => onStartTimeChange(event.target.value)} />
-        </label>
-        <label className="field">
-          <span className="field-label">结束时间</span>
-          <input type="datetime-local" value={endTime} onChange={(event) => onEndTimeChange(event.target.value)} />
-        </label>
-      </div>
-      <div className="range-presets">
-        <span>快捷范围</span>
-        {[
-          { label: "6 小时", hours: 6 },
-          { label: "3 天", hours: 72 },
-          { label: "7 天", hours: 168 },
-        ].map((item) => (
-          <button key={item.hours} type="button" onClick={() => onRangeChange(item.hours)}>
-            {item.label}
-          </button>
-        ))}
-      </div>
+      <DeviceQueryToolbar range={{start:startTime,end:endTime}} onChange={(range) => { onStartTimeChange(range.start); onEndTimeChange(range.end); }} onPreset={onRangeChange}/>
       <div className="query-metric-heading">
         <div>
           <strong>数据指标</strong>
@@ -344,7 +325,7 @@ export function DeviceQueryActions({
       ) : (
         <StateView type="empty" title="没有图片来源" description="当前设备尚未同步可查询的图片类型。" />
       )}
-      {invalidRange && <div className="form-error query-condition-error">结束时间必须晚于开始时间。</div>}
+
     </Panel>
   );
 }

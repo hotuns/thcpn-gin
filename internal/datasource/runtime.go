@@ -13,7 +13,6 @@ import (
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
 	mysql "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel/attribute"
 
 	"thcpn-gin/internal/apperr"
@@ -44,14 +43,18 @@ func (EnvSecretResolver) Resolve(_ context.Context, ref string) (string, error) 
 }
 
 type Runtime struct {
-	resolver SecretResolver
+	resolver    SecretResolver
+	connections *sourceConnections
 }
 
 func NewRuntime(resolver SecretResolver) *Runtime {
+	connections := sharedSourceConnections
 	if resolver == nil {
 		resolver = EnvSecretResolver{}
+	} else {
+		connections = &sourceConnections{entries: map[string]sourceConnection{}}
 	}
-	return &Runtime{resolver: resolver}
+	return &Runtime{resolver: resolver, connections: connections}
 }
 
 type sqlDialect struct {
@@ -157,6 +160,7 @@ func (r *Runtime) QueryTelemetryBatch(ctx context.Context, source DataSource, re
 		tracing.End(span, err)
 	}()
 	result.Series = make(map[uuid.UUID]TelemetryResult, len(req.Bindings))
+	result.Errors = make(map[uuid.UUID]string)
 	if source.Status != "active" {
 		return result, apperr.New(apperr.KindDataSource, "data source is not active")
 	}
@@ -194,7 +198,10 @@ func (r *Runtime) QueryTelemetryBatch(ctx context.Context, source DataSource, re
 	for _, group := range groups {
 		batchResult, batchErr := r.queryThcpnLegacyMySQLTelemetryBatch(ctx, source, req, group)
 		if batchErr != nil {
-			return result, batchErr
+			for _, metric := range group {
+				result.Errors[metric.Binding.DataStreamID] = apperr.MessageOf(batchErr)
+			}
+			continue
 		}
 		for id, item := range batchResult.Series {
 			result.Series[id] = item
@@ -211,7 +218,8 @@ func (r *Runtime) QueryTelemetryBatch(ctx context.Context, source DataSource, re
 			Adaptive: req.Adaptive, TargetPoints: req.TargetPoints,
 		})
 		if queryErr != nil {
-			return result, queryErr
+			result.Errors[item.binding.DataStreamID] = apperr.MessageOf(queryErr)
+			continue
 		}
 		result.Series[item.binding.DataStreamID] = telemetryResult
 		result.SourceScans++
@@ -283,21 +291,16 @@ func (r *Runtime) queryPostgresTelemetry(ctx context.Context, source DataSource,
 	if err := validateTelemetryQuery(req); err != nil {
 		return TelemetryResult{}, err
 	}
-	dsn, err := r.resolver.Resolve(ctx, source.DsnSecretRef)
-	if err != nil {
-		return TelemetryResult{}, err
-	}
 
 	plan, err := buildTelemetryQueryPlan(req, postgresDialect)
 	if err != nil {
 		return TelemetryResult{}, err
 	}
 
-	pool, err := pgxpool.New(ctx, dsn)
+	pool, err := r.postgresConnection(ctx, source)
 	if err != nil {
 		return TelemetryResult{}, apperr.Wrap(apperr.KindDataSource, "connect data source", err)
 	}
-	defer pool.Close()
 
 	rows, err := pool.Query(ctx, plan.Query, plan.Args...)
 	if err != nil {
@@ -333,7 +336,6 @@ func (r *Runtime) queryMySQLTelemetry(ctx context.Context, source DataSource, re
 	if err != nil {
 		return TelemetryResult{}, err
 	}
-	defer db.Close()
 
 	rows, err := db.QueryContext(ctx, plan.Query, plan.Args...)
 	if err != nil {
@@ -417,10 +419,6 @@ func (r *Runtime) queryPostgresMedia(ctx context.Context, source DataSource, req
 	if err != nil {
 		return MediaResult{}, err
 	}
-	dsn, err := r.resolver.Resolve(ctx, source.DsnSecretRef)
-	if err != nil {
-		return MediaResult{}, err
-	}
 	countPlan, err := buildMediaCountQueryPlan(req, postgresDialect)
 	if err != nil {
 		return MediaResult{}, err
@@ -430,11 +428,10 @@ func (r *Runtime) queryPostgresMedia(ctx context.Context, source DataSource, req
 		return MediaResult{}, err
 	}
 
-	pool, err := pgxpool.New(ctx, dsn)
+	pool, err := r.postgresConnection(ctx, source)
 	if err != nil {
 		return MediaResult{}, apperr.Wrap(apperr.KindDataSource, "connect data source", err)
 	}
-	defer pool.Close()
 
 	var total int
 	if err := pool.QueryRow(ctx, countPlan.Query, countPlan.Args...).Scan(&total); err != nil {
@@ -482,7 +479,6 @@ func (r *Runtime) queryMySQLMedia(ctx context.Context, source DataSource, req Me
 	if err != nil {
 		return MediaResult{}, err
 	}
-	defer db.Close()
 
 	var total int
 	if err := db.QueryRowContext(ctx, countPlan.Query, countPlan.Args...).Scan(&total); err != nil {
@@ -770,28 +766,13 @@ func (r *Runtime) openMySQL(ctx context.Context, source DataSource) (*sql.DB, er
 }
 
 func (r *Runtime) openMySQLDatabase(ctx context.Context, source DataSource, databaseName string) (*sql.DB, error) {
-	dsn, err := r.resolver.Resolve(ctx, source.DsnSecretRef)
-	if err != nil {
-		return nil, err
+	if source.Status != "active" {
+		return nil, apperr.New(apperr.KindDataSource, "data source is not active")
 	}
-	cfg, err := mysql.ParseDSN(dsn)
-	if err != nil {
-		return nil, apperr.Wrap(apperr.KindDataSource, "parse mysql data source dsn", err)
+	if source.Type != "mysql" {
+		return nil, apperr.New(apperr.KindDataSource, "mysql source required")
 	}
-	cfg.ParseTime = true
-	if strings.TrimSpace(databaseName) != "" {
-		cfg.DBName = strings.TrimSpace(databaseName)
-	}
-	dsn = cfg.FormatDSN()
-	db, err := sql.Open("mysql", dsn)
-	if err != nil {
-		return nil, apperr.Wrap(apperr.KindDataSource, "connect data source", err)
-	}
-	if err := db.PingContext(ctx); err != nil {
-		_ = db.Close()
-		return nil, apperr.Wrap(apperr.KindDataSource, "connect data source", err)
-	}
-	return db, nil
+	return r.mysqlConnection(ctx, source, strings.TrimSpace(databaseName))
 }
 
 func (r *Runtime) openClickHouse(ctx context.Context, source DataSource) (*sql.DB, error) {

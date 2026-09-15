@@ -123,6 +123,7 @@ type UpdateTHCPNDeviceConfigInput struct {
 }
 
 type UpdateTHCPNDeviceConfigResponse struct {
+	WriteState          *ConfigWriteState    `json:"write_state,omitempty"`
 	DeviceID            uuid.UUID            `json:"device_id"`
 	DataSourceID        uuid.UUID            `json:"data_source_id"`
 	ExternalDeviceID    int64                `json:"external_device_id"`
@@ -265,6 +266,8 @@ type thcpnStreamSpec struct {
 }
 
 type thcpnDeviceSyncInput struct {
+	ExternalDevice    *thcpnExternalDevice
+	ExternalConfig    *thcpnExternalConfig
 	TargetWorkspaceID uuid.UUID
 	ProjectID         *uuid.UUID
 	SiteID            *uuid.UUID
@@ -291,13 +294,21 @@ func (s *Service) SyncTHCPNStandardStation(ctx context.Context, input SyncTHCPNS
 	if err != nil {
 		return THCPNStandardStationSyncResult{}, err
 	}
+	unlock, lockErr := s.lockSourceSync(ctx, source.ID.String()+"/thcpn")
+	if lockErr != nil {
+		return THCPNStandardStationSyncResult{}, lockErr
+	}
+	defer unlock()
 	runtime := NewRuntime(nil)
 	deviceDB, err := runtime.openMySQL(ctx, dataSourceFromSQL(source))
 	if err != nil {
 		return THCPNStandardStationSyncResult{}, err
 	}
-	defer deviceDB.Close()
 
+	deviceInput, err = prepareTHCPNSync(ctx, deviceDB, deviceInput)
+	if err != nil {
+		return THCPNStandardStationSyncResult{}, err
+	}
 	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return THCPNStandardStationSyncResult{}, apperr.Wrap(apperr.KindInternal, "begin thcpn sync transaction", err)
@@ -310,7 +321,7 @@ func (s *Service) SyncTHCPNStandardStation(ctx context.Context, input SyncTHCPNS
 	}()
 	q := s.queries.WithTx(tx)
 
-	result, err := s.syncTHCPNDevice(ctx, q, source, deviceDB, deviceInput)
+	result, err := s.syncTHCPNDevice(ctx, q, source, deviceInput)
 	if err != nil {
 		return THCPNStandardStationSyncResult{}, err
 	}
@@ -337,11 +348,15 @@ func (s *Service) SyncAllTHCPNDevices(ctx context.Context, input SyncAllTHCPNDev
 	if err != nil {
 		return THCPNAllDevicesSyncResult{}, err
 	}
+	unlock, lockErr := s.lockSourceSync(ctx, source.ID.String()+"/thcpn")
+	if lockErr != nil {
+		return THCPNAllDevicesSyncResult{}, lockErr
+	}
+	defer unlock()
 	deviceDB, err := NewRuntime(nil).openMySQL(ctx, dataSourceFromSQL(source))
 	if err != nil {
 		return THCPNAllDevicesSyncResult{}, err
 	}
-	defer deviceDB.Close()
 
 	externalDevices, err := readAllTHCPNExternalDevices(ctx, deviceDB)
 	if err != nil {
@@ -358,11 +373,12 @@ func (s *Service) SyncAllTHCPNDevices(ctx context.Context, input SyncAllTHCPNDev
 		Failures:     make([]THCPNDeviceSyncFailure, 0),
 	}
 	for _, externalDevice := range externalDevices {
+		reportSyncProgress(ctx, result)
 		externalDeviceID := externalDevice.ID
 		if err := ctx.Err(); err != nil {
 			return THCPNAllDevicesSyncResult{}, apperr.Wrap(apperr.KindInternal, "thcpn full sync canceled", err)
 		}
-		_, lookupErr := s.queries.GetDeviceSourceRefByExternal(ctx, sqlc.GetDeviceSourceRefByExternalParams{
+		_, lookupErr := s.queries.GetNumericDeviceSourceRefByExternal(ctx, sqlc.GetNumericDeviceSourceRefByExternalParams{
 			DataSourceID: input.DataSourceID, AdapterCode: AdapterTHCPNLegacy, ExternalDeviceID: externalDeviceID,
 		})
 		existed := lookupErr == nil
@@ -376,12 +392,19 @@ func (s *Service) SyncAllTHCPNDevices(ctx context.Context, input SyncAllTHCPNDev
 		// and source reference, then expose it as unconfigured instead of losing
 		// it from the full synchronization.
 		if _, configErr := readLatestTHCPNDeviceConfig(ctx, deviceDB, externalDeviceID); apperr.KindOf(configErr) == apperr.KindNotFound {
+			metadata, readErr := readTHCPNExternalDevice(ctx, deviceDB, externalDeviceID)
+			if readErr != nil {
+				result.Failed++
+				result.Failures = append(result.Failures, THCPNDeviceSyncFailure{ExternalDeviceID: externalDeviceID, Error: apperr.MessageOf(readErr)})
+				continue
+			}
+
 			tx, txErr := s.db.BeginTx(ctx, pgx.TxOptions{})
 			if txErr != nil {
 				return THCPNAllDevicesSyncResult{}, apperr.Wrap(apperr.KindInternal, "begin thcpn metadata sync transaction", txErr)
 			}
 			q := s.queries.WithTx(tx)
-			_, _, metadataErr := s.syncTHCPNDeviceMetadata(ctx, q, source, deviceDB, externalDeviceID, syncedTHCPNDeviceType(externalDevice, gatewayIDs, nodeIDs), input.ActorUserID)
+			_, _, metadataErr := s.syncTHCPNDeviceMetadata(ctx, q, source, metadata, externalDeviceID, syncedTHCPNDeviceType(externalDevice, gatewayIDs, nodeIDs), input.ActorUserID)
 			if metadataErr == nil {
 				metadataErr = tx.Commit(ctx)
 			} else {
@@ -402,16 +425,19 @@ func (s *Service) SyncAllTHCPNDevices(ctx context.Context, input SyncAllTHCPNDev
 			continue
 		}
 
+		snapshot, snapshotErr := prepareTHCPNSync(ctx, deviceDB, thcpnDeviceSyncInput{ExternalDeviceID: externalDeviceID, DeviceType: syncedTHCPNDeviceType(externalDevice, gatewayIDs, nodeIDs), ActorUserID: input.ActorUserID})
+		if snapshotErr != nil {
+			result.Failed++
+			result.Failures = append(result.Failures, THCPNDeviceSyncFailure{ExternalDeviceID: externalDeviceID, Error: apperr.MessageOf(snapshotErr)})
+			continue
+		}
+
 		tx, txErr := s.db.BeginTx(ctx, pgx.TxOptions{})
 		if txErr != nil {
 			return THCPNAllDevicesSyncResult{}, apperr.Wrap(apperr.KindInternal, "begin thcpn full sync transaction", txErr)
 		}
 		q := s.queries.WithTx(tx)
-		_, syncErr := s.syncTHCPNDevice(ctx, q, source, deviceDB, thcpnDeviceSyncInput{
-			ExternalDeviceID: externalDeviceID,
-			DeviceType:       syncedTHCPNDeviceType(externalDevice, gatewayIDs, nodeIDs),
-			ActorUserID:      input.ActorUserID,
-		})
+		_, syncErr := s.syncTHCPNDevice(ctx, q, source, snapshot)
 		if syncErr == nil {
 			syncErr = tx.Commit(ctx)
 		} else {
@@ -436,11 +462,7 @@ func (s *Service) SyncAllTHCPNDevices(ctx context.Context, input SyncAllTHCPNDev
 	return result, nil
 }
 
-func (s *Service) syncTHCPNDeviceMetadata(ctx context.Context, q *sqlc.Queries, source sqlc.DataSource, deviceDB *sql.DB, externalDeviceID int64, deviceType string, actorUserID uuid.UUID) (sqlc.Device, bool, error) {
-	externalDevice, err := readTHCPNExternalDevice(ctx, deviceDB, externalDeviceID)
-	if err != nil {
-		return sqlc.Device{}, false, err
-	}
+func (s *Service) syncTHCPNDeviceMetadata(ctx context.Context, q *sqlc.Queries, source sqlc.DataSource, externalDevice thcpnExternalDevice, externalDeviceID int64, deviceType string, actorUserID uuid.UUID) (sqlc.Device, bool, error) {
 	deviceRow, _, created, err := s.upsertTHCPNPlatformDevice(ctx, q, source, thcpnDeviceSyncInput{
 		ExternalDeviceID: externalDeviceID,
 		DeviceType:       deviceType,
@@ -449,7 +471,7 @@ func (s *Service) syncTHCPNDeviceMetadata(ctx context.Context, q *sqlc.Queries, 
 	if err != nil {
 		return sqlc.Device{}, false, err
 	}
-	if _, err := q.UpsertDeviceSourceRef(ctx, sqlc.UpsertDeviceSourceRefParams{
+	if _, err := q.UpsertNumericDeviceSourceRef(ctx, sqlc.UpsertNumericDeviceSourceRefParams{
 		DeviceID:         deviceRow.ID,
 		DataSourceID:     source.ID,
 		AdapterCode:      AdapterTHCPNLegacy,
@@ -472,16 +494,32 @@ func (s *Service) SyncTHCPNGateway(ctx context.Context, input SyncTHCPNGatewayIn
 	if err != nil {
 		return THCPNGatewaySyncResult{}, err
 	}
+	unlock, lockErr := s.lockSourceSync(ctx, source.ID.String()+"/thcpn")
+	if lockErr != nil {
+		return THCPNGatewaySyncResult{}, lockErr
+	}
+	defer unlock()
 	runtime := NewRuntime(nil)
 	deviceDB, err := runtime.openMySQL(ctx, dataSourceFromSQL(source))
 	if err != nil {
 		return THCPNGatewaySyncResult{}, err
 	}
-	defer deviceDB.Close()
 
 	gateNodes, err := readTHCPNGateNodes(ctx, deviceDB, input.ExternalGatewayID)
 	if err != nil {
 		return THCPNGatewaySyncResult{}, err
+	}
+	gatewayInput, err = prepareTHCPNSync(ctx, deviceDB, gatewayInput)
+	if err != nil {
+		return THCPNGatewaySyncResult{}, err
+	}
+	nodeSnapshots := map[int64]thcpnDeviceSyncInput{}
+	for _, nodeID := range gateNodes {
+		snapshot, err := prepareTHCPNSync(ctx, deviceDB, thcpnDeviceSyncInput{ExternalDeviceID: nodeID, DeviceType: "gateway_node", ActorUserID: input.ActorUserID})
+		if err != nil {
+			return THCPNGatewaySyncResult{}, err
+		}
+		nodeSnapshots[nodeID] = snapshot
 	}
 	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -495,7 +533,7 @@ func (s *Service) SyncTHCPNGateway(ctx context.Context, input SyncTHCPNGatewayIn
 	}()
 	q := s.queries.WithTx(tx)
 
-	gateway, err := s.syncTHCPNDevice(ctx, q, source, deviceDB, gatewayInput)
+	gateway, err := s.syncTHCPNDevice(ctx, q, source, gatewayInput)
 	if err != nil {
 		return THCPNGatewaySyncResult{}, err
 	}
@@ -503,12 +541,8 @@ func (s *Service) SyncTHCPNGateway(ctx context.Context, input SyncTHCPNGatewayIn
 	relations := make([]DeviceRelation, 0, len(gateNodes))
 	activeChildIDs := make([]int64, 0, len(gateNodes))
 	for _, nodeID := range gateNodes {
-		nodeInput := thcpnDeviceSyncInput{
-			ExternalDeviceID: nodeID,
-			DeviceType:       "gateway_node",
-			ActorUserID:      input.ActorUserID,
-		}
-		node, err := s.syncTHCPNDevice(ctx, q, source, deviceDB, nodeInput)
+		nodeInput := nodeSnapshots[nodeID]
+		node, err := s.syncTHCPNDevice(ctx, q, source, nodeInput)
 		if err != nil {
 			return THCPNGatewaySyncResult{}, err
 		}
@@ -580,7 +614,6 @@ func (s *Service) GetTHCPNDeviceConfig(ctx context.Context, deviceID uuid.UUID) 
 	if err != nil {
 		return THCPNDeviceConfigDetailResponse{}, err
 	}
-	defer deviceDB.Close()
 
 	latestConfig, err := readLatestTHCPNDeviceConfig(ctx, deviceDB, ref.ExternalDeviceID)
 	if err != nil {
@@ -603,7 +636,7 @@ func (s *Service) GetTHCPNDeviceConfig(ctx context.Context, deviceID uuid.UUID) 
 	}, nil
 }
 
-func (s *Service) UpdateTHCPNDeviceConfig(ctx context.Context, input UpdateTHCPNDeviceConfigInput) (UpdateTHCPNDeviceConfigResponse, error) {
+func (s *Service) UpdateTHCPNDeviceConfig(ctx context.Context, input UpdateTHCPNDeviceConfigInput) (response UpdateTHCPNDeviceConfigResponse, err error) {
 	if s.db == nil {
 		return UpdateTHCPNDeviceConfigResponse{}, apperr.New(apperr.KindInternal, "database is not configured")
 	}
@@ -638,12 +671,16 @@ func (s *Service) UpdateTHCPNDeviceConfig(ctx context.Context, input UpdateTHCPN
 		return UpdateTHCPNDeviceConfigResponse{}, err
 	}
 
+	unlock, lockErr := s.lockSourceSync(ctx, source.ID.String()+"/thcpn")
+	if lockErr != nil {
+		return UpdateTHCPNDeviceConfigResponse{}, lockErr
+	}
+	defer unlock()
 	runtime := NewRuntime(nil)
 	deviceDB, err := runtime.openMySQL(ctx, dataSourceFromSQL(source))
 	if err != nil {
 		return UpdateTHCPNDeviceConfigResponse{}, err
 	}
-	defer deviceDB.Close()
 
 	mysqlTx, err := deviceDB.BeginTx(ctx, nil)
 	if err != nil {
@@ -662,15 +699,47 @@ func (s *Service) UpdateTHCPNDeviceConfig(ctx context.Context, input UpdateTHCPN
 	if previous.ID != input.ExpectedConfigID {
 		return UpdateTHCPNDeviceConfigResponse{}, apperr.New(apperr.KindConflict, "device config has changed; reload and try again")
 	}
+
+	operationID, err := s.beginSourceOperation(ctx, source.ID, &input.DeviceID, "config_update", "running", map[string]any{"expected_config_id": input.ExpectedConfigID, "data": dataJSON, "image": imageJSON, "control": controlJSON}, input.ActorUserID)
+	if err != nil {
+		return UpdateTHCPNDeviceConfigResponse{}, err
+	}
+	state := &ConfigWriteState{OperationID: operationID, Source: "pending", Platform: "pending", Device: "unknown"}
+	var acceptedConfig THCPNDeviceConfig
+	defer func() {
+		operationErr := err
+		status := "completed"
+		if err != nil {
+			if state.Source == "accepted" {
+				status = "partial"
+				state.Platform = "failed"
+				response = UpdateTHCPNDeviceConfigResponse{DeviceID: input.DeviceID, DataSourceID: source.ID, ExternalDeviceID: ref.ExternalDeviceID, Config: acceptedConfig, Warnings: []QueryWarning{{Code: "platform_sync_failed", Message: "源配置已保存，但平台同步失败；请重新同步配置，不要重复提交。"}}}
+				err = nil
+			} else if state.Source == "unknown" {
+				status = "unknown"
+				err = apperr.Wrap(apperr.KindDataSource, "配置写入结果未知，请核对源端配置；操作 "+operationID.String(), err)
+			} else {
+				status = "failed"
+				state.Source = "failed"
+			}
+		}
+		response.WriteState = state
+		if recordErr := s.finishSourceOperation(operationID, status, state, operationErr); recordErr != nil && err == nil {
+			response.Warnings = append(response.Warnings, QueryWarning{Code: "operation_record_failed", Message: "操作结果记录未更新，请重新核对配置状态。"})
+		}
+	}()
 	auditSummary := summarizeTHCPNConfigChange(previous, dataJSON, imageJSON, controlJSON)
 	inserted, err := insertTHCPNDeviceConfig(ctx, mysqlTx, previous, dataJSON, imageJSON, controlJSON)
 	if err != nil {
 		return UpdateTHCPNDeviceConfigResponse{}, err
 	}
+	state.Source = "unknown"
 	if err := mysqlTx.Commit(); err != nil {
 		return UpdateTHCPNDeviceConfigResponse{}, apperr.Wrap(apperr.KindDataSource, "commit thcpn config transaction", err)
 	}
 	mysqlCommitted = true
+	state.Source = "accepted"
+	acceptedConfig = thcpnDeviceConfigFromExternal(inserted)
 
 	pgTx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -696,6 +765,7 @@ func (s *Service) UpdateTHCPNDeviceConfig(ctx context.Context, input UpdateTHCPN
 		return UpdateTHCPNDeviceConfigResponse{}, apperr.Wrap(apperr.KindInternal, "commit thcpn config apply transaction", err)
 	}
 	pgCommitted = true
+	state.Platform = "synced"
 
 	return UpdateTHCPNDeviceConfigResponse{
 		DeviceID:            input.DeviceID,
@@ -808,15 +878,27 @@ func validateTHCPNGatewaySyncInput(input SyncTHCPNGatewayInput) (thcpnDeviceSync
 	return gatewayInput, nil
 }
 
-func (s *Service) syncTHCPNDevice(ctx context.Context, q *sqlc.Queries, source sqlc.DataSource, deviceDB *sql.DB, input thcpnDeviceSyncInput) (THCPNStandardStationSyncResult, error) {
-	externalDevice, err := readTHCPNExternalDevice(ctx, deviceDB, input.ExternalDeviceID)
+func prepareTHCPNSync(ctx context.Context, db *sql.DB, input thcpnDeviceSyncInput) (thcpnDeviceSyncInput, error) {
+	external, err := readTHCPNExternalDevice(ctx, db, input.ExternalDeviceID)
 	if err != nil {
-		return THCPNStandardStationSyncResult{}, err
+		return input, err
 	}
-	externalConfig, err := readLatestTHCPNDeviceConfig(ctx, deviceDB, input.ExternalDeviceID)
+	config, err := readLatestTHCPNDeviceConfig(ctx, db, input.ExternalDeviceID)
 	if err != nil {
-		return THCPNStandardStationSyncResult{}, err
+		return input, err
 	}
+	if _, err := buildTHCPNStreamSpecsForDevice(input.ExternalDeviceID, input.DeviceType, config.Data, config.Image); err != nil {
+		return input, err
+	}
+	input.ExternalDevice = &external
+	input.ExternalConfig = &config
+	return input, nil
+}
+func (s *Service) syncTHCPNDevice(ctx context.Context, q *sqlc.Queries, source sqlc.DataSource, input thcpnDeviceSyncInput) (THCPNStandardStationSyncResult, error) {
+	if input.ExternalDevice == nil || input.ExternalConfig == nil {
+		return THCPNStandardStationSyncResult{}, apperr.New(apperr.KindInternal, "source snapshot is required")
+	}
+	externalDevice, externalConfig := *input.ExternalDevice, *input.ExternalConfig
 
 	deviceRow, assignmentRow, created, err := s.upsertTHCPNPlatformDevice(ctx, q, source, input, externalDevice)
 	if err != nil {
@@ -838,7 +920,7 @@ func (s *Service) syncTHCPNDevice(ctx context.Context, q *sqlc.Queries, source s
 		}
 	}
 
-	refRow, err := q.UpsertDeviceSourceRef(ctx, sqlc.UpsertDeviceSourceRefParams{
+	refRow, err := q.UpsertNumericDeviceSourceRef(ctx, sqlc.UpsertNumericDeviceSourceRefParams{
 		DeviceID:         deviceRow.ID,
 		DataSourceID:     source.ID,
 		AdapterCode:      AdapterTHCPNLegacy,
@@ -847,7 +929,7 @@ func (s *Service) syncTHCPNDevice(ctx context.Context, q *sqlc.Queries, source s
 	if err != nil {
 		return THCPNStandardStationSyncResult{}, mapWriteError(err, "upsert device source ref")
 	}
-	applied, err := applyTHCPNConfigToPlatform(ctx, q, source.ID, deviceRow.ID, input.ExternalDeviceID, externalConfig, input.ActorUserID, false)
+	applied, err := applyTHCPNConfigToPlatform(ctx, q, source.ID, deviceRow.ID, input.ExternalDeviceID, externalConfig, input.ActorUserID, true)
 	if err != nil {
 		return THCPNStandardStationSyncResult{}, err
 	}
@@ -1022,7 +1104,7 @@ func (s *Service) upsertTHCPNPlatformDevice(ctx context.Context, q *sqlc.Queries
 		name = fmt.Sprintf("THCPN 设备 %d", input.ExternalDeviceID)
 	}
 
-	existingRef, err := q.GetDeviceSourceRefByExternal(ctx, sqlc.GetDeviceSourceRefByExternalParams{
+	existingRef, err := q.GetNumericDeviceSourceRefByExternal(ctx, sqlc.GetNumericDeviceSourceRefByExternalParams{
 		DataSourceID:     source.ID,
 		AdapterCode:      AdapterTHCPNLegacy,
 		ExternalDeviceID: input.ExternalDeviceID,
@@ -1477,7 +1559,7 @@ func (s *Service) syncTHCPNTopology(
 			continue
 		}
 		q := s.queries.WithTx(tx)
-		parent, err := q.GetDeviceSourceRefByExternal(ctx, sqlc.GetDeviceSourceRefByExternalParams{
+		parent, err := q.GetNumericDeviceSourceRefByExternal(ctx, sqlc.GetNumericDeviceSourceRefByExternalParams{
 			DataSourceID: dataSourceID, AdapterCode: AdapterTHCPNLegacy, ExternalDeviceID: item.GatewayID,
 		})
 		if err != nil {
@@ -1487,7 +1569,7 @@ func (s *Service) syncTHCPNTopology(
 		}
 		complete := true
 		for _, nodeID := range item.NodeIDs {
-			child, err := q.GetDeviceSourceRefByExternal(ctx, sqlc.GetDeviceSourceRefByExternalParams{
+			child, err := q.GetNumericDeviceSourceRefByExternal(ctx, sqlc.GetNumericDeviceSourceRefByExternalParams{
 				DataSourceID: dataSourceID, AdapterCode: AdapterTHCPNLegacy, ExternalDeviceID: nodeID,
 			})
 			if err != nil {
@@ -2098,7 +2180,7 @@ func syncedDataStreamFromSQL(model sqlc.DataStream) SyncedDataStream {
 	}
 }
 
-func deviceSourceRefFromSQL(model sqlc.DeviceSourceRef) DeviceSourceRef {
+func deviceSourceRefFromSQL(model sqlc.UpsertNumericDeviceSourceRefRow) DeviceSourceRef {
 	return DeviceSourceRef{
 		ID:               model.ID,
 		DeviceID:         model.DeviceID,

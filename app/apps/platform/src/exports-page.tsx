@@ -722,23 +722,20 @@ function GroupExportForm({
   const [gatewayId, setGatewayId] = useState(params.get("gateway") ?? "");
   const [keyword, setKeyword] = useState("");
   const children = useQuery({
-    queryKey: ["device", gatewayId, "children", "export"],
-    queryFn: () => api.devices.children(gatewayId),
+    queryKey: ["device", gatewayId, "nodes", "export"],
+    queryFn: () => api.devices.nodes(gatewayId),
     enabled: Boolean(gatewayId),
   });
   const gateway = gateways.find((item) => value(item, "id") === gatewayId);
-  const lorawan = value(gateway ?? {}, "product_id") === "lorawan_v2_gateway";
-  const nodes = lorawan && gateway
-    ? [gateway]
-    : (children.data?.items ?? []).map(
-        (item) => item.device as unknown as JsonRecord,
-      );
+  const lorawan = value(gateway ?? {}, "source_family") === "lorawan_v2";
+  const nodeItems = children.data?.items ?? [];
+  const nodes = nodeItems.map((node) => ({ id: node.key, name: node.name, serial_no: node.target.kind === "device" ? node.target.device_id : `节点 ${node.target.node_index}` }));
   const filteredNodes = nodes.filter((item) =>
     `${value(item, "name")} ${value(item, "serial_no")} ${(tagsByDevice.get(value(item, "id")) ?? []).join(" ")}`
       .toLowerCase()
       .includes(keyword.toLowerCase()),
   );
-  const requested = arrayParam(params.get("devices"));
+  const requested = arrayParam(params.get("nodes"));
   const [selected, setSelected] = useState<string[] | null>(
     requested.length ? requested : null,
   );
@@ -755,12 +752,14 @@ function GroupExportForm({
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
-    await onCreate(
-      buildBatchExportPayload("group", effective, start, end, images, {
+    const chosen = nodeItems.filter((node) => effective.includes(node.key));
+    const ids = [...new Set(chosen.map((node) => node.target.kind === "device" ? node.target.device_id : node.target.gateway_device_id))];
+    const payload = buildBatchExportPayload("group", ids, start, end, !lorawan && images, {
         id: gatewayId,
         name: value(gateway ?? {}, "name"),
-      }),
-    );
+      });
+    (payload.request_config as JsonRecord).node_targets = chosen.map((node) => node.target);
+    await onCreate(payload);
     setBusy(false);
   };
   return (
@@ -819,6 +818,7 @@ function GroupExportForm({
                 </span>
               )}
             </div>
+            {children.error && <div role="alert">{formatApiError(children.error).message}</div>}
             <div className="export-device-checks">
               {filteredNodes.map((item) => {
                 const id = value(item, "id");
@@ -855,14 +855,14 @@ function GroupExportForm({
           setStart={setStart}
           setEnd={setEnd}
         />
-        <ChoiceCard
+        {!lorawan && <ChoiceCard
           checked={images}
           onChange={setImages}
           title="包含图片"
           description="按节点目录整理图片与索引"
-        />
+        />}
         </div>
-        <FormFooter count={effective.length} busy={busy} onClose={onClose} system="组网站导出" start={start} end={end} content={images ? "设备数据和图片" : "设备数据"} />
+        <FormFooter count={effective.length} busy={busy} onClose={onClose} system="组网站导出" start={start} end={end} content={!lorawan && images ? "设备数据和图片" : "设备数据"} />
       </form>
     </Panel>
   );

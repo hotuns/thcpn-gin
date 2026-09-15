@@ -24,6 +24,9 @@ type Service struct {
 }
 
 type Device struct {
+	SourceFamily        string     `json:"source_family,omitempty"`
+	SourceStatus        string     `json:"source_status,omitempty"`
+	Features            []string   `json:"features"`
 	ID                  uuid.UUID  `json:"id"`
 	AssignmentID        *uuid.UUID `json:"assignment_id,omitempty"`
 	WorkspaceID         *uuid.UUID `json:"workspace_id,omitempty"`
@@ -46,6 +49,7 @@ type Device struct {
 	ProjectName         *string    `json:"project_name,omitempty"`
 	SiteName            *string    `json:"site_name,omitempty"`
 	AssignedByName      string     `json:"assigned_by_name,omitempty"`
+	ExternalKey         string     `json:"external_key,omitempty"`
 	ExternalDeviceID    *int64     `json:"external_device_id,omitempty"`
 	Capabilities        []string   `json:"capabilities"`
 	TopologyRole        string     `json:"topology_role"`
@@ -315,7 +319,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Device, error)
 	}
 	committed = true
 
-	return fromSQLWithAssignment(created, assignment, capabilities), nil
+	return s.withInteraction(ctx, fromSQLWithAssignment(created, assignment, capabilities))
 }
 
 func (s *Service) Get(ctx context.Context, deviceID uuid.UUID) (Device, error) {
@@ -332,7 +336,7 @@ func (s *Service) Get(ctx context.Context, deviceID uuid.UUID) (Device, error) {
 		return Device{}, apperr.Wrap(apperr.KindInternal, "list device capabilities", err)
 	}
 
-	return fromAssignedSQL(row, capabilities), nil
+	return s.withInteraction(ctx, fromAssignedSQL(row, capabilities))
 }
 
 func (s *Service) GetAsset(ctx context.Context, deviceID uuid.UUID) (Device, error) {
@@ -344,7 +348,7 @@ func (s *Service) GetAsset(ctx context.Context, deviceID uuid.UUID) (Device, err
 	if err != nil {
 		return Device{}, apperr.Wrap(apperr.KindInternal, "list device capabilities", err)
 	}
-	return fromSQL(row, capabilities), nil
+	return s.withInteraction(ctx, fromSQL(row, capabilities))
 }
 
 func (s *Service) List(ctx context.Context, input ListInput) ([]Device, error) {
@@ -401,7 +405,7 @@ func (s *Service) List(ctx context.Context, input ListInput) ([]Device, error) {
 	if err != nil {
 		return nil, apperr.Wrap(apperr.KindInternal, "list devices", err)
 	}
-	return items, nil
+	return s.withInteractions(ctx, items)
 }
 
 func (s *Service) ListDemoShowcase(ctx context.Context, userID uuid.UUID, projectID, siteID *uuid.UUID) ([]Device, error) {
@@ -467,7 +471,7 @@ func (s *Service) GetDemoShowcase(ctx context.Context, userID, deviceID uuid.UUI
 	if err := s.db.QueryRow(ctx, `SELECT count(*) FROM device_relations WHERE parent_device_id=$1 AND relation_type='gateway_node' AND status='active'`, deviceID).Scan(&item.ChildCount); err != nil {
 		return Device{}, apperr.Wrap(apperr.KindInternal, "count demo device children", err)
 	}
-	return item, nil
+	return s.withInteraction(ctx, item)
 }
 
 func (s *Service) UpdateDemoPlacement(ctx context.Context, input DemoPlacementInput) (Device, error) {
@@ -533,16 +537,9 @@ func (s *Service) ListSystemAssets(ctx context.Context) ([]Device, error) {
 			return nil, apperr.Wrap(apperr.KindInternal, "list device capabilities", err)
 		}
 		item := fromSystemAssetRow(row, capabilities)
-		ref, err := s.queries.GetDeviceSourceRefByDevice(ctx, row.ID)
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			return nil, apperr.Wrap(apperr.KindInternal, "get device source mapping", err)
-		}
-		if err == nil {
-			item.ExternalDeviceID = &ref.ExternalDeviceID
-		}
 		items = append(items, item)
 	}
-	return items, nil
+	return s.withInteractions(ctx, items)
 }
 
 func (s *Service) ListLifecycle(ctx context.Context, deviceID uuid.UUID) (DeviceLifecycle, error) {
@@ -565,8 +562,12 @@ func (s *Service) ListLifecycle(ctx context.Context, deviceID uuid.UUID) (Device
 	for _, row := range rows {
 		events = append(events, lifecycleEventFromSQL(row))
 	}
+	item, err := s.withInteraction(ctx, fromSQL(deviceRow, capabilities))
+	if err != nil {
+		return DeviceLifecycle{}, err
+	}
 	return DeviceLifecycle{
-		Device: fromSQL(deviceRow, capabilities),
+		Device: item,
 		Events: events,
 	}, nil
 }
@@ -645,8 +646,12 @@ func (s *Service) UpdateLifecycle(ctx context.Context, input UpdateLifecycleInpu
 	for _, row := range rows {
 		events = append(events, lifecycleEventFromSQL(row))
 	}
+	item, err := s.withInteraction(ctx, fromSQL(updated, capabilities))
+	if err != nil {
+		return DeviceLifecycle{}, err
+	}
 	return DeviceLifecycle{
-		Device: fromSQL(updated, capabilities),
+		Device: item,
 		Events: events,
 	}, nil
 }
@@ -870,11 +875,11 @@ func (s *Service) AddChild(ctx context.Context, input AddChildInput) (DeviceRela
 		return DeviceRelation{}, apperr.New(apperr.KindConflict, "gateway device cannot be used as a child node")
 	}
 
-	parentRef, err := q.GetDeviceSourceRefByDevice(ctx, input.ParentDeviceID)
+	parentRef, err := q.GetNumericDeviceSourceRefByDevice(ctx, input.ParentDeviceID)
 	if err != nil {
 		return DeviceRelation{}, mapNotFoundOrInternal(err, "parent device source ref not found")
 	}
-	childRef, err := q.GetDeviceSourceRefByDevice(ctx, input.ChildDeviceID)
+	childRef, err := q.GetNumericDeviceSourceRefByDevice(ctx, input.ChildDeviceID)
 	if err != nil {
 		return DeviceRelation{}, mapNotFoundOrInternal(err, "child device source ref not found")
 	}
@@ -1013,7 +1018,7 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (Device, error)
 	if err != nil {
 		return Device{}, mapNotFoundOrInternal(err, "device not found")
 	}
-	return fromSQLWithAssignment(device, assignment, capabilities), nil
+	return s.withInteraction(ctx, fromSQLWithAssignment(device, assignment, capabilities))
 }
 
 func (s *Service) AdminUpdate(ctx context.Context, input AdminUpdateInput) (Device, error) {
@@ -1124,13 +1129,13 @@ func (s *Service) AdminUpdate(ctx context.Context, input AdminUpdateInput) (Devi
 			return Device{}, apperr.Wrap(apperr.KindInternal, "commit admin update device transaction", err)
 		}
 		committed = true
-		return fromSQL(updated, capabilities), nil
+		return s.withInteraction(ctx, fromSQL(updated, capabilities))
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Device{}, apperr.Wrap(apperr.KindInternal, "commit admin update device transaction", err)
 	}
 	committed = true
-	return fromSQLWithAssignment(updated, assignment, capabilities), nil
+	return s.withInteraction(ctx, fromSQLWithAssignment(updated, assignment, capabilities))
 }
 
 func (s *Service) Assign(ctx context.Context, input AssignInput) (Device, error) {
@@ -1194,7 +1199,7 @@ func (s *Service) Assign(ctx context.Context, input AssignInput) (Device, error)
 		return Device{}, apperr.Wrap(apperr.KindInternal, "commit assign device transaction", err)
 	}
 	committed = true
-	return fromSQLWithAssignment(device, assignment, capabilities), nil
+	return s.withInteraction(ctx, fromSQLWithAssignment(device, assignment, capabilities))
 }
 
 type assignDeviceInTxInput struct {
@@ -1348,7 +1353,7 @@ func (s *Service) Transfer(ctx context.Context, input TransferInput) (Device, er
 		return Device{}, apperr.Wrap(apperr.KindInternal, "commit transfer device transaction", err)
 	}
 	committed = true
-	return fromSQLWithAssignment(device, assignment, capabilities), nil
+	return s.withInteraction(ctx, fromSQLWithAssignment(device, assignment, capabilities))
 }
 
 func (s *Service) Unbind(ctx context.Context, input UnbindInput) error {

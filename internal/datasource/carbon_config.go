@@ -28,7 +28,7 @@ func (s *Service) GetDeviceConfig(ctx context.Context, deviceID uuid.UUID) (THCP
 	if s.db == nil {
 		return THCPNDeviceConfigDetailResponse{}, apperr.New(apperr.KindInternal, "database is not configured")
 	}
-	ref, err := s.queries.GetDeviceSourceRefByDevice(ctx, deviceID)
+	ref, err := s.queries.GetNumericDeviceSourceRefByDevice(ctx, deviceID)
 	if err != nil {
 		return THCPNDeviceConfigDetailResponse{}, mapNotFoundOrInternal(err, "device source ref not found")
 	}
@@ -39,7 +39,6 @@ func (s *Service) GetDeviceConfig(ctx context.Context, deviceID uuid.UUID) (THCP
 	if err != nil {
 		return THCPNDeviceConfigDetailResponse{}, err
 	}
-	defer db.Close()
 	config, err := readLatestCarbonDeviceConfig(ctx, db, ref.ExternalDeviceID)
 	if err != nil {
 		return THCPNDeviceConfigDetailResponse{}, err
@@ -51,7 +50,7 @@ func (s *Service) UpdateDeviceConfig(ctx context.Context, input UpdateTHCPNDevic
 	if s.db == nil {
 		return UpdateTHCPNDeviceConfigResponse{}, apperr.New(apperr.KindInternal, "database is not configured")
 	}
-	ref, err := s.queries.GetDeviceSourceRefByDevice(ctx, input.DeviceID)
+	ref, err := s.queries.GetNumericDeviceSourceRefByDevice(ctx, input.DeviceID)
 	if err != nil {
 		return UpdateTHCPNDeviceConfigResponse{}, mapNotFoundOrInternal(err, "device source ref not found")
 	}
@@ -61,7 +60,7 @@ func (s *Service) UpdateDeviceConfig(ctx context.Context, input UpdateTHCPNDevic
 	return s.updateCarbonDeviceConfig(ctx, input, ref)
 }
 
-func (s *Service) updateCarbonDeviceConfig(ctx context.Context, input UpdateTHCPNDeviceConfigInput, ref sqlc.DeviceSourceRef) (UpdateTHCPNDeviceConfigResponse, error) {
+func (s *Service) updateCarbonDeviceConfig(ctx context.Context, input UpdateTHCPNDeviceConfigInput, ref sqlc.GetNumericDeviceSourceRefByDeviceRow) (UpdateTHCPNDeviceConfigResponse, error) {
 	if input.ExpectedConfigID <= 0 {
 		return UpdateTHCPNDeviceConfigResponse{}, apperr.New(apperr.KindInvalidArgument, "expected_config_id is required")
 	}
@@ -81,7 +80,6 @@ func (s *Service) updateCarbonDeviceConfig(ctx context.Context, input UpdateTHCP
 	if err != nil {
 		return UpdateTHCPNDeviceConfigResponse{}, err
 	}
-	defer db.Close()
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return UpdateTHCPNDeviceConfigResponse{}, apperr.Wrap(apperr.KindDataSource, "begin carbon config transaction", err)
@@ -127,12 +125,11 @@ func carbonConfigForResponse(deviceID int64, config carbonDeviceConfig) THCPNDev
 	return THCPNDeviceConfig{ID: config.ID, DeviceID: deviceID, DataJSON: config.Data, ImageJSON: config.Image, ControlJSON: config.Control, CreatedAt: config.CreatedAt, UpdatedAt: config.UpdatedAt}
 }
 
-func (s *Service) getCarbonSamplingProfile(ctx context.Context, deviceID uuid.UUID, ref sqlc.DeviceSourceRef) (SamplingProfileResponse, error) {
+func (s *Service) getCarbonSamplingProfile(ctx context.Context, deviceID uuid.UUID, ref sqlc.GetNumericDeviceSourceRefByDeviceRow) (SamplingProfileResponse, error) {
 	db, err := s.openCarbonConfigDB(ctx, ref.DataSourceID)
 	if err != nil {
 		return SamplingProfileResponse{}, err
 	}
-	defer db.Close()
 	config, err := readLatestCarbonDeviceConfig(ctx, db, ref.ExternalDeviceID)
 	if err != nil {
 		return SamplingProfileResponse{}, err
@@ -140,7 +137,7 @@ func (s *Service) getCarbonSamplingProfile(ctx context.Context, deviceID uuid.UU
 	return carbonSamplingProfileFromConfig(deviceID, config), nil
 }
 
-func (s *Service) updateCarbonSamplingProfile(ctx context.Context, input SamplingProfileUpdateInput, ref sqlc.DeviceSourceRef) (SamplingProfileResponse, error) {
+func (s *Service) updateCarbonSamplingProfile(ctx context.Context, input SamplingProfileUpdateInput, ref sqlc.GetNumericDeviceSourceRefByDeviceRow) (SamplingProfileResponse, error) {
 	schedule, err := carbonSamplingScheduleForInput(input)
 	if err != nil {
 		return SamplingProfileResponse{}, err
@@ -149,7 +146,6 @@ func (s *Service) updateCarbonSamplingProfile(ctx context.Context, input Samplin
 	if err != nil {
 		return SamplingProfileResponse{}, err
 	}
-	defer db.Close()
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return SamplingProfileResponse{}, apperr.Wrap(apperr.KindDataSource, "begin carbon config transaction", err)

@@ -36,10 +36,14 @@ const (
 )
 
 type Service struct {
-	db      *pgxpool.Pool
-	queries *sqlc.Queries
-	store   objectstore.Store
-	billing *billing.Service
+	db           *pgxpool.Pool
+	queries      *sqlc.Queries
+	store        objectstore.Store
+	billing      *billing.Service
+	syncQueue    SyncQueue
+	claimEnsurer interface {
+		EnsureEligible(context.Context) (int64, error)
+	}
 }
 
 func (s *Service) SetBilling(service *billing.Service) { s.billing = service }
@@ -88,6 +92,7 @@ type TelemetryBatchQuery struct {
 }
 
 type TelemetryBatchResult struct {
+	Errors         map[uuid.UUID]string
 	Series         map[uuid.UUID]TelemetryResult
 	SourceScans    int
 	RowsRead       int

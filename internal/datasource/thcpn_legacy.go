@@ -121,7 +121,6 @@ func (r *Runtime) queryThcpnLegacyMySQLTelemetry(ctx context.Context, source Dat
 	if err != nil {
 		return TelemetryResult{}, err
 	}
-	defer db.Close()
 
 	shards, err := queryTHCPNShardTables(ctx, db, cfg, req.Start, req.End)
 	if err != nil {
@@ -201,7 +200,6 @@ func (r *Runtime) queryThcpnLegacyMySQLTelemetryBatch(ctx context.Context, sourc
 	if err != nil {
 		return result, err
 	}
-	defer db.Close()
 	shards, err := queryTHCPNShardTables(ctx, db, base, req.Start, req.End)
 	if err != nil {
 		return result, err
@@ -440,7 +438,6 @@ func (r *Runtime) queryThcpnLegacyMySQLMedia(ctx context.Context, source DataSou
 	if err != nil {
 		return MediaResult{}, err
 	}
-	defer db.Close()
 
 	shards, err := queryTHCPNShardTables(ctx, db, cfg, req.Start, req.End)
 	if err != nil {

@@ -122,7 +122,6 @@ func (s *Service) CarbonOverview(ctx context.Context, deviceID uuid.UUID) (Carbo
 	if err != nil {
 		return CarbonOverview{}, err
 	}
-	defer db.Close()
 	nodesCount, err := s.carbonNodesCount(ctx, deviceID)
 	if err != nil {
 		return CarbonOverview{}, err
@@ -190,7 +189,6 @@ func (s *Service) CarbonFlux(ctx context.Context, deviceID uuid.UUID, nodeID int
 	if err != nil {
 		return CarbonFluxResponse{}, err
 	}
-	defer db.Close()
 	tables, err := carbonExistingTables(ctx, db, "carbon_flux", carbonMonthNames(start, end))
 	if err != nil {
 		return CarbonFluxResponse{}, err
@@ -213,7 +211,6 @@ func (s *Service) CarbonPeriods(ctx context.Context, deviceID uuid.UUID, nodeID 
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
 	dataTables, err := carbonExistingTables(ctx, db, "device_data_next", carbonMonthNames(start, end))
 	if err != nil {
 		return nil, err
@@ -244,7 +241,6 @@ func (s *Service) CarbonPeriod(ctx context.Context, deviceID uuid.UUID, nodeID i
 	if err != nil {
 		return CarbonPeriodDetail{}, err
 	}
-	defer db.Close()
 	periodAt, err := queryCarbonPeriodAt(ctx, db, ref.ExternalID, nodeID, field, period)
 	if err != nil {
 		return CarbonPeriodDetail{}, err
@@ -281,14 +277,14 @@ func (s *Service) openCarbonDeviceSource(ctx context.Context, deviceID uuid.UUID
 		return carbonDeviceSource{}, nil, apperr.New(apperr.KindInvalidArgument, "device_id is required")
 	}
 	var ref carbonDeviceSource
-	err := s.db.QueryRow(ctx, `SELECT data_source_id, external_device_id FROM device_source_refs WHERE device_id=$1 AND adapter_code=$2 AND status='active'`, deviceID, AdapterCarbonSink).Scan(&ref.DataSourceID, &ref.ExternalID)
+	err := s.db.QueryRow(ctx, `SELECT data_source_id, external_key::bigint FROM device_source_refs WHERE device_id=$1 AND adapter_code=$2 AND status='active'`, deviceID, AdapterCarbonSink).Scan(&ref.DataSourceID, &ref.ExternalID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return carbonDeviceSource{}, nil, apperr.New(apperr.KindNotFound, "carbon source reference not found")
 	}
 	if err != nil {
 		return carbonDeviceSource{}, nil, apperr.Wrap(apperr.KindInternal, "read carbon source reference", err)
 	}
-	source, err := s.queries.GetDataSource(ctx, ref.DataSourceID)
+	source, err := s.loadCarbonSyncDataSource(ctx, ref.DataSourceID)
 	if err != nil {
 		return carbonDeviceSource{}, nil, mapNotFoundOrInternal(err, "carbon data source not found")
 	}

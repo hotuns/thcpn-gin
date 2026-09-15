@@ -13,18 +13,28 @@ import (
 )
 
 const getActiveTHCPNDeviceSourceRefByDevice = `-- name: GetActiveTHCPNDeviceSourceRefByDevice :one
-SELECT id, device_id, data_source_id, adapter_code, external_device_id, status, synced_at, created_at, updated_at
+SELECT id, device_id, data_source_id, adapter_code, external_key::bigint AS external_device_id, status, synced_at, created_at, updated_at
 FROM device_source_refs
 WHERE device_id = $1
   AND adapter_code = 'thcpn_legacy_mysql'
   AND status = 'active'
-ORDER BY synced_at DESC, id DESC
-LIMIT 1
 `
 
-func (q *Queries) GetActiveTHCPNDeviceSourceRefByDevice(ctx context.Context, deviceID uuid.UUID) (DeviceSourceRef, error) {
+type GetActiveTHCPNDeviceSourceRefByDeviceRow struct {
+	ID               uuid.UUID          `json:"id"`
+	DeviceID         uuid.UUID          `json:"device_id"`
+	DataSourceID     uuid.UUID          `json:"data_source_id"`
+	AdapterCode      string             `json:"adapter_code"`
+	ExternalDeviceID int64              `json:"external_device_id"`
+	Status           string             `json:"status"`
+	SyncedAt         pgtype.Timestamptz `json:"synced_at"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) GetActiveTHCPNDeviceSourceRefByDevice(ctx context.Context, deviceID uuid.UUID) (GetActiveTHCPNDeviceSourceRefByDeviceRow, error) {
 	row := q.db.QueryRow(ctx, getActiveTHCPNDeviceSourceRefByDevice, deviceID)
-	var i DeviceSourceRef
+	var i GetActiveTHCPNDeviceSourceRefByDeviceRow
 	err := row.Scan(
 		&i.ID,
 		&i.DeviceID,
@@ -75,63 +85,6 @@ func (q *Queries) GetDeviceConfigSnapshotByExternalConfig(ctx context.Context, a
 	return i, err
 }
 
-const getDeviceSourceRefByDevice = `-- name: GetDeviceSourceRefByDevice :one
-SELECT id, device_id, data_source_id, adapter_code, external_device_id, status, synced_at, created_at, updated_at
-FROM device_source_refs
-WHERE device_id = $1
-  AND status = 'active'
-ORDER BY synced_at DESC, id DESC
-LIMIT 1
-`
-
-func (q *Queries) GetDeviceSourceRefByDevice(ctx context.Context, deviceID uuid.UUID) (DeviceSourceRef, error) {
-	row := q.db.QueryRow(ctx, getDeviceSourceRefByDevice, deviceID)
-	var i DeviceSourceRef
-	err := row.Scan(
-		&i.ID,
-		&i.DeviceID,
-		&i.DataSourceID,
-		&i.AdapterCode,
-		&i.ExternalDeviceID,
-		&i.Status,
-		&i.SyncedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const getDeviceSourceRefByExternal = `-- name: GetDeviceSourceRefByExternal :one
-SELECT id, device_id, data_source_id, adapter_code, external_device_id, status, synced_at, created_at, updated_at
-FROM device_source_refs
-WHERE data_source_id = $1
-  AND adapter_code = $2
-  AND external_device_id = $3
-`
-
-type GetDeviceSourceRefByExternalParams struct {
-	DataSourceID     uuid.UUID `json:"data_source_id"`
-	AdapterCode      string    `json:"adapter_code"`
-	ExternalDeviceID int64     `json:"external_device_id"`
-}
-
-func (q *Queries) GetDeviceSourceRefByExternal(ctx context.Context, arg GetDeviceSourceRefByExternalParams) (DeviceSourceRef, error) {
-	row := q.db.QueryRow(ctx, getDeviceSourceRefByExternal, arg.DataSourceID, arg.AdapterCode, arg.ExternalDeviceID)
-	var i DeviceSourceRef
-	err := row.Scan(
-		&i.ID,
-		&i.DeviceID,
-		&i.DataSourceID,
-		&i.AdapterCode,
-		&i.ExternalDeviceID,
-		&i.Status,
-		&i.SyncedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const getLatestDeviceConfigSnapshotByDevice = `-- name: GetLatestDeviceConfigSnapshotByDevice :one
 SELECT id, device_id, data_source_id, adapter_code, external_device_id, external_config_id, version, data_json, image_json, control_json, source_created_at, source_updated_at, synced_at, created_at
 FROM device_config_snapshots
@@ -158,6 +111,86 @@ func (q *Queries) GetLatestDeviceConfigSnapshotByDevice(ctx context.Context, dev
 		&i.SourceUpdatedAt,
 		&i.SyncedAt,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getNumericDeviceSourceRefByDevice = `-- name: GetNumericDeviceSourceRefByDevice :one
+SELECT id, device_id, data_source_id, adapter_code, external_key::bigint AS external_device_id, status, synced_at, created_at, updated_at
+FROM device_source_refs
+WHERE device_id = $1
+  AND adapter_code IN ('thcpn_legacy_mysql', 'thcpn_legacy_camera', 'carbon_sink_mysql')
+  AND status = 'active'
+`
+
+type GetNumericDeviceSourceRefByDeviceRow struct {
+	ID               uuid.UUID          `json:"id"`
+	DeviceID         uuid.UUID          `json:"device_id"`
+	DataSourceID     uuid.UUID          `json:"data_source_id"`
+	AdapterCode      string             `json:"adapter_code"`
+	ExternalDeviceID int64              `json:"external_device_id"`
+	Status           string             `json:"status"`
+	SyncedAt         pgtype.Timestamptz `json:"synced_at"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) GetNumericDeviceSourceRefByDevice(ctx context.Context, deviceID uuid.UUID) (GetNumericDeviceSourceRefByDeviceRow, error) {
+	row := q.db.QueryRow(ctx, getNumericDeviceSourceRefByDevice, deviceID)
+	var i GetNumericDeviceSourceRefByDeviceRow
+	err := row.Scan(
+		&i.ID,
+		&i.DeviceID,
+		&i.DataSourceID,
+		&i.AdapterCode,
+		&i.ExternalDeviceID,
+		&i.Status,
+		&i.SyncedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getNumericDeviceSourceRefByExternal = `-- name: GetNumericDeviceSourceRefByExternal :one
+SELECT id, device_id, data_source_id, adapter_code, external_key::bigint AS external_device_id, status, synced_at, created_at, updated_at
+FROM device_source_refs
+WHERE data_source_id = $1
+  AND adapter_code = $2
+  AND external_key = $3::bigint::text
+`
+
+type GetNumericDeviceSourceRefByExternalParams struct {
+	DataSourceID     uuid.UUID `json:"data_source_id"`
+	AdapterCode      string    `json:"adapter_code"`
+	ExternalDeviceID int64     `json:"external_device_id"`
+}
+
+type GetNumericDeviceSourceRefByExternalRow struct {
+	ID               uuid.UUID          `json:"id"`
+	DeviceID         uuid.UUID          `json:"device_id"`
+	DataSourceID     uuid.UUID          `json:"data_source_id"`
+	AdapterCode      string             `json:"adapter_code"`
+	ExternalDeviceID int64              `json:"external_device_id"`
+	Status           string             `json:"status"`
+	SyncedAt         pgtype.Timestamptz `json:"synced_at"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) GetNumericDeviceSourceRefByExternal(ctx context.Context, arg GetNumericDeviceSourceRefByExternalParams) (GetNumericDeviceSourceRefByExternalRow, error) {
+	row := q.db.QueryRow(ctx, getNumericDeviceSourceRefByExternal, arg.DataSourceID, arg.AdapterCode, arg.ExternalDeviceID)
+	var i GetNumericDeviceSourceRefByExternalRow
+	err := row.Scan(
+		&i.ID,
+		&i.DeviceID,
+		&i.DataSourceID,
+		&i.AdapterCode,
+		&i.ExternalDeviceID,
+		&i.Status,
+		&i.SyncedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -282,40 +315,52 @@ func (q *Queries) UpsertDeviceConfigSnapshot(ctx context.Context, arg UpsertDevi
 	return i, err
 }
 
-const upsertDeviceSourceRef = `-- name: UpsertDeviceSourceRef :one
+const upsertNumericDeviceSourceRef = `-- name: UpsertNumericDeviceSourceRef :one
 INSERT INTO device_source_refs (
     device_id,
     data_source_id,
     adapter_code,
-    external_device_id,
+    external_key,
     status,
     synced_at
 )
-VALUES ($1, $2, $3, $4, 'active', now())
-ON CONFLICT (data_source_id, adapter_code, external_device_id)
+VALUES ($1, $2, $3, $4::bigint::text, 'active', now())
+ON CONFLICT (data_source_id, adapter_code, external_key)
 DO UPDATE SET
     device_id = EXCLUDED.device_id,
     status = 'active',
     synced_at = now(),
     updated_at = now()
-RETURNING id, device_id, data_source_id, adapter_code, external_device_id, status, synced_at, created_at, updated_at
+RETURNING id, device_id, data_source_id, adapter_code, external_key::bigint AS external_device_id, status, synced_at, created_at, updated_at
 `
 
-type UpsertDeviceSourceRefParams struct {
+type UpsertNumericDeviceSourceRefParams struct {
 	DeviceID         uuid.UUID `json:"device_id"`
 	DataSourceID     uuid.UUID `json:"data_source_id"`
 	AdapterCode      string    `json:"adapter_code"`
 	ExternalDeviceID int64     `json:"external_device_id"`
 }
 
-func (q *Queries) UpsertDeviceSourceRef(ctx context.Context, arg UpsertDeviceSourceRefParams) (DeviceSourceRef, error) {
-	row := q.db.QueryRow(ctx, upsertDeviceSourceRef,
+type UpsertNumericDeviceSourceRefRow struct {
+	ID               uuid.UUID          `json:"id"`
+	DeviceID         uuid.UUID          `json:"device_id"`
+	DataSourceID     uuid.UUID          `json:"data_source_id"`
+	AdapterCode      string             `json:"adapter_code"`
+	ExternalDeviceID int64              `json:"external_device_id"`
+	Status           string             `json:"status"`
+	SyncedAt         pgtype.Timestamptz `json:"synced_at"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) UpsertNumericDeviceSourceRef(ctx context.Context, arg UpsertNumericDeviceSourceRefParams) (UpsertNumericDeviceSourceRefRow, error) {
+	row := q.db.QueryRow(ctx, upsertNumericDeviceSourceRef,
 		arg.DeviceID,
 		arg.DataSourceID,
 		arg.AdapterCode,
 		arg.ExternalDeviceID,
 	)
-	var i DeviceSourceRef
+	var i UpsertNumericDeviceSourceRefRow
 	err := row.Scan(
 		&i.ID,
 		&i.DeviceID,

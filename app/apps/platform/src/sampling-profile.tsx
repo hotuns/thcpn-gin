@@ -52,6 +52,7 @@ export function SamplingProfilePanel({ deviceId, workspaceId, carbon = false }: 
   const [advancedOverride, setAdvancedOverride] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [needsRecovery, setNeedsRecovery] = useState(false);
 
   useEffect(() => {
     if (!query.data) return;
@@ -158,7 +159,9 @@ export function SamplingProfilePanel({ deviceId, workspaceId, carbon = false }: 
     };
     try {
       const updated = await api.devices.updateSamplingProfile(deviceId, payload);
-      setMessage(`已下发 · 配置版本 ${updated.external_config_id}`);
+      const partial = Boolean(updated.write_state && updated.write_state.platform !== "synced");
+      setNeedsRecovery(partial);
+      setMessage(partial ? "源端已接受配置，平台同步失败。请重新同步平台，不要重复下发。" : `源端已接受 · 配置版本 ${updated.external_config_id} · 设备是否应用尚未确认`);
       await query.refetch();
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
@@ -255,6 +258,12 @@ export function SamplingProfilePanel({ deviceId, workspaceId, carbon = false }: 
           </div>
         )}
         {message && <div className="command-note">{message}</div>}
+        {needsRecovery && <Button disabled={busy} onClick={async () => {
+          setBusy(true);
+          try { await api.devices.reconcileConfig(deviceId); setNeedsRecovery(false); setMessage("平台同步已恢复，设备是否应用尚未确认。"); await query.refetch(); }
+          catch (error) { setMessage(formatApiError(error).message); }
+          finally { setBusy(false); }
+        }}>重新同步平台</Button>}
         {current.can_edit && <div className="sampling-profile-actions"><Button disabled={!dirty || !valid || busy} onClick={() => void save()}>{busy ? "下发中…" : "应用策略"}</Button></div>}
       </div>
     </Panel>
