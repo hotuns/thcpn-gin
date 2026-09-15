@@ -27,6 +27,8 @@ const (
 	loraWANV2ProductID        = "lorawan_v2_gateway"
 )
 
+var errLoRaWANV2SensorConfigNotFound = errors.New("lorawan_v2 sensor configuration not found")
+
 type loraWANV2Secret struct {
 	BaseURL  string `json:"base_url"`
 	Username string `json:"username"`
@@ -187,6 +189,10 @@ func (c *loraWANV2Client) request(ctx context.Context, method, requestPath strin
 		return nil, apperr.New(apperr.KindDataSource, "lorawan_v2 response is too large")
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		var envelope loraWANV2Envelope
+		if response.StatusCode == http.StatusNotFound && json.Unmarshal(raw, &envelope) == nil && !envelope.Success && envelope.ErrorCode == "0x10011307" {
+			return nil, apperr.Wrap(apperr.KindDataSource, "lorawan_v2 returned non-success status", errLoRaWANV2SensorConfigNotFound)
+		}
 		return nil, apperr.New(apperr.KindDataSource, "lorawan_v2 returned non-success status")
 	}
 	var envelope loraWANV2Envelope
@@ -640,6 +646,9 @@ func loraWANV2DiscoverStreams(ctx context.Context, client *loraWANV2Client, gate
 
 func loraWANV2NodeMetricUnits(ctx context.Context, client *loraWANV2Client, gatewaySN string, nodeIndex int) (map[string]string, error) {
 	payload, err := client.request(ctx, http.MethodGet, "/device/"+url.PathEscape(gatewaySN)+"/node/"+strconv.Itoa(nodeIndex)+"/sensor_config/latest", url.Values{}, nil)
+	if errors.Is(err, errLoRaWANV2SensorConfigNotFound) {
+		return map[string]string{}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -661,12 +670,36 @@ func parseLoRaWANV2MetricUnits(payload json.RawMessage) (map[string]string, erro
 		return nil, apperr.New(apperr.KindDataSource, "lorawan_v2 sensor configuration must be an array")
 	}
 	result := map[string]string{}
-	var scan func([]any) error
-	scan = func(items []any) error {
-		if len(items) >= 3 {
+	var scan func([]any, bool) error
+	scan = func(items []any, sdi bool) error {
+		if len(items) == 2 && items[0] == "iic" {
+			inner, ok := items[1].([]any)
+			if !ok || len(inner) != 3 {
+				return apperr.New(apperr.KindDataSource, "invalid lorawan_v2 IIC configuration")
+			}
+			keys, ok := inner[2].([]any)
+			if !ok {
+				return apperr.New(apperr.KindDataSource, "invalid lorawan_v2 IIC metric keys")
+			}
+			for _, raw := range keys {
+				key, ok := raw.(string)
+				if !ok || strings.TrimSpace(key) == "" {
+					return apperr.New(apperr.KindDataSource, "invalid lorawan_v2 IIC metric key")
+				}
+				if _, exists := result[key]; exists {
+					return apperr.New(apperr.KindDataSource, "duplicate lorawan_v2 metric: "+key)
+				}
+				result[key] = ""
+			}
+			return nil
+		}
+		if len(items) >= 3 || (sdi && len(items) == 2) {
 			key, keyOK := items[0].(string)
 			_, ruleOK := items[1].(string)
-			unit, unitOK := items[2].(string)
+			unit, unitOK := "", sdi
+			if len(items) >= 3 {
+				unit, unitOK = items[2].(string)
+			}
 			if keyOK && ruleOK && unitOK && strings.TrimSpace(key) != "" {
 				if _, exists := result[key]; exists {
 					return apperr.New(apperr.KindDataSource, "duplicate lorawan_v2 metric: "+key)
@@ -675,16 +708,19 @@ func parseLoRaWANV2MetricUnits(payload json.RawMessage) (map[string]string, erro
 				return nil
 			}
 		}
+		if len(items) == 2 && items[0] == "sdi" {
+			sdi = true
+		}
 		for _, item := range items {
 			if nested, ok := item.([]any); ok {
-				if err := scan(nested); err != nil {
+				if err := scan(nested, sdi); err != nil {
 					return err
 				}
 			}
 		}
 		return nil
 	}
-	if err := scan(content); err != nil {
+	if err := scan(content, false); err != nil {
 		return nil, err
 	}
 	if len(content) > 0 && len(result) == 0 {

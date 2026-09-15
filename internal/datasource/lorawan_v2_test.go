@@ -241,3 +241,69 @@ func TestLoRaWANV2ConfigurationRejectsUnrecognizedAndDuplicateMetrics(t *testing
 		}
 	}
 }
+
+func TestLoRaWANV2DiscoveryHandlesMissingAndSDIConfigurations(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		status      int
+		body        string
+		wantError   bool
+		wantStreams int
+	}{
+		{"missing configuration", 404, `{"success":false,"error_code":"0x10011307","payload":null}`, false, 0},
+		{"SDI without units", 200, `{"success":true,"payload":{"content":[["sdi",["0",[["RPFD","0"],["FRPFD","1"]]]]]}}`, false, 2},
+		{"missing gateway", 404, `{"success":false,"error_code":"0x10011301"}`, true, 0},
+		{"unregistered route", 404, ``, true, 0},
+		{"server failure", 500, `{"success":false,"error_code":"0x10011308"}`, true, 0},
+		{"unauthorized", 401, `{"success":false}`, true, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/device/GW/infos":
+					_, _ = w.Write([]byte(`{"success":true,"payload":{"data":[],"pagination":{"total_page":1}}}`))
+				case "/device/GW/node/1/sensor_config/latest":
+					w.WriteHeader(tc.status)
+					_, _ = w.Write([]byte(tc.body))
+				default:
+					t.Errorf("unexpected request: %s", r.URL.Path)
+					w.WriteHeader(500)
+				}
+			}))
+			defer server.Close()
+			client, err := newLoRaWANV2Client(context.Background(), staticResolver(`{"base_url":"`+server.URL+`","username":"reader","password":"secret"}`), DataSource{Type: "http_api"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			streams, err := loraWANV2DiscoverStreams(context.Background(), client, LoRaWANV2Gateway{SN: "GW", NodeCount: 1})
+			if (err != nil) != tc.wantError || len(streams) != tc.wantStreams {
+				t.Fatalf("streams=%#v err=%v", streams, err)
+			}
+			if tc.wantStreams == 2 {
+				if streams[0].Code != "lora_node_1_frpfd" || streams[1].Code != "lora_node_1_rpfd" || streams[0].Unit != "" || streams[1].Unit != "" {
+					t.Fatalf("incorrect SDI metrics: %#v", streams)
+				}
+			}
+		})
+	}
+}
+
+func TestLoRaWANV2ConfigurationReadsIICKeys(t *testing.T) {
+	units, err := parseLoRaWANV2MetricUnits(json.RawMessage(`{"content":[["iic",["9BSHT30","0x44",["ICt5","ICh5","pressure"]]]]}`))
+	if err != nil || len(units) != 3 {
+		t.Fatalf("units=%v err=%v", units, err)
+	}
+	for _, key := range []string{"ICt5", "ICh5", "pressure"} {
+		if unit, ok := units[key]; !ok || unit != "" {
+			t.Fatalf("missing or incorrect IIC metric %s: %v", key, units)
+		}
+	}
+	for _, raw := range []string{
+		`{"content":[["iic",["9BSHT30","0x44",["temp","temp"]]]]}`,
+		`{"content":[["iic",["9BSHT30","0x44",["temp",12]]]]}`,
+	} {
+		if _, err := parseLoRaWANV2MetricUnits(json.RawMessage(raw)); err == nil {
+			t.Fatalf("accepted invalid IIC config: %s", raw)
+		}
+	}
+}
