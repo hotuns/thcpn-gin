@@ -113,6 +113,7 @@ const AdminUserDetailPage = lazy(() =>
     default: module.AdminUserDetailPage,
   })),
 );
+const AdminDemoAccountsPage = lazy(() => import("./admin-demo-accounts").then((module) => ({ default: module.AdminDemoAccountsPage })));
 const AdminSettingsPage = lazy(() =>
   import("./admin-control").then((module) => ({
     default: module.AdminSettingsPage,
@@ -135,6 +136,7 @@ const adminNav = [
   { to: "/admin/announcements", key: "announcements", icon: Megaphone, group: "platform" },
   { to: "/admin/logs", key: "logs", icon: FileText, group: "system" },
   { to: "/admin/users", key: "users", icon: UserRound, group: "platform" },
+	{ to: "/admin/demo-accounts", key: "demoAccounts", icon: MonitorUp, group: "platform" },
 	{ to: "/admin/administrators", key: "administrators", icon: UsersRound, group: "system" },
   { to: "/admin/metadata", key: "metadata", icon: TableProperties, group: "platform" },
   { to: "/admin/processing-plans", key: "processingPlans", icon: Workflow, group: "platform" },
@@ -597,6 +599,7 @@ function AdminRoot() {
         <Route path="announcements" element={<AdminAnnouncementsPage />} />
         <Route path="users" element={<AdminUsersPage />} />
         <Route path="users/:userId" element={<AdminUserDetailPage />} />
+        <Route path="demo-accounts" element={<AdminDemoAccountsPage />} />
 		<Route path="administrators" element={<SystemAdminsPage />} />
         <Route path="metadata" element={<AdminMetadataPage />} />
         <Route path="processing-plans" element={<AdminProcessingPlansPage />} />

@@ -83,6 +83,13 @@ type SMSLoginInput struct {
 	Request RequestInfo
 }
 
+type DemoLoginInput struct {
+	Username string
+	Password string
+	MFACode  string
+	Request  RequestInfo
+}
+
 type SMSRegisterInput struct {
 	Phone   string
 	Code    string
@@ -447,6 +454,32 @@ func (s *Service) LoginWithPassword(ctx context.Context, input PasswordLoginInpu
 		}
 		return LoginResult{}, apperr.Wrap(apperr.KindInternal, "find user by identifier", err)
 	}
+	if userModel.IsDemo {
+		return LoginResult{}, apperr.New(apperr.KindUnauthorized, "invalid identifier or password")
+	}
+	return s.loginWithCredential(ctx, userModel, input.Password, input.MFACode, input.Request)
+}
+
+func (s *Service) LoginDemoWithPassword(ctx context.Context, input DemoLoginInput) (LoginResult, error) {
+	username := strings.ToLower(strings.TrimSpace(input.Username))
+	if username == "" || strings.TrimSpace(input.Password) == "" {
+		return LoginResult{}, apperr.New(apperr.KindInvalidArgument, "username and password are required")
+	}
+	var userID uuid.UUID
+	if err := s.db.QueryRow(ctx, `SELECT id FROM users WHERE is_demo = true AND status = 'active' AND lower(username) = $1`, username).Scan(&userID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return LoginResult{}, apperr.New(apperr.KindUnauthorized, "invalid username or password")
+		}
+		return LoginResult{}, apperr.Wrap(apperr.KindInternal, "find demo user", err)
+	}
+	userModel, err := s.queries.GetActiveUser(ctx, userID)
+	if err != nil {
+		return LoginResult{}, apperr.Wrap(apperr.KindInternal, "get demo user", err)
+	}
+	return s.loginWithCredential(ctx, userModel, input.Password, input.MFACode, input.Request)
+}
+
+func (s *Service) loginWithCredential(ctx context.Context, userModel sqlc.User, password, mfaCode string, request RequestInfo) (LoginResult, error) {
 
 	credential, err := s.queries.GetUserCredential(ctx, userModel.ID)
 	if err != nil {
@@ -459,14 +492,14 @@ func (s *Service) LoginWithPassword(ctx context.Context, input PasswordLoginInpu
 		return LoginResult{}, apperr.New(apperr.KindRateLimited, "account is temporarily locked")
 	}
 
-	if !CheckPassword(credential.PasswordHash, input.Password) {
+	if !CheckPassword(credential.PasswordHash, password) {
 		if err := s.recordPasswordFailure(ctx, credential); err != nil {
 			return LoginResult{}, err
 		}
 		return LoginResult{}, apperr.New(apperr.KindUnauthorized, "invalid identifier or password")
 	}
 
-	if err := s.verifyLoginMFA(ctx, userModel.ID, input.MFACode); err != nil {
+	if err := s.verifyLoginMFA(ctx, userModel.ID, mfaCode); err != nil {
 		return LoginResult{}, err
 	}
 	if _, err := s.queries.ResetUserCredentialFailure(ctx, userModel.ID); err != nil {
@@ -476,7 +509,7 @@ func (s *Service) LoginWithPassword(ctx context.Context, input PasswordLoginInpu
 	if err != nil {
 		return LoginResult{}, apperr.Wrap(apperr.KindInternal, "update password login user", err)
 	}
-	return s.loginResult(ctx, userModel, false, input.Request)
+	return s.loginResult(ctx, userModel, false, request)
 }
 
 func (s *Service) ChangePassword(ctx context.Context, input ChangePasswordInput) error {

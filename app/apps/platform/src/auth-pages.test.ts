@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   mfaRequiredMessage,
+  demoModeFromSearch,
   platformNextPath,
   validPassword,
 } from "./auth-pages";
@@ -25,5 +26,11 @@ describe("authentication form rules", () => {
     expect(platformNextPath("/admin/devices")).toBeNull();
     expect(platformNextPath("//example.com/devices")).toBeNull();
     expect(platformNextPath(null)).toBeNull();
+  });
+
+  it("only enables demo authentication through the explicit login switch state", () => {
+    expect(demoModeFromSearch("?demo=1")).toBe(true);
+    expect(demoModeFromSearch("?demo=0")).toBe(false);
+    expect(demoModeFromSearch("")).toBe(false);
   });
 });

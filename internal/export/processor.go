@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -125,6 +126,7 @@ type mediaExportItem struct {
 	DeviceID           uuid.UUID
 	MediaID            string
 	MediaType          string
+	CameraName         string
 	CapturedAt         time.Time
 	ObjectKey          string
 	ThumbnailObjectKey string
@@ -522,11 +524,14 @@ func (p *Processor) renderDeviceBatchZIP(ctx context.Context, job Job, cfg batch
 		if err != nil {
 			return nil, mapNotFoundOrInternal(err, "batch device not found")
 		}
-		folder := safeArchiveSegment(device.Name)
-		if folder == "" {
-			folder = "device"
+		folder := "."
+		if len(cfg.DeviceIDs) > 1 {
+			folder = safeArchiveSegment(device.Name)
+			if folder == "" {
+				folder = "device"
+			}
+			folder += "_" + id.String()[:8]
 		}
-		folder = path.Join(folder, safeArchiveSegment(id.String()[:8]))
 		if err := deviceWriter.Write([]string{id.String(), device.Name, device.SerialNo, device.DeviceType, folder}); err != nil {
 			return nil, err
 		}
@@ -929,6 +934,7 @@ func (p *Processor) queryMediaStream(ctx context.Context, stream sqlc.DataStream
 			DeviceID:           stream.DeviceID,
 			MediaID:            record.ID,
 			MediaType:          record.MediaType,
+			CameraName:         stream.Name,
 			CapturedAt:         record.CapturedAt,
 			ObjectKey:          record.ObjectKey,
 			ThumbnailObjectKey: thumbnail,
@@ -975,7 +981,7 @@ func (p *Processor) queryDeviceMediaAll(ctx context.Context, deviceID uuid.UUID,
 				if record.ThumbnailObjectKey != nil {
 					thumbnail = *record.ThumbnailObjectKey
 				}
-				items = append(items, mediaExportItem{DataStreamID: stream.ID, DeviceID: stream.DeviceID, MediaID: record.ID, MediaType: record.MediaType, CapturedAt: record.CapturedAt, ObjectKey: record.ObjectKey, ThumbnailObjectKey: thumbnail})
+				items = append(items, mediaExportItem{DataStreamID: stream.ID, DeviceID: stream.DeviceID, MediaID: record.ID, MediaType: record.MediaType, CameraName: stream.Name, CapturedAt: record.CapturedAt, ObjectKey: record.ObjectKey, ThumbnailObjectKey: thumbnail})
 				streamCount++
 			}
 			if len(result.Items) == 0 || streamCount >= result.Total || len(result.Items) < pageSize {
@@ -1305,7 +1311,7 @@ func (p *Processor) renderCarbonStationZIP(ctx context.Context, job Job, cfg car
 		return nil, err
 	}
 	report := make([]qualityReportRow, 0)
-	deviceFolder := path.Join(safeArchiveSegment(device.Name), safeArchiveSegment(device.ID.String()[:8]))
+	deviceFolder := "."
 	metadata := []telemetryMetadataRow{
 		{Code: "device_id", Name: device.ID.String(), Type: "string"},
 		{Code: "serial_no", Name: device.SerialNo, Type: "string"},
@@ -1528,15 +1534,23 @@ func mediaArchivePath(item mediaExportItem, used map[string]int) string {
 	if mediaID == "" {
 		mediaID = "media"
 	}
-	mediaType := safeArchiveSegment(item.MediaType)
-	if mediaType == "" {
-		mediaType = "media"
+	cameraName := safeArchiveSegment(item.CameraName)
+	if cameraName == "" {
+		cameraName = "图片"
 	}
-	ext := strings.ToLower(filepath.Ext(item.ObjectKey))
+	filename := mediaID
+	if !item.CapturedAt.IsZero() {
+		filename = item.CapturedAt.In(time.FixedZone("Asia/Shanghai", 8*60*60)).Format("2006-01-02_15-04-05.999999999")
+	}
+	objectPath := item.ObjectKey
+	if parsed, err := url.Parse(item.ObjectKey); err == nil {
+		objectPath = parsed.Path
+	}
+	ext := strings.ToLower(filepath.Ext(objectPath))
 	if ext == "" || strings.Contains(ext, "/") || strings.Contains(ext, "\\") {
 		ext = ".bin"
 	}
-	base := path.Join("media", item.DataStreamID.String(), mediaType+"_"+mediaID+ext)
+	base := path.Join(cameraName, filename+ext)
 	count := used[base]
 	used[base] = count + 1
 	if count == 0 {
@@ -1550,11 +1564,7 @@ func safeArchiveSegment(value string) string {
 	var b strings.Builder
 	for _, r := range value {
 		switch {
-		case r >= 'a' && r <= 'z':
-			b.WriteRune(r)
-		case r >= 'A' && r <= 'Z':
-			b.WriteRune(r)
-		case r >= '0' && r <= '9':
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
 			b.WriteRune(r)
 		case r == '-' || r == '_':
 			b.WriteRune(r)

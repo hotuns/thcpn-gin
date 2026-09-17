@@ -611,7 +611,8 @@ func userBaseQuery() string {
 		uc.locked_until,
 		COALESCE(uc.locked_until > now(), false) AS locked,
 		COALESCE(uc.must_change_password, false) AS must_change_password
-		FROM users u LEFT JOIN user_credentials uc ON uc.user_id = u.id`
+		FROM users u LEFT JOIN user_credentials uc ON uc.user_id = u.id
+		WHERE u.is_demo = false`
 }
 
 func userConditions(input ListInput) (string, []any) {

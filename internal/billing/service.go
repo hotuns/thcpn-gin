@@ -43,6 +43,7 @@ type Summary struct {
 	ProfessionalExpiresAt         *time.Time `json:"professional_expires_at,omitempty"`
 	FullHistory                   bool       `json:"full_history"`
 	ProfessionalFeatures          bool       `json:"professional_features"`
+	Unlimited                     bool       `json:"unlimited"`
 	MonthlyDownloadLimitBytes     int64      `json:"monthly_download_limit_bytes"`
 	MonthlyDownloadUsedBytes      int64      `json:"monthly_download_used_bytes"`
 	MonthlyDownloadRemainingBytes int64      `json:"monthly_download_remaining_bytes"`
@@ -145,19 +146,33 @@ func (s *Service) Summary(ctx context.Context, workspaceID uuid.UUID) (Summary, 
 	month := monthStart(now)
 	var started, expires *time.Time
 	var pack, used int64
+	var demo bool
 	err := s.db.QueryRow(ctx, `
 		SELECT a.professional_started_at, a.professional_expires_at,
 			COALESCE(a.traffic_pack_balance_bytes, 0),
-			COALESCE((SELECT sum(u.monthly_bytes) FROM workspace_download_usage u WHERE u.workspace_id=$1 AND u.usage_month=$2), 0)
+			COALESCE((SELECT sum(u.monthly_bytes) FROM workspace_download_usage u WHERE u.workspace_id=$1 AND u.usage_month=$2), 0),
+			w.is_demo_workspace
 		FROM workspaces w LEFT JOIN workspace_billing_accounts a ON a.workspace_id=w.id WHERE w.id=$1
-	`, workspaceID, month).Scan(&started, &expires, &pack, &used)
+	`, workspaceID, month).Scan(&started, &expires, &pack, &used, &demo)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Summary{}, apperr.New(apperr.KindNotFound, "workspace not found")
 	}
 	if err != nil {
 		return Summary{}, apperr.Wrap(apperr.KindInternal, "load workspace billing", err)
 	}
-	return s.makeSummary(workspaceID, started, expires, pack, used, now), nil
+	result := s.makeSummary(workspaceID, started, expires, pack, used, now)
+	if demo {
+		result.Plan = PlanProfessional
+		result.FullHistory = true
+		result.ProfessionalFeatures = true
+		result.Unlimited = true
+		result.MonthlyDownloadLimitBytes = 0
+		result.MonthlyDownloadRemainingBytes = 0
+		result.UsagePercent = 0
+		result.WarningLevel = 0
+		result.Notices = []Notice{}
+	}
+	return result, nil
 }
 
 func (s *Service) makeSummary(workspaceID uuid.UUID, started, expires *time.Time, pack, used int64, now time.Time) Summary {
@@ -239,6 +254,16 @@ func (s *Service) ReserveDownload(ctx context.Context, in ReserveDownloadInput) 
 	case "media", "export", "processing", "api_file":
 	default:
 		return apperr.New(apperr.KindInvalidArgument, "invalid download source type")
+	}
+	var demo bool
+	if err := s.db.QueryRow(ctx, `SELECT is_demo_workspace FROM workspaces WHERE id=$1`, in.WorkspaceID).Scan(&demo); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apperr.New(apperr.KindNotFound, "workspace not found")
+		}
+		return apperr.Wrap(apperr.KindInternal, "load workspace download policy", err)
+	}
+	if demo {
+		return nil
 	}
 	tx, err := s.db.Begin(ctx)
 	if err != nil {

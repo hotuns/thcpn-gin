@@ -23,8 +23,8 @@ export type AccessibleWorkspace = Workspace & {
 };
 
 export type Device = Omit<Schema<"Device">, "device_type"> & { device_type: string; source_workspace_name?: string; source_project_name?: string; source_site_name?: string };
-export type DemoShowcaseConfig = { user_id: string; name: string; phone?: string; email?: string; workspace_id: string; workspace_name: string };
-export type DemoShowcaseDevice = { id: string; name: string; serial_no: string; device_type: string; status: string; workspace_id?: string; workspace_name?: string; project_name?: string; site_name?: string; selected: boolean; added_at?: string };
+export type DemoAccount = { user_id: string; username: string; name: string; status: string; workspace_id: string; workspace_name: string; device_count: number; created_at: string };
+export type DemoAccountDevice = { id: string; name: string; serial_no: string; device_type: string; status: string; source_workspace_id?: string; source_workspace_name?: string; source_project_name?: string; source_site_name?: string; selected: boolean; added_at?: string };
 export type LoginVisual = { id: string; url: string; original_filename: string; created_at: string };
 export type DeviceProfile = Schema<"DeviceProfile">;
 export type DeviceProfileImage = Schema<"DeviceProfileImage">;
@@ -511,6 +511,8 @@ export const api = {
         { method: "POST", body: JSON.stringify(payload) },
         false,
       ),
+    demoLogin: (payload: { username: string; password: string; mfa_code?: string }) =>
+      request<LoginResponse>("/api/v1/auth/demo/login", { method: "POST", body: JSON.stringify(payload) }, false),
     register: (payload: {
       name: string;
       phone?: string;
@@ -1526,12 +1528,15 @@ export const api = {
       activity: (id: string, filters: JsonRecord = {}) => request<ListResponse<JsonRecord>>(`/api/v1/admin/users/${encodeURIComponent(id)}/activity${queryString(filters as Record<string, string | number | boolean>)}`),
       remove: (id: string, payload: JsonRecord) => jsonRequest<void>(`/api/v1/admin/users/${encodeURIComponent(id)}`, "DELETE", payload),
     },
-    demoShowcase: {
-      get: () => request<DemoShowcaseConfig>("/api/v1/admin/demo-showcase"),
-      configure: (userId: string) => jsonRequest<DemoShowcaseConfig>("/api/v1/admin/demo-showcase", "PUT", { user_id: userId }),
-      devices: (q = "") => request<ListResponse<DemoShowcaseDevice>>(`/api/v1/admin/demo-showcase/devices${queryString({ q })}`),
-      addDevice: (id: string) => request<void>(`/api/v1/admin/demo-showcase/devices/${encodeURIComponent(id)}`, { method: "PUT" }),
-      removeDevice: (id: string) => request<void>(`/api/v1/admin/demo-showcase/devices/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    demoAccounts: {
+      list: () => request<ListResponse<DemoAccount>>("/api/v1/admin/demo-accounts"),
+      get: (userId: string) => request<DemoAccount>(`/api/v1/admin/demo-accounts/${encodeURIComponent(userId)}`),
+      create: (payload: { username: string; name: string; password: string }) => jsonRequest<DemoAccount>("/api/v1/admin/demo-accounts", "POST", payload),
+      update: (userId: string, payload: { name?: string; status?: string }) => jsonRequest<DemoAccount>(`/api/v1/admin/demo-accounts/${encodeURIComponent(userId)}`, "PATCH", payload),
+      resetPassword: (userId: string, password: string) => jsonRequest<void>(`/api/v1/admin/demo-accounts/${encodeURIComponent(userId)}/reset-password`, "POST", { password }),
+      devices: (userId: string, q = "", limit = 20, offset = 0) => request<ListResponse<DemoAccountDevice>>(`/api/v1/admin/demo-accounts/${encodeURIComponent(userId)}/devices${queryString({ q, limit, offset })}`),
+      addDevice: (userId: string, id: string) => request<void>(`/api/v1/admin/demo-accounts/${encodeURIComponent(userId)}/devices/${encodeURIComponent(id)}`, { method: "PUT" }),
+      removeDevice: (userId: string, id: string) => request<void>(`/api/v1/admin/demo-accounts/${encodeURIComponent(userId)}/devices/${encodeURIComponent(id)}`, { method: "DELETE" }),
     },
     loginVisuals: {
       list: () => request<ListResponse<LoginVisual>>("/api/v1/auth/login-visuals"),

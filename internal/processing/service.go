@@ -349,7 +349,7 @@ FROM processing_results WHERE execution_id=$1 ORDER BY created_at`, executionID)
 	return items, rows.Err()
 }
 
-func (s *Service) PrepareResultDownload(ctx context.Context, workspaceID, resultID, actorID uuid.UUID, demo bool) (string, time.Time, error) {
+func (s *Service) PrepareResultDownload(ctx context.Context, workspaceID, resultID, actorID uuid.UUID) (string, time.Time, error) {
 	if s.signer == nil || s.store == nil {
 		return "", time.Time{}, apperr.New(apperr.KindInternal, "processing download is not configured")
 	}
@@ -361,7 +361,7 @@ func (s *Service) PrepareResultDownload(ctx context.Context, workspaceID, result
 	if err != nil {
 		return "", time.Time{}, apperr.Wrap(apperr.KindInternal, "load processing result", err)
 	}
-	if !demo && s.billing != nil {
+	if s.billing != nil {
 		if err = s.billing.RequireProfessional(ctx, workspaceID); err != nil {
 			return "", time.Time{}, err
 		}
@@ -373,7 +373,7 @@ func (s *Service) PrepareResultDownload(ctx context.Context, workspaceID, result
 	if info.SizeBytes <= 0 {
 		return "", time.Time{}, apperr.New(apperr.KindConflict, "processing artifact size is unavailable")
 	}
-	if !demo && s.billing != nil {
+	if s.billing != nil {
 		if err = s.billing.ReserveDownload(ctx, billing.ReserveDownloadInput{WorkspaceID: workspaceID, SourceType: "processing", ResourceID: &resultID, ObjectKey: objectKey, Bytes: info.SizeBytes, ActorUserID: &actorID, IdempotencyKey: "processing:" + resultID.String() + ":" + uuid.NewString()}); err != nil {
 			return "", time.Time{}, err
 		}

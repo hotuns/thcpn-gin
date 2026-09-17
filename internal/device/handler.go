@@ -818,7 +818,7 @@ func (h *Handler) Get(c *gin.Context) {
 	actor, _ := auth.ActorFromContext(c)
 	var result Device
 	var err error
-	if decision.Source == "demo_showcase" {
+	if actor.IsDemo {
 		result, err = h.service.GetDemoShowcase(c.Request.Context(), actor.UserID, deviceID)
 	} else {
 		result, err = h.service.Get(c.Request.Context(), deviceID)
@@ -849,7 +849,7 @@ func (h *Handler) Children(c *gin.Context) {
 	if !ok {
 		return
 	}
-	decision, ok := h.authorizeDecision(c, "device", deviceID, deviceViewAction)
+	_, ok = h.authorizeDecision(c, "device", deviceID, deviceViewAction)
 	if !ok {
 		return
 	}
@@ -859,7 +859,7 @@ func (h *Handler) Children(c *gin.Context) {
 	}
 	var items []DeviceChild
 	var err error
-	if decision.Source == "demo_showcase" {
+	if actor.IsDemo {
 		items, err = h.service.ListAdminChildren(c.Request.Context(), deviceID)
 	} else {
 		items, err = h.service.ListVisibleChildren(c.Request.Context(), deviceID)
@@ -898,19 +898,35 @@ func (h *Handler) Update(c *gin.Context) {
 	}
 	actor, _ := auth.ActorFromContext(c)
 	if actor.IsDemo {
-		if req.ProductID != nil || req.Name != nil || req.Status != nil || req.DeviceType != nil || req.Capabilities != nil || (!req.ProjectIDSet && !req.SiteIDSet) {
-			httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "demo account device write denied"))
+		if !h.authorize(c, "device", deviceID, deviceConfigureAction) {
 			return
 		}
-		projectID, ok := parseOptionalUUIDPointer(req.ProjectID, "project_id", c)
-		if !ok {
+		if req.ProjectIDSet || req.SiteIDSet {
+			if req.ProductID != nil || req.Name != nil || req.Status != nil || req.DeviceType != nil || req.Capabilities != nil {
+				httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "device placement must be updated separately"))
+				return
+			}
+			projectID, ok := parseOptionalUUIDPointer(req.ProjectID, "project_id", c)
+			if !ok {
+				return
+			}
+			siteID, ok := parseOptionalUUIDPointer(req.SiteID, "site_id", c)
+			if !ok {
+				return
+			}
+			result, err := h.service.UpdateDemoPlacement(c.Request.Context(), DemoPlacementInput{UserID: actor.UserID, DeviceID: deviceID, ProjectID: projectID, SiteID: siteID, ProjectIDSet: req.ProjectIDSet, SiteIDSet: req.SiteIDSet})
+			if err != nil {
+				httpx.WriteAppError(c, err)
+				return
+			}
+			c.JSON(http.StatusOK, result)
 			return
 		}
-		siteID, ok := parseOptionalUUIDPointer(req.SiteID, "site_id", c)
-		if !ok {
+		if req.Name == nil || req.ProductID != nil || req.Status != nil || req.DeviceType != nil || req.Capabilities != nil {
+			httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "only device name or demo placement can be updated here"))
 			return
 		}
-		result, err := h.service.UpdateDemoPlacement(c.Request.Context(), DemoPlacementInput{UserID: actor.UserID, DeviceID: deviceID, ProjectID: projectID, SiteID: siteID, ProjectIDSet: req.ProjectIDSet, SiteIDSet: req.SiteIDSet})
+		result, err := h.service.UpdateReferencedDeviceName(c.Request.Context(), actor.UserID, deviceID, *req.Name)
 		if err != nil {
 			httpx.WriteAppError(c, err)
 			return
@@ -1163,6 +1179,14 @@ func (h *Handler) Unbind(c *gin.Context) {
 		return
 	}
 	actor, _ := auth.ActorFromContext(c)
+	if actor.IsDemo {
+		if err := h.service.RemoveDemoReference(c.Request.Context(), actor.UserID, deviceID); err != nil {
+			httpx.WriteAppError(c, err)
+			return
+		}
+		c.Status(http.StatusNoContent)
+		return
+	}
 
 	current, err := h.service.Get(c.Request.Context(), deviceID)
 	if err != nil {

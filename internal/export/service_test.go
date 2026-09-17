@@ -165,6 +165,8 @@ func TestMediaArchivePathSanitizesAndDeduplicates(t *testing.T) {
 	item := mediaExportItem{
 		DataStreamID: streamID,
 		MediaID:      "img/001",
+		CameraName:   "可见光/相机",
+		CapturedAt:   time.Date(2026, 9, 15, 0, 11, 4, 123456789, time.UTC),
 		MediaType:    "image",
 		ObjectKey:    "raw/camera/photo.jpg",
 	}
@@ -172,8 +174,8 @@ func TestMediaArchivePathSanitizesAndDeduplicates(t *testing.T) {
 	first := mediaArchivePath(item, used)
 	second := mediaArchivePath(item, used)
 
-	expectedFirst := "media/" + streamID.String() + "/image_img_001.jpg"
-	expectedSecond := "media/" + streamID.String() + "/image_img_001_2.jpg"
+	expectedFirst := "可见光_相机/2026-09-15_08-11-04.123456789.jpg"
+	expectedSecond := "可见光_相机/2026-09-15_08-11-04.123456789_2.jpg"
 	if first != expectedFirst || second != expectedSecond {
 		t.Fatalf("unexpected archive paths: %q %q", first, second)
 	}
@@ -221,4 +223,12 @@ func readZipFile(t *testing.T, reader *zip.Reader, name string) string {
 	}
 	t.Fatalf("missing zip file %s", name)
 	return ""
+}
+
+func TestMediaArchivePathUsesCaptureTimeAndURLPath(t *testing.T) {
+	item := mediaExportItem{CameraName: "近红外", CapturedAt: time.Date(2026, 9, 15, 23, 59, 59, 0, time.UTC), ObjectKey: "https://example.test/photo.JPG?signature=a.b"}
+	got := mediaArchivePath(item, map[string]int{})
+	if got != "近红外/2026-09-16_07-59-59.jpg" {
+		t.Fatalf("unexpected archive path: %s", got)
+	}
 }

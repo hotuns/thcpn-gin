@@ -59,9 +59,7 @@ func (h *Handler) Get(c *gin.Context) {
 		return
 	}
 	result.CanConfigure = configure.Allowed
-	if !actor.IsDemo {
-		result.CanManagePlacement = configure.Allowed
-	}
+	result.CanManagePlacement = configure.Allowed
 	c.JSON(http.StatusOK, result)
 }
 

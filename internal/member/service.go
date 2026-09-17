@@ -129,6 +129,13 @@ func (s *Service) Add(ctx context.Context, input AddInput) (WorkspaceMember, err
 	if err != nil {
 		return WorkspaceMember{}, err
 	}
+	var workspaceDemo bool
+	if err := tx.QueryRow(ctx, `SELECT is_demo_workspace FROM workspaces WHERE id=$1`, input.WorkspaceID).Scan(&workspaceDemo); err != nil {
+		return WorkspaceMember{}, mapNotFoundOrInternal(err, "workspace not found")
+	}
+	if workspaceDemo != targetUser.IsDemo {
+		return WorkspaceMember{}, apperr.New(apperr.KindInvalidArgument, "workspace members must use the same account type")
+	}
 
 	role, err := q.GetSystemRoleByCode(ctx, storageRoleCode(templateCode))
 	if err != nil {

@@ -380,7 +380,7 @@ function Shell() {
           <AlertTriangle size={22} />
           <div>
             <strong>{requestError.status === 401 ? t("errors.unauthorized") : requestError.status === 403 ? t("errors.permission_denied") : t("requestFailed")}</strong>
-            <p>{user?.is_demo && requestError.status === 403 ? "当前为演示用户，暂无权限执行此操作" : requestError.message}</p>
+            <p>{requestError.message}</p>
             {requestError.requestId ? <small>{t("requestId", { id: requestError.requestId })}</small> : null}
           </div>
           <CloseButton onClick={() => setRequestError(null)} />
@@ -610,6 +610,7 @@ export function PlatformApp() {
     <Suspense fallback={<div className="app-loading t-shimmer" data-text="正在加载页面…">正在加载页面…</div>}>
       <Routes>
         <Route path="/login" element={<AuthPage />} />
+        <Route path="/demo-login" element={<Navigate to="/login?demo=1" replace />} />
         <Route path="/register" element={<AuthPage register />} />
         <Route path="/public/devices/:publicSlug" element={<PublicDevicePage />} />
         <Route element={<RequirePlatform />}>

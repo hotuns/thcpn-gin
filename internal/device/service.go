@@ -518,6 +518,31 @@ func (s *Service) UpdateDemoPlacement(ctx context.Context, input DemoPlacementIn
 	return s.GetDemoShowcase(ctx, input.UserID, input.DeviceID)
 }
 
+func (s *Service) UpdateReferencedDeviceName(ctx context.Context, userID, deviceID uuid.UUID, name string) (Device, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return Device{}, apperr.New(apperr.KindInvalidArgument, "device name is required")
+	}
+	if _, err := s.GetDemoShowcase(ctx, userID, deviceID); err != nil {
+		return Device{}, err
+	}
+	if _, err := s.db.Exec(ctx, `UPDATE devices SET name=$2,updated_at=now() WHERE id=$1`, deviceID, name); err != nil {
+		return Device{}, apperr.Wrap(apperr.KindInternal, "update referenced device name", err)
+	}
+	return s.GetDemoShowcase(ctx, userID, deviceID)
+}
+
+func (s *Service) RemoveDemoReference(ctx context.Context, userID, deviceID uuid.UUID) error {
+	result, err := s.db.Exec(ctx, `DELETE FROM demo_showcase_devices WHERE user_id=$1 AND device_id=$2`, userID, deviceID)
+	if err != nil {
+		return apperr.Wrap(apperr.KindInternal, "remove demo device reference", err)
+	}
+	if result.RowsAffected() == 0 {
+		return apperr.New(apperr.KindNotFound, "demo device reference not found")
+	}
+	return nil
+}
+
 func stringPointer(value string) *string {
 	if value == "" {
 		return nil

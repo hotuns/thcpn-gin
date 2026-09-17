@@ -175,6 +175,23 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Job, ResolvedR
 	if err != nil {
 		return Job{}, ResolvedResource{}, err
 	}
+	if input.ResourceType == "device" || input.ResourceType == "device_batch" {
+		deviceContext, contextErr := s.queries.GetWorkspaceDeviceContext(ctx, input.RequestedBy, input.ResourceID)
+		if contextErr != nil {
+			return Job{}, ResolvedResource{}, mapNotFoundOrInternal(contextErr, "device workspace context not found")
+		}
+		resolved.WorkspaceID = deviceContext.WorkspaceID
+	} else if input.ResourceType == "data_stream" || input.ResourceType == "media" {
+		stream, streamErr := s.queries.GetDataStream(ctx, input.ResourceID)
+		if streamErr != nil {
+			return Job{}, ResolvedResource{}, mapNotFoundOrInternal(streamErr, "data stream not found")
+		}
+		deviceContext, contextErr := s.queries.GetWorkspaceDeviceContext(ctx, input.RequestedBy, stream.DeviceID)
+		if contextErr != nil {
+			return Job{}, ResolvedResource{}, mapNotFoundOrInternal(contextErr, "device workspace context not found")
+		}
+		resolved.WorkspaceID = deviceContext.WorkspaceID
+	}
 	expiresAt := time.Now().UTC().Add(time.Duration(s.cfg.FileTTLHours) * time.Hour)
 	if input.ExpiresAt != nil {
 		expiresAt = input.ExpiresAt.UTC()
@@ -492,7 +509,6 @@ func (s *Service) validateDeviceBatch(ctx context.Context, requestedBy, workspac
 		}
 	}
 	seen := map[uuid.UUID]struct{}{}
-	demoBatch := false
 	for index, rawID := range config.DeviceIDs {
 		id, err := uuid.Parse(strings.TrimSpace(rawID))
 		if err != nil || id == uuid.Nil {
@@ -522,21 +538,11 @@ func (s *Service) validateDeviceBatch(ctx context.Context, requestedBy, workspac
 		if device.DeviceType != wantType {
 			return apperr.New(apperr.KindInvalidArgument, "batch export cannot mix device systems")
 		}
-		assignment, err := s.queries.GetActiveDeviceAssignment(ctx, id)
+		deviceContext, err := s.queries.GetWorkspaceDeviceContext(ctx, requestedBy, id)
 		if err != nil {
-			return mapNotFoundOrInternal(err, "active device assignment not found")
+			return mapNotFoundOrInternal(err, "device workspace context not found")
 		}
-		selected, err := s.queries.IsDemoDeviceForUser(ctx, requestedBy, id)
-		if err != nil {
-			return apperr.Wrap(apperr.KindInternal, "check demo batch device", err)
-		}
-		if index == 0 {
-			demoBatch = selected
-		}
-		if demoBatch && !selected {
-			return apperr.New(apperr.KindPermissionDenied, "batch device is outside the demo showcase")
-		}
-		if !demoBatch && assignment.WorkspaceID != workspaceID {
+		if deviceContext.WorkspaceID != workspaceID {
 			return apperr.New(apperr.KindPermissionDenied, "batch device is outside the current workspace")
 		}
 		if index == 0 && id != anchorID {

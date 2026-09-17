@@ -726,6 +726,27 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/auth/demo/login:
+    post:
+      tags: [Auth]
+      operationId: loginDemoWithPassword
+      summary: Log in to an independent demo account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string, minLength: 3, maxLength: 64 }
+                password: { type: string, format: password }
+                mfa_code: { type: string, pattern: "^[0-9]{6}$" }
+      responses:
+        "200": { description: Demo login succeeded, content: { application/json: { schema: { $ref: "#/components/schemas/LoginResponse" } } } }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/v1/auth/password/complete-initial:
     post:
       tags:
@@ -5995,6 +6016,65 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/admin/demo-accounts:
+    get:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      operationId: adminListDemoAccounts
+      summary: List independently managed demo accounts
+      responses: { "200": { description: Demo account list } }
+    post:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      operationId: adminCreateDemoAccount
+      summary: Create a demo account and its owner workspace
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [username, name, password], properties: { username: { type: string }, name: { type: string }, password: { type: string, format: password } } } } }
+      responses: { "201": { description: Demo account created }, "409": { $ref: "#/components/responses/Conflict" } }
+  /api/v1/admin/demo-accounts/{user_id}:
+    parameters: [{ name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      operationId: adminGetDemoAccount
+      responses: { "200": { description: Demo account } }
+    patch:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      operationId: adminUpdateDemoAccount
+      requestBody: { content: { application/json: { schema: { type: object, properties: { name: { type: string }, status: { type: string, enum: [active, disabled] } } } } } }
+      responses: { "200": { description: Demo account updated } }
+  /api/v1/admin/demo-accounts/{user_id}/reset-password:
+    parameters: [{ name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      operationId: adminResetDemoPassword
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [password], properties: { password: { type: string, format: password } } } } } }
+      responses: { "204": { description: Password reset and sessions revoked } }
+  /api/v1/admin/demo-accounts/{user_id}/devices:
+    parameters: [{ name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      operationId: adminListDemoAccountDevices
+      parameters: [{ name: q, in: query, schema: { type: string } }, { name: limit, in: query, schema: { type: integer, default: 20, maximum: 100 } }, { name: offset, in: query, schema: { type: integer, default: 0 } }]
+      responses: { "200": { description: Selectable devices and current selection state } }
+  /api/v1/admin/demo-accounts/{user_id}/devices/{device_id}:
+    parameters:
+      - { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+      - { name: device_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+    put:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      operationId: adminAddDemoAccountDevice
+      responses: { "204": { description: Device reference added } }
+    delete:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      operationId: adminRemoveDemoAccountDevice
+      responses: { "204": { description: Device reference removed } }
   /api/v1/admin/users:
     get:
       tags:
@@ -7571,7 +7651,7 @@ components:
           $ref: "#/components/schemas/Timestamp"
     WorkspaceBillingSummary:
       type: object
-      required: [workspace_id, plan, full_history, professional_features, monthly_download_limit_bytes, monthly_download_used_bytes, monthly_download_remaining_bytes, traffic_pack_balance_bytes, usage_percent, warning_level, notices, professional_annual_price_cents, professional_default_months, base_history_days, base_export_days, traffic_pack_size_bytes, traffic_pack_price_cents]
+      required: [workspace_id, plan, full_history, professional_features, unlimited, monthly_download_limit_bytes, monthly_download_used_bytes, monthly_download_remaining_bytes, traffic_pack_balance_bytes, usage_percent, warning_level, notices, professional_annual_price_cents, professional_default_months, base_history_days, base_export_days, traffic_pack_size_bytes, traffic_pack_price_cents]
       properties:
         workspace_id: { $ref: "#/components/schemas/UUID" }
         plan: { type: string, enum: [base, professional] }
@@ -7579,6 +7659,7 @@ components:
         professional_expires_at: { $ref: "#/components/schemas/Timestamp" }
         full_history: { type: boolean }
         professional_features: { type: boolean }
+        unlimited: { type: boolean, description: True when plan history and download quotas are unlimited. }
         monthly_download_limit_bytes: { type: integer, format: int64 }
         monthly_download_used_bytes: { type: integer, format: int64 }
         monthly_download_remaining_bytes: { type: integer, format: int64 }

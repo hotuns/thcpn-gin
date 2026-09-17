@@ -204,7 +204,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	emailCodeStore := auth.NewEmailCodeStore(deps.Redis, cfg.Auth.JWTSecret, cfg.Email)
 	authService := auth.NewService(deps.Postgres, tokenManager, smsCodeStore, smsSender, emailCodeStore, emailSender, cfg.Auth, cfg.SMS, cfg.Email)
 	adminUserService := adminuser.NewService(deps.Postgres, cfg.Auth.Password)
-	demoShowcaseService := demoshowcase.NewService(deps.Postgres)
+	demoShowcaseService := demoshowcase.NewService(deps.Postgres, cfg.Auth.Password)
 	adminTokenManager := auth.NewTokenManager(cfg.Auth.AdminJWTSecret, time.Duration(cfg.Auth.AccessTokenTTLMinutes)*time.Minute)
 	adminAuthService := adminauth.NewService(deps.Postgres, adminTokenManager, time.Duration(cfg.Auth.AccessTokenTTLMinutes)*time.Minute, time.Duration(cfg.Auth.RefreshTokenTTLDays)*24*time.Hour, cfg.Auth.Password)
 
@@ -271,6 +271,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	api.POST("/auth/sms/register", authHandler.RegisterWithSMS)
 	api.POST("/auth/password/register", authHandler.RegisterWithPassword)
 	api.POST("/auth/password/login", authHandler.LoginWithPassword)
+	api.POST("/auth/demo/login", authHandler.LoginDemoWithPassword)
 	api.POST("/auth/password/reset/send", authHandler.SendPasswordResetSMS)
 	api.POST("/auth/password/reset", authHandler.ResetPassword)
 	api.POST("/auth/password/complete-initial", authHandler.CompleteInitialPassword)
@@ -305,7 +306,6 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 
 	authed := api.Group("")
 	authed.Use(authMiddleware)
-	authed.Use(demoAccountGuard())
 	authed.POST("/auth/logout", authHandler.Logout)
 	authed.GET("/notifications", notificationHandler.List)
 	authed.POST("/notifications/read-all", notificationHandler.ReadAll)
@@ -348,11 +348,14 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.GET("/users", adminUserHandler.List)
 	admin.POST("/login-visuals", loginVisualHandler.Upload)
 	admin.DELETE("/login-visuals/:visual_id", loginVisualHandler.Delete)
-	admin.GET("/demo-showcase", demoShowcaseHandler.Get)
-	admin.PUT("/demo-showcase", demoShowcaseHandler.Configure)
-	admin.GET("/demo-showcase/devices", demoShowcaseHandler.Devices)
-	admin.PUT("/demo-showcase/devices/:device_id", demoShowcaseHandler.Add)
-	admin.DELETE("/demo-showcase/devices/:device_id", demoShowcaseHandler.Remove)
+	admin.GET("/demo-accounts", demoShowcaseHandler.List)
+	admin.POST("/demo-accounts", demoShowcaseHandler.Create)
+	admin.GET("/demo-accounts/:user_id", demoShowcaseHandler.Get)
+	admin.PATCH("/demo-accounts/:user_id", demoShowcaseHandler.Update)
+	admin.POST("/demo-accounts/:user_id/reset-password", demoShowcaseHandler.ResetPassword)
+	admin.GET("/demo-accounts/:user_id/devices", demoShowcaseHandler.Devices)
+	admin.PUT("/demo-accounts/:user_id/devices/:device_id", demoShowcaseHandler.Add)
+	admin.DELETE("/demo-accounts/:user_id/devices/:device_id", demoShowcaseHandler.Remove)
 	admin.GET("/administrators", systemAdminHandler.List)
 	admin.POST("/administrators", systemAdminHandler.Create)
 	admin.PATCH("/administrators/:admin_id/status", systemAdminHandler.Status)
@@ -608,23 +611,6 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.PATCH("/datasets/:dataset_id", datasetHandler.Update)
 	authed.DELETE("/datasets/:dataset_id", datasetHandler.Delete)
 	return nil
-}
-
-func demoAccountGuard() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		actor, ok := auth.ActorFromContext(c)
-		if !ok || !actor.IsDemo {
-			c.Next()
-			return
-		}
-		path := c.Request.URL.Path
-		if (c.Request.Method == http.MethodDelete && (strings.HasPrefix(path, "/api/v1/media") || strings.HasPrefix(path, "/api/v1/devices/"))) || path == "/api/v1/device-claims/claim" {
-			httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "demo account destructive action denied"))
-			c.Abort()
-			return
-		}
-		c.Next()
-	}
 }
 
 func newSMSSender(cfg config.SMSConfig, logger *slog.Logger) (smsx.Sender, error) {

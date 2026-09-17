@@ -721,6 +721,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/demo/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Log in to an independent demo account */
+        post: operations["loginDemoWithPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/password/complete-initial": {
         parameters: {
             query?: never;
@@ -4359,6 +4376,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/demo-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List independently managed demo accounts */
+        get: operations["adminListDemoAccounts"];
+        put?: never;
+        /** Create a demo account and its owner workspace */
+        post: operations["adminCreateDemoAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/demo-accounts/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        get: operations["adminGetDemoAccount"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["adminUpdateDemoAccount"];
+        trace?: never;
+    };
+    "/api/v1/admin/demo-accounts/{user_id}/reset-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["adminResetDemoPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/demo-accounts/{user_id}/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        get: operations["adminListDemoAccountDevices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/demo-accounts/{user_id}/devices/{device_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+                device_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["adminAddDemoAccountDevice"];
+        post?: never;
+        delete: operations["adminRemoveDemoAccountDevice"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/users": {
         parameters: {
             query?: never;
@@ -5152,6 +5260,8 @@ export interface components {
             professional_expires_at?: components["schemas"]["Timestamp"];
             full_history: boolean;
             professional_features: boolean;
+            /** @description True when plan history and download quotas are unlimited. */
+            unlimited: boolean;
             /** Format: int64 */
             monthly_download_limit_bytes: number;
             /** Format: int64 */
@@ -7424,6 +7534,38 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["Internal"];
+        };
+    };
+    loginDemoWithPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    username: string;
+                    /** Format: password */
+                    password: string;
+                    mfa_code?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Demo login succeeded */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
         };
     };
     completeInitialPassword: {
@@ -13462,6 +13604,193 @@ export interface operations {
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["Internal"];
+        };
+    };
+    adminListDemoAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Demo account list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminCreateDemoAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    username: string;
+                    name: string;
+                    /** Format: password */
+                    password: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Demo account created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Conflict"];
+        };
+    };
+    adminGetDemoAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Demo account */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminUpdateDemoAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    /** @enum {string} */
+                    status?: "active" | "disabled";
+                };
+            };
+        };
+        responses: {
+            /** @description Demo account updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminResetDemoPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: password */
+                    password: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Password reset and sessions revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminListDemoAccountDevices: {
+        parameters: {
+            query?: {
+                q?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Selectable devices and current selection state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminAddDemoAccountDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+                device_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device reference added */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminRemoveDemoAccountDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["UUID"];
+                device_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device reference removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     adminListUsers: {

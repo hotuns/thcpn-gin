@@ -25,8 +25,8 @@ type Store interface {
 	GetWorkspaceMemberPermissionRole(ctx context.Context, arg sqlc.GetWorkspaceMemberPermissionRoleParams) (string, error)
 }
 
-type demoStore interface {
-	IsDemoDeviceForUser(ctx context.Context, userID, deviceID uuid.UUID) (bool, error)
+type workspaceDeviceStore interface {
+	GetWorkspaceDeviceContext(ctx context.Context, userID, deviceID uuid.UUID) (sqlc.WorkspaceDeviceContext, error)
 }
 
 type Checker struct {
@@ -90,41 +90,12 @@ func (c *Checker) Can(ctx context.Context, actor Actor, action string, resource 
 	if c.store == nil {
 		return Decision{}, apperr.New(apperr.KindInternal, "permission checker store is not configured")
 	}
-	if resource.Type == "device" {
-		if decision, checked, checkErr := c.demoDecision(ctx, actor.UserID, resource.ID, action); checked || checkErr != nil {
-			return decision, checkErr
-		}
-	}
-	if resource.Type == "data_stream" {
-		stream, streamErr := c.store.GetDataStream(ctx, resource.ID)
-		if streamErr != nil {
-			return Decision{}, apperr.Wrap(apperr.KindNotFound, "data stream not found", streamErr)
-		}
-		if decision, checked, checkErr := c.demoDecision(ctx, actor.UserID, stream.DeviceID, action); checked || checkErr != nil {
-			return decision, checkErr
-		}
-	}
-
-	scope, err := c.resolveResource(ctx, resource)
+	scope, err := c.resolveResource(ctx, actor.UserID, resource)
 	if err != nil {
 		return Decision{}, err
 	}
 	if scope.WorkspaceID == uuid.Nil {
 		return Decision{Allowed: false, Reason: "unsupported resource type"}, nil
-	}
-	if scope.DeviceID != uuid.Nil {
-		demoChecker, supportsDemo := c.store.(demoStore)
-		demoDevice := false
-		var checkErr error
-		if supportsDemo {
-			demoDevice, checkErr = demoChecker.IsDemoDeviceForUser(ctx, actor.UserID, scope.DeviceID)
-		}
-		if checkErr != nil {
-			return Decision{}, apperr.Wrap(apperr.KindInternal, "check demo device access", checkErr)
-		}
-		if demoDevice {
-			return demoDeviceDecision(action), nil
-		}
 	}
 
 	memberRoleCode, err := c.store.GetWorkspaceMemberPermissionRole(ctx, sqlc.GetWorkspaceMemberPermissionRoleParams{
@@ -171,31 +142,7 @@ func (c *Checker) Can(ctx context.Context, actor Actor, action string, resource 
 	return Decision{Allowed: false, Reason: "permission denied"}, nil
 }
 
-func (c *Checker) demoDecision(ctx context.Context, userID, deviceID uuid.UUID, action string) (Decision, bool, error) {
-	demoChecker, ok := c.store.(demoStore)
-	if !ok {
-		return Decision{}, false, nil
-	}
-	selected, err := demoChecker.IsDemoDeviceForUser(ctx, userID, deviceID)
-	if err != nil {
-		return Decision{}, true, apperr.Wrap(apperr.KindInternal, "check demo device access", err)
-	}
-	if !selected {
-		return Decision{}, false, nil
-	}
-	return demoDeviceDecision(action), true, nil
-}
-
-func demoDeviceDecision(action string) Decision {
-	switch action {
-	case "device.view", "telemetry.view_realtime", "telemetry.view_history", "telemetry.export", "media.live_view", "media.archive_view", "media.download":
-		return Decision{Allowed: true, Reason: "allowed by demo showcase", Source: "demo_showcase"}
-	default:
-		return Decision{Allowed: false, Reason: "demo account device write denied", Source: "demo_showcase"}
-	}
-}
-
-func (c *Checker) resolveResource(ctx context.Context, resource ResourceRef) (resourceScope, error) {
+func (c *Checker) resolveResource(ctx context.Context, userID uuid.UUID, resource ResourceRef) (resourceScope, error) {
 	switch resource.Type {
 	case "workspace":
 		return resourceScope{
@@ -231,21 +178,21 @@ func (c *Checker) resolveResource(ctx context.Context, resource ResourceRef) (re
 		if err != nil {
 			return resourceScope{}, apperr.Wrap(apperr.KindNotFound, "device not found", err)
 		}
-		assignment, err := c.store.GetActiveDeviceAssignment(ctx, resource.ID)
+		deviceContext, err := c.deviceContext(ctx, userID, resource.ID)
 		if err != nil {
-			return resourceScope{}, apperr.Wrap(apperr.KindNotFound, "active device assignment not found", err)
+			return resourceScope{}, apperr.Wrap(apperr.KindNotFound, "device workspace context not found", err)
 		}
 		scope := resourceScope{
-			WorkspaceID: assignment.WorkspaceID,
+			WorkspaceID: deviceContext.WorkspaceID,
 			ScopeType:   "device",
 			ScopeID:     device.ID,
 			DeviceID:    device.ID,
 		}
-		if assignment.ProjectID != nil {
-			scope.ProjectID = *assignment.ProjectID
+		if deviceContext.ProjectID != nil {
+			scope.ProjectID = *deviceContext.ProjectID
 		}
-		if assignment.SiteID != nil {
-			scope.SiteID = *assignment.SiteID
+		if deviceContext.SiteID != nil {
+			scope.SiteID = *deviceContext.SiteID
 		}
 		return scope, nil
 	case "data_stream":
@@ -253,21 +200,21 @@ func (c *Checker) resolveResource(ctx context.Context, resource ResourceRef) (re
 		if err != nil {
 			return resourceScope{}, apperr.Wrap(apperr.KindNotFound, "data stream not found", err)
 		}
-		assignment, err := c.store.GetActiveDeviceAssignmentByDataStream(ctx, resource.ID)
+		deviceContext, err := c.deviceContext(ctx, userID, stream.DeviceID)
 		if err != nil {
-			return resourceScope{}, apperr.Wrap(apperr.KindNotFound, "active device assignment not found", err)
+			return resourceScope{}, apperr.Wrap(apperr.KindNotFound, "device workspace context not found", err)
 		}
 		scope := resourceScope{
-			WorkspaceID: assignment.WorkspaceID,
+			WorkspaceID: deviceContext.WorkspaceID,
 			ScopeType:   "data_stream",
 			ScopeID:     stream.ID,
 			DeviceID:    stream.DeviceID,
 		}
-		if assignment.ProjectID != nil {
-			scope.ProjectID = *assignment.ProjectID
+		if deviceContext.ProjectID != nil {
+			scope.ProjectID = *deviceContext.ProjectID
 		}
-		if assignment.SiteID != nil {
-			scope.SiteID = *assignment.SiteID
+		if deviceContext.SiteID != nil {
+			scope.SiteID = *deviceContext.SiteID
 		}
 		return scope, nil
 	case "dataset":
@@ -288,4 +235,15 @@ func (c *Checker) resolveResource(ctx context.Context, resource ResourceRef) (re
 	default:
 		return resourceScope{}, nil
 	}
+}
+
+func (c *Checker) deviceContext(ctx context.Context, userID, deviceID uuid.UUID) (sqlc.WorkspaceDeviceContext, error) {
+	if resolver, ok := c.store.(workspaceDeviceStore); ok {
+		return resolver.GetWorkspaceDeviceContext(ctx, userID, deviceID)
+	}
+	assignment, err := c.store.GetActiveDeviceAssignment(ctx, deviceID)
+	if err != nil {
+		return sqlc.WorkspaceDeviceContext{}, err
+	}
+	return sqlc.WorkspaceDeviceContext{WorkspaceID: assignment.WorkspaceID, ProjectID: assignment.ProjectID, SiteID: assignment.SiteID}, nil
 }

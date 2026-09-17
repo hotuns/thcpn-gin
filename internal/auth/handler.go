@@ -49,6 +49,12 @@ type passwordLoginRequest struct {
 	MFACode    string `json:"mfa_code"`
 }
 
+type demoLoginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	MFACode  string `json:"mfa_code"`
+}
+
 type refreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
@@ -473,6 +479,27 @@ func (h *Handler) LoginWithPassword(c *gin.Context) {
 		return
 	}
 
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) LoginDemoWithPassword(c *gin.Context) {
+	var req demoLoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	result, err := h.service.LoginDemoWithPassword(c.Request.Context(), DemoLoginInput{
+		Username: req.Username, Password: req.Password, MFACode: req.MFACode, Request: requestInfo(c),
+	})
+	if err != nil {
+		_ = h.record(c, audit.RecordInput{ActorType: audit.ActorAnonymous, Action: "auth.demo_login", ResourceType: "auth", Result: audit.ResultFailure, Reason: apperr.MessageOf(err)})
+		httpx.WriteAppError(c, err)
+		return
+	}
+	userID := result.User.ID
+	if !h.record(c, audit.RecordInput{ActorType: audit.ActorUser, ActorID: audit.UserActorID(userID), Action: "auth.demo_login", ResourceType: "auth", ResourceID: audit.ResourceID(userID), Result: audit.ResultSuccess}) {
+		return
+	}
 	c.JSON(http.StatusOK, result)
 }
 

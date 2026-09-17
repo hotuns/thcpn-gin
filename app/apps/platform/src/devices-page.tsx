@@ -971,7 +971,6 @@ export function DeviceCenterDetailPage() {
             name: item.name,
           }))}
           systemAdmin={false}
-          demoAccount={Boolean(user?.is_demo)}
           run={run}
         />
       )}
@@ -1283,14 +1282,12 @@ function DeviceConfig({
   currentWorkspaceId,
   workspaces,
   systemAdmin,
-  demoAccount,
   run,
 }: {
   device: Device;
   currentWorkspaceId: string;
   workspaces: Array<{ id: string; name: string }>;
   systemAdmin: boolean;
-  demoAccount: boolean;
   run: (
     action: () => Promise<unknown>,
     message: string,
@@ -1310,7 +1307,7 @@ function DeviceConfig({
       {systemAdmin && (
         <SystemDeviceConfig device={device} workspaces={workspaces} run={run} />
       )}
-      {!demoAccount && <Panel className="section-gap danger-zone">
+      <Panel className="section-gap danger-zone">
         <div className="panel-header">
           <div>
             <h2 className="panel-title">危险操作</h2>
@@ -1329,7 +1326,7 @@ function DeviceConfig({
             解绑设备
           </Button>
         </div>
-      </Panel>}
+      </Panel>
     </div>
   );
 }

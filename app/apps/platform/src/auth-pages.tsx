@@ -20,12 +20,15 @@ export const platformNextPath = (value: string | null) =>
   !value.startsWith("/admin")
     ? value
     : null;
+export const demoModeFromSearch = (search: string) =>
+  new URLSearchParams(search).get("demo") === "1";
 
 export function AuthPage({ register = false }: { register?: boolean }) {
   const { t } = useLocale();
   const { user, signIn } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [demoMode, setDemoMode] = useState(() => demoModeFromSearch(location.search));
   const [mode, setMode] = useState<"password" | "sms">("password");
   const [forgotPassword, setForgotPassword] = useState(false);
   const [identifier, setIdentifier] = useState("");
@@ -144,6 +147,14 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             name: name.trim(),
           }),
         );
+      else if (demoMode)
+        finish(
+          await api.auth.demoLogin({
+            username: identifier.trim(),
+            password,
+            ...(mfaCode ? { mfa_code: mfaCode } : {}),
+          }),
+        );
       else if (mode === "sms")
         finish(
           await api.auth.smsLogin({
@@ -202,6 +213,21 @@ export function AuthPage({ register = false }: { register?: boolean }) {
     setMfaCode("");
     setMessage("");
   };
+  const switchDemoMode = (enabled: boolean) => {
+    setDemoMode(enabled);
+    setMode("password");
+    setForgotPassword(false);
+    setMfaRequired(false);
+    setMfaCode("");
+    setIdentifier("");
+    setPassword("");
+    setMessage("");
+    setSuccess(false);
+    const params = new URLSearchParams(location.search);
+    if (enabled) params.set("demo", "1");
+    else params.delete("demo");
+    navigate({ pathname: location.pathname, search: params.toString() ? `?${params}` : "" }, { replace: true });
+  };
   return (
     <div className="auth-layout">
       <section className="auth-visual">
@@ -234,7 +260,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                 ? t("platform:auth.completeMfa")
                 : t("platform:auth.welcome")}
           </h2>
-          {!initialPasswordToken && !forgotPassword && !register && !mfaRequired && (
+          {!demoMode && !initialPasswordToken && !forgotPassword && !register && !mfaRequired && (
             <div className="auth-mode">
               <button
                 type="button"
@@ -351,12 +377,13 @@ export function AuthPage({ register = false }: { register?: boolean }) {
               </>
             ) : (
               <label className="field">
-                <span className="field-label">{t("platform:auth.phone")}</span>
+                <span className="field-label">{demoMode ? "用户名" : t("platform:auth.phone")}</span>
                 <input
                   required
-                  type="tel"
-                  inputMode="tel"
-                  pattern="[+0-9 -]{6,22}"
+                  type={demoMode ? "text" : "tel"}
+                  inputMode={demoMode ? "text" : "tel"}
+                  pattern={demoMode ? undefined : "[+0-9 -]{6,22}"}
+                  autoComplete="username"
                   value={identifier}
                   onChange={(event) => setIdentifier(event.target.value)}
                 />
@@ -373,7 +400,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                 />
-              </label><button type="button" className="link auth-forgot-link" onClick={() => { setForgotPassword(true); setMessage(""); setSuccess(false); }}>{t("platform:auth.forgotPassword")}</button></>
+              </label>{!demoMode && <button type="button" className="link auth-forgot-link" onClick={() => { setForgotPassword(true); setMessage(""); setSuccess(false); }}>{t("platform:auth.forgotPassword")}</button>}</>
             )}
             {mfaRequired && (
               <label className="field mfa-challenge">
@@ -430,9 +457,8 @@ export function AuthPage({ register = false }: { register?: boolean }) {
           </form>
           {forgotPassword ? <div className="auth-form-footer"><button type="button" className="link" onClick={() => { setForgotPassword(false); setMessage(""); }}>{t("platform:auth.backLogin")}</button></div> : <div className="auth-form-footer">
             <span>{register ? t("platform:auth.hasAccount") : t("platform:auth.noAccount")}</span>
-            <Link className="link" to={register ? "/login" : "/register"}>
-              {register ? t("platform:auth.backLogin") : t("platform:auth.register")}
-            </Link>
+            <Link className="link" to={register ? "/login" : "/register"}>{register ? t("platform:auth.backLogin") : t("platform:auth.register")}</Link>
+            {!register && <label className="demo-mode-toggle"><span>演示模式</span><input type="checkbox" role="switch" checked={demoMode} onChange={(event) => switchDemoMode(event.target.checked)} /><i aria-hidden="true" /></label>}
           </div>}
         </div>
       </section>
