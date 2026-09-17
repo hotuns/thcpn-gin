@@ -191,7 +191,9 @@ func (s *Service) listIndexedNodes(ctx context.Context, gateway Device) ([]Gatew
 		if *cfg.NodeIndex < 1 || *cfg.NodeIndex > len(nodes) {
 			continue
 		}
-		stream.Code, stream.Name = cfg.Metric, cfg.Metric
+		// The source metric key remains the stable selection identity, while the
+		// DataStream name carries the platform-managed display semantics.
+		stream.Code = cfg.Metric
 		nodes[*cfg.NodeIndex-1].Streams = append(nodes[*cfg.NodeIndex-1].Streams, stream)
 	}
 	if err := rows.Err(); err != nil {

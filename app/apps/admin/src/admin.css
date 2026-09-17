@@ -430,3 +430,117 @@
 :root[data-theme="dark"] .config-context h3 {
   background: #121c26;
 }
+
+/* LoRaWAN V2 visual configuration */
+.lora-protocol-list,
+.lora-mapping-list,
+.lora-node-protocol-list,
+.lora-node-mapping-list {
+  display: grid;
+  gap: 12px;
+}
+
+.lora-protocol-item,
+.lora-node-protocol-item,
+.lora-template-instance,
+.lora-current-config {
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-radius: 8px;
+  background: var(--ant-color-bg-container, #fff);
+}
+
+.lora-protocol-item,
+.lora-node-protocol-item,
+.lora-template-instance {
+  padding: 12px;
+}
+
+.lora-protocol-item-head,
+.lora-node-protocol-head,
+.lora-template-instance-head,
+.lora-current-config-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.lora-protocol-item-head strong,
+.lora-node-protocol-head strong {
+  flex: 1;
+}
+
+.lora-mapping-row,
+.lora-node-mapping-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(180px, 1.3fr) minmax(100px, 0.7fr) auto;
+  align-items: start;
+  gap: 10px;
+}
+
+.lora-mapping-row .ant-form-item,
+.lora-node-mapping-row .ant-form-item,
+.lora-template-instance .ant-form-item {
+  margin-bottom: 0;
+}
+
+.lora-node-protocol-head label {
+  margin: 0;
+  color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.65));
+}
+
+.lora-current-config {
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.lora-current-config-header {
+  margin-bottom: 0;
+  padding: 10px 12px;
+  background: var(--ant-color-fill-quaternary, rgba(0, 0, 0, 0.02));
+}
+
+.lora-current-config-grid {
+  display: grid;
+  grid-template-columns: 120px minmax(180px, 1fr) minmax(220px, 1.5fr);
+}
+
+.lora-current-config-grid > div {
+  min-width: 0;
+  padding: 10px 12px;
+  border-top: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+
+.lora-current-config-grid > div + div {
+  border-left: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+
+.lora-current-config-grid small {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.45));
+}
+
+.lora-current-tags,
+.lora-template-instance-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lora-template-add {
+  margin-bottom: 14px;
+}
+
+@media (max-width: 900px) {
+  .lora-mapping-row,
+  .lora-node-mapping-row,
+  .lora-current-config-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lora-current-config-grid > div + div {
+    border-left: 0;
+  }
+}

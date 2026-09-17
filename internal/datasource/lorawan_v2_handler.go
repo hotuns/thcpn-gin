@@ -57,45 +57,17 @@ func (h *Handler) AdminCreateLoRaWANV2Gateway(c *gin.Context) {
 		httpx.WriteAppError(c, err)
 		return
 	}
-	status, reason := audit.ResultSuccess, "gateway_sn="+result.Gateway.SN
-	if result.SyncError != "" {
-		status, reason = audit.ResultFailure, reason+"; sync_error="+result.SyncError
+	reason := "gateway_sn=" + result.Gateway.SN
+	if result.CatalogWarning != "" {
+		reason += "; catalog_warning=" + result.CatalogWarning
 	}
-	if !h.recordLoRaWANV2(c, actor.UserID, id, "lorawan_v2.gateway.create", status, reason) {
+	if !h.recordLoRaWANV2(c, actor.UserID, id, "lorawan_v2.gateway.create", audit.ResultSuccess, reason) {
 		return
 	}
 	c.JSON(http.StatusCreated, result)
 }
 
 func (h *Handler) AdminGetLoRaWANV2Gateway(c *gin.Context) { h.adminLoRaWANV2GatewayGet(c, "") }
-
-func (h *Handler) AdminSyncLoRaWANV2Gateway(c *gin.Context) {
-	actor, ok := actorFromContext(c)
-	if !ok {
-		return
-	}
-	id, ok := parseUUIDParam(c, "data_source_id")
-	if !ok {
-		return
-	}
-	sn, err := loraWANV2PathSN(c.Param("gateway_sn"))
-	if err != nil {
-		httpx.WriteAppError(c, err)
-		return
-	}
-	result, err := h.service.SyncLoRaWANV2Gateway(c.Request.Context(), SyncLoRaWANV2GatewayInput{DataSourceID: id, GatewaySN: sn, ActorUserID: actor.UserID})
-	if err != nil {
-		h.recordLoRaWANV2(c, actor.UserID, id, "lorawan_v2.gateway.sync", audit.ResultFailure, apperr.MessageOf(err))
-		httpx.WriteAppError(c, err)
-		return
-	}
-	if !h.recordLoRaWANV2(c, actor.UserID, id, "lorawan_v2.gateway.sync", audit.ResultSuccess, "gateway_sn="+sn) {
-		return
-	}
-	c.JSON(http.StatusOK, result)
-}
-
-func (h *Handler) AdminSyncAllLoRaWANV2Gateways(c *gin.Context) { h.AdminStartSourceSync(c) }
 
 func (h *Handler) AdminListLoRaWANV2Firmwares(c *gin.Context) {
 	h.adminLoRaWANV2Get(c, "/firmwares", loraWANV2FirmwareQuery(c))

@@ -158,11 +158,16 @@ paths:
     post:
       tags: [Admin]
       summary: Write source configuration and report source and platform stages separately
+      description: For LoRaWAN V2 sensor configuration use the templates or advanced discriminated request. Gateway and time configurations retain their source-native object shape.
       requestBody:
         required: true
         content:
           application/json:
-            schema: { type: object, additionalProperties: true }
+            schema:
+              oneOf:
+                - { $ref: "#/components/schemas/LoRaWANV2TemplateSensorConfigRequest" }
+                - { $ref: "#/components/schemas/LoRaWANV2AdvancedSensorConfigRequest" }
+                - { type: object, additionalProperties: true }
       responses:
         "200":
           description: Source accepted; inspect write_state for platform result
@@ -1426,6 +1431,7 @@ paths:
         - bearerAuth: []
       parameters:
         - { name: q, in: query, schema: { type: string } }
+        - { name: source_family, in: query, schema: { type: string, enum: [thcpn, lorawan_v2] } }
         - { name: type, in: query, schema: { $ref: "#/components/schemas/WorkspaceType" } }
         - { name: organization_type, in: query, schema: { $ref: "#/components/schemas/OrganizationType" } }
         - { name: status, in: query, schema: { $ref: "#/components/schemas/WorkspaceStatus" } }
@@ -2052,18 +2058,10 @@ paths:
     post:
       tags: [Admin]
       operationId: adminCreateLoRaWANV2Gateway
-      summary: Create a LoRaWAN V2 gateway and synchronize it into the platform
+      summary: Create a LoRaWAN V2 gateway and register its platform device
       security: [{bearerAuth: []}, {devUserHeader: []}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2CreateGatewayRequest"}}}}
-      responses: {"201": {description: Gateway creation and synchronization result, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "400": {$ref: "#/components/responses/InvalidArgument"}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
-  /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/sync-all:
-    parameters: [{$ref: "#/components/parameters/DataSourceID"}]
-    post:
-      tags: [Admin]
-      operationId: adminSyncAllLoRaWANV2Gateways
-      summary: Synchronize every LoRaWAN V2 gateway without deleting missing platform devices
-      security: [{bearerAuth: []}, {devUserHeader: []}]
-      responses: {"202": {description: Synchronization queued, content: {application/json: {schema: {$ref: "#/components/schemas/SourceOperation"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
+      responses: {"201": {description: Gateway creation and platform registration result, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "400": {$ref: "#/components/responses/InvalidArgument"}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
   /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}:
     parameters: [{$ref: "#/components/parameters/DataSourceID"}, {$ref: "#/components/parameters/LoRaWANV2GatewaySN"}]
     get:
@@ -2072,14 +2070,6 @@ paths:
       summary: Get a LoRaWAN V2 gateway
       security: [{bearerAuth: []}, {devUserHeader: []}]
       responses: {"200": {description: Gateway payload, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "404": {$ref: "#/components/responses/NotFound"}, "500": {$ref: "#/components/responses/Internal"}}
-  /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/sync:
-    parameters: [{$ref: "#/components/parameters/DataSourceID"}, {$ref: "#/components/parameters/LoRaWANV2GatewaySN"}]
-    post:
-      tags: [Admin]
-      operationId: adminSyncLoRaWANV2Gateway
-      summary: Synchronize one LoRaWAN V2 gateway into the platform
-      security: [{bearerAuth: []}, {devUserHeader: []}]
-      responses: {"200": {description: Synchronization result, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
   /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/firmwares:
     parameters: [{$ref: "#/components/parameters/DataSourceID"}]
     get:
@@ -9737,7 +9727,7 @@ components:
           additionalProperties: true
     THCPNSensorTemplate:
       type: object
-      required: [id, sensor_type, port_num, port_nums, params, status, metrics, config_entry, valid]
+      required: [id, sensor_type, port_num, port_nums, params, status, metrics, variants, config_entry, valid]
       properties:
         id: { type: integer, format: int64 }
         sensor_type: { type: string }
@@ -9755,6 +9745,11 @@ components:
         metrics:
           type: array
           items: { $ref: "#/components/schemas/THCPNSensorMetric" }
+        variants:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: true
         config_entry:
           type: object
           additionalProperties: true
@@ -9779,7 +9774,58 @@ components:
         params:
           type: object
           additionalProperties: true
+        metrics:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        variants:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: true
         status: { type: string, enum: [active, disabled] }
+    LoRaWANV2MetricSemantic:
+      type: object
+      required: [key, name]
+      properties:
+        key: { type: string, minLength: 1 }
+        name: { type: string, minLength: 1, description: Chinese display name maintained by this platform }
+        type: { type: string }
+        unit: { type: string }
+    LoRaWANV2TemplateInstance:
+      type: object
+      required: [template_id]
+      properties:
+        template_id: { type: integer, format: int64 }
+        sensor_type: { type: string, description: Informational; the server resolves it from the template }
+        content:
+          type: array
+          description: Optional source-native instance override using ad / 485 / sdi / iic items
+          items: {}
+    LoRaWANV2TemplateSensorConfigRequest:
+      type: object
+      required: [mode, template_instances]
+      properties:
+        mode: { type: string, enum: [templates] }
+        wait_time: { type: integer, minimum: 0, maximum: 65535, description: Optional override; otherwise the maximum template suggestion is used }
+        template_instances:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/LoRaWANV2TemplateInstance" }
+    LoRaWANV2AdvancedSensorConfigRequest:
+      type: object
+      required: [mode, content, metrics]
+      properties:
+        mode: { type: string, enum: [advanced] }
+        wait_time: { type: integer, minimum: 0, maximum: 65535 }
+        content:
+          type: array
+          minItems: 1
+          items: {}
+        metrics:
+          type: array
+          items: { $ref: "#/components/schemas/LoRaWANV2MetricSemantic" }
     THCPNSensorTemplateListResponse:
       type: object
       required: [items, total, page, page_size]

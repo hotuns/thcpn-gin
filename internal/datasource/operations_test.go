@@ -3,10 +3,62 @@ package datasource
 import (
 	"context"
 	"errors"
-	"github.com/google/uuid"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+
+	"github.com/google/uuid"
+
 	"thcpn-gin/internal/testdb"
 )
+
+func TestCreateLoRaWANV2GatewayUsesUpstreamSNAndSurvivesCatalogFailure(t *testing.T) {
+	const sn = "898604B41025D0999999"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/device/"+sn:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"success":false,"error_code":"0x10010201","error_message":"not found"}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/device":
+			_, _ = w.Write([]byte(`{"success":true,"payload":{"sn":"` + sn + `","node_count":1}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/device/"+sn+"/infos":
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"success":false,"error_code":"test","error_message":"not ready"}`))
+		default:
+			http.Error(w, r.URL.Path, http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	db := testdb.Open(t, 0)
+	ctx := t.Context()
+	admin := testdb.Admin(t, db)
+	source := uuid.New()
+	const envKey = "TEST_LORAWAN_V2_CREATE_SECRET"
+	t.Setenv(envKey, fmt.Sprintf(`{"base_url":%q,"username":"reader","password":"secret"}`, server.URL))
+	if _, err := db.Exec(ctx, `INSERT INTO data_sources(id,name,type,source_family,dsn_secret_ref,created_by) VALUES($1,'LoRa','http_api','lorawan_v2',$2,$3)`, source, "env:"+envKey, admin); err != nil {
+		t.Fatal(err)
+	}
+	result, err := NewService(db).CreateLoRaWANV2Gateway(ctx, source, sn, 1, admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Sync == nil || result.Sync.Device.SerialNo != sn {
+		t.Fatalf("gateway projection did not adopt upstream SN: %#v", result)
+	}
+	if result.CatalogWarning == "" {
+		t.Fatal("expected catalog warning")
+	}
+	var serial string
+	if err := db.QueryRow(ctx, `SELECT serial_no FROM devices WHERE id=$1`, result.Sync.Device.ID).Scan(&serial); err != nil {
+		t.Fatal(err)
+	}
+	if serial != sn {
+		t.Fatalf("serial_no=%q, want %q", serial, sn)
+	}
+}
 
 type recordingSyncQueue struct {
 	ids []uuid.UUID
@@ -22,7 +74,7 @@ func TestSourceSyncQueueKeepsOneActiveOperationAndRecordsEnqueueFailure(t *testi
 	ctx := t.Context()
 	admin := testdb.Admin(t, db)
 	source := uuid.New()
-	if _, err := db.Exec(ctx, `INSERT INTO data_sources(id,name,type,source_family,dsn_secret_ref,created_by) VALUES($1,'LoRa','http_api','lorawan_v2','env:UNUSED',$2)`, source, admin); err != nil {
+	if _, err := db.Exec(ctx, `INSERT INTO data_sources(id,name,type,source_family,dsn_secret_ref,created_by) VALUES($1,'THCPN','mysql','thcpn','env:UNUSED',$2)`, source, admin); err != nil {
 		t.Fatal(err)
 	}
 	svc := NewService(db)

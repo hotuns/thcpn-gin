@@ -238,7 +238,10 @@ export interface paths {
             };
         };
         put?: never;
-        /** Write source configuration and report source and platform stages separately */
+        /**
+         * Write source configuration and report source and platform stages separately
+         * @description For LoRaWAN V2 sensor configuration use the templates or advanced discriminated request. Gateway and time configurations retain their source-native object shape.
+         */
         post: {
             parameters: {
                 query?: {
@@ -253,7 +256,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
+                    "application/json": components["schemas"]["LoRaWANV2TemplateSensorConfigRequest"] | components["schemas"]["LoRaWANV2AdvancedSensorConfigRequest"] | {
                         [key: string]: unknown;
                     };
                 };
@@ -1839,28 +1842,8 @@ export interface paths {
         /** List LoRaWAN V2 gateways */
         get: operations["adminListLoRaWANV2Gateways"];
         put?: never;
-        /** Create a LoRaWAN V2 gateway and synchronize it into the platform */
+        /** Create a LoRaWAN V2 gateway and register its platform device */
         post: operations["adminCreateLoRaWANV2Gateway"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/sync-all": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Data source UUID. */
-                data_source_id: components["parameters"]["DataSourceID"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Synchronize every LoRaWAN V2 gateway without deleting missing platform devices */
-        post: operations["adminSyncAllLoRaWANV2Gateways"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1883,28 +1866,6 @@ export interface paths {
         get: operations["adminGetLoRaWANV2Gateway"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/sync": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Data source UUID. */
-                data_source_id: components["parameters"]["DataSourceID"];
-                /** @description LoRaWAN V2 gateway SN. */
-                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Synchronize one LoRaWAN V2 gateway into the platform */
-        post: operations["adminSyncLoRaWANV2Gateway"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6376,6 +6337,11 @@ export interface components {
             /** @enum {string} */
             status: "active" | "disabled";
             metrics: components["schemas"]["THCPNSensorMetric"][];
+            variants: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
             config_entry: {
                 [key: string]: unknown;
             };
@@ -6395,8 +6361,45 @@ export interface components {
             params: {
                 [key: string]: unknown;
             };
+            metrics?: {
+                [key: string]: unknown;
+            }[];
+            variants?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
             /** @enum {string} */
             status: "active" | "disabled";
+        };
+        LoRaWANV2MetricSemantic: {
+            key: string;
+            /** @description Chinese display name maintained by this platform */
+            name: string;
+            type?: string;
+            unit?: string;
+        };
+        LoRaWANV2TemplateInstance: {
+            /** Format: int64 */
+            template_id: number;
+            /** @description Informational; the server resolves it from the template */
+            sensor_type?: string;
+            /** @description Optional source-native instance override using ad / 485 / sdi / iic items */
+            content?: unknown[];
+        };
+        LoRaWANV2TemplateSensorConfigRequest: {
+            /** @enum {string} */
+            mode: "templates";
+            /** @description Optional override; otherwise the maximum template suggestion is used */
+            wait_time?: number;
+            template_instances: components["schemas"]["LoRaWANV2TemplateInstance"][];
+        };
+        LoRaWANV2AdvancedSensorConfigRequest: {
+            /** @enum {string} */
+            mode: "advanced";
+            wait_time?: number;
+            content: unknown[];
+            metrics: components["schemas"]["LoRaWANV2MetricSemantic"][];
         };
         THCPNSensorTemplateListResponse: {
             items: components["schemas"]["THCPNSensorTemplate"][];
@@ -8416,6 +8419,7 @@ export interface operations {
         parameters: {
             query?: {
                 q?: string;
+                source_family?: "thcpn" | "lorawan_v2";
                 type?: components["schemas"]["WorkspaceType"];
                 organization_type?: components["schemas"]["OrganizationType"];
                 status?: components["schemas"]["WorkspaceStatus"];
@@ -9245,7 +9249,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Gateway creation and synchronization result */
+            /** @description Gateway creation and platform registration result */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -9255,32 +9259,6 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidArgument"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["PermissionDenied"];
-            500: components["responses"]["Internal"];
-        };
-    };
-    adminSyncAllLoRaWANV2Gateways: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Data source UUID. */
-                data_source_id: components["parameters"]["DataSourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Synchronization queued */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SourceOperation"];
-                };
-            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["PermissionDenied"];
             500: components["responses"]["Internal"];
@@ -9312,34 +9290,6 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
-            500: components["responses"]["Internal"];
-        };
-    };
-    adminSyncLoRaWANV2Gateway: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Data source UUID. */
-                data_source_id: components["parameters"]["DataSourceID"];
-                /** @description LoRaWAN V2 gateway SN. */
-                gateway_sn: components["parameters"]["LoRaWANV2GatewaySN"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Synchronization result */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LoRaWANV2Payload"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["PermissionDenied"];
             500: components["responses"]["Internal"];
         };
     };

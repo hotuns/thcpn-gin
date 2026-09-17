@@ -3,6 +3,7 @@ package datasource
 import (
 	"context"
 	"encoding/json"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"thcpn-gin/internal/apperr"
@@ -13,6 +14,9 @@ func (s *Service) ReconcileDeviceConfig(ctx context.Context, deviceID, actorID u
 		return UpdateTHCPNDeviceConfigResponse{}, apperr.New(apperr.KindInvalidArgument, "device and actor are required")
 	}
 	if ref, err := s.LoRaWANV2GatewayForDevice(ctx, deviceID); err == nil {
+		if err = s.refreshLoRaWANV2TemplateSemantics(ctx, deviceID); err != nil {
+			return UpdateTHCPNDeviceConfigResponse{}, err
+		}
 		_, err = s.SyncLoRaWANV2Gateway(ctx, SyncLoRaWANV2GatewayInput{DataSourceID: ref.DataSourceID, GatewaySN: ref.GatewaySN, ActorUserID: actorID})
 		if err != nil {
 			return UpdateTHCPNDeviceConfigResponse{}, err

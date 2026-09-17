@@ -467,14 +467,14 @@ function FullSyncResult({ result }: { result: JsonRecord }) {
 }
 
 type LoRaOperation =
-  | "health" | "list_gateways" | "create_gateway" | "get_gateway" | "sync_gateway" | "sync_all"
+  | "health" | "list_gateways" | "get_gateway"
   | "list_firmwares" | "create_firmware" | "get_firmware" | "delete_firmware"
   | "list_gateway_configs" | "create_gateway_config" | "get_gateway_config"
   | "list_node_configs" | "create_node_config" | "latest_node_config" | "get_node_config" | "create_time_config"
   | "list_logs" | "list_node_data" | "list_gateway_infos";
 
 const loraOperationOptions: Array<{ value: LoRaOperation; label: string }> = [
-  { value: "health", label: "连通性检查" }, { value: "list_gateways", label: "网关列表" }, { value: "create_gateway", label: "创建网关并同步" }, { value: "get_gateway", label: "网关详情" }, { value: "sync_gateway", label: "同步单个网关" }, { value: "sync_all", label: "全量同步网关" },
+  { value: "health", label: "连通性检查" }, { value: "list_gateways", label: "网关列表" }, { value: "get_gateway", label: "网关详情" },
   { value: "list_firmwares", label: "固件列表" }, { value: "create_firmware", label: "新增网关固件" }, { value: "get_firmware", label: "固件详情" }, { value: "delete_firmware", label: "删除固件" },
   { value: "list_gateway_configs", label: "网关配置历史" }, { value: "create_gateway_config", label: "新增网关配置" }, { value: "get_gateway_config", label: "网关配置详情" },
   { value: "list_node_configs", label: "节点传感器配置历史" }, { value: "create_node_config", label: "新增节点传感器配置" }, { value: "latest_node_config", label: "节点最新传感器配置" }, { value: "get_node_config", label: "节点传感器配置详情" }, { value: "create_time_config", label: "新增节点时间配置" },
@@ -488,7 +488,7 @@ function LoRaWANV2Drawer({ source, onClose }: { source: JsonRecord | null; onClo
   const [result, setResult] = useState<unknown>(null);
   const operation = (Form.useWatch("operation", form) ?? "health") as LoRaOperation;
   const sourceID = string(source?.id, "");
-  const requiresGateway = ["get_gateway", "sync_gateway", "create_firmware", "list_gateway_configs", "create_gateway_config", "get_gateway_config", "list_node_configs", "create_node_config", "latest_node_config", "get_node_config", "create_time_config", "list_logs", "list_node_data", "list_gateway_infos"].includes(operation);
+  const requiresGateway = ["get_gateway", "create_firmware", "list_gateway_configs", "create_gateway_config", "get_gateway_config", "list_node_configs", "create_node_config", "latest_node_config", "get_node_config", "create_time_config", "list_logs", "list_node_data", "list_gateway_infos"].includes(operation);
   const requiresNode = ["list_node_configs", "create_node_config", "latest_node_config", "get_node_config", "create_time_config", "list_node_data"].includes(operation);
   const requiresConfigID = ["get_gateway_config", "get_node_config"].includes(operation);
   const requiresFirmwareID = ["get_firmware", "delete_firmware"].includes(operation);
@@ -503,10 +503,7 @@ function LoRaWANV2Drawer({ source, onClose }: { source: JsonRecord | null; onClo
       switch (operation) {
         case "health": response = await api.admin.loraWANV2Health(sourceID); break;
         case "list_gateways": response = await api.admin.loraWANV2Gateways(sourceID, query); break;
-        case "create_gateway": response = await api.admin.createLoRaWANV2Gateway(sourceID, { sn: values.gateway_sn, node_count: Number(values.node_count) }); break;
         case "get_gateway": response = await api.admin.loraWANV2Gateway(sourceID, values.gateway_sn); break;
-        case "sync_gateway": response = await api.admin.syncLoRaWANV2Gateway(sourceID, values.gateway_sn); break;
-        case "sync_all": response = await api.admin.startSourceSync(sourceID); break;
         case "list_firmwares": response = await api.admin.loraWANV2Firmwares(sourceID, query); break;
         case "create_firmware": response = await api.admin.createLoRaWANV2Firmware(sourceID, values.gateway_sn, payload); break;
         case "get_firmware": response = await api.admin.loraWANV2Firmware(sourceID, values.firmware_id); break;
@@ -531,10 +528,9 @@ function LoRaWANV2Drawer({ source, onClose }: { source: JsonRecord | null; onClo
   };
   return <Drawer title={`LoRa V2 管理 · ${string(source?.name)}`} open={Boolean(source)} onClose={onClose} size={720} extra={<Space><Button onClick={onClose}>关闭</Button><Button type="primary" loading={busy} onClick={() => void run()}>执行</Button></Space>}>
     <SourceOperationHistory sourceID={sourceID} />
-    <Form form={form} layout="vertical" initialValues={{ operation: "health", query_json: "{}", payload_json: "{}", node_count: 1, node_index: 1 }}>
+    <Form form={form} layout="vertical" initialValues={{ operation: "health", query_json: "{}", payload_json: "{}", node_index: 1 }}>
       <Form.Item name="operation" label="操作"><Select options={loraOperationOptions} /></Form.Item>
-      {requiresGateway || operation === "create_gateway" ? <Form.Item name="gateway_sn" label="网关 SN" rules={[{ required: true, message: "请输入网关 SN" }]}><Input /></Form.Item> : null}
-      {operation === "create_gateway" ? <Form.Item name="node_count" label="节点数" rules={[{ required: true, message: "请输入节点数" }]}><InputNumber min={1} max={254} precision={0} style={{ width: "100%" }} /></Form.Item> : null}
+      {requiresGateway ? <Form.Item name="gateway_sn" label="网关 SN" rules={[{ required: true, message: "请输入网关 SN" }]}><Input /></Form.Item> : null}
       {requiresNode ? <Form.Item name="node_index" label="节点索引" rules={[{ required: true, message: "请输入节点索引" }]}><InputNumber min={1} max={255} precision={0} style={{ width: "100%" }} /></Form.Item> : null}
       {requiresConfigID ? <Form.Item name="config_id" label="配置 ID" rules={[{ required: true, message: "请输入配置 ID" }]}><InputNumber min={0} precision={0} style={{ width: "100%" }} /></Form.Item> : null}
       {requiresFirmwareID ? <Form.Item name="firmware_id" label="固件 ID" rules={[{ required: true, message: "请输入固件 ID" }]}><InputNumber min={0} precision={0} style={{ width: "100%" }} /></Form.Item> : null}

@@ -465,8 +465,6 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.GET("/data-sources/:data_source_id/lorawan-v2/gateways", dataSourceHandler.AdminListLoRaWANV2Gateways)
 	admin.POST("/data-sources/:data_source_id/lorawan-v2/gateways", dataSourceHandler.AdminCreateLoRaWANV2Gateway)
 	admin.GET("/data-sources/:data_source_id/lorawan-v2/gateways/:gateway_sn", dataSourceHandler.AdminGetLoRaWANV2Gateway)
-	admin.POST("/data-sources/:data_source_id/lorawan-v2/gateways/:gateway_sn/sync", dataSourceHandler.AdminSyncLoRaWANV2Gateway)
-	admin.POST("/data-sources/:data_source_id/lorawan-v2/gateways/sync-all", dataSourceHandler.AdminSyncAllLoRaWANV2Gateways)
 	admin.GET("/data-sources/:data_source_id/lorawan-v2/firmwares", dataSourceHandler.AdminListLoRaWANV2Firmwares)
 	admin.POST("/data-sources/:data_source_id/lorawan-v2/gateways/:gateway_sn/firmwares", dataSourceHandler.AdminCreateLoRaWANV2Firmware)
 	admin.GET("/data-sources/:data_source_id/lorawan-v2/firmwares/:firmware_id", dataSourceHandler.AdminGetLoRaWANV2Firmware)

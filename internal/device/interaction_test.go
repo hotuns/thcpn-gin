@@ -23,6 +23,9 @@ func TestGatewayNodeTargetsKeepIdentityWithoutTelemetry(t *testing.T) {
 		must(`INSERT INTO device_source_refs(device_id,data_source_id,adapter_code,external_key) VALUES ($1,$2,'lorawan_v2',$3)`, id, source, id.String())
 		must(`INSERT INTO device_metadata(device_id,key,name,value_type,value_json,created_by,updated_by) VALUES ($1,'lorawan_v2_nodes_count','Nodes','number','2',$2,$2)`, id, admin)
 	}
+	streamID := uuid.New()
+	must(`INSERT INTO data_streams(id,device_id,code,name,type,unit,created_by,created_by_type) VALUES($1,$2,'lora_node_1_diams','径向生长','telemetry','mm',$3,'system_admin')`, streamID, gateway, admin)
+	must(`INSERT INTO data_stream_bindings(data_stream_id,data_source_id,payload_type,adapter_code,adapter_config_json,created_by,created_by_type) VALUES($1,$2,'json','lorawan_v2',$3,$4,'system_admin')`, streamID, source, `{"gateway_sn":"`+gateway.String()+`","node_index":1,"metric":"diams"}`, admin)
 	svc := NewService(db)
 	item, err := svc.GetAsset(ctx, gateway)
 	if err != nil {
@@ -39,7 +42,7 @@ func TestGatewayNodeTargetsKeepIdentityWithoutTelemetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(nodes) != 2 || len(nodes[0].Streams) != 0 || nodes[0].Target.DeviceID != nil || *nodes[0].Target.GatewayDeviceID != gateway || *nodes[0].Target.NodeIndex != 1 || nodes[0].Key == other[0].Key {
+	if len(nodes) != 2 || len(nodes[0].Streams) != 1 || nodes[0].Streams[0].Code != "diams" || nodes[0].Streams[0].Name != "径向生长" || nodes[0].Target.DeviceID != nil || *nodes[0].Target.GatewayDeviceID != gateway || *nodes[0].Target.NodeIndex != 1 || nodes[0].Key == other[0].Key {
 		t.Fatalf("incorrect indexed identity: %#v", nodes)
 	}
 	// A second management source must not silently replace the first one.

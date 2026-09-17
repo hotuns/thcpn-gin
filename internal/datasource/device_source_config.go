@@ -1,6 +1,7 @@
 package datasource
 
 import (
+	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/url"
@@ -65,6 +66,8 @@ func (h *Handler) AdminDeviceSourceConfig(c *gin.Context) {
 		return
 	}
 	var body any
+	var compiled *loraWANV2CompiledConfig
+	nodeIndex := 0
 	if c.Request.Method == http.MethodPost {
 		if item.Status != "active" {
 			httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "device is disabled"))
@@ -75,12 +78,30 @@ func (h *Handler) AdminDeviceSourceConfig(c *gin.Context) {
 			httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 			return
 		}
+		if kind == "sensor" {
+			nodeIndex, _ = strconv.Atoi(c.Query("node_index"))
+			item, compileErr := h.service.compileLoRaWANV2NodeConfig(c.Request.Context(), body)
+			if compileErr != nil {
+				httpx.WriteAppError(c, compileErr)
+				return
+			}
+			compiled = &item
+			body = map[string]any{"wait_time": item.WaitTime, "content": item.Content}
+		}
 	}
 	if c.Request.Method == http.MethodGet {
 		payload, err := h.service.LoRaWANV2Request(c.Request.Context(), ref.DataSourceID, http.MethodGet, path, loraWANV2AllowedQuery(c), nil)
 		if err != nil {
 			httpx.WriteAppError(c, err)
 			return
+		}
+		if kind == "sensor" {
+			index, _ := strconv.Atoi(c.Query("node_index"))
+			payload, err = h.service.describeLoRaWANV2NodeConfig(c.Request.Context(), id, index, payload)
+			if err != nil {
+				httpx.WriteAppError(c, err)
+				return
+			}
 		}
 		writeLoRaWANV2Payload(c, http.StatusOK, payload)
 		return
@@ -99,6 +120,21 @@ func (h *Handler) AdminDeviceSourceConfig(c *gin.Context) {
 		return
 	}
 	state.Source = "accepted"
+	if compiled != nil {
+		var upstream struct {
+			ID int64 `json:"id"`
+		}
+		_ = json.Unmarshal(payload, &upstream)
+		var upstreamID *int64
+		if upstream.ID > 0 {
+			upstreamID = &upstream.ID
+		}
+		if snapshotErr := h.service.saveLoRaWANV2NodeConfigSnapshot(c.Request.Context(), id, nodeIndex, upstreamID, *compiled, actor.UserID); snapshotErr != nil {
+			_ = h.service.finishSourceOperation(operationID, "partial", state, snapshotErr)
+			httpx.WriteAppError(c, snapshotErr)
+			return
+		}
+	}
 	_, syncErr := h.service.SyncLoRaWANV2Gateway(c.Request.Context(), SyncLoRaWANV2GatewayInput{DataSourceID: ref.DataSourceID, GatewaySN: ref.GatewaySN, ActorUserID: actor.UserID})
 	status := "completed"
 	state.Platform = "synced"

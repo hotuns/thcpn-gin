@@ -8821,10 +8821,16 @@ body::-webkit-scrollbar-corner,
   font-size: 9px;
 }
 .gateway-node-row {
+  width: 100%;
   min-height: 62px;
   color: inherit;
+  background: transparent;
+  border: 0;
   border-top: 1px solid var(--soft-line);
+  font: inherit;
+  text-align: left;
   text-decoration: none;
+  cursor: pointer;
   transition: background 140ms ease;
 }
 .lorawan-v2-node-row {
@@ -8840,6 +8846,18 @@ body::-webkit-scrollbar-corner,
 }
 .gateway-node-row > svg {
   color: var(--muted);
+}
+.gateway-node-row > strong,
+.gateway-node-row > span,
+.gateway-node-row > time {
+  min-width: 0;
+}
+.gateway-node-row > time {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .gateway-node-name {
   min-width: 0;

@@ -56,14 +56,16 @@ type updateDataSourceRequest struct {
 }
 
 type sensorTemplateRequest struct {
-	SensorType  string         `json:"sensor_type"`
-	Description string         `json:"description"`
-	Port        string         `json:"port"`
-	PortNum     int64          `json:"port_num"`
-	Driver      string         `json:"driver"`
-	PortNums    []int          `json:"port_nums"`
-	Params      map[string]any `json:"params"`
-	Status      string         `json:"status"`
+	SensorType  string                    `json:"sensor_type"`
+	Description string                    `json:"description"`
+	Port        string                    `json:"port"`
+	PortNum     int64                     `json:"port_num"`
+	Driver      string                    `json:"driver"`
+	PortNums    []int                     `json:"port_nums"`
+	Params      map[string]any            `json:"params"`
+	Metrics     []map[string]any          `json:"metrics"`
+	Variants    map[string]map[string]any `json:"variants"`
+	Status      string                    `json:"status"`
 }
 
 type importSensorTemplatesRequest struct {
@@ -900,7 +902,7 @@ func (h *Handler) AdminListSensorTemplates(c *gin.Context) {
 		return
 	}
 	result, err := h.service.ListTHCPNSensorTemplates(c.Request.Context(), THCPNSensorTemplateListInput{
-		Search: c.Query("q"), Port: c.Query("port"), Driver: c.Query("driver"), Status: c.Query("status"), Page: page, PageSize: pageSize,
+		Search: c.Query("q"), Port: c.Query("port"), Driver: c.Query("driver"), Status: c.Query("status"), SourceFamily: c.Query("source_family"), Page: page, PageSize: pageSize,
 	})
 	if err != nil {
 		httpx.WriteAppError(c, err)
@@ -999,7 +1001,7 @@ func (h *Handler) AdminImportSensorTemplates(c *gin.Context) {
 func sensorTemplateInput(req sensorTemplateRequest, actorID uuid.UUID) THCPNSensorTemplateWriteInput {
 	return THCPNSensorTemplateWriteInput{
 		SensorType: req.SensorType, Description: req.Description, Port: req.Port, PortNum: req.PortNum,
-		Driver: req.Driver, PortNums: req.PortNums, Params: req.Params, Status: req.Status, ActorID: actorID,
+		Driver: req.Driver, PortNums: req.PortNums, Params: req.Params, Metrics: req.Metrics, Variants: req.Variants, Status: req.Status, ActorID: actorID,
 	}
 }
 

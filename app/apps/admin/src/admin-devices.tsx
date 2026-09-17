@@ -71,7 +71,7 @@ const deviceModelLabel = (item: JsonRecord) =>
       : "THCPN 组网站网关"
     : deviceTopologyRoleLabel(value(item.device_type, ""));
 const deviceModelOf = (item: JsonRecord) =>
-  value(item.source_family, "") === "lorawan_v2" ? "lorawan_v2_gateway" : categoryOf(item);
+  value(item.source_family, "") === "lorawan_v2" ? "lorawan_v2" : categoryOf(item);
 
 export function AdminDevicesPage() {
   const { deviceId } = useParams();
@@ -478,6 +478,20 @@ export function AdminDevicesPage() {
         }
         const dataSourceID = String(fields.data_source_id ?? "").trim();
         if (!dataSourceID) throw new Error("请选择数据源");
+        if (sourceKind === "lorawan_v2") {
+          const created = await api.admin.createLoRaWANV2Gateway(dataSourceID, {
+            sn: String(fields.sn ?? "").trim(),
+            node_count: Number(fields.node_count),
+          });
+          const projection = (created.sync ?? {}) as JsonRecord;
+          const createdDevice = (projection.device ?? {}) as JsonRecord;
+          const createdDeviceID = String(createdDevice.id ?? "").trim();
+          if (!createdDeviceID) throw new Error("网关已创建，但未返回平台设备 ID");
+          close();
+          await query.refetch();
+          navigate(`/admin/devices/${encodeURIComponent(createdDeviceID)}`);
+          return;
+        }
         const sourceFields = { ...fields };
         delete sourceFields.data_source_id;
         const created = await api.admin.createSourceDevice(dataSourceID, sourceFields);
@@ -618,7 +632,7 @@ export function AdminDevicesPage() {
         {mode === "create-device" && createdSourceDevice?.sync_error ? <Alert type="warning" showIcon title="源库设备已创建，但平台同步失败" description={<div>源库 ID {value(createdSourceDevice.source_device_id)} · SN {value(createdSourceDevice.sn)}<br />{value(createdSourceDevice.sync_error)}</div>} /> : null}
         <StructuredDetail mode={mode} detail={detail} busy={busy} onRemove={(childId) => selected && void removeChild(value(selected.id, ""), childId)} />
         {mode === "config" && detail ? <ConfigContext detail={detail as JsonRecord} /> : null}
-        <div className="drawer-note"><Settings2 size={15} />{mode === "config" ? "高级配置会写入外部设备库，并刷新平台数据流与绑定。提交前请确认 JSON 结构。" : mode === "create-device" ? "源库设备会在源数据库中生成 SN 和空配置；监控站只在平台中创建。" : "所有操作都作用于标题中显示的当前设备；完成后设备列表会自动刷新。"}</div>
+        <div className="drawer-note"><Settings2 size={15} />{mode === "config" ? "高级配置会写入外部设备库，并刷新平台数据流与绑定。提交前请确认 JSON 结构。" : mode === "create-device" ? "设备会先在对应数据源创建，再登记为平台设备；LoRa V2 网关沿用输入的 SN。" : "所有操作都作用于标题中显示的当前设备；完成后设备列表会自动刷新。"}</div>
       </Drawer>
     </>
   );
@@ -659,7 +673,7 @@ export function AdminDevicesPage() {
             options={[
               { value: "standalone", label: "标准站" },
               { value: "gateway", label: "THCPN 组网站网关" },
-              { value: "lorawan_v2_gateway", label: "LoRa V2 网关" },
+              { value: "lorawan_v2", label: "LoRa V2 网关" },
               { value: "carbon_sink", label: "碳汇站" },
               { value: "camera", label: "监控站" },
             ]}
@@ -1776,10 +1790,11 @@ type SourceCreationKind =
   | "thcpn_gateway"
   | "thcpn_node"
   | "carbon"
+  | "lorawan_v2"
   | "camera";
 
 const sourceFamilyForCreationKind = (kind: SourceCreationKind | undefined) =>
-  kind === "carbon" ? "carbon" : kind && kind !== "camera" ? "thcpn" : undefined;
+	kind === "carbon" ? "carbon" : kind === "lorawan_v2" ? "lorawan_v2" : kind && kind !== "camera" ? "thcpn" : undefined;
 
 function DeviceCreateForm({
   form,
@@ -1823,6 +1838,8 @@ function DeviceCreateForm({
       iccid: undefined,
       version: kind.startsWith("thcpn_") ? "2.0" : undefined,
       nodes_count: kind === "carbon" ? 16 : undefined,
+	  sn: "",
+	  node_count: kind === "lorawan_v2" ? 1 : undefined,
       device_serial: "",
       channel_no: kind === "camera" ? 1 : undefined,
       default_quality: kind === "camera" ? "standard" : undefined,
@@ -1852,6 +1869,7 @@ function DeviceCreateForm({
             { value: "thcpn_gateway", label: "网关" },
             { value: "thcpn_node", label: "节点" },
             { value: "carbon", label: "碳汇站" },
+            { value: "lorawan_v2", label: "LoRa V2 网关" },
             { value: "camera", label: "监控站" },
           ]}
         />
@@ -1903,6 +1921,16 @@ function DeviceCreateForm({
           </Form.Item>
           <Form.Item name="nodes_count" label="节点数" rules={[{ required: true }]}>
             <InputNumber min={1} precision={0} style={{ width: "100%" }} />
+          </Form.Item>
+        </>
+      ) : null}
+      {sourceKind === "lorawan_v2" ? (
+        <>
+          <Form.Item name="sn" label="网关 SN" rules={[{ required: true, whitespace: true, message: "请输入网关 SN" }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="node_count" label="节点数" rules={[{ required: true, message: "请输入节点数" }]}>
+            <InputNumber min={1} max={254} precision={0} style={{ width: "100%" }} />
           </Form.Item>
         </>
       ) : null}

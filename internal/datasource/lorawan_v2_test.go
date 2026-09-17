@@ -3,6 +3,7 @@ package datasource
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,7 +13,83 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"thcpn-gin/internal/testdb"
 )
+
+func TestCompileLoRaWANV2TemplatesSupportsAllSensorKinds(t *testing.T) {
+	db := testdb.Open(t, 0)
+	ctx := t.Context()
+	admin := testdb.Admin(t, db)
+	service := NewService(db)
+	templates := []struct {
+		name, key string
+		content   []any
+	}{
+		{"模拟量", "adc1", []any{[]any{"ad", []any{[]any{"adc1", "1,0", "V"}}, float64(1)}}},
+		{"温度", "temp", []any{[]any{"485", []any{"0103", []any{[]any{"temp", "0,0.1,0,>2i", "℃"}}}}}},
+		{"土壤水分", "SM", []any{[]any{"sdi", []any{"0", []any{[]any{"SM", "0"}}}}}},
+		{"空气湿度", "humidity", []any{[]any{"iic", []any{"SHT30", "0x44", []any{"humidity"}}}}},
+	}
+	instances := []any{}
+	for _, fixture := range templates {
+		metric := map[string]any{"key": fixture.key, "info": map[string]any{"name": fixture.name, "unit": ""}}
+		created, err := service.CreateTHCPNSensorTemplate(ctx, THCPNSensorTemplateWriteInput{SensorType: fixture.name, Params: map[string]any{"contents": []any{metric}}, Metrics: []map[string]any{metric}, Variants: map[string]map[string]any{"lorawan_v2": {"wait_time": float64(5), "content": fixture.content}}, Status: "active", ActorID: admin})
+		if err != nil {
+			t.Fatal(err)
+		}
+		instances = append(instances, map[string]any{"template_id": float64(created.ID)})
+	}
+	compiled, err := service.compileLoRaWANV2NodeConfig(ctx, map[string]any{"mode": "templates", "template_instances": instances})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Content) != 4 || len(compiled.Metrics) != 4 || compiled.WaitTime != 5 {
+		t.Fatalf("unexpected compiled config: %#v", compiled)
+	}
+}
+
+func TestValidateLoRaWANV2ResourcesRejectsConflicts(t *testing.T) {
+	content := []any{[]any{"ad", []any{[]any{"a", "1,0", "V"}}, float64(1)}, []any{"ad", []any{[]any{"b", "1,0", "V"}}, float64(1)}}
+	if err := validateLoRaWANV2Resources(content); err == nil {
+		t.Fatal("duplicate AD port accepted")
+	}
+}
+
+func TestCompileLoRaWANV2AdvancedRequiresEveryMetricName(t *testing.T) {
+	service := &Service{}
+	content := []any{[]any{"iic", []any{"SHT30", "0x44", []any{"humidity"}}}}
+	_, err := service.compileLoRaWANV2NodeConfig(t.Context(), map[string]any{
+		"mode": "advanced", "content": content,
+		"metrics": []any{map[string]any{"key": "humidity", "name": ""}},
+	})
+	if err == nil {
+		t.Fatal("advanced config accepted a metric without a Chinese display name")
+	}
+}
+
+func TestCompileLoRaWANV2TemplateWaitTimeCanBeOverridden(t *testing.T) {
+	db := testdb.Open(t, 0)
+	ctx := t.Context()
+	service := NewService(db)
+	metric := map[string]any{"key": "temp", "info": map[string]any{"name": "温度", "unit": "℃"}}
+	template, err := service.CreateTHCPNSensorTemplate(ctx, THCPNSensorTemplateWriteInput{
+		SensorType: "温度", Params: map[string]any{"contents": []any{metric}}, Metrics: []map[string]any{metric},
+		Variants: map[string]map[string]any{"lorawan_v2": {"wait_time": float64(60), "content": []any{[]any{"iic", []any{"SHT30", "0x44", []any{"temp"}}}}}}, Status: "active",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := service.compileLoRaWANV2NodeConfig(ctx, map[string]any{
+		"mode": "templates", "wait_time": float64(10),
+		"template_instances": []any{map[string]any{"template_id": float64(template.ID)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compiled.WaitTime != 10 {
+		t.Fatalf("manual wait_time override ignored: %d", compiled.WaitTime)
+	}
+}
 
 func TestLoRaWANV2ClientUsesBasicAuthForEveryOperation(t *testing.T) {
 	operations := []struct{ method, path string }{
@@ -151,6 +228,28 @@ func TestLoRaWANV2RecordPaginationUsesTheUpstreamLimit(t *testing.T) {
 	}
 	if len(records) != 75 || !complete || len(pages) != 2 || pages[0] != 1 || pages[1] != 2 {
 		t.Fatalf("unexpected pagination: records=%d complete=%t pages=%v", len(records), complete, pages)
+	}
+}
+
+func TestLoRaWANV2RecordPaginationSkipsEmptyIntermediatePage(t *testing.T) {
+	pages := []int{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		pages = append(pages, page)
+		data := []map[string]any{}
+		if page != 2 {
+			data = []map[string]any{{"ts": 1760000000 + page, "temp": page}}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "payload": map[string]any{"pagination": map[string]any{"current_page": page, "page_size": 50, "total_page": 3, "total_count": 3}, "data": data}})
+	}))
+	defer server.Close()
+	client, err := newLoRaWANV2Client(context.Background(), staticResolver(`{"base_url":"`+server.URL+`","username":"reader","password":"secret"}`), DataSource{Type: "http_api"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	records, complete, err := client.listRecords(context.Background(), loraWANV2TelemetryConfig{GatewaySN: "GW"}, time.Unix(1750000000, 0), time.Unix(1770000000, 0), 10)
+	if err != nil || !complete || len(records) != 2 || fmt.Sprint(pages) != "[1 2 3]" {
+		t.Fatalf("records=%d complete=%t pages=%v err=%v", len(records), complete, pages, err)
 	}
 }
 

@@ -82,6 +82,11 @@ export type THCPNSensorTemplate = Schema<"THCPNSensorTemplate">;
 export type THCPNSensorMetric = Schema<"THCPNSensorMetric">;
 export type THCPNSensorTemplateListResponse = Schema<"THCPNSensorTemplateListResponse">;
 export type SensorTemplateRequest = Schema<"SensorTemplateRequest">;
+export type SensorTemplate = THCPNSensorTemplate;
+export type SensorMetric = THCPNSensorMetric;
+export type SensorTemplateListResponse = THCPNSensorTemplateListResponse;
+export type LoRaWANV2TemplateSensorConfigRequest = Schema<"LoRaWANV2TemplateSensorConfigRequest">;
+export type LoRaWANV2AdvancedSensorConfigRequest = Schema<"LoRaWANV2AdvancedSensorConfigRequest">;
 export type SamplingProfile = Schema<"SamplingProfileResponse">;
 export type UpdateSamplingProfile = Schema<"UpdateSamplingProfileRequest">;
 export type DevicePublicAccess = Schema<"DevicePublicAccess">;
@@ -1205,10 +1210,6 @@ export const api = {
       jsonRequest<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways`, "POST", payload),
     loraWANV2Gateway: (id: string, sn: string) =>
       request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}`),
-    syncLoRaWANV2Gateway: (id: string, sn: string) =>
-      jsonRequest<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/sync`, "POST", {}),
-    syncAllLoRaWANV2Gateways: (id: string) =>
-      jsonRequest<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/sync-all`, "POST", {}),
     loraWANV2Firmwares: (id: string, input: JsonRecord = {}) =>
       request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/firmwares${queryString(input as Record<string, string | number | boolean>)}`),
     createLoRaWANV2Firmware: (id: string, sn: string, payload: JsonRecord) =>

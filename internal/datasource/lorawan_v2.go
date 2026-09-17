@@ -3,6 +3,8 @@ package datasource
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -24,10 +26,10 @@ import (
 const (
 	loraWANV2MaxPageSize      = 50
 	loraWANV2MaxResponseBytes = 32 << 20
-	loraWANV2ProductID        = "lorawan_v2_gateway"
 )
 
 var errLoRaWANV2SensorConfigNotFound = errors.New("lorawan_v2 sensor configuration not found")
+var errLoRaWANV2GatewayNotFound = errors.New("lorawan_v2 gateway not found")
 
 type loraWANV2Secret struct {
 	BaseURL  string `json:"base_url"`
@@ -95,9 +97,9 @@ type LoRaWANV2AllGatewaysSyncResult struct {
 }
 
 type LoRaWANV2CreateGatewayResult struct {
-	Gateway   LoRaWANV2Gateway            `json:"gateway"`
-	Sync      *LoRaWANV2GatewaySyncResult `json:"sync,omitempty"`
-	SyncError string                      `json:"sync_error,omitempty"`
+	Gateway        LoRaWANV2Gateway            `json:"gateway"`
+	Sync           *LoRaWANV2GatewaySyncResult `json:"sync,omitempty"`
+	CatalogWarning string                      `json:"catalog_warning,omitempty"`
 }
 
 type SyncLoRaWANV2GatewayInput struct {
@@ -127,6 +129,7 @@ type loraWANV2StreamSpec struct {
 	Name          string
 	Unit          string
 	AdapterConfig json.RawMessage
+	ConfigHash    string
 }
 
 func newLoRaWANV2Client(ctx context.Context, resolver SecretResolver, source DataSource) (*loraWANV2Client, error) {
@@ -190,8 +193,13 @@ func (c *loraWANV2Client) request(ctx context.Context, method, requestPath strin
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		var envelope loraWANV2Envelope
-		if response.StatusCode == http.StatusNotFound && json.Unmarshal(raw, &envelope) == nil && !envelope.Success && envelope.ErrorCode == "0x10011307" {
-			return nil, apperr.Wrap(apperr.KindDataSource, "lorawan_v2 returned non-success status", errLoRaWANV2SensorConfigNotFound)
+		if response.StatusCode == http.StatusNotFound && json.Unmarshal(raw, &envelope) == nil && !envelope.Success {
+			switch envelope.ErrorCode {
+			case "0x10011307":
+				return nil, apperr.Wrap(apperr.KindDataSource, "lorawan_v2 returned non-success status", errLoRaWANV2SensorConfigNotFound)
+			case "0x10010201":
+				return nil, apperr.Wrap(apperr.KindDataSource, "lorawan_v2 returned non-success status", errLoRaWANV2GatewayNotFound)
+			}
 		}
 		return nil, apperr.New(apperr.KindDataSource, "lorawan_v2 returned non-success status")
 	}
@@ -280,7 +288,11 @@ func (c *loraWANV2Client) scanRecords(ctx context.Context, cfg loraWANV2Telemetr
 			return count, true, nil
 		}
 		if len(result.Data) == 0 {
-			return count, false, apperr.New(apperr.KindDataSource, "lorawan_v2 returned an empty intermediate page")
+			// The upstream counts matching MongoDB documents before serializing
+			// them, but silently drops documents whose ts is not a BSON DateTime.
+			// A finite page can therefore be empty even though a later page has
+			// valid records. Continue within the advertised total_page boundary.
+			continue
 		}
 		if limit > 0 && count >= limit {
 			return count, false, nil
@@ -411,21 +423,44 @@ func (s *Service) CreateLoRaWANV2Gateway(ctx context.Context, dataSourceID uuid.
 	if actorID == uuid.Nil || strings.TrimSpace(sn) == "" || nodeCount < 1 || nodeCount > 254 {
 		return LoRaWANV2CreateGatewayResult{}, apperr.New(apperr.KindInvalidArgument, "gateway sn, node_count and actor are required")
 	}
-	payload, err := s.LoRaWANV2Request(ctx, dataSourceID, http.MethodPost, "/device", url.Values{}, map[string]any{"sn": strings.TrimSpace(sn), "node_count": nodeCount})
+	source, err := s.loadLoRaWANV2DataSource(ctx, dataSourceID)
 	if err != nil {
 		return LoRaWANV2CreateGatewayResult{}, err
 	}
-	var gateway LoRaWANV2Gateway
-	if err := json.Unmarshal(payload, &gateway); err != nil {
-		return LoRaWANV2CreateGatewayResult{}, apperr.New(apperr.KindDataSource, "invalid created lorawan_v2 gateway")
+	client, err := newLoRaWANV2Client(ctx, NewRuntime(nil).resolver, dataSourceFromSQL(source))
+	if err != nil {
+		return LoRaWANV2CreateGatewayResult{}, err
+	}
+	sn = strings.TrimSpace(sn)
+	unlock, err := s.lockSourceSync(ctx, source.ID.String()+"/lorawan_v2/"+sn)
+	if err != nil {
+		return LoRaWANV2CreateGatewayResult{}, err
+	}
+	defer unlock()
+	gateway, err := client.getGateway(ctx, sn)
+	if errors.Is(err, errLoRaWANV2GatewayNotFound) {
+		payload, createErr := client.request(ctx, http.MethodPost, "/device", url.Values{}, map[string]any{"sn": sn, "node_count": nodeCount})
+		if createErr != nil {
+			return LoRaWANV2CreateGatewayResult{}, createErr
+		}
+		if err := json.Unmarshal(payload, &gateway); err != nil {
+			return LoRaWANV2CreateGatewayResult{}, apperr.New(apperr.KindDataSource, "invalid created lorawan_v2 gateway")
+		}
+	} else if err != nil {
+		return LoRaWANV2CreateGatewayResult{}, err
+	} else if gateway.NodeCount != nodeCount {
+		return LoRaWANV2CreateGatewayResult{}, apperr.New(apperr.KindConflict, "gateway already exists with a different node_count")
 	}
 	result := LoRaWANV2CreateGatewayResult{Gateway: gateway}
-	synced, syncErr := s.SyncLoRaWANV2Gateway(ctx, SyncLoRaWANV2GatewayInput{DataSourceID: dataSourceID, GatewaySN: gateway.SN, ActorUserID: actorID})
-	if syncErr != nil {
-		result.SyncError = apperr.MessageOf(syncErr)
-		return result, nil
+	specs, catalogErr := loraWANV2DiscoverStreams(ctx, client, gateway)
+	synced, err := s.persistLoRaWANV2Gateway(ctx, source, gateway, specs, catalogErr == nil, actorID)
+	if err != nil {
+		return LoRaWANV2CreateGatewayResult{}, err
 	}
 	result.Sync = &synced
+	if catalogErr != nil {
+		result.CatalogWarning = apperr.MessageOf(catalogErr)
+	}
 	return result, nil
 }
 
@@ -504,11 +539,27 @@ func (s *Service) syncLoRaWANV2Gateway(ctx context.Context, source sqlc.DataSour
 	if err != nil {
 		return LoRaWANV2GatewaySyncResult{}, err
 	}
+	// Recover platform semantics for configurations that predate snapshots. The
+	// exact source-native content must match; unmatched configurations remain
+	// unmanaged and therefore keep their raw metric keys.
+	var existingDeviceID uuid.UUID
+	if lookupErr := s.db.QueryRow(ctx, `SELECT device_id FROM device_source_refs WHERE data_source_id=$1 AND external_key=$2 AND adapter_code='lorawan_v2'`, source.ID, gateway.SN).Scan(&existingDeviceID); lookupErr == nil {
+		for index := 1; index <= gateway.NodeCount; index++ {
+			payload, readErr := client.request(ctx, http.MethodGet, "/device/"+url.PathEscape(gateway.SN)+"/node/"+strconv.Itoa(index)+"/sensor_config/latest", url.Values{}, nil)
+			if readErr == nil {
+				_, _ = s.describeLoRaWANV2NodeConfig(ctx, existingDeviceID, index, payload)
+			}
+		}
+	}
 	specs, err := loraWANV2DiscoverStreams(ctx, client, gateway)
 	if err != nil {
 		return LoRaWANV2GatewaySyncResult{}, err
 	}
 
+	return s.persistLoRaWANV2Gateway(ctx, source, gateway, specs, true, actorID)
+}
+
+func (s *Service) persistLoRaWANV2Gateway(ctx context.Context, source sqlc.DataSource, gateway LoRaWANV2Gateway, specs []loraWANV2StreamSpec, catalogComplete bool, actorID uuid.UUID) (LoRaWANV2GatewaySyncResult, error) {
 	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return LoRaWANV2GatewaySyncResult{}, apperr.Wrap(apperr.KindInternal, "begin lorawan_v2 gateway sync", err)
@@ -527,13 +578,25 @@ func (s *Service) syncLoRaWANV2Gateway(ctx context.Context, source sqlc.DataSour
 	if lookupErr == nil {
 		device, err = q.GetDevice(ctx, ref.DeviceID)
 		if err == nil {
-			device, err = q.UpdateDevice(ctx, sqlc.UpdateDeviceParams{ID: device.ID, ProductID: optionalString(loraWANV2ProductID), Name: name, Status: device.Status})
+			device, err = q.UpdateDevice(ctx, sqlc.UpdateDeviceParams{ID: device.ID, ProductID: nil, Name: name, Status: device.Status})
+			if err == nil {
+				_, err = tx.Exec(ctx, `UPDATE devices SET serial_no=$2,updated_at=now() WHERE id=$1`, device.ID, gateway.SN)
+			}
+			if err == nil {
+				device, err = q.GetDevice(ctx, device.ID)
+			}
 		}
 		if err != nil {
 			return LoRaWANV2GatewaySyncResult{}, mapWriteError(err, "update lorawan_v2 gateway")
 		}
 	} else if errors.Is(lookupErr, pgx.ErrNoRows) {
-		device, err = q.CreateDevice(ctx, sqlc.CreateDeviceParams{ProductID: optionalString(loraWANV2ProductID), Name: name})
+		device, err = q.CreateDevice(ctx, sqlc.CreateDeviceParams{ProductID: nil, Name: name})
+		if err == nil {
+			_, err = tx.Exec(ctx, `UPDATE devices SET serial_no=$2,updated_at=now() WHERE id=$1`, device.ID, gateway.SN)
+		}
+		if err == nil {
+			device, err = q.GetDevice(ctx, device.ID)
+		}
 		if err != nil {
 			return LoRaWANV2GatewaySyncResult{}, mapWriteError(err, "create lorawan_v2 gateway")
 		}
@@ -553,6 +616,7 @@ func (s *Service) syncLoRaWANV2Gateway(ctx context.Context, source sqlc.DataSour
 	if err := tx.QueryRow(ctx, `SELECT device_id, data_source_id, external_key, status, synced_at FROM device_source_refs WHERE data_source_id=$1 AND external_key=$2 AND adapter_code='lorawan_v2'`, source.ID, gateway.SN).Scan(&ref.DeviceID, &ref.DataSourceID, &ref.GatewaySN, &ref.Status, &ref.SyncedAt); err != nil {
 		return LoRaWANV2GatewaySyncResult{}, apperr.Wrap(apperr.KindInternal, "read lorawan_v2 gateway reference", err)
 	}
+	specs = s.enrichLoRaWANV2StreamSpecs(ctx, device.ID, specs)
 	streams := make([]SyncedDataStream, 0, len(specs))
 	bindings := make([]DataStreamBinding, 0, len(specs))
 	for _, spec := range specs {
@@ -571,13 +635,15 @@ func (s *Service) syncLoRaWANV2Gateway(ctx context.Context, source sqlc.DataSour
 	for _, spec := range specs {
 		activeCodes = append(activeCodes, spec.Code)
 	}
-	if _, err := tx.Exec(ctx, `WITH stale AS (
+	if catalogComplete {
+		if _, err := tx.Exec(ctx, `WITH stale AS (
   SELECT ds.id FROM data_streams ds JOIN data_stream_bindings b ON b.data_stream_id=ds.id
   WHERE ds.device_id=$1 AND b.data_source_id=$2 AND b.adapter_code='lorawan_v2' AND b.status='active'
    AND b.adapter_config_json ? 'node_index' AND NOT (ds.code=ANY($3::text[]))
  ), disabled AS (UPDATE data_stream_bindings SET status='disabled',updated_at=now() WHERE data_stream_id IN (SELECT id FROM stale) AND status='active' RETURNING data_stream_id)
- UPDATE data_streams SET status='disabled',updated_at=now() WHERE id IN (SELECT data_stream_id FROM disabled)`, device.ID, source.ID, activeCodes); err != nil {
-		return LoRaWANV2GatewaySyncResult{}, apperr.Wrap(apperr.KindInternal, "disable removed node metrics", err)
+	 UPDATE data_streams SET status='disabled',updated_at=now() WHERE id IN (SELECT data_stream_id FROM disabled)`, device.ID, source.ID, activeCodes); err != nil {
+			return LoRaWANV2GatewaySyncResult{}, apperr.Wrap(apperr.KindInternal, "disable removed node metrics", err)
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -593,7 +659,7 @@ func loraWANV2DiscoverStreams(ctx context.Context, client *loraWANV2Client, gate
 	}
 	specs := []loraWANV2StreamSpec{}
 	seen := map[string]string{}
-	appendMetrics := func(node *int, units map[string]string) error {
+	appendMetrics := func(node *int, units map[string]string, configHash string) error {
 		keys := make([]string, 0, len(units))
 		for key := range units {
 			keys = append(keys, key)
@@ -610,7 +676,7 @@ func loraWANV2DiscoverStreams(ctx context.Context, client *loraWANV2Client, gate
 			}
 			seen[code] = key
 			cfg, _ := json.Marshal(loraWANV2TelemetryConfig{GatewaySN: gateway.SN, NodeIndex: node, Metric: key})
-			specs = append(specs, loraWANV2StreamSpec{Code: code, Name: name + " · " + key, Unit: units[key], AdapterConfig: cfg})
+			specs = append(specs, loraWANV2StreamSpec{Code: code, Name: name + " · " + key, Unit: units[key], AdapterConfig: cfg, ConfigHash: configHash})
 		}
 		return nil
 	}
@@ -629,15 +695,15 @@ func loraWANV2DiscoverStreams(ctx context.Context, client *loraWANV2Client, gate
 			}
 		}
 	}
-	if err := appendMetrics(nil, gatewayMetrics); err != nil {
+	if err := appendMetrics(nil, gatewayMetrics, ""); err != nil {
 		return nil, err
 	}
 	for index := 1; index <= gateway.NodeCount; index++ {
-		units, err := loraWANV2NodeMetricUnits(ctx, client, gateway.SN, index)
+		units, configHash, err := loraWANV2NodeMetricCatalog(ctx, client, gateway.SN, index)
 		if err != nil {
 			return nil, apperr.Wrap(apperr.KindDataSource, "read node "+strconv.Itoa(index)+" sensor configuration", err)
 		}
-		if err := appendMetrics(&index, units); err != nil {
+		if err := appendMetrics(&index, units, configHash); err != nil {
 			return nil, err
 		}
 	}
@@ -645,14 +711,35 @@ func loraWANV2DiscoverStreams(ctx context.Context, client *loraWANV2Client, gate
 }
 
 func loraWANV2NodeMetricUnits(ctx context.Context, client *loraWANV2Client, gatewaySN string, nodeIndex int) (map[string]string, error) {
+	units, _, err := loraWANV2NodeMetricCatalog(ctx, client, gatewaySN, nodeIndex)
+	return units, err
+}
+
+func loraWANV2NodeMetricCatalog(ctx context.Context, client *loraWANV2Client, gatewaySN string, nodeIndex int) (map[string]string, string, error) {
 	payload, err := client.request(ctx, http.MethodGet, "/device/"+url.PathEscape(gatewaySN)+"/node/"+strconv.Itoa(nodeIndex)+"/sensor_config/latest", url.Values{}, nil)
 	if errors.Is(err, errLoRaWANV2SensorConfigNotFound) {
-		return map[string]string{}, nil
+		return map[string]string{}, "", nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return parseLoRaWANV2MetricUnits(payload)
+	units, err := parseLoRaWANV2MetricUnits(payload)
+	if err != nil {
+		return nil, "", err
+	}
+	var config struct {
+		Content json.RawMessage `json:"content"`
+	}
+	if json.Unmarshal(payload, &config) != nil {
+		return units, "", nil
+	}
+	var normalized any
+	if json.Unmarshal(config.Content, &normalized) != nil {
+		return units, "", nil
+	}
+	raw, _ := json.Marshal(normalized)
+	sum := sha256.Sum256(raw)
+	return units, hex.EncodeToString(sum[:]), nil
 }
 
 func parseLoRaWANV2MetricUnits(payload json.RawMessage) (map[string]string, error) {

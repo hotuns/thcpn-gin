@@ -13,7 +13,9 @@ type SyncQueue interface {
 
 func (s *Service) SetSyncClaimEnsurer(ensurer interface {
 	EnsureEligible(context.Context) (int64, error)
-})                                              { s.claimEnsurer = ensurer }
+}) {
+	s.claimEnsurer = ensurer
+}
 func (s *Service) SetSyncQueue(queue SyncQueue) { s.syncQueue = queue }
 
 func (s *Service) StartSourceSync(ctx context.Context, sourceID, actorID uuid.UUID) (SourceOperation, error) {
@@ -27,7 +29,7 @@ func (s *Service) StartSourceSync(ctx context.Context, sourceID, actorID uuid.UU
 	if source.Status != "active" {
 		return SourceOperation{}, apperr.New(apperr.KindInvalidArgument, "data source is disabled")
 	}
-	if source.SourceFamily == nil || (*source.SourceFamily != "thcpn" && *source.SourceFamily != "carbon" && *source.SourceFamily != "lorawan_v2") {
+	if source.SourceFamily == nil || (*source.SourceFamily != "thcpn" && *source.SourceFamily != "carbon") {
 		return SourceOperation{}, apperr.New(apperr.KindInvalidArgument, "source does not support device sync")
 	}
 	id, err := s.beginSourceOperation(ctx, sourceID, nil, "sync_all", "queued", map[string]string{}, actorID)
@@ -64,8 +66,6 @@ func (s *Service) RunSourceSync(ctx context.Context, id uuid.UUID) error {
 			result, err = s.SyncAllTHCPNDevices(ctx, SyncAllTHCPNDevicesInput{DataSourceID: sourceID, ActorUserID: actorID})
 		case "carbon":
 			result, err = s.SyncAllCarbonDevices(ctx, SyncAllCarbonDevicesInput{DataSourceID: sourceID, ActorUserID: actorID})
-		case "lorawan_v2":
-			result, err = s.SyncAllLoRaWANV2Gateways(ctx, SyncAllLoRaWANV2GatewaysInput{DataSourceID: sourceID, ActorUserID: actorID})
 		default:
 			err = apperr.New(apperr.KindInvalidArgument, "source does not support device sync")
 		}

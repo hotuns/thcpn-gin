@@ -51,6 +51,11 @@ const initialValues = {
   wait_time: 60,
   metrics: [],
   params_json: '{\n  "command": "",\n  "wait_time": 60,\n  "contents": []\n}',
+  lora_enabled: false,
+  lora_wait_time: 60,
+  lora_mode: "visual",
+  lora_items: [],
+  lora_content_json: "[]",
 };
 
 type JsonObject = Record<string, unknown>;
@@ -75,6 +80,112 @@ function parseParamsJSON(raw: unknown): JsonObject {
     throw new Error("params must be an object");
   }
   return parsed as JsonObject;
+}
+
+type LoRaVisualItem = {
+  kind: "ad" | "485" | "sdi" | "iic";
+  port?: number;
+  command?: string;
+  address?: string;
+  model?: string;
+  mappings?: Array<{
+    key?: string;
+    rule?: string;
+    unit?: string;
+    index?: string;
+  }>;
+};
+
+function splitLoRaContent(content: unknown): LoRaVisualItem[] {
+  if (!Array.isArray(content)) return [];
+  return content.flatMap<LoRaVisualItem>((raw) => {
+    if (!Array.isArray(raw) || typeof raw[0] !== "string") return [];
+    const kind = raw[0] as LoRaVisualItem["kind"];
+    const inner = Array.isArray(raw[1]) ? raw[1] : [];
+    if (kind === "ad")
+      return [
+        {
+          kind,
+          port: Number(raw[2] ?? 0),
+          mappings: (Array.isArray(raw[1]) ? raw[1] : []).map((item) => ({
+            key: item?.[0],
+            rule: item?.[1],
+            unit: item?.[2],
+          })),
+        },
+      ];
+    if (kind === "485")
+      return [
+        {
+          kind,
+          command: String(inner[0] ?? ""),
+          mappings: (Array.isArray(inner[1]) ? inner[1] : []).map((item) => ({
+            key: item?.[0],
+            rule: item?.[1],
+            unit: item?.[2],
+          })),
+        },
+      ];
+    if (kind === "sdi")
+      return [
+        {
+          kind,
+          address: String(inner[0] ?? ""),
+          mappings: (Array.isArray(inner[1]) ? inner[1] : []).map((item) => ({
+            key: item?.[0],
+            index: String(item?.[1] ?? ""),
+          })),
+        },
+      ];
+    if (kind === "iic")
+      return [
+        {
+          kind,
+          model: String(inner[0] ?? ""),
+          address: String(inner[1] ?? ""),
+          mappings: (Array.isArray(inner[2]) ? inner[2] : []).map((key) => ({
+            key: String(key),
+          })),
+        },
+      ];
+    return [];
+  });
+}
+
+function buildLoRaContent(items: LoRaVisualItem[]): unknown[] {
+  return (items ?? []).map((item) => {
+    const mappings = item.mappings ?? [];
+    if (item.kind === "ad")
+      return [
+        "ad",
+        mappings.map((entry) => [entry.key, entry.rule, entry.unit ?? ""]),
+        Number(item.port ?? 0),
+      ];
+    if (item.kind === "485")
+      return [
+        "485",
+        [
+          item.command ?? "",
+          mappings.map((entry) => [entry.key, entry.rule, entry.unit ?? ""]),
+        ],
+      ];
+    if (item.kind === "sdi")
+      return [
+        "sdi",
+        [
+          item.address ?? "",
+          mappings.map((entry) => [entry.key, entry.index ?? ""]),
+        ],
+      ];
+    return [
+      "iic",
+      [
+        item.model ?? "",
+        item.address ?? "",
+        mappings.map((entry) => entry.key),
+      ],
+    ];
+  });
 }
 
 export function AdminSensorsPage() {
@@ -112,6 +223,11 @@ export function AdminSensorsPage() {
     const item = source;
     const params = (item?.params ?? {}) as JsonObject;
     const visual = splitParams(params);
+    const variants = ((item as unknown as JsonObject)?.variants ??
+      {}) as JsonObject;
+    const lora = (variants.lorawan_v2 ?? {}) as JsonObject;
+    const loraContent = Array.isArray(lora.content) ? lora.content : [];
+    const loraItems = splitLoRaContent(loraContent);
     form.setFieldsValue(
       item
         ? {
@@ -126,6 +242,14 @@ export function AdminSensorsPage() {
             wait_time: visual.wait_time,
             metrics: visual.metrics,
             params_json: JSON.stringify(params, null, 2),
+            lora_enabled: Boolean(variants.lorawan_v2),
+            lora_wait_time: lora.wait_time ?? 60,
+            lora_mode:
+              loraContent.length > 0 && loraItems.length !== loraContent.length
+                ? "json"
+                : "visual",
+            lora_items: loraItems,
+            lora_content_json: JSON.stringify(loraContent, null, 2),
           }
         : initialValues,
     );
@@ -160,6 +284,22 @@ export function AdminSensorsPage() {
           contents: values.metrics ?? [],
         };
       }
+      let loraContent: unknown[] = [];
+      if (values.lora_enabled) {
+        try {
+          loraContent =
+            values.lora_mode === "json"
+              ? JSON.parse(String(values.lora_content_json ?? "[]"))
+              : buildLoRaContent(values.lora_items ?? []);
+        } catch {
+          setFeedback("LoRaWAN V2 配置不是有效的 JSON 数组");
+          return;
+        }
+        if (!Array.isArray(loraContent) || !loraContent.length) {
+          setFeedback("请至少添加一个 LoRaWAN V2 协议项");
+          return;
+        }
+      }
       const payload: SensorTemplateRequest = {
         sensor_type: values.sensor_type.trim(),
         description: values.description?.trim() ?? "",
@@ -170,6 +310,28 @@ export function AdminSensorsPage() {
           .map((value: string | number) => Number(value))
           .filter(Number.isInteger),
         params,
+        metrics: (Array.isArray(params.contents)
+          ? params.contents
+          : []) as JsonObject[],
+        variants: {
+          thcpn: {
+            port: values.port?.trim() ?? "",
+            port_num: values.port_num ?? 0,
+            port_nums: (values.port_nums ?? [])
+              .map(Number)
+              .filter(Number.isInteger),
+            driver: values.driver?.trim() ?? "",
+            params,
+          },
+          ...(values.lora_enabled
+            ? {
+                lorawan_v2: {
+                  wait_time: Number(values.lora_wait_time ?? 0),
+                  content: loraContent,
+                },
+              }
+            : {}),
+        },
         status: values.status,
       };
       setBusy(true);
@@ -263,10 +425,23 @@ export function AdminSensorsPage() {
         eyebrow="Assets / sensor templates"
         title="传感器模板"
         description="维护平台统一的传感器协议与指标模板。模板修改只影响后续添加，不会自动改写设备已有配置。"
-        actions={<Space>
-          <Button icon={<Download size={14} />} onClick={() => setImportOpen(true)}>从数据源导入</Button>
-          <Button type="primary" icon={<Plus size={14} />} onClick={() => openEditor("create")}>新增模板</Button>
-        </Space>}
+        actions={
+          <Space>
+            <Button
+              icon={<Download size={14} />}
+              onClick={() => setImportOpen(true)}
+            >
+              从数据源导入
+            </Button>
+            <Button
+              type="primary"
+              icon={<Plus size={14} />}
+              onClick={() => openEditor("create")}
+            >
+              新增模板
+            </Button>
+          </Space>
+        }
       />
       <Panel>
         <div className="admin-list-toolbar">
@@ -346,8 +521,7 @@ export function AdminSensorsPage() {
               {
                 title: "端口",
                 width: 120,
-                render: (_, item) =>
-                  `${item.port || "—"} · ${item.port_num}`,
+                render: (_, item) => `${item.port || "—"} · ${item.port_num}`,
               },
               {
                 title: "可选编号",
@@ -370,6 +544,21 @@ export function AdminSensorsPage() {
                     {!item.metrics.length && "—"}
                   </Space>
                 ),
+              },
+              {
+                title: "数据源协议",
+                width: 170,
+                render: (_, item) => {
+                  const variants = item.variants as Record<string, unknown>;
+                  return (
+                    <Space size={4} wrap>
+                      {variants.thcpn ? <Tag>THCPN</Tag> : null}
+                      {variants.lorawan_v2 ? (
+                        <Tag color="cyan">LoRa V2</Tag>
+                      ) : null}
+                    </Space>
+                  );
+                },
               },
               {
                 title: "状态",
@@ -424,9 +613,7 @@ export function AdminSensorsPage() {
         )}
       </Panel>
       <Drawer
-        title={
-          editor?.mode === "edit" ? "编辑传感器模板" : "新增传感器模板"
-        }
+        title={editor?.mode === "edit" ? "编辑传感器模板" : "新增传感器模板"}
         open={Boolean(editor)}
         width={920}
         onClose={() => setEditor(null)}
@@ -479,8 +666,10 @@ export function AdminSensorsPage() {
           <div className="sensor-template-params">
             <div className="visual-subsection-head">
               <div>
-                <strong>协议参数与指标</strong>
-                <span>可视化编辑常用字段，JSON 模式维护完整原文</span>
+                <strong>公共指标 / THCPN 配置</strong>
+                <span>
+                  指标名称与单位供所有数据源共享；命令、解码和端口用于 THCPN
+                </span>
               </div>
             </div>
             <Tabs
@@ -503,14 +692,19 @@ export function AdminSensorsPage() {
                       <div className="visual-subsection-head">
                         <div>
                           <strong>数据指标</strong>
-                          <span>配置 Key、名称、类型、单位、范围和解码规则</span>
+                          <span>
+                            配置 Key、名称、类型、单位、范围和解码规则
+                          </span>
                         </div>
                       </div>
                       <Form.List name="metrics">
                         {(fields, { add, remove, move }) => (
                           <div className="metric-editor-list">
                             {fields.map((field, index) => (
-                              <div className="metric-editor-row" key={field.key}>
+                              <div
+                                className="metric-editor-row"
+                                key={field.key}
+                              >
                                 <div className="metric-editor-index">
                                   {index + 1}
                                 </div>
@@ -518,13 +712,18 @@ export function AdminSensorsPage() {
                                   <Form.Item
                                     name={[field.name, "key"]}
                                     label="Key"
-                                    rules={[{ required: true, message: "必填" }]}
+                                    rules={[
+                                      { required: true, message: "必填" },
+                                    ]}
                                   >
                                     <Input />
                                   </Form.Item>
                                   <Form.Item
                                     name={[field.name, "info", "name"]}
                                     label="名称"
+                                    rules={[
+                                      { required: true, message: "必填" },
+                                    ]}
                                   >
                                     <Input />
                                   </Form.Item>
@@ -642,6 +841,494 @@ export function AdminSensorsPage() {
                 },
               ]}
             />
+            <div className="visual-subsection-head">
+              <div>
+                <strong>LoRaWAN V2 配置</strong>
+                <span>
+                  使用上游原生 ad / 485 / sdi / iic 数组；指标 Key
+                  必须与公共指标一致
+                </span>
+              </div>
+              <Form.Item name="lora_enabled" noStyle>
+                <Select
+                  style={{ width: 120 }}
+                  options={[
+                    { value: false, label: "未配置" },
+                    { value: true, label: "启用" },
+                  ]}
+                />
+              </Form.Item>
+            </div>
+            <Form.Item
+              noStyle
+              shouldUpdate={(before, after) =>
+                before.lora_enabled !== after.lora_enabled
+              }
+            >
+              {({ getFieldValue }) =>
+                getFieldValue("lora_enabled") ? (
+                  <>
+                    <Form.Item
+                      name="lora_wait_time"
+                      label="建议等待时间（秒）"
+                      rules={[{ required: true }]}
+                    >
+                      <InputNumber
+                        min={0}
+                        max={65535}
+                        style={{ width: "100%" }}
+                      />
+                    </Form.Item>
+                    <Form.Item name="lora_mode" hidden>
+                      <Input />
+                    </Form.Item>
+                    <Form.Item
+                      noStyle
+                      shouldUpdate={(before, after) =>
+                        before.lora_mode !== after.lora_mode
+                      }
+                    >
+                      {({ getFieldValue, setFieldValue }) => (
+                        <Tabs
+                          activeKey={getFieldValue("lora_mode") ?? "visual"}
+                          onChange={(key) => {
+                            try {
+                              if (key === "json") {
+                                setFieldValue(
+                                  "lora_content_json",
+                                  JSON.stringify(
+                                    buildLoRaContent(
+                                      getFieldValue("lora_items") ?? [],
+                                    ),
+                                    null,
+                                    2,
+                                  ),
+                                );
+                              } else {
+                                const parsed = JSON.parse(
+                                  String(
+                                    getFieldValue("lora_content_json") ?? "[]",
+                                  ),
+                                );
+                                setFieldValue(
+                                  "lora_items",
+                                  splitLoRaContent(parsed),
+                                );
+                              }
+                              setFieldValue("lora_mode", key);
+                            } catch {
+                              setFeedback("请先修正 LoRaWAN V2 JSON 配置");
+                            }
+                          }}
+                          items={[
+                            {
+                              key: "visual",
+                              label: "可视化配置",
+                              children: (
+                                <Form.Item noStyle shouldUpdate>
+                                  {({ getFieldValue }) => {
+                                    const metrics = (getFieldValue("metrics") ??
+                                      []) as Array<JsonObject>;
+                                    const metricOptions = metrics
+                                      .map((metric) => ({
+                                        value: String(metric.key ?? ""),
+                                        label: String(
+                                          (
+                                            metric.info as
+                                              JsonObject | undefined
+                                          )?.name ??
+                                            metric.key ??
+                                            "",
+                                        ),
+                                      }))
+                                      .filter((item) => item.value);
+                                    return (
+                                      <Form.List name="lora_items">
+                                        {(fields, { add, remove, move }) => (
+                                          <div className="lora-protocol-list">
+                                            {fields.map((field, index) => {
+                                              const kind = getFieldValue([
+                                                "lora_items",
+                                                field.name,
+                                                "kind",
+                                              ]) as LoRaVisualItem["kind"];
+                                              return (
+                                                <div
+                                                  className="lora-protocol-item"
+                                                  key={field.key}
+                                                >
+                                                  <div className="lora-protocol-item-head">
+                                                    <strong>
+                                                      协议项 {index + 1}
+                                                    </strong>
+                                                    <Space size={2}>
+                                                      <Button
+                                                        type="text"
+                                                        icon={
+                                                          <ChevronUp
+                                                            size={13}
+                                                          />
+                                                        }
+                                                        disabled={index === 0}
+                                                        onClick={() =>
+                                                          move(index, index - 1)
+                                                        }
+                                                      />
+                                                      <Button
+                                                        type="text"
+                                                        icon={
+                                                          <ChevronDown
+                                                            size={13}
+                                                          />
+                                                        }
+                                                        disabled={
+                                                          index ===
+                                                          fields.length - 1
+                                                        }
+                                                        onClick={() =>
+                                                          move(index, index + 1)
+                                                        }
+                                                      />
+                                                      <Button
+                                                        type="text"
+                                                        danger
+                                                        icon={
+                                                          <Trash2 size={13} />
+                                                        }
+                                                        onClick={() =>
+                                                          remove(index)
+                                                        }
+                                                      />
+                                                    </Space>
+                                                  </div>
+                                                  <div className="config-form-grid config-form-grid-3">
+                                                    <Form.Item
+                                                      name={[
+                                                        field.name,
+                                                        "kind",
+                                                      ]}
+                                                      label="协议类型"
+                                                      rules={[
+                                                        {
+                                                          required: true,
+                                                          message: "请选择协议",
+                                                        },
+                                                      ]}
+                                                    >
+                                                      <Select
+                                                        options={[
+                                                          {
+                                                            value: "ad",
+                                                            label: "AD 模拟量",
+                                                          },
+                                                          {
+                                                            value: "485",
+                                                            label: "RS-485",
+                                                          },
+                                                          {
+                                                            value: "sdi",
+                                                            label: "SDI-12",
+                                                          },
+                                                          {
+                                                            value: "iic",
+                                                            label: "IIC",
+                                                          },
+                                                        ]}
+                                                      />
+                                                    </Form.Item>
+                                                    {kind === "ad" ? (
+                                                      <Form.Item
+                                                        name={[
+                                                          field.name,
+                                                          "port",
+                                                        ]}
+                                                        label="AD 端口"
+                                                        rules={[
+                                                          {
+                                                            required: true,
+                                                            message:
+                                                              "请输入端口",
+                                                          },
+                                                        ]}
+                                                      >
+                                                        <InputNumber
+                                                          min={0}
+                                                          precision={0}
+                                                          style={{
+                                                            width: "100%",
+                                                          }}
+                                                        />
+                                                      </Form.Item>
+                                                    ) : null}
+                                                    {kind === "485" ? (
+                                                      <Form.Item
+                                                        name={[
+                                                          field.name,
+                                                          "command",
+                                                        ]}
+                                                        label="请求命令"
+                                                        rules={[
+                                                          {
+                                                            required: true,
+                                                            message:
+                                                              "请输入命令",
+                                                          },
+                                                        ]}
+                                                      >
+                                                        <Input className="code-input" />
+                                                      </Form.Item>
+                                                    ) : null}
+                                                    {kind === "sdi" ? (
+                                                      <Form.Item
+                                                        name={[
+                                                          field.name,
+                                                          "address",
+                                                        ]}
+                                                        label="SDI 地址"
+                                                        rules={[
+                                                          {
+                                                            required: true,
+                                                            message:
+                                                              "请输入地址",
+                                                          },
+                                                        ]}
+                                                      >
+                                                        <Input />
+                                                      </Form.Item>
+                                                    ) : null}
+                                                    {kind === "iic" ? (
+                                                      <>
+                                                        <Form.Item
+                                                          name={[
+                                                            field.name,
+                                                            "model",
+                                                          ]}
+                                                          label="IIC 型号"
+                                                          rules={[
+                                                            {
+                                                              required: true,
+                                                              message:
+                                                                "请输入型号",
+                                                            },
+                                                          ]}
+                                                        >
+                                                          <Input />
+                                                        </Form.Item>
+                                                        <Form.Item
+                                                          name={[
+                                                            field.name,
+                                                            "address",
+                                                          ]}
+                                                          label="IIC 地址"
+                                                          rules={[
+                                                            {
+                                                              required: true,
+                                                              message:
+                                                                "请输入地址",
+                                                            },
+                                                          ]}
+                                                        >
+                                                          <Input placeholder="例如 0x44" />
+                                                        </Form.Item>
+                                                      </>
+                                                    ) : null}
+                                                  </div>
+                                                  {kind ? (
+                                                    <Form.List
+                                                      name={[
+                                                        field.name,
+                                                        "mappings",
+                                                      ]}
+                                                    >
+                                                      {(
+                                                        mappingFields,
+                                                        actions,
+                                                      ) => (
+                                                        <div className="lora-mapping-list">
+                                                          {mappingFields.map(
+                                                            (mapping) => (
+                                                              <div
+                                                                className="lora-mapping-row"
+                                                                key={
+                                                                  mapping.key
+                                                                }
+                                                              >
+                                                                <Form.Item
+                                                                  name={[
+                                                                    mapping.name,
+                                                                    "key",
+                                                                  ]}
+                                                                  label="指标"
+                                                                  rules={[
+                                                                    {
+                                                                      required: true,
+                                                                      message:
+                                                                        "请选择指标",
+                                                                    },
+                                                                  ]}
+                                                                >
+                                                                  <Select
+                                                                    showSearch
+                                                                    options={
+                                                                      metricOptions
+                                                                    }
+                                                                  />
+                                                                </Form.Item>
+                                                                {kind ===
+                                                                  "ad" ||
+                                                                kind ===
+                                                                  "485" ? (
+                                                                  <>
+                                                                    <Form.Item
+                                                                      name={[
+                                                                        mapping.name,
+                                                                        "rule",
+                                                                      ]}
+                                                                      label="解析规则"
+                                                                      rules={[
+                                                                        {
+                                                                          required: true,
+                                                                          message:
+                                                                            "请输入规则",
+                                                                        },
+                                                                      ]}
+                                                                    >
+                                                                      <Input className="code-input" />
+                                                                    </Form.Item>
+                                                                    <Form.Item
+                                                                      name={[
+                                                                        mapping.name,
+                                                                        "unit",
+                                                                      ]}
+                                                                      label="单位"
+                                                                    >
+                                                                      <Input />
+                                                                    </Form.Item>
+                                                                  </>
+                                                                ) : null}
+                                                                {kind ===
+                                                                "sdi" ? (
+                                                                  <Form.Item
+                                                                    name={[
+                                                                      mapping.name,
+                                                                      "index",
+                                                                    ]}
+                                                                    label="返回索引"
+                                                                    rules={[
+                                                                      {
+                                                                        required: true,
+                                                                        message:
+                                                                          "请输入索引",
+                                                                      },
+                                                                    ]}
+                                                                  >
+                                                                    <Input />
+                                                                  </Form.Item>
+                                                                ) : null}
+                                                                <Button
+                                                                  type="text"
+                                                                  danger
+                                                                  icon={
+                                                                    <Trash2
+                                                                      size={13}
+                                                                    />
+                                                                  }
+                                                                  onClick={() =>
+                                                                    actions.remove(
+                                                                      mapping.name,
+                                                                    )
+                                                                  }
+                                                                />
+                                                              </div>
+                                                            ),
+                                                          )}
+                                                          <Button
+                                                            type="dashed"
+                                                            block
+                                                            onClick={() =>
+                                                              actions.add({
+                                                                key: "",
+                                                                rule: "",
+                                                                unit: "",
+                                                                index: "",
+                                                              })
+                                                            }
+                                                          >
+                                                            添加指标映射
+                                                          </Button>
+                                                        </div>
+                                                      )}
+                                                    </Form.List>
+                                                  ) : (
+                                                    <Alert
+                                                      type="info"
+                                                      message="请先选择协议类型"
+                                                    />
+                                                  )}
+                                                </div>
+                                              );
+                                            })}
+                                            <Button
+                                              type="dashed"
+                                              block
+                                              icon={<Plus size={14} />}
+                                              onClick={() =>
+                                                add({
+                                                  kind: "485",
+                                                  command: "",
+                                                  mappings: [],
+                                                })
+                                              }
+                                            >
+                                              添加协议项
+                                            </Button>
+                                          </div>
+                                        )}
+                                      </Form.List>
+                                    );
+                                  }}
+                                </Form.Item>
+                              ),
+                            },
+                            {
+                              key: "json",
+                              label: "高级 JSON",
+                              children: (
+                                <Form.Item
+                                  name="lora_content_json"
+                                  label="LoRaWAN V2 原生配置"
+                                  rules={[
+                                    { required: true },
+                                    {
+                                      validator: async (_, value) => {
+                                        const parsed = JSON.parse(
+                                          String(value ?? "[]"),
+                                        );
+                                        if (
+                                          !Array.isArray(parsed) ||
+                                          !parsed.length
+                                        )
+                                          throw new Error("必须是非空数组");
+                                      },
+                                    },
+                                  ]}
+                                >
+                                  <Input.TextArea
+                                    rows={12}
+                                    className="mono"
+                                    spellCheck={false}
+                                  />
+                                </Form.Item>
+                              ),
+                            },
+                          ]}
+                        />
+                      )}
+                    </Form.Item>
+                  </>
+                ) : null
+              }
+            </Form.Item>
           </div>
         </Form>
       </Drawer>
@@ -666,7 +1353,13 @@ export function AdminSensorsPage() {
           loading={sources.isLoading}
           value={importSource}
           placeholder="选择 THCPN 数据源"
-          options={((sources.data?.items ?? []) as Array<{ id: string; name: string; status?: string }>).map((source) => ({
+          options={(
+            (sources.data?.items ?? []) as Array<{
+              id: string;
+              name: string;
+              status?: string;
+            }>
+          ).map((source) => ({
             value: source.id,
             label: `${source.name}${source.status === "disabled" ? "（已停用）" : ""}`,
           }))}

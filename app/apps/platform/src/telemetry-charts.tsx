@@ -19,6 +19,28 @@ import { useChartZoom } from "./chart-zoom";
 
 const chartColors = ["#1769e0", "#16845b", "#d36b12", "#b13e4a", "#6a5ab5"];
 const windDirectionLabel = (value: number) => ["北", "东北", "东", "东南", "南", "西南", "西", "西北"][Math.round((value % 360) / 45) % 8];
+const normalizedCode = (series: TelemetrySeries) => series.code.trim().toLowerCase();
+const isWindSpeed = (series: TelemetrySeries) => ["wind_sp", "wind_speed"].includes(normalizedCode(series));
+const isWindDirection = (series: TelemetrySeries) => ["wind_d", "wind_direction"].includes(normalizedCode(series));
+
+type WindArrowProps = {
+  cx?: number;
+  cy?: number;
+  index?: number;
+  payload?: { windDirection?: number };
+  stroke?: string;
+};
+
+function WindArrow({ cx, cy, payload, stroke = "var(--chart)" }: WindArrowProps) {
+  const direction = payload?.windDirection;
+  if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(direction)) return <g />;
+  return (
+    <g transform={`translate(${cx} ${cy}) rotate(${direction})`} aria-label={`风向 ${direction}° ${windDirectionLabel(direction!)}`}>
+      <path d="M0 5V-5M0-5L-3-1M0-5L3-1" fill="none" stroke="var(--surface)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M0 5V-5M0-5L-3-1M0-5L3-1" fill="none" stroke={stroke} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </g>
+  );
+}
 
 export function TelemetryCharts({
   series,
@@ -37,14 +59,19 @@ export function TelemetryCharts({
   const available = series.filter((item) =>
     item.points.some((point) => Number.isFinite(point.value)),
   );
+  const windDirectionSeries = available.find(isWindDirection);
+  const windSpeedSeries = available.find(isWindSpeed);
+  const chartSeries = windDirectionSeries && windSpeedSeries
+    ? available.filter((item) => !isWindDirection(item))
+    : available;
   const [mode, setMode] = useState<"compare" | "separate">(
     "separate",
   );
   const [hidden, setHidden] = useState<string[]>([]);
   const visible = compact
-    ? available
-    : available.filter((item) => !hidden.includes(item.data_stream_id));
-  const activeMode = displayMode ?? (compact && available.length > 1 ? "compare" : mode);
+    ? chartSeries
+    : chartSeries.filter((item) => !hidden.includes(item.data_stream_id));
+  const activeMode = displayMode ?? (compact && chartSeries.length > 1 ? "compare" : mode);
   const toggle = (id: string) =>
     setHidden((current) =>
       current.includes(id)
@@ -61,7 +88,7 @@ export function TelemetryCharts({
               type="button"
               className={mode === "compare" ? "active" : ""}
               onClick={() => setMode("compare")}
-              disabled={available.length < 2}
+              disabled={chartSeries.length < 2}
             >
               <ChartNoAxesCombined size={13} />
               {t("platform:telemetry.compare")}
@@ -76,7 +103,7 @@ export function TelemetryCharts({
             </button>
           </div>
           <div className="chart-series-toggles" aria-label={t("platform:telemetry.visibleMetrics")}>
-            {available.map((item, index) => (
+            {chartSeries.map((item, index) => (
               <button
                 type="button"
                 key={item.data_stream_id}
@@ -91,17 +118,18 @@ export function TelemetryCharts({
                     background: chartColors[index % chartColors.length],
                   }}
                 />
-                {item.name}
+                {item.name}{isWindSpeed(item) && windDirectionSeries ? " · 风向" : ""}
                 <small>{item.unit}</small>
               </button>
             ))}
           </div>
         </div>
       )}
-      {activeMode === "compare" && available.length > 1 ? (
+      {activeMode === "compare" && chartSeries.length > 1 ? (
         <ComparisonChart
           series={visible}
-          allSeries={available}
+          allSeries={chartSeries}
+          windDirectionSeries={windDirectionSeries}
           startTime={startTime}
           endTime={endTime}
           zoomable={!compact}
@@ -112,7 +140,8 @@ export function TelemetryCharts({
             <TelemetryChart
               key={item.data_stream_id}
               series={item}
-              colorIndex={available.indexOf(item)}
+              colorIndex={chartSeries.indexOf(item)}
+              windDirectionSeries={isWindSpeed(item) ? windDirectionSeries : undefined}
               startTime={startTime}
               endTime={endTime}
               zoomable={!compact}
@@ -132,18 +161,25 @@ export function TelemetryCharts({
 function ComparisonChart({
   series,
   allSeries,
+  windDirectionSeries,
   startTime,
   endTime,
   zoomable,
 }: {
   series: TelemetrySeries[];
   allSeries: TelemetrySeries[];
+  windDirectionSeries?: TelemetrySeries;
   startTime: string;
   endTime: string;
   zoomable: boolean;
 }) {
   const { t, formatNumber, formatDateTime } = useLocale();
   const { data, stats } = useMemo(() => {
+    const directionByTime = new Map(
+      windDirectionSeries?.points
+        .filter((point) => Number.isFinite(point.value) && Number.isFinite(Date.parse(point.ts)))
+        .map((point) => [Date.parse(point.ts), point.value]) ?? [],
+    );
     const nextStats = new Map<string, { min: number; max: number }>();
     series.forEach((item) => {
       const values = item.points
@@ -168,6 +204,7 @@ function ComparisonChart({
           ? ((point.value - itemStats.min) / spread) * 100
           : 50;
         row[`${item.data_stream_id}:raw`] = point.value;
+        if (isWindSpeed(item)) row.windDirection = directionByTime.get(time) ?? "";
         rows.set(time, row);
       });
     });
@@ -175,7 +212,7 @@ function ComparisonChart({
       data: [...rows.values()].sort((a, b) => Number(a.time) - Number(b.time)),
       stats: nextStats,
     };
-  }, [series]);
+  }, [series, windDirectionSeries]);
   const returnedTotal = series.reduce(
     (count, item) => count + item.points.length,
     0,
@@ -278,6 +315,16 @@ function ComparisonChart({
                 isAnimationActive={false}
               />
             ))}
+            {series.filter(isWindSpeed).map((item) => (
+              <Scatter
+                key={`${item.data_stream_id}:wind-direction`}
+                dataKey={item.data_stream_id}
+                fill="transparent"
+                shape={(props) => <WindArrow {...props as WindArrowProps} stroke={chartColors[allSeries.indexOf(item) % chartColors.length]} />}
+                isAnimationActive={false}
+                legendType="none"
+              />
+            ))}
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -307,12 +354,14 @@ function ComparisonChart({
 function TelemetryChart({
   series,
   colorIndex,
+  windDirectionSeries,
   startTime,
   endTime,
   zoomable,
 }: {
   series: TelemetrySeries;
   colorIndex: number;
+  windDirectionSeries?: TelemetrySeries;
   startTime: string;
   endTime: string;
   zoomable: boolean;
@@ -326,16 +375,25 @@ function TelemetryChart({
     .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
   if (!source.length) return null;
   const step = Math.max(1, Math.ceil(source.length / 600));
+  const directionByTime = new Map(
+    windDirectionSeries?.points
+      .filter((point) => Number.isFinite(point.value) && Number.isFinite(Date.parse(point.ts)))
+      .map((point) => [Date.parse(point.ts), point.value]) ?? [],
+  );
   const data = source
     .filter((_, index) => index % step === 0 || index === source.length - 1)
-    .map((point) => ({ ...point, time: Date.parse(point.ts) }));
+    .map((point) => {
+      const time = Date.parse(point.ts);
+      return { ...point, time, windDirection: directionByTime.get(time) };
+    });
   const values = source.map((point) => point.value);
   const min = Math.min(...values);
   const max = Math.max(...values);
   const latest = source.at(-1);
   const domainPadding = Math.max((max - min) * 0.08, Math.abs(max || 1) * 0.01);
   const rainfall = series.code.trim().toLowerCase() === "rain";
-  const windDirection = series.code.trim().toLowerCase() === "wind_d";
+  const windDirection = isWindDirection(series);
+  const windSpeedWithDirection = isWindSpeed(series) && Boolean(windDirectionSeries);
   const zoom = useChartZoom(Date.parse(startTime), Date.parse(endTime));
   return (
     <section className={`telemetry-chart chart-color-${colorIndex % 5}`}>
@@ -428,10 +486,10 @@ function TelemetryChart({
               labelFormatter={(value) =>
                 formatDateTime(new Date(Number(value)), { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
               }
-              formatter={(value) => [
+              formatter={(value, _name, item) => [
                 windDirection
                   ? `${formatNumber(Number(value), { maximumFractionDigits: 2 })}° · ${windDirectionLabel(Number(value))}`
-                  : `${formatNumber(Number(value), { maximumFractionDigits: 2 })}${series.unit ? ` ${series.unit}` : ""}`,
+                  : `${formatNumber(Number(value), { maximumFractionDigits: 2 })}${series.unit ? ` ${series.unit}` : ""}${windSpeedWithDirection && Number.isFinite(item.payload.windDirection) ? ` · 风向 ${formatNumber(item.payload.windDirection, { maximumFractionDigits: 1 })}° ${windDirectionLabel(item.payload.windDirection)}` : ""}`,
                 series.name,
               ]}
               contentStyle={{
@@ -457,7 +515,9 @@ function TelemetryChart({
                 strokeWidth={2}
                 fill={`url(#telemetry-fill-${colorIndex})`}
                 dot={
-                  data.length <= 48
+                  windSpeedWithDirection
+                    ? (props) => <WindArrow {...props as WindArrowProps} />
+                    : data.length <= 48
                     ? { r: 2, fill: "white", strokeWidth: 1.5 }
                     : false
                 }
