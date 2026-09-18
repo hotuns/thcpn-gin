@@ -1,10 +1,25 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@500;600;700;800&display=swap");
+/* Shared interface typography. Keep body copy readable at normal browser zoom. */
+:root {
+  --font-family-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --font-family-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "PingFang SC", monospace;
+  --font-size-caption: 12px;
+  --font-size-small: 13px;
+  --font-size-body: 14px;
+  --font-size-section: 16px;
+  --font-size-subtitle: 18px;
+  --font-size-heading: 20px;
+  --font-size-title: 24px;
+  --font-size-display: 28px;
+  --font-size-hero: 32px;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+}
 
 :root {
   color-scheme: light;
-  font-family:
-    -apple-system, "SF Pro Text", "PingFang SC", "Noto Sans SC",
-    "Microsoft YaHei", sans-serif;
+  font-family: var(--font-family-ui);
   color: #17212b;
   background: #f4f7fa;
   font-synthesis: none;
@@ -61,6 +76,9 @@
   box-sizing: border-box;
 }
 body {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
+  line-height: 1.6;
   margin: 0;
   min-width: 320px;
   background: var(--canvas);
@@ -121,7 +139,7 @@ button {
   border: 0;
   outline: 0;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--font-size-small);
 }
 .ui-input input {
   padding: 0 12px 0 0;
@@ -140,8 +158,8 @@ button {
   display: grid;
   gap: 7px;
   color: var(--muted);
-  font-size: 10px;
-  font-weight: 650;
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
 }
 .ui-datetime > svg {
   margin-left: 12px;
@@ -151,7 +169,7 @@ button {
   flex: 1;
   padding: 0 8px;
   appearance: none;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-family-mono);
 }
 .ui-datetime input::-webkit-calendar-picker-indicator {
   display: none;
@@ -212,11 +230,11 @@ button {
   gap: 2px;
 }
 .ui-choice-card strong {
-  font-size: 11px;
+  font-size: var(--font-size-small);
 }
 .ui-choice-card small {
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--font-size-caption);
 }
 .ui-picker {
   min-width: 0;
@@ -226,8 +244,8 @@ button {
 }
 .ui-picker-label {
   color: var(--muted);
-  font-size: 10px;
-  font-weight: 650;
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
 }
 .ui-picker-trigger {
   width: 100%;
@@ -277,12 +295,12 @@ button {
   white-space: nowrap;
 }
 .ui-picker-trigger strong {
-  font-size: 11px;
+  font-size: var(--font-size-small);
 }
 .ui-picker-trigger small {
   color: var(--muted);
-  font-size: 9px;
-  font-weight: 400;
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-regular);
 }
 .ui-picker-trigger em {
   min-width: 22px;
@@ -292,9 +310,9 @@ button {
   color: var(--blue-dark);
   background: var(--blue-soft);
   border-radius: 999px;
-  font-size: 9px;
+  font-size: var(--font-size-caption);
   font-style: normal;
-  font-weight: 750;
+  font-weight: var(--font-weight-bold);
 }
 .ui-picker-trigger > svg {
   color: var(--muted);
@@ -326,7 +344,7 @@ button {
   padding: 7px 12px;
   color: var(--muted);
   border-bottom: 1px solid var(--soft-line);
-  font-size: 10px;
+  font-size: var(--font-size-caption);
 }
 .ui-picker-actions > span:last-child {
   display: flex;
@@ -340,8 +358,8 @@ button {
   border: 1px solid var(--line);
   border-radius: 6px;
   font: inherit;
-  font-size: 10px;
-  font-weight: 650;
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
 }
 .ui-picker-options {
   display: grid;
@@ -388,18 +406,16 @@ button {
   white-space: nowrap;
 }
 .ui-picker-options strong {
-  font-size: 11px;
+  font-size: var(--font-size-small);
 }
 .ui-picker-options small {
   color: var(--muted);
-  font:
-    9px "IBM Plex Mono",
-    monospace;
+  font: var(--font-size-caption) var(--font-family-mono);
 }
 .ui-picker-options > p {
   margin: 14px 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--font-size-caption);
   text-align: center;
 }
 .ui-picker-footer {
@@ -413,7 +429,7 @@ button {
 }
 .ui-picker-footer span {
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--font-size-caption);
 }
 .ui-picker-footer button {
   min-height: 28px;
@@ -423,8 +439,8 @@ button {
   border: 1px solid var(--blue);
   border-radius: 6px;
   font: inherit;
-  font-size: 10px;
-  font-weight: 700;
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
 }
 .ui-picker[data-mode="single"] .ui-picker-trigger {
   grid-template-columns: 34px minmax(0, 1fr) 28px;
@@ -441,17 +457,15 @@ a {
   background: var(--canvas);
 }
 .mono {
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 12px;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-small);
 }
 .muted {
   color: var(--muted);
 }
 .eyebrow {
   color: var(--blue);
-  font:
-    700 11px/1.2 "IBM Plex Mono",
-    monospace;
+  font: var(--font-weight-semibold) var(--font-size-small)/1.2 var(--font-family-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -521,15 +535,13 @@ a {
   object-fit: contain;
 }
 .brand-name {
-  font:
-    800 16px/1 "Manrope",
-    sans-serif;
+  font: var(--font-weight-bold) var(--font-size-section)/1 var(--font-family-ui);
   letter-spacing: -0.02em;
 }
 .brand-sub {
   margin-top: 4px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--font-size-caption);
 }
 .workspace-switcher {
   padding: 12px;
@@ -541,9 +553,7 @@ a {
   display: flex;
   justify-content: space-between;
   color: var(--blue-dark);
-  font:
-    700 10px/1 "IBM Plex Mono",
-    monospace;
+  font: var(--font-weight-semibold) var(--font-size-caption)/1 var(--font-family-mono);
   text-transform: uppercase;
 }
 .workspace-select {
@@ -553,7 +563,7 @@ a {
   color: var(--ink);
   background: transparent;
   border: 0;
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
   outline: 0;
 }
 .nav-group {
@@ -563,9 +573,7 @@ a {
 .nav-title {
   padding: 0 12px 5px;
   color: #8997a5;
-  font:
-    700 10px/1.2 "IBM Plex Mono",
-    monospace;
+  font: var(--font-weight-semibold) var(--font-size-caption)/1.2 var(--font-family-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -577,8 +585,8 @@ a {
   padding: 0 12px;
   color: #566674;
   border-radius: 7px;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
   transition: 0.18s ease;
 }
 .nav-item:hover {
@@ -604,7 +612,7 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  font-size: 11px;
+  font-size: var(--font-size-small);
   color: var(--muted);
 }
 .status-line + .status-line {
@@ -615,7 +623,7 @@ a {
   align-items: center;
   gap: 5px;
   color: var(--green);
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
 }
 .status-value.warning {
   color: var(--orange);
@@ -641,14 +649,14 @@ a {
   color: var(--blue-dark);
   background: #d9e9ff;
   border-radius: 50%;
-  font-size: 11px;
-  font-weight: 800;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-bold);
 }
 .account-name {
   min-width: 0;
   flex: 1;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -656,7 +664,7 @@ a {
 .account-role {
   margin-top: 3px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--font-size-caption);
 }
 .main-area {
   min-width: 0;
@@ -687,7 +695,7 @@ a {
 }
 .topbar-context {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 .topbar-context .breadcrumb-separator {
   margin: 0 8px;
@@ -695,7 +703,7 @@ a {
 }
 .topbar-context strong {
   color: var(--ink);
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
 }
 .topbar-actions {
   display: flex;
@@ -721,9 +729,7 @@ a {
 .page-title {
   margin: 0;
   color: var(--ink);
-  font:
-    800 20px/1.25 "Manrope",
-    sans-serif;
+  font: var(--font-weight-bold) var(--font-size-heading)/1.25 var(--font-family-ui);
   letter-spacing: 0;
 }
 .header-actions {
@@ -741,8 +747,8 @@ a {
   padding: 0 13px;
   border: 1px solid transparent;
   border-radius: 6px;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
   transition: 0.18s ease;
 }
 .btn-primary {
@@ -821,8 +827,8 @@ a {
 }
 .panel-title {
   margin: 0;
-  font-size: 12px;
-  font-weight: 800;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-bold);
   letter-spacing: 0;
 }
 .panel-kicker {
@@ -836,20 +842,18 @@ a {
 }
 .metric-label {
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--font-size-small);
 }
 .metric-value {
   margin-top: 12px;
-  font:
-    800 28px/1 "Manrope",
-    sans-serif;
+  font: var(--font-weight-bold) var(--font-size-display)/1 var(--font-family-ui);
   letter-spacing: -0.05em;
 }
 .metric-meta {
   margin-top: 12px;
   color: var(--green);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
 }
 .metric-meta.neutral {
   color: var(--muted);
@@ -861,16 +865,14 @@ a {
   width: 100%;
   min-width: 620px;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 .data-table th {
   padding: 11px 20px;
   color: var(--muted);
   background: var(--surface-muted);
   border-bottom: 1px solid var(--line);
-  font:
-    700 10px/1.2 "IBM Plex Mono",
-    monospace;
+  font: var(--font-weight-semibold) var(--font-size-caption)/1.2 var(--font-family-mono);
   letter-spacing: 0.05em;
   text-align: left;
   text-transform: uppercase;
@@ -889,12 +891,12 @@ a {
 }
 .cell-title {
   color: var(--ink);
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
 }
 .cell-sub {
   margin-top: 4px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--font-size-small);
 }
 .badge {
   display: inline-flex;
@@ -902,8 +904,8 @@ a {
   gap: 5px;
   padding: 5px 8px;
   border-radius: 99px;
-  font-size: 10px;
-  font-weight: 800;
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-bold);
   white-space: nowrap;
 }
 .badge.success {
@@ -944,14 +946,14 @@ a {
 }
 .state-title {
   margin: 0 0 6px;
-  font-size: 14px;
-  font-weight: 800;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-bold);
 }
 .state-copy {
   margin: 0 auto;
   max-width: 420px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   line-height: 1.7;
 }
 .error-state .state-icon {
@@ -961,9 +963,7 @@ a {
 .error-detail {
   margin-top: 12px;
   color: var(--muted);
-  font:
-    11px/1.5 "IBM Plex Mono",
-    monospace;
+  font: var(--font-size-small)/1.5 var(--font-family-mono);
 }
 .form-grid {
   display: grid;
@@ -975,8 +975,8 @@ a {
 }
 .field-label {
   color: #4c5e6c;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
 }
 .field input,
 .field select {
@@ -997,7 +997,7 @@ a {
 }
 .field-hint {
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--font-size-small);
   line-height: 1.5;
 }
 .form-error {
@@ -1006,7 +1006,7 @@ a {
   background: var(--red-soft);
   border: 1px solid #f2cdd0;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   line-height: 1.55;
 }
 .auth-layout {
@@ -1051,16 +1051,14 @@ a {
 }
 .auth-title {
   margin: 0;
-  font:
-    800 clamp(36px, 5vw, 68px)/1.03 "Manrope",
-    sans-serif;
+  font: var(--font-weight-bold) clamp(36px, 5vw, 68px)/1.03 var(--font-family-ui);
   letter-spacing: -0.06em;
 }
 .auth-lede {
   max-width: 420px;
   margin: 24px 0 0;
   color: #c6d8eb;
-  font-size: 15px;
+  font-size: var(--font-size-section);
   line-height: 1.8;
 }
 .auth-signal {
@@ -1073,14 +1071,12 @@ a {
   border-top: 1px solid rgba(255, 255, 255, 0.3);
 }
 .signal-value {
-  font:
-    700 18px/1 "IBM Plex Mono",
-    monospace;
+  font: var(--font-weight-semibold) var(--font-size-subtitle)/1 var(--font-family-mono);
 }
 .signal-label {
   margin-top: 8px;
   color: #afc6dc;
-  font-size: 11px;
+  font-size: var(--font-size-small);
 }
 .auth-form-side {
   display: grid;
@@ -1093,15 +1089,13 @@ a {
 }
 .auth-heading {
   margin: 14px 0 8px;
-  font:
-    800 30px/1.1 "Manrope",
-    sans-serif;
+  font: var(--font-weight-bold) var(--font-size-hero)/1.1 var(--font-family-ui);
   letter-spacing: -0.04em;
 }
 .auth-subheading {
   margin: 0 0 28px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-size-body);
   line-height: 1.7;
 }
 .auth-form-footer {
@@ -1111,11 +1105,11 @@ a {
   gap: 12px;
   margin-top: 20px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 .link {
   color: var(--blue);
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
 }
 .toast {
   position: fixed;
@@ -1128,7 +1122,7 @@ a {
   border: 1px solid var(--line);
   border-radius: 7px;
   box-shadow: 0 12px 30px rgba(24, 49, 73, 0.16);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 .mobile-drawer-backdrop {
   display: none;
@@ -1228,7 +1222,7 @@ a {
     min-height: auto;
   }
   .auth-heading {
-    font-size: 26px;
+    font-size: var(--font-size-display);
   }
   .mobile-drawer-backdrop {
     display: block;
@@ -1291,7 +1285,7 @@ body {
 
 .brand-name {
   color: #173d39;
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
 }
 
 .nav-title,
@@ -1350,8 +1344,8 @@ body {
 }
 
 .page-title {
-  font-size: 22px;
-  font-weight: 650;
+  font-size: var(--font-size-title);
+  font-weight: var(--font-weight-semibold);
 }
 
 .btn,
@@ -1388,7 +1382,7 @@ body {
 }
 
 .panel-title {
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
 }
 
 .metric {
@@ -1411,7 +1405,7 @@ body {
 
 .metric-value {
   color: #173d39;
-  font-weight: 650;
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0;
 }
 
@@ -1495,7 +1489,7 @@ body {
 }
 
 .auth-title {
-  font-weight: 650;
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0;
 }
 
@@ -1523,15 +1517,17 @@ body {
   margin: 0 4px;
 }
 .language-switcher button {
-  min-width: 38px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 44px;
   height: 28px;
   padding: 0 8px;
   color: inherit;
   background: transparent;
   border: 0;
   border-radius: 4px;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
 }
 .language-switcher button.active {
   color: var(--blue);
@@ -1712,3 +1708,16 @@ body {
   background: #263630;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 }
+
+
+/* Common text roles shared by both applications. */
+.page-title { font-size: var(--font-size-title); font-weight: var(--font-weight-semibold); line-height: 1.35; }
+.panel-title { font-size: var(--font-size-section); font-weight: var(--font-weight-semibold); line-height: 1.5; }
+.field-label, .ui-picker-label { font-size: var(--font-size-small); font-weight: var(--font-weight-medium); line-height: 1.5; }
+.btn, .nav-item, .data-table { font-size: var(--font-size-body); }
+.btn, .nav-item { font-weight: var(--font-weight-medium); }
+.data-table th { font: var(--font-weight-medium) var(--font-size-small)/1.5 var(--font-family-ui); letter-spacing: 0; }
+.cell-title { font-size: var(--font-size-body); font-weight: var(--font-weight-medium); }
+.cell-sub, .panel-kicker { font-size: var(--font-size-caption); line-height: 1.5; }
+input, select, textarea, button { font-family: inherit; }
+strong, b { font-weight: var(--font-weight-semibold); }
