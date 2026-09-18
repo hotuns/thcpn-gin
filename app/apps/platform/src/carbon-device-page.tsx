@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { Activity, Download, RefreshCw, Search } from "lucide-react";
+import { Download, RefreshCw, Search } from "lucide-react";
 import {
   CartesianGrid,
   Line,
@@ -20,7 +20,6 @@ import {
   type Device,
 } from "@thcpn/api";
 import { Badge, Button, Panel, StateView } from "@thcpn/ui";
-import { DeviceQueryToolbar } from "./device-query-toolbar";
 import { useChartZoom } from "./chart-zoom";
 
 const metricDefinitions = [
@@ -38,12 +37,6 @@ const formatDateTime = (value?: string) =>
         minute: "2-digit",
       }).format(new Date(value))
     : "—";
-
-const isOlderThanThreeDays = (value?: string) => {
-  if (!value) return false;
-  const timestamp = new Date(value).getTime();
-  return Number.isFinite(timestamp) && Date.now() - timestamp > 3 * 24 * 60 * 60 * 1000;
-};
 
 const formatNumber = (value?: number) =>
   value === undefined || value === null || !Number.isFinite(value)
@@ -72,7 +65,7 @@ export function CarbonDevicePage({ device }: { device: Device }) {
   const [startTime, setStartTime] = useState(() => formatDateTimeLocal(initialRange.start));
   const [endTime, setEndTime] = useState(() => formatDateTimeLocal(initialRange.end));
   const [range, setRange] = useState(initialRange);
-  const [chartMode, setChartMode] = useState<"compare" | "separate">("separate");
+  const [chartMode, setChartMode] = useState<"compare" | "separate">("compare");
   const periodDetailRef = useRef<HTMLDivElement>(null);
   const setNodeId = (nextNodeId: number) => {
     const next = new URLSearchParams(searchParams);
@@ -119,8 +112,6 @@ export function CarbonDevicePage({ device }: { device: Device }) {
     queryFn: () => api.carbon.period(device.id, { nodeId, field, period: selectedPeriod }),
     enabled: Boolean(field && selectedPeriod),
   });
-  const statusText = (status: string) =>
-    ({ has_data: "有数据", no_data: "暂无数据" }[status] ?? status);
   const refresh = () => {
     void overview.refetch();
     void periods.refetch();
@@ -133,47 +124,32 @@ export function CarbonDevicePage({ device }: { device: Device }) {
     setSelectedPeriod("");
     setRange({ start: new Date(startTime).toISOString(), end: new Date(endTime).toISOString() });
   };
+  const applyPreset = (hours: number) => {
+    const end = new Date();
+    const start = new Date(end.getTime() - hours * 60 * 60 * 1000);
+    setStartTime(formatDateTimeLocal(start.toISOString()));
+    setEndTime(formatDateTimeLocal(end.toISOString()));
+  };
   const selectPeriodFromChart = (period: string) => {
     setSelectedPeriod(period);
     requestAnimationFrame(() => periodDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
   return (
     <div className="carbon-device-page">
-      <Panel className="carbon-overview-panel">
+      <Panel className="carbon-flux-panel">
         <div className="panel-header">
-          <div><h2 className="panel-title">采集器概览</h2><div className="panel-kicker">一个采集器包含多个 node，node 不是独立设备</div></div>
-          <div className="header-actions"><Button variant="secondary" onClick={refresh}><RefreshCw size={14} />刷新</Button><Activity size={17} /></div>
+          <div><h2 className="panel-title">碳汇数据查询</h2><div className="panel-kicker">选择节点、地块和时间范围查看 NEE、ER、GPP</div></div>
+          <div className="header-actions"><Button variant="secondary" onClick={refresh}><RefreshCw size={14} />刷新</Button><Button disabled={invalidRange || !field || flux.isFetching} onClick={applyRange}><Search size={14} />{flux.isFetching ? "查询中…" : "查询"}</Button></div>
         </div>
-        {overview.isLoading ? <StateView type="loading" title="正在读取最新数据" description="" /> : overview.error ? <StateView type="error" title="最新数据不可用" description={formatApiError(overview.error).message} /> : <>
-          <div className="carbon-overview-stats">
-            <div><span>数据概况</span><strong>{statusText(overview.data?.status ?? "no_data")}</strong></div>
-            <div><span>节点数量</span><strong>{overview.data?.nodes_count ?? "—"}</strong></div>
-            <div><span>最近采样</span><strong className="carbon-sample-time">{formatDateTime(overview.data?.latest_sample_at)}{isOlderThanThreeDays(overview.data?.latest_sample_at) ? <Badge tone="warning">三天前</Badge> : null}</strong></div>
-            <div><span>最近通量</span><strong>{formatDateTime(overview.data?.latest_flux_at)}</strong></div>
-          </div>
-          {overview.data?.runtime && <div className="carbon-runtime-strip"><span>源库设备信息</span><strong>电池 {overview.data.runtime.battery || "—"}%</strong><strong>信号 {overview.data.runtime.signal || "—"}</strong><strong>{overview.data.runtime.network || "网络未知"}</strong></div>}
-          <div className="carbon-node-grid">
-            {(overview.data?.nodes ?? []).map((node) => <button type="button" key={node.node_id} className={`carbon-node-card ${node.node_id === nodeId ? "selected" : ""}`} onClick={() => setNodeId(node.node_id)}>
-              <span>Node {node.node_id}</span><Badge tone={node.status === "has_data" ? "success" : "neutral"}>{statusText(node.status)}</Badge>
-              <small>最新采样 {formatDateTime(node.latest_sample_at)} · 最新通量 {formatDateTime(node.latest_flux_at)}</small>
-            </button>)}
-          </div>
-        </>}
-      </Panel>
-
-      <Panel className="carbon-flux-panel section-gap">
-        <div className="carbon-data-toolbar">
-          <div><h2 className="panel-title">通量成果</h2><div className="panel-kicker">选择节点、地块和时间范围查看 NEE、ER、GPP</div></div>
-          <div className="carbon-selects">
-            <label><span>节点</span><select value={nodeId} onChange={(event) => setNodeId(Number(event.target.value))}>{Array.from({ length: overview.data?.nodes_count ?? 1 }, (_, index) => <option key={index + 1} value={index + 1}>Node {index + 1}</option>)}</select></label>
-            <label><span>地块</span><select value={field} onChange={(event) => setField(event.target.value)} disabled={!fieldOptions.length}>{fieldOptions.length ? fieldOptions.map((value) => <option key={value} value={value}>{value} 地块</option>) : <option value="">暂无地块</option>}</select></label>
-          </div>
+        {overview.error && <div className="form-error carbon-overview-error">节点信息读取失败：{formatApiError(overview.error).message}</div>}
+        <div className="carbon-query-fields">
+          <label className="field"><span className="field-label">节点</span><select value={nodeId} onChange={(event) => setNodeId(Number(event.target.value))} disabled={overview.isLoading}>{Array.from({ length: overview.data?.nodes_count ?? 1 }, (_, index) => <option key={index + 1} value={index + 1}>Node {index + 1}</option>)}</select></label>
+          <label className="field"><span className="field-label">地块</span><select value={field} onChange={(event) => setField(event.target.value)} disabled={!fieldOptions.length}>{fieldOptions.length ? fieldOptions.map((value) => <option key={value} value={value}>{value} 地块</option>) : <option value="">暂无地块</option>}</select></label>
+          <label className="field"><span className="field-label">开始时间</span><input type="datetime-local" value={startTime} onChange={(event) => setStartTime(event.target.value)}/></label>
+          <label className="field"><span className="field-label">结束时间</span><input type="datetime-local" value={endTime} onChange={(event) => setEndTime(event.target.value)}/></label>
         </div>
         <div className="carbon-query-toolbar">
-          <div className="carbon-time-range">
-            <DeviceQueryToolbar range={{start:startTime,end:endTime}} onChange={(next) => {setStartTime(next.start);setEndTime(next.end);}}/>
-            <Button disabled={invalidRange} onClick={applyRange}><Search size={14} />查询</Button>
-          </div>
+          <div className="range-presets"><span>快捷范围</span>{[{label:"6 小时",hours:6},{label:"3 天",hours:72},{label:"7 天",hours:168}].map((item) => <button key={item.hours} type="button" onClick={() => applyPreset(item.hours)}>{item.label}</button>)}</div>
           <div className="chart-mode" aria-label="通量图表视图">
             <button type="button" className={chartMode === "separate" ? "active" : ""} onClick={() => setChartMode("separate")}>分指标</button>
             <button type="button" className={chartMode === "compare" ? "active" : ""} onClick={() => setChartMode("compare")}>叠加对比</button>
@@ -198,15 +174,15 @@ function CarbonCombinedChart({ points, selectedPeriod, onSelect }: { points: Car
   const zoom = useChartZoom(data[0]?.timestamp ?? 0, data.at(-1)?.timestamp ?? 0);
   const selectNearestPoint = (clientX: number, chart: HTMLDivElement) => {
     const dots = Array.from(chart.querySelectorAll<SVGGElement>(".carbon-combined-dot-hit"));
-    const nearestIndex = dots.reduce((nearest, dot, index) => {
+    const nearest = dots.reduce<{ dot: SVGGElement | null; distance: number }>((nearest, dot) => {
       const bounds = dot.getBoundingClientRect();
       const distance = Math.abs(clientX - (bounds.left + bounds.width / 2));
-      return distance < nearest.distance ? { index, distance } : nearest;
-    }, { index: -1, distance: Number.POSITIVE_INFINITY }).index;
-    const point = data[nearestIndex];
-    if (point) onSelect(point.period);
+      return distance < nearest.distance ? { dot, distance } : nearest;
+    }, { dot: null, distance: Number.POSITIVE_INFINITY });
+    const period = nearest.dot?.dataset.period;
+    if (period) onSelect(period);
   };
-  return <section className="carbon-combined-card"><div className="carbon-combined-heading"><div><strong>NEE、ER、GPP 叠加对比</strong><small>μg CO₂·m⁻²·s⁻¹</small></div><div className="carbon-combined-legend">{metricDefinitions.map((metric) => <span key={metric.key}><i style={{ background: metric.color }} />{metric.label}</span>)}</div></div><div className="carbon-chart carbon-combined-chart" aria-label="通量叠加对比趋势图" title="滚轮缩放，双击恢复完整范围" onWheel={zoom.onWheel} onDoubleClick={zoom.resetZoom} onMouseDownCapture={(event) => { if (event.button === 0) event.preventDefault(); }} onClickCapture={(event) => { if (event.button === 0) selectNearestPoint(event.clientX, event.currentTarget); }}><ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 12, right: 18, bottom: 4, left: 0 }}><CartesianGrid stroke="var(--soft-line)" vertical={false} /><XAxis dataKey="timestamp" type="number" domain={zoom.domain} allowDataOverflow tickFormatter={(value) => formatDateTime(new Date(Number(value)).toISOString())} tick={{ fill: "var(--muted)", fontSize: 10 }} axisLine={false} tickLine={false} /><YAxis tick={{ fill: "var(--muted)", fontSize: 10 }} axisLine={false} tickLine={false} width={48} /><Tooltip labelFormatter={(value) => formatDateTime(new Date(Number(value)).toISOString())} formatter={(value, name) => [formatNumber(Number(value)), String(name).toUpperCase()]} />{metricDefinitions.map((metric, index) => <Line key={metric.key} type="monotone" dataKey={metric.key} name={metric.label} stroke={metric.color} strokeWidth={2} dot={index === 0 ? (props: { cx?: number; cy?: number; payload?: { period?: string } }) => <g className="carbon-combined-dot-hit"><circle cx={props.cx} cy={props.cy} r={14} fill="transparent" stroke="transparent" /><circle cx={props.cx} cy={props.cy} r={props.payload?.period === selectedPeriod ? 5 : 2.5} fill={props.payload?.period === selectedPeriod ? metric.color : "var(--panel)"} stroke={metric.color} strokeWidth={2} /></g> : false} activeDot={false} isAnimationActive={false} />)}</LineChart></ResponsiveContainer></div></section>;
+  return <section className="carbon-combined-card"><div className="carbon-combined-heading"><div><strong>NEE、ER、GPP 叠加对比</strong><small>μg CO₂·m⁻²·s⁻¹</small></div><div className="carbon-combined-legend">{metricDefinitions.map((metric) => <span key={metric.key}><i style={{ background: metric.color }} />{metric.label}</span>)}</div></div><div className="carbon-chart carbon-combined-chart" aria-label="通量叠加对比趋势图" title="滚轮缩放，双击恢复完整范围" onWheel={zoom.onWheel} onDoubleClick={zoom.resetZoom} onMouseDownCapture={(event) => { if (event.button === 0) event.preventDefault(); }} onClickCapture={(event) => { if (event.button === 0) selectNearestPoint(event.clientX, event.currentTarget); }}><ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 12, right: 18, bottom: 4, left: 0 }}><CartesianGrid stroke="var(--soft-line)" vertical={false} /><XAxis dataKey="timestamp" type="number" domain={zoom.domain} allowDataOverflow tickFormatter={(value) => formatDateTime(new Date(Number(value)).toISOString())} tick={{ fill: "var(--muted)", fontSize: 10 }} axisLine={false} tickLine={false} /><YAxis tick={{ fill: "var(--muted)", fontSize: 10 }} axisLine={false} tickLine={false} width={48} /><Tooltip labelFormatter={(value) => formatDateTime(new Date(Number(value)).toISOString())} formatter={(value, name) => [formatNumber(Number(value)), String(name).toUpperCase()]} />{metricDefinitions.map((metric) => <Line key={metric.key} type="monotone" dataKey={metric.key} name={metric.label} stroke={metric.color} strokeWidth={2} dot={(props: { cx?: number; cy?: number; payload?: { period?: string } }) => <g className="carbon-combined-dot-hit" data-period={props.payload?.period}><circle cx={props.cx} cy={props.cy} r={14} fill="transparent" stroke="transparent" /><circle cx={props.cx} cy={props.cy} r={props.payload?.period === selectedPeriod ? 5 : 2.5} fill={props.payload?.period === selectedPeriod ? metric.color : "var(--panel)"} stroke={metric.color} strokeWidth={2} /></g>} activeDot={false} isAnimationActive={false} />)}</LineChart></ResponsiveContainer></div></section>;
 }
 
 function CarbonMetricChart({ metric, points, selectedPeriod, onSelect }: { metric: typeof metricDefinitions[number]; points: CarbonFluxPoint[]; selectedPeriod: string; onSelect: (period: string) => void }) {

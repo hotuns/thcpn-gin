@@ -40,6 +40,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     current: workspaces.find((workspace) => workspace.id === currentId) ?? null,
     currentId,
     setCurrentId: (id) => {
+      if (id === currentId) return;
       setCurrentIdState(id);
       localStorage.setItem(storageKey, id);
       queryClient.invalidateQueries({ predicate: (item) => item.queryKey[0] !== "workspaces" });

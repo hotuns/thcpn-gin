@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { Activity, Archive, Battery, Eye, Image as ImageIcon, MapPinOff, Maximize2, MonitorUp, Radio, RefreshCw, Signal, TriangleAlert, X } from "lucide-react";
@@ -6,9 +6,16 @@ import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "rec
 import { api, formatApiError, type DataStream, type Wallboard, type WallboardSnapshot, type WallboardTemplate } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, CloseButton, PageHeader, Panel, SelectInput, StateView, TextInput } from "@thcpn/ui";
-import { WallboardCesiumMap } from "./wallboard-cesium-map";
 import { DeviceCombobox } from "./device-combobox";
 import "./wallboards-modern.css";
+
+const WallboardCesiumMap = lazy(() =>
+  import("./wallboard-cesium-map").then((module) => ({ default: module.WallboardCesiumMap })),
+);
+
+function LazyWallboardMap(props: React.ComponentProps<typeof WallboardCesiumMap>) {
+  return <Suspense fallback={<div className="wallboard-cesium wallboard-map-loading">正在加载地图…</div>}><WallboardCesiumMap {...props} /></Suspense>;
+}
 
 export function WallboardsPage() {
   const { currentId } = useWorkspace();
@@ -88,7 +95,7 @@ function SingleDeviceWallboard({ template, snapshot }: { template: WallboardTemp
   return <div className="wallboard-canvas wallboard-device-layout"><WallboardHeader template={template} snapshot={snapshot}/><div className="wallboard-body">
     <aside className="wallboard-column wallboard-single-images"><ImagePanel items={latestImages} limit={latestImages.length}/></aside>
     <section className="wallboard-column wallboard-single-data"><ScreenPanel title="核心实时指标"><div className="wallboard-metric-list">{snapshot.metrics.length ? snapshot.metrics.map((metric) => <div key={metric.data_stream_id}><span>{metric.name}</span><strong>{metric.latest_value ?? "--"}<small>{metric.unit}</small></strong><time>{formatDateTime(metric.latest_at)}</time></div>) : <EmptyLine text="未配置实时指标" icon={<Activity/>}/>}</div></ScreenPanel><TrendPanel metrics={snapshot.metrics} pageSize={2}/></section>
-    <aside className="wallboard-column wallboard-single-corner"><section className="wallboard-map-panel"><WallboardCesiumMap devices={device ? [device] : []} mode="single"/>{device && !hasLocation(device) && <LocationNotice count={1}/>}</section><ScreenPanel title="采集概览"><div className="wallboard-single-kpis"><Kpi label="监测指标" value={snapshot.metrics.length}/><Kpi label="趋势数据" value={snapshot.metrics.reduce((total, metric) => total + metric.points.length, 0)}/><Kpi label="最新影像" value={latestImages.length}/><Kpi label="定位状态" value={device && hasLocation(device) ? "正常" : "缺失"}/></div></ScreenPanel><ScreenPanel title="设备档案">{device ? <DeviceFacts device={device}/> : <EmptyLine text="未找到目标设备"/>}</ScreenPanel></aside>
+    <aside className="wallboard-column wallboard-single-corner"><section className="wallboard-map-panel"><LazyWallboardMap devices={device ? [device] : []} mode="single"/>{device && !hasLocation(device) && <LocationNotice count={1}/>}</section><ScreenPanel title="采集概览"><div className="wallboard-single-kpis"><Kpi label="监测指标" value={snapshot.metrics.length}/><Kpi label="趋势数据" value={snapshot.metrics.reduce((total, metric) => total + metric.points.length, 0)}/><Kpi label="最新影像" value={latestImages.length}/><Kpi label="定位状态" value={device && hasLocation(device) ? "正常" : "缺失"}/></div></ScreenPanel><ScreenPanel title="设备档案">{device ? <DeviceFacts device={device}/> : <EmptyLine text="未找到目标设备"/>}</ScreenPanel></aside>
   </div><div className="wallboard-bottom"><ScreenPanel title="指标统计"><MetricStatistics metrics={snapshot.metrics}/></ScreenPanel></div></div>;
 }
 

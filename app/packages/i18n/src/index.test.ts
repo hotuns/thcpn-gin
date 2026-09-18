@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { detectLocale, detectTheme, normalizeLocale, localeStorageKey, themeStorageKey } from "./index";
+import { detectLocale, detectTheme, normalizeLocale, localeStorageKey, shouldObserveLegacyDom, themeStorageKey } from "./index";
 import { resources } from "./resources";
 import { translateLegacyText } from "./legacy";
 
@@ -37,5 +37,11 @@ describe("i18n resources", () => {
   it("translates registered legacy UI text without changing domain names", () => {
     expect(translateLegacyText("设备详情")).toBe("Device details");
     expect(translateLegacyText("北京森林站")).toBe("北京森林站");
+  });
+
+  it("only observes DOM mutations while legacy English translation is active", () => {
+    expect(shouldObserveLegacyDom("zh-CN")).toBe(false);
+    expect(shouldObserveLegacyDom("zh-Hans-CN")).toBe(false);
+    expect(shouldObserveLegacyDom("en-US")).toBe(true);
   });
 });

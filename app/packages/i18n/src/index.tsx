@@ -15,6 +15,9 @@ export const supportedThemeModes: ThemeMode[] = ["system", "light", "dark"];
 export const normalizeLocale = (value?: string | null): SupportedLocale =>
   value?.toLowerCase().startsWith("zh") ? "zh-CN" : "en-US";
 
+export const shouldObserveLegacyDom = (language?: string | null) =>
+  normalizeLocale(language) === "en-US";
+
 export const detectLocale = (): SupportedLocale => {
   if (typeof window === "undefined") return "zh-CN";
   const stored = window.localStorage.getItem(localeStorageKey);
@@ -111,12 +114,46 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       };
       visit(root);
     };
-    const observer = new MutationObserver((mutations) => mutations.forEach((mutation) => mutation.addedNodes.forEach(localize)));
-    localize(document.body);
-    observer.observe(document.body, { childList: true, subtree: true });
-    const onLanguage = () => localize(document.body);
+    const pendingRoots = new Set<Node>();
+    let frame = 0;
+    const cancelPending = () => {
+      pendingRoots.clear();
+      if (frame) window.cancelAnimationFrame(frame);
+      frame = 0;
+    };
+    const flushPending = () => {
+      frame = 0;
+      if (!shouldObserveLegacyDom(instance.language)) {
+        pendingRoots.clear();
+        return;
+      }
+      const roots = Array.from(pendingRoots);
+      pendingRoots.clear();
+      roots
+        .filter((root, index) => !roots.some((candidate, candidateIndex) => candidateIndex !== index && candidate.contains(root)))
+        .forEach(localize);
+    };
+    const schedule = (root: Node) => {
+      pendingRoots.add(root);
+      if (!frame) frame = window.requestAnimationFrame(flushPending);
+    };
+    const observer = new MutationObserver((mutations) => {
+      if (!shouldObserveLegacyDom(instance.language)) return;
+      mutations.forEach((mutation) => mutation.addedNodes.forEach(schedule));
+    });
+    const observe = () => observer.observe(document.body, { childList: true, subtree: true });
+    if (shouldObserveLegacyDom(instance.language)) {
+      localize(document.body);
+      observe();
+    }
+    const onLanguage = () => {
+      observer.disconnect();
+      cancelPending();
+      localize(document.body);
+      if (shouldObserveLegacyDom(instance.language)) observe();
+    };
     instance.on("languageChanged", onLanguage);
-    return () => { observer.disconnect(); instance.off("languageChanged", onLanguage); };
+    return () => { observer.disconnect(); cancelPending(); instance.off("languageChanged", onLanguage); };
   }, []);
   return <LocaleContext.Provider value={instance}><ThemeContext.Provider value={{ theme, resolvedTheme, setTheme }}><I18nextProvider i18n={instance}>{children}</I18nextProvider></ThemeContext.Provider></LocaleContext.Provider>;
 }

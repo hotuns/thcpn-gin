@@ -10,6 +10,7 @@ import {
   inferSignalReading,
   isTopLevelDevice,
   legacyDeviceTarget,
+  matchesDeviceType,
 } from "./devices-page";
 
 describe("device workflow payloads", () => {
@@ -47,6 +48,13 @@ describe("device workflow payloads", () => {
         device_type: "gateway",
       }),
     ).toBe(true);
+  });
+
+  it("filters devices by the same taxonomy type used on the device map", () => {
+    expect(matchesDeviceType("", undefined)).toBe(true);
+    expect(matchesDeviceType("forest", { id: "forest" })).toBe(true);
+    expect(matchesDeviceType("forest", { id: "wetland" })).toBe(false);
+    expect(matchesDeviceType("forest", undefined)).toBe(false);
   });
 
   it("infers signal quality with provisional percentage thresholds", () => {

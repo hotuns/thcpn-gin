@@ -21,6 +21,7 @@ import {
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, PageHeader, Panel, StateView } from "@thcpn/ui";
 import { DeviceCombobox } from "./device-combobox";
+import { DEVICE_LIST_GC_TIME, DEVICE_LIST_STALE_TIME, deviceListQueryKey } from "./device-list-cache";
 import {
   datasetCreatePath,
   encodeComparisonSeeds,
@@ -153,9 +154,11 @@ export function DataComparisonPage() {
   const seeded = initialDrafts.some((item) => item.streamId);
   const previousWorkspaceId = useRef(currentId);
   const devicesQuery = useQuery({
-    queryKey: workspaceQueryKey(currentId, "devices", "comparison"),
+    queryKey: deviceListQueryKey(currentId),
     queryFn: () => api.devices.list(currentId!),
     enabled: Boolean(currentId),
+    staleTime: DEVICE_LIST_STALE_TIME,
+    gcTime: DEVICE_LIST_GC_TIME,
   });
   const devices = devicesQuery.data?.items ?? [];
   const [drafts, setDrafts] = useState<ComparisonDraft[]>(initialDrafts);

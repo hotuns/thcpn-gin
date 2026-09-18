@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, CheckCircle2, Link2, ScanLine } from "lucide-react";
 import {
@@ -13,6 +13,7 @@ import { Button, Panel, StateView } from "@thcpn/ui";
 export function DeviceClaimPage() {
   const { claimSlug = "" } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { workspaces, currentId } = useWorkspace();
   const [serialNo, setSerialNo] = useState("");
   const [code, setCode] = useState("");
@@ -71,6 +72,10 @@ export function DeviceClaimPage() {
         ...(projectId ? { project_id: projectId } : {}),
         ...(siteId ? { site_id: siteId } : {}),
       }, crypto.randomUUID());
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["workspace", workspaceId, "devices"] }),
+        queryClient.invalidateQueries({ queryKey: ["workspace", workspaceId, "device-map"] }),
+      ]);
       navigate(`/devices/${encodeURIComponent(result.device_id)}`, {
         replace: true,
         state: { message: `已认领 ${result.device_name}` },

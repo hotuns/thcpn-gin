@@ -66,6 +66,11 @@ import { SamplingProfilePanel } from "./sampling-profile";
 import { DeviceCombobox } from "./device-combobox";
 import { ComputedStreamsPanel, DeviceMetadataPanel } from "./device-computed-data";
 import { GatewayNodeData } from "./gateway-node-data";
+import {
+  DEVICE_LIST_GC_TIME,
+  DEVICE_LIST_STALE_TIME,
+  deviceListQueryKey,
+} from "./device-list-cache";
 
 type DeviceCategory = "gateway" | "gateway_node" | "camera" | "carbon_sink" | "standalone";
 type Category = "all" | Exclude<DeviceCategory, "gateway_node">;
@@ -102,6 +107,10 @@ export const deviceCategory = (
 export const isTopLevelDevice = (
   device: Pick<Device, "topology_role" | "device_type">,
 ) => deviceCategory(device) !== "gateway_node";
+export const matchesDeviceType = (
+  selectedTypeId: string,
+  deviceType?: Pick<DeviceTaxonomyTerm, "id">,
+) => !selectedTypeId || deviceType?.id === selectedTypeId;
 const deviceModelLabel = (device: Pick<Device, "device_type" | "source_family">) =>
   device.device_type === "gateway"
     ? device.source_family === "lorawan_v2"
@@ -227,6 +236,7 @@ export function DevicesPage() {
   const [keyword, setKeyword] = useState("");
   const [projectId, setProjectId] = useState("");
   const [siteId, setSiteId] = useState("");
+  const [deviceTypeId, setDeviceTypeId] = useState("");
   const [category, setCategory] = useState<Category>("all");
   const [expandedId, setExpandedId] = useState("");
   const projects = useQuery({
@@ -240,23 +250,26 @@ export function DevicesPage() {
     enabled: Boolean(currentId),
   });
   const query = useQuery({
-    queryKey: workspaceQueryKey(
-      currentId,
-      "devices",
-      projectId || "all",
-      siteId || "all",
-    ),
+    queryKey: deviceListQueryKey(currentId, projectId, siteId),
     queryFn: () =>
       api.devices.list(currentId!, {
         projectId: projectId || undefined,
         siteId: siteId || undefined,
       }),
     enabled: Boolean(currentId),
+    staleTime: DEVICE_LIST_STALE_TIME,
+    gcTime: DEVICE_LIST_GC_TIME,
   });
   const mapQuery = useQuery({
     queryKey: workspaceQueryKey(currentId, "device-map", "false"),
     queryFn: () => api.devices.map(currentId!, false),
     enabled: Boolean(currentId),
+  });
+  const taxonomy = useQuery({
+    queryKey: ["device-taxonomy"],
+    queryFn: api.devices.taxonomy,
+    staleTime: DEVICE_LIST_STALE_TIME,
+    gcTime: DEVICE_LIST_GC_TIME,
   });
   const deviceTypeByDevice = useMemo(
     () =>
@@ -316,11 +329,12 @@ export function DevicesPage() {
       topLevelDevices.filter(
         (item) =>
           (category === "all" || deviceCategory(item) === category) &&
+          matchesDeviceType(deviceTypeId, deviceTypeByDevice.get(item.id)) &&
           `${item.name} ${item.serial_no} ${item.id} ${(tagsByDevice.get(item.id) ?? []).join(" ")}`
             .toLowerCase()
             .includes(keyword.toLowerCase()),
       ),
-    [topLevelDevices, category, keyword, tagsByDevice],
+    [topLevelDevices, category, deviceTypeByDevice, deviceTypeId, keyword, tagsByDevice],
   );
   if (!currentId)
     return (
@@ -388,7 +402,18 @@ export function DevicesPage() {
               options={[{ value: "", label: "全部站点" }, ...(sites.data?.items ?? []).map((item) => ({ value: text(item.id), label: text(item.name) }))]}
               onChange={setSiteId}
             />
-            {(projectId || siteId) && <button type="button" className="device-filter-reset" onClick={() => { setProjectId(""); setSiteId(""); }}><X size={13} />重置筛选</button>}
+            <DeviceFilterSelect
+              label="筛选设备类型"
+              value={deviceTypeId}
+              options={[
+                { value: "", label: "全部设备类型" },
+                ...(taxonomy.data?.items ?? [])
+                  .filter((item) => item.kind === "ecosystem")
+                  .map((item) => ({ value: item.id, label: item.name_zh })),
+              ]}
+              onChange={setDeviceTypeId}
+            />
+            {(projectId || siteId || deviceTypeId) && <button type="button" className="device-filter-reset" onClick={() => { setProjectId(""); setSiteId(""); setDeviceTypeId(""); }}><X size={13} />重置筛选</button>}
           </div>
         </div>
         <div className="device-categories">
@@ -417,7 +442,7 @@ export function DevicesPage() {
             title="正在加载设备"
             description="正在读取当前组织设备资产。"
           />
-        ) : query.error ? (
+        ) : query.error && !query.data ? (
           <StateView
             type="error"
             title="设备加载失败"
@@ -474,7 +499,7 @@ export function DevicesPage() {
             type="empty"
             title="没有匹配的设备"
             description={
-              keyword || category !== "all" || projectId || siteId
+              keyword || category !== "all" || projectId || siteId || deviceTypeId
                 ? "请调整搜索或筛选条件。"
                 : "当前组织尚未分配系统设备。"
             }
@@ -490,9 +515,11 @@ export function LegacyDeviceDataRedirect() {
   const [params] = useSearchParams();
   const deviceId = params.get("device") ?? "";
   const devices = useQuery({
-    queryKey: workspaceQueryKey(currentId, "devices", "legacy-redirect"),
+    queryKey: deviceListQueryKey(currentId),
     queryFn: () => api.devices.list(currentId!),
     enabled: Boolean(currentId),
+    staleTime: DEVICE_LIST_STALE_TIME,
+    gcTime: DEVICE_LIST_GC_TIME,
   });
   if (devices.isLoading)
     return <div className="app-loading t-shimmer" data-text="正在打开设备…">正在打开设备…</div>;
@@ -771,9 +798,11 @@ export function DeviceCenterDetailPage() {
   });
   const detailWorkspaceId = detail.data?.workspace_id ?? currentId;
   const workspaceDevices = useQuery({
-    queryKey: workspaceQueryKey(detailWorkspaceId, "devices", "quick-switch"),
+    queryKey: deviceListQueryKey(detailWorkspaceId),
     queryFn: () => api.devices.list(detailWorkspaceId!),
     enabled: Boolean(detailWorkspaceId),
+    staleTime: DEVICE_LIST_STALE_TIME,
+    gcTime: DEVICE_LIST_GC_TIME,
   });
   const projects = useQuery({
     queryKey: workspaceQueryKey(detailWorkspaceId, "projects"),
