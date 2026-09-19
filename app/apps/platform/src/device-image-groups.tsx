@@ -8,7 +8,7 @@ import { Clock3, Download, Film, RefreshCw, RotateCcw, RotateCw, ZoomIn, ZoomOut
 import { PhotoSlider } from "react-photo-view";
 import type { DataStream, Device, MediaItem } from "@thcpn/api";
 import { api, formatApiError } from "@thcpn/api";
-import { Badge, Button, Panel, StateView } from "@thcpn/ui";
+import { Badge, Button, Panel, StateView } from "./platform-ui";
 import { workspaceQueryKey } from "@thcpn/workspace";
 import { DeviceGifMaker } from "./device-gif-maker";
 

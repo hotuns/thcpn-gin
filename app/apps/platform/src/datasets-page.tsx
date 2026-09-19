@@ -23,7 +23,7 @@ import {
   type TelemetrySeries,
 } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, IconButton, PageHeader, Panel, StateView } from "@thcpn/ui";
+import { Badge, Button, IconButton, PageHeader, Panel, StateView } from "./platform-ui";
 import { TelemetryCharts } from "./telemetry-charts";
 import { TelemetryTable } from "./telemetry-table";
 import { dataComparisonPath } from "./data-workflow";

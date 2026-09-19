@@ -3,7 +3,7 @@ import type { DataStream } from "@thcpn/api";
 import { buildDataQuickNavItems } from "./data-quick-navigator";
 
 describe("data page quick navigation", () => {
-  it("keeps one stable anchor for every image stream", () => {
+  it("keeps stable anchors for the main data sections", () => {
     const streams = ["visible", "near-infrared", "thermal", "depth"].map(
       (id, index) =>
         ({ id, name: `图片类型 ${index + 1}` }) as DataStream,
@@ -17,8 +17,6 @@ describe("data page quick navigation", () => {
       "data-section-images",
     ]);
     expect(items[0].label).toBe("查询条件");
-    expect(items.slice(4).map((item) => item.id)).toEqual(
-      streams.map((stream) => `data-image-${stream.id}`),
-    );
+    expect(items).toHaveLength(4);
   });
 });

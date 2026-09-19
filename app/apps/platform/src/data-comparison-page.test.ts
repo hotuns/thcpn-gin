@@ -3,7 +3,7 @@ import type { TelemetrySeries } from "@thcpn/api";
 import { comparisonStatistic, groupComparisonDrafts } from "./data-comparison-page";
 
 describe("comparisonStatistic", () => {
-  it("computes raw statistics and quality", () => {
+  it("computes raw statistics", () => {
     const series = {
       source_count: 4,
       points: [
@@ -18,7 +18,6 @@ describe("comparisonStatistic", () => {
       max: 5,
       average: 3,
       latest: 5,
-      quality: 67,
     });
   });
 

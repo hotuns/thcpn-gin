@@ -7,7 +7,7 @@ import "react-photo-view/dist/react-photo-view.css";
 import { Activity, Archive, ArrowLeft, ChartNoAxesCombined, ChevronDown, CirclePause, CirclePlay, Eye, FileImage, ListTree, Plus, RefreshCw, Workflow, X } from "lucide-react";
 import { api, formatApiError, type Device, type JsonRecord, type MediaItem, type ProcessingExecution, type ProcessingPlan, type ProcessingProcessor, type ProcessingResult, type ProcessingTask } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, PageHeader, Panel, StateView } from "@thcpn/ui";
+import { Badge, Button, PageHeader, Panel, StateView } from "./platform-ui";
 import { renderPhotoToolbar } from "./device-media";
 import { DeviceCombobox } from "./device-combobox";
 

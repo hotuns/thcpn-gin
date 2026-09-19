@@ -19,7 +19,7 @@ import {
   type Device,
   type MediaItem,
 } from "@thcpn/api";
-import { Badge, Button, Panel, StateView } from "@thcpn/ui";
+import { Badge, Button, Panel, StateView } from "./platform-ui";
 import { workspaceQueryKey } from "@thcpn/workspace";
 import { useLocale } from "@thcpn/i18n";
 

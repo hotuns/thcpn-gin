@@ -10,6 +10,7 @@ import (
 
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/datastream"
+	"thcpn-gin/internal/nodeprofile"
 )
 
 type NodeTarget struct {
@@ -30,10 +31,12 @@ func (t NodeTarget) Key() string {
 }
 
 type GatewayNode struct {
-	Key     string                  `json:"key"`
-	Name    string                  `json:"name"`
-	Target  NodeTarget              `json:"target"`
-	Streams []datastream.DataStream `json:"streams"`
+	CustomName string                  `json:"custom_name"`
+	CanRename  bool                    `json:"can_rename"`
+	Key        string                  `json:"key"`
+	Name       string                  `json:"name"`
+	Target     NodeTarget              `json:"target"`
+	Streams    []datastream.DataStream `json:"streams"`
 }
 
 func (s *Service) withInteraction(ctx context.Context, item Device) (Device, error) {
@@ -149,7 +152,7 @@ func (s *Service) ListGatewayNodes(ctx context.Context, gatewayID uuid.UUID) ([]
 				active = append(active, stream)
 			}
 		}
-		nodes = append(nodes, GatewayNode{Key: target.Key(), Name: child.Device.Name, Target: target, Streams: active})
+		nodes = append(nodes, GatewayNode{Key: target.Key(), Name: child.Device.Name, CustomName: child.Device.Name, Target: target, Streams: active})
 	}
 	return nodes, nil
 }
@@ -158,10 +161,14 @@ func (s *Service) listIndexedNodes(ctx context.Context, gateway Device) ([]Gatew
 	if gateway.ChildCount < 0 || gateway.ChildCount > 254 {
 		return nil, apperr.New(apperr.KindInternal, "invalid gateway node count")
 	}
+	names, err := nodeprofile.Names(ctx, s.db, gateway.ID)
+	if err != nil {
+		return nil, err
+	}
 	nodes := make([]GatewayNode, 0, gateway.ChildCount)
 	for index := 1; index <= int(gateway.ChildCount); index++ {
 		target := NodeTarget{Kind: "gateway_node", GatewayDeviceID: &gateway.ID, NodeIndex: &index}
-		nodes = append(nodes, GatewayNode{Key: target.Key(), Name: fmt.Sprintf("节点 %d", index), Target: target, Streams: []datastream.DataStream{}})
+		nodes = append(nodes, GatewayNode{Key: target.Key(), Name: nodeprofile.Label(names[index], index), CustomName: names[index], Target: target, Streams: []datastream.DataStream{}})
 	}
 	rows, err := s.db.Query(ctx, `SELECT ds.id, ds.device_id, ds.code, ds.name, ds.type, ds.unit, ds.status, ds.created_by, ds.created_at, ds.updated_at, b.adapter_config_json
         FROM data_streams ds JOIN data_stream_bindings b ON b.data_stream_id=ds.id AND b.status='active' AND b.adapter_code='lorawan_v2'

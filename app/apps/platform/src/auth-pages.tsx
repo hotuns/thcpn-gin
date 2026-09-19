@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, KeyRound, MessageSquareText } from "lucide-react";
 import { api, ApiError, formatApiError } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
-import { Brand, Button } from "@thcpn/ui";
+import { Brand, Button } from "./platform-ui";
 import { LanguageSwitcher, useLocale } from "@thcpn/i18n";
 
 export const validPassword = (value: string) =>

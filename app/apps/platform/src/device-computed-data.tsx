@@ -18,7 +18,7 @@ import {
   type DeviceMetadataInput,
 } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, Panel, StateView } from "@thcpn/ui";
+import { Badge, Button, Panel, StateView } from "./platform-ui";
 
 const FORMULA_VARIABLE_PATTERN = /\b(?:stream|meta)\.[A-Za-z][A-Za-z0-9_]*\b/g;
 const FORMULA_HIGHLIGHT_PATTERN = /(?:stream|meta)\.[A-Za-z][A-Za-z0-9_]*|\b\d+(?:\.\d+)?\b|[()+\-*/%^]/g;

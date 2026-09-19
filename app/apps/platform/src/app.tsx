@@ -56,7 +56,7 @@ import {
   PageHeader,
   Panel,
   StateView,
-} from "@thcpn/ui";
+} from "./platform-ui";
 import { AccountMenu, WorkspaceMenu } from "./shell-menus";
 import { OnboardingTour } from "./onboarding-tour";
 import { LanguageSwitcher, useLocale } from "@thcpn/i18n";

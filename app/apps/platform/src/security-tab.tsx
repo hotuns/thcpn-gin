@@ -4,7 +4,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { Check, Copy, KeyRound, Laptop, LockKeyhole, MailCheck, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 import { ApiError, api, authStorage, formatApiError, type AuthSession, type TotpSetup } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
-import { Badge, Button, Panel, StateView } from "@thcpn/ui";
+import { Badge, Button, Panel, StateView } from "./platform-ui";
 
 const formatTime = (input?: string) => input ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "medium" }).format(new Date(input)) : "—";
 export const validSixDigitCode = (code: string) => /^\d{6}$/.test(code);

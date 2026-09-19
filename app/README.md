@@ -4,7 +4,7 @@
 
 ## Applications
 
-- `apps/platform`: Workspace 用户控制台，Shadcn 风格共享组件。
+- `apps/platform`: Workspace 用户控制台，shadcn/ui 风格共享组件。
 - `apps/admin`: 系统后台，Ant Design 管理组件。
 
 开发环境由 platform 将 `/admin` 代理到 admin Vite 服务，使两个应用共享同一浏览器 origin 和认证存储。
@@ -16,6 +16,8 @@
 - `packages/workspace`: Workspace 选择、持久化和 query key 隔离。
 - `packages/ui`: 设计 token、基础组件和页面状态。
 - `packages/admin-ui`: Ant Design theme 和后台通用组件出口。
+
+平台端的 shadcn/ui 源码组件位于 `apps/platform/src/components/ui`，通过 `platform-ui.tsx` 保持业务页面 API 稳定。组件使用 Radix UI 处理弹层、焦点和键盘交互，并沿用平台现有主题变量。
 
 ## Platform Routes
 

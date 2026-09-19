@@ -32,7 +32,7 @@ import {
   SelectInput,
   StateView,
   type PickerOption,
-} from "@thcpn/ui";
+} from "./platform-ui";
 
 type ResourceType = "device" | "data_stream" | "dataset" | "media";
 type ExportDraft = {
@@ -879,15 +879,12 @@ function CarbonExportForm({
   );
   const range = defaultRange();
   const [deviceId, setDeviceId] = useState(params.get("device") ?? "");
-  const metadata = useQuery({
-    queryKey: ["device", deviceId, "metadata", "carbon-export"],
-    queryFn: () => api.devices.metadata(deviceId),
+  const overview = useQuery({
+    queryKey: ["carbon", deviceId, "overview"],
+    queryFn: () => api.carbon.overview(deviceId),
     enabled: Boolean(deviceId),
   });
-  const nodesCount = Number(
-    metadata.data?.items.find((item) => item.key === "carbon_nodes_count")
-      ?.value ?? 0,
-  );
+  const nodesCount = overview.data?.nodes_count ?? 0;
   const allNodes = Array.from({ length: nodesCount }, (_, i) => i + 1);
   const requestedNodes = arrayParam(params.get("nodes"))
     .map(Number)
@@ -984,7 +981,7 @@ function CarbonExportForm({
                   key={id}
                   onClick={() => toggleNode(id)}
                 >
-                  {effectiveNodes.includes(id) && <Check size={13} />}Node {id}
+                  {effectiveNodes.includes(id) && <Check size={13} />}{overview.data?.nodes.find(node => node.node_id === id)?.name ?? `节点 ${id}`}
                 </button>
               ))}
             </div>
@@ -1023,7 +1020,7 @@ function CarbonExportForm({
             <small>
               {effectiveNodes
                 .map((node) =>
-                  fields.map((field) => `Node ${node}/${field}`).join("、"),
+                  fields.map((field) => `${overview.data?.nodes.find(item => item.node_id === node)?.name ?? `节点 ${node}`}/${field}`).join("、"),
                 )
                 .join("；") || "请选择组合"}
             </small>

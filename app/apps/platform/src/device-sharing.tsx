@@ -11,7 +11,7 @@ import {
   type JsonRecord,
 } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, CopyId, Panel, StateView } from "@thcpn/ui";
+import { Badge, Button, CopyId, Panel, StateView } from "./platform-ui";
 import { externalPermission, permissionsForTemplate } from "./access-control";
 import { DevicePublicAccessPanel } from "./device-public-access";
 

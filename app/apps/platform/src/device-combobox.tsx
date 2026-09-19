@@ -1,8 +1,19 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { ChevronDown, Search } from "lucide-react";
+import { Check, ChevronsUpDown } from "lucide-react";
 import { api, type Device } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
+import { Button } from "./components/ui/button";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "./components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover";
+import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 
 export type DeviceOptionCategory = "all" | "gateway" | "gateway_node" | "camera" | "carbon_sink" | "standalone";
 
@@ -35,7 +46,7 @@ export function filterDeviceOptions(
     const categoryMatches = category === "all" || deviceOptionCategory(device) === category;
     const keywordMatches = !normalized || [device.name, device.serial_no, device.id, ...(tagsByDevice.get(device.id) ?? [])]
       .filter(Boolean)
-      .some((value) => value.toLowerCase().includes(normalized));
+      .some((item) => item.toLowerCase().includes(normalized));
     return categoryMatches && keywordMatches;
   });
 }
@@ -56,10 +67,7 @@ export function DeviceCombobox({
   className?: string;
 }) {
   const { currentId } = useWorkspace();
-  const rootRef = useRef<HTMLDivElement>(null);
-  const listboxId = useId();
   const [open, setOpen] = useState(false);
-  const [closing, setClosing] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [category, setCategory] = useState<DeviceOptionCategory>("all");
   const mapQuery = useQuery({
@@ -105,41 +113,10 @@ export function DeviceCombobox({
     [category, devices, keyword, tagsByDevice],
   );
 
-  useEffect(() => {
-    if (!open) return;
-    const closeMenu = () => {
-      const value = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dropdown-close-dur")) || 150;
-      setOpen(false);
-      setClosing(true);
-      window.setTimeout(() => setClosing(false), value);
-    };
-    const outside = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) closeMenu();
-    };
-    const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeMenu();
-    };
-    document.addEventListener("mousedown", outside);
-    window.addEventListener("keydown", escape);
-    return () => {
-      document.removeEventListener("mousedown", outside);
-      window.removeEventListener("keydown", escape);
-    };
-  }, [open]);
-
-  const openMenu = () => {
-    setKeyword("");
-    setCategory("all");
-    setClosing(false);
-    setOpen(true);
-  };
   const selectDevice = (deviceId: string) => {
     onChange(deviceId);
     setKeyword("");
     setOpen(false);
-    setClosing(true);
-    const value = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dropdown-close-dur")) || 150;
-    window.setTimeout(() => setClosing(false), value);
   };
   const grouped = categoryOrder
     .filter((id) => id !== "gateway")
@@ -166,102 +143,130 @@ export function DeviceCombobox({
       visible: gatewayMatches || matchingChildren.length > 0,
     };
   }).filter((group) => group.visible && (category === "all" || category === "gateway"));
-  const resultCount = grouped.length + gatewayGroups.length;
+  const hasResults = grouped.length > 0 || gatewayGroups.length > 0;
 
   return (
-    <div className={`device-quick-switch-control ${className}`.trim()} ref={rootRef}>
-      <div className="device-quick-switch-input">
-        <Search size={14} aria-hidden="true" />
-        <input
-          role="combobox"
-          aria-label={ariaLabel}
-          aria-expanded={open}
-          aria-controls={listboxId}
-          autoComplete="off"
-          value={open ? keyword : selected ? selected.name : ""}
-          placeholder={placeholder}
-          onFocus={openMenu}
-          onChange={(event) => {
-            setKeyword(event.target.value);
-            setOpen(true);
-          }}
-        />
-        <ChevronDown size={14} aria-hidden="true" className={`device-quick-switch-chevron ${open ? "open" : ""}`} />
-      </div>
-      {(open || closing) && (
-        <div id={listboxId} className={`device-quick-switch-menu t-dropdown ${open ? "is-open" : "is-closing"}`} data-origin="top-right" role="listbox">
-          <div className="device-option-categories" role="group" aria-label="设备分类">
-            {categories.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={category === item.id ? "active" : ""}
-                onClick={() => setCategory(item.id)}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-          <div className="device-option-results">
-            {resultCount ? <>
-              {gatewayGroups.length ? (
-                <section className="device-option-group device-option-gateway-group">
-                  <div className="device-option-group-title">
-                    <span>网关</span><small>{gatewayGroups.length}</small>
-                  </div>
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (nextOpen) {
+          setKeyword("");
+          setCategory("all");
+        }
+      }}
+    >
+      <div className={`device-quick-switch-control ${className}`.trim()}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            className="device-quick-switch-input"
+            role="combobox"
+            aria-label={ariaLabel}
+            aria-expanded={open}
+          >
+            <span className={`device-quick-switch-value${selected ? "" : " placeholder"}`}>
+              {selected?.name ?? placeholder}
+            </span>
+            <ChevronsUpDown size={14} aria-hidden="true" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          className="device-quick-switch-menu"
+          align="end"
+          onOpenAutoFocus={(event) => event.preventDefault()}
+        >
+          <Command shouldFilter={false} loop>
+            <CommandInput
+              autoFocus
+              value={keyword}
+              onValueChange={setKeyword}
+              placeholder={placeholder}
+              aria-label={ariaLabel}
+            />
+            <Tabs
+              value={category}
+              onValueChange={(nextCategory) => setCategory(nextCategory as DeviceOptionCategory)}
+            >
+              <TabsList className="device-option-categories" aria-label="设备分类">
+                {categories.map((item) => (
+                  <TabsTrigger key={item.id} value={item.id}>
+                    {item.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+            <CommandList className="device-option-results">
+              {!hasResults && <CommandEmpty>没有匹配的设备</CommandEmpty>}
+              {gatewayGroups.length > 0 && (
+                <CommandGroup heading={`网关 · ${gatewayGroups.length}`} className="device-option-group device-option-gateway-group">
                   {gatewayGroups.map(({ gateway, children }) => (
                     <div key={gateway.id} className="device-option-gateway">
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={gateway.id === value}
-                        className={gateway.id === value ? "selected" : undefined}
-                        onClick={() => selectDevice(gateway.id)}
-                      >
-                        <strong>{gateway.name}</strong>
-                        <small>SN {gateway.serial_no} · {children.length} 个节点</small>
-                      </button>
+                      <DeviceCommandItem
+                        device={gateway}
+                        selected={gateway.id === value}
+                        detail={`SN ${gateway.serial_no} · ${children.length} 个节点`}
+                        onSelect={selectDevice}
+                      />
                       {children.map((child) => (
-                        <button
+                        <DeviceCommandItem
                           key={child.id}
-                          type="button"
-                          role="option"
-                          aria-selected={child.id === value}
-                          className={`device-option-child${child.id === value ? " selected" : ""}`}
-                          onClick={() => selectDevice(child.id)}
-                        >
-                          <strong>{child.name}</strong>
-                          <small>SN {child.serial_no}</small>
-                        </button>
+                          device={child}
+                          selected={child.id === value}
+                          detail={`SN ${child.serial_no}`}
+                          child
+                          onSelect={selectDevice}
+                        />
                       ))}
                     </div>
                   ))}
-                </section>
-              ) : null}
+                </CommandGroup>
+              )}
               {grouped.map((group) => (
-              <section key={group.id} className="device-option-group">
-                <div className="device-option-group-title">
-                  <span>{group.label}</span><small>{group.items.length}</small>
-                </div>
-                {group.items.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    role="option"
-                    aria-selected={item.id === value}
-                    className={item.id === value ? "selected" : undefined}
-                    onClick={() => selectDevice(item.id)}
-                  >
-                    <strong>{item.name}</strong>
-                    <small>SN {item.serial_no}</small>
-                  </button>
-                ))}
-              </section>
+                <CommandGroup key={group.id} heading={`${group.label} · ${group.items.length}`} className="device-option-group">
+                  {group.items.map((item) => (
+                    <DeviceCommandItem
+                      key={item.id}
+                      device={item}
+                      selected={item.id === value}
+                      detail={`SN ${item.serial_no}`}
+                      onSelect={selectDevice}
+                    />
+                  ))}
+                </CommandGroup>
               ))}
-            </> : <div className="device-quick-switch-empty">没有匹配的设备</div>}
-          </div>
-        </div>
-      )}
-    </div>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </div>
+    </Popover>
+  );
+}
+
+function DeviceCommandItem({
+  device,
+  selected,
+  detail,
+  child = false,
+  onSelect,
+}: {
+  device: Device;
+  selected: boolean;
+  detail: string;
+  child?: boolean;
+  onSelect: (deviceId: string) => void;
+}) {
+  return (
+    <CommandItem
+      value={device.id}
+      className={`device-option-item${child ? " device-option-child" : ""}${selected ? " selected" : ""}`}
+      onSelect={() => onSelect(device.id)}
+    >
+      <span>
+        <strong>{device.name}</strong>
+        <small>{detail}</small>
+      </span>
+      <Check className="device-option-check" size={14} aria-hidden="true" />
+    </CommandItem>
   );
 }

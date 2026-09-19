@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { api, deviceStatusLabel, formatApiError } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, PageHeader, Panel, StateView } from "@thcpn/ui";
+import { Badge, Button, PageHeader, Panel, StateView } from "./platform-ui";
 
 const text = (input: unknown, fallback: unknown = "—") =>
   input === undefined || input === null || input === ""

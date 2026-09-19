@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api, type AccessibleWorkspace } from "@thcpn/api";
 
 type WorkspaceContextValue = {
@@ -60,3 +60,14 @@ export function useWorkspace() {
 }
 
 export const workspaceQueryKey = (workspaceId: string | null, ...parts: string[]) => ["workspace", workspaceId, ...parts];
+
+// Names are real-device metadata shared by all workspaces. Refresh cached node
+// projections without repeating telemetry/history requests.
+export function invalidateNodeNames(client: QueryClient) {
+  return client.invalidateQueries({predicate: query => {
+    const key = query.queryKey;
+    return key.some(part => typeof part === "string" && ["nodes", "children", "devices", "device-map", "carbon-overview"].includes(part))
+      || (key.includes("carbon") && key.includes("overview"))
+      || (key.includes("device") && (key.includes("detail") || key.includes("context")));
+  }});
+}

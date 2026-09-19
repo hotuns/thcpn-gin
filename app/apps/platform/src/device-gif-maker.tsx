@@ -4,7 +4,7 @@ import { CalendarDays, Check, Clock3, Download, Film, HardDrive, Images, Maximiz
 import { GIFEncoder, applyPalette, quantize } from "gifenc";
 import type { DataStream, Device, MediaItem } from "@thcpn/api";
 import { api, formatApiError } from "@thcpn/api";
-import { Button, StateView } from "@thcpn/ui";
+import { Button, StateView } from "./platform-ui";
 
 type ImageSource = "thumbnail" | "original";
 

@@ -1,9 +1,9 @@
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useState, type FormEvent } from "react";
-import { ArrowLeft, Check, Mail, Moon, Palette, Pencil, Phone, Sun, UserRound, X } from "lucide-react";
+import { ArrowLeft, Check, Mail, Moon, Palette, Pencil, Phone, Sun, UserRound } from "lucide-react";
 import { api, commonStatusLabel, formatApiError } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
-import { Badge, Button, CopyId, PageHeader, Panel } from "@thcpn/ui";
+import { Badge, Button, CopyId, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, PageHeader, Panel, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsContent, TabsList, TabsTrigger } from "./platform-ui";
 import { useLocale, useTheme, type ThemeMode } from "@thcpn/i18n";
 import { SecurityTab } from "./security-tab";
 import { useColorTheme, type ColorTheme } from "./color-theme";
@@ -29,26 +29,16 @@ export function AccountPage() {
         description={t("preferences")}
         actions={<Button variant="secondary" onClick={() => navigate("/dashboard")}><ArrowLeft size={14} />返回总览</Button>}
       />
-      <div className="settings-tabs account-tabs">
-        <button
-          type="button"
-          className={tab === "profile" ? "active" : ""}
-          onClick={() => setParams({ tab: "profile" })}
-        >
-          账户资料
-        </button>
-        <button
-          type="button"
-          className={tab === "security" ? "active" : ""}
-          onClick={() => setParams({ tab: "security" })}
-        >
-          账号安全
-        </button>
-        <button type="button" className={tab === "preferences" ? "active" : ""} onClick={() => setParams({ tab: "preferences" })}>
-          {t("preferences")}
-        </button>
-      </div>
-      {tab === "security" ? <SecurityTab /> : tab === "preferences" ? <PreferencesTab /> : <AccountProfile />}
+      <Tabs value={tab} onValueChange={(value) => setParams({ tab: value })}>
+        <TabsList className="account-tabs">
+          <TabsTrigger value="profile">账户资料</TabsTrigger>
+          <TabsTrigger value="security">账号安全</TabsTrigger>
+          <TabsTrigger value="preferences">{t("preferences")}</TabsTrigger>
+        </TabsList>
+        <TabsContent value="profile"><AccountProfile /></TabsContent>
+        <TabsContent value="security"><SecurityTab /></TabsContent>
+        <TabsContent value="preferences"><PreferencesTab /></TabsContent>
+      </Tabs>
     </>
   );
 }
@@ -81,16 +71,17 @@ function PreferencesTab() {
     <div className="preference-list">
       <div className="preference-row">
         <div><strong>{t("language")}</strong><small>{t("languageDescription")}</small></div>
-        <select aria-label={t("language")} value={locale} onChange={(event) => void setLocale(event.target.value as "zh-CN" | "en-US")}>
-          <option value="zh-CN">{t("chinese")}</option>
-          <option value="en-US">{t("english")}</option>
-        </select>
+        <Select value={locale} onValueChange={(value) => void setLocale(value as "zh-CN" | "en-US")}>
+          <SelectTrigger aria-label={t("language")}><SelectValue /></SelectTrigger>
+          <SelectContent><SelectItem value="zh-CN">{t("chinese")}</SelectItem><SelectItem value="en-US">{t("english")}</SelectItem></SelectContent>
+        </Select>
       </div>
       <div className="preference-row">
         <div><strong>{t("appearance")}</strong><small>{t("appearanceDescription")}</small></div>
-        <select aria-label={t("theme")} value={theme} onChange={(event) => setTheme(event.target.value as ThemeMode)}>
-          {themeOptions.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
-        </select>
+        <Select value={theme} onValueChange={(value) => setTheme(value as ThemeMode)}>
+          <SelectTrigger aria-label={t("theme")}><SelectValue /></SelectTrigger>
+          <SelectContent>{themeOptions.map(({ value, label }) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+        </Select>
       </div>
       <div className="preference-row color-theme-preference">
         <div>
@@ -142,7 +133,24 @@ function AccountProfile() {
         <div className="preference-row"><div><strong>用户 ID</strong><small>系统分配的唯一标识</small></div><CopyId value={user.id} /></div>
       </div>
       {feedback && <div className="command-note section-gap">{feedback}</div>}
-      {editing && <div className="modal-layer"><button className="modal-backdrop" aria-label="关闭编辑" onClick={() => setEditing(false)} /><div className="modal-card account-editor" role="dialog" aria-modal="true"><div className="panel-header"><h2 className="panel-title">编辑账户名称</h2><Button variant="secondary" onClick={() => setEditing(false)}><X size={14} />关闭</Button></div><form className="panel-body security-form" onSubmit={save}><label className="field"><span className="field-label">名称</span><input required maxLength={100} value={name} onChange={(event) => setName(event.target.value)} /></label><div className="form-actions"><Button type="button" variant="secondary" onClick={() => setEditing(false)}>取消</Button><Button type="submit" disabled={busy || !name.trim()}>{busy ? "保存中…" : "保存"}</Button></div></form></div></div>}
+      <Dialog open={editing} onOpenChange={(open) => !busy && setEditing(open)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>编辑账户名称</DialogTitle>
+            <DialogDescription>这个名称用于平台展示和账户识别。</DialogDescription>
+          </DialogHeader>
+          <form className="security-form shadcn-dialog-form" onSubmit={save}>
+            <label className="field">
+              <span className="field-label">名称</span>
+              <Input autoFocus required maxLength={100} value={name} onChange={(event) => setName(event.target.value)} />
+            </label>
+            <DialogFooter>
+              <Button type="button" variant="secondary" onClick={() => setEditing(false)}>取消</Button>
+              <Button type="submit" disabled={busy || !name.trim()}>{busy ? "保存中…" : "保存"}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </Panel>
   );
 }

@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Check, Copy, ExternalLink, KeyRound, Sparkles, Trash2 } from "lucide-react";
 import { api, formatApiError } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, PageHeader, Panel, StateView } from "@thcpn/ui";
+import { Badge, Button, PageHeader, Panel, StateView } from "./platform-ui";
 
 const text = (value: unknown, fallback = "—") => value === undefined || value === null || value === "" ? fallback : String(value);
 const GB = 1024 ** 3;

@@ -16,7 +16,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import type { TelemetrySeries } from "@thcpn/api";
-import { IconButton } from "@thcpn/ui";
+import { IconButton } from "./platform-ui";
 
 type TelemetryPoint = TelemetrySeries["points"][number] & {
   series: TelemetrySeries;

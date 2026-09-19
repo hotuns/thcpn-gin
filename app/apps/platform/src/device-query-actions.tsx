@@ -6,7 +6,7 @@ import {
   type DataStream,
   type TelemetryQueryResponse,
 } from "@thcpn/api";
-import { Badge, Button, Panel, StateView } from "@thcpn/ui";
+import { Badge, Button, Panel, StateView } from "./platform-ui";
 
 import { DeviceQueryToolbar } from "./device-query-toolbar";
 

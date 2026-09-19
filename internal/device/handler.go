@@ -205,6 +205,9 @@ func (h *Handler) AdminUpdate(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
+	if h.updateNodeDeviceName(c, deviceID, req, true) {
+		return
+	}
 	if req.ProjectID != nil || req.SiteID != nil {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "assignment is managed by separate admin actions"))
 		return
@@ -894,6 +897,9 @@ func (h *Handler) Update(c *gin.Context) {
 	var req updateDeviceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
+		return
+	}
+	if h.updateNodeDeviceName(c, deviceID, req, false) {
 		return
 	}
 	actor, _ := auth.ActorFromContext(c)

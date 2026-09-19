@@ -45,6 +45,7 @@ export function DeviceMap({ points, onSelect, selectedDeviceId, height = 520, st
   const markers = useRef<maplibregl.Marker[]>([]);
   const latestPoints = useRef(points);
   const latestSelected = useRef(selectedDeviceId);
+  const cameraState = useRef<{ map: MapLibreMap; locations: string; selected?: string } | null>(null);
   latestPoints.current = points;
   latestSelected.current = selectedDeviceId;
   useEffect(() => {
@@ -93,16 +94,29 @@ export function DeviceMap({ points, onSelect, selectedDeviceId, height = 520, st
               image.alt = "";
               element.append(image);
             }
+            const locationDot = document.createElement("span");
+            locationDot.className = "device-map-location-dot";
+            locationDot.setAttribute("aria-hidden", "true");
+            element.append(locationDot);
             element.title = properties.name;
             element.addEventListener("click", () => onSelect?.(properties.device_id));
           }
           element.setAttribute("aria-label", element.title);
-          return new maplibregl.Marker({ element }).setLngLat(feature.geometry.coordinates as [number, number]).addTo(instance);
+          return new maplibregl.Marker({ element, anchor: "cluster" in properties && properties.cluster ? "center" : "bottom" }).setLngLat(feature.geometry.coordinates as [number, number]).addTo(instance);
         });
       };
       instance.on("moveend", renderMarkers);
       renderMarkers();
-      fit(instance, points);
+      const located = locatedPoints(points);
+      const locations = JSON.stringify(located.map(point => [point.device_id, point.longitude, point.latitude]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
+      const previous = cameraState.current;
+      const selected = located.find(point => point.device_id === selectedDeviceId);
+      if (selected && (previous?.map !== instance || previous.selected !== selectedDeviceId || previous.locations !== locations)) {
+        instance.easeTo({ center: [selected.longitude!, selected.latitude!] });
+      } else if (!selectedDeviceId && (previous?.map !== instance || previous.locations !== locations)) {
+        fit(instance, points);
+      }
+      cameraState.current = { map: instance, locations, selected: selectedDeviceId };
       return true;
     };
     if (!applyPoints()) {
@@ -119,7 +133,7 @@ export function DeviceMap({ points, onSelect, selectedDeviceId, height = 520, st
       markers.current.forEach((marker) => marker.remove());
       markers.current = [];
     };
-  }, [points, selectedDeviceId]);
+  }, [points, selectedDeviceId, styleUrl, mapStyle]);
   return <div ref={container} className="device-map-canvas" style={{ height }} />;
 }
 

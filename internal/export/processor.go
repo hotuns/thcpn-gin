@@ -78,6 +78,8 @@ type requestConfig struct {
 }
 
 type batchExportConfig struct {
+	NodeNames     map[string]string   `json:"node_names,omitempty"`
+	NodeIndices   map[string]int64    `json:"node_indices,omitempty"`
 	NodeTargets   []device.NodeTarget `json:"node_targets,omitempty"`
 	StartTime     time.Time           `json:"start_time"`
 	EndTime       time.Time           `json:"end_time"`
@@ -89,12 +91,13 @@ type batchExportConfig struct {
 }
 
 type carbonStationExportConfig struct {
-	StartTime         time.Time `json:"start_time"`
-	EndTime           time.Time `json:"end_time"`
-	NodeIDs           []int     `json:"node_ids"`
-	Fields            []string  `json:"fields"`
-	IncludeFlux       bool      `json:"include_flux"`
-	IncludeRawSamples bool      `json:"include_raw_samples"`
+	NodeNames         map[string]string `json:"node_names,omitempty"`
+	StartTime         time.Time         `json:"start_time"`
+	EndTime           time.Time         `json:"end_time"`
+	NodeIDs           []int             `json:"node_ids"`
+	Fields            []string          `json:"fields"`
+	IncludeFlux       bool              `json:"include_flux"`
+	IncludeRawSamples bool              `json:"include_raw_samples"`
 }
 
 type qualityReportRow struct {
@@ -524,6 +527,9 @@ func (p *Processor) renderDeviceBatchZIP(ctx context.Context, job Job, cfg batch
 		if err != nil {
 			return nil, mapNotFoundOrInternal(err, "batch device not found")
 		}
+		if name, ok := cfg.NodeNames[id.String()]; ok {
+			device.Name = name
+		}
 		folder := "."
 		if len(cfg.DeviceIDs) > 1 {
 			folder = safeArchiveSegment(device.Name)
@@ -543,6 +549,12 @@ func (p *Processor) renderDeviceBatchZIP(ctx context.Context, job Job, cfg batch
 			body, metadata, count, err := renderWideTelemetryCSV(series)
 			if err != nil {
 				return nil, err
+			}
+			if name, ok := cfg.NodeNames[id.String()]; ok {
+				body, err = appendNodeColumns(body, strconv.FormatInt(cfg.NodeIndices[id.String()], 10), name, true)
+				if err != nil {
+					return nil, err
+				}
 			}
 			if err := writeBytesFile(zw, path.Join(folder, "data.csv"), body); err != nil {
 				return nil, err
@@ -1307,7 +1319,11 @@ func (p *Processor) renderCarbonStationZIP(ctx context.Context, job Job, cfg car
 	}
 	var manifest bytes.Buffer
 	manifestWriter := csv.NewWriter(&manifest)
-	if err := manifestWriter.Write([]string{"device_id", "device_name", "serial_no", "node_id", "field", "content", "file"}); err != nil {
+	header := []string{"device_id", "device_name", "serial_no", "node_id", "field", "content", "file"}
+	if cfg.NodeNames != nil {
+		header = append(header, "node_name")
+	}
+	if err := manifestWriter.Write(header); err != nil {
 		return nil, err
 	}
 	report := make([]qualityReportRow, 0)
@@ -1336,10 +1352,20 @@ func (p *Processor) renderCarbonStationZIP(ctx context.Context, job Job, cfg car
 					return nil, renderErr
 				}
 				name := path.Join(folder, "flux.csv")
+				if cfg.NodeNames != nil {
+					body, renderErr = appendNodeColumns(body, "", cfg.NodeNames[strconv.Itoa(nodeID)], false)
+					if renderErr != nil {
+						return nil, renderErr
+					}
+				}
 				if err := writeBytesFile(zw, name, body); err != nil {
 					return nil, err
 				}
-				_ = manifestWriter.Write([]string{device.ID.String(), device.Name, device.SerialNo, strconv.Itoa(nodeID), field, "flux", name})
+				row := []string{device.ID.String(), device.Name, device.SerialNo, strconv.Itoa(nodeID), field, "flux", name}
+				if cfg.NodeNames != nil {
+					row = append(row, cfg.NodeNames[strconv.Itoa(nodeID)])
+				}
+				_ = manifestWriter.Write(row)
 				report = append(report, qualityReportRow{device.ID.String(), fmt.Sprintf("node-%d/%s", nodeID, field), "通量", "generated", len(points.Points), ""})
 			}
 			if cfg.IncludeRawSamples {
@@ -1349,6 +1375,12 @@ func (p *Processor) renderCarbonStationZIP(ctx context.Context, job Job, cfg car
 					return nil, renderErr
 				}
 				name := path.Join(folder, "raw-samples.csv")
+				if cfg.NodeNames != nil {
+					body, renderErr = appendNodeColumns(body, "", cfg.NodeNames[strconv.Itoa(nodeID)], false)
+					if renderErr != nil {
+						return nil, renderErr
+					}
+				}
 				if err := writeBytesFile(zw, name, body); err != nil {
 					return nil, err
 				}
@@ -1356,7 +1388,11 @@ func (p *Processor) renderCarbonStationZIP(ctx context.Context, job Job, cfg car
 				if count < 0 {
 					count = 0
 				}
-				_ = manifestWriter.Write([]string{device.ID.String(), device.Name, device.SerialNo, strconv.Itoa(nodeID), field, "raw_samples", name})
+				row := []string{device.ID.String(), device.Name, device.SerialNo, strconv.Itoa(nodeID), field, "raw_samples", name}
+				if cfg.NodeNames != nil {
+					row = append(row, cfg.NodeNames[strconv.Itoa(nodeID)])
+				}
+				_ = manifestWriter.Write(row)
 				report = append(report, qualityReportRow{device.ID.String(), fmt.Sprintf("node-%d/%s", nodeID, field), "原始采样", "generated", count, ""})
 			}
 		}
@@ -1632,18 +1668,26 @@ func (p *Processor) renderIndexedNodeZIP(ctx context.Context, cfg batchExportCon
 		if err != nil {
 			return nil, err
 		}
+		name := node.Name
+		if cfg.NodeNames != nil {
+			name = cfg.NodeNames[node.Key]
+			body, err = appendNodeColumns(body, strconv.Itoa(*node.Target.NodeIndex), name, true)
+			if err != nil {
+				return nil, err
+			}
+		}
 		if err := writeBytesFile(zw, path.Join(folder, "data.csv"), body); err != nil {
 			return nil, err
 		}
 		if err := writeMetadataCSV(zw, path.Join(folder, "metadata.csv"), metadata); err != nil {
 			return nil, err
 		}
-		report = append(report, qualityReportRow{gatewayID.String(), folder, node.Name, "packed", count, ""})
+		report = append(report, qualityReportRow{gatewayID.String(), folder, name, "packed", count, ""})
 	}
 	if len(selected) > 0 {
 		return nil, apperr.New(apperr.KindInvalidArgument, "selected node no longer exists")
 	}
-	raw, err := json.MarshalIndent(map[string]any{"gateway_id": gatewayID, "gateway_name": cfg.GatewayName, "node_targets": cfg.NodeTargets}, "", "  ")
+	raw, err := json.MarshalIndent(map[string]any{"gateway_id": gatewayID, "gateway_name": cfg.GatewayName, "node_targets": cfg.NodeTargets, "node_names": cfg.NodeNames}, "", "  ")
 	if err != nil {
 		return nil, err
 	}

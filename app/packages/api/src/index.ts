@@ -171,23 +171,8 @@ export type WallboardTemplate = { code: string; version: number; component_key: 
 export type Wallboard = { id: string; workspace_id: string; name: string; template_code: string; template_version: number; template_name: string; component_key: string; config: { device_id?: string; device_ids?: string[]; telemetry_stream_ids?: string[]; comparison_stream?: string; image_stream_ids?: string[]; trend_hours?: number }; status: "active" | "archived"; created_by: string; created_at: string; updated_at: string };
 export type WallboardDevice = { id: string; name: string; status: string; device_type: string; site_id?: string; site_name?: string; latitude?: number; longitude?: number; location_source: "device" | "site" | "unconfigured"; battery?: number; signal?: number; last_reported_at?: string; runtime_error?: string };
 export type WallboardSnapshot = { generated_at: string; workspace: { id: string; name: string }; sites: Array<{ id: string; name: string; latitude?: number; longitude?: number }>; devices: WallboardDevice[]; metrics: Array<{ data_stream_id: string; device_id: string; name: string; unit?: string; latest_value?: number; latest_at?: string; points: Array<{ ts: string; value: number }> }>; images: Array<{ data_stream_id: string; name: string; items: MediaItem[] }> };
-export type CarbonNodeStatus = {
-  node_id: number;
-  status: "has_data" | "no_data";
-  latest_sample_at?: string;
-  latest_flux_at?: string;
-};
-export type CarbonOverview = {
-  device_id: string;
-  external_device_id: number;
-  nodes_count: number;
-  nodes: CarbonNodeStatus[];
-  status: "has_data" | "no_data";
-  runtime?: { battery?: string; signal?: string; network?: string };
-  latest_sample_at?: string;
-  latest_flux_at?: string;
-  refreshed_at: string;
-};
+export type CarbonNodeStatus = Schema<"CarbonNodeStatus">;
+export type CarbonOverview = Schema<"CarbonOverview">;
 export type CarbonFluxPoint = {
   node_id: number;
   period: string;
@@ -847,6 +832,7 @@ export const api = {
         `/api/v1/devices/${encodeURIComponent(id)}/profile/images/${encodeURIComponent(imageId)}`,
         { method: "DELETE" },
       ),
+    renameNode: (id: string, index: number, name: string) => jsonRequest<{name: string; custom_name: string}>(`/api/v1/devices/${encodeURIComponent(id)}/nodes/${index}`, "PATCH", {name}),
     nodes: (id: string) => request<Schema<"GatewayNodeList">>(`/api/v1/devices/${encodeURIComponent(id)}/nodes`),
     reconcileConfig: (id: string) => jsonRequest<JsonRecord>(`/api/v1/devices/${encodeURIComponent(id)}/config/resync`, "POST", {}),
     context: (id: string) => request<DeviceInteractionContext>(`/api/v1/devices/${encodeURIComponent(id)}/context`),
@@ -1238,6 +1224,7 @@ export const api = {
       request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/logs${queryString(input as Record<string, string | number | boolean>)}`),
     deviceLoRaWANV2GatewayLogs: (id: string, input: JsonRecord = {}) =>
       request<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/logs${queryString(input as Record<string, string | number | boolean>)}`),
+    renameNode: (id: string, index: number, name: string) => jsonRequest<{name: string; custom_name: string}>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes/${index}`, "PATCH", {name}),
     deviceNodes: (id: string) => request<Schema<"GatewayNodeList">>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes`),
     reconcileDeviceConfig: (id: string) => jsonRequest<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/config/resync`, "POST", {}),
     startSourceSync: (id: string) => request<SourceOperation>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/sync`, { method: "POST" }),

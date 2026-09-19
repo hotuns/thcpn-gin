@@ -4723,6 +4723,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/devices/{device_id}/nodes/{node_index}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Rename an indexed device node */
+        patch: operations["renameNode"];
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/nodes/{node_index}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Rename an indexed device node */
+        patch: operations["adminRenameNode"];
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/carbon/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getCarbonOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/carbon/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAdminCarbonOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -5938,9 +6004,38 @@ export interface components {
             gateway_device_id: components["schemas"]["UUID"];
             node_index: number;
         };
+        CarbonNodeStatus: {
+            node_id: number;
+            /** @description Resolved display name including the stable node index. */
+            name: string;
+            /** @description Platform node name; empty if not named. */
+            custom_name: string;
+            /** @enum {string} */
+            status: "has_data" | "no_data";
+            latest_sample_at?: components["schemas"]["Timestamp"];
+            latest_flux_at?: components["schemas"]["Timestamp"];
+        };
+        CarbonOverview: {
+            device_id: components["schemas"]["UUID"];
+            external_device_id: number;
+            nodes_count: number;
+            nodes: components["schemas"]["CarbonNodeStatus"][];
+            /** @enum {string} */
+            status: "has_data" | "no_data";
+            latest_sample_at?: components["schemas"]["Timestamp"];
+            latest_flux_at?: components["schemas"]["Timestamp"];
+            refreshed_at: components["schemas"]["Timestamp"];
+            runtime?: {
+                battery?: string;
+                signal?: string;
+                network?: string;
+            };
+        };
         GatewayNode: {
             key: string;
             name: string;
+            custom_name: string;
+            can_rename: boolean;
             target: components["schemas"]["DeviceNodeTarget"];
             streams: components["schemas"]["DataStream"][];
         };
@@ -5963,8 +6058,10 @@ export interface components {
         AddDeviceChildRequest: {
             child_device_id: components["schemas"]["UUID"];
         };
-        /** @description Workspace users can only adjust the active assignment's project/site placement. System device identity and capabilities are managed by system sync/admin flows. */
+        /** @description Workspace users may rename THCPN node devices with a name-only request, or adjust the active assignment's project/site placement. System device identity and capabilities are managed by system sync/admin flows. */
         UpdateDeviceRequest: {
+            /** @description THCPN node name. Submit separately from placement. */
+            name?: string;
             project_id?: components["schemas"]["UUID"];
             site_id?: components["schemas"]["UUID"];
         };
@@ -8200,9 +8297,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["CarbonOverview"];
                 };
             };
         };
@@ -14246,6 +14341,146 @@ export interface operations {
             };
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    renameNode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+                node_index: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Empty string restores the default node label. */
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated node name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        node_index: number;
+                        name: string;
+                        custom_name: string;
+                    };
+                };
+            };
+            /** @description Invalid node index or name */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Device configuration permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminRenameNode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+                node_index: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Empty string restores the default node label. */
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated node name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        node_index: number;
+                        name: string;
+                        custom_name: string;
+                    };
+                };
+            };
+            /** @description Invalid node index or name */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Device configuration permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getCarbonOverview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Carbon overview with platform node names. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CarbonOverview"];
+                };
+            };
+        };
+    };
+    getAdminCarbonOverview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Carbon overview with platform node names. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CarbonOverview"];
+                };
+            };
         };
     };
 }

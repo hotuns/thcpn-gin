@@ -245,9 +245,7 @@ function ComparisonChart({
         className="comparison-canvas"
         role="img"
         aria-label={t("platform:telemetry.normalizedChart")}
-        title="滚轮缩放，双击恢复完整范围"
-        onWheel={zoomable ? zoom.onWheel : undefined}
-        onDoubleClick={zoomable ? zoom.resetZoom : undefined}
+        {...(zoomable ? zoom.interactionProps : {})}
       >
         <ResponsiveContainer width="100%" height="100%">
           <LineChart
@@ -280,6 +278,7 @@ function ComparisonChart({
               axisLine={false}
             />
             <Tooltip
+              active={zoom.isDragging ? false : undefined}
               labelFormatter={(value) =>
                 formatDateTime(new Date(Number(value)), { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
               }
@@ -427,9 +426,7 @@ function TelemetryChart({
         className="chart-canvas"
         role="img"
         aria-label={t("platform:telemetry.trend", { name: series.name })}
-        title="滚轮缩放，双击恢复完整范围"
-        onWheel={zoomable ? zoom.onWheel : undefined}
-        onDoubleClick={zoomable ? zoom.resetZoom : undefined}
+        {...(zoomable ? zoom.interactionProps : {})}
       >
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
@@ -478,6 +475,7 @@ function TelemetryChart({
               axisLine={false}
             />
             <Tooltip
+              active={zoom.isDragging ? false : undefined}
               cursor={{
                 stroke: "var(--chart)",
                 strokeOpacity: 0.45,

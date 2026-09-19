@@ -5,7 +5,7 @@ import { ArrowLeft, Pencil, Plus, Tags, X } from "lucide-react";
 import { api, formatApiError, type DeviceTaxonomyTerm, type JsonRecord } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, PageHeader, Panel, StateView } from "@thcpn/ui";
+import { Badge, Button, PageHeader, Panel, StateView, Tabs, TabsList, TabsTrigger } from "./platform-ui";
 import { AccessControlTab } from "./access-control";
 import { billingEnabled } from "./features";
 
@@ -42,17 +42,11 @@ export function SettingsPage() {
           </div>
         }
       />
-      <div className="settings-tabs">
-        {tabs.map((item) => (
-          <button
-            key={item.id}
-            className={tab === item.id ? "active" : ""}
-            onClick={() => setParams({ tab: item.id })}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      <Tabs value={tab} onValueChange={(value) => setParams({ tab: value })}>
+        <TabsList>
+          {tabs.map((item) => <TabsTrigger key={item.id} value={item.id}>{item.label}</TabsTrigger>)}
+        </TabsList>
+      </Tabs>
       {tab === "resources" ? (
         <ResourcesTab />
       ) : tab === "access" ? (

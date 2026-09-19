@@ -1114,11 +1114,11 @@ func (s *Service) upsertTHCPNPlatformDevice(ctx context.Context, q *sqlc.Queries
 		if err != nil {
 			return sqlc.Device{}, nil, false, mapNotFoundOrInternal(err, "mapped device not found")
 		}
-		device, err := q.UpdateDevice(ctx, sqlc.UpdateDeviceParams{
-			ID:        current.ID,
-			ProductID: optionalString(productID),
-			Name:      name,
-			Status:    current.Status,
+		device, err := q.UpdateSyncedDevice(ctx, sqlc.UpdateSyncedDeviceParams{
+			ID:         current.ID,
+			ProductID:  optionalString(productID),
+			SourceName: name,
+			Status:     current.Status,
 		})
 		if err != nil {
 			return sqlc.Device{}, nil, false, mapWriteError(err, "update synced device")

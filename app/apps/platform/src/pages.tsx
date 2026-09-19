@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Database, Download, GitCompareArrows } from "lucide-react";
 import { api, formatApiError, type TelemetrySeries } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, PageHeader, Panel, StateView } from "@thcpn/ui";
+import { Badge, Button, PageHeader, Panel, StateView } from "./platform-ui";
 import {
   CameraLive,
   DeviceMedia,

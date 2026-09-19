@@ -333,3 +333,13 @@ SELECT id, workspace_id, device_id, operation_type, status, request_json, reques
 FROM device_operations
 WHERE device_id = $1
 ORDER BY created_at DESC, id DESC;
+
+-- name: UpdateSyncedDevice :one
+-- Existing THCPN node names belong to the platform and must survive source sync.
+UPDATE devices
+SET product_id = sqlc.narg(product_id),
+    name = CASE WHEN device_type = 'gateway_node' THEN name ELSE sqlc.arg(source_name)::text END,
+    status = sqlc.arg(status),
+    updated_at = now()
+WHERE id = sqlc.arg(id)
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type;

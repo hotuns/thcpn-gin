@@ -4,7 +4,7 @@ import { useSearchParams, Link } from "react-router-dom";
 import { Search } from "lucide-react";
 import { api, formatApiError, type Device, type GatewayNode, type TelemetrySeries } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, Panel, StateView } from "@thcpn/ui";
+import { Badge, Button, Panel, StateView } from "./platform-ui";
 import { TelemetryCharts } from "./telemetry-charts";
 import { DeviceQueryToolbar, initialQueryRange } from "./device-query-toolbar";
 

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Check, ChevronDown, ChevronRight, Leaf, LocateFixed, MapPinned, Satellite, SlidersHorizontal, X } from "lucide-react";
 import { api, deviceTopologyRoleLabel, formatApiError, type DeviceMapItem, type DeviceTaxonomyTerm } from "@thcpn/api";
 import { DeviceMap, iconifyIconUrl, tiandituImageryStyle } from "@thcpn/device-map";
-import { Button, StateView } from "@thcpn/ui";
+import { Button, StateView } from "./platform-ui";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 
 export function DeviceMapPage() {
@@ -52,6 +52,7 @@ export function DeviceMapPage() {
         styleUrl={token ? undefined : import.meta.env.VITE_MAP_STYLE_URL}
         mapStyle={mapStyle}
         points={rows.map(mapPoint)}
+        selectedDeviceId={selectedId}
         onSelect={setSelectedId}
       />
 

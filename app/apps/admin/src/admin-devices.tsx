@@ -1,6 +1,7 @@
+import { invalidateNodeNames } from "@thcpn/workspace";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { FormInstance } from "antd";
 import { Activity, Battery, Copy, FileJson, GitBranch, Pencil, Printer, Radio, RefreshCw, Search, Settings2, Trash2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
@@ -32,7 +33,7 @@ import {
   formatApiError,
   type JsonRecord,
 } from "@thcpn/api";
-import { Badge, PageHeader, Panel, StateView } from "@thcpn/ui";
+import { Badge, PageHeader, Panel, StateView, NodeNameEditor } from "@thcpn/ui";
 import {
   configFieldsFromDetail,
   parseTHCPNConfig,
@@ -914,6 +915,7 @@ function DeviceDetailPanel({
   const attributeItems = Object.entries((attributes?.attributes ?? {}) as JsonRecord);
   const sourceDevice = (attributes?.source_device ?? {}) as JsonRecord;
   const carbonRuntime = (carbonData?.runtime ?? {}) as JsonRecord;
+  const nodeQueryClient = useQueryClient();
   const carbonNodes = (carbonData?.nodes as JsonRecord[] | undefined) ?? [];
   const date = (input: unknown) => input ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(String(input))) : "—";
   const inlineError = (error: unknown, title: string) => error ? <Alert type="warning" showIcon title={title} description={formatApiError(error).message} /> : null;
@@ -971,7 +973,7 @@ function DeviceDetailPanel({
       <div className="admin-detail-section-head"><div><h2>拓扑关系</h2><span>{deviceTopologyRoleLabel(value(device.topology_role, ""))} · {children.length} 个子节点</span></div><Button icon={<GitBranch size={14} />} onClick={() => onOpen("child")}>管理拓扑</Button></div>
       {inlineError(childrenError, "拓扑信息加载失败")}
       {queryLoading({ loading: childrenLoading, data: childrenData, error: childrenError }) ? <div className="admin-inline-loading">正在加载拓扑…</div> : children.length ? <Table rowKey={(item) => value(((item.device ?? item) as JsonRecord).id)} size="small" pagination={false} dataSource={children} columns={[
-        { title: "节点", render: (_, item) => { const child = (item.device ?? item) as JsonRecord; return <div><strong>{value(child.name, "未命名节点")}</strong><div className="cell-sub mono">{value(child.serial_no, child.id)}</div></div>; } },
+        { title: "节点", render: (_, item) => { const child = (item.device ?? item) as JsonRecord; return <div><strong>{value(child.name, "未命名节点")}</strong><NodeNameEditor name={value(child.name, "")} allowEmpty={false} onSave={async name => {await api.admin.updateDevice(String(child.id), {name}); await invalidateNodeNames(nodeQueryClient);}}/><div className="cell-sub mono">{value(child.serial_no, child.id)}</div></div>; } },
         { title: "状态", width: 110, render: (_, item) => { const child = (item.device ?? item) as JsonRecord; return <Tag color={child.status === "active" ? "green" : "default"}>{deviceStatusLabel(value(child.status, ""))}</Tag>; } },
         { title: "分配", width: 110, render: (_, item) => { const child = (item.device ?? item) as JsonRecord; return child.workspace_id ? <Tag color="blue">已分配</Tag> : <Tag>未分配</Tag>; } },
       ]} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前设备没有子节点" />}
@@ -1034,7 +1036,7 @@ function DeviceDetailPanel({
     <section className="admin-detail-section">
       <div className="admin-detail-section-head"><div><h2>节点最新数据</h2><span>每个采集节点最后一次写入源库的时间</span></div></div>
       {carbonNodes.length ? <Table rowKey="node_id" size="small" pagination={false} dataSource={carbonNodes} columns={[
-        { title: "节点", width: 100, render: (_, item) => `Node ${value(item.node_id)}` },
+        { title: "节点", render: (_, item) => <span>{value(item.name, `节点 ${value(item.node_id)}`)}<NodeNameEditor name={value(item.custom_name, "")} onSave={async name => {await api.admin.renameNode(String(device.id), Number(item.node_id), name); await invalidateNodeNames(nodeQueryClient);}}/></span> },
         { title: "数据状态", width: 120, render: (_, item) => <Tag color={item.status === "has_data" ? "green" : "default"}>{item.status === "has_data" ? "有数据" : "暂无数据"}</Tag> },
         { title: "最新数据", render: (_, item) => date(item.latest_sample_at) },
         { title: "最新通量", render: (_, item) => date(item.latest_flux_at) },

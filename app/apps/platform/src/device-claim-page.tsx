@@ -8,7 +8,7 @@ import {
   type DeviceClaimCredential,
 } from "@thcpn/api";
 import { useWorkspace } from "@thcpn/workspace";
-import { Button, Panel, StateView } from "@thcpn/ui";
+import { Button, Panel, StateView } from "./platform-ui";
 
 export function DeviceClaimPage() {
   const { claimSlug = "" } = useParams();

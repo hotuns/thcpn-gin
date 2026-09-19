@@ -147,7 +147,7 @@ func (q *Queries) EnableUserTOTP(ctx context.Context, arg EnableUserTOTPParams) 
 }
 
 const findActiveUserByIdentifier = `-- name: FindActiveUserByIdentifier :one
-SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version, is_demo
+SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version, is_demo, username
 FROM users
 WHERE status = 'active'
   AND (phone = $1 OR email = $1)
@@ -169,12 +169,13 @@ func (q *Queries) FindActiveUserByIdentifier(ctx context.Context, identifier *st
 		&i.LastLoginAt,
 		&i.AuthVersion,
 		&i.IsDemo,
+		&i.Username,
 	)
 	return i, err
 }
 
 const findActiveUserByPhoneForAuth = `-- name: FindActiveUserByPhoneForAuth :one
-SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version, is_demo
+SELECT id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version, is_demo, username
 FROM users
 WHERE status = 'active'
   AND phone = $1
@@ -196,6 +197,7 @@ func (q *Queries) FindActiveUserByPhoneForAuth(ctx context.Context, phone *strin
 		&i.LastLoginAt,
 		&i.AuthVersion,
 		&i.IsDemo,
+		&i.Username,
 	)
 	return i, err
 }
@@ -501,7 +503,7 @@ SET email_verified_at = COALESCE(email_verified_at, now()),
 WHERE id = $1
   AND email = $2
   AND status = 'active'
-RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version, is_demo
+RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version, is_demo, username
 `
 
 type UpdateUserEmailVerifiedParams struct {
@@ -525,6 +527,7 @@ func (q *Queries) UpdateUserEmailVerified(ctx context.Context, arg UpdateUserEma
 		&i.LastLoginAt,
 		&i.AuthVersion,
 		&i.IsDemo,
+		&i.Username,
 	)
 	return i, err
 }
@@ -534,7 +537,7 @@ UPDATE users
 SET last_login_at = now(),
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version, is_demo
+RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version, is_demo, username
 `
 
 func (q *Queries) UpdateUserLastLogin(ctx context.Context, id uuid.UUID) (User, error) {
@@ -553,6 +556,7 @@ func (q *Queries) UpdateUserLastLogin(ctx context.Context, id uuid.UUID) (User, 
 		&i.LastLoginAt,
 		&i.AuthVersion,
 		&i.IsDemo,
+		&i.Username,
 	)
 	return i, err
 }
@@ -563,7 +567,7 @@ SET phone_verified_at = COALESCE(phone_verified_at, now()),
     last_login_at = now(),
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version, is_demo
+RETURNING id, name, phone, email, status, created_at, updated_at, phone_verified_at, email_verified_at, last_login_at, auth_version, is_demo, username
 `
 
 func (q *Queries) UpdateUserPhoneVerifiedAndLogin(ctx context.Context, id uuid.UUID) (User, error) {
@@ -582,6 +586,7 @@ func (q *Queries) UpdateUserPhoneVerifiedAndLogin(ctx context.Context, id uuid.U
 		&i.LastLoginAt,
 		&i.AuthVersion,
 		&i.IsDemo,
+		&i.Username,
 	)
 	return i, err
 }

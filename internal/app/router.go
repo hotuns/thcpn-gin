@@ -552,6 +552,8 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.GET("/devices/:device_id/children", deviceHandler.AdminChildren)
 	authed.GET("/devices/:device_id/children", deviceHandler.Children)
 	admin.GET("/devices/:device_id/nodes", deviceHandler.AdminNodes)
+ admin.PATCH("/devices/:device_id/nodes/:node_index", deviceHandler.AdminRenameNode)
+ authed.PATCH("/devices/:device_id/nodes/:node_index", deviceHandler.RenameNode)
 	authed.GET("/devices/:device_id/nodes", deviceHandler.Nodes)
 	admin.GET("/devices/:device_id/context", deviceHandler.AdminInteraction)
 	authed.GET("/devices/:device_id/context", deviceHandler.Interaction)

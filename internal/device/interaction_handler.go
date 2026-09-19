@@ -79,6 +79,7 @@ func (h *Handler) nodes(c *gin.Context, admin bool) {
 	if !ok {
 		return
 	}
+	renamePermissions := map[string]bool{}
 	for _, item := range items {
 		if !admin && item.Target.DeviceID != nil {
 			decision, err := h.checker.Can(c.Request.Context(), permission.Actor{UserID: actor.UserID}, deviceViewAction, permission.ResourceRef{Type: "device", ID: *item.Target.DeviceID})
@@ -89,6 +90,24 @@ func (h *Handler) nodes(c *gin.Context, admin bool) {
 			if !decision.Allowed {
 				continue
 			}
+		}
+		item.CanRename = admin
+		if !admin {
+			targetID := id
+			if item.Target.DeviceID != nil {
+				targetID = *item.Target.DeviceID
+			}
+			allowed, cached := renamePermissions[targetID.String()]
+			if !cached {
+				decision, e := h.checker.Can(c.Request.Context(), permission.Actor{UserID: actor.UserID}, deviceConfigureAction, permission.ResourceRef{Type: "device", ID: targetID})
+				if e != nil {
+					httpx.WriteAppError(c, e)
+					return
+				}
+				allowed = decision.Allowed
+				renamePermissions[targetID.String()] = allowed
+			}
+			item.CanRename = allowed
 		}
 		visible = append(visible, item)
 	}

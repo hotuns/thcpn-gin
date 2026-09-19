@@ -8,6 +8,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"thcpn-gin/internal/nodeprofile"
 	"time"
 
 	"github.com/google/uuid"
@@ -37,6 +38,8 @@ type CarbonRuntimeInfo struct {
 }
 
 type CarbonNodeStatus struct {
+	Name           string     `json:"name"`
+	CustomName     string     `json:"custom_name"`
 	NodeID         int        `json:"node_id"`
 	Status         string     `json:"status"`
 	LatestSampleAt *time.Time `json:"latest_sample_at,omitempty"`
@@ -149,13 +152,17 @@ func (s *Service) CarbonOverview(ctx context.Context, deviceID uuid.UUID) (Carbo
 	if err != nil {
 		return CarbonOverview{}, err
 	}
+	names, err := nodeprofile.Names(ctx, s.db, deviceID)
+	if err != nil {
+		return CarbonOverview{}, err
+	}
 	nodes := make([]CarbonNodeStatus, 0, nodesCount)
 	var overallSample, overallFlux *time.Time
 	for nodeID := 1; nodeID <= nodesCount; nodeID++ {
 		sample := latestSamples[nodeID]
 		flux := latestFlux[nodeID]
 		status := carbonNodeDataStatus(sample)
-		nodes = append(nodes, CarbonNodeStatus{NodeID: nodeID, Status: status, LatestSampleAt: sample, LatestFluxAt: flux})
+		nodes = append(nodes, CarbonNodeStatus{Name: nodeprofile.Label(names[nodeID], nodeID), CustomName: names[nodeID], NodeID: nodeID, Status: status, LatestSampleAt: sample, LatestFluxAt: flux})
 		overallSample = laterCarbonTime(overallSample, sample)
 		overallFlux = laterCarbonTime(overallFlux, flux)
 	}

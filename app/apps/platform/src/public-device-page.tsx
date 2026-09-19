@@ -4,7 +4,7 @@ import { useParams } from "react-router-dom";
 import { Eye, Image as ImageIcon, LockKeyhole, RefreshCw } from "lucide-react";
 import { PhotoSlider } from "react-photo-view";
 import { api, formatApiError, type MediaItem, type PublicDeviceStream } from "@thcpn/api";
-import { Badge, Brand, Button, Panel, StateView } from "@thcpn/ui";
+import { Badge, Brand, Button, Panel, StateView } from "./platform-ui";
 import { renderPhotoToolbar } from "./device-media";
 import { TelemetryCharts } from "./telemetry-charts";
 import { domainLabels, LanguageSwitcher, useLocale } from "@thcpn/i18n";

@@ -1092,3 +1092,45 @@ func (q *Queries) UpdateDeviceType(ctx context.Context, arg UpdateDeviceTypePara
 	)
 	return i, err
 }
+
+const updateSyncedDevice = `-- name: UpdateSyncedDevice :one
+UPDATE devices
+SET product_id = $1,
+    name = CASE WHEN device_type = 'gateway_node' THEN name ELSE $2::text END,
+    status = $3,
+    updated_at = now()
+WHERE id = $4
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type
+`
+
+type UpdateSyncedDeviceParams struct {
+	ProductID  *string   `json:"product_id"`
+	SourceName string    `json:"source_name"`
+	Status     string    `json:"status"`
+	ID         uuid.UUID `json:"id"`
+}
+
+// Existing THCPN node names belong to the platform and must survive source sync.
+func (q *Queries) UpdateSyncedDevice(ctx context.Context, arg UpdateSyncedDeviceParams) (Device, error) {
+	row := q.db.QueryRow(ctx, updateSyncedDevice,
+		arg.ProductID,
+		arg.SourceName,
+		arg.Status,
+		arg.ID,
+	)
+	var i Device
+	err := row.Scan(
+		&i.ID,
+		&i.ProductID,
+		&i.SerialNo,
+		&i.Name,
+		&i.Status,
+		&i.ActivatedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LifecycleStatus,
+		&i.LifecycleUpdatedAt,
+		&i.DeviceType,
+	)
+	return i, err
+}

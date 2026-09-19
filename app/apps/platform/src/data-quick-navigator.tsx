@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ListTree, X } from "lucide-react";
 import type { DataStream } from "@thcpn/api";
-import { IconButton } from "@thcpn/ui";
+import { IconButton } from "./platform-ui";
 
 export type DataQuickNavItem = {
   id: string;

@@ -507,3 +507,5 @@ export function WarningIcon() {
 export function SuccessIcon() {
   return <Check size={18} />;
 }
+
+export { NodeNameEditor } from "./node-name-editor";

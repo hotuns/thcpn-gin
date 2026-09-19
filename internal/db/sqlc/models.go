@@ -214,7 +214,7 @@ type DemoShowcaseDevice struct {
 type Device struct {
 	ID        uuid.UUID `json:"id"`
 	ProductID *string   `json:"product_id"`
-	// 平台生成的永久设备序列号，格式为 EC-########，与外部数据源标识无关。
+	// Canonical device serial; LoRaWAN V2 gateways use the upstream gateway SN.
 	SerialNo    string             `json:"serial_no"`
 	Name        string             `json:"name"`
 	Status      string             `json:"status"`
@@ -520,6 +520,31 @@ type LoginVisual struct {
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 }
 
+// Platform semantic snapshot for an upstream LoRaWAN V2 node sensor configuration.
+type LorawanV2NodeConfigSnapshot struct {
+	ID                uuid.UUID          `json:"id"`
+	DeviceID          uuid.UUID          `json:"device_id"`
+	NodeIndex         int32              `json:"node_index"`
+	UpstreamConfigID  pgtype.Int8        `json:"upstream_config_id"`
+	ContentHash       string             `json:"content_hash"`
+	WaitTime          int32              `json:"wait_time"`
+	ContentJson       []byte             `json:"content_json"`
+	TemplateInstances []byte             `json:"template_instances"`
+	MetricsJson       []byte             `json:"metrics_json"`
+	ManagementStatus  string             `json:"management_status"`
+	CreatedBy         *uuid.UUID         `json:"created_by"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+}
+
+type NodeProfile struct {
+	DeviceID      uuid.UUID          `json:"device_id"`
+	NodeIndex     int32              `json:"node_index"`
+	Name          string             `json:"name"`
+	UpdatedBy     uuid.UUID          `json:"updated_by"`
+	UpdatedByType string             `json:"updated_by_type"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
 // 稳定权限字典，按资源类型和动作定义权限 code。
 type Permission struct {
 	ID           uuid.UUID `json:"id"`
@@ -705,6 +730,19 @@ type SensorTemplate struct {
 	UpdatedBy *uuid.UUID         `json:"updated_by"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	// Canonical metric semantics shared by protocol variants.
+	Metrics []byte `json:"metrics"`
+}
+
+// Protocol-specific configuration for a shared sensor template.
+type SensorTemplateVariant struct {
+	ID           int64              `json:"id"`
+	TemplateID   int64              `json:"template_id"`
+	SourceFamily string             `json:"source_family"`
+	Config       []byte             `json:"config"`
+	Status       string             `json:"status"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
 // 项目下的业务站点；站点经纬度是人工维护的业务位置，可作为设备地图回退位置。
@@ -817,6 +855,7 @@ type User struct {
 	LastLoginAt     pgtype.Timestamptz `json:"last_login_at"`
 	AuthVersion     int32              `json:"auth_version"`
 	IsDemo          bool               `json:"is_demo"`
+	Username        *string            `json:"username"`
 }
 
 // 普通用户密码凭据和登录锁定状态，一名用户一条记录。

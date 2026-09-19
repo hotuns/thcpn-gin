@@ -1,5 +1,6 @@
+import { invalidateNodeNames } from "@thcpn/workspace";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
   Button,
@@ -13,7 +14,7 @@ import {
   Tag,
 } from "@thcpn/admin-ui";
 import { api, formatApiError, type JsonRecord } from "@thcpn/api";
-import { StateView } from "@thcpn/ui";
+import { StateView, NodeNameEditor } from "@thcpn/ui";
 
 const text = (input: unknown, fallback = "—") =>
   input === undefined || input === null || input === ""
@@ -385,11 +386,21 @@ export function LoRaWANV2ConfigPanel({ deviceId }: { deviceId: string }) {
 }
 
 function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
+  const queryClient = useQueryClient();
   const nodes = useQuery({
     queryKey: ["admin", "device", deviceId, "nodes"],
     queryFn: () => api.admin.deviceNodes(deviceId),
   });
   const [node, setNode] = useState(1);
+  useEffect(() => {
+    if (!nodes.data) return;
+    const valid = nodes.data.items.filter(item => item.target.kind === "gateway_node");
+    if (!valid.some(item => item.target.kind === "gateway_node" && item.target.node_index === node)) {
+      const first = valid[0]?.target;
+      if (first?.kind === "gateway_node") setNode(first.node_index);
+    }
+  }, [nodes.data, node]);
+
   const [gatewayJSON, setGatewayJSON] = useState("{}");
   const [waitTime, setWaitTime] = useState(0);
   const [sensorJSON, setSensorJSON] = useState("[]");
@@ -719,6 +730,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                         setSensorDirty(false);
                       }}
                     />
+                    {nodes.data?.items.some(item => item.target.kind === "gateway_node" && item.target.node_index === node) && <NodeNameEditor name={nodes.data?.items.find(item => item.target.kind === "gateway_node" && item.target.node_index === node)?.custom_name ?? ""} onSave={async name => {await api.admin.renameNode(deviceId, node, name); await invalidateNodeNames(queryClient);}}/>}
                   </Space>
                   {latest.data
                     ? (() => {
@@ -740,7 +752,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                             <header>
                               <div>
                                 <span>当前配置</span>
-                                <strong>节点 {node} 传感器配置</strong>
+                                <strong>{nodes.data?.items.find(item => item.target.kind === "gateway_node" && item.target.node_index === node)?.name ?? `节点 ${node}`} 传感器配置</strong>
                               </div>
                               <Tag color={state.color}>{state.label}</Tag>
                             </header>

@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Download, Globe2, LockKeyhole, Pencil, Printer, X } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { api, formatApiError, type Device, type DevicePublicAccess } from "@thcpn/api";
-import { Badge, Button, Panel, StateView } from "@thcpn/ui";
+import { Badge, Button, Panel, StateView } from "./platform-ui";
 
 const formatTime = (value?: string) => value
   ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))

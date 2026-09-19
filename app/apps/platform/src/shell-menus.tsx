@@ -19,6 +19,13 @@ import {
 } from "lucide-react";
 import { type AccessibleWorkspace, type User } from "@thcpn/api";
 import { domainLabels, useLocale } from "@thcpn/i18n";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./components/ui/dropdown-menu";
 
 export const canManageWorkspace = (workspace: AccessibleWorkspace | null) =>
   ["owner", "admin"].includes(workspace?.membership.role.code ?? "");
@@ -221,46 +228,50 @@ export function AccountMenu({
   onSignOut: () => Promise<void>;
 }) {
   const { t } = useLocale();
-  const container = useRef<HTMLDivElement>(null);
-  const dropdown = useDropdownPresence(open);
-  usePopoverDismiss(open, onClose, container);
   return (
-    <div className="account-menu-container" ref={container}>
-      {dropdown.visible && (
-        <div className={`sidebar-popover account-popover t-dropdown ${dropdown.className}`} data-origin="bottom-left" role="menu">
-          <Link to="/account?tab=profile" role="menuitem" onClick={onNavigate}>
-            <UserRound size={15} aria-hidden="true" />
-            {t("platform:navigation.account")}
-          </Link>
-          <Link to="/account?tab=preferences" role="menuitem" onClick={onNavigate}>
-            <Settings size={15} aria-hidden="true" />
-            {t("preferences")}
-          </Link>
+    <DropdownMenu
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen === open) return;
+        if (nextOpen) onToggle();
+        else onClose();
+      }}
+    >
+      <div className="account-menu-container">
+        <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="danger"
-            role="menuitem"
-            onClick={() => void onSignOut()}
+            className={`account-row account-trigger ${open ? "open" : ""}`}
+            aria-label={t("platform:account.openMenu")}
           >
+            <span className="avatar">{(user?.name ?? "U").slice(0, 1)}</span>
+            <span className="account-name">
+              <strong>{user?.name ?? t("platform:account.currentUser")}</strong>
+              <small>{user?.email ?? user?.phone ?? t("platform:account.platformAccount")}</small>
+            </span>
+            <ChevronUp size={15} aria-hidden="true" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="account-dropdown-content" side="top" align="start">
+          <DropdownMenuItem asChild>
+            <Link to="/account?tab=profile" onClick={onNavigate}>
+              <UserRound size={15} aria-hidden="true" />
+              {t("platform:navigation.account")}
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link to="/account?tab=preferences" onClick={onNavigate}>
+              <Settings size={15} aria-hidden="true" />
+              {t("preferences")}
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem className="danger" onSelect={() => void onSignOut()}>
             <LogOut size={15} aria-hidden="true" />
             {t("platform:navigation.logout")}
-          </button>
-        </div>
-      )}
-      <button
-        type="button"
-        className={`account-row account-trigger ${open ? "open" : ""}`}
-        aria-expanded={open}
-        aria-label={t("platform:account.openMenu")}
-        onClick={onToggle}
-      >
-        <span className="avatar">{(user?.name ?? "U").slice(0, 1)}</span>
-        <span className="account-name">
-          <strong>{user?.name ?? t("platform:account.currentUser")}</strong>
-          <small>{user?.email ?? user?.phone ?? t("platform:account.platformAccount")}</small>
-        </span>
-        <ChevronUp size={15} aria-hidden="true" />
-      </button>
-    </div>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </div>
+    </DropdownMenu>
   );
 }

@@ -18,7 +18,7 @@ import {
   type JsonRecord,
 } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, CopyId, Panel, StateView } from "@thcpn/ui";
+import { Badge, Button, CopyId, Panel, StateView } from "./platform-ui";
 
 type FormMode = "member" | "edit-member" | "grant" | "invitation";
 type Template = { code: string; name: string; permission_codes: string[] };

@@ -1286,7 +1286,7 @@ paths:
       security: [{ bearerAuth: [] }]
       parameters: [{ name: device_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
       responses:
-        "200": { description: Carbon station overview., content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        "200": { description: Carbon station overview., content: { application/json: { schema: { $ref: "#/components/schemas/CarbonOverview" } } } }
   /api/v1/open/devices/{device_id}/carbon/flux:
     get:
       tags: [OpenAPI]
@@ -6408,6 +6408,109 @@ paths:
         "200": { description: Temporary object URL. }
         "403": { $ref: "#/components/responses/PermissionDenied" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/devices/{device_id}/nodes/{node_index}:
+    patch:
+      operationId: renameNode
+      summary: Rename an indexed device node
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: device_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: node_index
+          in: path
+          required: true
+          schema: {type: integer, minimum: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string, maxLength: 50, description: Empty string restores the default node label.}
+      responses:
+        "200":
+          description: Updated node name
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [node_index, name, custom_name]
+                properties:
+                  node_index: {type: integer}
+                  name: {type: string}
+                  custom_name: {type: string}
+        "400":
+          description: Invalid node index or name
+        "403":
+          description: Device configuration permission required
+
+  /api/v1/admin/devices/{device_id}/nodes/{node_index}:
+    patch:
+      operationId: adminRenameNode
+      summary: Rename an indexed device node
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: device_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: node_index
+          in: path
+          required: true
+          schema: {type: integer, minimum: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string, maxLength: 50, description: Empty string restores the default node label.}
+      responses:
+        "200":
+          description: Updated node name
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [node_index, name, custom_name]
+                properties:
+                  node_index: {type: integer}
+                  name: {type: string}
+                  custom_name: {type: string}
+        "400":
+          description: Invalid node index or name
+        "403":
+          description: Device configuration permission required
+
+  /api/v1/devices/{device_id}/carbon/overview:
+    get:
+      operationId: getCarbonOverview
+      security: [{bearerAuth: []}]
+      parameters: [{name: device_id, in: path, required: true, schema: {$ref: "#/components/schemas/UUID"}}]
+      responses:
+        "200":
+          description: Carbon overview with platform node names.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CarbonOverview"}
+  /api/v1/admin/devices/{device_id}/carbon/overview:
+    get:
+      operationId: getAdminCarbonOverview
+      security: [{bearerAuth: []}]
+      parameters: [{name: device_id, in: path, required: true, schema: {$ref: "#/components/schemas/UUID"}}]
+      responses:
+        "200":
+          description: Carbon overview with platform node names.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CarbonOverview"}
+
 components:
   securitySchemes:
     bearerAuth:
@@ -8906,12 +9009,44 @@ components:
             kind: { type: string, enum: [gateway_node] }
             gateway_device_id: { $ref: "#/components/schemas/UUID" }
             node_index: { type: integer, minimum: 1, maximum: 254 }
+    CarbonNodeStatus:
+      type: object
+      required: [node_id, name, custom_name, status]
+      properties:
+        node_id: {type: integer, minimum: 1}
+        name: {type: string, description: Resolved display name including the stable node index.}
+        custom_name: {type: string, description: Platform node name; empty if not named.}
+        status: {type: string, enum: [has_data, no_data]}
+        latest_sample_at: {$ref: "#/components/schemas/Timestamp"}
+        latest_flux_at: {$ref: "#/components/schemas/Timestamp"}
+    CarbonOverview:
+      type: object
+      required: [device_id, external_device_id, nodes_count, nodes, status, refreshed_at]
+      properties:
+        device_id: {$ref: "#/components/schemas/UUID"}
+        external_device_id: {type: integer}
+        nodes_count: {type: integer}
+        nodes:
+          type: array
+          items: {$ref: "#/components/schemas/CarbonNodeStatus"}
+        status: {type: string, enum: [has_data, no_data]}
+        latest_sample_at: {$ref: "#/components/schemas/Timestamp"}
+        latest_flux_at: {$ref: "#/components/schemas/Timestamp"}
+        refreshed_at: {$ref: "#/components/schemas/Timestamp"}
+        runtime:
+          type: object
+          properties:
+            battery: {type: string}
+            signal: {type: string}
+            network: {type: string}
     GatewayNode:
       type: object
-      required: [key, name, target, streams]
+      required: [key, name, target, streams, custom_name, can_rename]
       properties:
         key: { type: string }
         name: { type: string }
+        custom_name: { type: string }
+        can_rename: { type: boolean }
         target: { $ref: "#/components/schemas/DeviceNodeTarget" }
         streams:
           type: array
@@ -8959,8 +9094,9 @@ components:
           $ref: "#/components/schemas/UUID"
     UpdateDeviceRequest:
       type: object
-      description: Workspace users can only adjust the active assignment's project/site placement. System device identity and capabilities are managed by system sync/admin flows.
+      description: Workspace users may rename THCPN node devices with a name-only request, or adjust the active assignment's project/site placement. System device identity and capabilities are managed by system sync/admin flows.
       properties:
+        name: {type: string, minLength: 1, maxLength: 50, description: THCPN node name. Submit separately from placement.}
         project_id:
           $ref: "#/components/schemas/UUID"
         site_id:

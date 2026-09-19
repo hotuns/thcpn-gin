@@ -10,7 +10,7 @@ import {
   type UpdateSamplingProfile,
 } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, Panel, StateView } from "@thcpn/ui";
+import { Badge, Button, Panel, StateView } from "./platform-ui";
 
 type Mode = SamplingProfile["mode"];
 

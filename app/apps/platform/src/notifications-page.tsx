@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Bell, CheckCheck, Megaphone } from "lucide-react";
 import { api, formatApiError, type JsonRecord } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, PageHeader, Panel, StateView } from "@thcpn/ui";
+import { Badge, Button, PageHeader, Panel, StateView } from "./platform-ui";
 
 const value = (input: unknown, fallback = "") => input === undefined || input === null ? fallback : String(input);
 const items = (input: unknown) => ((input as { items?: JsonRecord[] } | undefined)?.items ?? []);

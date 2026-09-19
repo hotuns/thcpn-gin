@@ -7,7 +7,6 @@ import {
   Check,
   ChevronDown,
   ExternalLink,
-  FileText,
   FolderKanban,
   ImagePlus,
   Leaf,
@@ -16,7 +15,6 @@ import {
   Pencil,
   Plus,
   Star,
-  Tags,
   Target,
   Trash2,
   X,
@@ -31,7 +29,7 @@ import {
   type JsonRecord,
 } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, Panel, StateView } from "@thcpn/ui";
+import { Badge, Button, Panel, StateView } from "./platform-ui";
 import { iconifyIconUrl } from "@thcpn/device-map";
 import { renderPhotoToolbar } from "./device-media";
 
@@ -54,7 +52,7 @@ export function DeviceProfileTab({
   operational?: ReactNode;
 }) {
   const client = useQueryClient();
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState<false | "basic" | "observation">(false);
   const [placementEditing, setPlacementEditing] = useState(false);
   const [managingImages, setManagingImages] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(-1);
@@ -135,28 +133,34 @@ export function DeviceProfileTab({
   return (
     <>
       {feedback && <div className="command-note device-feedback">{feedback}</div>}
-      <div className="device-profile-layout">
+      <div className="device-profile-layout device-profile-standard">
         <Panel className="device-profile-info">
           <div className="panel-header compact-panel-header">
             <div>
-              <h2 className="panel-title">设备资料</h2>
-              <div className="panel-kicker">设备归属、运行状态、位置与观测信息</div>
+              <h2 className="panel-title">基本信息</h2>
+
             </div>
             {profile.can_configure && (
-              <Button variant="secondary" onClick={() => setEditing(true)}>
+              <Button variant="secondary" onClick={() => setEditing("basic")}>
                 <Pencil size={14} />
-                编辑
+                编辑资料
               </Button>
             )}
           </div>
-          {operational}
+          <div className="device-profile-basic-grid">
+            <ProfileDatum label="设备名称" value={device.name} />
+            <ProfileDatum label="设备序列号" value={device.serial_no} mono />
+            <ProfileDatum label="数据源" value={({thcpn: "THCPN", lorawan_v2: "LoRaWAN V2", carbon: "碳汇"} as Record<string, string>)[device.source_family ?? ""] ?? value(device.source_family)} />
+            <ProfileDatum label="设备 ID" value={device.id} mono />
+          </div>
           <div className="device-profile-summary">
             <span>设备描述</span>
             <p className={profile.description ? "" : "is-empty"}>
               {profile.description || "尚未填写设备描述"}
             </p>
           </div>
-          <div className="device-profile-content">
+        </Panel>
+        <Panel className="device-profile-placement-card">
             <section className="device-profile-group device-profile-placement">
               <div className="device-profile-group-heading">
                 <div>
@@ -164,14 +168,10 @@ export function DeviceProfileTab({
                   <h3>归属与位置</h3>
                 </div>
                 {profile.can_manage_placement ? (
-                  <button
-                    className="device-profile-group-action"
-                    type="button"
-                    onClick={() => setPlacementEditing(true)}
-                  >
+                  <Button variant="secondary" onClick={() => setPlacementEditing(true)}>
                     <Pencil size={13} />
-                    调整归属
-                  </button>
+                    编辑归属
+                  </Button>
                 ) : null}
               </div>
               <div className="device-profile-placement-grid">
@@ -227,12 +227,15 @@ export function DeviceProfileTab({
                 </a>
               ) : null}
             </section>
+        </Panel>
+        <Panel className="device-profile-observation-card">
             <EnvironmentOverview
               environment={environmentQuery.data}
               loading={environmentQuery.isLoading}
+              onEdit={profile.can_configure && environmentQuery.data ? () => setEditing("observation") : undefined}
             />
-          </div>
         </Panel>
+        {operational && <details className="device-profile-connection"><summary>设备接入信息</summary>{operational}</details>}
         <Panel className="device-profile-gallery">
           <div className="panel-header compact-panel-header">
             <div>
@@ -388,6 +391,7 @@ export function DeviceProfileTab({
       />
       {editing && (
         <ProfileEditor
+          section={editing}
           profile={profile}
           environment={environmentQuery.data}
           terms={taxonomyQuery.data?.items ?? []}
@@ -396,7 +400,7 @@ export function DeviceProfileTab({
           onClose={() => setEditing(false)}
           onSubmit={async (payload, environmentPayload) => {
             const success = await run(
-              () => Promise.all([api.devices.updateProfile(device.id, payload), api.devices.updateEnvironment(device.id, environmentPayload)]),
+              () => editing === "basic" ? api.devices.updateProfile(device.id, payload) : api.devices.updateEnvironment(device.id, environmentPayload),
               "设备资料已更新",
             );
             if (success) setEditing(false);
@@ -446,7 +450,7 @@ function TaxonomyTags({ values, empty = "未设置" }: { values: string[]; empty
   return <div className="device-profile-tag-list">{values.map((item) => <span key={item}>{item}</span>)}</div>;
 }
 
-function EnvironmentOverview({ environment, loading }: { environment?: DeviceEnvironment; loading: boolean }) {
+function EnvironmentOverview({ environment, loading, onEdit }: { environment?: DeviceEnvironment; loading: boolean; onEdit?: () => void }) {
   const values = environment?.effective;
   const deviceTypeIcon = iconifyIconUrl(values?.ecosystem?.icon);
   return (
@@ -456,6 +460,7 @@ function EnvironmentOverview({ environment, loading }: { environment?: DeviceEnv
           <Leaf size={16} />
           <h3>观测资料</h3>
         </div>
+        {onEdit && <Button variant="secondary" onClick={onEdit}><Pencil size={14} />编辑资料</Button>}
       </div>
       {loading ? (
         <div className="device-profile-observation-loading">正在加载观测资料…</div>
@@ -508,11 +513,11 @@ function PlacementEditor({ device, projects, sites, busy, onClose, onSubmit }: {
   return (
     <div className="access-drawer-layer">
       <button className="access-drawer-backdrop" aria-label="关闭设备归属编辑" onClick={onClose} />
-      <div className="access-editor device-placement-editor" role="dialog" aria-modal="true">
+      <div className="access-editor device-profile-editor device-placement-editor" role="dialog" aria-modal="true">
         <Panel className="access-editor-panel">
           <div className="panel-header">
             <div>
-              <h2 className="panel-title">调整设备归属</h2>
+              <h2 className="panel-title">编辑归属</h2>
               <div className="panel-kicker">{device.name} · SN {device.serial_no}</div>
             </div>
             <Button variant="secondary" onClick={onClose}><X size={14} />关闭</Button>
@@ -524,7 +529,7 @@ function PlacementEditor({ device, projects, sites, busy, onClose, onSubmit }: {
               void onSubmit(projectId, siteId);
             }}
           >
-            <div className="form-section access-profile-fields">
+            <div className="device-editor-body"><div className="form-section access-profile-fields">
               <label className="field profile-editor-field">
                 <span className="field-label">所属项目</span>
                 <select
@@ -558,6 +563,7 @@ function PlacementEditor({ device, projects, sites, busy, onClose, onSubmit }: {
                 </select>
               </label>
             </div>
+            </div>
             <div className="form-actions">
               <Button variant="secondary" type="button" onClick={onClose}>取消</Button>
               <Button type="submit" disabled={busy}>{busy ? "保存中…" : "保存归属"}</Button>
@@ -569,7 +575,8 @@ function PlacementEditor({ device, projects, sites, busy, onClose, onSubmit }: {
   );
 }
 
-function ProfileEditor({ profile, environment, terms, tagOptions, busy, onClose, onSubmit }: {
+function ProfileEditor({ section, profile, environment, terms, tagOptions, busy, onClose, onSubmit }: {
+  section: "basic" | "observation";
   profile: Awaited<ReturnType<typeof api.devices.profile>>;
   environment?: DeviceEnvironment;
   terms: DeviceTaxonomyTerm[];
@@ -604,39 +611,33 @@ function ProfileEditor({ profile, environment, terms, tagOptions, busy, onClose,
   return (
     <div className="access-drawer-layer">
       <button className="access-drawer-backdrop" aria-label="关闭设备资料编辑" onClick={onClose} />
-      <div className="access-editor" role="dialog" aria-modal="true">
+      <div className="access-editor device-profile-editor" role="dialog" aria-modal="true">
         <Panel className="access-editor-panel">
           <div className="panel-header">
-            <div><h2 className="panel-title">编辑设备资料</h2><div className="panel-kicker">经纬度由设备源库实时提供</div></div>
+            <div><h2 className="panel-title">{section === "basic" ? "编辑基本信息" : "编辑观测资料"}</h2><p className="device-editor-subtitle">{section === "basic" ? "补充设备描述和安装位置" : "设置设备分类、观测对象及研究标签"}</p></div>
             <Button variant="secondary" onClick={onClose}><X size={14} />关闭</Button>
           </div>
           <form className="access-form" onSubmit={submit}>
-            <div className="form-section access-profile-fields">
-              <div className="profile-editor-section-head">
-                <span><FileText size={16} /></span>
-                <div><h3>基础资料</h3><p>补充便于识别和检索的设备信息</p></div>
-              </div>
+            <div className="device-editor-body">
+            {section === "basic" && <div className="form-section access-profile-fields">
               <label className="field profile-editor-field">
                 <span className="field-label">设备描述 <small>{description.length}/500</small></span>
                 <textarea maxLength={500} value={description} onChange={(e) => setDescription(e.target.value)} rows={4} placeholder="说明设备的安装环境、观测任务或维护备注" />
-                <span className="field-hint">仅组织成员可见，不会写回设备源库。</span>
+
               </label>
               <label className="field profile-editor-field">
                 <span className="field-label">地址或位置说明</span>
                 <div className="profile-editor-input-with-icon"><MapPin size={15} /><input value={locationText} onChange={(e) => setLocationText(e.target.value)} placeholder="例如：北京森林站东侧样地" /></div>
               </label>
-              <div className="profile-editor-source-note"><MapPin size={15} /><span>经纬度由设备实时上报，地图和详情页直接读取 THCPN 源库；这里仅维护便于理解的位置文字。</span></div>
-            </div>
-            <div className="form-section environment-form-section">
-              <div className="profile-editor-section-head">
-                <span><Tags size={16} /></span>
-                <div><h3>观测资料</h3><p>用于地图筛选、统计分析和设备归类</p></div>
-              </div>
-              <div className="profile-editor-inheritance-note">开启“设备覆盖”后使用当前设备设置；关闭后继续继承网关或站点。</div>
+              <div className="profile-editor-source-note"><MapPin size={15} /><span>经纬度由设备数据源或所属站点提供；这里维护地址和位置说明。</span></div>
+            </div>}
+            {section === "observation" && <div className="form-section environment-form-section">
+              <div className="profile-editor-inheritance-note">每项资料可选择沿用网关或站点，或为这台设备单独设置。</div>
               <EnvironmentField label="设备类型" field="ecosystem" overrides={overrides} toggle={toggle}><DeviceTypeSelect disabled={!overrides.has("ecosystem")} options={byKind("ecosystem")} value={ecosystem} onChange={setEcosystem} /></EnvironmentField>
               <EnvironmentMultiField label="观测对象" field="observation_objects" overrides={overrides} toggle={toggle} options={byKind("observation_object")} value={observations} onChange={setObservations} />
               <EnvironmentField label="投运年份" field="commissioned_year" overrides={overrides} toggle={toggle}><input type="number" min="1900" max="2200" disabled={!overrides.has("commissioned_year")} value={year} onChange={(event)=>setYear(event.target.value)}/></EnvironmentField>
               <EnvironmentField label="研究方向 / 标签" field="research_tags" overrides={overrides} toggle={toggle}><ResearchTagEditor disabled={!overrides.has("research_tags")} value={tags} options={tagOptions} onChange={setTags}/></EnvironmentField>
+            </div>}
             </div>
             <div className="form-actions"><Button variant="secondary" type="button" onClick={onClose}>取消</Button><Button type="submit" disabled={busy}>{busy ? "保存中…" : "保存资料"}</Button></div>
           </form>
@@ -665,7 +666,7 @@ function ResearchTagEditor({disabled,value,options,onChange}:{disabled:boolean;v
 
 function EnvironmentField({label,field,overrides,toggle,children}:{label:string;field:string;overrides:Set<string>;toggle:(field:string)=>void;children:ReactNode}) {
   const enabled=overrides.has(field);
-  return <div className={`field environment-field ${enabled?"is-overridden":""}`}><div className="field-label"><span>{label}</span><label className="environment-override"><input type="checkbox" checked={enabled} onChange={()=>toggle(field)}/><i aria-hidden="true"/><b>设备覆盖</b></label></div>{children}</div>;
+  return <div className={`field environment-field ${enabled?"is-overridden":""}`}><div className="field-label"><span>{label}</span><label className="environment-override"><input type="checkbox" checked={enabled} onChange={()=>toggle(field)}/><i aria-hidden="true"/><b>单独设置</b></label></div>{children}</div>;
 }
 
 function DeviceTypeSelect({disabled,options,value,onChange}:{disabled:boolean;options:DeviceTaxonomyTerm[];value:string;onChange:(value:string)=>void}) {
@@ -691,7 +692,7 @@ function DeviceTypeOptionIcon({term}:{term?:DeviceTaxonomyTerm}) {
 function EnvironmentMultiField({label,field,overrides,toggle,options,value,onChange}:{label:string;field:string;overrides:Set<string>;toggle:(field:string)=>void;options:DeviceTaxonomyTerm[];value:string[];onChange:(value:string[])=>void}) {
   const enabled=overrides.has(field);
   const change=(id:string,checked:boolean)=>onChange(checked?Array.from(new Set([...value,id])):value.filter((item)=>item!==id));
-  return <div className={`field environment-field environment-multi-field ${enabled?"is-overridden":""}`}><span className="field-label">{label}<label className="environment-override"><input type="checkbox" checked={enabled} onChange={()=>toggle(field)}/><i aria-hidden="true"/><b>设备覆盖</b></label></span><div className="taxonomy-choice-grid" aria-disabled={!enabled}>{options.map((term)=><label key={term.id} className={value.includes(term.id)?"selected":""}><input type="checkbox" disabled={!enabled} checked={value.includes(term.id)} onChange={(event)=>change(term.id,event.target.checked)}/><span>{term.name_zh}</span></label>)}</div>{!options.length&&<span className="field-hint">暂无可用分类选项</span>}</div>;
+  return <div className={`field environment-field environment-multi-field ${enabled?"is-overridden":""}`}><span className="field-label">{label}<label className="environment-override"><input type="checkbox" checked={enabled} onChange={()=>toggle(field)}/><i aria-hidden="true"/><b>单独设置</b></label></span><div className="taxonomy-choice-grid" aria-disabled={!enabled}>{options.map((term)=><label key={term.id} className={value.includes(term.id)?"selected":""}><input type="checkbox" disabled={!enabled} checked={value.includes(term.id)} onChange={(event)=>change(term.id,event.target.checked)}/><span>{term.name_zh}</span></label>)}</div>{!options.length&&<span className="field-hint">暂无可用分类选项</span>}</div>;
 }
 
 async function moveImage(

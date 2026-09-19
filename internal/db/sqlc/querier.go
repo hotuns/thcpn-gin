@@ -181,6 +181,8 @@ type Querier interface {
 	UpdateDeviceType(ctx context.Context, arg UpdateDeviceTypeParams) (Device, error)
 	UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error)
 	UpdateSite(ctx context.Context, arg UpdateSiteParams) (Site, error)
+	// Existing THCPN node names belong to the platform and must survive source sync.
+	UpdateSyncedDevice(ctx context.Context, arg UpdateSyncedDeviceParams) (Device, error)
 	UpdateSystemRoleName(ctx context.Context, arg UpdateSystemRoleNameParams) (Role, error)
 	UpdateUserCredentialFailure(ctx context.Context, arg UpdateUserCredentialFailureParams) (UserCredential, error)
 	UpdateUserEmailVerified(ctx context.Context, arg UpdateUserEmailVerifiedParams) (User, error)

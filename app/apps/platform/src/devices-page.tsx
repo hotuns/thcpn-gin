@@ -53,7 +53,7 @@ import {
 import { iconifyIconUrl } from "@thcpn/device-map";
 import { useAuth } from "@thcpn/auth";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, Panel, StateView } from "@thcpn/ui";
+import { Badge, Button, Panel, StateView } from "./platform-ui";
 import { CameraLive, isCameraDevice, RecentDeviceImages } from "./device-media";
 import { DeviceDataPage } from "./pages";
 import { TelemetryCharts } from "./telemetry-charts";
@@ -454,7 +454,6 @@ export function DevicesPage() {
             <table className="data-table device-table">
               <colgroup>
                 <col className="device-table-name" />
-                <col className="device-table-status" />
                 <col className="device-table-vitals" />
                 <col className="device-table-report" />
                 <col className="device-table-assignment" />
@@ -463,7 +462,6 @@ export function DevicesPage() {
               <thead>
                 <tr>
                   <th>设备</th>
-                  <th>状态</th>
                   <th>电量 / 信号</th>
                   <th>最近上报</th>
                   <th>项目 / 站点</th>
@@ -604,13 +602,6 @@ function DeviceRows({
           </div>
         </td>
         <td>
-          <div className="device-operating-state">
-            <Badge tone={deviceRuntimeTone(device, runtime)}>{deviceRuntimeLabel(device, runtime)}</Badge>
-            <span>{deviceStatusLabel(device.status)}</span>
-          </div>
-          <div className="cell-sub">{deviceLifecycleLabel(device.lifecycle_status)}</div>
-        </td>
-        <td>
           {!camera?<DeviceVitalIndicators attributes={runtime?.attributes} loading={runtimeLoading}/>:<span className="cell-sub">不适用</span>}
         </td>
         <td>
@@ -634,7 +625,7 @@ function DeviceRows({
       </tr>
       {expanded && (
         <tr className="children-row">
-          <td colSpan={6}>
+          <td colSpan={5}>
             <DeviceChildren
               workspaceId={workspaceId}
               deviceId={device.id}
@@ -663,28 +654,6 @@ const sourceDeviceStatus = (
     }[rawStatus.toLowerCase()] ?? rawStatus;
   const active = source.active;
   return active === 0 ? `${status}（停用）` : status;
-};
-
-const deviceRuntimeTone = (
-  device: Device,
-  runtime?: THCPNLatestAttributesResponse,
-): "success" | "warning" | "neutral" => {
-  if (deviceCategory(device) === "camera")
-    return device.lifecycle_status === "online" ? "success" : "neutral";
-  if (!runtime) return "warning";
-  return runtime.source_device.active === 0 ? "neutral" : "success";
-};
-
-const deviceRuntimeLabel = (
-  device: Device,
-  runtime?: THCPNLatestAttributesResponse,
-) => {
-  if (deviceCategory(device) === "camera")
-    return deviceLifecycleLabel(device.lifecycle_status);
-  if (!runtime) return "状态未知";
-  return runtime.source_device.active === 0
-    ? "已停用"
-    : sourceDeviceStatus(runtime.source_device);
 };
 
 const relativeTime = (input: string) => {
@@ -928,12 +897,19 @@ export function DeviceCenterDetailPage() {
   return (
     <>
       <div className="device-detail-heading">
-        <div>
+        <div className="device-detail-title">
           <h1>{device.name}</h1>
-          <p>
-            SN {device.serial_no} ·{" "}
-            {deviceModelLabel(device)}
-          </p>
+          <div className="device-detail-meta">
+            <span>
+              SN {device.serial_no} · {deviceModelLabel(device)}
+            </span>
+            <Badge
+              tone={device.lifecycle_status === "online" ? "success" : "warning"}
+            >
+              {deviceLifecycleLabel(device.lifecycle_status)}
+            </Badge>
+            <span>{deviceStatusLabel(device.status)}</span>
+          </div>
         </div>
         <div className="device-detail-actions">
           {quickSwitchDevices.length > 1 && (
@@ -950,15 +926,6 @@ export function DeviceCenterDetailPage() {
             </Button>
           </Link>
         </div>
-      </div>
-      <div className="device-detail-status">
-        <Badge
-          tone={device.lifecycle_status === "online" ? "success" : "warning"}
-        >
-          {deviceLifecycleLabel(device.lifecycle_status)}
-        </Badge>
-        <span>{deviceStatusLabel(device.status)}</span>
-        <span className="mono">ID {device.id}</span>
       </div>
       <DeviceDetailTabs tabs={tabs} activeTab={tab} onChange={(nextTab) => setParams((current) => { const next = new URLSearchParams(current); next.set("tab", nextTab); return next; })} />
       {feedback && (
@@ -1081,7 +1048,7 @@ function StandardDeviceOverview({
 }) {
   const recentRange = useMemo(() => {
     const end = new Date();
-    const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const start = new Date(end.getTime() - 2 * 24 * 60 * 60 * 1000);
     return { startTime: start.toISOString(), endTime: end.toISOString() };
   }, [device.id]);
   const camera = isCameraDevice(device);
@@ -1100,10 +1067,7 @@ function StandardDeviceOverview({
       recentRange.endTime,
     ),
     queryFn: () =>
-      api.telemetry.device(device.id, {
-        ...recentRange,
-        limit: 240,
-      }),
+      api.telemetry.device(device.id, recentRange),
     enabled: hasTelemetry,
   });
   const recentSeries = (telemetry.data?.series ?? [])
@@ -1119,7 +1083,7 @@ function StandardDeviceOverview({
               <div className="panel-header compact-panel-header">
                 <div>
                   <h2 className="panel-title">最近数据</h2>
-                  <div className="panel-kicker">最近七天 · 全部指标</div>
+                  <div className="panel-kicker">最近两天 · 全部指标</div>
                 </div>
                 <Button variant="secondary" onClick={onOpenData}>
                   查看全部
@@ -1150,7 +1114,7 @@ function StandardDeviceOverview({
                 <StateView
                   type="empty"
                   title="最近没有设备数据"
-                  description="最近七天内没有可显示的数值指标。"
+                  description="最近两天内没有可显示的数值指标。"
                 />
               )}
             </Panel>
@@ -1943,7 +1907,7 @@ function DeviceDetail({
   );
 }
 
-function DeviceChildren({
+export function DeviceChildren({
   workspaceId,
   deviceId,
   onData,
@@ -1953,8 +1917,8 @@ function DeviceChildren({
   onData: (id?: string) => void;
 }) {
   const query = useQuery({
-    queryKey: workspaceQueryKey(workspaceId, "device", deviceId, "children"),
-    queryFn: () => api.devices.children(deviceId),
+    queryKey: workspaceQueryKey(workspaceId, "device", deviceId, "nodes"),
+    queryFn: () => api.devices.nodes(deviceId),
   });
   if (query.isLoading)
     return (
@@ -1978,26 +1942,29 @@ function DeviceChildren({
       <StateView
         type="empty"
         title="没有可见子节点"
-        description="当前网关没有同组织且可访问的子设备。"
+        description="当前网关尚未配置节点，或没有可访问的节点。"
       />
     );
   return (
     <div className="child-device-list">
-      {query.data.items.map(({ device }) => (
-        <div key={device.id}>
+      {query.data.items.map((node) => (
+        <div key={node.key}>
           <div>
-            <div className="cell-title">{device.name}</div>
-            <div className="cell-sub mono">
-              SN {device.serial_no} · ID {device.id}
+            <div className="cell-title">{node.name}</div>
+            <div className="cell-sub">
+              {node.streams.length ? `${node.streams.length} 个指标` : "暂无指标"}
             </div>
           </div>
           <div>
-            <Badge tone={device.status === "active" ? "success" : "neutral"}>
-              {deviceStatusLabel(device.status)}
-            </Badge>
-            <Button variant="secondary" onClick={() => onData(device.id)}>
-              查看数据
-            </Button>
+            {node.target.kind === "device" ? (
+              <Button variant="secondary" onClick={() => onData(node.target.kind === "device" ? node.target.device_id : undefined)}>
+                查看数据
+              </Button>
+            ) : (
+              <Link className="button button-secondary" to={`/devices/${encodeURIComponent(deviceId)}?tab=data&node=${encodeURIComponent(node.key)}`}>
+                查看数据
+              </Link>
+            )}
           </div>
         </div>
       ))}

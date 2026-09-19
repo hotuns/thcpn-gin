@@ -16,6 +16,7 @@ import (
 
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/db/sqlc"
+	"thcpn-gin/internal/nodeprofile"
 )
 
 type Service struct {
@@ -1100,6 +1101,13 @@ func (s *Service) AdminUpdate(ctx context.Context, input AdminUpdateInput) (Devi
 	name := current.Name
 	if input.Name != nil {
 		name = strings.TrimSpace(*input.Name)
+		if current.DeviceType == "gateway_node" {
+			name, err = nodeprofile.Normalize(*input.Name)
+			if err != nil {
+				return Device{}, err
+			}
+		}
+
 	}
 	status := current.Status
 	if input.Status != nil {

@@ -22,7 +22,7 @@ async function mount(nodes: GatewayNode[], family: string) {
 function node(index:number, family:string): GatewayNode {
  const id=family==="lorawan_v2"?"gateway-1":`device-${index}`;
  const target=family==="lorawan_v2"?{kind:"gateway_node" as const,gateway_device_id:id,node_index:index}:{kind:"device" as const,device_id:id};
- return { key:family==="lorawan_v2"?`gateway:${id}:node:${index}`:`device:${id}`,name:`节点 ${index}`,target,streams:[{id:`stream-${index}`,device_id:id,code:"temperature",name:"温度",type:"telemetry",unit:"℃",status:"active",computed:false,created_by:"admin",created_at:"",updated_at:""}] };
+ return { custom_name: "", can_rename: false, key:family==="lorawan_v2"?`gateway:${id}:node:${index}`:`device:${id}`,name:`节点 ${index}`,target,streams:[{id:`stream-${index}`,device_id:id,code:"temperature",name:"温度",type:"telemetry",unit:"℃",status:"active",computed:false,created_by:"admin",created_at:"",updated_at:""}] };
 }
 describe("unified gateway query",()=>{
  for (const family of ["thcpn","lorawan_v2"]) it(`${family}: comparison batches by physical device and keeps partial results`,async()=>{

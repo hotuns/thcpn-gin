@@ -7,6 +7,7 @@ import { WorkspaceProvider } from "@thcpn/workspace";
 import { I18nProvider } from "@thcpn/i18n";
 import "@thcpn/ui/styles.css";
 import "./platform.css";
+import "./shadcn.css";
 import { PlatformApp } from "./app";
 import { ColorThemeProvider } from "./color-theme";
 

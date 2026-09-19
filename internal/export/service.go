@@ -30,6 +30,7 @@ const (
 )
 
 type Service struct {
+	db      *pgxpool.Pool
 	devices *device.Service
 	queries *sqlc.Queries
 	signer  *objectstore.Signer
@@ -94,6 +95,7 @@ func NewService(db *pgxpool.Pool, signer *objectstore.Signer, cfg config.ExportC
 		cfg.FileTTLHours = 72
 	}
 	return &Service{
+		db:      db,
 		devices: device.NewService(db),
 		queries: sqlc.New(db),
 		signer:  signer,
@@ -215,6 +217,11 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Job, ResolvedR
 		if err := validateCarbonStationConfig(requestConfig); err != nil {
 			return Job{}, ResolvedResource{}, err
 		}
+	}
+
+	requestConfig, err = s.snapshotNodeNames(ctx, input.ResourceType, input.ResourceID, requestConfig)
+	if err != nil {
+		return Job{}, ResolvedResource{}, err
 	}
 
 	row, err := s.queries.CreateExportJob(ctx, sqlc.CreateExportJobParams{
