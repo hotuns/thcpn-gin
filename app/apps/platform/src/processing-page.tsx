@@ -7,7 +7,7 @@ import "react-photo-view/dist/react-photo-view.css";
 import { Activity, Archive, ArrowLeft, ChartNoAxesCombined, ChevronDown, CirclePause, CirclePlay, Eye, FileImage, ListTree, Plus, RefreshCw, Workflow, X } from "lucide-react";
 import { api, formatApiError, type Device, type JsonRecord, type MediaItem, type ProcessingExecution, type ProcessingPlan, type ProcessingProcessor, type ProcessingResult, type ProcessingTask } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, PageHeader, Panel, StateView } from "./platform-ui";
+import { Badge, Button, PageHeader, Panel, StateView, Table } from "./platform-ui";
 import { renderPhotoToolbar } from "./device-media";
 import { DeviceCombobox } from "./device-combobox";
 
@@ -40,13 +40,13 @@ export function ProcessingPage() {
     <Panel className="section-gap" data-onboarding="processing-list">
       <div className="panel-header"><div><h2 className="panel-title">处理任务</h2><div className="panel-kicker">任务关键配置按版本保存，归档后仍保留历史结果</div></div><Workflow size={17}/></div>
       {tasks.isLoading ? <StateView type="loading" title="正在加载处理任务" description="" /> : tasks.isError ? <StateView type="error" title="处理任务加载失败" description={formatApiError(tasks.error).message} /> : !tasks.data?.items.length ? <StateView type="empty" title="暂无处理任务" description="创建任务后，系统会从指定起点自动处理新增数据。" /> :
-      <div className="table-wrap"><table className="data-table"><thead><tr><th>任务</th><th>处理器</th><th>目标</th><th>版本</th><th>状态</th><th>操作</th></tr></thead><tbody>{tasks.data.items.map((task) => <tr key={task.id}>
+      <div className="table-wrap"><Table className="data-table"><thead><tr><th>任务</th><th>处理器</th><th>目标</th><th>版本</th><th>状态</th><th>操作</th></tr></thead><tbody>{tasks.data.items.map((task) => <tr key={task.id}>
         <td><div className="cell-title">{task.name}</div><div className="cell-sub">{task.description || "自动增量处理"}</div></td>
         <td><div className="cell-title">{task.plan_name || "历史直接配置任务"}</div><div className="cell-sub mono">{task.processor_code}@{task.processor_version}</div></td>
         <td><div className="cell-title">{task.target_name || (task.target_type === "device" ? "未命名设备" : "未命名站点")}</div><div className="cell-sub">{task.target_type === "device" ? "设备" : "站点"} · <span className="mono">{task.target_id}</span></div></td>
         <td>v{task.current_version}<div className="cell-sub">{task.last_execution_status ? `最近执行：${task.last_execution_status}` : "等待输入"}</div></td><td><Badge tone={statusTone(task.status) as any}>{statusLabel[task.status]}</Badge></td>
         <td><div className="table-actions"><Button variant="secondary" onClick={() => navigate(`/processing/${task.id}`)}><Eye size={14}/>查看</Button>{task.status === "active" ? <Button variant="secondary" onClick={() => void updateStatus(task, "paused")}><CirclePause size={14}/>暂停</Button> : task.status === "paused" ? <Button variant="secondary" onClick={() => void updateStatus(task, "active")}><CirclePlay size={14}/>启用</Button> : null}{task.status !== "archived" && <Button variant="secondary" onClick={() => window.confirm(`确认归档 ${task.name}？`) && void updateStatus(task, "archived")}><Archive size={14}/>归档</Button>}</div></td>
-      </tr>)}</tbody></table></div>}
+      </tr>)}</tbody></Table></div>}
     </Panel>
     {creating && currentId && <CreateProcessingTask workspaceId={currentId} plans={plans.data?.items ?? []} onClose={() => setCreating(false)} onCreated={async () => { setCreating(false); setFeedback("处理任务已创建，Worker 将自动发现并处理输入数据"); await refresh(); }} />}
   </>;

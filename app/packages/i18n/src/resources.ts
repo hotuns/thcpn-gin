@@ -111,6 +111,7 @@ export const resources = {
         overview: "总览",
         devices: "设备",
         deviceMap: "设备地图",
+        alerts: "预警中心",
         compare: "数据对比",
         datasets: "数据集",
         processing: "数据处理",
@@ -126,6 +127,8 @@ export const resources = {
         createDataset: "创建数据集",
         editDataset: "编辑数据集",
         datasetDetails: "数据集详情",
+        processingDetails: "任务详情",
+        wallboardPlay: "大屏播放",
       },
       workspace: {
         current: "当前组织",
@@ -460,6 +463,7 @@ export const resources = {
         overview: "Overview",
         devices: "Devices",
         deviceMap: "Device map",
+        alerts: "Alerts",
         compare: "Data comparison",
         datasets: "Datasets",
         processing: "Processing",
@@ -475,6 +479,8 @@ export const resources = {
         createDataset: "Create dataset",
         editDataset: "Edit dataset",
         datasetDetails: "Dataset details",
+        processingDetails: "Task details",
+        wallboardPlay: "Wallboard player",
       },
       workspace: {
         current: "Current workspace",

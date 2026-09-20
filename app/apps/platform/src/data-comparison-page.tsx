@@ -19,7 +19,7 @@ import {
   type TelemetrySeries,
 } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, PageHeader, Panel, StateView } from "./platform-ui";
+import { Badge, Button, PageHeader, Panel, StateView, Table } from "./platform-ui";
 import { DeviceCombobox } from "./device-combobox";
 import { DEVICE_LIST_GC_TIME, DEVICE_LIST_STALE_TIME, deviceListQueryKey } from "./device-list-cache";
 import {
@@ -700,9 +700,9 @@ function ComparisonLegend({ items }: { items: { config: ComparisonDraft; device?
 }
 
 function ComparisonStatistics({ items }: { items: { config: ComparisonDraft; device?: Device; query: { isLoading: boolean; error: unknown }; series?: TelemetrySeries }[] }) {
-  return <div className="table-wrap"><table className="data-table comparison-table"><thead><tr><th>对比项</th><th>时间范围</th><th>数据量</th><th>最新值</th><th>平均值</th><th>最小 / 最大</th></tr></thead><tbody>{items.map((item, index) => {
+  return <div className="table-wrap"><Table className="data-table comparison-table"><thead><tr><th>对比项</th><th>时间范围</th><th>数据量</th><th>最新值</th><th>平均值</th><th>最小 / 最大</th></tr></thead><tbody>{items.map((item, index) => {
     const stats = comparisonStatistic(item.series);
     const unit = item.series?.unit ? ` ${item.series.unit}` : "";
     return <tr key={item.config.id}><td><div className="comparison-table-title"><i style={{ background: colors[index % colors.length] }} /><div><strong>{item.device?.name ?? item.config.deviceId}</strong><small>{item.series?.name ?? "数据要素"}</small></div></div></td><td>{formatTime(item.config.startTime)}<small>至 {formatTime(item.config.endTime)}</small></td>{item.query.isLoading ? <td colSpan={4}>正在加载…</td> : item.query.error ? <td colSpan={4} className="comparison-query-error">{formatApiError(item.query.error).message}</td> : stats ? <><td>{stats.count.toLocaleString(document.documentElement.lang || "zh-CN")}</td><td>{formatNumber(stats.latest)}{unit}</td><td>{formatNumber(stats.average)}{unit}</td><td>{formatNumber(stats.min)} / {formatNumber(stats.max)}{unit}</td></> : <td colSpan={4}>暂无数据</td>}</tr>;
-  })}</tbody></table></div>;
+  })}</tbody></Table></div>;
 }

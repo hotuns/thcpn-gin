@@ -171,6 +171,8 @@ export type WallboardTemplate = { code: string; version: number; component_key: 
 export type Wallboard = { id: string; workspace_id: string; name: string; template_code: string; template_version: number; template_name: string; component_key: string; config: { device_id?: string; device_ids?: string[]; telemetry_stream_ids?: string[]; comparison_stream?: string; image_stream_ids?: string[]; trend_hours?: number }; status: "active" | "archived"; created_by: string; created_at: string; updated_at: string };
 export type WallboardDevice = { id: string; name: string; status: string; device_type: string; site_id?: string; site_name?: string; latitude?: number; longitude?: number; location_source: "device" | "site" | "unconfigured"; battery?: number; signal?: number; last_reported_at?: string; runtime_error?: string };
 export type WallboardSnapshot = { generated_at: string; workspace: { id: string; name: string }; sites: Array<{ id: string; name: string; latitude?: number; longitude?: number }>; devices: WallboardDevice[]; metrics: Array<{ data_stream_id: string; device_id: string; name: string; unit?: string; latest_value?: number; latest_at?: string; points: Array<{ ts: string; value: number }> }>; images: Array<{ data_stream_id: string; name: string; items: MediaItem[] }> };
+export type AlertRule = { id:string;workspace_id:string;name:string;type:"telemetry_threshold"|"device_offline";severity:"warning"|"critical";device_id:string;device_name:string;data_stream_id?:string;data_stream_name?:string;unit?:string;condition_mode?:"above"|"below"|"outside";lower?:number;upper?:number;duration_seconds:number;recovery_delta:number;offline_after_seconds?:number;channels:Array<"in_app"|"email">;recipient_user_ids:string[];enabled:boolean;effective_status:"active"|"disabled"|"paused_plan";evaluation_state:"normal"|"pending"|"firing";last_evaluated_at?:string;last_observed_at?:string;last_value?:number;last_error?:string;created_at:string;updated_at:string };
+export type AlertEvent = { id:string;rule_id:string;rule_name:string;workspace_id:string;device_id:string;device_name:string;data_stream_id?:string;data_stream_name?:string;unit?:string;severity:"warning"|"critical";title:string;content:string;trigger_value?:number;trigger_observed_at?:string;triggered_at:string;resolved_at?:string;resolved_value?:number;acknowledged_at?:string;acknowledged_by?:string };
 export type CarbonNodeStatus = Schema<"CarbonNodeStatus">;
 export type CarbonOverview = Schema<"CarbonOverview">;
 export type CarbonFluxPoint = {
@@ -606,6 +608,14 @@ export const api = {
     update: (workspaceId: string, id: string, payload: JsonRecord) => jsonRequest<Wallboard>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/wallboards/${encodeURIComponent(id)}`, "PUT", payload),
     archive: (workspaceId: string, id: string) => request<void>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/wallboards/${encodeURIComponent(id)}`, { method: "DELETE" }),
     snapshot: (workspaceId: string, id: string) => request<WallboardSnapshot>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/wallboards/${encodeURIComponent(id)}/snapshot`),
+  },
+  alerts: {
+    rules: (workspaceId:string) => request<ListResponse<AlertRule>>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/alert-rules`),
+    createRule: (workspaceId:string,payload:JsonRecord) => jsonRequest<AlertRule>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/alert-rules`,"POST",payload),
+    updateRule: (workspaceId:string,id:string,payload:JsonRecord) => jsonRequest<AlertRule>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/alert-rules/${encodeURIComponent(id)}`,"PATCH",payload),
+    archiveRule: (workspaceId:string,id:string) => request<void>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/alert-rules/${encodeURIComponent(id)}`,{method:"DELETE"}),
+    events: (workspaceId:string,filters:Record<string,string|undefined>={}) => request<ListResponse<AlertEvent>>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/alert-events${queryString(filters)}`),
+    acknowledge: (workspaceId:string,id:string) => jsonRequest<AlertEvent>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/alert-events/${encodeURIComponent(id)}/acknowledge`,"POST",{}),
   },
   notifications: {
     list: (workspaceId?: string, limit = 50) => request<JsonRecord>(`/api/v1/notifications${queryString({ workspace_id: workspaceId, limit })}`),

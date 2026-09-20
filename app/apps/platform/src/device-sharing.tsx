@@ -11,7 +11,7 @@ import {
   type JsonRecord,
 } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, CopyId, Panel, StateView } from "./platform-ui";
+import { Badge, Button, CopyId, Panel, Sheet, SheetContent, SheetTitle, StateView } from "./platform-ui";
 import { externalPermission, permissionsForTemplate } from "./access-control";
 import { DevicePublicAccessPanel } from "./device-public-access";
 
@@ -182,18 +182,13 @@ function DeviceShareEditor({ mode, device, templates, permissions, onClose, onCo
     } finally { setBusy(false); }
   };
   return (
-    <div className="access-drawer-layer">
-      <button
-        className="access-drawer-backdrop"
-        aria-label="关闭设备分享编辑"
-        onClick={onClose}
-      />
-      <div className="access-editor" role="dialog" aria-modal="true">
+    <Sheet open onOpenChange={(open) => !open && !busy && onClose()}>
+      <SheetContent className="access-editor">
         <Panel className="access-editor-panel">
           <div className="panel-header">
-            <h2 className="panel-title">
+            <SheetTitle className="panel-title">
               {mode === "grant" ? "创建设备授权" : "发送设备邀请"}
-            </h2>
+            </SheetTitle>
             <Button variant="secondary" onClick={onClose}>
               <X size={14} />关闭
             </Button>
@@ -307,7 +302,7 @@ function DeviceShareEditor({ mode, device, templates, permissions, onClose, onCo
             </div>
           </form>
         </Panel>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }

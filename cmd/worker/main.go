@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"thcpn-gin/internal/accessgrant"
+	"thcpn-gin/internal/alerting"
+	"thcpn-gin/internal/billing"
 	"thcpn-gin/internal/computedstream"
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/datasource"
@@ -18,6 +20,7 @@ import (
 	"thcpn-gin/internal/export"
 	"thcpn-gin/internal/logger"
 	"thcpn-gin/internal/media"
+	"thcpn-gin/internal/notification"
 	"thcpn-gin/internal/objectstore"
 	"thcpn-gin/internal/processing"
 	"thcpn-gin/internal/task"
@@ -82,6 +85,16 @@ func run() int {
 	dataSourceService.SetSyncClaimEnsurer(deviceclaim.NewService(pg, cfg.Auth.JWTSecret))
 	computedStreamService := computedstream.NewService(pg)
 	telemetryService := telemetry.NewService(pg, dataSourceService, datasource.NewRuntime(nil), cfg.QueryLimits, computedStreamService)
+	var billingService *billing.Service
+	if cfg.Billing.Enabled {
+		const gb int64 = 1024 * 1024 * 1024
+		billingService = billing.NewService(pg, billing.Policy{ProfessionalAnnualPriceCents: cfg.Billing.ProfessionalAnnualPriceCents, ProfessionalDefaultMonths: cfg.Billing.ProfessionalDefaultMonths, BaseHistoryDays: cfg.Billing.BaseHistoryDays, BaseExportDays: cfg.Billing.BaseExportDays, MonthlyDownloadLimitBytes: cfg.Billing.MonthlyDownloadLimitGB * gb, TrafficPackSizeBytes: cfg.Billing.TrafficPackSizeGB * gb, TrafficPackPriceCents: cfg.Billing.TrafficPackPriceCents, ExpiryNoticeDays: cfg.Billing.ExpiryNoticeDays, DownloadUsageWarningPercentages: cfg.Billing.DownloadUsageWarningPercentages})
+	}
+	var alertGate alerting.ProfessionalGate
+	if billingService != nil {
+		alertGate = billingService
+	}
+	alertEvaluator := alerting.NewEvaluator(pg, telemetryService, alertGate, notification.NewService(pg), alerting.NewSMTPSender(cfg.SMTP))
 	processor := export.NewProcessor(
 		pg,
 		dataSourceService,
@@ -96,6 +109,10 @@ func run() int {
 	processingEngine := processing.NewEngine(pg, processorClient, media.NewService(pg, dataSourceService, datasource.NewRuntime(nil), objectstore.NewSigner(cfg.ObjectStore, cfg.Auth.JWTSecret), cfg.QueryLimits, objectstore.NewStore(cfg.ObjectStore)), objectstore.NewStore(cfg.ObjectStore))
 
 	if envBool("WORKER_RUN_ONCE") {
+		if _, err := alertEvaluator.ProcessAvailable(ctx, 100); err != nil {
+			log.Error("process alerts", slog.Any("error", err))
+			return 1
+		}
 		if err := cleanupExpiredAccess(ctx, accessGrantService, log); err != nil {
 			log.Error("cleanup expired access grants", slog.Any("error", err))
 			return 1
@@ -116,9 +133,11 @@ func run() int {
 	concurrency := envInt("WORKER_CONCURRENCY", 5)
 	server, mux := task.NewExportServer(redisClient, processor, log, concurrency, processingEngine)
 	task.RegisterSourceSyncHandler(mux, dataSourceService)
+	task.RegisterAlertHandler(mux, alertEvaluator, log)
 	taskClient := task.NewClient(redisClient)
 	defer taskClient.Close()
 	startProcessingScan(ctx, taskClient, log, time.Duration(cfg.Processing.PollSeconds)*time.Second)
+	startAlertScan(ctx, taskClient, log, time.Minute)
 	startExpiredAccessCleanup(ctx, accessGrantService, log, time.Hour)
 	startExpiredExportFileCleanup(ctx, processor, log, time.Hour)
 
@@ -140,6 +159,27 @@ func run() int {
 		}
 		return 0
 	}
+}
+
+func startAlertScan(ctx context.Context, client *task.Client, log *slog.Logger, interval time.Duration) {
+	go func() {
+		enqueue := func() {
+			if err := client.EnqueueAlertScan(ctx); err != nil && log != nil {
+				log.Warn("enqueue alert scan", slog.Any("error", err))
+			}
+		}
+		enqueue()
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				enqueue()
+			}
+		}
+	}()
 }
 
 func startProcessingScan(ctx context.Context, client *task.Client, log *slog.Logger, interval time.Duration) {

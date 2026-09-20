@@ -16,6 +16,7 @@ import (
 	"thcpn-gin/internal/accessgrant"
 	"thcpn-gin/internal/adminauth"
 	"thcpn-gin/internal/adminuser"
+	"thcpn-gin/internal/alerting"
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/audit"
 	"thcpn-gin/internal/auth"
@@ -191,6 +192,11 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	processingService := processing.NewService(deps.Postgres, processing.NewClient(cfg.Processing.ProcessorURL), objectSigner)
 	processingService.SetBilling(billingService, objectStore)
 	notificationService := notification.NewService(deps.Postgres)
+	var alertGate alerting.ProfessionalGate
+	if billingService != nil {
+		alertGate = billingService
+	}
+	alertService := alerting.NewService(deps.Postgres, alertGate)
 	tokenManager := auth.NewTokenManager(cfg.Auth.JWTSecret, time.Duration(cfg.Auth.AccessTokenTTLMinutes)*time.Minute)
 	smsSender, err := newSMSSender(cfg.SMS, deps.Logger)
 	if err != nil {
@@ -252,6 +258,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	processingHandler := processing.NewHandler(processingService, permissionChecker, billingService, auditService)
 	wallboardHandler := wallboard.NewHandler(wallboardService, permissionChecker, auditService)
 	notificationHandler := notification.NewHandler(notificationService)
+	alertHandler := alerting.NewHandler(alertService, permissionChecker, auditService)
 	if taskClient := task.NewClient(deps.Redis); taskClient != nil {
 		exportHandler.SetJobEnqueuer(taskClient)
 		dataSourceService.SetSyncQueue(taskClient)
@@ -332,6 +339,12 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 		authed.GET("/workspaces/:workspace_id/billing", billingHandler.Get)
 	}
 	authed.GET("/workspaces/:workspace_id/api-keys", openAPIHandler.List)
+	authed.GET("/workspaces/:workspace_id/alert-rules", alertHandler.ListRules)
+	authed.POST("/workspaces/:workspace_id/alert-rules", alertHandler.CreateRule)
+	authed.PATCH("/workspaces/:workspace_id/alert-rules/:rule_id", alertHandler.UpdateRule)
+	authed.DELETE("/workspaces/:workspace_id/alert-rules/:rule_id", alertHandler.DeleteRule)
+	authed.GET("/workspaces/:workspace_id/alert-events", alertHandler.ListEvents)
+	authed.POST("/workspaces/:workspace_id/alert-events/:event_id/acknowledge", alertHandler.Acknowledge)
 	authed.POST("/workspaces/:workspace_id/api-keys", openAPIHandler.Create)
 	authed.DELETE("/workspaces/:workspace_id/api-keys/:key_id", openAPIHandler.Revoke)
 	authed.GET("/permissions/catalog", permissionCatalogHandler.Catalog)
@@ -552,8 +565,8 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.GET("/devices/:device_id/children", deviceHandler.AdminChildren)
 	authed.GET("/devices/:device_id/children", deviceHandler.Children)
 	admin.GET("/devices/:device_id/nodes", deviceHandler.AdminNodes)
- admin.PATCH("/devices/:device_id/nodes/:node_index", deviceHandler.AdminRenameNode)
- authed.PATCH("/devices/:device_id/nodes/:node_index", deviceHandler.RenameNode)
+	admin.PATCH("/devices/:device_id/nodes/:node_index", deviceHandler.AdminRenameNode)
+	authed.PATCH("/devices/:device_id/nodes/:node_index", deviceHandler.RenameNode)
 	authed.GET("/devices/:device_id/nodes", deviceHandler.Nodes)
 	admin.GET("/devices/:device_id/context", deviceHandler.AdminInteraction)
 	authed.GET("/devices/:device_id/context", deviceHandler.Interaction)

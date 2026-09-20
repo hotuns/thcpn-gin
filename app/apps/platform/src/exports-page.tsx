@@ -31,6 +31,7 @@ import {
   SearchInput,
   SelectInput,
   StateView,
+  Table,
   type PickerOption,
 } from "./platform-ui";
 
@@ -386,7 +387,7 @@ export function ExportsPage() {
           />
         ) : jobs.length ? (
           <div className="table-wrap">
-            <table className="data-table export-jobs-table">
+            <Table className="data-table export-jobs-table">
               <thead>
                 <tr>
                   <th>任务</th>
@@ -467,7 +468,7 @@ export function ExportsPage() {
                   );
                 })}
               </tbody>
-            </table>
+            </Table>
           </div>
         ) : (
           <StateView

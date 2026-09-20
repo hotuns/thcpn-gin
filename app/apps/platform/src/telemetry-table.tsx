@@ -16,7 +16,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import type { TelemetrySeries } from "@thcpn/api";
-import { IconButton } from "./platform-ui";
+import { IconButton, Table } from "./platform-ui";
 
 type TelemetryPoint = TelemetrySeries["points"][number] & {
   series: TelemetrySeries;
@@ -103,7 +103,7 @@ export function TelemetryTable({
   return (
     <div className="telemetry-table-shell">
       <div className="table-wrap telemetry-table-wrap">
-        <table className="data-table telemetry-table">
+        <Table className="data-table telemetry-table">
           <thead>
             {table.getHeaderGroups().map((group) => (
               <tr key={group.id}>
@@ -145,7 +145,7 @@ export function TelemetryTable({
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
       </div>
       <div className="telemetry-table-footer">
         <span>

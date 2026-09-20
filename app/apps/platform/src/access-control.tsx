@@ -18,7 +18,7 @@ import {
   type JsonRecord,
 } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, CopyId, Panel, StateView } from "./platform-ui";
+import { Badge, Button, CopyId, Panel, Sheet, SheetContent, SheetTitle, StateView } from "./platform-ui";
 
 type FormMode = "member" | "edit-member" | "grant" | "invitation";
 type Template = { code: string; name: string; permission_codes: string[] };
@@ -759,23 +759,12 @@ function AccessForm({
     template === "service_engineer" &&
     (!expiresAt || !["site", "device"].includes(scopeType));
   return (
-    <div className="access-drawer-layer">
-      <button
-        type="button"
-        className="access-drawer-backdrop"
-        aria-label="关闭权限编辑"
-        onClick={() => !busy && onClose()}
-      />
-      <div
-        className="access-editor"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="access-editor-title"
-      >
+    <Sheet open onOpenChange={(open) => !open && !busy && onClose()}>
+      <SheetContent className="access-editor" aria-labelledby="access-editor-title">
         <Panel className="access-editor-panel">
           <div className="panel-header">
             <div>
-              <h2 className="panel-title" id="access-editor-title">
+              <SheetTitle className="panel-title" id="access-editor-title">
                 {mode === "member"
                   ? "添加内部成员"
                   : mode === "edit-member"
@@ -783,7 +772,7 @@ function AccessForm({
                     : mode === "grant"
                       ? "创建资源授权"
                       : "创建邀请"}
-              </h2>
+              </SheetTitle>
               <div className="panel-kicker">
                 {mode === "member" || mode === "edit-member"
                   ? "选择成员角色；默认作用于整个组织"
@@ -981,7 +970,7 @@ function AccessForm({
             </div>
           </form>
         </Panel>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }

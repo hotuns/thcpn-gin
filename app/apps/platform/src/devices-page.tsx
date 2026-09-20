@@ -14,6 +14,7 @@ import {
   Clock3,
   ArrowLeft,
   Battery,
+  BellRing,
   CircleAlert,
   CircleCheck,
   DatabaseZap,
@@ -53,7 +54,7 @@ import {
 import { iconifyIconUrl } from "@thcpn/device-map";
 import { useAuth } from "@thcpn/auth";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, Panel, StateView } from "./platform-ui";
+import { Badge, Button, Panel, StateView, Table } from "./platform-ui";
 import { CameraLive, isCameraDevice, RecentDeviceImages } from "./device-media";
 import { DeviceDataPage } from "./pages";
 import { TelemetryCharts } from "./telemetry-charts";
@@ -451,7 +452,7 @@ export function DevicesPage() {
           />
         ) : rows.length ? (
           <div className="table-wrap">
-            <table className="data-table device-table">
+            <Table className="data-table device-table">
               <colgroup>
                 <col className="device-table-name" />
                 <col className="device-table-vitals" />
@@ -490,7 +491,7 @@ export function DevicesPage() {
                   />
                 ))}
               </tbody>
-            </table>
+            </Table>
           </div>
         ) : (
           <StateView
@@ -919,6 +920,9 @@ export function DeviceCenterDetailPage() {
               onSwitch={switchDevice}
             />
           )}
+          <Link to={`/alerts?new=1&device=${device.id}`}>
+            <Button variant="secondary"><BellRing size={14}/>创建预警</Button>
+          </Link>
           <Link to="/devices">
             <Button variant="secondary">
               <ArrowLeft size={14} />
@@ -1208,7 +1212,7 @@ function DeviceActivity({
       </div>
       {rows.length ? (
         <div className="table-wrap">
-          <table className="data-table">
+          <Table className="data-table">
             <thead>
               <tr>
                 <th>时间</th>
@@ -1249,7 +1253,7 @@ function DeviceActivity({
                 </tr>
               ))}
             </tbody>
-          </table>
+          </Table>
         </div>
       ) : (
         <StateView

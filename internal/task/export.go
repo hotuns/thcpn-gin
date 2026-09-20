@@ -18,8 +18,10 @@ import (
 const (
 	TypeExportJob      = "export:process"
 	TypeProcessingScan = "processing:scan"
+	TypeAlertScan      = "alerts:scan"
 	QueueExports       = "exports"
 	QueueProcessing    = "processing"
+	QueueAlerts        = "alerts"
 )
 
 type ExportProcessor interface {
@@ -28,6 +30,10 @@ type ExportProcessor interface {
 
 type ProcessingProcessor interface {
 	ProcessAvailable(ctx context.Context, limit int) (int, error)
+}
+
+type AlertProcessor interface {
+	ProcessAvailable(context.Context, int) (int, error)
 }
 
 type ExportJobPayload struct {
@@ -76,6 +82,17 @@ func (c *Client) EnqueueProcessingScan(ctx context.Context) error {
 		return apperr.Wrap(apperr.KindInternal, "enqueue processing scan", err)
 	}
 	return nil
+}
+
+func (c *Client) EnqueueAlertScan(ctx context.Context) error {
+	if c == nil || c.client == nil {
+		return apperr.New(apperr.KindInternal, "task client is not configured")
+	}
+	_, err := c.client.EnqueueContext(ctx, asynq.NewTask(TypeAlertScan, nil), asynq.Queue(QueueAlerts), asynq.MaxRetry(2), asynq.Timeout(55*time.Second), asynq.Unique(55*time.Second))
+	if errors.Is(err, asynq.ErrDuplicateTask) || errors.Is(err, asynq.ErrTaskIDConflict) {
+		return nil
+	}
+	return err
 }
 
 func (c *Client) Close() error {
@@ -151,6 +168,10 @@ func RegisterExportHandlers(mux *asynq.ServeMux, processor ExportProcessor, logg
 	mux.Handle(TypeExportJob, ExportJobHandler{Processor: processor, Logger: logger})
 }
 
+func RegisterAlertHandler(mux *asynq.ServeMux, processor AlertProcessor, logger *slog.Logger) {
+	mux.Handle(TypeAlertScan, ProcessingScanHandler{Processor: processor, Logger: logger})
+}
+
 type ProcessingScanHandler struct {
 	Processor ProcessingProcessor
 	Logger    *slog.Logger
@@ -182,6 +203,7 @@ func NewExportServer(redisClient redis.UniversalClient, processor ExportProcesso
 		Queues: map[string]int{
 			QueueExports:    10,
 			QueueProcessing: 4,
+			QueueAlerts:     2,
 		},
 		Logger:       SlogLogger{Logger: logger},
 		ErrorHandler: exportTaskErrorHandler(logger),

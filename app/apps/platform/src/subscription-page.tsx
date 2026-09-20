@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Check, Copy, ExternalLink, KeyRound, Sparkles, Trash2 } from "lucide-react";
 import { api, formatApiError } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, PageHeader, Panel, StateView } from "./platform-ui";
+import { Badge, Button, Input, PageHeader, Panel, StateView } from "./platform-ui";
 
 const text = (value: unknown, fallback = "—") => value === undefined || value === null || value === "" ? fallback : String(value);
 const GB = 1024 ** 3;
@@ -83,7 +83,7 @@ export function SubscriptionPage() {
       </section>
       <Panel><div className="panel-header"><div><h2 className="panel-title">开放 API</h2><div className="panel-kicker">API Key 归属于组织，普通 JSON 查询不消耗下载额度</div></div><div className="api-key-heading-actions"><a href="/api/v1/open/docs" target="_blank" rel="noreferrer"><Button variant="secondary"><ExternalLink size={14} />API 文档</Button></a><Badge tone={professional ? "success" : "neutral"}>{professional ? "可用" : "专业版功能"}</Badge></div></div>
         {createdSecret && <div className="api-key-secret"><div><strong>请立即保存此密钥</strong><span>关闭后将无法再次查看完整值</span></div><code>{createdSecret}</code><Button variant="secondary" onClick={() => void navigator.clipboard.writeText(createdSecret)}><Copy size={14} />复制</Button></div>}
-        {professional && <div className="api-key-create"><input value={keyName} maxLength={100} placeholder="输入密钥名称，例如：实验室数据服务" onChange={(event) => setKeyName(event.target.value)} /><Button onClick={() => void createKey()} disabled={!keyName.trim()}><KeyRound size={14} />创建密钥</Button></div>}
+        {professional && <div className="api-key-create"><Input value={keyName} maxLength={100} placeholder="输入密钥名称，例如：实验室数据服务" onChange={(event) => setKeyName(event.target.value)} /><Button onClick={() => void createKey()} disabled={!keyName.trim()}><KeyRound size={14} />创建密钥</Button></div>}
         {message && <div className="notice warning">{message}</div>}
         <div className="api-key-list">{(keys.data?.items ?? []).map((item) => <div key={text(item.id)}><div><strong>{text(item.name)}</strong><span><code>{text(item.key_prefix)}...</code> · 本月 {Number(item.requests_this_month ?? 0).toLocaleString("zh-CN")} 次 · {item.revoked_at ? "已撤销" : item.last_used_at ? `最近使用 ${new Date(String(item.last_used_at)).toLocaleString()}` : "尚未使用"}</span></div>{!item.revoked_at && <Button variant="secondary" onClick={() => void revokeKey(text(item.id))}><Trash2 size={14} />撤销</Button>}</div>)}{!keys.isLoading && !(keys.data?.items ?? []).length && <StateView type="empty" title={professional ? "暂无 API Key" : "开放 API 尚未启用"} description={professional ? "创建密钥后可供第三方系统访问当前组织数据。" : "组织开通专业版后可以创建 API Key。"} />}</div>
       </Panel>

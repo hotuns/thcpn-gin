@@ -4789,6 +4789,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/alert-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        get: operations["listAlertRules"];
+        put?: never;
+        post: operations["createAlertRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/alert-rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+                rule_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["archiveAlertRule"];
+        options?: never;
+        head?: never;
+        patch: operations["updateAlertRule"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/alert-events": {
+        parameters: {
+            query?: {
+                status?: "active" | "resolved";
+                severity?: "warning" | "critical";
+                device_id?: components["schemas"]["UUID"];
+            };
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        get: operations["listAlertEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/alert-events/{event_id}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+                event_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["acknowledgeAlertEvent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -5345,6 +5423,92 @@ export interface components {
         OpenApiDataStreamList: {
             items: components["schemas"]["OpenApiDataStream"][];
             total: number;
+        };
+        AlertCondition: {
+            /** @enum {string} */
+            mode?: "above" | "below" | "outside";
+            lower?: number;
+            upper?: number;
+            /** @default 300 */
+            duration_seconds: number;
+            recovery_delta?: number;
+        };
+        AlertRuleRequest: {
+            name: string;
+            /** @enum {string} */
+            type: "telemetry_threshold" | "device_offline";
+            /** @enum {string} */
+            severity: "warning" | "critical";
+            device_id: components["schemas"]["UUID"];
+            data_stream_id?: components["schemas"]["UUID"];
+            condition?: components["schemas"]["AlertCondition"];
+            offline_after_seconds?: number;
+            recipient_user_ids: components["schemas"]["UUID"][];
+            channels: ("in_app" | "email")[];
+            /** @default true */
+            enabled: boolean;
+        };
+        AlertRule: {
+            id: components["schemas"]["UUID"];
+            workspace_id: components["schemas"]["UUID"];
+            name: string;
+            /** @enum {string} */
+            type: "telemetry_threshold" | "device_offline";
+            /** @enum {string} */
+            severity: "warning" | "critical";
+            device_id: components["schemas"]["UUID"];
+            device_name: string;
+            data_stream_id?: components["schemas"]["UUID"];
+            data_stream_name?: string;
+            unit?: string;
+            /** @enum {string} */
+            condition_mode?: "above" | "below" | "outside";
+            lower?: number;
+            upper?: number;
+            duration_seconds: number;
+            recovery_delta: number;
+            offline_after_seconds?: number;
+            channels: ("in_app" | "email")[];
+            recipient_user_ids: components["schemas"]["UUID"][];
+            enabled: boolean;
+            /** @enum {string} */
+            effective_status: "active" | "disabled" | "paused_plan";
+            /** @enum {string} */
+            evaluation_state: "normal" | "pending" | "firing";
+            last_evaluated_at?: components["schemas"]["Timestamp"];
+            last_observed_at?: components["schemas"]["Timestamp"];
+            last_value?: number;
+            last_error?: string;
+            created_at: components["schemas"]["Timestamp"];
+            updated_at: components["schemas"]["Timestamp"];
+        };
+        AlertRuleListResponse: {
+            items: components["schemas"]["AlertRule"][];
+        };
+        AlertEvent: {
+            id: components["schemas"]["UUID"];
+            rule_id: components["schemas"]["UUID"];
+            rule_name: string;
+            workspace_id: components["schemas"]["UUID"];
+            device_id: components["schemas"]["UUID"];
+            device_name: string;
+            data_stream_id?: components["schemas"]["UUID"];
+            data_stream_name?: string;
+            unit?: string;
+            /** @enum {string} */
+            severity: "warning" | "critical";
+            title: string;
+            content: string;
+            trigger_value?: number;
+            trigger_observed_at?: components["schemas"]["Timestamp"];
+            triggered_at: components["schemas"]["Timestamp"];
+            resolved_at?: components["schemas"]["Timestamp"];
+            resolved_value?: number;
+            acknowledged_at?: components["schemas"]["Timestamp"];
+            acknowledged_by?: components["schemas"]["UUID"];
+        };
+        AlertEventListResponse: {
+            items: components["schemas"]["AlertEvent"][];
         };
         WorkspaceApiKey: {
             id: components["schemas"]["UUID"];
@@ -14479,6 +14643,151 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CarbonOverview"];
+                };
+            };
+        };
+    };
+    listAlertRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Alert rules */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertRuleListResponse"];
+                };
+            };
+        };
+    };
+    createAlertRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description Alert rule created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertRule"];
+                };
+            };
+        };
+    };
+    archiveAlertRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+                rule_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Alert rule archived */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateAlertRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+                rule_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description Alert rule updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertRule"];
+                };
+            };
+        };
+    };
+    listAlertEvents: {
+        parameters: {
+            query?: {
+                status?: "active" | "resolved";
+                severity?: "warning" | "critical";
+                device_id?: components["schemas"]["UUID"];
+            };
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Alert events */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertEventListResponse"];
+                };
+            };
+        };
+    };
+    acknowledgeAlertEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["schemas"]["UUID"];
+                event_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Alert acknowledged */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertEvent"];
                 };
             };
         };

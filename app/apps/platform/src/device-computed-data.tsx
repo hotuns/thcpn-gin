@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Braces,
   Calculator,
   Check,
+  CircleHelp,
   Pencil,
   Plus,
   Trash2,
@@ -18,10 +19,31 @@ import {
   type DeviceMetadataInput,
 } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, Panel, StateView } from "./platform-ui";
+import { Badge, Button, Panel, Sheet, SheetContent, SheetTitle, StateView } from "./platform-ui";
 
 const FORMULA_VARIABLE_PATTERN = /\b(?:stream|meta)\.[A-Za-z][A-Za-z0-9_]*\b/g;
-const FORMULA_HIGHLIGHT_PATTERN = /(?:stream|meta)\.[A-Za-z][A-Za-z0-9_]*|\b\d+(?:\.\d+)?\b|[()+\-*/%^]/g;
+const FORMULA_HIGHLIGHT_PATTERN = /(?:stream|meta)\.[A-Za-z][A-Za-z0-9_]*|\b\d+(?:\.\d+)?\b|&&|\|\||==|!=|<=|>=|[()+\-*/<>!]/g;
+
+export function formulaTokenDeletionRange(
+  formula: string,
+  selectionStart: number,
+  selectionEnd: number,
+  direction: "backward" | "forward",
+): [number, number] | null {
+  const ranges = Array.from(formula.matchAll(new RegExp(FORMULA_VARIABLE_PATTERN.source, "g"))).map((match) => [
+    match.index,
+    match.index + match[0].length,
+  ] as const);
+  if (selectionStart !== selectionEnd) {
+    const overlaps = ranges.filter(([start, end]) => selectionStart < end && selectionEnd > start);
+    if (!overlaps.length) return null;
+    return [Math.min(selectionStart, overlaps[0][0]), Math.max(selectionEnd, overlaps.at(-1)![1])];
+  }
+  const range = ranges.find(([start, end]) => direction === "backward"
+    ? selectionStart > start && selectionStart <= end
+    : selectionStart >= start && selectionStart < end);
+  return range ? [range[0], range[1]] : null;
+}
 
 function highlightFormula(formula: string, knownVariables: Set<string>): ReactNode[] {
   const nodes: ReactNode[] = [];
@@ -260,12 +282,11 @@ function MetadataEditor({
     }
   };
   return (
-    <div className="access-drawer-layer">
-      <button className="access-drawer-backdrop" aria-label="关闭元数据编辑" onClick={onClose} />
-      <div className="access-editor computed-editor-drawer" role="dialog" aria-modal="true">
+    <Sheet open onOpenChange={(open) => !open && !busy && onClose()}>
+      <SheetContent className="access-editor computed-editor-drawer">
         <Panel className="access-editor-panel">
           <div className="panel-header">
-            <h2 className="panel-title">设备元数据</h2>
+            <SheetTitle className="panel-title">设备元数据</SheetTitle>
             <Button variant="secondary" onClick={onClose}><X size={14} />关闭</Button>
           </div>
           <form onSubmit={submit}>
@@ -289,8 +310,8 @@ function MetadataEditor({
             <div className="form-actions"><Button type="button" variant="secondary" onClick={onClose}>取消</Button><Button type="submit" disabled={busy}>{busy ? "保存中…" : "保存元数据"}</Button></div>
           </form>
         </Panel>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -344,13 +365,30 @@ function ComputedStreamEditor({
     const before = formula.slice(0, start);
     const after = formula.slice(end);
     const beforeSeparator = before && !/[\s([,=+\-*/%^]$/.test(before) ? " " : "";
-    const afterSeparator = after && !/^[\s),=+\-*/%^]/.test(after) ? " " : "";
+    const afterSeparator = !after || !/^[\s),=+\-*/%^]/.test(after) ? " " : "";
     const next = `${before}${beforeSeparator}${variable}${afterSeparator}${after}`;
     const cursor = start + beforeSeparator.length + variable.length;
     setFormula(next);
     requestAnimationFrame(() => {
       formulaInputRef.current?.focus();
       formulaInputRef.current?.setSelectionRange(cursor, cursor);
+    });
+  };
+  const deleteFormulaToken = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Backspace" && event.key !== "Delete") return;
+    const input = event.currentTarget;
+    const range = formulaTokenDeletionRange(
+      formula,
+      input.selectionStart,
+      input.selectionEnd,
+      event.key === "Backspace" ? "backward" : "forward",
+    );
+    if (!range) return;
+    event.preventDefault();
+    setFormula(`${formula.slice(0, range[0])}${formula.slice(range[1])}`);
+    requestAnimationFrame(() => {
+      formulaInputRef.current?.focus();
+      formulaInputRef.current?.setSelectionRange(range[0], range[0]);
     });
   };
   const tryFormula = async () => {
@@ -382,11 +420,10 @@ function ComputedStreamEditor({
     }
   };
   return (
-    <div className="access-drawer-layer">
-      <button className="access-drawer-backdrop" aria-label="关闭计算指标编辑" onClick={onClose} />
-      <div className="access-editor computed-editor-drawer" role="dialog" aria-modal="true">
+    <Sheet open onOpenChange={(open) => !open && !busy && onClose()}>
+      <SheetContent className="access-editor computed-editor-drawer">
         <Panel className="access-editor-panel">
-          <div className="panel-header"><h2 className="panel-title">{item ? "编辑计算指标" : "新建计算指标"}</h2><Button variant="secondary" onClick={onClose}><X size={14} />关闭</Button></div>
+          <div className="panel-header"><SheetTitle className="panel-title">{item ? "编辑计算指标" : "新建计算指标"}</SheetTitle><Button variant="secondary" onClick={onClose}><X size={14} />关闭</Button></div>
           <form onSubmit={submit}>
             <div className="computed-definition-grid">
               <label className="field"><span className="field-label">名称</span><input required value={name} onChange={(event) => setName(event.target.value)} /></label>
@@ -403,6 +440,21 @@ function ComputedStreamEditor({
                     : "等待输入变量"}
                 </span>
               </div>
+              <details className="formula-help">
+                <summary><CircleHelp size={14} />支持四则运算、条件判断和常用数学函数<span>查看完整语法</span></summary>
+                <div className="formula-help-content">
+                  <dl>
+                    <div><dt>变量</dt><dd><code>stream.指标Code</code>、<code>meta.元数据Key</code></dd></div>
+                    <div><dt>算术</dt><dd><code>+ - * /</code>，可用括号调整优先级</dd></div>
+                    <div><dt>比较</dt><dd><code>== != &lt; &lt;= &gt; &gt;=</code>，结果为 1（成立）或 0（不成立）</dd></div>
+                    <div><dt>逻辑</dt><dd><code>&amp;&amp; || !</code>，0 表示假，非 0 表示真</dd></div>
+                    <div><dt>函数</dt><dd><code>min(a,b)</code>、<code>max(a,b)</code>、<code>abs(x)</code>、<code>round(x)</code>、<code>sqrt(x)</code>、<code>pow(x,n)</code></dd></div>
+                    <div><dt>条件</dt><dd><code>if(条件, 成立值, 不成立值)</code></dd></div>
+                  </dl>
+                  <div className="formula-help-examples"><strong>示例</strong><code>stream.temperature * 1.8 + 32</code><code>if(stream.value &gt; meta.maximum, meta.maximum, stream.value)</code></div>
+                  <p>仅支持数值运算，公式最长 1024 个字符；不支持 <code>%</code>、<code>^</code>，幂运算请使用 <code>pow()</code>。</p>
+                </div>
+              </details>
               <div className="formula-input-shell">
                 <pre
                   className="formula-highlight"
@@ -417,6 +469,7 @@ function ComputedStreamEditor({
                   rows={4}
                   value={formula}
                   onChange={(event) => setFormula(event.target.value)}
+                  onKeyDown={deleteFormulaToken}
                   onScroll={(event) => setFormulaScroll({ top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft })}
                   aria-label="公式"
                   placeholder="stream.change / 1000 + meta.initial_value"
@@ -448,8 +501,8 @@ function ComputedStreamEditor({
             <div className="form-actions"><Button type="button" variant="secondary" onClick={onClose}>取消</Button><Button type="submit" disabled={busy}>{busy ? "保存中…" : "保存计算指标"}</Button></div>
           </form>
         </Panel>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 

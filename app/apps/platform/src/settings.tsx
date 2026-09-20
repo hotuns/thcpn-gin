@@ -5,7 +5,7 @@ import { ArrowLeft, Pencil, Plus, Tags, X } from "lucide-react";
 import { api, formatApiError, type DeviceTaxonomyTerm, type JsonRecord } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, PageHeader, Panel, StateView, Tabs, TabsList, TabsTrigger } from "./platform-ui";
+import { Badge, Button, PageHeader, Panel, StateView, Table, Tabs, TabsList, TabsTrigger } from "./platform-ui";
 import { AccessControlTab } from "./access-control";
 import { billingEnabled } from "./features";
 
@@ -712,7 +712,7 @@ function RecordTable({
     );
   return (
     <div className="table-wrap">
-      <table className="data-table">
+      <Table className="data-table">
         <thead>
           <tr>
             {columns.map((column) => (
@@ -770,7 +770,7 @@ function RecordTable({
             </tr>
           ))}
         </tbody>
-      </table>
+      </Table>
     </div>
   );
 }

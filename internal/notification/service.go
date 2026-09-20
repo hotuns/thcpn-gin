@@ -212,3 +212,23 @@ func (s *Service) Send(ctx context.Context, input SendInput) (int64, error) {
 	}
 	return command.RowsAffected(), nil
 }
+
+// SendToUser creates a workspace-scoped notification for one exact recipient.
+// It is used by features whose audience is narrower than all workspace members.
+func (s *Service) SendToUser(ctx context.Context, userID, workspaceID uuid.UUID, input SendInput) error {
+	if userID == uuid.Nil || workspaceID == uuid.Nil {
+		return apperr.New(apperr.KindInvalidArgument, "user and workspace are required")
+	}
+	if strings.TrimSpace(input.Title) == "" || strings.TrimSpace(input.Content) == "" {
+		return apperr.New(apperr.KindInvalidArgument, "title and content are required")
+	}
+	if input.Category == "" {
+		input.Category = "system"
+	}
+	if input.Level == "" {
+		input.Level = "info"
+	}
+	_, err := s.db.Exec(ctx, `INSERT INTO user_notifications(user_id,workspace_id,category,level,title,content,action_url,expires_at)
+		VALUES($1,$2,$3,$4,$5,$6,NULLIF($7,''),$8)`, userID, workspaceID, input.Category, input.Level, input.Title, input.Content, input.ActionURL, input.ExpiresAt)
+	return err
+}

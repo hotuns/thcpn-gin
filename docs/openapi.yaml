@@ -25,6 +25,8 @@ tags:
     description: Registration, login, token issuing and current user APIs
   - name: Workspaces
     description: Workspace management APIs
+  - name: Alerts
+    description: Professional device alert rules, events and acknowledgements
   - name: Admin
     description: System administrator APIs for platform governance, users and device source operations
   - name: Members
@@ -6511,6 +6513,60 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/CarbonOverview"}
 
+  /api/v1/workspaces/{workspace_id}/alert-rules:
+    parameters:
+      - { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+    get:
+      tags: [Alerts]
+      operationId: listAlertRules
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      responses:
+        "200": { description: Alert rules, content: { application/json: { schema: { $ref: "#/components/schemas/AlertRuleListResponse" } } } }
+    post:
+      tags: [Alerts]
+      operationId: createAlertRule
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AlertRuleRequest" } } } }
+      responses:
+        "201": { description: Alert rule created, content: { application/json: { schema: { $ref: "#/components/schemas/AlertRule" } } } }
+  /api/v1/workspaces/{workspace_id}/alert-rules/{rule_id}:
+    parameters:
+      - { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+      - { name: rule_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+    patch:
+      tags: [Alerts]
+      operationId: updateAlertRule
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AlertRuleRequest" } } } }
+      responses:
+        "200": { description: Alert rule updated, content: { application/json: { schema: { $ref: "#/components/schemas/AlertRule" } } } }
+    delete:
+      tags: [Alerts]
+      operationId: archiveAlertRule
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      responses: { "204": { description: Alert rule archived } }
+  /api/v1/workspaces/{workspace_id}/alert-events:
+    parameters:
+      - { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+      - { name: status, in: query, schema: { type: string, enum: [active, resolved] } }
+      - { name: severity, in: query, schema: { type: string, enum: [warning, critical] } }
+      - { name: device_id, in: query, schema: { $ref: "#/components/schemas/UUID" } }
+    get:
+      tags: [Alerts]
+      operationId: listAlertEvents
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      responses:
+        "200": { description: Alert events, content: { application/json: { schema: { $ref: "#/components/schemas/AlertEventListResponse" } } } }
+  /api/v1/workspaces/{workspace_id}/alert-events/{event_id}/acknowledge:
+    parameters:
+      - { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+      - { name: event_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+    post:
+      tags: [Alerts]
+      operationId: acknowledgeAlertEvent
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      responses:
+        "200": { description: Alert acknowledged, content: { application/json: { schema: { $ref: "#/components/schemas/AlertEvent" } } } }
 components:
   securitySchemes:
     bearerAuth:
@@ -7810,6 +7866,90 @@ components:
       properties:
         items: { type: array, items: { $ref: "#/components/schemas/OpenApiDataStream" } }
         total: { type: integer }
+    AlertCondition:
+      type: object
+      properties:
+        mode: { type: string, enum: [above, below, outside] }
+        lower: { type: number }
+        upper: { type: number }
+        duration_seconds: { type: integer, default: 300 }
+        recovery_delta: { type: number, minimum: 0 }
+    AlertRuleRequest:
+      type: object
+      required: [name, type, severity, device_id, recipient_user_ids, channels]
+      properties:
+        name: { type: string, maxLength: 120 }
+        type: { type: string, enum: [telemetry_threshold, device_offline] }
+        severity: { type: string, enum: [warning, critical] }
+        device_id: { $ref: "#/components/schemas/UUID" }
+        data_stream_id: { $ref: "#/components/schemas/UUID" }
+        condition: { $ref: "#/components/schemas/AlertCondition" }
+        offline_after_seconds: { type: integer, minimum: 60 }
+        recipient_user_ids: { type: array, items: { $ref: "#/components/schemas/UUID" }, minItems: 1 }
+        channels: { type: array, items: { type: string, enum: [in_app, email] }, minItems: 1 }
+        enabled: { type: boolean, default: true }
+    AlertRule:
+      type: object
+      required: [id, workspace_id, name, type, severity, device_id, device_name, duration_seconds, recovery_delta, channels, recipient_user_ids, enabled, effective_status, evaluation_state, created_at, updated_at]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        workspace_id: { $ref: "#/components/schemas/UUID" }
+        name: { type: string }
+        type: { type: string, enum: [telemetry_threshold, device_offline] }
+        severity: { type: string, enum: [warning, critical] }
+        device_id: { $ref: "#/components/schemas/UUID" }
+        device_name: { type: string }
+        data_stream_id: { $ref: "#/components/schemas/UUID" }
+        data_stream_name: { type: string }
+        unit: { type: string }
+        condition_mode: { type: string, enum: [above, below, outside] }
+        lower: { type: number }
+        upper: { type: number }
+        duration_seconds: { type: integer }
+        recovery_delta: { type: number }
+        offline_after_seconds: { type: integer }
+        channels: { type: array, items: { type: string, enum: [in_app, email] } }
+        recipient_user_ids: { type: array, items: { $ref: "#/components/schemas/UUID" } }
+        enabled: { type: boolean }
+        effective_status: { type: string, enum: [active, disabled, paused_plan] }
+        evaluation_state: { type: string, enum: [normal, pending, firing] }
+        last_evaluated_at: { $ref: "#/components/schemas/Timestamp" }
+        last_observed_at: { $ref: "#/components/schemas/Timestamp" }
+        last_value: { type: number }
+        last_error: { type: string }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+    AlertRuleListResponse:
+      type: object
+      required: [items]
+      properties: { items: { type: array, items: { $ref: "#/components/schemas/AlertRule" } } }
+    AlertEvent:
+      type: object
+      required: [id, rule_id, rule_name, workspace_id, device_id, device_name, severity, title, content, triggered_at]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        rule_id: { $ref: "#/components/schemas/UUID" }
+        rule_name: { type: string }
+        workspace_id: { $ref: "#/components/schemas/UUID" }
+        device_id: { $ref: "#/components/schemas/UUID" }
+        device_name: { type: string }
+        data_stream_id: { $ref: "#/components/schemas/UUID" }
+        data_stream_name: { type: string }
+        unit: { type: string }
+        severity: { type: string, enum: [warning, critical] }
+        title: { type: string }
+        content: { type: string }
+        trigger_value: { type: number }
+        trigger_observed_at: { $ref: "#/components/schemas/Timestamp" }
+        triggered_at: { $ref: "#/components/schemas/Timestamp" }
+        resolved_at: { $ref: "#/components/schemas/Timestamp" }
+        resolved_value: { type: number }
+        acknowledged_at: { $ref: "#/components/schemas/Timestamp" }
+        acknowledged_by: { $ref: "#/components/schemas/UUID" }
+    AlertEventListResponse:
+      type: object
+      required: [items]
+      properties: { items: { type: array, items: { $ref: "#/components/schemas/AlertEvent" } } }
     WorkspaceApiKey:
       type: object
       required: [id, workspace_id, name, key_prefix, created_by, created_at]

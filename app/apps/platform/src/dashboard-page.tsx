@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { api, deviceStatusLabel, formatApiError } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, PageHeader, Panel, StateView } from "./platform-ui";
+import { Badge, Button, PageHeader, Panel, StateView, Table } from "./platform-ui";
 
 const text = (input: unknown, fallback: unknown = "—") =>
   input === undefined || input === null || input === ""
@@ -306,7 +306,7 @@ export function DashboardPage() {
           />
         ) : audit.data?.items.length ? (
           <div className="table-wrap">
-            <table className="data-table">
+            <Table className="data-table">
               <thead>
                 <tr>
                   <th>时间</th>
@@ -353,7 +353,7 @@ export function DashboardPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </Table>
           </div>
         ) : (
           <StateView

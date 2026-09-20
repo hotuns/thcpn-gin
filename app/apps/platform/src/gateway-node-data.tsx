@@ -4,7 +4,7 @@ import { useSearchParams, Link } from "react-router-dom";
 import { Search } from "lucide-react";
 import { api, formatApiError, type Device, type GatewayNode, type TelemetrySeries } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, Panel, StateView } from "./platform-ui";
+import { Badge, Button, Panel, StateView, Table } from "./platform-ui";
 import { TelemetryCharts } from "./telemetry-charts";
 import { DeviceQueryToolbar, initialQueryRange } from "./device-query-toolbar";
 
@@ -108,7 +108,7 @@ export function GatewayNodeData({ gateway, workspaceId }: { gateway: Device; wor
       {series.some((item) => !item.complete && !item.error) && <div className="command-note">部分指标数据不完整，请缩小时间范围后重试。</div>}
       {series.flatMap((item) => item.warnings ?? []).map((warning, index) => <div key={index} className="command-note">{warning.message}</div>)}
       {loading && <StateView type="loading" title="正在查询" description="正在读取所选节点的数据。"/>}
-      {points.length && applied ? view === "chart" ? <TelemetryCharts series={series} startTime={applied.start} endTime={applied.end} displayMode={applied.mode === "compare" ? "compare" : undefined}/> : <div className="table-wrap"><table><thead><tr><th>指标</th><th>时间</th><th>数值</th></tr></thead><tbody>{points.slice(page * 100, (page + 1) * 100).map((point, index) => <tr key={`${point.stream}:${index}`}><td>{point.name}</td><td>{new Date(point.ts).toLocaleString()}</td><td>{point.value} {point.unit}</td></tr>)}</tbody></table><div className="header-actions"><Button disabled={page === 0} onClick={() => setPage(page - 1)}>上一页</Button><span>{page + 1} / {Math.max(1, Math.ceil(points.length / 100))}</span><Button disabled={(page + 1) * 100 >= points.length} onClick={() => setPage(page + 1)}>下一页</Button></div></div> : !loading && !failures.length ? <StateView type="empty" title={applied ? "当前范围没有数据" : "请选择查询条件"} description="选择节点、指标与时间范围后点击查询。"/> : null}
+      {points.length && applied ? view === "chart" ? <TelemetryCharts series={series} startTime={applied.start} endTime={applied.end} displayMode={applied.mode === "compare" ? "compare" : undefined}/> : <div className="table-wrap"><Table><thead><tr><th>指标</th><th>时间</th><th>数值</th></tr></thead><tbody>{points.slice(page * 100, (page + 1) * 100).map((point, index) => <tr key={`${point.stream}:${index}`}><td>{point.name}</td><td>{new Date(point.ts).toLocaleString()}</td><td>{point.value} {point.unit}</td></tr>)}</tbody></Table><div className="header-actions"><Button disabled={page === 0} onClick={() => setPage(page - 1)}>上一页</Button><span>{page + 1} / {Math.max(1, Math.ceil(points.length / 100))}</span><Button disabled={(page + 1) * 100 >= points.length} onClick={() => setPage(page + 1)}>下一页</Button></div></div> : !loading && !failures.length ? <StateView type="empty" title={applied ? "当前范围没有数据" : "请选择查询条件"} description="选择节点、指标与时间范围后点击查询。"/> : null}
     </Panel>
   </div></div>;
 }

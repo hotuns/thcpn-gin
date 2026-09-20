@@ -29,7 +29,7 @@ import {
   type JsonRecord,
 } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, Panel, StateView } from "./platform-ui";
+import { Badge, Button, Panel, Sheet, SheetContent, SheetTitle, StateView } from "./platform-ui";
 import { iconifyIconUrl } from "@thcpn/device-map";
 import { renderPhotoToolbar } from "./device-media";
 
@@ -505,19 +505,13 @@ function PlacementEditor({ device, projects, sites, busy, onClose, onSubmit }: {
   const availableSites = sites.filter(
     (item) => !projectId || String(item.project_id) === projectId,
   );
-  useEffect(() => {
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = previous; };
-  }, []);
   return (
-    <div className="access-drawer-layer">
-      <button className="access-drawer-backdrop" aria-label="关闭设备归属编辑" onClick={onClose} />
-      <div className="access-editor device-profile-editor device-placement-editor" role="dialog" aria-modal="true">
+    <Sheet open onOpenChange={(open) => !open && !busy && onClose()}>
+      <SheetContent className="access-editor device-profile-editor device-placement-editor">
         <Panel className="access-editor-panel">
           <div className="panel-header">
             <div>
-              <h2 className="panel-title">编辑归属</h2>
+              <SheetTitle className="panel-title">编辑归属</SheetTitle>
               <div className="panel-kicker">{device.name} · SN {device.serial_no}</div>
             </div>
             <Button variant="secondary" onClick={onClose}><X size={14} />关闭</Button>
@@ -570,8 +564,8 @@ function PlacementEditor({ device, projects, sites, busy, onClose, onSubmit }: {
             </div>
           </form>
         </Panel>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -596,11 +590,6 @@ function ProfileEditor({ section, profile, environment, terms, tagOptions, busy,
   const [tags,setTags]=useState<string[]>(direct?.research_tags??effective?.research_tags??[]);
   const byKind=(kind:string)=>terms.filter((term)=>term.kind===kind&&term.status==="active");
   const toggle=(field:string)=>setOverrides((current)=>{const next=new Set(current);if(next.has(field))next.delete(field);else next.add(field);return next});
-  useEffect(() => {
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = previous; };
-  }, []);
   const submit = (event: FormEvent) => {
     event.preventDefault();
     void onSubmit({
@@ -609,12 +598,11 @@ function ProfileEditor({ section, profile, environment, terms, tagOptions, busy,
     },{ecosystem_term_id:ecosystem||null,observation_object_ids:observations,purpose_ids:direct?.purposes.map((term)=>term.id)??[],management_term_id:direct?.management?.id??null,deployment_term_id:direct?.deployment?.id??null,commissioned_year:year?Number(year):null,research_tags:tags,overridden_fields:Array.from(overrides)});
   };
   return (
-    <div className="access-drawer-layer">
-      <button className="access-drawer-backdrop" aria-label="关闭设备资料编辑" onClick={onClose} />
-      <div className="access-editor device-profile-editor" role="dialog" aria-modal="true">
+    <Sheet open onOpenChange={(open) => !open && !busy && onClose()}>
+      <SheetContent className="access-editor device-profile-editor">
         <Panel className="access-editor-panel">
           <div className="panel-header">
-            <div><h2 className="panel-title">{section === "basic" ? "编辑基本信息" : "编辑观测资料"}</h2><p className="device-editor-subtitle">{section === "basic" ? "补充设备描述和安装位置" : "设置设备分类、观测对象及研究标签"}</p></div>
+            <div><SheetTitle className="panel-title">{section === "basic" ? "编辑基本信息" : "编辑观测资料"}</SheetTitle><p className="device-editor-subtitle">{section === "basic" ? "补充设备描述和安装位置" : "设置设备分类、观测对象及研究标签"}</p></div>
             <Button variant="secondary" onClick={onClose}><X size={14} />关闭</Button>
           </div>
           <form className="access-form" onSubmit={submit}>
@@ -642,8 +630,8 @@ function ProfileEditor({ section, profile, environment, terms, tagOptions, busy,
             <div className="form-actions"><Button variant="secondary" type="button" onClick={onClose}>取消</Button><Button type="submit" disabled={busy}>{busy ? "保存中…" : "保存资料"}</Button></div>
           </form>
         </Panel>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 

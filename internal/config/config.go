@@ -20,6 +20,7 @@ type Config struct {
 	Auth                AuthConfig        `yaml:"auth"`
 	SMS                 SMSConfig         `yaml:"sms"`
 	Email               EmailConfig       `yaml:"email"`
+	SMTP                SMTPConfig        `yaml:"smtp"`
 	ObjectStore         ObjectStoreConfig `yaml:"object_store"`
 	THCPNLogObjectStore ObjectStoreConfig `yaml:"thcpn_log_object_store"`
 	QueryLimits         QueryLimitsConfig `yaml:"query_limits"`
@@ -90,6 +91,16 @@ type EmailConfig struct {
 	CooldownSeconds   int    `yaml:"cooldown_seconds"`
 	DailyLimit        int    `yaml:"daily_limit"`
 	MaxVerifyAttempts int    `yaml:"max_verify_attempts"`
+}
+
+type SMTPConfig struct {
+	Host        string `yaml:"host"`
+	Port        int    `yaml:"port"`
+	Username    string `yaml:"username"`
+	Password    string `yaml:"password"`
+	FromName    string `yaml:"from_name"`
+	FromAddress string `yaml:"from_address"`
+	TLSMode     string `yaml:"tls_mode"`
 }
 
 type AliyunSMSConfig struct {
@@ -217,6 +228,7 @@ func Default() Config {
 			DailyLimit:        10,
 			MaxVerifyAttempts: 5,
 		},
+		SMTP: SMTPConfig{Port: 587, FromName: "原位生态云", TLSMode: "starttls"},
 		ObjectStore: ObjectStoreConfig{
 			Provider:        "oss",
 			Endpoint:        "https://oss-cn-beijing.aliyuncs.com",
@@ -493,6 +505,17 @@ func (cfg Config) Validate() error {
 }
 
 func applyEnv(cfg *Config) {
+	cfg.SMTP.Host = envOr(cfg.SMTP.Host, "SMTP_HOST")
+	cfg.SMTP.Username = envOr(cfg.SMTP.Username, "SMTP_USERNAME")
+	cfg.SMTP.Password = envOr(cfg.SMTP.Password, "SMTP_PASSWORD")
+	cfg.SMTP.FromName = envOr(cfg.SMTP.FromName, "SMTP_FROM_NAME")
+	cfg.SMTP.FromAddress = envOr(cfg.SMTP.FromAddress, "SMTP_FROM_ADDRESS")
+	cfg.SMTP.TLSMode = envOr(cfg.SMTP.TLSMode, "SMTP_TLS_MODE")
+	if value := strings.TrimSpace(os.Getenv("SMTP_PORT")); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil {
+			cfg.SMTP.Port = parsed
+		}
+	}
 	if value := strings.TrimSpace(os.Getenv("SERVER_ADDR")); value != "" {
 		cfg.Server.Addr = value
 	}
@@ -753,4 +776,11 @@ func applyEnv(cfg *Config) {
 			cfg.Ezviz.AccessTokenTTLSeconds = seconds
 		}
 	}
+}
+
+func envOr(current, key string) string {
+	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+		return value
+	}
+	return current
 }

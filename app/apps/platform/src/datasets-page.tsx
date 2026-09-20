@@ -23,7 +23,7 @@ import {
   type TelemetrySeries,
 } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, IconButton, PageHeader, Panel, StateView } from "./platform-ui";
+import { Badge, Button, IconButton, PageHeader, Panel, StateView, Table } from "./platform-ui";
 import { TelemetryCharts } from "./telemetry-charts";
 import { TelemetryTable } from "./telemetry-table";
 import { dataComparisonPath } from "./data-workflow";
@@ -238,7 +238,7 @@ export function DatasetsPage() {
           />
         ) : rows.length ? (
           <div className="table-wrap">
-            <table className="data-table">
+            <Table className="data-table">
               <thead>
                 <tr>
                   <th>数据集</th>
@@ -350,7 +350,7 @@ export function DatasetsPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </Table>
           </div>
         ) : (
           <StateView

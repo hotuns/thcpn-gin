@@ -16,6 +16,10 @@ export * from "./components/ui/dropdown-menu";
 export * from "./components/ui/tooltip";
 export * from "./components/ui/popover";
 export * from "./components/ui/command";
+export * from "./components/ui/breadcrumb";
+export * from "./components/ui/alert";
+export * from "./components/ui/table";
+export * from "./components/ui/sheet";
 export { Input };
 
 export function Button({ variant = "primary", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" | "danger" }) {

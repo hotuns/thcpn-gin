@@ -1,9 +1,9 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, Download, Globe2, LockKeyhole, Pencil, Printer, X } from "lucide-react";
+import { Copy, Download, Globe2, LockKeyhole, Pencil, Printer } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { api, formatApiError, type Device, type DevicePublicAccess } from "@thcpn/api";
-import { Badge, Button, Panel, StateView } from "./platform-ui";
+import { Alert, AlertDescription, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Panel, StateView, Switch } from "./platform-ui";
 
 const formatTime = (value?: string) => value
   ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
@@ -67,7 +67,7 @@ export function DevicePublicAccessPanel({ device }: { device: Device }) {
         {publication?.public_slug ? (
           <div className="public-access-body">
             <div className="public-access-details">
-              <label className="field"><span className="field-label">固定公开地址</span><div className="public-url-row"><input readOnly value={publicUrl} /><Button variant="secondary" onClick={() => void copyUrl()}><Copy size={14} />复制</Button></div></label>
+              <label className="field"><span className="field-label">固定公开地址</span><div className="public-url-row"><Input readOnly value={publicUrl} /><Button variant="secondary" onClick={() => void copyUrl()}><Copy size={14} />复制</Button></div></label>
               <div className="public-access-meta">关闭后地址仍会保留，重新开启无需更换设备二维码。</div>
               <div className="public-access-meta">更新于 {formatTime(publication.updated_at)}{publication.updated_by_name ? ` · ${publication.updated_by_name}` : ""}</div>
               {feedback && <div className="command-note">{feedback}</div>}
@@ -104,7 +104,7 @@ function PublicAccessEditor({ device, current, onClose, onSaved }: { device: Dev
       setError(`${item.message}${item.requestId ? ` · request id ${item.requestId}` : ""}`);
     } finally { setBusy(false); }
   };
-  return <div className="modal-layer"><button className="modal-backdrop" aria-label="关闭公开访问设置" onClick={onClose} /><div className="modal-card public-access-editor" role="dialog" aria-modal="true"><div className="panel-header"><h2 className="panel-title">公开访问设置</h2><Button variant="secondary" onClick={onClose}><X size={14} />关闭</Button></div><form className="panel-body public-access-form" onSubmit={submit}><label className="setting-toggle"><span><strong>公开设备</strong><small>任何人可通过固定地址查看最近三天数据和图片</small></span><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /></label><label className="setting-toggle"><span><strong>访问密码</strong><small>验证后在当前浏览器保持 7 天</small></span><input type="checkbox" checked={passwordEnabled} onChange={(event) => setPasswordEnabled(event.target.checked)} /></label>{passwordEnabled && <label className="field"><span className="field-label">{current?.password_enabled ? "设置新密码（不修改可留空）" : "访问密码"}</span><input type="password" minLength={8} maxLength={72} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="8–72 个字符" /></label>}{error && <div className="command-note error-note">{error}</div>}<div className="form-actions"><Button type="button" variant="secondary" onClick={onClose}>取消</Button><Button type="submit" disabled={busy}>{busy ? "正在保存…" : "确认保存"}</Button></div></form></div></div>;
+  return <Dialog open onOpenChange={(open)=>!open&&!busy&&onClose()}><DialogContent className="public-access-editor"><DialogHeader><DialogTitle>公开访问设置</DialogTitle><DialogDescription>控制外部访问范围与密码保护。</DialogDescription></DialogHeader><form className="public-access-form shadcn-dialog-form" onSubmit={submit}><label className="setting-toggle"><span><strong>公开设备</strong><small>任何人可通过固定地址查看最近三天数据和图片</small></span><Switch checked={enabled} onCheckedChange={setEnabled}/></label><label className="setting-toggle"><span><strong>访问密码</strong><small>验证后在当前浏览器保持 7 天</small></span><Switch checked={passwordEnabled} onCheckedChange={setPasswordEnabled}/></label>{passwordEnabled&&<label className="field"><span className="field-label">{current?.password_enabled?"设置新密码（不修改可留空）":"访问密码"}</span><Input type="password" minLength={8} maxLength={72} value={password} onChange={(event)=>setPassword(event.target.value)} placeholder="8–72 个字符"/></label>}{error&&<Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}<DialogFooter><Button type="button" variant="secondary" onClick={onClose}>取消</Button><Button type="submit" disabled={busy}>{busy?"正在保存…":"确认保存"}</Button></DialogFooter></form></DialogContent></Dialog>;
 }
 
 const escapeHTML = (value: string) => value.replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char] ?? char);

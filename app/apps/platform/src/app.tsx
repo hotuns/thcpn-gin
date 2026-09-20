@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { Fragment, lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Link,
@@ -49,6 +49,15 @@ import {
 import {
   Badge,
   Brand,
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
   Button,
   CloseButton,
   IconButton,
@@ -56,9 +65,11 @@ import {
   PageHeader,
   Panel,
   StateView,
+  Table,
 } from "./platform-ui";
 import { AccountMenu, WorkspaceMenu } from "./shell-menus";
 import { OnboardingTour } from "./onboarding-tour";
+import { platformBreadcrumbs } from "./platform-breadcrumbs";
 import { LanguageSwitcher, useLocale } from "@thcpn/i18n";
 const DevicesPage = lazy(() =>
   import("./devices-page").then((module) => ({ default: module.DevicesPage })),
@@ -113,6 +124,7 @@ const SubscriptionPage = lazy(() =>
 const NotificationsPage = lazy(() =>
   import("./notifications-page").then((module) => ({ default: module.NotificationsPage })),
 );
+const AlertsPage = lazy(() => import("./alerts-page").then((module) => ({ default: module.AlertsPage })));
 const AccountPage = lazy(() =>
   import("./account-page").then((module) => ({ default: module.AccountPage })),
 );
@@ -135,6 +147,7 @@ const navGroups = [
       { to: "/dashboard", key: "overview", icon: Gauge },
       { to: "/devices", key: "devices", icon: Boxes },
       { to: "/device-map", key: "deviceMap", icon: MapPinned },
+      { to: "/alerts", key: "alerts", icon: AlertTriangle },
     ],
   },
   {
@@ -172,42 +185,7 @@ function Shell() {
   const { user, signOut } = useAuth();
   const workspace = useWorkspace();
   const location = useLocation();
-  const routeLabel =
-    location.pathname === "/device-map"
-      ? t("platform:navigation.deviceMap")
-      : location.pathname === "/devices"
-      ? t("platform:navigation.devices")
-      : location.pathname.startsWith("/devices/")
-        ? t("platform:navigation.deviceDetails")
-      : location.pathname === "/datasets"
-          ? t("platform:navigation.datasets")
-          : location.pathname === "/datasets/new"
-            ? t("platform:navigation.createDataset")
-            : location.pathname.endsWith("/edit")
-              ? t("platform:navigation.editDataset")
-              : location.pathname.startsWith("/datasets/")
-                ? t("platform:navigation.datasetDetails")
-          : location.pathname === "/data-compare"
-            ? t("platform:navigation.compare")
-          : location.pathname === "/exports"
-            ? t("platform:navigation.exports")
-          : location.pathname.startsWith("/wallboards")
-            ? t("platform:navigation.wallboards")
-          : location.pathname.startsWith("/processing")
-            ? t("platform:navigation.processing")
-            : location.pathname === "/workspaces"
-              ? t("platform:navigation.workspaces")
-            : location.pathname === "/settings"
-                ? t("platform:navigation.settings")
-                : location.pathname === "/subscription"
-                  ? t("platform:navigation.subscription")
-                : location.pathname === "/notifications"
-                  ? t("platform:navigation.notifications")
-                : location.pathname === "/account"
-                  ? t("platform:navigation.account")
-                : location.pathname === "/dashboard"
-                  ? t("platform:navigation.overview")
-                  : "";
+  const breadcrumbs = platformBreadcrumbs(location.pathname);
   useEffect(() => {
     setMobileOpen(false);
     setActiveSidebarMenu(null);
@@ -348,16 +326,11 @@ function Shell() {
               </IconButton>
             </div>
             <MobileMenuButton onClick={() => setMobileOpen(true)} />
-            <div className="topbar-context">
-              <span className="mono">{t("platform:brand")} / </span>
-              {workspace.current?.name ?? t("platform:navigation.workspaces")}
-              {routeLabel && (
-                <>
-                  <span className="breadcrumb-separator">/</span>
-                  <strong>{routeLabel}</strong>
-                </>
-              )}
-            </div>
+            <Breadcrumb className="topbar-context">
+              <BreadcrumbList>
+                {breadcrumbs.map((item,index)=><Fragment key={`${item.key}-${index}`}>{index>0&&<BreadcrumbSeparator/>}<BreadcrumbItem>{item.to?<BreadcrumbLink to={item.to}>{t(`platform:navigation.${item.key}`)}</BreadcrumbLink>:<BreadcrumbPage>{t(`platform:navigation.${item.key}`)}</BreadcrumbPage>}</BreadcrumbItem></Fragment>)}
+              </BreadcrumbList>
+            </Breadcrumb>
           </div>
           <div className="topbar-actions">
             <LanguageSwitcher compact />
@@ -376,15 +349,17 @@ function Shell() {
       </div>
       {user?.id ? <OnboardingTour key={onboardingSession} userId={user.id} startOpen={onboardingSession > 0} /> : null}
       {requestError ? (
-        <section className="global-request-error" role="alert" aria-live="assertive">
+        <Alert variant="destructive" className="global-request-error" aria-live="assertive">
           <AlertTriangle size={22} />
           <div>
-            <strong>{requestError.status === 401 ? t("errors.unauthorized") : requestError.status === 403 ? t("errors.permission_denied") : t("requestFailed")}</strong>
-            <p>{requestError.message}</p>
-            {requestError.requestId ? <small>{t("requestId", { id: requestError.requestId })}</small> : null}
+            <AlertTitle>{requestError.status === 401 ? t("errors.unauthorized") : requestError.status === 403 ? t("errors.permission_denied") : t("requestFailed")}</AlertTitle>
+            <AlertDescription>
+              <p>{requestError.message}</p>
+              {requestError.requestId ? <small>{t("requestId", { id: requestError.requestId })}</small> : null}
+            </AlertDescription>
           </div>
           <CloseButton onClick={() => setRequestError(null)} />
-        </section>
+        </Alert>
       ) : null}
     </div>
   );
@@ -515,7 +490,7 @@ function Workspaces() {
       ) : (
         <Panel data-onboarding="organization-list">
           <div className="table-wrap">
-            <table className="data-table">
+            <Table className="data-table">
               <thead>
                 <tr>
                   <th>组织</th>
@@ -583,7 +558,7 @@ function Workspaces() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </Table>
             {!workspaces.length && (
               <StateView
                 type="empty"
@@ -619,6 +594,7 @@ export function PlatformApp() {
             <Route path="/workspaces" element={<Workspaces />} />
             <Route path="/devices" element={<DevicesPage />} />
             <Route path="/device-map" element={<DeviceMapPage />} />
+            <Route path="/alerts" element={<AlertsPage />} />
             <Route path="/claim" element={<DeviceClaimPage />} />
             <Route path="/claim/:claimSlug" element={<DeviceClaimPage />} />
             <Route

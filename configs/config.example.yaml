@@ -56,6 +56,15 @@ email:
   daily_limit: 10
   max_verify_attempts: 5
 
+smtp:
+  host: ""
+  port: 587
+  username: ""
+  password: ""
+  from_name: "原位生态云"
+  from_address: ""
+  tls_mode: "starttls"
+
 object_store:
   provider: "oss"
   endpoint: "https://oss-cn-beijing.aliyuncs.com"
