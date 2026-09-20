@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { type AccessibleWorkspace, type User } from "@thcpn/api";
 import { domainLabels, useLocale } from "@thcpn/i18n";
+import { Input } from "./platform-ui";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -152,7 +153,7 @@ export function WorkspaceMenu({
           {workspaces.length > 5 && (
             <label className="workspace-search">
               <Search size={14} aria-hidden="true" />
-              <input
+              <Input
                 autoFocus
                 value={keyword}
                 onChange={(event) => setKeyword(event.target.value)}

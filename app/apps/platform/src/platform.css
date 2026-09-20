@@ -6651,7 +6651,7 @@ body::-webkit-scrollbar-corner,
 .device-table-report { width: 14%; }
 .device-table-assignment { width: 19%; }
 .device-table-actions {
-  width: 132px;
+  width: 164px;
 }
 .device-table th:last-child,
 .device-table td:last-child {
@@ -10569,37 +10569,6 @@ body::-webkit-scrollbar-corner,
   font-size: var(--font-size-caption);
   cursor: pointer;
 }
-.device-map-child-toggle input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-.device-map-child-toggle i {
-  width: 26px;
-  height: 15px;
-  position: relative;
-  background: #c9d2dc;
-  border-radius: 10px;
-  transition: background 0.18s ease;
-}
-.device-map-child-toggle i::after {
-  content: "";
-  width: 11px;
-  height: 11px;
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  background: #fff;
-  border-radius: 50%;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  transition: transform 0.18s ease;
-}
-.device-map-child-toggle input:checked + i {
-  background: var(--blue);
-}
-.device-map-child-toggle input:checked + i::after {
-  transform: translateX(11px);
-}
 .device-map-token-note {
   padding: 6px 10px;
   color: #825c18;
@@ -12195,9 +12164,7 @@ body::-webkit-scrollbar-corner,
   width: 130px;
   height: 34px;
 }
-.export-page .export-toolbar .ui-select.is-compact select {
-  padding-left: 11px;
-}
+.export-page .export-toolbar .ui-select.is-compact .shadcn-select-trigger { padding-left:11px; }
 .export-page .export-node-search {
   width: calc(100% - 24px);
   margin: 12px 12px 0;
@@ -12548,10 +12515,13 @@ body::-webkit-scrollbar-corner,
 .alert-device-link { min-height:36px; display:inline-flex; align-items:center; padding:0 14px; border:1px solid var(--line); border-radius:var(--radius-sm); color:var(--ink); text-decoration:none; background:var(--surface-muted); }
 .alert-rule-dialog { width:min(620px,calc(100vw - 32px)); }
 .alert-field { display:grid; gap:8px; margin:12px 0; font-size:var(--font-size-small); font-weight:600; }
-.alert-field .ui-input,.alert-field .ui-select { width:100%; }
+.alert-field .shadcn-input,.alert-field .ui-input,.alert-field .ui-select,.alert-field .alert-select-trigger { width:100%; }
 .alert-form-grid { display:grid; grid-template-columns:1fr 1fr; gap:0 14px; }
 .alert-recipient-list { max-height:220px; overflow:auto; border:1px solid var(--line); border-radius:var(--radius-sm); }
 .alert-recipient-list label { display:flex; gap:10px; padding:10px 12px; font-weight:400; border-bottom:1px solid var(--line); }
+.alert-recipient-identity { display:grid; gap:2px; min-width:0; }
+.alert-recipient-identity strong,.alert-recipient-identity small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.alert-recipient-identity small { color:var(--muted); font-weight:400; }
 .alert-email-toggle { display:flex; align-items:center; gap:10px; margin:16px 0; }
 @media(max-width:720px){.alert-event-card,.alert-rule-card{grid-template-columns:1fr}.alert-form-grid{grid-template-columns:1fr}.alert-card-actions{justify-content:flex-start}}
 

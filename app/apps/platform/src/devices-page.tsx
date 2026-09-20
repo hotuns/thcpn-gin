@@ -54,7 +54,7 @@ import {
 import { iconifyIconUrl } from "@thcpn/device-map";
 import { useAuth } from "@thcpn/auth";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, Panel, StateView, Table } from "./platform-ui";
+import { Badge, Button, CheckboxInput, Input, Panel, SelectInput, StateView, Table, Textarea } from "./platform-ui";
 import { CameraLive, isCameraDevice, RecentDeviceImages } from "./device-media";
 import { DeviceDataPage } from "./pages";
 import { TelemetryCharts } from "./telemetry-charts";
@@ -369,7 +369,8 @@ export function DevicesPage() {
           <div className="device-filter-main-row">
             <div className="filter-input">
               <Search size={15} />
-              <input
+              <Input
+                type="search"
                 aria-label="搜索设备"
                 value={keyword}
                 onChange={(event) => setKeyword(event.target.value)}
@@ -1407,14 +1408,14 @@ function SystemDeviceConfig({
           <h3>资产资料</h3>
           <label className="field">
             <span className="field-label">名称</span>
-            <input
+            <Input
               value={assetName}
               onChange={(e) => setAssetName(e.target.value)}
             />
           </label>
           <label className="field">
             <span className="field-label">状态</span>
-            <select
+            <SelectInput
               value={assetStatus}
               onChange={(e) =>
                 setAssetStatus(e.target.value as Device["status"])
@@ -1425,7 +1426,7 @@ function SystemDeviceConfig({
                   {deviceStatusLabel(item.value)}
                 </option>
               ))}
-            </select>
+            </SelectInput>
           </label>
           <Button
             onClick={() =>
@@ -1446,7 +1447,7 @@ function SystemDeviceConfig({
           <h3>生命周期</h3>
           <label className="field">
             <span className="field-label">新状态</span>
-            <select
+            <SelectInput
               value={lifecycleStatus}
               onChange={(e) =>
                 setLifecycleStatus(e.target.value as Device["lifecycle_status"])
@@ -1457,11 +1458,11 @@ function SystemDeviceConfig({
                   {deviceLifecycleLabel(item.value)}
                 </option>
               ))}
-            </select>
+            </SelectInput>
           </label>
           <label className="field">
             <span className="field-label">说明</span>
-            <input
+            <Input
               value={lifecycleNote}
               onChange={(e) => setLifecycleNote(e.target.value)}
             />
@@ -1489,8 +1490,7 @@ function SystemDeviceConfig({
               const code = text(item.code, "");
               return (
                 <label key={code}>
-                  <input
-                    type="checkbox"
+                  <CheckboxInput
                     checked={capabilities.includes(code)}
                     disabled={item.status !== "active"}
                     onChange={() =>
@@ -1525,7 +1525,7 @@ function SystemDeviceConfig({
           <h3>组织分配</h3>
           <label className="field">
             <span className="field-label">目标组织</span>
-            <select
+            <SelectInput
               value={targetWorkspaceId}
               onChange={(e) => setTargetWorkspaceId(e.target.value)}
             >
@@ -1535,7 +1535,7 @@ function SystemDeviceConfig({
                   {item.name}
                 </option>
               ))}
-            </select>
+            </SelectInput>
           </label>
           <Button
             variant="secondary"
@@ -1563,7 +1563,7 @@ function SystemDeviceConfig({
         </div>
         <label className="field">
           <span className="field-label">数据通道 · data_json</span>
-          <textarea
+          <Textarea
             value={fields.data_json}
             onChange={(e) =>
               setFields((current) => ({
@@ -1575,7 +1575,7 @@ function SystemDeviceConfig({
         </label>
         <label className="field">
           <span className="field-label">图片通道 · image_json</span>
-          <textarea
+          <Textarea
             value={fields.image_json}
             onChange={(e) =>
               setFields((current) => ({
@@ -1587,7 +1587,7 @@ function SystemDeviceConfig({
         </label>
         <label className="field">
           <span className="field-label">控制配置 · control_json</span>
-          <textarea
+          <Textarea
             value={fields.control_json}
             onChange={(e) =>
               setFields((current) => ({
@@ -1660,14 +1660,14 @@ function SystemCameraBinding({
           <div className="device-form-grid">
             <label className="field">
               <span className="field-label">设备序列号</span>
-              <input
+              <Input
                 value={deviceSerial}
                 onChange={(e) => setDeviceSerial(e.target.value)}
               />
             </label>
             <label className="field">
               <span className="field-label">通道号</span>
-              <input
+              <Input
                 type="number"
                 min="1"
                 value={channelNo}
@@ -1676,38 +1676,38 @@ function SystemCameraBinding({
             </label>
             <label className="field">
               <span className="field-label">默认清晰度</span>
-              <select
+              <SelectInput
                 value={quality}
                 onChange={(e) => setQuality(e.target.value)}
               >
                 {["fluent", "standard", "hd", "ultra_hd"].map((item) => (
                   <option key={item}>{item}</option>
                 ))}
-              </select>
+              </SelectInput>
             </label>
             <label className="field">
               <span className="field-label">状态</span>
-              <select
+              <SelectInput
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
               >
                 <option value="active">active</option>
                 <option value="disabled">disabled</option>
-              </select>
+              </SelectInput>
             </label>
             <label className="field">
               <span className="field-label">设备加密</span>
-              <select
+              <SelectInput
                 value={String(encrypted)}
                 onChange={(e) => setEncrypted(e.target.value === "true")}
               >
                 <option value="false">未加密</option>
                 <option value="true">已加密</option>
-              </select>
+              </SelectInput>
             </label>
             <label className="field">
               <span className="field-label">验证码 Secret 引用</span>
-              <input
+              <Input
                 value={secretRef}
                 onChange={(e) => setSecretRef(e.target.value)}
               />
@@ -2093,7 +2093,7 @@ function DeviceActionForm({
             <>
               <label className="field">
                 <span className="field-label">校准流程</span>
-                <select
+                <SelectInput
                   value={calibrationType}
                   onChange={(event) => setCalibrationType(event.target.value)}
                 >
@@ -2101,11 +2101,11 @@ function DeviceActionForm({
                   <option value="span">量程校准</option>
                   <option value="factory_reset">恢复出厂校准</option>
                   <option value="custom">自定义流程</option>
-                </select>
+                </SelectInput>
               </label>
               <label className="field field-wide">
                 <span className="field-label">设备参数 JSON（可选）</span>
-                <textarea
+                <Textarea
                   value={parameters}
                   onChange={(event) => setParameters(event.target.value)}
                   spellCheck={false}
@@ -2116,7 +2116,7 @@ function DeviceActionForm({
             <>
               <label className="field">
                 <span className="field-label">目标版本</span>
-                <input
+                <Input
                   required
                   value={version}
                   onChange={(event) => setVersion(event.target.value)}
@@ -2125,21 +2125,21 @@ function DeviceActionForm({
               </label>
               <label className="field">
                 <span className="field-label">固件包 URI</span>
-                <input
+                <Input
                   value={packageUri}
                   onChange={(event) => setPackageUri(event.target.value)}
                 />
               </label>
               <label className="field">
                 <span className="field-label">Checksum</span>
-                <input
+                <Input
                   value={checksum}
                   onChange={(event) => setChecksum(event.target.value)}
                 />
               </label>
               <label className="field">
                 <span className="field-label">计划执行时间</span>
-                <input
+                <Input
                   type="datetime-local"
                   value={scheduledAt}
                   onChange={(event) => setScheduledAt(event.target.value)}
@@ -2150,7 +2150,7 @@ function DeviceActionForm({
             <>
               <label className="field">
                 <span className="field-label">目标组织</span>
-                <select
+                <SelectInput
                   required
                   value={targetWorkspaceId}
                   onChange={(event) => {
@@ -2167,11 +2167,11 @@ function DeviceActionForm({
                         {item.name}
                       </option>
                     ))}
-                </select>
+                </SelectInput>
               </label>
               <label className="field">
                 <span className="field-label">目标项目</span>
-                <select
+                <SelectInput
                   value={targetProjectId}
                   disabled={!targetWorkspaceId}
                   onChange={(event) => {
@@ -2185,11 +2185,11 @@ function DeviceActionForm({
                       {text(item.name)}
                     </option>
                   ))}
-                </select>
+                </SelectInput>
               </label>
               <label className="field">
                 <span className="field-label">目标站点</span>
-                <select
+                <SelectInput
                   value={targetSiteId}
                   disabled={!targetProjectId}
                   onChange={(event) => setTargetSiteId(event.target.value)}
@@ -2200,11 +2200,10 @@ function DeviceActionForm({
                       {text(item.name)}
                     </option>
                   ))}
-                </select>
+                </SelectInput>
               </label>
               <label className="transfer-confirm">
-                <input
-                  type="checkbox"
+                <CheckboxInput
                   checked={confirmed}
                   onChange={(event) => setConfirmed(event.target.checked)}
                 />

@@ -9,8 +9,9 @@ import {
   Table2,
   Truck,
 } from "lucide-react";
-import { api, deviceStatusLabel, formatApiError } from "@thcpn/api";
+import { api, formatApiError } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
+import { domainLabels, useLocale } from "@thcpn/i18n";
 import { Badge, Button, PageHeader, Panel, StateView, Table } from "./platform-ui";
 
 const text = (input: unknown, fallback: unknown = "—") =>
@@ -26,24 +27,18 @@ const displayTime = (input: unknown) =>
         minute: "2-digit",
       }).format(new Date(String(input)))
     : "—";
-const exportTypeLabel = (type: unknown) =>
-  ({
-    telemetry_csv: "设备数据 CSV",
-    telemetry_excel: "设备数据 Excel",
-    media_zip: "设备图片 ZIP",
-    dataset_zip: "数据集 ZIP",
-    standard_station_zip: "标准站数据包",
-    group_site_zip: "组网站数据包",
-    carbon_station_zip: "碳汇站数据包",
-  })[String(type)] ?? text(type);
-export const countState = (loading: boolean, error: unknown, count?: number) =>
+export const countState = (loading: boolean, error: unknown, count?: number, labels = { loading: "正在加载", error: "查询失败", current: "当前组织" }) =>
   loading
-    ? { value: "…", meta: "正在加载" }
+    ? { value: "…", meta: labels.loading }
     : error
-      ? { value: "—", meta: "查询失败" }
-      : { value: String(count ?? 0), meta: "当前组织" };
+      ? { value: "—", meta: labels.error }
+      : { value: String(count ?? 0), meta: labels.current };
 
 export function DashboardPage() {
+  const { t } = useLocale();
+  const labels = domainLabels(t);
+  const countLabels = { loading: t("platform:dashboard.loading"), error: t("platform:dashboard.queryFailed"), current: t("platform:dashboard.currentWorkspace") };
+  const exportTypeLabel = (type: unknown) => t(`platform:dashboard.exportTypes.${String(type)}`, { defaultValue: text(type) });
   const { current, currentId, error: workspaceError } = useWorkspace();
   const projects = useQuery({
     queryKey: workspaceQueryKey(currentId, "projects"),
@@ -98,7 +93,7 @@ export function DashboardPage() {
       add(["dataset"], item.id, item.name),
     );
     (exports.data?.items ?? []).forEach((item) =>
-      add(["export", "export_job"], item.id, `导出任务 · ${item.export_type}`),
+      add(["export", "export_job"], item.id, `${t("platform:dashboard.exportTask")} · ${exportTypeLabel(item.export_type)}`),
     );
     return names;
   }, [current?.name, currentId, datasets.data, devices.data, exports.data, projects.data, sites.data]);
@@ -110,7 +105,7 @@ export function DashboardPage() {
       .map((id) => auditResourceNames.get(`device:${id}`))
       .filter((name): name is string => Boolean(name));
     if (deviceNames.length)
-      return `${deviceNames.slice(0, 2).join("、")}${deviceNames.length > 2 ? ` 等 ${deviceNames.length} 台` : ""}`;
+      return `${deviceNames.slice(0, 2).join("、")}${deviceNames.length > 2 ? ` ${t("platform:dashboard.moreDevices", { count: deviceNames.length - 2 })}` : ""}`;
     return (
       auditResourceNames.get(`${job.resource_type}:${job.resource_id}`) ??
       `${job.resource_type} · ${job.resource_id.slice(0, 8)}…`
@@ -122,14 +117,14 @@ export function DashboardPage() {
     return (
       <>
         <PageHeader
-          eyebrow="组织 / 概览"
-          title="总览"
-          description="组织暂时不可用。"
+          eyebrow={t("platform:dashboard.eyebrow")}
+          title={t("platform:dashboard.title")}
+          description={t("platform:dashboard.unavailable")}
         />
         <Panel>
           <StateView
             type="error"
-            title="组织加载失败"
+            title={t("platform:dashboard.workspaceLoadFailed")}
             description={item.message}
             requestId={item.requestId}
           />
@@ -141,87 +136,87 @@ export function DashboardPage() {
     return (
       <>
         <PageHeader
-          eyebrow="组织 / 概览"
-          title="总览"
-          description="选择组织后查看资源运行概览。"
+          eyebrow={t("platform:dashboard.eyebrow")}
+          title={t("platform:dashboard.title")}
+          description={t("platform:dashboard.selectWorkspace")}
         />
         <Panel>
           <StateView
             type="empty"
-            title="没有可用组织"
-            description="创建组织组织，或联系管理员加入已有空间。"
+            title={t("platform:dashboard.noWorkspace")}
+            description={t("platform:dashboard.noWorkspaceDescription")}
           />
         </Panel>
       </>
     );
   const metrics = [
     {
-      label: "项目",
+      label: t("platform:dashboard.projects"),
       href: "/settings?tab=resources",
       icon: <Building2 size={16} />,
       ...countState(
         projects.isLoading,
         projects.error,
-        projects.data?.items.length,
+        projects.data?.items.length, countLabels,
       ),
     },
     {
-      label: "站点",
+      label: t("platform:dashboard.sites"),
       href: "/settings?tab=resources",
       icon: <MapPin size={16} />,
-      ...countState(sites.isLoading, sites.error, sites.data?.items.length),
+      ...countState(sites.isLoading, sites.error, sites.data?.items.length, countLabels),
     },
     {
-      label: "设备",
+      label: t("platform:dashboard.devices"),
       href: "/devices",
       icon: <Truck size={16} />,
       ...countState(
         devices.isLoading,
         devices.error,
-        devices.data?.items.length,
+        devices.data?.items.length, countLabels,
       ),
     },
     {
-      label: "数据集",
+      label: t("platform:dashboard.datasets"),
       href: "/datasets",
       icon: <Table2 size={16} />,
       ...countState(
         datasets.isLoading,
         datasets.error,
-        datasets.data?.items.length,
+        datasets.data?.items.length, countLabels,
       ),
     },
     {
-      label: "导出任务",
+      label: t("platform:dashboard.exportJobs"),
       href: "/exports",
       icon: <Download size={16} />,
       ...countState(
         exports.isLoading,
         exports.error,
-        exports.data?.items.length,
+        exports.data?.items.length, countLabels,
       ),
     },
   ];
   return (
     <>
       <PageHeader
-        eyebrow="组织 / 概览"
-        title="总览"
-        description={`正在查看 ${current?.name ?? "当前组织"} 的资源、任务与安全事件。`}
+        eyebrow={t("platform:dashboard.eyebrow")}
+        title={t("platform:dashboard.title")}
+        description={t("platform:dashboard.viewing", { name: current?.name ?? t("platform:dashboard.currentWorkspace") })}
         actions={
           <Button
             variant="secondary"
             onClick={() => queries.forEach((query) => void query.refetch())}
           >
             <RefreshCw size={14} />
-            刷新全部
+            {t("platform:dashboard.refreshAll")}
           </Button>
         }
       />
       <div className="dashboard-metrics">
         {metrics.map((item) => (
-          <Link className="dashboard-metric-link" to={item.href} key={item.label} aria-label={`查看${item.label}`}>
-            <Panel className={`metric ${item.meta === "查询失败" ? "metric-error" : ""}`}>
+          <Link className="dashboard-metric-link" to={item.href} key={item.label} aria-label={t("platform:dashboard.viewMetric", { name: item.label })}>
+            <Panel className={`metric ${item.meta === countLabels.error ? "metric-error" : ""}`}>
               <div className="metric-top">
                 <span className="metric-label">{item.label}</span>
                 {item.icon}
@@ -234,8 +229,8 @@ export function DashboardPage() {
       </div>
       <div className="grid grid-2 section-gap">
         <DashboardList
-          title="设备状态"
-          subtitle="最近分配的设备资产"
+          title={t("platform:dashboard.deviceStatus")}
+          subtitle={t("platform:dashboard.recentDevices")}
           link="/devices"
           query={devices}
         >
@@ -246,14 +241,14 @@ export function DashboardPage() {
                 <div className="cell-sub mono">SN {device.serial_no}</div>
               </div>
               <Badge tone={device.status === "active" ? "success" : "warning"}>
-                {deviceStatusLabel(device.status)}
+                {labels.deviceStatus(device.status)}
               </Badge>
             </div>
           ))}
         </DashboardList>
         <DashboardList
-          title="最近导出"
-          subtitle="当前账号发起的异步任务"
+          title={t("platform:dashboard.recentExports")}
+          subtitle={t("platform:dashboard.recentExportsDescription")}
           link="/exports"
           query={exports}
         >
@@ -284,23 +279,23 @@ export function DashboardPage() {
       <Panel className="section-gap">
         <div className="panel-header">
           <div>
-            <h2 className="panel-title">最近审计</h2>
-            <div className="panel-kicker">敏感操作、访问结果和 request ID</div>
+            <h2 className="panel-title">{t("platform:dashboard.recentAudit")}</h2>
+            <div className="panel-kicker">{t("platform:dashboard.recentAuditDescription")}</div>
           </div>
           <Link className="admin-link" to="/settings?tab=audit">
-            查看全部
+            {t("platform:dashboard.viewAll")}
           </Link>
         </div>
         {audit.isLoading ? (
           <StateView
             type="loading"
-            title="正在加载审计事件"
-            description="正在读取当前组织的安全记录。"
+            title={t("platform:dashboard.auditLoading")}
+            description={t("platform:dashboard.auditLoadingDescription")}
           />
         ) : audit.error ? (
           <StateView
             type="error"
-            title="审计日志不可用"
+            title={t("platform:dashboard.auditUnavailable")}
             description={formatApiError(audit.error).message}
             requestId={formatApiError(audit.error).requestId}
           />
@@ -309,10 +304,10 @@ export function DashboardPage() {
             <Table className="data-table">
               <thead>
                 <tr>
-                  <th>时间</th>
-                  <th>动作</th>
-                  <th>资源</th>
-                  <th>结果</th>
+                  <th>{t("platform:dashboard.time")}</th>
+                  <th>{t("platform:dashboard.action")}</th>
+                  <th>{t("platform:dashboard.resource")}</th>
+                  <th>{t("platform:dashboard.result")}</th>
                   <th>Request ID</th>
                 </tr>
               </thead>
@@ -358,8 +353,8 @@ export function DashboardPage() {
         ) : (
           <StateView
             type="empty"
-            title="暂无审计事件"
-            description="当前组织还没有可见的敏感操作记录。"
+            title={t("platform:dashboard.noAudit")}
+            description={t("platform:dashboard.noAuditDescription")}
           />
         )}
       </Panel>
@@ -379,6 +374,7 @@ function DashboardList({
   query: any;
   children: ReactNode;
 }) {
+  const { t } = useLocale();
   return (
     <Panel>
       <div className="panel-header">
@@ -387,19 +383,19 @@ function DashboardList({
           <div className="panel-kicker">{subtitle}</div>
         </div>
         <Link className="admin-link" to={link}>
-          查看全部
+          {t("platform:dashboard.viewAll")}
         </Link>
       </div>
       {query.isLoading ? (
         <StateView
           type="loading"
-          title={`正在加载${title}`}
-          description="正在读取服务端数据。"
+          title={`${t("platform:dashboard.loading")} ${title}`}
+          description={t("platform:dashboard.reading")}
         />
       ) : query.error ? (
         <StateView
           type="error"
-          title={`${title}不可用`}
+          title={`${title}${t("platform:dashboard.unavailableSuffix")}`}
           description={formatApiError(query.error).message}
           requestId={formatApiError(query.error).requestId}
         />
@@ -408,8 +404,8 @@ function DashboardList({
       ) : (
         <StateView
           type="empty"
-          title={`暂无${title}`}
-          description="当前组织暂无相关记录。"
+          title={`${t("platform:dashboard.emptyPrefix")}${title}`}
+          description={t("platform:dashboard.noRecords")}
         />
       )}
     </Panel>

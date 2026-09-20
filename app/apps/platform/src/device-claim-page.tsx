@@ -8,7 +8,7 @@ import {
   type DeviceClaimCredential,
 } from "@thcpn/api";
 import { useWorkspace } from "@thcpn/workspace";
-import { Button, Panel, StateView } from "./platform-ui";
+import { Button, Input, Panel, SelectInput, StateView } from "./platform-ui";
 
 export function DeviceClaimPage() {
   const { claimSlug = "" } = useParams();
@@ -100,8 +100,8 @@ export function DeviceClaimPage() {
       {!resolved && !claimSlug ? (
         <Panel>
           <form className="device-claim-form" data-onboarding="claim-identity" onSubmit={resolve}>
-            <label className="field"><span className="field-label">设备序列号</span><input autoCapitalize="characters" value={serialNo} onChange={(event) => setSerialNo(event.target.value)} placeholder="铭牌上的 SN" /></label>
-            <label className="field"><span className="field-label">认领码</span><input autoCapitalize="characters" value={code} onChange={(event) => setCode(event.target.value)} placeholder="XXXX-XXXX-XX" /></label>
+            <label className="field"><span className="field-label">设备序列号</span><Input autoCapitalize="characters" value={serialNo} onChange={(event) => setSerialNo(event.target.value)} placeholder="铭牌上的 SN" /></label>
+            <label className="field"><span className="field-label">认领码</span><Input autoCapitalize="characters" value={code} onChange={(event) => setCode(event.target.value)} placeholder="XXXX-XXXX-XX" /></label>
             <Button type="submit" disabled={busy || !serialNo.trim() || !code.trim()}><Link2 size={15} />验证设备</Button>
           </form>
         </Panel>
@@ -113,9 +113,9 @@ export function DeviceClaimPage() {
             <div><strong>{resolved.device_name}</strong><span>{resolved.device_type === "gateway" ? `网关 · 包含 ${resolved.child_count} 个节点` : "标准站"} · SN 尾号 {resolved.serial_no}</span></div>
           </div>
           <div className="device-claim-form" data-onboarding="claim-assignment">
-            <label className="field"><span className="field-label">目标组织</span><select value={workspaceId} onChange={(event) => { setWorkspaceId(event.target.value); setProjectId(""); setSiteId(""); }}>{workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-            <label className="field"><span className="field-label">项目（可选）</span><select value={projectId} onChange={(event) => { setProjectId(event.target.value); setSiteId(""); }}><option value="">不分配项目</option>{(projects.data?.items ?? []).map((item) => <option key={String(item.id)} value={String(item.id)}>{String(item.name)}</option>)}</select></label>
-            <label className="field"><span className="field-label">站点（可选）</span><select disabled={!projectId} value={siteId} onChange={(event) => setSiteId(event.target.value)}><option value="">不分配站点</option>{(sites.data?.items ?? []).map((item) => <option key={String(item.id)} value={String(item.id)}>{String(item.name)}</option>)}</select></label>
+            <label className="field"><span className="field-label">目标组织</span><SelectInput value={workspaceId} onChange={(event) => { setWorkspaceId(event.target.value); setProjectId(""); setSiteId(""); }}>{workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</SelectInput></label>
+            <label className="field"><span className="field-label">项目（可选）</span><SelectInput value={projectId} onChange={(event) => { setProjectId(event.target.value); setSiteId(""); }}><option value="">不分配项目</option>{(projects.data?.items ?? []).map((item) => <option key={String(item.id)} value={String(item.id)}>{String(item.name)}</option>)}</SelectInput></label>
+            <label className="field"><span className="field-label">站点（可选）</span><SelectInput disabled={!projectId} value={siteId} onChange={(event) => setSiteId(event.target.value)}><option value="">不分配站点</option>{(sites.data?.items ?? []).map((item) => <option key={String(item.id)} value={String(item.id)}>{String(item.name)}</option>)}</SelectInput></label>
             <Button disabled={busy || !workspaceId} onClick={() => void claim()}>确认认领</Button>
           </div>
         </Panel>

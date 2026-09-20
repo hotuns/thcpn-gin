@@ -16,7 +16,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import type { TelemetrySeries } from "@thcpn/api";
-import { IconButton, Table } from "./platform-ui";
+import { IconButton, SelectInput, Table } from "./platform-ui";
 
 type TelemetryPoint = TelemetrySeries["points"][number] & {
   series: TelemetrySeries;
@@ -153,7 +153,7 @@ export function TelemetryTable({
         </span>
         <label>
           每页
-          <select
+          <SelectInput
             value={pagination.pageSize}
             onChange={(event) => table.setPageSize(Number(event.target.value))}
           >
@@ -162,7 +162,7 @@ export function TelemetryTable({
                 {size}
               </option>
             ))}
-          </select>
+          </SelectInput>
         </label>
         <span>
           第 {pagination.pageIndex + 1} / {table.getPageCount()} 页

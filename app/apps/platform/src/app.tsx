@@ -61,9 +61,11 @@ import {
   Button,
   CloseButton,
   IconButton,
+  Input,
   MobileMenuButton,
   PageHeader,
   Panel,
+  SelectInput,
   StateView,
   Table,
 } from "./platform-ui";
@@ -334,7 +336,7 @@ function Shell() {
           </div>
           <div className="topbar-actions">
             <LanguageSwitcher compact />
-            <IconButton label="打开使用引导" onClick={() => setOnboardingSession((current) => current + 1)}>
+            <IconButton label={t("openGuide")} onClick={() => setOnboardingSession((current) => current + 1)}>
               <HelpCircle size={18} />
             </IconButton>
             <Link className="topbar-notification" to="/notifications" aria-label={t("platform:navigation.notifications")}>
@@ -437,7 +439,7 @@ function Workspaces() {
           <div className="panel-body form-grid" style={{ maxWidth: 520 }}>
             <label className="field">
               <span className="field-label">组织名称</span>
-              <input
+              <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="例如：作物生态课题组"
@@ -445,14 +447,14 @@ function Workspaces() {
             </label>
             <label className="field">
               <span className="field-label">组织类型</span>
-              <select value={type} onChange={(e) => setType(e.target.value)}>
+              <SelectInput value={type} onChange={(e) => setType(e.target.value)}>
                 <option value="lab">实验室</option>
                 <option value="institution">机构</option>
                 <option value="company">企业</option>
                 <option value="government">政府</option>
                 <option value="service_provider">服务商</option>
                 <option value="other">其他</option>
-              </select>
+              </SelectInput>
             </label>
             <div>
               <Button

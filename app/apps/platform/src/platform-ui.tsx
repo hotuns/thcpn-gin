@@ -1,10 +1,12 @@
-import type { ButtonHTMLAttributes, ComponentProps, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
-import { ChevronDown, Search } from "lucide-react";
+import { Children, isValidElement, type ButtonHTMLAttributes, type ComponentProps, type InputHTMLAttributes, type ReactElement, type ReactNode, type SelectHTMLAttributes } from "react";
+import { Search } from "lucide-react";
 import { cn } from "@thcpn/ui";
 import { Button as ShadcnButton } from "./components/ui/button";
 import { Badge as ShadcnBadge } from "./components/ui/badge";
 import { Card } from "./components/ui/card";
 import { Input } from "./components/ui/input";
+import { Checkbox } from "./components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select";
 
 export * from "@thcpn/ui";
 export * from "./components/ui/dialog";
@@ -20,6 +22,7 @@ export * from "./components/ui/breadcrumb";
 export * from "./components/ui/alert";
 export * from "./components/ui/table";
 export * from "./components/ui/sheet";
+export * from "./components/ui/textarea";
 export { Input };
 
 export function Button({ variant = "primary", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" | "danger" }) {
@@ -43,8 +46,18 @@ export function TextInput({ leading, className, ...props }: InputHTMLAttributes<
 export function SearchInput(props: Omit<InputHTMLAttributes<HTMLInputElement>, "type">) {
   return <TextInput {...props} type="search" leading={<Search size={16} />} />;
 }
-export function SelectInput({ leading, className, children, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { leading?: ReactNode }) {
-  return <span className={cn("shadcn-select-shell ui-select", className)}>{leading && <span className="ui-control-leading">{leading}</span>}<select {...props}>{children}</select><ChevronDown className="ui-control-chevron" size={15} /></span>;
+export function CheckboxInput({ checked, disabled, onChange, "aria-label": ariaLabel }: Omit<InputHTMLAttributes<HTMLInputElement>, "type">) {
+  return <Checkbox checked={checked} disabled={disabled} aria-label={ariaLabel} onCheckedChange={(next) => onChange?.({ target: { checked: next === true }, currentTarget: { checked: next === true } } as never)} />;
+}
+export function SelectInput({ leading, className, children, value, defaultValue, disabled, onChange, onValueChange, "aria-label": ariaLabel }: Omit<SelectHTMLAttributes<HTMLSelectElement>, "value" | "defaultValue"> & { leading?: ReactNode; value?: string | number; defaultValue?: string | number; onValueChange?: (value: string) => void }) {
+  const options = Children.toArray(children).filter(isValidElement) as ReactElement<{ value?: string | number; children?: ReactNode; disabled?: boolean }>[];
+  const placeholder = options.find(option => String(option.props.value ?? "") === "")?.props.children;
+  const items = options.filter(option => String(option.props.value ?? "") !== "");
+  const change = (next: string) => {
+    onValueChange?.(next);
+    onChange?.({ target: { value: next }, currentTarget: { value: next } } as never);
+  };
+  return <span className={cn("ui-select radix-select-control", className)}>{leading && <span className="ui-control-leading">{leading}</span>}<Select value={value === "" || value == null ? undefined : String(value)} defaultValue={defaultValue == null ? undefined : String(defaultValue)} disabled={disabled} onValueChange={change}><SelectTrigger aria-label={ariaLabel} className="ui-select-trigger"><SelectValue placeholder={placeholder}/></SelectTrigger><SelectContent>{items.map((option, index)=><SelectItem key={`${String(option.props.value)}-${index}`} value={String(option.props.value)} disabled={option.props.disabled}>{option.props.children}</SelectItem>)}</SelectContent></Select></span>;
 }
 export function Panel({ className, ...props }: ComponentProps<typeof Card>) {
   return <Card className={className} {...props} />;

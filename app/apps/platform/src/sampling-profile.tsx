@@ -10,7 +10,7 @@ import {
   type UpdateSamplingProfile,
 } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, Panel, StateView } from "./platform-ui";
+import { Badge, Button, Input, Panel, StateView } from "./platform-ui";
 
 type Mode = SamplingProfile["mode"];
 
@@ -222,7 +222,7 @@ export function SamplingProfilePanel({ deviceId, workspaceId, carbon = false }: 
                   </button>
                 ))}
               </div>
-              {current.can_edit && <div className="sampling-add-minute"><input type="number" min={0} max={59} value={minuteInput} onChange={(event) => setMinuteInput(event.target.value)} /><Button variant="secondary" onClick={addDataMinute}><Plus size={13} />添加分钟</Button></div>}
+              {current.can_edit && <div className="sampling-add-minute"><Input type="number" min={0} max={59} value={minuteInput} onChange={(event) => setMinuteInput(event.target.value)} /><Button variant="secondary" onClick={addDataMinute}><Plus size={13} />添加分钟</Button></div>}
               <div className="hour-grid">
                 {allHours.map((hour) => <button key={hour} type="button" disabled={!current.can_edit} className={dataHours.includes(hour) ? "active" : ""} onClick={() => toggleScheduleHour(hour, setDataHours)}>{String(hour).padStart(2, "0")}:00</button>)}
               </div>
@@ -236,21 +236,21 @@ export function SamplingProfilePanel({ deviceId, workspaceId, carbon = false }: 
                   </button>
                 ))}
               </div>
-              {current.can_edit && <div className="sampling-add-minute"><input type="number" min={0} max={59} value={uploadMinuteInput} onChange={(event) => setUploadMinuteInput(event.target.value)} /><Button variant="secondary" onClick={addUploadMinute}><Plus size={13} />添加分钟</Button></div>}
+              {current.can_edit && <div className="sampling-add-minute"><Input type="number" min={0} max={59} value={uploadMinuteInput} onChange={(event) => setUploadMinuteInput(event.target.value)} /><Button variant="secondary" onClick={addUploadMinute}><Plus size={13} />添加分钟</Button></div>}
               <div className="hour-grid">
                 {allHours.map((hour) => <button key={hour} type="button" disabled={!current.can_edit} className={uploadHours.includes(hour) ? "active" : ""} onClick={() => toggleScheduleHour(hour, setUploadHours)}>{String(hour).padStart(2, "0")}:00</button>)}
               </div>
             </section>}
             <section>
               <h3>图片采集</h3>
-              <label className="field sampling-image-minute"><span className="field-label">每次采集的分钟</span><input type="number" min={0} max={59} disabled={!current.can_edit} value={imageMinute} onChange={(event) => { setMode("custom"); setAdvancedOverride(true); setImageMinute(Number(event.target.value)); }} /></label>
+              <label className="field sampling-image-minute"><span className="field-label">每次采集的分钟</span><Input type="number" min={0} max={59} disabled={!current.can_edit} value={imageMinute} onChange={(event) => { setMode("custom"); setAdvancedOverride(true); setImageMinute(Number(event.target.value)); }} /></label>
               <div className="hour-grid">
                 {Array.from({ length: 24 }, (_, hour) => <button key={hour} type="button" disabled={!current.can_edit} className={imageHours.includes(hour) ? "active" : ""} onClick={() => toggleHour(hour)}>{String(hour).padStart(2, "0")}:00</button>)}
               </div>
             </section>
             <section>
               <h3>图片上传频率</h3>
-              <label className="field sampling-image-minute"><span className="field-label">每次上传的分钟</span><input type="number" min={0} max={59} disabled={!current.can_edit} value={imageUploadMinute} onChange={(event) => { setMode("custom"); setAdvancedOverride(true); setImageUploadMinute(Number(event.target.value)); }} /></label>
+              <label className="field sampling-image-minute"><span className="field-label">每次上传的分钟</span><Input type="number" min={0} max={59} disabled={!current.can_edit} value={imageUploadMinute} onChange={(event) => { setMode("custom"); setAdvancedOverride(true); setImageUploadMinute(Number(event.target.value)); }} /></label>
               <div className="hour-grid">
                 {allHours.map((hour) => <button key={hour} type="button" disabled={!current.can_edit} className={imageUploadHours.includes(hour) ? "active" : ""} onClick={() => toggleScheduleHour(hour, setImageUploadHours)}>{String(hour).padStart(2, "0")}:00</button>)}
               </div>

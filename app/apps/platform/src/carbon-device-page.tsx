@@ -20,7 +20,7 @@ import {
   type CarbonPeriodSummary,
   type Device,
 } from "@thcpn/api";
-import { Badge, Button, Panel, StateView, NodeNameEditor } from "./platform-ui";
+import { Badge, Button, Input, Panel, SelectInput, StateView, NodeNameEditor } from "./platform-ui";
 import { useChartZoom } from "./chart-zoom";
 
 const metricDefinitions = [
@@ -148,10 +148,10 @@ export function CarbonDevicePage({ device }: { device: Device }) {
         </div>
         {overview.error && <div className="form-error carbon-overview-error">节点信息读取失败：{formatApiError(overview.error).message}</div>}
         <div className="carbon-query-fields">
-          <div className="field carbon-node-name-field"><label className="field-label" htmlFor="carbon-node-selector">节点</label><select id="carbon-node-selector" value={nodeId} onChange={(event) => setNodeId(Number(event.target.value))} disabled={overview.isLoading}>{Array.from({ length: overview.data?.nodes_count ?? 1 }, (_, index) => <option key={index + 1} value={index + 1}>{overview.data?.nodes.find(node => node.node_id === index + 1)?.name ?? `节点 ${index + 1}`}</option>)}</select>{context.data?.actions.configure && overview.data?.nodes.some(node => node.node_id === nodeId) && <NodeNameEditor name={overview.data?.nodes.find(node => node.node_id === nodeId)?.custom_name ?? ""} onSave={async name => {await api.devices.renameNode(device.id, nodeId, name); await invalidateNodeNames(queryClient);}}/>}</div>
-          <label className="field"><span className="field-label">地块</span><select value={field} onChange={(event) => setField(event.target.value)} disabled={!fieldOptions.length}>{fieldOptions.length ? fieldOptions.map((value) => <option key={value} value={value}>{value} 地块</option>) : <option value="">暂无地块</option>}</select></label>
-          <label className="field"><span className="field-label">开始时间</span><input type="datetime-local" value={startTime} onChange={(event) => setStartTime(event.target.value)}/></label>
-          <label className="field"><span className="field-label">结束时间</span><input type="datetime-local" value={endTime} onChange={(event) => setEndTime(event.target.value)}/></label>
+          <div className="field carbon-node-name-field"><label className="field-label" htmlFor="carbon-node-selector">节点</label><SelectInput id="carbon-node-selector" value={nodeId} onChange={(event) => setNodeId(Number(event.target.value))} disabled={overview.isLoading}>{Array.from({ length: overview.data?.nodes_count ?? 1 }, (_, index) => <option key={index + 1} value={index + 1}>{overview.data?.nodes.find(node => node.node_id === index + 1)?.name ?? `节点 ${index + 1}`}</option>)}</SelectInput>{context.data?.actions.configure && overview.data?.nodes.some(node => node.node_id === nodeId) && <NodeNameEditor name={overview.data?.nodes.find(node => node.node_id === nodeId)?.custom_name ?? ""} onSave={async name => {await api.devices.renameNode(device.id, nodeId, name); await invalidateNodeNames(queryClient);}}/>}</div>
+          <label className="field"><span className="field-label">地块</span><SelectInput value={field} onChange={(event) => setField(event.target.value)} disabled={!fieldOptions.length}>{fieldOptions.length ? fieldOptions.map((value) => <option key={value} value={value}>{value} 地块</option>) : <option value="">暂无地块</option>}</SelectInput></label>
+          <label className="field"><span className="field-label">开始时间</span><Input type="datetime-local" value={startTime} onChange={(event) => setStartTime(event.target.value)}/></label>
+          <label className="field"><span className="field-label">结束时间</span><Input type="datetime-local" value={endTime} onChange={(event) => setEndTime(event.target.value)}/></label>
         </div>
         <div className="carbon-query-toolbar">
           <div className="range-presets"><span>快捷范围</span>{[{label:"6 小时",hours:6},{label:"3 天",hours:72},{label:"7 天",hours:168}].map((item) => <button key={item.hours} type="button" onClick={() => applyPreset(item.hours)}>{item.label}</button>)}</div>

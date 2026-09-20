@@ -5,7 +5,7 @@ import { ArrowLeft, Pencil, Plus, Tags, X } from "lucide-react";
 import { api, formatApiError, type DeviceTaxonomyTerm, type JsonRecord } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, PageHeader, Panel, StateView, Table, Tabs, TabsList, TabsTrigger } from "./platform-ui";
+import { Badge, Button, CheckboxInput, Input, PageHeader, Panel, SelectInput, StateView, Table, Tabs, TabsList, TabsTrigger } from "./platform-ui";
 import { AccessControlTab } from "./access-control";
 import { billingEnabled } from "./features";
 
@@ -218,7 +218,7 @@ function WorkspaceNameDialog({ name: initialName, onClose, onSave }: { name: str
   const [busy, setBusy] = useState(false);
   useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === "Escape" && !busy) onClose(); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [busy, onClose]);
   const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await onSave(name.trim()); } finally { setBusy(false); } };
-  return <div className="resource-dialog-layer"><button type="button" className="resource-dialog-backdrop" aria-label="关闭组织名称编辑" onClick={() => !busy && onClose()} /><div className="resource-dialog-shell" role="dialog" aria-modal="true"><Panel className="resource-dialog"><div className="panel-header"><h2 className="panel-title">编辑组织名称</h2><Button variant="secondary" onClick={onClose} disabled={busy}><X size={14} />关闭</Button></div><form className="resource-dialog-form" onSubmit={submit}><label className="field"><span className="field-label">名称</span><input autoFocus required maxLength={120} value={name} onChange={(event) => setName(event.target.value)} /></label><div className="form-actions"><Button type="button" variant="secondary" onClick={onClose}>取消</Button><Button type="submit" disabled={busy || !name.trim()}>{busy ? "保存中…" : "保存"}</Button></div></form></Panel></div></div>;
+  return <div className="resource-dialog-layer"><button type="button" className="resource-dialog-backdrop" aria-label="关闭组织名称编辑" onClick={() => !busy && onClose()} /><div className="resource-dialog-shell" role="dialog" aria-modal="true"><Panel className="resource-dialog"><div className="panel-header"><h2 className="panel-title">编辑组织名称</h2><Button variant="secondary" onClick={onClose} disabled={busy}><X size={14} />关闭</Button></div><form className="resource-dialog-form" onSubmit={submit}><label className="field"><span className="field-label">名称</span><Input autoFocus required maxLength={120} value={name} onChange={(event) => setName(event.target.value)} /></label><div className="form-actions"><Button type="button" variant="secondary" onClick={onClose}>取消</Button><Button type="submit" disabled={busy || !name.trim()}>{busy ? "保存中…" : "保存"}</Button></div></form></Panel></div></div>;
 }
 
 function ResourceRows({
@@ -394,7 +394,7 @@ function ResourceFormDialog({
         <form className="resource-dialog-form" onSubmit={submit}>
         <label className="field">
           <span className="field-label">名称</span>
-          <input
+          <Input
             autoFocus
             required
             value={name}
@@ -404,7 +404,7 @@ function ResourceFormDialog({
         {kind === "Project" ? (
           <label className="field">
             <span className="field-label">描述</span>
-            <input
+            <Input
               value={description}
               onChange={(event) => setDescription(event.target.value)}
             />
@@ -413,7 +413,7 @@ function ResourceFormDialog({
           <>
             <label className="field">
               <span className="field-label">所属项目</span>
-              <select
+              <SelectInput
                 required
                 value={projectId}
                 onChange={(event) => setProjectId(event.target.value)}
@@ -424,11 +424,11 @@ function ResourceFormDialog({
                     {text(item.name)}
                   </option>
                 ))}
-              </select>
+              </SelectInput>
             </label>
             <label className="field">
               <span className="field-label">位置</span>
-              <input
+              <Input
                 value={location}
                 onChange={(event) => setLocation(event.target.value)}
               />
@@ -440,20 +440,20 @@ function ResourceFormDialog({
               </div>
               <label className="field">
                 <span className="field-label">设备类型</span>
-                <select value={ecosystem} onChange={(event) => setEcosystem(event.target.value)}>
+                <SelectInput value={ecosystem} onChange={(event) => setEcosystem(event.target.value)}>
                   <option value="">未设置</option>
                   {terms.filter((term) => term.kind === "ecosystem" && term.status === "active").map((term) => <option key={term.id} value={term.id}>{term.name_zh}</option>)}
-                </select>
+                </SelectInput>
               </label>
               <div className="field environment-multi-field">
                 <span className="field-label">观测对象</span>
                 <div className="taxonomy-choice-grid">
-                  {terms.filter((term) => term.kind === "observation_object" && term.status === "active").map((term) => <label key={term.id} className={observations.includes(term.id) ? "selected" : ""}><input type="checkbox" checked={observations.includes(term.id)} onChange={(event) => setObservations((current) => event.target.checked ? Array.from(new Set([...current, term.id])) : current.filter((id) => id !== term.id))} /><span>{term.name_zh}</span></label>)}
+                  {terms.filter((term) => term.kind === "observation_object" && term.status === "active").map((term) => <label key={term.id} className={observations.includes(term.id) ? "selected" : ""}><CheckboxInput checked={observations.includes(term.id)} onChange={(event) => setObservations((current) => event.target.checked ? Array.from(new Set([...current, term.id])) : current.filter((id) => id !== term.id))} /><span>{term.name_zh}</span></label>)}
                 </div>
               </div>
               <label className="field">
                 <span className="field-label">研究方向 / 标签</span>
-                <input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="例如：碳通量，长期定位观测" />
+                <Input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="例如：碳通量，长期定位观测" />
               </label>
             </div>
           </>
@@ -461,13 +461,13 @@ function ResourceFormDialog({
         {editing && (
           <label className="field">
             <span className="field-label">状态</span>
-            <select
+            <SelectInput
               value={status}
               onChange={(event) => setStatus(event.target.value)}
             >
               <option value="active">启用</option>
               <option value="archived">归档</option>
-            </select>
+            </SelectInput>
           </label>
         )}
           <div className="form-actions">
@@ -626,7 +626,7 @@ function AuditTab() {
         </div>
         <label className="compact-control">
           返回数量{" "}
-          <input
+          <Input
             type="number"
             min="1"
             max="500"

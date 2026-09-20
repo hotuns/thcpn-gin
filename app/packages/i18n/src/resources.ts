@@ -17,6 +17,8 @@ export const resources = {
       create: "创建",
       view: "查看",
       back: "返回",
+      backToOverview: "返回总览",
+      openGuide: "打开使用引导",
       copy: "复制",
       download: "下载",
       loading: "正在加载…",
@@ -143,8 +145,13 @@ export const resources = {
         openMenu: "打开账户菜单",
         profile: "账户资料",
         security: "账号安全",
+        name: "账户名称", nameDescription: "用于展示和账户识别", nameUpdated: "账户名称已更新", editName: "编辑账户名称", editNameDescription: "这个名称用于平台展示和账户识别。", emailDescription: "登录和安全通知邮箱", phoneDescription: "登录手机号", status: "账户状态", statusDescription: "当前账户可用状态", notSet: "未设置", verified: "已验证", unverified: "未验证", colorTheme: "颜色主题", colorThemeDescription: "切换完整的页面、面板、导航与强调色体系。", lastLogin: "最近登录", userId: "用户 ID", userIdDescription: "系统分配的唯一标识",
+        colorThemes: { pine: { label: "原位生态", description: "自然青绿与暖金，默认平衡" }, pulse: { label: "跃光", description: "亮青、荧光黄与珊瑚橙，鲜明跳跃" }, forest: { label: "深林", description: "苔绿、石墨与暗金，深沉专注" } },
         currentUser: "当前用户",
         platformAccount: "平台账户",
+      },
+      security: {
+        noRefreshToken: "当前没有可用 refresh token", emailVerification: "邮箱验证", emailVerified: "邮箱已验证", emailPending: "邮箱待验证", emailMissing: "尚未设置邮箱", verified: "已验证", manage: "管理", twoFactor: "双重验证", authenticatorEnabled: "身份验证器已启用", strengthenLogin: "增强账户登录保护", enabled: "已启用", setup: "设置", sessions: "登录会话", activeSessions: "{{count}} 个活动会话", view: "查看", emailDescription: "用于账号恢复和安全通知", totpTitle: "TOTP 双重验证", totpDescription: "使用身份验证器生成动态验证码", sessionsDescription: "撤销不再使用或不认识的设备会话", tokenRotated: "Token 已安全轮换", refreshToken: "刷新 Token", sessionsLoading: "正在加载会话", sessionsLoadingDescription: "正在读取活动 refresh sessions。", sessionsLoadFailed: "会话加载失败", revokeConfirm: "确认撤销该登录会话？对应设备将需要重新登录。", sessionRevoked: "会话已撤销", noSessions: "暂无活动会话", noSessionsDescription: "服务端当前没有返回 refresh session。",
       },
       telemetry: {
         displayMode: "图表显示方式",
@@ -217,6 +224,10 @@ export const resources = {
         forgotPassword: "忘记密码",
         resetPassword: "重置密码",
         resetSuccess: "密码已重置，请使用新密码登录",
+      },
+      dashboard: {
+        eyebrow: "组织 / 概览", title: "总览", unavailable: "组织暂时不可用。", workspaceLoadFailed: "组织加载失败", selectWorkspace: "选择组织后查看资源运行概览。", noWorkspace: "没有可用组织", noWorkspaceDescription: "创建一个组织，或联系管理员加入已有空间。", viewing: "正在查看 {{name}} 的资源、任务与安全事件。", refreshAll: "刷新全部", viewMetric: "查看{{name}}", loading: "正在加载", queryFailed: "查询失败", currentWorkspace: "当前组织", projects: "项目", sites: "站点", devices: "设备", datasets: "数据集", exportJobs: "导出任务", deviceStatus: "设备状态", recentDevices: "最近分配的设备资产", recentExports: "最近导出", recentExportsDescription: "当前账号发起的异步任务", recentAudit: "最近审计", recentAuditDescription: "敏感操作、访问结果和 request ID", viewAll: "查看全部", auditLoading: "正在加载审计事件", auditLoadingDescription: "正在读取当前组织的安全记录。", auditUnavailable: "审计日志不可用", noAudit: "暂无审计事件", noAuditDescription: "当前组织还没有可见的敏感操作记录。", time: "时间", action: "动作", resource: "资源", result: "结果", reading: "正在读取服务端数据。", unavailableSuffix: "不可用", emptyPrefix: "暂无", noRecords: "当前组织暂无相关记录。", exportTask: "导出任务", moreDevices: "等 {{count}} 台",
+        exportTypes: { telemetry_csv: "设备数据 CSV", telemetry_excel: "设备数据 Excel", media_zip: "设备图片 ZIP", dataset_zip: "数据集 ZIP", standard_station_zip: "标准站数据包", group_site_zip: "组网站数据包", carbon_station_zip: "碳汇站数据包" },
       },
       onboarding: {
         eyebrow: "快速上手",
@@ -365,6 +376,8 @@ export const resources = {
       create: "Create",
       view: "View",
       back: "Back",
+      backToOverview: "Back to overview",
+      openGuide: "Open guide",
       copy: "Copy",
       download: "Download",
       loading: "Loading…",
@@ -495,8 +508,13 @@ export const resources = {
         openMenu: "Open account menu",
         profile: "Profile",
         security: "Account security",
+        name: "Account name", nameDescription: "Used for display and account identification", nameUpdated: "Account name updated", editName: "Edit account name", editNameDescription: "This name is used for display and account identification.", emailDescription: "Email for sign-in and security notifications", phoneDescription: "Phone number used to sign in", status: "Account status", statusDescription: "Current account availability", notSet: "Not set", verified: "Verified", unverified: "Unverified", colorTheme: "Color theme", colorThemeDescription: "Switch the complete surface, navigation, and accent system.", lastLogin: "Last sign-in", userId: "User ID", userIdDescription: "Unique identifier assigned by the system",
+        colorThemes: { pine: { label: "In-situ Eco", description: "Natural teal and warm gold" }, pulse: { label: "Pulse", description: "Bright teal, electric lime, and coral" }, forest: { label: "Deep Forest", description: "Moss, graphite, and muted gold" } },
         currentUser: "Current user",
         platformAccount: "Platform account",
+      },
+      security: {
+        noRefreshToken: "No refresh token is available", emailVerification: "Email verification", emailVerified: "Email verified", emailPending: "Email verification pending", emailMissing: "No email configured", verified: "Verified", manage: "Manage", twoFactor: "Two-factor authentication", authenticatorEnabled: "Authenticator enabled", strengthenLogin: "Strengthen account sign-in protection", enabled: "Enabled", setup: "Set up", sessions: "Sign-in sessions", activeSessions: "{{count}} active sessions", view: "View", emailDescription: "Used for account recovery and security notifications", totpTitle: "TOTP two-factor authentication", totpDescription: "Generate one-time codes with an authenticator app", sessionsDescription: "Revoke sessions for devices you no longer use or recognize", tokenRotated: "Token rotated securely", refreshToken: "Refresh token", sessionsLoading: "Loading sessions", sessionsLoadingDescription: "Reading active refresh sessions.", sessionsLoadFailed: "Failed to load sessions", revokeConfirm: "Revoke this session? The device will need to sign in again.", sessionRevoked: "Session revoked", noSessions: "No active sessions", noSessionsDescription: "The server returned no active refresh sessions.",
       },
       telemetry: {
         displayMode: "Chart display mode",
@@ -572,6 +590,10 @@ export const resources = {
         forgotPassword: "Forgot password",
         resetPassword: "Reset password",
         resetSuccess: "Password reset. Sign in with your new password.",
+      },
+      dashboard: {
+        eyebrow: "Organization / Overview", title: "Overview", unavailable: "The organization is temporarily unavailable.", workspaceLoadFailed: "Organization failed to load", selectWorkspace: "Select an organization to view its resource status.", noWorkspace: "No organization available", noWorkspaceDescription: "Create an organization or ask an administrator to invite you.", viewing: "Viewing resources, jobs, and security events for {{name}}.", refreshAll: "Refresh all", viewMetric: "View {{name}}", loading: "Loading", queryFailed: "Query failed", currentWorkspace: "Current organization", projects: "Projects", sites: "Sites", devices: "Devices", datasets: "Datasets", exportJobs: "Export jobs", deviceStatus: "Device status", recentDevices: "Recently assigned device assets", recentExports: "Recent exports", recentExportsDescription: "Asynchronous jobs started by this account", recentAudit: "Recent audit events", recentAuditDescription: "Sensitive actions, access results, and request IDs", viewAll: "View all", auditLoading: "Loading audit events", auditLoadingDescription: "Reading security records for this organization.", auditUnavailable: "Audit log unavailable", noAudit: "No audit events", noAuditDescription: "This organization has no visible sensitive-operation records.", time: "Time", action: "Action", resource: "Resource", result: "Result", reading: "Reading server data.", unavailableSuffix: " unavailable", emptyPrefix: "No ", noRecords: "No matching records in this organization.", exportTask: "Export job", moreDevices: "and {{count}} more",
+        exportTypes: { telemetry_csv: "Telemetry CSV", telemetry_excel: "Telemetry Excel", media_zip: "Device images ZIP", dataset_zip: "Dataset ZIP", standard_station_zip: "Station data package", group_site_zip: "Gateway station data package", carbon_station_zip: "Carbon station data package" },
       },
       onboarding: {
         eyebrow: "QUICK START", title: "What would you like to learn?", introduction: "Choose a module to visit its page and learn the workflow. The tour never submits or changes data for you.", close: "Close guide", later: "Maybe later", exit: "Exit guide", previous: "Previous", next: "Next", finish: "Finish", unavailable: "This item is not available on the current page, possibly because there is no data or your account lacks permission. You can still continue the guide.",

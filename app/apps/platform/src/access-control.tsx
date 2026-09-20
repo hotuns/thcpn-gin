@@ -18,7 +18,7 @@ import {
   type JsonRecord,
 } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, CopyId, Panel, Sheet, SheetContent, SheetTitle, StateView } from "./platform-ui";
+import { Badge, Button, CheckboxInput, CopyId, Input, Panel, SelectInput, Sheet, SheetContent, SheetTitle, StateView } from "./platform-ui";
 
 type FormMode = "member" | "edit-member" | "grant" | "invitation";
 type Template = { code: string; name: string; permission_codes: string[] };
@@ -793,7 +793,7 @@ function AccessForm({
                 <div className="access-form-grid">
                   <label className="field">
                     <span className="field-label">识别方式</span>
-                    <select
+                    <SelectInput
                       value={identityType}
                       onChange={(event) => setIdentityType(event.target.value)}
                     >
@@ -802,7 +802,7 @@ function AccessForm({
                       )}
                       <option value="email">邮箱</option>
                       <option value="phone">手机号</option>
-                    </select>
+                    </SelectInput>
                   </label>
                   <label className="field field-wide">
                     <span className="field-label">
@@ -812,7 +812,7 @@ function AccessForm({
                           ? "手机号"
                           : "用户 ID"}
                     </span>
-                    <input
+                    <Input
                       required
                       value={identity}
                       onChange={(event) => setIdentity(event.target.value)}
@@ -828,7 +828,7 @@ function AccessForm({
                   <span className="field-label">
                     {external ? "访问角色" : "成员角色"}
                   </span>
-                  <select
+                  <SelectInput
                     value={template}
                     onChange={(event) => setTemplateCode(event.target.value)}
                   >
@@ -837,11 +837,11 @@ function AccessForm({
                         {roleTemplateLabel(item.code, item.name)}
                       </option>
                     ))}
-                  </select>
+                  </SelectInput>
                 </label>
                 <label className="field">
                   <span className="field-label">访问范围</span>
-                  <select
+                  <SelectInput
                     value={scopeType}
                     disabled={template === "owner"}
                     onChange={(event) => changeScope(event.target.value)}
@@ -857,11 +857,11 @@ function AccessForm({
                           {scopeTypeLabel(item)}
                         </option>
                       ))}
-                  </select>
+                  </SelectInput>
                 </label>
                 <label className="field field-wide">
                   <span className="field-label">具体资源</span>
-                  <select
+                  <SelectInput
                     required
                     value={scopeId}
                     disabled={scopeType === "workspace"}
@@ -873,7 +873,7 @@ function AccessForm({
                         {text(item.name, text(item.serial_no, item.id))}
                       </option>
                     ))}
-                  </select>
+                  </SelectInput>
                 </label>
               </div>
             </div>
@@ -890,8 +890,7 @@ function AccessForm({
                       selectedPermissions.includes(item.code) ? "selected" : ""
                     }
                   >
-                    <input
-                      type="checkbox"
+                    <CheckboxInput
                       checked={selectedPermissions.includes(item.code)}
                       onChange={() => togglePermission(item.code)}
                     />
@@ -912,7 +911,7 @@ function AccessForm({
                       过期时间
                       {template === "service_engineer" ? "（必填）" : ""}
                     </span>
-                    <input
+                    <Input
                       type="datetime-local"
                       required={template === "service_engineer"}
                       value={expiresAt}
@@ -922,8 +921,7 @@ function AccessForm({
                   {mode === "grant" && (
                     <div className="access-toggles">
                       <label>
-                        <input
-                          type="checkbox"
+                        <CheckboxInput
                           checked={allowReshare}
                           onChange={(event) =>
                             setAllowReshare(event.target.checked)
@@ -932,8 +930,7 @@ function AccessForm({
                         允许再次分享
                       </label>
                       <label>
-                        <input
-                          type="checkbox"
+                        <CheckboxInput
                           checked={allowApi}
                           onChange={(event) =>
                             setAllowApi(event.target.checked)

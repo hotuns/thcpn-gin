@@ -19,7 +19,7 @@ import {
   type TelemetrySeries,
 } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, PageHeader, Panel, StateView, Table } from "./platform-ui";
+import { Badge, Button, Input, PageHeader, Panel, SelectInput, StateView, Table } from "./platform-ui";
 import { DeviceCombobox } from "./device-combobox";
 import { DEVICE_LIST_GC_TIME, DEVICE_LIST_STALE_TIME, deviceListQueryKey } from "./device-list-cache";
 import {
@@ -474,22 +474,22 @@ function ComparisonCondition({
       </div>
       <label className="comparison-field">
         <span className="field-label comparison-mobile-label">数据要素</span>
-        <select value={value.streamId} disabled={streams.isLoading || !metrics.length} onChange={(event) => onChange({ streamId: event.target.value })}>
+        <SelectInput value={value.streamId} disabled={streams.isLoading || !metrics.length} onChange={(event) => onChange({ streamId: event.target.value })}>
           <option value="">{streams.isLoading ? "加载中…" : metrics.length ? "选择要素" : "无可用要素"}</option>
           {metrics.map((item) => (
             <option key={item.id} value={item.id}>
               {item.computed ? "fx · " : ""}{item.name}{item.unit ? `（${item.unit}）` : ""}
             </option>
           ))}
-        </select>
+        </SelectInput>
       </label>
       <label className="comparison-field">
         <span className="field-label comparison-mobile-label">开始时间</span>
-        <input type="datetime-local" value={value.startTime} onChange={(event) => onChange({ startTime: event.target.value })} />
+        <Input type="datetime-local" value={value.startTime} onChange={(event) => onChange({ startTime: event.target.value })} />
       </label>
       <label className="comparison-field">
         <span className="field-label comparison-mobile-label">结束时间</span>
-        <input type="datetime-local" value={value.endTime} onChange={(event) => onChange({ endTime: event.target.value })} />
+        <Input type="datetime-local" value={value.endTime} onChange={(event) => onChange({ endTime: event.target.value })} />
       </label>
       <div className="comparison-row-actions">
         <button type="button" title="复制对比项" aria-label="复制对比项" onClick={onDuplicate}><CopyPlus size={15} /></button>

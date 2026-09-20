@@ -23,6 +23,7 @@ import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import {
   Badge,
   Button,
+  CheckboxInput,
   ChoiceCard,
   DateTimeInput,
   EntityPicker,
@@ -826,8 +827,7 @@ function GroupExportForm({
                 const checked = effective.includes(id);
                 return (
                   <label key={id} className={checked ? "is-checked" : ""}>
-                    <input
-                      type="checkbox"
+                    <CheckboxInput
                       checked={checked}
                       onChange={() =>
                         setSelected(

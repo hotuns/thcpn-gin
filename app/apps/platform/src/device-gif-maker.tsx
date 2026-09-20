@@ -4,7 +4,7 @@ import { CalendarDays, Check, Clock3, Download, Film, HardDrive, Images, Maximiz
 import { GIFEncoder, applyPalette, quantize } from "gifenc";
 import type { DataStream, Device, MediaItem } from "@thcpn/api";
 import { api, formatApiError } from "@thcpn/api";
-import { Button, StateView } from "./platform-ui";
+import { Button, Input, SelectInput, StateView } from "./platform-ui";
 
 type ImageSource = "thumbnail" | "original";
 
@@ -221,7 +221,7 @@ export function DeviceGifMaker({ device, stream, startTime, endTime, onClose }: 
                   <div className="gif-selection-toolbar">
                     <div className="gif-quick-select">
                       <CalendarDays size={16} />
-                      <label><span>每天第</span><input type="number" min={1} step={1} value={ordinal} onChange={(event) => setOrdinal(Math.max(1, Number(event.target.value) || 1))} /><span>张</span></label>
+                      <label><span>每天第</span><Input type="number" min={1} step={1} value={ordinal} onChange={(event) => setOrdinal(Math.max(1, Number(event.target.value) || 1))} /><span>张</span></label>
                       <Button variant="secondary" onClick={addDailySelection}>加入选择（{dailyItems.length} 张）</Button>
                     </div>
                     <div className="gif-manual-actions"><strong>已选 {selectedItems.length} / {items.length} 张</strong><button type="button" onClick={() => updateSelection(new Set(items.map((item) => item.id)))}>全选</button><button type="button" onClick={() => updateSelection(new Set())}>清空</button></div>
@@ -235,7 +235,7 @@ export function DeviceGifMaker({ device, stream, startTime, endTime, onClose }: 
                     <button type="button" className={source === "thumbnail" ? "is-active" : ""} onClick={() => { clearResult(); setSource("thumbnail"); }}><Images size={17} /><span><strong>缩略图</strong><small>最长边保持 1080 像素</small></span></button>
                     <button type="button" disabled={!originalAvailable} className={source === "original" ? "is-active" : ""} onClick={() => { clearResult(); setSource("original"); }}><HardDrive size={17} /><span><strong>原图</strong><small>{originalAvailable ? "保持原始尺寸与细节" : "当前账户没有原图权限"}</small></span></button>
                   </div></div>
-                  <div className="gif-setting-section"><label className="gif-delay-field"><span>每帧停留</span><select value={delay} onChange={(event) => { clearResult(); setDelay(Number(event.target.value)); }}><option value={200}>0.2 秒</option><option value={500}>0.5 秒</option><option value={1000}>1 秒</option><option value={2000}>2 秒</option></select></label></div>
+                  <div className="gif-setting-section"><label className="gif-delay-field"><span>每帧停留</span><SelectInput value={delay} onChange={(event) => { clearResult(); setDelay(Number(event.target.value)); }}><option value={200}>0.2 秒</option><option value={500}>0.5 秒</option><option value={1000}>1 秒</option><option value={2000}>2 秒</option></SelectInput></label></div>
                   <dl className="gif-estimate"><div><dt><Images size={15} />帧数</dt><dd>{selectedItems.length} 帧</dd></div><div><dt><Timer size={15} />GIF 时长</dt><dd>{selectedItems.length ? formatDuration(selectedItems.length * delay) : "—"}</dd></div><div><dt><HardDrive size={15} />预计体积</dt><dd>{formatEstimatedSize(selectedItems.length, source)}</dd></div></dl>
                   <p className="gif-estimate-note">体积按图像来源与帧数估算，实际大小以生成结果为准。</p>
                   {error && <div className="command-note media-feedback">{error}</div>}

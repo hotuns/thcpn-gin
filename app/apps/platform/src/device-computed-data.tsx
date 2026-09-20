@@ -19,7 +19,7 @@ import {
   type DeviceMetadataInput,
 } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, Panel, Sheet, SheetContent, SheetTitle, StateView } from "./platform-ui";
+import { Badge, Button, CheckboxInput, Input, Panel, SelectInput, Sheet, SheetContent, SheetTitle, StateView, Textarea } from "./platform-ui";
 
 const FORMULA_VARIABLE_PATTERN = /\b(?:stream|meta)\.[A-Za-z][A-Za-z0-9_]*\b/g;
 const FORMULA_HIGHLIGHT_PATTERN = /(?:stream|meta)\.[A-Za-z][A-Za-z0-9_]*|\b\d+(?:\.\d+)?\b|&&|\|\||==|!=|<=|>=|[()+\-*/<>!]/g;
@@ -293,14 +293,14 @@ function MetadataEditor({
             <div className="metadata-editor-list">
               {drafts.map((item, index) => (
                 <div key={`${index}-${item.key}`}>
-                  <label className="field"><span className="field-label">Key</span><input required pattern="[A-Za-z][A-Za-z0-9_]{0,63}" value={item.key} onChange={(event) => update(index, { key: event.target.value })} /></label>
-                  <label className="field"><span className="field-label">名称</span><input required value={item.name} onChange={(event) => update(index, { name: event.target.value })} /></label>
-                  <label className="field"><span className="field-label">类型</span><select value={item.value_type} onChange={(event) => {
+                  <label className="field"><span className="field-label">Key</span><Input required pattern="[A-Za-z][A-Za-z0-9_]{0,63}" value={item.key} onChange={(event) => update(index, { key: event.target.value })} /></label>
+                  <label className="field"><span className="field-label">名称</span><Input required value={item.name} onChange={(event) => update(index, { name: event.target.value })} /></label>
+                  <label className="field"><span className="field-label">类型</span><SelectInput value={item.value_type} onChange={(event) => {
                     const value_type = event.target.value as DeviceMetadataInput["value_type"];
                     update(index, { value_type, value: value_type === "number" ? 0 : value_type === "boolean" ? false : "" });
-                  }}><option value="number">数值</option><option value="string">文本</option><option value="boolean">布尔</option></select></label>
-                  <label className="field"><span className="field-label">值</span>{item.value_type === "boolean" ? <select value={String(item.value)} onChange={(event) => update(index, { value: event.target.value === "true" })}><option value="true">是</option><option value="false">否</option></select> : <input required type={item.value_type === "number" ? "number" : "text"} step="any" value={String(item.value)} onChange={(event) => update(index, { value: item.value_type === "number" ? Number(event.target.value) : event.target.value })} />}</label>
-                  <label className="field"><span className="field-label">单位</span><input disabled={item.value_type !== "number"} value={item.unit ?? ""} onChange={(event) => update(index, { unit: event.target.value })} /></label>
+                  }}><option value="number">数值</option><option value="string">文本</option><option value="boolean">布尔</option></SelectInput></label>
+                  <label className="field"><span className="field-label">值</span>{item.value_type === "boolean" ? <SelectInput value={String(item.value)} onChange={(event) => update(index, { value: event.target.value === "true" })}><option value="true">是</option><option value="false">否</option></SelectInput> : <Input required type={item.value_type === "number" ? "number" : "text"} step="any" value={String(item.value)} onChange={(event) => update(index, { value: item.value_type === "number" ? Number(event.target.value) : event.target.value })} />}</label>
+                  <label className="field"><span className="field-label">单位</span><Input disabled={item.value_type !== "number"} value={item.unit ?? ""} onChange={(event) => update(index, { unit: event.target.value })} /></label>
                   <button type="button" aria-label="删除元数据" onClick={() => setDrafts((current) => current.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={15} /></button>
                 </div>
               ))}
@@ -426,10 +426,10 @@ function ComputedStreamEditor({
           <div className="panel-header"><SheetTitle className="panel-title">{item ? "编辑计算指标" : "新建计算指标"}</SheetTitle><Button variant="secondary" onClick={onClose}><X size={14} />关闭</Button></div>
           <form onSubmit={submit}>
             <div className="computed-definition-grid">
-              <label className="field"><span className="field-label">名称</span><input required value={name} onChange={(event) => setName(event.target.value)} /></label>
-              <label className="field"><span className="field-label">Code</span><input required pattern="[A-Za-z][A-Za-z0-9_]{0,63}" value={code} onChange={(event) => setCode(event.target.value)} /></label>
-              <label className="field"><span className="field-label">输出单位</span><input value={unit} onChange={(event) => setUnit(event.target.value)} /></label>
-              <label className="computed-enabled"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />启用</label>
+              <label className="field"><span className="field-label">名称</span><Input required value={name} onChange={(event) => setName(event.target.value)} /></label>
+              <label className="field"><span className="field-label">Code</span><Input required pattern="[A-Za-z][A-Za-z0-9_]{0,63}" value={code} onChange={(event) => setCode(event.target.value)} /></label>
+              <label className="field"><span className="field-label">输出单位</span><Input value={unit} onChange={(event) => setUnit(event.target.value)} /></label>
+              <label className="computed-enabled"><CheckboxInput checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />启用</label>
             </div>
             <div className="formula-editor">
               <div className="formula-editor-heading">
@@ -463,7 +463,7 @@ function ComputedStreamEditor({
                 >
                   {formula ? highlightFormula(formula, knownVariables) : <span className="formula-placeholder">点击下方变量插入公式</span>}
                 </pre>
-                <textarea
+                <Textarea
                   ref={formulaInputRef}
                   required
                   rows={4}

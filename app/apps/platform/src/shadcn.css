@@ -61,6 +61,8 @@
 .shadcn-input-shell { min-height: 36px; border-radius: 8px; background: var(--control); box-shadow: 0 1px 2px rgb(0 0 0 / 3%); }
 .shadcn-input-shell:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 16%, transparent); }
 .shadcn-input { width: 100%; min-width: 0; height: 34px; color: var(--ink); background: transparent; border: 0; outline: 0; font: inherit; }
+.shadcn-textarea { width:100%; min-width:0; min-height:96px; padding:10px 11px; resize:vertical; color:var(--ink); background:var(--control); border:1px solid var(--line); border-radius:8px; outline:0; font:inherit; line-height:1.5; }
+.shadcn-textarea:focus { border-color:var(--blue); box-shadow:0 0 0 3px color-mix(in srgb,var(--blue) 16%,transparent); }
 .shadcn-select-shell { min-height: 36px; border-radius: 8px; background: var(--control); box-shadow: 0 1px 2px rgb(0 0 0 / 3%); }
 
 .shadcn-dialog-overlay { position: fixed; inset: 0; z-index: 80; background: rgb(7 16 25 / 58%); backdrop-filter: blur(3px); animation: shadcn-overlay-in 150ms ease-out; }
@@ -84,6 +86,10 @@
 .shadcn-tabs-content { margin-top: 16px; outline: none; }
 
 .shadcn-select-trigger { display: inline-flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 150px; height: 36px; padding: 0 11px; color: var(--foreground); background: var(--card); border: 1px solid var(--input); border-radius: calc(var(--radius) - 2px); font: inherit; cursor: pointer; box-shadow: 0 1px 2px rgb(0 0 0 / 3%); }
+.radix-select-control { height:42px; background:transparent; border:0; }
+.radix-select-control:focus-within { border-color:transparent; box-shadow:none; }
+.radix-select-control > .shadcn-select-trigger { min-width:0; width:100%; height:100%; flex:1; }
+.radix-select-control.is-compact > .shadcn-select-trigger { height:34px; }
 .shadcn-select-trigger:focus-visible { outline: 3px solid color-mix(in srgb, var(--ring) 18%, transparent); border-color: var(--ring); }
 .shadcn-select-content { z-index: 100; min-width: var(--radix-select-trigger-width); overflow: hidden; color: var(--popover-foreground); background: var(--popover); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 12px 36px rgb(0 0 0 / 16%); animation: shadcn-menu-in 140ms ease-out; }
 .shadcn-select-viewport { padding: 5px; }

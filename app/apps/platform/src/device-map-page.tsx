@@ -3,14 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Check, ChevronDown, ChevronRight, Leaf, LocateFixed, MapPinned, Satellite, SlidersHorizontal, X } from "lucide-react";
 import { api, deviceTopologyRoleLabel, formatApiError, type DeviceMapItem, type DeviceTaxonomyTerm } from "@thcpn/api";
 import { DeviceMap, iconifyIconUrl, tiandituImageryStyle } from "@thcpn/device-map";
-import { Button, StateView } from "./platform-ui";
+import { Button, StateView, Switch } from "./platform-ui";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 
 export function DeviceMapPage() {
   const { currentId, current } = useWorkspace();
   const [includeChildren, setIncludeChildren] = useState(false);
   const [ecosystem, setEcosystem] = useState("");
-  const [observation, setObservation] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [consoleCollapsed, setConsoleCollapsed] = useState(
     () => localStorage.getItem("ecocloud:device-map-console-collapsed") === "true",
@@ -24,9 +23,8 @@ export function DeviceMapPage() {
   const terms = catalog.data?.items ?? [];
   const rows = useMemo(
     () => (query.data?.items ?? []).filter((item) =>
-      (!ecosystem || item.environment.ecosystem?.id === ecosystem)
-      && (!observation || item.environment.observation_objects.some((term) => term.id === observation))),
-    [query.data, ecosystem, observation],
+      !ecosystem || item.environment.ecosystem?.id === ecosystem),
+    [query.data, ecosystem],
   );
   const token = import.meta.env.VITE_TIANDITU_TOKEN?.trim();
   const mapStyle = useMemo(() => token ? tiandituImageryStyle(token) : undefined, [token]);
@@ -81,13 +79,8 @@ export function DeviceMapPage() {
             </div>
             <div className="device-map-filters" data-onboarding="map-filters">
               <MapDeviceTypeSelect value={ecosystem} options={terms.filter((term) => term.kind === "ecosystem")} onChange={setEcosystem} />
-              <select value={observation} onChange={(event) => setObservation(event.target.value)} aria-label="观测对象">
-                <option value="">全部观测对象</option>
-                {terms.filter((term) => term.kind === "observation_object").map((term) => <option key={term.id} value={term.id}>{term.name_zh}</option>)}
-              </select>
               <label className="device-map-child-toggle">
-                <input type="checkbox" checked={includeChildren} onChange={(event) => setIncludeChildren(event.target.checked)} />
-                <i aria-hidden="true" />
+                <Switch checked={includeChildren} onCheckedChange={setIncludeChildren} aria-label="显示子节点" />
                 <span>显示子节点</span>
               </label>
             </div>

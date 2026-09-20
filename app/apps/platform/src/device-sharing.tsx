@@ -11,7 +11,7 @@ import {
   type JsonRecord,
 } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, CopyId, Panel, Sheet, SheetContent, SheetTitle, StateView } from "./platform-ui";
+import { Badge, Button, CheckboxInput, CopyId, Input, Panel, SelectInput, Sheet, SheetContent, SheetTitle, StateView } from "./platform-ui";
 import { externalPermission, permissionsForTemplate } from "./access-control";
 import { DevicePublicAccessPanel } from "./device-public-access";
 
@@ -198,18 +198,18 @@ function DeviceShareEditor({ mode, device, templates, permissions, onClose, onCo
               <div className="access-form-grid device-share-fields">
                 <label className="field">
                   <span className="field-label">识别方式</span>
-                  <select
+                  <SelectInput
                     value={identityType}
                     onChange={(event) => setIdentityType(event.target.value)}
                   >
                     {mode === "grant" && <option value="user_id">用户 ID</option>}
                     <option value="email">邮箱</option>
                     <option value="phone">手机号</option>
-                  </select>
+                  </SelectInput>
                 </label>
                 <label className="field field-wide">
                   <span className="field-label">接收人</span>
-                  <input
+                  <Input
                     required
                     value={identity}
                     onChange={(event) => setIdentity(event.target.value)}
@@ -217,7 +217,7 @@ function DeviceShareEditor({ mode, device, templates, permissions, onClose, onCo
                 </label>
                 <label className="field">
                   <span className="field-label">权限模板</span>
-                  <select
+                  <SelectInput
                     value={template}
                     onChange={(event) => {
                       setTemplate(event.target.value);
@@ -229,11 +229,11 @@ function DeviceShareEditor({ mode, device, templates, permissions, onClose, onCo
                         {roleTemplateLabel(item.code, item.name)}
                       </option>
                     ))}
-                  </select>
+                  </SelectInput>
                 </label>
                 <label className="field">
                   <span className="field-label">过期时间</span>
-                  <input
+                  <Input
                     type="datetime-local"
                     value={expiresAt}
                     onChange={(event) => setExpiresAt(event.target.value)}
@@ -249,8 +249,7 @@ function DeviceShareEditor({ mode, device, templates, permissions, onClose, onCo
                     key={item.code}
                     className={selected.includes(item.code) ? "selected" : ""}
                   >
-                    <input
-                      type="checkbox"
+                    <CheckboxInput
                       checked={selected.includes(item.code)}
                       onChange={() => setSelected((current) =>
                         current.includes(item.code)
@@ -266,8 +265,7 @@ function DeviceShareEditor({ mode, device, templates, permissions, onClose, onCo
             {mode === "grant" && (
               <div className="form-section access-toggles">
                 <label>
-                  <input
-                    type="checkbox"
+                  <CheckboxInput
                     checked={allowReshare}
                     onChange={(event) => {
                       const checked = event.target.checked;
@@ -285,8 +283,7 @@ function DeviceShareEditor({ mode, device, templates, permissions, onClose, onCo
                   允许再次分享
                 </label>
                 <label>
-                  <input
-                    type="checkbox"
+                  <CheckboxInput
                     checked={allowApi}
                     onChange={(event) => setAllowApi(event.target.checked)}
                   />

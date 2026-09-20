@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, KeyRound, MessageSquareText } from "lucide-react";
 import { api, ApiError, formatApiError } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
-import { Brand, Button } from "./platform-ui";
+import { Brand, Button, CheckboxInput, Input } from "./platform-ui";
 import { LanguageSwitcher, useLocale } from "@thcpn/i18n";
 import { LoginVisualCarousel } from "./login-visual-carousel";
 
@@ -276,21 +276,21 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             {initialPasswordToken ? (
               <>
                 <div className="command-note">{t("platform:auth.temporaryHelp")}</div>
-                <label className="field"><span className="field-label">{t("platform:auth.newPassword")}</span><input autoFocus required minLength={8} maxLength={128} type="password" value={initialPassword} onChange={(event) => setInitialPassword(event.target.value)} /></label>
-                <label className="field"><span className="field-label">{t("platform:auth.confirmNewPassword")}</span><input required type="password" value={initialPasswordConfirm} onChange={(event) => setInitialPasswordConfirm(event.target.value)} /></label>
+                <label className="field"><span className="field-label">{t("platform:auth.newPassword")}</span><Input autoFocus required minLength={8} maxLength={128} type="password" value={initialPassword} onChange={(event) => setInitialPassword(event.target.value)} /></label>
+                <label className="field"><span className="field-label">{t("platform:auth.confirmNewPassword")}</span><Input required type="password" value={initialPasswordConfirm} onChange={(event) => setInitialPasswordConfirm(event.target.value)} /></label>
               </>
             ) : forgotPassword ? (
               <>
-                <label className="field"><span className="field-label">{t("platform:auth.phone")}</span><input required type="tel" inputMode="tel" value={phone} onChange={(event) => setPhone(event.target.value)} /></label>
-                <div className="sms-row"><label className="field"><span className="field-label">{t("platform:auth.smsCode")}</span><input required inputMode="numeric" maxLength={6} value={smsCode} onChange={(event) => setSmsCode(event.target.value.replace(/\D/g, ""))} /></label><Button type="button" variant="secondary" disabled={!phone.trim() || busy || cooldown > 0} onClick={() => void sendSms()}><MessageSquareText size={14} />{cooldown > 0 ? `${cooldown}s` : t("platform:auth.send")}</Button></div>
-                <label className="field"><span className="field-label">{t("platform:auth.newPassword")}</span><input required minLength={8} maxLength={128} type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
-                <label className="field"><span className="field-label">{t("platform:auth.confirmNewPassword")}</span><input required type="password" value={initialPasswordConfirm} onChange={(event) => setInitialPasswordConfirm(event.target.value)} /></label>
+                <label className="field"><span className="field-label">{t("platform:auth.phone")}</span><Input required type="tel" inputMode="tel" value={phone} onChange={(event) => setPhone(event.target.value)} /></label>
+                <div className="sms-row"><label className="field"><span className="field-label">{t("platform:auth.smsCode")}</span><Input required inputMode="numeric" maxLength={6} value={smsCode} onChange={(event) => setSmsCode(event.target.value.replace(/\D/g, ""))} /></label><Button type="button" variant="secondary" disabled={!phone.trim() || busy || cooldown > 0} onClick={() => void sendSms()}><MessageSquareText size={14} />{cooldown > 0 ? `${cooldown}s` : t("platform:auth.send")}</Button></div>
+                <label className="field"><span className="field-label">{t("platform:auth.newPassword")}</span><Input required minLength={8} maxLength={128} type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+                <label className="field"><span className="field-label">{t("platform:auth.confirmNewPassword")}</span><Input required type="password" value={initialPasswordConfirm} onChange={(event) => setInitialPasswordConfirm(event.target.value)} /></label>
               </>
             ) : <>
             {register && (
               <label className="field">
                 <span className="field-label">{t("platform:auth.name")}</span>
-                <input
+                <Input
                   required
                   value={name}
                   onChange={(event) => setName(event.target.value)}
@@ -301,7 +301,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
               <>
                 <label className="field">
                   <span className="field-label">{t("platform:auth.phone")}</span>
-                  <input
+                  <Input
                     required
                     type="tel"
                     inputMode="tel"
@@ -312,7 +312,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                 <div className="sms-row">
                   <label className="field">
                     <span className="field-label">{t("platform:auth.smsCode")}</span>
-                    <input
+                    <Input
                       required
                       inputMode="numeric"
                       maxLength={6}
@@ -337,7 +337,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
               <>
                 <label className="field">
                   <span className="field-label">{t("platform:auth.phone")}</span>
-                  <input
+                  <Input
                     required
                     type="tel"
                     inputMode="tel"
@@ -348,7 +348,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                 <div className="sms-row">
                   <label className="field">
                     <span className="field-label">{t("platform:auth.smsCode")}</span>
-                    <input
+                    <Input
                       required
                       inputMode="numeric"
                       maxLength={6}
@@ -372,7 +372,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             ) : (
               <label className="field">
                 <span className="field-label">{demoMode ? "用户名" : t("platform:auth.phone")}</span>
-                <input
+                <Input
                   required
                   type={demoMode ? "text" : "tel"}
                   inputMode={demoMode ? "text" : "tel"}
@@ -386,7 +386,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             {!register && mode === "password" && (
               <><label className="field">
                 <span className="field-label">{t("platform:auth.password")}</span>
-                <input
+                <Input
                   required
                   minLength={8}
                   maxLength={128}
@@ -402,7 +402,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                   <KeyRound size={13} />
                   {t("platform:auth.mfaCode")}
                 </span>
-                <input
+                <Input
                   autoFocus
                   required
                   inputMode="numeric"
@@ -452,7 +452,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
           {forgotPassword ? <div className="auth-form-footer"><button type="button" className="link" onClick={() => { setForgotPassword(false); setMessage(""); }}>{t("platform:auth.backLogin")}</button></div> : <div className="auth-form-footer">
             <span>{register ? t("platform:auth.hasAccount") : t("platform:auth.noAccount")}</span>
             <Link className="link" to={register ? "/login" : "/register"}>{register ? t("platform:auth.backLogin") : t("platform:auth.register")}</Link>
-            {!register && <label className="demo-mode-toggle"><span>演示模式</span><input type="checkbox" role="switch" checked={demoMode} onChange={(event) => switchDemoMode(event.target.checked)} /><i aria-hidden="true" /></label>}
+            {!register && <label className="demo-mode-toggle"><span>演示模式</span><CheckboxInput role="switch" checked={demoMode} onChange={(event) => switchDemoMode(event.target.checked)} /><i aria-hidden="true" /></label>}
           </div>}
         </div>
       </section>

@@ -29,7 +29,7 @@ import {
   type JsonRecord,
 } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, Panel, Sheet, SheetContent, SheetTitle, StateView } from "./platform-ui";
+import { Badge, Button, CheckboxInput, Input, Panel, SelectInput, Sheet, SheetContent, SheetTitle, StateView, Textarea } from "./platform-ui";
 import { iconifyIconUrl } from "@thcpn/device-map";
 import { renderPhotoToolbar } from "./device-media";
 
@@ -257,7 +257,7 @@ export function DeviceProfileTab({
                 <label className="btn btn-secondary device-image-upload">
                   <ImagePlus size={14} />
                   上传
-                  <input
+                  <Input
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
                     multiple
@@ -284,7 +284,7 @@ export function DeviceProfileTab({
                     <img src={image.preview_url} alt={image.caption || image.original_filename} />
                     {image.is_cover && <span className="image-cover-badge">封面</span>}
                   </button>
-                  <input
+                  <Input
                     aria-label="图片说明"
                     defaultValue={image.caption ?? ""}
                     placeholder="添加图片说明"
@@ -526,7 +526,7 @@ function PlacementEditor({ device, projects, sites, busy, onClose, onSubmit }: {
             <div className="device-editor-body"><div className="form-section access-profile-fields">
               <label className="field profile-editor-field">
                 <span className="field-label">所属项目</span>
-                <select
+                <SelectInput
                   value={projectId}
                   onChange={(event) => {
                     setProjectId(event.target.value);
@@ -539,11 +539,11 @@ function PlacementEditor({ device, projects, sites, busy, onClose, onSubmit }: {
                       {String(item.name)}
                     </option>
                   ))}
-                </select>
+                </SelectInput>
               </label>
               <label className="field profile-editor-field">
                 <span className="field-label">所属站点</span>
-                <select
+                <SelectInput
                   value={siteId}
                   disabled={!projectId}
                   onChange={(event) => setSiteId(event.target.value)}
@@ -554,7 +554,7 @@ function PlacementEditor({ device, projects, sites, busy, onClose, onSubmit }: {
                       {String(item.name)}
                     </option>
                   ))}
-                </select>
+                </SelectInput>
               </label>
             </div>
             </div>
@@ -610,12 +610,12 @@ function ProfileEditor({ section, profile, environment, terms, tagOptions, busy,
             {section === "basic" && <div className="form-section access-profile-fields">
               <label className="field profile-editor-field">
                 <span className="field-label">设备描述 <small>{description.length}/500</small></span>
-                <textarea maxLength={500} value={description} onChange={(e) => setDescription(e.target.value)} rows={4} placeholder="说明设备的安装环境、观测任务或维护备注" />
+                <Textarea maxLength={500} value={description} onChange={(e) => setDescription(e.target.value)} rows={4} placeholder="说明设备的安装环境、观测任务或维护备注" />
 
               </label>
               <label className="field profile-editor-field">
                 <span className="field-label">地址或位置说明</span>
-                <div className="profile-editor-input-with-icon"><MapPin size={15} /><input value={locationText} onChange={(e) => setLocationText(e.target.value)} placeholder="例如：北京森林站东侧样地" /></div>
+                <div className="profile-editor-input-with-icon"><MapPin size={15} /><Input value={locationText} onChange={(e) => setLocationText(e.target.value)} placeholder="例如：北京森林站东侧样地" /></div>
               </label>
               <div className="profile-editor-source-note"><MapPin size={15} /><span>经纬度由设备数据源或所属站点提供；这里维护地址和位置说明。</span></div>
             </div>}
@@ -623,7 +623,7 @@ function ProfileEditor({ section, profile, environment, terms, tagOptions, busy,
               <div className="profile-editor-inheritance-note">每项资料可选择沿用网关或站点，或为这台设备单独设置。</div>
               <EnvironmentField label="设备类型" field="ecosystem" overrides={overrides} toggle={toggle}><DeviceTypeSelect disabled={!overrides.has("ecosystem")} options={byKind("ecosystem")} value={ecosystem} onChange={setEcosystem} /></EnvironmentField>
               <EnvironmentMultiField label="观测对象" field="observation_objects" overrides={overrides} toggle={toggle} options={byKind("observation_object")} value={observations} onChange={setObservations} />
-              <EnvironmentField label="投运年份" field="commissioned_year" overrides={overrides} toggle={toggle}><input type="number" min="1900" max="2200" disabled={!overrides.has("commissioned_year")} value={year} onChange={(event)=>setYear(event.target.value)}/></EnvironmentField>
+              <EnvironmentField label="投运年份" field="commissioned_year" overrides={overrides} toggle={toggle}><Input type="number" min="1900" max="2200" disabled={!overrides.has("commissioned_year")} value={year} onChange={(event)=>setYear(event.target.value)}/></EnvironmentField>
               <EnvironmentField label="研究方向 / 标签" field="research_tags" overrides={overrides} toggle={toggle}><ResearchTagEditor disabled={!overrides.has("research_tags")} value={tags} options={tagOptions} onChange={setTags}/></EnvironmentField>
             </div>}
             </div>
@@ -645,7 +645,7 @@ function ResearchTagEditor({disabled,value,options,onChange}:{disabled:boolean;v
   return <div className="research-tag-editor">
     {value.length?<div className="research-tag-list">{value.map((tag)=><span key={tag}>{tag}<button type="button" disabled={disabled} aria-label={`删除标签 ${tag}`} onClick={()=>onChange(value.filter((item)=>item!==tag))}><X size={12}/></button></span>)}</div>:<span className="field-hint">暂无标签</span>}
     <div className="research-tag-create">
-      <input list="device-research-tag-options" disabled={disabled} value={input} placeholder="输入新标签" onChange={(event)=>setInput(event.target.value)} onKeyDown={(event)=>{if(event.key==="Enter"||event.key===","){event.preventDefault();add()}}}/>
+      <Input list="device-research-tag-options" disabled={disabled} value={input} placeholder="输入新标签" onChange={(event)=>setInput(event.target.value)} onKeyDown={(event)=>{if(event.key==="Enter"||event.key===","){event.preventDefault();add()}}}/>
       <button type="button" disabled={disabled||!input.trim()} onClick={add}><Plus size={14}/>新建</button>
       <datalist id="device-research-tag-options">{options.filter((tag)=>!value.includes(tag)).map((tag)=><option key={tag} value={tag}/>)}</datalist>
     </div>
@@ -654,7 +654,7 @@ function ResearchTagEditor({disabled,value,options,onChange}:{disabled:boolean;v
 
 function EnvironmentField({label,field,overrides,toggle,children}:{label:string;field:string;overrides:Set<string>;toggle:(field:string)=>void;children:ReactNode}) {
   const enabled=overrides.has(field);
-  return <div className={`field environment-field ${enabled?"is-overridden":""}`}><div className="field-label"><span>{label}</span><label className="environment-override"><input type="checkbox" checked={enabled} onChange={()=>toggle(field)}/><i aria-hidden="true"/><b>单独设置</b></label></div>{children}</div>;
+  return <div className={`field environment-field ${enabled?"is-overridden":""}`}><div className="field-label"><span>{label}</span><label className="environment-override"><CheckboxInput checked={enabled} onChange={()=>toggle(field)}/><i aria-hidden="true"/><b>单独设置</b></label></div>{children}</div>;
 }
 
 function DeviceTypeSelect({disabled,options,value,onChange}:{disabled:boolean;options:DeviceTaxonomyTerm[];value:string;onChange:(value:string)=>void}) {
@@ -680,7 +680,7 @@ function DeviceTypeOptionIcon({term}:{term?:DeviceTaxonomyTerm}) {
 function EnvironmentMultiField({label,field,overrides,toggle,options,value,onChange}:{label:string;field:string;overrides:Set<string>;toggle:(field:string)=>void;options:DeviceTaxonomyTerm[];value:string[];onChange:(value:string[])=>void}) {
   const enabled=overrides.has(field);
   const change=(id:string,checked:boolean)=>onChange(checked?Array.from(new Set([...value,id])):value.filter((item)=>item!==id));
-  return <div className={`field environment-field environment-multi-field ${enabled?"is-overridden":""}`}><span className="field-label">{label}<label className="environment-override"><input type="checkbox" checked={enabled} onChange={()=>toggle(field)}/><i aria-hidden="true"/><b>单独设置</b></label></span><div className="taxonomy-choice-grid" aria-disabled={!enabled}>{options.map((term)=><label key={term.id} className={value.includes(term.id)?"selected":""}><input type="checkbox" disabled={!enabled} checked={value.includes(term.id)} onChange={(event)=>change(term.id,event.target.checked)}/><span>{term.name_zh}</span></label>)}</div>{!options.length&&<span className="field-hint">暂无可用分类选项</span>}</div>;
+  return <div className={`field environment-field environment-multi-field ${enabled?"is-overridden":""}`}><span className="field-label">{label}<label className="environment-override"><CheckboxInput checked={enabled} onChange={()=>toggle(field)}/><i aria-hidden="true"/><b>单独设置</b></label></span><div className="taxonomy-choice-grid" aria-disabled={!enabled}>{options.map((term)=><label key={term.id} className={value.includes(term.id)?"selected":""}><CheckboxInput disabled={!enabled} checked={value.includes(term.id)} onChange={(event)=>change(term.id,event.target.checked)}/><span>{term.name_zh}</span></label>)}</div>{!options.length&&<span className="field-hint">暂无可用分类选项</span>}</div>;
 }
 
 async function moveImage(

@@ -23,7 +23,7 @@ import {
   type TelemetrySeries,
 } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, IconButton, PageHeader, Panel, StateView, Table } from "./platform-ui";
+import { Badge, Button, CheckboxInput, IconButton, Input, PageHeader, Panel, SelectInput, StateView, Table } from "./platform-ui";
 import { TelemetryCharts } from "./telemetry-charts";
 import { TelemetryTable } from "./telemetry-table";
 import { dataComparisonPath } from "./data-workflow";
@@ -200,14 +200,14 @@ export function DatasetsPage() {
       <Panel data-onboarding="dataset-list">
         <div className="dataset-toolbar">
           <div className="filter-input">
-            <input
+            <Input
               aria-label="搜索数据集"
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
               placeholder="搜索名称、描述或 ID"
             />
           </div>
-          <select
+          <SelectInput
             value={projectFilter}
             onChange={(event) => setProjectFilter(event.target.value)}
           >
@@ -217,7 +217,7 @@ export function DatasetsPage() {
                 {String(item.name)}
               </option>
             ))}
-          </select>
+          </SelectInput>
           <Badge tone="info">{rows.length} 个</Badge>
         </div>
         {feedback && (
@@ -921,34 +921,34 @@ function DatasetForm({
                   自动生成
                 </button>
               </div>
-              <input required aria-label="名称" value={name} onChange={(event) => setName(event.target.value)} />
+              <Input required aria-label="名称" value={name} onChange={(event) => setName(event.target.value)} />
             </label>
             <label className="field">
               <span className="field-label">项目</span>
-              <select value={projectId} disabled={Boolean(dataset)} onChange={(event) => setProjectId(event.target.value)}>
+              <SelectInput value={projectId} disabled={Boolean(dataset)} onChange={(event) => setProjectId(event.target.value)}>
                 <option value="">不关联项目</option>
                 {projects.map((item) => <option key={String(item.id)} value={String(item.id)}>{String(item.name)}</option>)}
-              </select>
+              </SelectInput>
             </label>
             <label className="field">
               <span className="field-label">开始时间</span>
-              <input required type="datetime-local" value={startTime} onChange={(event) => setStartTime(event.target.value)} />
+              <Input required type="datetime-local" value={startTime} onChange={(event) => setStartTime(event.target.value)} />
             </label>
             <label className="field">
               <span className="field-label">结束时间</span>
-              <input required type="datetime-local" value={endTime} onChange={(event) => setEndTime(event.target.value)} />
+              <Input required type="datetime-local" value={endTime} onChange={(event) => setEndTime(event.target.value)} />
             </label>
             {dataset && (
               <label className="field">
                 <span className="field-label">状态</span>
-                <select value={status} onChange={(event) => setStatus(event.target.value as Dataset["status"])}>
+                <SelectInput value={status} onChange={(event) => setStatus(event.target.value as Dataset["status"])}>
                   {["draft", "published", "locked", "archived"].map((item) => <option key={item} value={item}>{datasetStatusLabel(item as Dataset["status"])}</option>)}
-                </select>
+                </SelectInput>
               </label>
             )}
             <label className="field dataset-description">
               <span className="field-label">描述</span>
-              <input value={description} onChange={(event) => setDescription(event.target.value)} />
+              <Input value={description} onChange={(event) => setDescription(event.target.value)} />
             </label>
           </div>
         </section>
@@ -1055,8 +1055,7 @@ function DatasetForm({
                       key={item.id}
                       className={`dataset-stream-option${selectedStreamIds.includes(item.id) ? " selected" : ""}${existingStreamIds.has(item.id) ? " added" : ""}`}
                     >
-                      <input
-                        type="checkbox"
+                      <CheckboxInput
                         checked={
                           existingStreamIds.has(item.id) ||
                           selectedStreamIds.includes(item.id)

@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import ts from "typescript";
 import { detectLocale, detectTheme, normalizeLocale, localeStorageKey, shouldObserveLegacyDom, themeStorageKey } from "./index";
 import { resources } from "./resources";
-import { translateLegacyText } from "./legacy";
+import { legacyEnglish, translateLegacyText } from "./legacy";
 
 const flatten = (value: unknown, prefix = ""): string[] => {
   if (!value || typeof value !== "object") return [prefix];
@@ -43,5 +46,34 @@ describe("i18n resources", () => {
     expect(shouldObserveLegacyDom("zh-CN")).toBe(false);
     expect(shouldObserveLegacyDom("zh-Hans-CN")).toBe(false);
     expect(shouldObserveLegacyDom("en-US")).toBe(true);
+  });
+
+  it("registers every static Chinese business string in the platform catalog", () => {
+    const sourceRoot = resolve(process.cwd(), "apps/platform/src");
+    const missing = new Set<string>();
+    for (const file of readdirSync(sourceRoot).filter((name) => name.endsWith(".tsx") && !name.endsWith(".test.tsx"))) {
+      const filename = resolve(sourceRoot, file);
+      const source = ts.createSourceFile(filename, readFileSync(filename, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+      const visit = (node: ts.Node) => {
+        const text = ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isJsxText(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node) ? node.text.trim() : "";
+        if (text && /\p{Script=Han}/u.test(text) && !legacyEnglish[text]) missing.add(text);
+        ts.forEachChild(node, visit);
+      };
+      visit(source);
+    }
+    expect([...missing].sort()).toEqual([]);
+  });
+
+  it("keeps native form controls inside shadcn primitives", () => {
+    const sourceRoot = resolve(process.cwd(), "apps/platform/src");
+    const violations: string[] = [];
+    for (const file of readdirSync(sourceRoot).filter((name) => name.endsWith(".tsx") && !name.endsWith(".test.tsx") && name !== "platform-ui.tsx")) {
+      const contents = readFileSync(resolve(sourceRoot, file), "utf8");
+      contents.split("\n").forEach((line, index) => {
+        const match = line.match(/<(input|select|textarea)(?:\s|>)/);
+        if (match) violations.push(`${file}:${index + 1} <${match[1]}>`);
+      });
+    }
+    expect(violations).toEqual([]);
   });
 });
