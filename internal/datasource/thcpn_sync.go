@@ -479,6 +479,9 @@ func (s *Service) syncTHCPNDeviceMetadata(ctx context.Context, q *sqlc.Queries, 
 	}); err != nil {
 		return sqlc.Device{}, false, mapWriteError(err, "upsert device source ref")
 	}
+	if err := addDeviceCapabilityIfMissing(ctx, q, deviceRow.ID, "firmware_update"); err != nil {
+		return sqlc.Device{}, false, err
+	}
 	return deviceRow, created, nil
 }
 
@@ -928,6 +931,9 @@ func (s *Service) syncTHCPNDevice(ctx context.Context, q *sqlc.Queries, source s
 	})
 	if err != nil {
 		return THCPNStandardStationSyncResult{}, mapWriteError(err, "upsert device source ref")
+	}
+	if err := addDeviceCapabilityIfMissing(ctx, q, deviceRow.ID, "firmware_update"); err != nil {
+		return THCPNStandardStationSyncResult{}, err
 	}
 	applied, err := applyTHCPNConfigToPlatform(ctx, q, source.ID, deviceRow.ID, input.ExternalDeviceID, externalConfig, input.ActorUserID, true)
 	if err != nil {

@@ -75,6 +75,37 @@ object_store:
   access_key_env: "OBJECT_STORE_ACCESS_KEY"
   secret_key_env: "OBJECT_STORE_SECRET_KEY"
 
+# LoRaWAN V2 source-owned OSS. Firmware artifacts must stay in the same OSS
+# domain used by the LoRaWAN V2 service; this never falls back to object_store.
+lorawan_v2_object_store:
+  provider: "oss"
+  endpoint: "https://oss-cn-beijing.aliyuncs.com"
+  bucket: "iot-datas"
+  region: "cn-beijing"
+  public_url_prefix: "https://iot-datas.oss-cn-beijing.aliyuncs.com"
+  access_key_env: "LORAWAN_V2_OSS_ACCESS_KEY_ID"
+  secret_key_env: "LORAWAN_V2_OSS_ACCESS_KEY_SECRET"
+
+# THCPN source-owned OSS. Firmware, legacy source images, and device logs resolve here.
+thcpn_log_object_store:
+  provider: "oss"
+  endpoint: "https://oss-cn-beijing.aliyuncs.com"
+  bucket: "iot-datas"
+  region: "cn-beijing"
+  public_url_prefix: "https://iot-datas.oss-cn-beijing.aliyuncs.com"
+  access_key_env: "THCPN_LOG_OSS_ACCESS_KEY_ID"
+  secret_key_env: "THCPN_LOG_OSS_ACCESS_KEY_SECRET"
+
+# Carbon source-owned OSS. Firmware, source images, and logs resolve here.
+carbon_object_store:
+  provider: "oss"
+  endpoint: "https://oss-cn-beijing.aliyuncs.com"
+  bucket: "iot-datas"
+  region: "cn-beijing"
+  public_url_prefix: "https://iot-datas.oss-cn-beijing.aliyuncs.com"
+  access_key_env: "CARBON_OSS_ACCESS_KEY_ID"
+  secret_key_env: "CARBON_OSS_ACCESS_KEY_SECRET"
+
 query_limits:
   max_history_days: 366
   max_points: 5000

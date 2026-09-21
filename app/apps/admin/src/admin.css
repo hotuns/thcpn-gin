@@ -544,3 +544,24 @@
     border-left: 0;
   }
 }
+.firmware-panel > .ant-card-body { padding: 16px; }
+.firmware-filters { display: grid; grid-template-columns: minmax(260px, 1fr) 220px; gap: 12px; padding-bottom: 16px; border-bottom: 1px solid var(--soft-line); }
+.firmware-loading { min-height: 220px; display: grid; place-content: center; justify-items: center; gap: 12px; color: var(--muted); }
+.firmware-release-list { display: grid; gap: 14px; padding-top: 16px; }
+.firmware-release-title { min-width: 0; display: grid; gap: 3px; }
+.firmware-release-title strong, .firmware-release-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.firmware-release-title span, .firmware-target small { color: var(--muted); font-size: var(--font-size-caption); font-weight: 400; }
+.firmware-release.ant-card .ant-card-head { min-height: 54px; }
+.firmware-release.ant-card .ant-card-body { padding: 0; }
+.firmware-targets { display: grid; }
+.firmware-target { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 12px 16px; }
+.firmware-target + .firmware-target { border-top: 1px solid var(--soft-line); }
+.firmware-target > span { min-width: 0; display: grid; gap: 2px; }
+.firmware-target strong, .firmware-target small, .firmware-target em { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.firmware-target em { color: #cf1322; font-size: var(--font-size-caption); font-style: normal; }
+.firmware-dialog-description { margin: 0 0 18px; color: var(--muted); }
+.firmware-form-grid { display: grid; grid-template-columns: 1fr 1.45fr; gap: 14px; }
+.firmware-form .ant-upload-drag p { margin: 7px 0 2px; font-weight: 600; }
+.firmware-form .ant-upload-drag span { color: var(--muted); font-size: var(--font-size-caption); }
+.firmware-form > .ant-alert + .ant-alert { margin-top: 10px; }
+@media (max-width: 700px) { .firmware-filters, .firmware-form-grid { grid-template-columns: 1fr; } .firmware-target { grid-template-columns: auto 1fr auto; } .firmware-target .ant-btn { grid-column: 2 / -1; justify-self: start; } }

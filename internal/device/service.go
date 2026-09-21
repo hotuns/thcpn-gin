@@ -1932,6 +1932,8 @@ func fromSystemAssetRow(model sqlc.ListSystemDeviceAssetsRow, capabilities []str
 		ProjectName:        model.ProjectName,
 		SiteName:           model.SiteName,
 		AssignedByName:     model.AssignedByName,
+		SourceFamily:       model.SourceFamily,
+		ExternalKey:        model.ExternalKey,
 		Capabilities:       capabilities,
 		TopologyRole:       model.TopologyRole,
 		ChildCount:         model.ChildCount,

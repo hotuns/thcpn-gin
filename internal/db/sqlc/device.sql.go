@@ -864,6 +864,8 @@ SELECT
     p.name AS project_name,
     s.name AS site_name,
     COALESCE(u.name, sa.name, '') AS assigned_by_name,
+    COALESCE(source_ref.source_family, '') AS source_family,
+    COALESCE(source_ref.external_key, '') AS external_key,
     d.device_type AS topology_role,
     (
         SELECT count(*)::bigint
@@ -879,6 +881,14 @@ LEFT JOIN projects AS p ON p.id = da.project_id
 LEFT JOIN sites AS s ON s.id = da.site_id
 LEFT JOIN users AS u ON u.id = da.assigned_by AND da.assigned_by_type = 'user'
 LEFT JOIN system_admins AS sa ON sa.id = da.assigned_by AND da.assigned_by_type = 'system_admin'
+LEFT JOIN LATERAL (
+    SELECT src.source_family, ref.external_key
+    FROM device_source_refs AS ref
+    JOIN data_sources AS src ON src.id = ref.data_source_id AND src.status = 'active'
+    WHERE ref.device_id = d.id AND ref.status = 'active'
+    ORDER BY ref.created_at DESC
+    LIMIT 1
+) AS source_ref ON true
 ORDER BY d.created_at DESC, d.id DESC
 `
 
@@ -903,6 +913,8 @@ type ListSystemDeviceAssetsRow struct {
 	ProjectName        *string            `json:"project_name"`
 	SiteName           *string            `json:"site_name"`
 	AssignedByName     string             `json:"assigned_by_name"`
+	SourceFamily       string             `json:"source_family"`
+	ExternalKey        string             `json:"external_key"`
 	TopologyRole       string             `json:"topology_role"`
 	ChildCount         int64              `json:"child_count"`
 }
@@ -937,6 +949,8 @@ func (q *Queries) ListSystemDeviceAssets(ctx context.Context) ([]ListSystemDevic
 			&i.ProjectName,
 			&i.SiteName,
 			&i.AssignedByName,
+			&i.SourceFamily,
+			&i.ExternalKey,
 			&i.TopologyRole,
 			&i.ChildCount,
 		); err != nil {

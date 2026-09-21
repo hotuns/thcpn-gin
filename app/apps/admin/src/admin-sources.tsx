@@ -505,7 +505,7 @@ function LoRaWANV2Drawer({ source, onClose }: { source: JsonRecord | null; onClo
         case "list_gateways": response = await api.admin.loraWANV2Gateways(sourceID, query); break;
         case "get_gateway": response = await api.admin.loraWANV2Gateway(sourceID, values.gateway_sn); break;
         case "list_firmwares": response = await api.admin.loraWANV2Firmwares(sourceID, query); break;
-        case "create_firmware": response = await api.admin.createLoRaWANV2Firmware(sourceID, values.gateway_sn, payload); break;
+        case "create_firmware": response = await api.admin.createLoRaWANV2Firmware(sourceID, values.gateway_sn, payload as unknown as { firmware_version: number; url: string; verify_value: string }); break;
         case "get_firmware": response = await api.admin.loraWANV2Firmware(sourceID, values.firmware_id); break;
         case "delete_firmware": await api.admin.deleteLoRaWANV2Firmware(sourceID, values.firmware_id); response = { deleted: true }; break;
         case "list_gateway_configs": response = await api.admin.loraWANV2GatewayConfigs(sourceID, values.gateway_sn, query); break;

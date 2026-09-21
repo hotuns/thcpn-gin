@@ -248,6 +248,9 @@ func (s *Service) syncCarbonDevice(ctx context.Context, q *sqlc.Queries, source 
 	if err != nil {
 		return CarbonDeviceSyncResult{}, mapWriteError(err, "upsert carbon device source ref")
 	}
+	if err := addDeviceCapabilityIfMissing(ctx, q, device.ID, "firmware_update"); err != nil {
+		return CarbonDeviceSyncResult{}, err
+	}
 	if err := upsertCarbonNodeMetadata(ctx, q, device.ID, actorID, external.NodesCount); err != nil {
 		return CarbonDeviceSyncResult{}, err
 	}

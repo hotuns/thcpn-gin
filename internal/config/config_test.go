@@ -58,6 +58,9 @@ func TestDefaultConfigIsValid(t *testing.T) {
 	if cfg.ObjectStore.Region != "cn-beijing" {
 		t.Fatalf("expected default object store region, got %q", cfg.ObjectStore.Region)
 	}
+	if cfg.LoRaWANV2ObjectStore.Bucket != "iot-datas" || cfg.LoRaWANV2ObjectStore.PublicURLPrefix != "https://iot-datas.oss-cn-beijing.aliyuncs.com" {
+		t.Fatalf("expected LoRaWAN V2 source object store defaults, got %#v", cfg.LoRaWANV2ObjectStore)
+	}
 	if cfg.Ezviz.OpenAPIDomain != "https://open.ys7.com" {
 		t.Fatalf("expected default ezviz open api domain, got %q", cfg.Ezviz.OpenAPIDomain)
 	}
@@ -66,7 +69,7 @@ func TestDefaultConfigIsValid(t *testing.T) {
 	}
 }
 
-func TestApplyEnvFallsBackToPlatformObjectStoreForTHCPNLogs(t *testing.T) {
+func TestApplyEnvKeepsTHCPNLogsOnSourceObjectStore(t *testing.T) {
 	t.Setenv("OBJECT_STORE_ENDPOINT", "https://oss.example.test")
 	t.Setenv("OBJECT_STORE_BUCKET", "shared-logs")
 	t.Setenv("OBJECT_STORE_REGION", "cn-test")
@@ -78,10 +81,10 @@ func TestApplyEnvFallsBackToPlatformObjectStoreForTHCPNLogs(t *testing.T) {
 
 	cfg := Default()
 	applyEnv(&cfg)
-	if cfg.THCPNLogObjectStore.Endpoint != cfg.ObjectStore.Endpoint ||
-		cfg.THCPNLogObjectStore.Bucket != cfg.ObjectStore.Bucket ||
-		cfg.THCPNLogObjectStore.PublicURLPrefix != cfg.ObjectStore.PublicURLPrefix {
-		t.Fatalf("expected THCPN log object store to fall back to platform object store, got %#v", cfg.THCPNLogObjectStore)
+	if cfg.THCPNLogObjectStore.Endpoint == cfg.ObjectStore.Endpoint ||
+		cfg.THCPNLogObjectStore.Bucket != "iot-datas" ||
+		cfg.THCPNLogObjectStore.PublicURLPrefix != "https://iot-datas.oss-cn-beijing.aliyuncs.com" {
+		t.Fatalf("expected THCPN log object store to remain source-owned, got %#v", cfg.THCPNLogObjectStore)
 	}
 }
 
@@ -108,6 +111,11 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("OBJECT_STORE_REGION", "cn-shanghai")
 	t.Setenv("OBJECT_STORE_LOCAL_PATH", "/tmp/thcpn-objectstore")
 	t.Setenv("OBJECT_STORE_PUBLIC_URL_PREFIX", "https://example-bucket.oss-cn-beijing.aliyuncs.com")
+	t.Setenv("LORAWAN_V2_OSS_PROVIDER", "oss")
+	t.Setenv("LORAWAN_V2_OSS_ENDPOINT", "https://oss-cn-hangzhou.aliyuncs.com")
+	t.Setenv("LORAWAN_V2_OSS_BUCKET", "lora-source-bucket")
+	t.Setenv("LORAWAN_V2_OSS_REGION", "cn-hangzhou")
+	t.Setenv("LORAWAN_V2_OSS_PUBLIC_URL_PREFIX", "https://lora-source-bucket.oss-cn-hangzhou.aliyuncs.com")
 	t.Setenv("EXPORT_MAX_ROWS", "250000")
 	t.Setenv("TRACING_ENABLED", "true")
 	t.Setenv("TRACING_SERVICE_NAME", "thcpn-test")
@@ -189,6 +197,9 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.ObjectStore.PublicURLPrefix != "https://example-bucket.oss-cn-beijing.aliyuncs.com" {
 		t.Fatalf("expected object store public URL prefix override, got %q", cfg.ObjectStore.PublicURLPrefix)
+	}
+	if cfg.LoRaWANV2ObjectStore.Bucket != "lora-source-bucket" || cfg.LoRaWANV2ObjectStore.Region != "cn-hangzhou" || cfg.LoRaWANV2ObjectStore.PublicURLPrefix != "https://lora-source-bucket.oss-cn-hangzhou.aliyuncs.com" {
+		t.Fatalf("expected LoRaWAN V2 object store overrides, got %#v", cfg.LoRaWANV2ObjectStore)
 	}
 	if cfg.Export.MaxRows != 250000 {
 		t.Fatalf("expected export max rows override, got %d", cfg.Export.MaxRows)

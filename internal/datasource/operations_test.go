@@ -58,6 +58,13 @@ func TestCreateLoRaWANV2GatewayUsesUpstreamSNAndSurvivesCatalogFailure(t *testin
 	if serial != sn {
 		t.Fatalf("serial_no=%q, want %q", serial, sn)
 	}
+	var firmwareCapability bool
+	if err := db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM device_capabilities WHERE device_id=$1 AND capability_code='firmware_update')`, result.Sync.Device.ID).Scan(&firmwareCapability); err != nil {
+		t.Fatal(err)
+	}
+	if !firmwareCapability {
+		t.Fatal("LoRaWAN V2 gateway is missing firmware_update capability")
+	}
 }
 
 type recordingSyncQueue struct {

@@ -1861,6 +1861,62 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/admin/firmware-releases:
+    get:
+      tags: [Admin]
+      operationId: adminListFirmwareReleases
+      summary: List source-native firmware releases
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: "#/components/parameters/Page"}
+        - {$ref: "#/components/parameters/PageSize"}
+        - {name: status, in: query, schema: {type: string, enum: [publishing, partial, completed, failed]}}
+        - {name: version, in: query, schema: {type: string}}
+        - {name: device, in: query, schema: {type: string}}
+      responses:
+        "200": {description: Firmware releases., content: {application/json: {schema: {$ref: "#/components/schemas/FirmwareReleaseListResponse"}}}}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/PermissionDenied"}
+    post:
+      tags: [Admin]
+      operationId: adminCreateFirmwareRelease
+      summary: Upload and publish firmware to supported source devices
+      description: Uploads the artifact to the selected source family's object store. LoRaWAN V2 is registered through its API; THCPN and Carbon are registered directly in their source firmware tables. Carbon build_id is supplied by the administrator. The platform object store is not used.
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: {$ref: "#/components/schemas/CreateFirmwareReleaseRequest"}
+      responses:
+        "201": {description: Firmware uploaded and target registrations attempted., content: {application/json: {schema: {$ref: "#/components/schemas/FirmwareRelease"}}}}
+        "400": {$ref: "#/components/responses/InvalidArgument"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/PermissionDenied"}
+        "500": {$ref: "#/components/responses/Internal"}
+  /api/v1/admin/firmware-releases/{release_id}:
+    parameters:
+      - {name: release_id, in: path, required: true, schema: {$ref: "#/components/schemas/UUID"}}
+    get:
+      tags: [Admin]
+      operationId: adminGetFirmwareRelease
+      summary: Get a firmware release and its targets
+      security: [{bearerAuth: []}]
+      responses:
+        "200": {description: Firmware release., content: {application/json: {schema: {$ref: "#/components/schemas/FirmwareRelease"}}}}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/admin/firmware-releases/{release_id}/targets/{target_id}/retry:
+    parameters:
+      - {name: release_id, in: path, required: true, schema: {$ref: "#/components/schemas/UUID"}}
+      - {name: target_id, in: path, required: true, schema: {$ref: "#/components/schemas/UUID"}}
+    post:
+      tags: [Admin]
+      operationId: adminRetryFirmwareReleaseTarget
+      summary: Retry a failed source firmware registration
+      security: [{bearerAuth: []}]
+      responses:
+        "200": {description: Updated firmware release., content: {application/json: {schema: {$ref: "#/components/schemas/FirmwareRelease"}}}}
+        "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/admin/data-sources/{data_source_id}/devices:
     parameters:
       - $ref: "#/components/parameters/DataSourceID"
@@ -2080,7 +2136,7 @@ paths:
       summary: List LoRaWAN V2 firmwares
       security: [{bearerAuth: []}, {devUserHeader: []}]
       parameters: [{name: device_sn, in: query, schema: {type: string}}, {$ref: "#/components/parameters/Page"}, {$ref: "#/components/parameters/PageSize"}]
-      responses: {"200": {description: Firmware list payload, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
+      responses: {"200": {description: Firmware list payload, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2FirmwareListResponse"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
   /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/firmwares/{firmware_id}:
     parameters: [{$ref: "#/components/parameters/DataSourceID"}, {$ref: "#/components/parameters/LoRaWANV2FirmwareID"}]
     get:
@@ -2088,7 +2144,7 @@ paths:
       operationId: adminGetLoRaWANV2Firmware
       summary: Get a LoRaWAN V2 firmware
       security: [{bearerAuth: []}, {devUserHeader: []}]
-      responses: {"200": {description: Firmware payload, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "404": {$ref: "#/components/responses/NotFound"}, "500": {$ref: "#/components/responses/Internal"}}
+      responses: {"200": {description: Firmware payload, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Firmware"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "404": {$ref: "#/components/responses/NotFound"}, "500": {$ref: "#/components/responses/Internal"}}
     delete:
       tags: [Admin]
       operationId: adminDeleteLoRaWANV2Firmware
@@ -2102,8 +2158,8 @@ paths:
       operationId: adminCreateLoRaWANV2Firmware
       summary: Create LoRaWAN V2 gateway firmware
       security: [{bearerAuth: []}, {devUserHeader: []}]
-      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}
-      responses: {"201": {description: Firmware payload, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "400": {$ref: "#/components/responses/InvalidArgument"}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2CreateFirmwareRequest"}}}}
+      responses: {"201": {description: Firmware payload, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Firmware"}}}}, "400": {$ref: "#/components/responses/InvalidArgument"}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
   /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/configs:
     parameters: [{$ref: "#/components/parameters/DataSourceID"}, {$ref: "#/components/parameters/LoRaWANV2GatewaySN"}]
     get:
@@ -9657,6 +9713,95 @@ components:
       type: object
       additionalProperties: true
       description: Payload returned by the LoRaWAN V2 OpenAPI service. Configuration content is intentionally preserved as raw JSON.
+    LoRaWANV2CreateFirmwareRequest:
+      type: object
+      required: [firmware_version, url, verify_value]
+      properties:
+        firmware_version: {type: integer, format: int64, minimum: 0, maximum: 4294967295}
+        url: {type: string, format: uri}
+        verify_value: {type: string, pattern: "^[0-9A-Fa-f]{32}$"}
+    LoRaWANV2Firmware:
+      type: object
+      required: [id, device_sn, firmware_version, firmware_version_str, url, device_verify_value, created_at]
+      properties:
+        id: {type: integer, format: int64}
+        device_sn: {type: string}
+        firmware_version: {type: integer, format: int64}
+        firmware_version_str: {type: string}
+        url: {type: string, format: uri}
+        device_verify_value: {type: string}
+        created_at: {$ref: "#/components/schemas/Timestamp"}
+        updated_at: {allOf: [{$ref: "#/components/schemas/Timestamp"}], nullable: true}
+    LoRaWANV2FirmwareListResponse:
+      type: object
+      required: [data, pagination]
+      properties:
+        data: {type: array, items: {$ref: "#/components/schemas/LoRaWANV2Firmware"}}
+        pagination:
+          type: object
+          required: [current_page, page_size, total_page, total_count]
+          properties:
+            current_page: {type: integer}
+            page_size: {type: integer}
+            total_page: {type: integer}
+            total_count: {type: integer, format: int64}
+    FirmwareReleaseTarget:
+      type: object
+      required: [id, release_id, device_id, device_name, data_source_id, status, retry_count, created_at, updated_at]
+      properties:
+        id: {$ref: "#/components/schemas/UUID"}
+        release_id: {$ref: "#/components/schemas/UUID"}
+        device_id: {$ref: "#/components/schemas/UUID"}
+        device_name: {type: string}
+        workspace_name: {type: string}
+        data_source_id: {$ref: "#/components/schemas/UUID"}
+        gateway_sn: {type: string, description: LoRaWAN V2 gateway identity; empty for numeric source devices.}
+        external_device_id: {type: integer, format: int64, description: THCPN or Carbon source device identity.}
+        upstream_firmware_id: {type: integer, format: int64}
+        status: {type: string, enum: [pending, publishing, completed, failed]}
+        retry_count: {type: integer}
+        error_message: {type: string}
+        published_at: {$ref: "#/components/schemas/Timestamp"}
+        created_at: {$ref: "#/components/schemas/Timestamp"}
+        updated_at: {$ref: "#/components/schemas/Timestamp"}
+    FirmwareRelease:
+      type: object
+      required: [id, original_filename, object_key, public_url, content_type, size_bytes, version, firmware_version, verify_value, source_family, status, created_at, updated_at, targets]
+      properties:
+        id: {$ref: "#/components/schemas/UUID"}
+        original_filename: {type: string}
+        object_key: {type: string}
+        public_url: {type: string, format: uri}
+        content_type: {type: string}
+        size_bytes: {type: integer, format: int64}
+        version: {type: string, maxLength: 96}
+        firmware_version: {type: integer, format: int64}
+        verify_value: {type: string, pattern: "^[0-9A-Fa-f]{32}$"}
+        source_family: {type: string, enum: [thcpn, carbon, lorawan_v2]}
+        build_id: {type: integer, format: int64, minimum: 1, description: Administrator-supplied Carbon firmware build ID.}
+        status: {type: string, enum: [publishing, partial, completed, failed]}
+        created_by: {$ref: "#/components/schemas/UUID"}
+        created_at: {$ref: "#/components/schemas/Timestamp"}
+        updated_at: {$ref: "#/components/schemas/Timestamp"}
+        targets: {type: array, items: {$ref: "#/components/schemas/FirmwareReleaseTarget"}}
+    FirmwareReleaseListResponse:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/FirmwareRelease"}}
+        total: {type: integer, format: int64}
+        page: {type: integer}
+        page_size: {type: integer}
+    CreateFirmwareReleaseRequest:
+      type: object
+      required: [file, version, verify_value, device_ids, idempotency_key]
+      properties:
+        file: {type: string, format: binary}
+        version: {type: string, example: "1.2.3.4"}
+        verify_value: {type: string, pattern: "^[0-9A-Fa-f]{32}$"}
+        build_id: {type: integer, format: int64, minimum: 1, description: Required when the selected devices use the Carbon source family; entered by the administrator.}
+        device_ids: {type: array, items: {$ref: "#/components/schemas/UUID"}}
+        idempotency_key: {$ref: "#/components/schemas/UUID"}
     LoRaWANV2CreateGatewayRequest:
       type: object
       required: [sn, node_count]

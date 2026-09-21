@@ -135,6 +135,19 @@ export type AdminLoginResponse = {
 
 export type ApiEnvelope<T> = T & { request_id?: string };
 export type ListResponse<T> = { items: T[]; total?: number; page?: number; page_size?: number };
+export type FirmwareReleaseTarget = {
+  id: string; release_id: string; device_id: string; device_name: string; workspace_name?: string;
+  data_source_id: string; gateway_sn: string; external_device_id?: number; upstream_firmware_id?: number;
+  status: "pending" | "publishing" | "completed" | "failed"; retry_count: number;
+  error_message?: string; published_at?: string; created_at: string; updated_at: string;
+};
+export type FirmwareRelease = {
+  id: string; original_filename: string; object_key: string; public_url: string; content_type: string;
+  size_bytes: number; version: string; firmware_version: number; verify_value: string;
+  source_family: "thcpn" | "carbon" | "lorawan_v2"; build_id?: number;
+  status: "publishing" | "partial" | "completed" | "failed"; created_by?: string;
+  created_at: string; updated_at: string; targets: FirmwareReleaseTarget[];
+};
 export type JsonRecord = Record<string, unknown>;
 export type ProcessingProcessor = {
   code: string; version: string; name: string; description: string;
@@ -1207,11 +1220,11 @@ export const api = {
     loraWANV2Gateway: (id: string, sn: string) =>
       request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}`),
     loraWANV2Firmwares: (id: string, input: JsonRecord = {}) =>
-      request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/firmwares${queryString(input as Record<string, string | number | boolean>)}`),
-    createLoRaWANV2Firmware: (id: string, sn: string, payload: JsonRecord) =>
-      jsonRequest<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/firmwares`, "POST", payload),
+      request<Schema<"LoRaWANV2FirmwareListResponse">>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/firmwares${queryString(input as Record<string, string | number | boolean>)}`),
+    createLoRaWANV2Firmware: (id: string, sn: string, payload: Schema<"LoRaWANV2CreateFirmwareRequest">) =>
+      jsonRequest<Schema<"LoRaWANV2Firmware">>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/firmwares`, "POST", payload),
     loraWANV2Firmware: (id: string, firmwareID: string | number) =>
-      request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/firmwares/${encodeURIComponent(String(firmwareID))}`),
+      request<Schema<"LoRaWANV2Firmware">>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/firmwares/${encodeURIComponent(String(firmwareID))}`),
     deleteLoRaWANV2Firmware: (id: string, firmwareID: string | number) =>
       request<void>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/firmwares/${encodeURIComponent(String(firmwareID))}`, { method: "DELETE" }),
     loraWANV2GatewayConfigs: (id: string, sn: string, input: JsonRecord = {}) =>
@@ -1252,6 +1265,22 @@ export const api = {
       request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/infos${queryString(input as Record<string, string | number | boolean>)}`),
     devices: () =>
       request<ListResponse<Record<string, unknown>>>("/api/v1/admin/devices"),
+    firmwareReleases: (filters: Record<string, string | number | boolean | undefined> = {}) =>
+      request<ListResponse<FirmwareRelease>>(`/api/v1/admin/firmware-releases${queryString(filters)}`),
+    firmwareRelease: (id: string) =>
+      request<FirmwareRelease>(`/api/v1/admin/firmware-releases/${encodeURIComponent(id)}`),
+    createFirmwareRelease: (input: { file: File; version: string; verifyValue: string; buildId?: string; deviceIds: string[]; idempotencyKey: string }) => {
+      const body = new FormData();
+      body.append("file", input.file);
+      body.append("version", input.version);
+      body.append("verify_value", input.verifyValue);
+      if (input.buildId) body.append("build_id", input.buildId);
+      body.append("idempotency_key", input.idempotencyKey);
+      input.deviceIds.forEach((id) => body.append("device_ids[]", id));
+      return request<FirmwareRelease>("/api/v1/admin/firmware-releases", { method: "POST", body });
+    },
+    retryFirmwareReleaseTarget: (releaseId: string, targetId: string) =>
+      jsonRequest<FirmwareRelease>(`/api/v1/admin/firmware-releases/${encodeURIComponent(releaseId)}/targets/${encodeURIComponent(targetId)}/retry`, "POST", {}),
     ensureDeviceClaimCredentials: () =>
       jsonRequest<{ created: number }>("/api/v1/admin/device-claims/ensure", "POST", {}),
     deviceClaimCredential: (id: string) =>

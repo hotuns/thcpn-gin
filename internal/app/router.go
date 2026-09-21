@@ -36,6 +36,7 @@ import (
 	"thcpn-gin/internal/deviceprofile"
 	emailx "thcpn-gin/internal/email"
 	"thcpn-gin/internal/export"
+	"thcpn-gin/internal/firmware"
 	"thcpn-gin/internal/httpx"
 	"thcpn-gin/internal/loginvisual"
 	"thcpn-gin/internal/media"
@@ -138,8 +139,16 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	objectSigner := objectstore.NewSigner(cfg.ObjectStore, cfg.Auth.JWTSecret)
 	thcpnLogSigner := objectstore.NewSigner(cfg.THCPNLogObjectStore, cfg.Auth.JWTSecret)
 	objectStore := objectstore.NewStore(cfg.ObjectStore)
+	loRaWANV2ObjectStore := objectstore.NewStore(cfg.LoRaWANV2ObjectStore)
+	thcpnFirmwareObjectStore := objectstore.NewStore(cfg.THCPNLogObjectStore)
+	carbonFirmwareObjectStore := objectstore.NewStore(cfg.CarbonObjectStore)
 	loginVisualHandler := loginvisual.NewHandler(loginvisual.NewService(deps.Postgres, objectStore))
 	dataSourceService := datasource.NewService(deps.Postgres, objectStore)
+	firmwareService := firmware.NewService(deps.Postgres, dataSourceService, map[string]firmware.ArtifactStore{
+		"lorawan_v2": {Store: loRaWANV2ObjectStore, PublicURLPrefix: cfg.LoRaWANV2ObjectStore.PublicURLPrefix},
+		"thcpn":      {Store: thcpnFirmwareObjectStore, PublicURLPrefix: cfg.THCPNLogObjectStore.PublicURLPrefix},
+		"carbon":     {Store: carbonFirmwareObjectStore, PublicURLPrefix: cfg.CarbonObjectStore.PublicURLPrefix},
+	})
 	if billingService != nil {
 		dataSourceService.SetBilling(billingService)
 	}
@@ -247,6 +256,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	computedStreamHandler := computedstream.NewHandler(computedStreamService, permissionChecker, auditService)
 	datasetHandler := dataset.NewHandler(datasetService, permissionChecker, auditService)
 	dataSourceHandler := datasource.NewHandler(dataSourceService, permissionChecker, auditService)
+	firmwareHandler := firmware.NewHandler(firmwareService, auditService)
 	deviceClaimHandler := deviceclaim.NewHandler(deviceClaimService, permissionChecker, auditService)
 	dataSourceHandler.SetClaimCredentialEnsurer(deviceClaimService)
 	dataSourceHandler.SetTHCPNLogSigner(thcpnLogSigner)
@@ -461,6 +471,10 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.DELETE("/devices/:device_id/assignment", deviceHandler.AdminUnassign)
 	admin.POST("/devices/:device_id/calibrations", deviceHandler.AdminRequestCalibration)
 	admin.POST("/devices/:device_id/firmware-upgrades", deviceHandler.AdminRequestFirmwareUpgrade)
+	admin.POST("/firmware-releases", firmwareHandler.Create)
+	admin.GET("/firmware-releases", firmwareHandler.List)
+	admin.GET("/firmware-releases/:release_id", firmwareHandler.Get)
+	admin.POST("/firmware-releases/:release_id/targets/:target_id/retry", firmwareHandler.Retry)
 	admin.POST("/devices/:device_id/children", deviceHandler.AdminAddChild)
 	admin.DELETE("/devices/:device_id/children/:child_device_id", deviceHandler.AdminRemoveChild)
 	admin.GET("/data-sources", dataSourceHandler.AdminListDataSources)

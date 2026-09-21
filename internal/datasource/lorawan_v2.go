@@ -607,6 +607,9 @@ func (s *Service) persistLoRaWANV2Gateway(ctx context.Context, source sqlc.DataS
 	if err != nil {
 		return LoRaWANV2GatewaySyncResult{}, mapWriteError(err, "set lorawan_v2 gateway type")
 	}
+	if _, err := tx.Exec(ctx, `INSERT INTO device_capabilities(device_id,capability_code) VALUES($1,'firmware_update') ON CONFLICT (device_id,capability_code) DO NOTHING`, device.ID); err != nil {
+		return LoRaWANV2GatewaySyncResult{}, mapWriteError(err, "enable lorawan_v2 firmware updates")
+	}
 	if err := q.UpsertLoRaWANV2Metadata(ctx, sqlc.UpsertLoRaWANV2MetadataParams{DeviceID: device.ID, Key: "lorawan_v2_nodes_count", Name: "LoRa 节点数", ValueType: "number", Column5: []byte(strconv.Itoa(gateway.NodeCount)), CreatedBy: actorID}); err != nil {
 		return LoRaWANV2GatewaySyncResult{}, mapWriteError(err, "upsert lorawan_v2 node count")
 	}

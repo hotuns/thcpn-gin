@@ -22,6 +22,7 @@ import {
   Database,
   ExternalLink,
   FileText,
+  HardDriveUpload,
   Home,
   KeyRound,
   MapPinned,
@@ -79,6 +80,7 @@ const AdminDevicesPage = lazy(() =>
     default: module.AdminDevicesPage,
   })),
 );
+const AdminFirmwarePage = lazy(() => import("./admin-firmware").then((module) => ({ default: module.AdminFirmwarePage })));
 const AdminLogsPage = lazy(() =>
   import("./admin-logs").then((module) => ({
     default: module.AdminLogsPage,
@@ -127,6 +129,7 @@ const adminNav = [
   { to: "/admin", key: "overview", icon: Home, group: "overview" },
   { to: "/admin/sources", key: "sources", icon: Database, group: "assets" },
   { to: "/admin/devices", key: "devices", icon: Boxes, group: "assets" },
+  { to: "/admin/firmware", key: "firmware", icon: HardDriveUpload, group: "assets" },
   { to: "/admin/sensors", key: "sensors", icon: Cpu, group: "assets" },
   { to: "/admin/device-map", key: "deviceMap", icon: MapPinned, group: "assets" },
   { to: "/admin/workspaces", key: "workspaces", icon: Network, group: "platform" },
@@ -590,6 +593,7 @@ function AdminRoot() {
         <Route path="sources" element={<AdminSourcesPage />} />
         <Route path="devices" element={<AdminDevicesPage />} />
         <Route path="devices/:deviceId" element={<AdminDevicesPage />} />
+        <Route path="firmware" element={<AdminFirmwarePage />} />
         <Route path="sensors" element={<AdminSensorsPage />} />
         <Route path="device-map" element={<AdminDeviceInsightsPage />} />
         <Route path="logs" element={<AdminLogsPage />} />

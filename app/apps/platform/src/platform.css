@@ -8727,7 +8727,7 @@ body::-webkit-scrollbar-corner,
   grid-template-columns: minmax(180px, 1.5fr) 75px minmax(100px, 0.75fr) minmax(
       140px,
       0.9fr
-    ) 20px;
+    ) 36px;
   align-items: center;
   gap: 14px;
   padding: 0 18px;
@@ -8762,8 +8762,8 @@ body::-webkit-scrollbar-corner,
 .gateway-node-row:hover {
   background: color-mix(in srgb, var(--blue) 5%, var(--panel));
 }
-.gateway-node-row > svg {
-  color: var(--muted);
+.gateway-node-row > .icon-btn {
+  justify-self: end;
 }
 .gateway-node-row > strong,
 .gateway-node-row > span,
@@ -9853,7 +9853,7 @@ body::-webkit-scrollbar-corner,
   .gateway-node-row > time {
     grid-column: 1;
   }
-  .gateway-node-row > svg {
+  .gateway-node-row > .icon-btn {
     grid-column: 2;
     grid-row: 1 / span 2;
   }

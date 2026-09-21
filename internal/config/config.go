@@ -13,22 +13,24 @@ import (
 )
 
 type Config struct {
-	Server              ServerConfig      `yaml:"server"`
-	Logger              LoggerConfig      `yaml:"logger"`
-	Database            DatabaseConfig    `yaml:"database"`
-	Redis               RedisConfig       `yaml:"redis"`
-	Auth                AuthConfig        `yaml:"auth"`
-	SMS                 SMSConfig         `yaml:"sms"`
-	Email               EmailConfig       `yaml:"email"`
-	SMTP                SMTPConfig        `yaml:"smtp"`
-	ObjectStore         ObjectStoreConfig `yaml:"object_store"`
-	THCPNLogObjectStore ObjectStoreConfig `yaml:"thcpn_log_object_store"`
-	QueryLimits         QueryLimitsConfig `yaml:"query_limits"`
-	Billing             BillingConfig     `yaml:"billing"`
-	Export              ExportConfig      `yaml:"export"`
-	Processing          ProcessingConfig  `yaml:"processing"`
-	Tracing             TracingConfig     `yaml:"tracing"`
-	Ezviz               EzvizConfig       `yaml:"ezviz"`
+	Server               ServerConfig      `yaml:"server"`
+	Logger               LoggerConfig      `yaml:"logger"`
+	Database             DatabaseConfig    `yaml:"database"`
+	Redis                RedisConfig       `yaml:"redis"`
+	Auth                 AuthConfig        `yaml:"auth"`
+	SMS                  SMSConfig         `yaml:"sms"`
+	Email                EmailConfig       `yaml:"email"`
+	SMTP                 SMTPConfig        `yaml:"smtp"`
+	ObjectStore          ObjectStoreConfig `yaml:"object_store"`
+	THCPNLogObjectStore  ObjectStoreConfig `yaml:"thcpn_log_object_store"`
+	CarbonObjectStore    ObjectStoreConfig `yaml:"carbon_object_store"`
+	LoRaWANV2ObjectStore ObjectStoreConfig `yaml:"lorawan_v2_object_store"`
+	QueryLimits          QueryLimitsConfig `yaml:"query_limits"`
+	Billing              BillingConfig     `yaml:"billing"`
+	Export               ExportConfig      `yaml:"export"`
+	Processing           ProcessingConfig  `yaml:"processing"`
+	Tracing              TracingConfig     `yaml:"tracing"`
+	Ezviz                EzvizConfig       `yaml:"ezviz"`
 }
 
 type ServerConfig struct {
@@ -240,12 +242,31 @@ func Default() Config {
 			SecretKeyEnv:    "OBJECT_STORE_SECRET_KEY",
 		},
 		THCPNLogObjectStore: ObjectStoreConfig{
-			Provider:     "oss",
-			Endpoint:     "",
-			Bucket:       "",
-			Region:       "",
-			AccessKeyEnv: "THCPN_LOG_OSS_ACCESS_KEY_ID",
-			SecretKeyEnv: "THCPN_LOG_OSS_ACCESS_KEY_SECRET",
+			Provider:        "oss",
+			Endpoint:        "https://oss-cn-beijing.aliyuncs.com",
+			Bucket:          "iot-datas",
+			Region:          "cn-beijing",
+			PublicURLPrefix: "https://iot-datas.oss-cn-beijing.aliyuncs.com",
+			AccessKeyEnv:    "THCPN_LOG_OSS_ACCESS_KEY_ID",
+			SecretKeyEnv:    "THCPN_LOG_OSS_ACCESS_KEY_SECRET",
+		},
+		LoRaWANV2ObjectStore: ObjectStoreConfig{
+			Provider:        "oss",
+			Endpoint:        "https://oss-cn-beijing.aliyuncs.com",
+			Bucket:          "iot-datas",
+			Region:          "cn-beijing",
+			PublicURLPrefix: "https://iot-datas.oss-cn-beijing.aliyuncs.com",
+			AccessKeyEnv:    "LORAWAN_V2_OSS_ACCESS_KEY_ID",
+			SecretKeyEnv:    "LORAWAN_V2_OSS_ACCESS_KEY_SECRET",
+		},
+		CarbonObjectStore: ObjectStoreConfig{
+			Provider:        "oss",
+			Endpoint:        "https://oss-cn-beijing.aliyuncs.com",
+			Bucket:          "iot-datas",
+			Region:          "cn-beijing",
+			PublicURLPrefix: "https://iot-datas.oss-cn-beijing.aliyuncs.com",
+			AccessKeyEnv:    "CARBON_OSS_ACCESS_KEY_ID",
+			SecretKeyEnv:    "CARBON_OSS_ACCESS_KEY_SECRET",
 		},
 		QueryLimits: QueryLimitsConfig{
 			MaxHistoryDays:   366,
@@ -443,6 +464,45 @@ func (cfg Config) Validate() error {
 	}
 	if objectStoreProvider != "file" && objectStoreProvider != "local" && strings.TrimSpace(cfg.ObjectStore.Endpoint) == "" {
 		return errors.New("object_store.endpoint is required")
+	}
+	loRaStoreProvider := strings.TrimSpace(cfg.LoRaWANV2ObjectStore.Provider)
+	switch loRaStoreProvider {
+	case "file", "local", "oss", "minio", "s3":
+	default:
+		return errors.New("lorawan_v2_object_store.provider must be one of file, local, oss, minio, s3")
+	}
+	if strings.TrimSpace(cfg.LoRaWANV2ObjectStore.Bucket) == "" {
+		return errors.New("lorawan_v2_object_store.bucket is required")
+	}
+	if loRaStoreProvider != "file" && loRaStoreProvider != "local" && strings.TrimSpace(cfg.LoRaWANV2ObjectStore.Endpoint) == "" {
+		return errors.New("lorawan_v2_object_store.endpoint is required")
+	}
+	if strings.TrimSpace(cfg.LoRaWANV2ObjectStore.PublicURLPrefix) == "" {
+		return errors.New("lorawan_v2_object_store.public_url_prefix is required")
+	}
+	thcpnStoreProvider := strings.TrimSpace(cfg.THCPNLogObjectStore.Provider)
+	switch thcpnStoreProvider {
+	case "file", "local", "oss", "minio", "s3":
+	default:
+		return errors.New("thcpn_log_object_store.provider must be one of file, local, oss, minio, s3")
+	}
+	if strings.TrimSpace(cfg.THCPNLogObjectStore.Bucket) == "" || strings.TrimSpace(cfg.THCPNLogObjectStore.PublicURLPrefix) == "" {
+		return errors.New("thcpn_log_object_store.bucket and public_url_prefix are required")
+	}
+	if thcpnStoreProvider != "file" && thcpnStoreProvider != "local" && strings.TrimSpace(cfg.THCPNLogObjectStore.Endpoint) == "" {
+		return errors.New("thcpn_log_object_store.endpoint is required")
+	}
+	carbonStoreProvider := strings.TrimSpace(cfg.CarbonObjectStore.Provider)
+	switch carbonStoreProvider {
+	case "file", "local", "oss", "minio", "s3":
+	default:
+		return errors.New("carbon_object_store.provider must be one of file, local, oss, minio, s3")
+	}
+	if strings.TrimSpace(cfg.CarbonObjectStore.Bucket) == "" || strings.TrimSpace(cfg.CarbonObjectStore.PublicURLPrefix) == "" {
+		return errors.New("carbon_object_store.bucket and public_url_prefix are required")
+	}
+	if carbonStoreProvider != "file" && carbonStoreProvider != "local" && strings.TrimSpace(cfg.CarbonObjectStore.Endpoint) == "" {
+		return errors.New("carbon_object_store.endpoint is required")
 	}
 	if cfg.QueryLimits.MaxHistoryDays <= 0 {
 		return errors.New("query_limits.max_history_days must be greater than 0")
@@ -714,12 +774,35 @@ func applyEnv(cfg *Config) {
 	if value := strings.TrimSpace(os.Getenv("THCPN_LOG_OSS_PUBLIC_URL_PREFIX")); value != "" {
 		cfg.THCPNLogObjectStore.PublicURLPrefix = value
 	}
-	if strings.TrimSpace(cfg.THCPNLogObjectStore.Endpoint) == "" &&
-		strings.TrimSpace(cfg.THCPNLogObjectStore.Bucket) == "" &&
-		strings.TrimSpace(cfg.THCPNLogObjectStore.PublicURLPrefix) == "" {
-		// Keep existing deployments working when logs live in the same OSS
-		// bucket as platform media and no dedicated log store is configured.
-		cfg.THCPNLogObjectStore = cfg.ObjectStore
+	if value := strings.TrimSpace(os.Getenv("LORAWAN_V2_OSS_PROVIDER")); value != "" {
+		cfg.LoRaWANV2ObjectStore.Provider = value
+	}
+	if value := strings.TrimSpace(os.Getenv("LORAWAN_V2_OSS_ENDPOINT")); value != "" {
+		cfg.LoRaWANV2ObjectStore.Endpoint = value
+	}
+	if value := strings.TrimSpace(os.Getenv("LORAWAN_V2_OSS_BUCKET")); value != "" {
+		cfg.LoRaWANV2ObjectStore.Bucket = value
+	}
+	if value := strings.TrimSpace(os.Getenv("LORAWAN_V2_OSS_REGION")); value != "" {
+		cfg.LoRaWANV2ObjectStore.Region = value
+	}
+	if value := strings.TrimSpace(os.Getenv("LORAWAN_V2_OSS_PUBLIC_URL_PREFIX")); value != "" {
+		cfg.LoRaWANV2ObjectStore.PublicURLPrefix = value
+	}
+	if value := strings.TrimSpace(os.Getenv("CARBON_OSS_PROVIDER")); value != "" {
+		cfg.CarbonObjectStore.Provider = value
+	}
+	if value := strings.TrimSpace(os.Getenv("CARBON_OSS_ENDPOINT")); value != "" {
+		cfg.CarbonObjectStore.Endpoint = value
+	}
+	if value := strings.TrimSpace(os.Getenv("CARBON_OSS_BUCKET")); value != "" {
+		cfg.CarbonObjectStore.Bucket = value
+	}
+	if value := strings.TrimSpace(os.Getenv("CARBON_OSS_REGION")); value != "" {
+		cfg.CarbonObjectStore.Region = value
+	}
+	if value := strings.TrimSpace(os.Getenv("CARBON_OSS_PUBLIC_URL_PREFIX")); value != "" {
+		cfg.CarbonObjectStore.PublicURLPrefix = value
 	}
 	if value := strings.TrimSpace(os.Getenv("EXPORT_FILE_TTL_HOURS")); value != "" {
 		if hours, err := strconv.Atoi(value); err == nil {

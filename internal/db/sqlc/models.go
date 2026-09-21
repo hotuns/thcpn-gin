@@ -35,6 +35,79 @@ type AccessGrantPermission struct {
 	PermissionID  uuid.UUID `json:"permission_id"`
 }
 
+type AlertDelivery struct {
+	ID            uuid.UUID          `json:"id"`
+	EventID       uuid.UUID          `json:"event_id"`
+	UserID        uuid.UUID          `json:"user_id"`
+	Channel       string             `json:"channel"`
+	Kind          string             `json:"kind"`
+	Status        string             `json:"status"`
+	Attempts      int32              `json:"attempts"`
+	NextAttemptAt pgtype.Timestamptz `json:"next_attempt_at"`
+	SentAt        pgtype.Timestamptz `json:"sent_at"`
+	LastError     *string            `json:"last_error"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+type AlertEvaluationState struct {
+	RuleID          uuid.UUID          `json:"rule_id"`
+	State           string             `json:"state"`
+	PendingSince    pgtype.Timestamptz `json:"pending_since"`
+	LastEvaluatedAt pgtype.Timestamptz `json:"last_evaluated_at"`
+	LastObservedAt  pgtype.Timestamptz `json:"last_observed_at"`
+	LastValue       pgtype.Float8      `json:"last_value"`
+	LastError       *string            `json:"last_error"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
+type AlertEvent struct {
+	ID                uuid.UUID          `json:"id"`
+	RuleID            uuid.UUID          `json:"rule_id"`
+	WorkspaceID       uuid.UUID          `json:"workspace_id"`
+	DeviceID          uuid.UUID          `json:"device_id"`
+	DataStreamID      *uuid.UUID         `json:"data_stream_id"`
+	Severity          string             `json:"severity"`
+	Title             string             `json:"title"`
+	Content           string             `json:"content"`
+	TriggerValue      pgtype.Float8      `json:"trigger_value"`
+	TriggerObservedAt pgtype.Timestamptz `json:"trigger_observed_at"`
+	RuleSnapshot      []byte             `json:"rule_snapshot"`
+	TriggeredAt       pgtype.Timestamptz `json:"triggered_at"`
+	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
+	ResolvedValue     pgtype.Float8      `json:"resolved_value"`
+	AcknowledgedAt    pgtype.Timestamptz `json:"acknowledged_at"`
+	AcknowledgedBy    *uuid.UUID         `json:"acknowledged_by"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+}
+
+type AlertRule struct {
+	ID                  uuid.UUID          `json:"id"`
+	WorkspaceID         uuid.UUID          `json:"workspace_id"`
+	Name                string             `json:"name"`
+	Type                string             `json:"type"`
+	Severity            string             `json:"severity"`
+	DeviceID            uuid.UUID          `json:"device_id"`
+	DataStreamID        *uuid.UUID         `json:"data_stream_id"`
+	ConditionMode       *string            `json:"condition_mode"`
+	LowerValue          pgtype.Float8      `json:"lower_value"`
+	UpperValue          pgtype.Float8      `json:"upper_value"`
+	DurationSeconds     int32              `json:"duration_seconds"`
+	RecoveryDelta       float64            `json:"recovery_delta"`
+	OfflineAfterSeconds pgtype.Int4        `json:"offline_after_seconds"`
+	Channels            []string           `json:"channels"`
+	Enabled             bool               `json:"enabled"`
+	ArchivedAt          pgtype.Timestamptz `json:"archived_at"`
+	CreatedBy           uuid.UUID          `json:"created_by"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+}
+
+type AlertRuleRecipient struct {
+	RuleID uuid.UUID `json:"rule_id"`
+	UserID uuid.UUID `json:"user_id"`
+}
+
 type AnnouncementRead struct {
 	AnnouncementID uuid.UUID          `json:"announcement_id"`
 	UserID         uuid.UUID          `json:"user_id"`
@@ -484,6 +557,43 @@ type ExportJob struct {
 	ExpiresAt         pgtype.Timestamptz `json:"expires_at"`
 	RequestConfigJson []byte             `json:"request_config_json"`
 	FileSizeBytes     pgtype.Int8        `json:"file_size_bytes"`
+}
+
+// Source-owned firmware artifacts published to supported devices.
+type FirmwareRelease struct {
+	ID               uuid.UUID          `json:"id"`
+	OriginalFilename string             `json:"original_filename"`
+	ObjectKey        string             `json:"object_key"`
+	PublicUrl        string             `json:"public_url"`
+	ContentType      string             `json:"content_type"`
+	SizeBytes        int64              `json:"size_bytes"`
+	Version          string             `json:"version"`
+	FirmwareVersion  int64              `json:"firmware_version"`
+	VerifyValue      string             `json:"verify_value"`
+	SourceFamily     string             `json:"source_family"`
+	BuildID          pgtype.Int8        `json:"build_id"`
+	Status           string             `json:"status"`
+	CreatedBy        *uuid.UUID         `json:"created_by"`
+	IdempotencyKey   uuid.UUID          `json:"idempotency_key"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
+// Per-device source firmware registration results.
+type FirmwareReleaseTarget struct {
+	ID                 uuid.UUID          `json:"id"`
+	ReleaseID          uuid.UUID          `json:"release_id"`
+	DeviceID           uuid.UUID          `json:"device_id"`
+	DataSourceID       uuid.UUID          `json:"data_source_id"`
+	GatewaySn          *string            `json:"gateway_sn"`
+	ExternalDeviceID   pgtype.Int8        `json:"external_device_id"`
+	UpstreamFirmwareID pgtype.Int8        `json:"upstream_firmware_id"`
+	Status             string             `json:"status"`
+	RetryCount         int32              `json:"retry_count"`
+	ErrorMessage       *string            `json:"error_message"`
+	PublishedAt        pgtype.Timestamptz `json:"published_at"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
 }
 
 // 待接受的工作区或资源邀请，包含邀请对象、作用域、权限模板和期限。

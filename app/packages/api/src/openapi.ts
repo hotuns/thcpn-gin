@@ -1700,6 +1700,66 @@ export interface paths {
         patch: operations["adminUpdateDataSource"];
         trace?: never;
     };
+    "/api/v1/admin/firmware-releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List source-native firmware releases */
+        get: operations["adminListFirmwareReleases"];
+        put?: never;
+        /**
+         * Upload and publish firmware to supported source devices
+         * @description Uploads the artifact to the selected source family's object store. LoRaWAN V2 is registered through its API; THCPN and Carbon are registered directly in their source firmware tables. Carbon build_id is supplied by the administrator. The platform object store is not used.
+         */
+        post: operations["adminCreateFirmwareRelease"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/firmware-releases/{release_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        /** Get a firmware release and its targets */
+        get: operations["adminGetFirmwareRelease"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/firmware-releases/{release_id}/targets/{target_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: components["schemas"]["UUID"];
+                target_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry a failed source firmware registration */
+        post: operations["adminRetryFirmwareReleaseTarget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/data-sources/{data_source_id}/devices": {
         parameters: {
             query?: never;
@@ -6408,6 +6468,108 @@ export interface components {
         LoRaWANV2Payload: {
             [key: string]: unknown;
         };
+        LoRaWANV2CreateFirmwareRequest: {
+            /** Format: int64 */
+            firmware_version: number;
+            /** Format: uri */
+            url: string;
+            verify_value: string;
+        };
+        LoRaWANV2Firmware: {
+            /** Format: int64 */
+            id: number;
+            device_sn: string;
+            /** Format: int64 */
+            firmware_version: number;
+            firmware_version_str: string;
+            /** Format: uri */
+            url: string;
+            device_verify_value: string;
+            created_at: components["schemas"]["Timestamp"];
+            updated_at?: components["schemas"]["Timestamp"] | null;
+        };
+        LoRaWANV2FirmwareListResponse: {
+            data: components["schemas"]["LoRaWANV2Firmware"][];
+            pagination: {
+                current_page: number;
+                page_size: number;
+                total_page: number;
+                /** Format: int64 */
+                total_count: number;
+            };
+        };
+        FirmwareReleaseTarget: {
+            id: components["schemas"]["UUID"];
+            release_id: components["schemas"]["UUID"];
+            device_id: components["schemas"]["UUID"];
+            device_name: string;
+            workspace_name?: string;
+            data_source_id: components["schemas"]["UUID"];
+            /** @description LoRaWAN V2 gateway identity; empty for numeric source devices. */
+            gateway_sn?: string;
+            /**
+             * Format: int64
+             * @description THCPN or Carbon source device identity.
+             */
+            external_device_id?: number;
+            /** Format: int64 */
+            upstream_firmware_id?: number;
+            /** @enum {string} */
+            status: "pending" | "publishing" | "completed" | "failed";
+            retry_count: number;
+            error_message?: string;
+            published_at?: components["schemas"]["Timestamp"];
+            created_at: components["schemas"]["Timestamp"];
+            updated_at: components["schemas"]["Timestamp"];
+        };
+        FirmwareRelease: {
+            id: components["schemas"]["UUID"];
+            original_filename: string;
+            object_key: string;
+            /** Format: uri */
+            public_url: string;
+            content_type: string;
+            /** Format: int64 */
+            size_bytes: number;
+            version: string;
+            /** Format: int64 */
+            firmware_version: number;
+            verify_value: string;
+            /** @enum {string} */
+            source_family: "thcpn" | "carbon" | "lorawan_v2";
+            /**
+             * Format: int64
+             * @description Administrator-supplied Carbon firmware build ID.
+             */
+            build_id?: number;
+            /** @enum {string} */
+            status: "publishing" | "partial" | "completed" | "failed";
+            created_by?: components["schemas"]["UUID"];
+            created_at: components["schemas"]["Timestamp"];
+            updated_at: components["schemas"]["Timestamp"];
+            targets: components["schemas"]["FirmwareReleaseTarget"][];
+        };
+        FirmwareReleaseListResponse: {
+            items: components["schemas"]["FirmwareRelease"][];
+            /** Format: int64 */
+            total: number;
+            page: number;
+            page_size: number;
+        };
+        CreateFirmwareReleaseRequest: {
+            /** Format: binary */
+            file: string;
+            /** @example 1.2.3.4 */
+            version: string;
+            verify_value: string;
+            /**
+             * Format: int64
+             * @description Required when the selected devices use the Carbon source family; entered by the administrator.
+             */
+            build_id?: number;
+            device_ids: components["schemas"]["UUID"][];
+            idempotency_key: components["schemas"]["UUID"];
+        };
         LoRaWANV2CreateGatewayRequest: {
             sn: string;
             node_count: number;
@@ -9276,6 +9438,109 @@ export interface operations {
             500: components["responses"]["Internal"];
         };
     };
+    adminListFirmwareReleases: {
+        parameters: {
+            query?: {
+                page?: components["parameters"]["Page"];
+                page_size?: components["parameters"]["PageSize"];
+                status?: "publishing" | "partial" | "completed" | "failed";
+                version?: string;
+                device?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Firmware releases. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FirmwareReleaseListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+        };
+    };
+    adminCreateFirmwareRelease: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["CreateFirmwareReleaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Firmware uploaded and target registrations attempted. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FirmwareRelease"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminGetFirmwareRelease: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Firmware release. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FirmwareRelease"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminRetryFirmwareReleaseTarget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: components["schemas"]["UUID"];
+                target_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Updated firmware release. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FirmwareRelease"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
     adminCreateSourceDevice: {
         parameters: {
             query?: never;
@@ -9574,7 +9839,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                    "application/json": components["schemas"]["LoRaWANV2FirmwareListResponse"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -9601,7 +9866,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                    "application/json": components["schemas"]["LoRaWANV2Firmware"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -9652,7 +9917,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LoRaWANV2Payload"];
+                "application/json": components["schemas"]["LoRaWANV2CreateFirmwareRequest"];
             };
         };
         responses: {
@@ -9662,7 +9927,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LoRaWANV2Payload"];
+                    "application/json": components["schemas"]["LoRaWANV2Firmware"];
                 };
             };
             400: components["responses"]["InvalidArgument"];
