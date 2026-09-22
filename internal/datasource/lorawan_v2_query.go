@@ -37,6 +37,7 @@ func queryLoRaWANV2Metrics(ctx context.Context, client *loraWANV2Client, cfg lor
 				missing[metric]++
 				continue
 			}
+			value = normalizeLoRaWANV2MetricValue(metric, value)
 			point := TelemetryPoint{Timestamp: record.Timestamp, Value: value, Quality: "valid"}
 			item.SourceCount++
 			if adaptive {
@@ -70,4 +71,14 @@ func queryLoRaWANV2Metrics(ctx context.Context, client *loraWANV2Client, cfg lor
 		results[metric] = item
 	}
 	return results, rows, nil
+}
+
+func normalizeLoRaWANV2MetricValue(metric string, value float64) float64 {
+	// LoRaWAN V2 exposes sd_card_rate as a 0..1 ratio. Data streams use the
+	// user-facing percent unit, so normalize it at the adapter boundary for
+	// charts, exports and alert thresholds alike.
+	if metric == "sd_card_rate" {
+		return value * 100
+	}
+	return value
 }

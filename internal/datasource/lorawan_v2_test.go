@@ -202,6 +202,29 @@ func TestLoRaWANV2TelemetryBatchReadsEachNodeOnce(t *testing.T) {
 	}
 }
 
+func TestLoRaWANV2NodeDiagnosticMetricsAreQueryable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/device/898604B41025D0133283/node/4/data" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"success":true,"payload":{"pagination":{"current_page":1,"page_size":50,"total_page":1,"total_count":1},"data":[{"ts":1790062294,"meta":{"gateway_sn":"898604B41025D0133283","node_config_id":31,"node_index":4},"snr":13.0,"created_at":1790062342,"VHI":-1.3,"rssi":-55.0,"sd_card_rate":0.03,"battery":3.596,"SFT":-0.115,"VHO":0.16}]}}`))
+	}))
+	defer server.Close()
+
+	client, err := newLoRaWANV2Client(context.Background(), staticResolver(`{"base_url":"`+server.URL+`","username":"reader","password":"secret"}`), DataSource{Type: "http_api", DsnSecretRef: "secret:lora"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodeIndex := 4
+	series, rows, err := queryLoRaWANV2Metrics(context.Background(), client, loraWANV2TelemetryConfig{GatewaySN: "898604B41025D0133283", NodeIndex: &nodeIndex}, []string{"battery", "rssi", "snr", "sd_card_rate"}, time.Unix(1790062200, 0), time.Unix(1790062400, 0), 10, false, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows != 1 || series["battery"].Points[0].Value != 3.596 || series["rssi"].Points[0].Value != -55 || series["snr"].Points[0].Value != 13 || series["sd_card_rate"].Points[0].Value != 3 {
+		t.Fatalf("unexpected diagnostics: rows=%d series=%#v", rows, series)
+	}
+}
+
 func TestLoRaWANV2RecordPaginationUsesTheUpstreamLimit(t *testing.T) {
 	pages := []int{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -328,8 +351,28 @@ func TestLoRaWANV2DiscoveryUsesConfigurationWithoutRecentNodeData(t *testing.T) 
 		t.Fatal(err)
 	}
 	streams, err := loraWANV2DiscoverStreams(context.Background(), client, LoRaWANV2Gateway{SN: "GW", NodeCount: 1})
-	if err != nil || len(streams) != 2 {
+	if err != nil || len(streams) != 6 {
 		t.Fatalf("streams=%#v err=%v", streams, err)
+	}
+	wantDiagnostics := map[string]struct {
+		name string
+		unit string
+	}{
+		"lora_node_1_battery":      {name: "节点 1 · 电池电压", unit: "V"},
+		"lora_node_1_rssi":         {name: "节点 1 · 接收信号强度", unit: "dBm"},
+		"lora_node_1_sd_card_rate": {name: "节点 1 · SD 卡使用率", unit: "%"},
+		"lora_node_1_snr":          {name: "节点 1 · 信噪比", unit: "dB"},
+	}
+	for _, stream := range streams {
+		if expected, ok := wantDiagnostics[stream.Code]; ok {
+			if stream.Name != expected.name || stream.Unit != expected.unit {
+				t.Fatalf("incorrect diagnostic stream: %#v", stream)
+			}
+			delete(wantDiagnostics, stream.Code)
+		}
+	}
+	if len(wantDiagnostics) != 0 {
+		t.Fatalf("missing diagnostic streams: %#v", wantDiagnostics)
 	}
 }
 
@@ -349,8 +392,8 @@ func TestLoRaWANV2DiscoveryHandlesMissingAndSDIConfigurations(t *testing.T) {
 		wantError   bool
 		wantStreams int
 	}{
-		{"missing configuration", 404, `{"success":false,"error_code":"0x10011307","payload":null}`, false, 0},
-		{"SDI without units", 200, `{"success":true,"payload":{"content":[["sdi",["0",[["RPFD","0"],["FRPFD","1"]]]]]}}`, false, 2},
+		{"missing configuration", 404, `{"success":false,"error_code":"0x10011307","payload":null}`, false, 4},
+		{"SDI without units", 200, `{"success":true,"payload":{"content":[["sdi",["0",[["RPFD","0"],["FRPFD","1"]]]]]}}`, false, 6},
 		{"missing gateway", 404, `{"success":false,"error_code":"0x10011301"}`, true, 0},
 		{"unregistered route", 404, ``, true, 0},
 		{"server failure", 500, `{"success":false,"error_code":"0x10011308"}`, true, 0},
@@ -378,8 +421,12 @@ func TestLoRaWANV2DiscoveryHandlesMissingAndSDIConfigurations(t *testing.T) {
 			if (err != nil) != tc.wantError || len(streams) != tc.wantStreams {
 				t.Fatalf("streams=%#v err=%v", streams, err)
 			}
-			if tc.wantStreams == 2 {
-				if streams[0].Code != "lora_node_1_frpfd" || streams[1].Code != "lora_node_1_rpfd" || streams[0].Unit != "" || streams[1].Unit != "" {
+			if tc.name == "SDI without units" {
+				byCode := make(map[string]loraWANV2StreamSpec, len(streams))
+				for _, stream := range streams {
+					byCode[stream.Code] = stream
+				}
+				if byCode["lora_node_1_frpfd"].Unit != "" || byCode["lora_node_1_rpfd"].Unit != "" {
 					t.Fatalf("incorrect SDI metrics: %#v", streams)
 				}
 			}

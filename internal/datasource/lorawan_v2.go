@@ -132,6 +132,31 @@ type loraWANV2StreamSpec struct {
 	ConfigHash    string
 }
 
+var loraWANV2NodeDiagnosticMetrics = map[string]string{
+	"battery":      "V",
+	"rssi":         "dBm",
+	"sd_card_rate": "%",
+	"snr":          "dB",
+}
+
+var loraWANV2MetricNames = map[string]string{
+	"altitude":     "海拔",
+	"battery":      "电池电压",
+	"cell":         "4G 信号质量",
+	"latitude":     "纬度",
+	"longitude":    "经度",
+	"rssi":         "接收信号强度",
+	"sd_card_rate": "SD 卡使用率",
+	"snr":          "信噪比",
+}
+
+var loraWANV2GatewayMetricUnits = map[string]string{
+	"altitude":  "m",
+	"battery":   "V",
+	"latitude":  "°",
+	"longitude": "°",
+}
+
 func newLoRaWANV2Client(ctx context.Context, resolver SecretResolver, source DataSource) (*loraWANV2Client, error) {
 	if source.Type != "http_api" {
 		return nil, apperr.New(apperr.KindDataSource, "lorawan_v2 requires http_api data source type")
@@ -679,7 +704,11 @@ func loraWANV2DiscoverStreams(ctx context.Context, client *loraWANV2Client, gate
 			}
 			seen[code] = key
 			cfg, _ := json.Marshal(loraWANV2TelemetryConfig{GatewaySN: gateway.SN, NodeIndex: node, Metric: key})
-			specs = append(specs, loraWANV2StreamSpec{Code: code, Name: name + " · " + key, Unit: units[key], AdapterConfig: cfg, ConfigHash: configHash})
+			metricName := key
+			if translated := loraWANV2MetricNames[key]; translated != "" {
+				metricName = translated
+			}
+			specs = append(specs, loraWANV2StreamSpec{Code: code, Name: name + " · " + metricName, Unit: units[key], AdapterConfig: cfg, ConfigHash: configHash})
 		}
 		return nil
 	}
@@ -693,7 +722,7 @@ func loraWANV2DiscoverStreams(ctx context.Context, client *loraWANV2Client, gate
 		for key, raw := range record.Values {
 			if key != "ts" && key != "meta" {
 				if _, ok := loraWANV2Number(raw); ok {
-					gatewayMetrics[key] = ""
+					gatewayMetrics[key] = loraWANV2GatewayMetricUnits[key]
 				}
 			}
 		}
@@ -705,6 +734,11 @@ func loraWANV2DiscoverStreams(ctx context.Context, client *loraWANV2Client, gate
 		units, configHash, err := loraWANV2NodeMetricCatalog(ctx, client, gateway.SN, index)
 		if err != nil {
 			return nil, apperr.Wrap(apperr.KindDataSource, "read node "+strconv.Itoa(index)+" sensor configuration", err)
+		}
+		for key, unit := range loraWANV2NodeDiagnosticMetrics {
+			if _, configured := units[key]; !configured {
+				units[key] = unit
+			}
 		}
 		if err := appendMetrics(&index, units, configHash); err != nil {
 			return nil, err
