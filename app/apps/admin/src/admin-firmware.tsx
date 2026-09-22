@@ -59,7 +59,7 @@ export function AdminFirmwarePage() {
       const version = String(values.version ?? "").trim();
       const verifyValue = String(values.verifyValue ?? "").trim();
       const buildId = String(values.buildId ?? "").trim();
-      const loraVersionValid = /^([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])){3}$/.test(version);
+      const loraVersionValid = /^([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])){2}$/.test(version);
       if (!file || !version || !/^[0-9a-fA-F]{32}$/.test(verifyValue) || deviceIds.length === 0) throw new Error(t("admin:firmware.validation"));
       if (sourceFamily === "lorawan_v2" && !loraVersionValid) throw new Error(t("admin:firmware.loraVersionValidation"));
       if (sourceFamily === "carbon" && !/^[1-9][0-9]*$/.test(buildId)) throw new Error(t("admin:firmware.buildIdValidation"));
@@ -110,7 +110,7 @@ export function AdminFirmwarePage() {
           </Upload.Dragger>
         </Form.Item>
         <div className="firmware-form-grid">
-          <Form.Item name="version" label={t("admin:firmware.version")} rules={[{ required: true }]}><Input placeholder={sourceFamily === "lorawan_v2" ? "1.2.3.4" : t("admin:firmware.versionPlaceholder")} /></Form.Item>
+          <Form.Item name="version" label={t("admin:firmware.version")} rules={[{ required: true }]}><Input placeholder={sourceFamily === "lorawan_v2" ? "1.2.3" : t("admin:firmware.versionPlaceholder")} /></Form.Item>
           <Form.Item name="verifyValue" label={t("admin:firmware.md5")} rules={[{ required: true, pattern: /^[0-9a-fA-F]{32}$/, message: t("admin:firmware.validation") }]}><Input maxLength={32} placeholder="32-character Base16" /></Form.Item>
           {sourceFamily === "carbon" ? <Form.Item name="buildId" label={t("admin:firmware.buildId")} rules={[{ required: true, pattern: /^[1-9][0-9]*$/, message: t("admin:firmware.buildIdValidation") }]}><Input inputMode="numeric" placeholder={t("admin:firmware.buildIdPlaceholder")} /></Form.Item> : null}
         </div>

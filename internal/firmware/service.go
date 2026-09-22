@@ -123,8 +123,8 @@ func NewService(db *pgxpool.Pool, dataSources SourcePublisher, stores map[string
 func ParseVersion(value string) (string, uint32, error) {
 	value = strings.TrimSpace(value)
 	parts := strings.Split(value, ".")
-	if len(parts) != 4 {
-		return "", 0, apperr.New(apperr.KindInvalidArgument, "version must contain four numeric parts")
+	if len(parts) != 3 {
+		return "", 0, apperr.New(apperr.KindInvalidArgument, "version must contain three numeric parts")
 	}
 	var encoded uint32
 	for index, part := range parts {
@@ -135,7 +135,7 @@ func ParseVersion(value string) (string, uint32, error) {
 		if err != nil || n < 0 || n > 255 {
 			return "", 0, apperr.New(apperr.KindInvalidArgument, "version parts must be between 0 and 255")
 		}
-		encoded |= uint32(n) << (8 * index)
+		encoded |= uint32(n) << (24 - 8*index)
 	}
 	return value, encoded, nil
 }

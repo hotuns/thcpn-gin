@@ -102,17 +102,25 @@ func TestCreateCarbonFirmwareRequiresAndPublishesAdminBuildID(t *testing.T) {
 }
 
 func TestParseVersion(t *testing.T) {
-	version, encoded, err := ParseVersion("1.2.3.4")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if version != "1.2.3.4" || encoded != 67305985 {
-		t.Fatalf("got %q / %d", version, encoded)
+	for _, test := range []struct {
+		version string
+		encoded uint32
+	}{
+		{version: "1.2.3", encoded: 16909056},
+		{version: "5.2.1", encoded: 84017408},
+	} {
+		version, encoded, err := ParseVersion(test.version)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if version != test.version || encoded != test.encoded {
+			t.Fatalf("got %q / %d, want %q / %d", version, encoded, test.version, test.encoded)
+		}
 	}
 }
 
 func TestParseVersionRejectsInvalidValues(t *testing.T) {
-	for _, value := range []string{"1.2.3", "1.2.3.256", "01.2.3.4", "a.2.3.4"} {
+	for _, value := range []string{"1.2", "1.2.3.4", "1.2.256", "01.2.3", "a.2.3"} {
 		if _, _, err := ParseVersion(value); err == nil {
 			t.Fatalf("expected %q to fail", value)
 		}
@@ -138,7 +146,7 @@ func TestCreateUploadsAndPublishesLoRaWANV2Firmware(t *testing.T) {
 	publisher := &fakePublisher{}
 	service := NewService(db, publisher, map[string]ArtifactStore{"lorawan_v2": {Store: store, PublicURLPrefix: "https://cdn.example.test"}})
 	idempotencyKey := uuid.New()
-	result, err := service.Create(ctx, UploadInput{Filename: "gateway.bin", ContentType: "application/octet-stream", Version: "1.2.3.4", VerifyValue: "0123456789abcdef0123456789ABCDEF", SizeBytes: 4, Body: bytes.NewReader([]byte("test")), DeviceIDs: []uuid.UUID{device}, ActorAdminID: admin, IdempotencyKey: idempotencyKey})
+	result, err := service.Create(ctx, UploadInput{Filename: "gateway.bin", ContentType: "application/octet-stream", Version: "1.2.3", VerifyValue: "0123456789abcdef0123456789ABCDEF", SizeBytes: 4, Body: bytes.NewReader([]byte("test")), DeviceIDs: []uuid.UUID{device}, ActorAdminID: admin, IdempotencyKey: idempotencyKey})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,10 +157,10 @@ func TestCreateUploadsAndPublishesLoRaWANV2Firmware(t *testing.T) {
 		t.Fatalf("upload or publish missing: %#v %#v", store, publisher.calls)
 	}
 	call := publisher.calls[0]
-	if call.path != "/device/GW-1/firmware" || call.body["firmware_version"] != uint32(67305985) || call.body["verify_value"] != "0123456789abcdef0123456789ABCDEF" {
+	if call.path != "/device/GW-1/firmware" || call.body["firmware_version"] != uint32(16909056) || call.body["verify_value"] != "0123456789abcdef0123456789ABCDEF" {
 		t.Fatalf("unexpected upstream request: %#v", call)
 	}
-	repeated, err := service.Create(ctx, UploadInput{Filename: "ignored.bin", Version: "9.9.9.9", VerifyValue: "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", SizeBytes: 7, Body: bytes.NewReader([]byte("ignored")), DeviceIDs: []uuid.UUID{device}, ActorAdminID: admin, IdempotencyKey: idempotencyKey})
+	repeated, err := service.Create(ctx, UploadInput{Filename: "ignored.bin", Version: "9.9.9", VerifyValue: "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", SizeBytes: 7, Body: bytes.NewReader([]byte("ignored")), DeviceIDs: []uuid.UUID{device}, ActorAdminID: admin, IdempotencyKey: idempotencyKey})
 	if err != nil || repeated.ID != result.ID || len(publisher.calls) != 1 {
 		t.Fatalf("idempotent retry created another release: %#v %v", repeated, err)
 	}

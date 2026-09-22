@@ -9797,7 +9797,7 @@ components:
       required: [file, version, verify_value, device_ids, idempotency_key]
       properties:
         file: {type: string, format: binary}
-        version: {type: string, example: "1.2.3.4"}
+        version: {type: string, example: "1.2.3", description: "LoRaWAN V2 uses three 0-255 components encoded as A<<24 | B<<16 | C<<8."}
         verify_value: {type: string, pattern: "^[0-9A-Fa-f]{32}$"}
         build_id: {type: integer, format: int64, minimum: 1, description: Required when the selected devices use the Carbon source family; entered by the administrator.}
         device_ids: {type: array, items: {$ref: "#/components/schemas/UUID"}}

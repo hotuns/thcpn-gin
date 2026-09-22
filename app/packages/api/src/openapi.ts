@@ -6559,7 +6559,10 @@ export interface components {
         CreateFirmwareReleaseRequest: {
             /** Format: binary */
             file: string;
-            /** @example 1.2.3.4 */
+            /**
+             * @description LoRaWAN V2 uses three 0-255 components encoded as A<<24 | B<<16 | C<<8.
+             * @example 1.2.3
+             */
             version: string;
             verify_value: string;
             /**
