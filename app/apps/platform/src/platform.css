@@ -377,6 +377,7 @@
     gap: 18px;
     padding: 18px 10px 14px;
     overflow: visible;
+    z-index: 30;
   }
   .app-shell.sidebar-collapsed .sidebar-brand-row {
     justify-content: center;
