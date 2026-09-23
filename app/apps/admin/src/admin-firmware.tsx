@@ -25,10 +25,11 @@ export function AdminFirmwarePage() {
   const [deviceIds, setDeviceIds] = useState<string[]>(() => { const id = searchParams.get("device_id"); return id ? [id] : []; });
   const [sourceFamily, setSourceFamily] = useState<SourceFamily | undefined>();
   const [status, setStatus] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
   const [search, setSearch] = useState("");
   const [formError, setFormError] = useState("");
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
-  const releases = useQuery({ queryKey: ["admin", "firmware-releases", status, search], queryFn: () => api.admin.firmwareReleases({ status: status || undefined, device: search || undefined, page_size: 50 }) });
+  const releases = useQuery({ queryKey: ["admin", "firmware-releases", sourceFilter, status, search], queryFn: () => api.admin.firmwareReleases({ source_family: sourceFilter || undefined, status: status || undefined, device: search || undefined, page_size: 50 }) });
   const devices = useQuery({ queryKey: ["admin", "firmware-devices"], queryFn: () => api.admin.devices() });
   const candidates = useMemo(() => ((devices.data?.items ?? []) as DeviceRow[]).filter((device) => ["thcpn", "carbon", "lorawan_v2"].includes(device.source_family ?? "") && device.capabilities?.includes("firmware_update")), [devices.data]);
   const sourceCandidates = candidates.filter((device) => device.source_family === sourceFamily);
@@ -77,6 +78,12 @@ export function AdminFirmwarePage() {
     <Card className="firmware-panel">
       <div className="firmware-filters">
         <Input allowClear prefix={<Search size={15} />} value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("admin:firmware.search")} />
+        <Select value={sourceFilter} onChange={setSourceFilter} aria-label={t("admin:firmware.sourceFilter")} options={[
+          { value: "", label: t("admin:firmware.allSources") },
+          { value: "thcpn", label: t("admin:firmware.source_thcpn") },
+          { value: "carbon", label: t("admin:firmware.source_carbon") },
+          { value: "lorawan_v2", label: t("admin:firmware.source_lorawan_v2") },
+        ]} />
         <Select value={status} onChange={setStatus} aria-label={t("admin:firmware.statusFilter")} options={[
           { value: "", label: t("admin:firmware.allStatuses") },
           { value: "completed", label: t("admin:firmware.completed") },

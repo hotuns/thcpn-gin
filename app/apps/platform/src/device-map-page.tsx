@@ -5,6 +5,7 @@ import { api, deviceTopologyRoleLabel, formatApiError, type DeviceMapItem, type 
 import { DeviceMap, iconifyIconUrl, tiandituImageryStyle } from "@thcpn/device-map";
 import { Button, StateView, Switch } from "./platform-ui";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
+import { DEVICE_LIST_STALE_TIME, DEVICE_MAP_STALE_TIME } from "./device-list-cache";
 
 export function DeviceMapPage() {
   const { currentId, current } = useWorkspace();
@@ -14,11 +15,12 @@ export function DeviceMapPage() {
   const [consoleCollapsed, setConsoleCollapsed] = useState(
     () => localStorage.getItem("ecocloud:device-map-console-collapsed") === "true",
   );
-  const catalog = useQuery({ queryKey: ["device-taxonomy"], queryFn: api.devices.taxonomy });
+  const catalog = useQuery({ queryKey: ["device-taxonomy"], queryFn: api.devices.taxonomy, staleTime: DEVICE_LIST_STALE_TIME });
   const query = useQuery({
     queryKey: workspaceQueryKey(currentId, "device-map", String(includeChildren)),
     queryFn: () => api.devices.map(currentId!, includeChildren),
     enabled: Boolean(currentId),
+    staleTime: DEVICE_MAP_STALE_TIME,
   });
   const terms = catalog.data?.items ?? [];
   const rows = useMemo(

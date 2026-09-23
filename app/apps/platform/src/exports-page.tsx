@@ -19,6 +19,7 @@ import {
   type ExportJob,
   type JsonRecord,
 } from "@thcpn/api";
+import { Alert, AlertDescription, AlertTitle } from "./components/ui/alert";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import {
   Badge,
@@ -820,7 +821,7 @@ function GroupExportForm({
                 </span>
               )}
             </div>
-            {children.error && <div role="alert">{formatApiError(children.error).message}</div>}
+            {children.error && <Alert variant="destructive" className="request-error-inline"><AlertTitle>设备数据加载失败</AlertTitle><AlertDescription><p>{formatApiError(children.error).message}</p></AlertDescription></Alert>}
             <div className="export-device-checks">
               {filteredNodes.map((item) => {
                 const id = value(item, "id");

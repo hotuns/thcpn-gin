@@ -160,7 +160,8 @@ System
 | `/admin` | API 健康、平台异常、设备资产、数据源、用户和工作区运维总览 |
 | `/admin/sources` | DataSource 配置、标准站/网关/相机同步和全量同步 |
 | `/admin/devices` | 系统设备资产、搜索筛选、分页、多选批量操作、拓扑、配置、生命周期、能力、相机和分配管理 |
-| `/admin/sensors` | 平台传感器模板 CRUD、源库导入和协议参数/指标可视化与 JSON 编辑 |
+| `/admin/sensors` | 传感器模板 V1：旧版模板 CRUD、THCPN 源库导入和协议参数/指标编辑 |
+| `/admin/sensors-v2` | 传感器模板 V2：LoRaWAN V2 独立模板 CRUD、原生协议和指标编辑；与 V1 不共享模板记录 |
 | `/admin/device-map` | 系统设备地图、分类筛选、子节点显示和批量分类 |
 | `/admin/logs` | 平台运行日志检索、详情、导出、原始文件和索引维护 |
 | `/admin/workspaces`、`/admin/users` | 工作区治理和普通用户账号管理 |

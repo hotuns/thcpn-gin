@@ -80,7 +80,7 @@ func (h *Handler) Create(c *gin.Context) {
 func (h *Handler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-	result, err := h.service.List(c.Request.Context(), page, size, c.Query("status"), c.Query("version"), c.Query("device"))
+	result, err := h.service.List(c.Request.Context(), page, size, c.Query("status"), c.Query("version"), c.Query("device"), c.Query("source_family"))
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return

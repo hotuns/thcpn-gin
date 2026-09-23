@@ -88,6 +88,9 @@ type THCPNSensorTemplateListResponse struct {
 }
 
 func (s *Service) ListTHCPNSensorTemplates(ctx context.Context, input THCPNSensorTemplateListInput) (THCPNSensorTemplateListResponse, error) {
+	if input.DeviceID != uuid.Nil || strings.TrimSpace(input.SourceFamily) == "" {
+		input.SourceFamily = "thcpn"
+	}
 	var externalDeviceType *string
 	if input.DeviceID != uuid.Nil {
 		db, ref, err := s.openTHCPNDevice(ctx, input.DeviceID)
@@ -195,6 +198,20 @@ func (s *Service) UpdateTHCPNSensorTemplate(ctx context.Context, id int64, input
 		return THCPNSensorTemplate{}, apperr.Wrap(apperr.KindInternal, "begin sensor template update", err)
 	}
 	defer tx.Rollback(context.Background())
+	var currentFamily string
+	if err := tx.QueryRow(ctx, `SELECT source_family FROM sensor_template_variants WHERE template_id=$1 FOR UPDATE`, id).Scan(&currentFamily); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return THCPNSensorTemplate{}, apperr.New(apperr.KindNotFound, "sensor template not found")
+		}
+		return THCPNSensorTemplate{}, apperr.Wrap(apperr.KindInternal, "read sensor template version", err)
+	}
+	nextFamily := "thcpn"
+	if _, ok := input.Variants["lorawan_v2"]; ok {
+		nextFamily = "lorawan_v2"
+	}
+	if currentFamily != nextFamily {
+		return THCPNSensorTemplate{}, apperr.New(apperr.KindInvalidArgument, "sensor template version cannot be changed")
+	}
 	tag, err := tx.Exec(ctx, `UPDATE sensor_templates SET
 sensor_type = $2, description = NULLIF($3, ''), port = NULLIF($4, ''), port_num = $5,
 driver = NULLIF($6, ''), port_nums = $7, params = $8, metrics = $9, status = $10,
@@ -269,6 +286,7 @@ WHERE NOT EXISTS (
   SELECT 1 FROM sensor_templates
   WHERE sensor_type = $1 AND port IS NOT DISTINCT FROM NULLIF($3, '')
     AND driver IS NOT DISTINCT FROM NULLIF($5, '') AND params = $7::jsonb
+    AND EXISTS (SELECT 1 FROM sensor_template_variants v WHERE v.template_id=sensor_templates.id AND v.source_family='thcpn')
 ) RETURNING id`, strings.TrimSpace(sensorType), nullableString(description), nullableString(port), portNum.Int64,
 			nullableString(driver), string(portNumsJSON), string(paramsJSON), string(metricsJSON), nullableUUID(actorID)).Scan(&insertedID)
 		if insertErr != nil && !errors.Is(insertErr, pgx.ErrNoRows) {
@@ -395,6 +413,9 @@ func validateSensorTemplateWrite(input THCPNSensorTemplateWriteInput) error {
 }
 
 func validateSensorTemplateVariants(input THCPNSensorTemplateWriteInput) error {
+	if len(input.Variants) > 1 {
+		return apperr.New(apperr.KindInvalidArgument, "V1 and V2 sensor templates must be created separately")
+	}
 	defined := map[string]bool{}
 	metrics := input.Metrics
 	if len(metrics) == 0 {
@@ -555,24 +576,16 @@ type sensorTemplateVariantExecer interface {
 
 func upsertSensorTemplateVariants(ctx context.Context, db sensorTemplateVariantExecer, id int64, input THCPNSensorTemplateWriteInput) error {
 	variants := input.Variants
-	explicitVariants := variants != nil
 	if variants == nil {
 		variants = map[string]map[string]any{}
 	}
-	if _, ok := variants["thcpn"]; !ok {
+	if len(variants) == 0 {
 		variants["thcpn"] = map[string]any{"port": input.Port, "port_num": input.PortNum, "port_nums": input.PortNums, "driver": input.Driver, "params": input.Params}
 	}
 	for family, config := range variants {
 		raw, _ := json.Marshal(config)
 		if _, err := db.Exec(ctx, `INSERT INTO sensor_template_variants(template_id,source_family,config) VALUES($1,$2,$3) ON CONFLICT(template_id,source_family) DO UPDATE SET config=EXCLUDED.config,status='active',updated_at=now()`, id, family, raw); err != nil {
 			return apperr.Wrap(apperr.KindInternal, "upsert sensor template variant", err)
-		}
-	}
-	if explicitVariants {
-		if _, exists := variants["lorawan_v2"]; !exists {
-			if _, err := db.Exec(ctx, `DELETE FROM sensor_template_variants WHERE template_id=$1 AND source_family='lorawan_v2'`, id); err != nil {
-				return apperr.Wrap(apperr.KindInternal, "delete sensor template variant", err)
-			}
 		}
 	}
 	return nil

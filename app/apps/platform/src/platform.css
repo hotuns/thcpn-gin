@@ -8867,6 +8867,10 @@ body::-webkit-scrollbar-corner,
   gap: 12px;
   padding: 16px 18px 8px;
 }
+.gateway-node-compare-field {
+  min-width: 0;
+  padding: 0 18px 16px;
+}
 .gateway-node-metric-field {
   min-width: 0;
   grid-column: 1 / -1;
@@ -8891,28 +8895,64 @@ body::-webkit-scrollbar-corner,
   color: var(--muted);
   font-size: var(--font-size-caption);
 }
-.gateway-node-metric-checks > label {
+.gateway-node-metric-checks > button {
   min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 36px;
   padding: 8px 10px;
+  color: var(--ink);
   background: var(--surface-muted);
   border: 1px solid var(--soft-line);
   border-radius: 5px;
-  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
 }
-.gateway-node-metric-checks > label.selected {
+.gateway-node-metric-checks > button:hover {
+  border-color: var(--blue);
+  transform: translateY(-1px);
+}
+.gateway-node-metric-checks > button.selected {
   background: var(--surface-selected);
   border-color: var(--blue);
 }
-.gateway-node-metric-checks > label[draggable="true"] {
+.gateway-node-metric-checks > button[draggable="true"] {
   cursor: grab;
 }
-.gateway-node-metric-checks input {
-  margin: 0;
+.gateway-node-metric-checks > button.dragging {
+  cursor: grabbing;
+  opacity: .45;
 }
-.gateway-node-metric-checks span {
+.gateway-node-metric-checks > button.drag-over {
+  border-color: var(--blue);
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+.gateway-node-metric-drag-handle {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+.gateway-node-metric-checks > button:not(.selected) .gateway-node-metric-drag-handle {
+  opacity: .25;
+}
+.gateway-node-metric-check {
+  width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: white;
+  background: var(--control);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+.gateway-node-metric-checks > button.selected .gateway-node-metric-check {
+  background: var(--blue);
+  border-color: var(--blue);
+}
+.gateway-node-metric-checks .gateway-node-metric-copy {
   min-width: 0;
   display: grid;
   gap: 2px;
@@ -9864,6 +9904,9 @@ body::-webkit-scrollbar-corner,
   }
   .gateway-node-query-fields {
     grid-template-columns: 1fr;
+  }
+  .gateway-node-compare-field {
+    padding-inline: 10px;
   }
   .gateway-node-metric-field {
     padding-inline: 10px;
@@ -12398,6 +12441,10 @@ body::-webkit-scrollbar-corner,
 .shadcn-alert-title { margin:0; font-size:var(--font-size-small); font-weight:var(--font-weight-semibold); line-height:1.35; }
 .shadcn-alert-description { margin-top:5px; color:var(--muted); font-size:var(--font-size-small); line-height:1.5; }
 .shadcn-alert-description p { margin:0; overflow-wrap:anywhere; }
+.request-error-inline { margin: 8px 0; padding: 10px 12px; }
+.comparison-query-alert { min-width: 220px; padding: 8px 10px; }
+.comparison-query-alert .shadcn-alert-description { margin-top: 3px; }
+.comparison-query-alert .shadcn-alert-title { font-size: var(--font-size-caption); }
 .global-request-error>.ui-close-button { position:absolute; top:8px; right:8px; }
 .global-request-error>div { padding-right:30px; }
 /* Wallboards */

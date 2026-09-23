@@ -2718,7 +2718,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List platform sensor templates */
+        /**
+         * List platform sensor templates
+         * @description V1 (thcpn) and V2 (lorawan_v2) are separate template records. Defaults to V1.
+         */
         get: operations["adminListSensorTemplates"];
         put?: never;
         /** Create a platform sensor template */
@@ -6776,6 +6779,7 @@ export interface components {
             created_at?: components["schemas"]["Timestamp"];
             updated_at?: components["schemas"]["Timestamp"];
         };
+        /** @description A template belongs exclusively to V1 (thcpn) or V2 (lorawan_v2). Supply only one variant; omitting variants defaults to V1. An existing template cannot change family. */
         SensorTemplateRequest: {
             sensor_type: string;
             description?: string;
@@ -9449,6 +9453,7 @@ export interface operations {
                 status?: "publishing" | "partial" | "completed" | "failed";
                 version?: string;
                 device?: string;
+                source_family?: "thcpn" | "carbon" | "lorawan_v2";
             };
             header?: never;
             path?: never;
@@ -11128,6 +11133,7 @@ export interface operations {
         parameters: {
             query?: {
                 q?: string;
+                source_family?: "thcpn" | "lorawan_v2";
                 port?: string;
                 driver?: string;
                 status?: "active" | "disabled";

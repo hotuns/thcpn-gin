@@ -70,6 +70,8 @@ import { GatewayNodeData } from "./gateway-node-data";
 import {
   DEVICE_LIST_GC_TIME,
   DEVICE_LIST_STALE_TIME,
+  DEVICE_MAP_STALE_TIME,
+  DEVICE_RUNTIME_STALE_TIME,
   deviceListQueryKey,
 } from "./device-list-cache";
 
@@ -265,6 +267,7 @@ export function DevicesPage() {
     queryKey: workspaceQueryKey(currentId, "device-map", "false"),
     queryFn: () => api.devices.map(currentId!, false),
     enabled: Boolean(currentId),
+    staleTime: DEVICE_MAP_STALE_TIME,
   });
   const taxonomy = useQuery({
     queryKey: ["device-taxonomy"],
@@ -291,7 +294,7 @@ export function DevicesPage() {
   const runtimeDeviceIDs = useMemo(
     () =>
       topLevelDevices
-        .filter((device) => !["camera", "carbon_sink"].includes(deviceCategory(device)))
+        .filter((device) => device.source_family === "thcpn" && !["camera", "carbon_sink"].includes(deviceCategory(device)))
         .map((device) => device.id),
     [topLevelDevices],
   );
@@ -304,6 +307,7 @@ export function DevicesPage() {
     queryFn: () => api.devices.runtime(runtimeDeviceIDs),
     enabled: Boolean(currentId && runtimeDeviceIDs.length),
     retry: false,
+    staleTime: DEVICE_RUNTIME_STALE_TIME,
   });
   const runtimeByDevice = useMemo(
     () =>
@@ -378,7 +382,11 @@ export function DevicesPage() {
               />
             </div>
             <div className="device-filter-actions">
-              <Button variant="secondary" onClick={() => void query.refetch()}>
+              <Button variant="secondary" onClick={() => {
+                void query.refetch();
+                void mapQuery.refetch();
+                if (runtimeDeviceIDs.length) void runtime.refetch();
+              }}>
                 <RefreshCw size={14} />
                 刷新
               </Button>

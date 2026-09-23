@@ -188,7 +188,9 @@ function buildLoRaContent(items: LoRaVisualItem[]): unknown[] {
   });
 }
 
-export function AdminSensorsPage() {
+export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) {
+  const isV2 = version === "v2";
+  const title = `传感器模板 ${version.toUpperCase()}`;
   const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState<string>();
@@ -201,10 +203,11 @@ export function AdminSensorsPage() {
   const [paramExtras, setParamExtras] = useState<JsonObject>({});
   const [form] = Form.useForm();
   const query = useQuery({
-    queryKey: ["admin", "sensor-templates", keyword, status, page],
+    queryKey: ["admin", "sensor-templates", version, keyword, status, page],
     queryFn: () =>
       api.admin.platformSensorTemplates({
         q: keyword,
+        source_family: isV2 ? "lorawan_v2" : "thcpn",
         status: status ?? "",
         page,
         page_size: 20,
@@ -242,7 +245,7 @@ export function AdminSensorsPage() {
             wait_time: visual.wait_time,
             metrics: visual.metrics,
             params_json: JSON.stringify(params, null, 2),
-            lora_enabled: Boolean(variants.lorawan_v2),
+            lora_enabled: isV2,
             lora_wait_time: lora.wait_time ?? 60,
             lora_mode:
               loraContent.length > 0 && loraItems.length !== loraContent.length
@@ -251,7 +254,7 @@ export function AdminSensorsPage() {
             lora_items: loraItems,
             lora_content_json: JSON.stringify(loraContent, null, 2),
           }
-        : initialValues,
+        : { ...initialValues, lora_enabled: isV2 },
     );
     setParamExtras(item ? visual.extras : {});
     setParamsMode("visual");
@@ -285,7 +288,7 @@ export function AdminSensorsPage() {
         };
       }
       let loraContent: unknown[] = [];
-      if (values.lora_enabled) {
+      if (isV2) {
         try {
           loraContent =
             values.lora_mode === "json"
@@ -303,17 +306,19 @@ export function AdminSensorsPage() {
       const payload: SensorTemplateRequest = {
         sensor_type: values.sensor_type.trim(),
         description: values.description?.trim() ?? "",
-        port: values.port?.trim() ?? "",
-        port_num: values.port_num ?? 0,
-        driver: values.driver?.trim() ?? "",
-        port_nums: (values.port_nums ?? [])
+        port: isV2 ? "" : values.port?.trim() ?? "",
+        port_num: isV2 ? 0 : values.port_num ?? 0,
+        driver: isV2 ? "" : values.driver?.trim() ?? "",
+        port_nums: (isV2 ? [] : values.port_nums ?? [])
           .map((value: string | number) => Number(value))
           .filter(Number.isInteger),
-        params,
+        params: isV2 ? { contents: params.contents ?? [] } : params,
         metrics: (Array.isArray(params.contents)
           ? params.contents
           : []) as JsonObject[],
-        variants: {
+        variants: isV2 ? {
+          lorawan_v2: { wait_time: Number(values.lora_wait_time ?? 0), content: loraContent },
+        } : {
           thcpn: {
             port: values.port?.trim() ?? "",
             port_num: values.port_num ?? 0,
@@ -323,14 +328,6 @@ export function AdminSensorsPage() {
             driver: values.driver?.trim() ?? "",
             params,
           },
-          ...(values.lora_enabled
-            ? {
-                lorawan_v2: {
-                  wait_time: Number(values.lora_wait_time ?? 0),
-                  content: loraContent,
-                },
-              }
-            : {}),
         },
         status: values.status,
       };
@@ -423,16 +420,16 @@ export function AdminSensorsPage() {
     <>
       <PageHeader
         eyebrow="Assets / sensor templates"
-        title="传感器模板"
-        description="维护平台统一的传感器协议与指标模板。模板修改只影响后续添加，不会自动改写设备已有配置。"
+        title={title}
+        description={isV2 ? "用于 LoRaWAN V2 的独立协议与指标模板。修改仅影响后续配置。" : "用于旧版设备的传感器协议与指标模板。修改仅影响后续配置。"}
         actions={
           <Space>
-            <Button
+            {!isV2 && <Button
               icon={<Download size={14} />}
               onClick={() => setImportOpen(true)}
             >
               从数据源导入
-            </Button>
+            </Button>}
             <Button
               type="primary"
               icon={<Plus size={14} />}
@@ -517,18 +514,18 @@ export function AdminSensorsPage() {
                   </div>
                 ),
               },
-              { title: "驱动", dataIndex: "driver", width: 140 },
+              ...(!isV2 ? [{ title: "驱动", dataIndex: "driver", width: 140 },
               {
                 title: "端口",
                 width: 120,
-                render: (_, item) => `${item.port || "—"} · ${item.port_num}`,
+                render: (_: unknown, item: THCPNSensorTemplate) => `${item.port || "—"} · ${item.port_num}`,
               },
               {
                 title: "可选编号",
                 width: 170,
-                render: (_, item) =>
+                render: (_: unknown, item: THCPNSensorTemplate) =>
                   item.port_nums.length ? item.port_nums.join(", ") : "—",
-              },
+              }] : []),
               {
                 title: "指标",
                 render: (_, item) => (
@@ -613,7 +610,7 @@ export function AdminSensorsPage() {
         )}
       </Panel>
       <Drawer
-        title={editor?.mode === "edit" ? "编辑传感器模板" : "新增传感器模板"}
+        title={`${editor?.mode === "edit" ? "编辑" : "新增"}${title}`}
         open={Boolean(editor)}
         width={920}
         onClose={() => setEditor(null)}
@@ -638,7 +635,7 @@ export function AdminSensorsPage() {
             <Input.TextArea rows={2} />
           </Form.Item>
           <div className="admin-form-grid">
-            <Form.Item name="driver" label="驱动 / 协议">
+            {!isV2 && <><Form.Item name="driver" label="驱动 / 协议">
               <Input placeholder="modbusrtu" />
             </Form.Item>
             <Form.Item name="port" label="端口">
@@ -646,7 +643,7 @@ export function AdminSensorsPage() {
             </Form.Item>
             <Form.Item name="port_num" label="默认端口编号">
               <InputNumber style={{ width: "100%" }} />
-            </Form.Item>
+            </Form.Item></>}
             <Form.Item name="status" label="状态">
               <Select
                 options={[
@@ -656,19 +653,19 @@ export function AdminSensorsPage() {
               />
             </Form.Item>
           </div>
-          <Form.Item
+          {!isV2 && <Form.Item
             name="port_nums"
             label="可选端口编号"
             extra="输入编号后回车；设备配置时将从这些编号中选择。"
           >
             <Select mode="tags" tokenSeparators={[",", " "]} />
-          </Form.Item>
+          </Form.Item>}
           <div className="sensor-template-params">
             <div className="visual-subsection-head">
               <div>
-                <strong>公共指标 / THCPN 配置</strong>
+                <strong>{isV2 ? "V2 数据指标" : "V1 协议与指标"}</strong>
                 <span>
-                  指标名称与单位供所有数据源共享；命令、解码和端口用于 THCPN
+                  {isV2 ? "定义本模板的指标名称和单位，Key 需与下方协议配置对应。" : "配置旧版设备的指标、命令、解码和端口。"}
                 </span>
               </div>
             </div>
@@ -681,19 +678,19 @@ export function AdminSensorsPage() {
                   label: "可视化编辑",
                   children: (
                     <>
-                      <div className="config-form-grid config-form-grid-2">
+                      {!isV2 && <div className="config-form-grid config-form-grid-2">
                         <Form.Item name="command" label="协议命令">
                           <Input className="code-input" />
                         </Form.Item>
                         <Form.Item name="wait_time" label="等待时间">
                           <InputNumber min={0} style={{ width: "100%" }} />
                         </Form.Item>
-                      </div>
+                      </div>}
                       <div className="visual-subsection-head">
                         <div>
                           <strong>数据指标</strong>
                           <span>
-                            配置 Key、名称、类型、单位、范围和解码规则
+                            {isV2 ? "配置 Key、名称、类型、单位和范围" : "配置 Key、名称、类型、单位、范围和解码规则"}
                           </span>
                         </div>
                       </div>
@@ -760,12 +757,12 @@ export function AdminSensorsPage() {
                                   >
                                     <InputNumber style={{ width: "100%" }} />
                                   </Form.Item>
-                                  <Form.Item
+                                  {!isV2 && <Form.Item
                                     name={[field.name, "decode"]}
                                     label="Decode"
                                   >
                                     <Input className="code-input" />
-                                  </Form.Item>
+                                  </Form.Item>}
                                 </div>
                                 <Space orientation="vertical" size={0}>
                                   <Button
@@ -828,7 +825,7 @@ export function AdminSensorsPage() {
                   children: (
                     <Form.Item
                       name="params_json"
-                      extra="完整维护 command、wait_time、contents 和其他厂商扩展字段。"
+                      extra={isV2 ? "维护 contents 中的指标 Key、名称和单位。" : "完整维护 command、wait_time、contents 和其他厂商扩展字段。"}
                       rules={[{ required: true, message: "请输入参数 JSON" }]}
                     >
                       <Input.TextArea
@@ -841,23 +838,14 @@ export function AdminSensorsPage() {
                 },
               ]}
             />
-            <div className="visual-subsection-head">
+            {isV2 && <><div className="visual-subsection-head">
               <div>
                 <strong>LoRaWAN V2 配置</strong>
                 <span>
                   使用上游原生 ad / 485 / sdi / iic 数组；指标 Key
-                  必须与公共指标一致
+                  必须与本模板指标一致
                 </span>
               </div>
-              <Form.Item name="lora_enabled" noStyle>
-                <Select
-                  style={{ width: 120 }}
-                  options={[
-                    { value: false, label: "未配置" },
-                    { value: true, label: "启用" },
-                  ]}
-                />
-              </Form.Item>
             </div>
             <Form.Item
               noStyle
@@ -1329,6 +1317,7 @@ export function AdminSensorsPage() {
                 ) : null
               }
             </Form.Item>
+            </>}
           </div>
         </Form>
       </Drawer>

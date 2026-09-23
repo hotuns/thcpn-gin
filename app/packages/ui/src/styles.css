@@ -960,6 +960,19 @@ a {
   color: var(--red);
   background: var(--red-soft);
 }
+.state-error-alert {
+  max-width: 760px;
+  margin: 0 auto;
+  text-align: left;
+}
+.state-error-alert .shadcn-alert-description small {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+}
+.state-error-action {
+  margin-top: 14px;
+}
 .error-detail {
   margin-top: 12px;
   color: var(--muted);

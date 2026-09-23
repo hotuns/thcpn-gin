@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { Download, RefreshCw, Search } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "./components/ui/alert";
 import {
   CartesianGrid,
   Line,
@@ -146,7 +147,7 @@ export function CarbonDevicePage({ device }: { device: Device }) {
           <div><h2 className="panel-title">碳汇数据查询</h2><div className="panel-kicker">选择节点、地块和时间范围查看 NEE、ER、GPP</div></div>
           <div className="header-actions"><Button variant="secondary" onClick={refresh}><RefreshCw size={14} />刷新</Button><Button disabled={invalidRange || !field || flux.isFetching} onClick={applyRange}><Search size={14} />{flux.isFetching ? "查询中…" : "查询"}</Button></div>
         </div>
-        {overview.error && <div className="form-error carbon-overview-error">节点信息读取失败：{formatApiError(overview.error).message}</div>}
+        {overview.error && <Alert variant="destructive" className="request-error-inline carbon-overview-error"><AlertTitle>节点信息读取失败</AlertTitle><AlertDescription><p>{formatApiError(overview.error).message}</p></AlertDescription></Alert>}
         <div className="carbon-query-fields">
           <div className="field carbon-node-name-field"><label className="field-label" htmlFor="carbon-node-selector">节点</label><SelectInput id="carbon-node-selector" value={nodeId} onChange={(event) => setNodeId(Number(event.target.value))} disabled={overview.isLoading}>{Array.from({ length: overview.data?.nodes_count ?? 1 }, (_, index) => <option key={index + 1} value={index + 1}>{overview.data?.nodes.find(node => node.node_id === index + 1)?.name ?? `节点 ${index + 1}`}</option>)}</SelectInput>{context.data?.actions.configure && overview.data?.nodes.some(node => node.node_id === nodeId) && <NodeNameEditor name={overview.data?.nodes.find(node => node.node_id === nodeId)?.custom_name ?? ""} onSave={async name => {await api.devices.renameNode(device.id, nodeId, name); await invalidateNodeNames(queryClient);}}/>}</div>
           <label className="field"><span className="field-label">地块</span><SelectInput value={field} onChange={(event) => setField(event.target.value)} disabled={!fieldOptions.length}>{fieldOptions.length ? fieldOptions.map((value) => <option key={value} value={value}>{value} 地块</option>) : <option value="">暂无地块</option>}</SelectInput></label>

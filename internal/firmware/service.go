@@ -364,7 +364,7 @@ func (s *Service) targetRefs(ctx context.Context, ids []uuid.UUID) ([]targetRef,
 	return refs, nil
 }
 
-func (s *Service) List(ctx context.Context, page, pageSize int, status, version, deviceQuery string) (ListResult, error) {
+func (s *Service) List(ctx context.Context, page, pageSize int, status, version, deviceQuery, sourceFamily string) (ListResult, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -388,6 +388,12 @@ func (s *Service) List(ctx context.Context, page, pageSize int, status, version,
 	}
 	if deviceQuery = strings.TrimSpace(deviceQuery); deviceQuery != "" {
 		add("EXISTS(SELECT 1 FROM firmware_release_targets ft JOIN devices d ON d.id=ft.device_id WHERE ft.release_id=r.id AND (d.name || ' ' || COALESCE(ft.gateway_sn,'') || ' ' || COALESCE(ft.external_device_id::text,'')) ILIKE '%%'||$%d||'%%')", deviceQuery)
+	}
+	if sourceFamily = strings.TrimSpace(sourceFamily); sourceFamily != "" {
+		if sourceFamily != "thcpn" && sourceFamily != "carbon" && sourceFamily != "lorawan_v2" {
+			return ListResult{}, apperr.New(apperr.KindInvalidArgument, "invalid firmware source_family")
+		}
+		add("r.source_family=$%d", sourceFamily)
 	}
 	whereSQL := strings.Join(where, " AND ")
 	var total int64

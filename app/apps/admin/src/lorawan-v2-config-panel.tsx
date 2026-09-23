@@ -4,9 +4,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
   Button,
+  Collapse,
   Form,
   Input,
   InputNumber,
+  Popconfirm,
   Select,
   Space,
   Table,
@@ -36,7 +38,7 @@ const parseArray = (raw: string) => {
   return result;
 };
 const managementLabel: Record<string, { label: string; color: string }> = {
-  managed: { label: "已托管", color: "green" },
+  managed: { label: "平台已托管", color: "green" },
   matched: { label: "已匹配模板", color: "blue" },
   unmanaged: { label: "未托管", color: "orange" },
 };
@@ -627,13 +629,16 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
       ),
     },
   ];
+  const currentManagement = latest.data
+    ? managementLabel[text(payload(latest.data).management_status, "unmanaged")] ?? managementLabel.unmanaged
+    : null;
   return (
     <div className="admin-device-detail-content">
       <section className="admin-detail-section">
         <div className="admin-detail-section-head">
           <div>
             <h2>LoRa V2 配置</h2>
-            <span>源端配置 · 设备是否应用尚未确认</span>
+            <span>配置提交到 LoRa V2 服务后，设备是否应用仍需等待设备回报。</span>
           </div>
           <Space>
             <Tag color="cyan">LoRa V2</Tag>
@@ -666,6 +671,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
               label: "网关配置",
               children: (
                 <>
+                  <Alert className="lora-config-intro" type="info" showIcon message="网关配置" description="编辑网关的原生 JSON，确认内容后提交到 LoRa V2 服务。下方可查看历史记录。" />
                   <Form layout="vertical">
                     <Form.Item label="新增配置（JSON 对象）">
                       <Input.TextArea
@@ -675,22 +681,11 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                         spellCheck={false}
                       />
                     </Form.Item>
-                    <Button
-                      type="primary"
-                      loading={busy === "gateway"}
-                      onClick={() => void run("gateway")}
-                    >
-                      提交网关配置
-                    </Button>
+                    <Popconfirm title="提交网关配置？" description="配置将写入 LoRa V2 服务，设备是否应用需等待回报。" okText="确认提交" cancelText="取消" onConfirm={() => void run("gateway")}>
+                      <Button type="primary" loading={busy === "gateway"}>提交到 LoRa V2</Button>
+                    </Popconfirm>
                   </Form>
-                  <Table
-                    className="section-gap"
-                    rowKey={(item) => text(item.id)}
-                    size="small"
-                    dataSource={list(gateways.data)}
-                    columns={columns}
-                    pagination={false}
-                  />
+                  <Collapse className="lora-config-history" items={[{ key: "history", label: `历史配置（${list(gateways.data).length}）`, children: <Table rowKey={(item) => text(item.id)} size="small" dataSource={list(gateways.data)} columns={columns} pagination={false} /> }]} />
                 </>
               ),
             },
@@ -699,10 +694,11 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
               label: "节点传感器配置",
               children: (
                 <>
-                  <Space className="lora-config-node">
-                    <span>节点索引</span>
+                  <div className="lora-config-step"><span className="lora-config-step-number">1</span><div><strong>选择节点</strong><span>以下查看和编辑操作只作用于所选节点。</span></div></div>
+                  <Space className="lora-config-node" wrap>
                     <Select
                       value={node}
+                      aria-label="选择配置节点"
                       options={(nodes.data?.items ?? [])
                         .filter((item) => item.target.kind === "gateway_node")
                         .map((item) => ({
@@ -731,14 +727,11 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                       }}
                     />
                     {nodes.data?.items.some(item => item.target.kind === "gateway_node" && item.target.node_index === node) && <NodeNameEditor name={nodes.data?.items.find(item => item.target.kind === "gateway_node" && item.target.node_index === node)?.custom_name ?? ""} onSave={async name => {await api.admin.renameNode(deviceId, node, name); await invalidateNodeNames(queryClient);}}/>}
+                    {currentManagement ? <Tag color={currentManagement.color}>{currentManagement.label}</Tag> : null}
                   </Space>
                   {latest.data
                     ? (() => {
                         const current = payload(latest.data);
-                        const state =
-                          managementLabel[
-                            text(current.management_status, "unmanaged")
-                          ] ?? managementLabel.unmanaged;
                         const metrics = Array.isArray(current.metrics)
                           ? (current.metrics as JsonRecord[])
                           : [];
@@ -748,17 +741,10 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                           ? (current.template_instances as JsonRecord[])
                           : [];
                         return (
-                          <section className="lora-current-config">
-                            <header>
-                              <div>
-                                <span>当前配置</span>
-                                <strong>{nodes.data?.items.find(item => item.target.kind === "gateway_node" && item.target.node_index === node)?.name ?? `节点 ${node}`} 传感器配置</strong>
-                              </div>
-                              <Tag color={state.color}>{state.label}</Tag>
-                            </header>
+                          <section className="lora-current-config" aria-label="源端当前配置">
                             <div className="lora-current-config-grid">
                               <div>
-                                <span>上游配置 ID</span>
+                                <small>源端当前配置 ID</small>
                                 <strong>
                                   {text(
                                     current.upstream_config_id ?? current.id,
@@ -766,7 +752,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                                 </strong>
                               </div>
                               <div>
-                                <span>传感器实例</span>
+                                <small>已配置传感器</small>
                                 <div className="lora-current-tags">
                                   {instances.length ? (
                                     instances.map((item, index) => (
@@ -782,7 +768,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                                 </div>
                               </div>
                               <div>
-                                <span>数据指标</span>
+                                <small>平台已识别指标</small>
                                 <div className="lora-current-tags">
                                   {metrics.length ? (
                                     metrics.map((item, index) => (
@@ -803,8 +789,10 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                         );
                       })()
                     : null}
+                  <div className="lora-config-step"><span className="lora-config-step-number">2</span><div><strong>编辑配置草稿</strong><span>推荐使用模板；提交时只会使用当前选中的编辑方式，未提交的修改不会自动保存。</span></div></div>
                   <Form layout="vertical">
                     <Tabs
+                      className="lora-config-mode-tabs"
                       activeKey={sensorMode}
                       onChange={(mode) => {
                         if (mode === "advanced" && sensorMode === "templates") {
@@ -847,7 +835,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                       items={[
                         {
                           key: "templates",
-                          label: "从模板配置",
+                          label: "使用模板（推荐）",
                           children: (
                             <>
                               <Alert
@@ -862,7 +850,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                                 extra={
                                   loraTemplates.length
                                     ? "只显示已经维护 LoRaWAN V2 协议配置的模板。"
-                                    : "暂无可用模板，请先到传感器模板中增加 LoRaWAN V2 配置。"
+                                    : "暂无可用模板，请先到「传感器模板 V2」中新建模板。"
                                 }
                               >
                                 <Select
@@ -1020,7 +1008,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                         },
                         {
                           key: "advanced",
-                          label: "高级 JSON",
+                          label: "手动编辑 JSON",
                           children: (
                             <>
                               <Alert
@@ -1062,6 +1050,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                         },
                       ]}
                     />
+                    <div className="lora-config-step"><span className="lora-config-step-number">3</span><div><strong>确认并提交</strong><span>提交会写入源端；“已接受”不等于设备已应用。</span></div></div>
                     <Form.Item label="等待时间（秒）">
                       <InputNumber
                         min={0}
@@ -1074,25 +1063,11 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                         }}
                       />
                     </Form.Item>
-                    <Button
-                      type="primary"
-                      disabled={
-                        sensorMode === "templates" && !templateInstances.length
-                      }
-                      loading={busy === "sensor"}
-                      onClick={() => void run("sensor")}
-                    >
-                      提交节点传感器配置
-                    </Button>
+                    <Popconfirm title={`提交节点 ${node} 的传感器配置？`} description="配置将写入 LoRa V2 服务，设备是否应用需等待回报。" okText="确认提交" cancelText="取消" onConfirm={() => void run("sensor")}>
+                      <Button type="primary" disabled={sensorMode === "templates" && !templateInstances.length} loading={busy === "sensor"}>提交到 LoRa V2</Button>
+                    </Popconfirm>
                   </Form>
-                  <Table
-                    className="section-gap"
-                    rowKey={(item) => text(item.id)}
-                    size="small"
-                    dataSource={list(sensors.data)}
-                    columns={columns}
-                    pagination={false}
-                  />
+                  <Collapse className="lora-config-history" items={[{ key: "history", label: `节点 ${node} 历史配置（${list(sensors.data).length}）`, children: <Table rowKey={(item) => text(item.id)} size="small" dataSource={list(sensors.data)} columns={columns} pagination={false} /> }]} />
                 </>
               ),
             },
@@ -1101,10 +1076,12 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
               label: "节点时间配置",
               children: (
                 <Form layout="vertical">
+                  <Alert className="lora-config-intro" type="info" showIcon message="节点时间配置" description="先选择节点，再填写上游要求的时间配置文本。提交后设备是否应用仍需等待回报。" />
                   <Space className="lora-config-node">
-                    <span>节点索引</span>
+                    <span>选择节点</span>
                     <Select
                       value={node}
+                      aria-label="选择时间配置节点"
                       options={(nodes.data?.items ?? [])
                         .filter((item) => item.target.kind === "gateway_node")
                         .map((item) => ({
@@ -1138,14 +1115,9 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                       onChange={(event) => setTimeContent(event.target.value)}
                     />
                   </Form.Item>
-                  <Button
-                    type="primary"
-                    disabled={!timeContent}
-                    loading={busy === "time"}
-                    onClick={() => void run("time")}
-                  >
-                    提交节点时间配置
-                  </Button>
+                  <Popconfirm title={`提交节点 ${node} 的时间配置？`} description="配置将写入 LoRa V2 服务，设备是否应用需等待回报。" okText="确认提交" cancelText="取消" onConfirm={() => void run("time")}>
+                    <Button type="primary" disabled={!timeContent} loading={busy === "time"}>提交到 LoRa V2</Button>
+                  </Popconfirm>
                 </Form>
               ),
             },

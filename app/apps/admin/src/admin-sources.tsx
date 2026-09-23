@@ -484,6 +484,7 @@ const loraOperationOptions: Array<{ value: LoRaOperation; label: string }> = [
 function LoRaWANV2Drawer({ source, onClose }: { source: JsonRecord | null; onClose: () => void }) {
   const [form] = Form.useForm();
   const [busy, setBusy] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [result, setResult] = useState<unknown>(null);
   const operation = (Form.useWatch("operation", form) ?? "health") as LoRaOperation;
@@ -493,6 +494,18 @@ function LoRaWANV2Drawer({ source, onClose }: { source: JsonRecord | null; onClo
   const requiresConfigID = ["get_gateway_config", "get_node_config"].includes(operation);
   const requiresFirmwareID = ["get_firmware", "delete_firmware"].includes(operation);
   const requiresPayload = ["create_firmware", "create_gateway_config", "create_node_config", "create_time_config"].includes(operation);
+  const syncAllGateways = async () => {
+    setSyncBusy(true); setFeedback(""); setResult(null);
+    try {
+      const response = await api.admin.startSourceSync(sourceID);
+      setResult(response);
+      setFeedback(`全部网关同步任务已提交：${string(response.id)}`);
+    } catch (error) {
+      setFeedback(formatApiError(error).message);
+    } finally {
+      setSyncBusy(false);
+    }
+  };
   const run = async () => {
     setBusy(true); setFeedback(""); setResult(null);
     try {
@@ -526,7 +539,7 @@ function LoRaWANV2Drawer({ source, onClose }: { source: JsonRecord | null; onClo
       setFeedback(formatApiError(error).message);
     } finally { setBusy(false); }
   };
-  return <Drawer title={`LoRa V2 管理 · ${string(source?.name)}`} open={Boolean(source)} onClose={onClose} size={720} extra={<Space><Button onClick={onClose}>关闭</Button><Button type="primary" loading={busy} onClick={() => void run()}>执行</Button></Space>}>
+  return <Drawer title={`LoRa V2 管理 · ${string(source?.name)}`} open={Boolean(source)} onClose={onClose} size={720} extra={<Space><Button loading={syncBusy} disabled={busy || !sourceID} icon={<RefreshCw size={14} />} onClick={() => void syncAllGateways()}>同步全部网关</Button><Button onClick={onClose}>关闭</Button><Button type="primary" loading={busy} disabled={syncBusy} onClick={() => void run()}>执行</Button></Space>}>
     <SourceOperationHistory sourceID={sourceID} />
     <Form form={form} layout="vertical" initialValues={{ operation: "health", query_json: "{}", payload_json: "{}", node_index: 1 }}>
       <Form.Item name="operation" label="操作"><Select options={loraOperationOptions} /></Form.Item>

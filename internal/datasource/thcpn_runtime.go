@@ -14,7 +14,12 @@ import (
 	"thcpn-gin/internal/apperr"
 )
 
-const maxTHCPNRuntimeDevices = 200
+const (
+	maxTHCPNRuntimeDevices           = 200
+	maxRuntimeAttributePairsPerQuery = 60
+)
+
+var runtimeAttributeKeys = []string{"battery", "signal", "ext_info"}
 
 type THCPNDeviceRuntimeFailure struct {
 	DeviceID uuid.UUID `json:"device_id"`
@@ -184,7 +189,7 @@ func readTHCPNRuntimeAttributes(ctx context.Context, db *sql.DB, refs []thcpnLoc
 		return result, err
 	}
 	unresolved := make(map[string]map[int64]bool, 3)
-	for _, key := range []string{"battery", "signal", "ext_info"} {
+	for _, key := range runtimeAttributeKeys {
 		unresolved[key] = make(map[int64]bool, len(refs))
 		for _, ref := range refs {
 			unresolved[key][ref.ExternalDeviceID] = true
@@ -192,6 +197,9 @@ func readTHCPNRuntimeAttributes(ctx context.Context, db *sql.DB, refs []thcpnLoc
 	}
 	now := time.Now().UTC()
 	for offset := 0; offset < thcpnAttributeLookback; offset++ {
+		if runtimeAttributesResolved(unresolved) {
+			break
+		}
 		table := monthTable(thcpnAttributeTablePrefix, now.AddDate(0, -offset, 0))
 		if !thcpnAttributeTablePattern.MatchString(table) || !tables[table] {
 			continue
@@ -204,19 +212,78 @@ func readTHCPNRuntimeAttributes(ctx context.Context, db *sql.DB, refs []thcpnLoc
 }
 
 func queryTHCPNRuntimeAttributes(ctx context.Context, db *sql.DB, table string, refs []thcpnLocationRef, unresolved map[string]map[int64]bool, result map[int64]map[string]THCPNAttributeValue) error {
-	placeholders, args := runtimePlaceholders(refs)
-	query := fmt.Sprintf(`SELECT a.device_id, a.attribute, a.value, a.ts, a.extra
-FROM %[1]s a
-JOIN (SELECT device_id, attribute, MAX(ts) AS max_ts FROM %[1]s
-WHERE deleted_at IS NULL AND device_id IN (%[2]s) AND attribute IN ('battery','signal','ext_info')
-GROUP BY device_id, attribute) latest
-ON latest.device_id=a.device_id AND latest.attribute=a.attribute AND latest.max_ts=a.ts
-WHERE a.deleted_at IS NULL ORDER BY a.device_id, a.attribute, a.id DESC`, "`"+table+"`", placeholders)
-	rows, err := db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return apperr.Wrap(apperr.KindDataSource, "query latest thcpn attributes", err)
+	queries := runtimeAttributeQueries(table, refs, unresolved)
+	for _, item := range queries {
+		rows, err := db.QueryContext(ctx, item.sql, item.args...)
+		if err != nil {
+			return apperr.Wrap(apperr.KindDataSource, "query latest thcpn attributes", err)
+		}
+		if err := scanTHCPNRuntimeAttributes(rows, table, unresolved, result); err != nil {
+			rows.Close()
+			return err
+		}
+		if err := rows.Close(); err != nil {
+			return apperr.Wrap(apperr.KindDataSource, "close latest thcpn attributes", err)
+		}
 	}
-	defer rows.Close()
+	return nil
+}
+
+type runtimeAttributeQuery struct {
+	sql  string
+	args []any
+}
+
+func runtimeAttributesResolved(unresolved map[string]map[int64]bool) bool {
+	for _, key := range runtimeAttributeKeys {
+		if len(unresolved[key]) > 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func runtimeAttributeQueries(table string, refs []thcpnLocationRef, unresolved map[string]map[int64]bool) []runtimeAttributeQuery {
+	if !thcpnAttributeTablePattern.MatchString(table) {
+		return nil
+	}
+	queries := make([]runtimeAttributeQuery, 0)
+	parts := make([]string, 0, maxRuntimeAttributePairsPerQuery)
+	args := make([]any, 0, maxRuntimeAttributePairsPerQuery*2)
+	seen := make(map[int64]bool, len(refs))
+	flush := func() {
+		if len(parts) == 0 {
+			return
+		}
+		queries = append(queries, runtimeAttributeQuery{
+			sql:  "SELECT * FROM (" + strings.Join(parts, " UNION ALL ") + ") latest",
+			args: args,
+		})
+		parts = make([]string, 0, maxRuntimeAttributePairsPerQuery)
+		args = make([]any, 0, maxRuntimeAttributePairsPerQuery*2)
+	}
+	for _, ref := range refs {
+		if seen[ref.ExternalDeviceID] {
+			continue
+		}
+		seen[ref.ExternalDeviceID] = true
+		for _, key := range runtimeAttributeKeys {
+			if !unresolved[key][ref.ExternalDeviceID] {
+				continue
+			}
+			parts = append(parts, fmt.Sprintf(`(SELECT device_id, attribute, value, ts, extra FROM %s
+WHERE deleted_at IS NULL AND device_id=? AND attribute=? ORDER BY ts DESC, id DESC LIMIT 1)`, "`"+table+"`"))
+			args = append(args, ref.ExternalDeviceID, key)
+			if len(parts) == maxRuntimeAttributePairsPerQuery {
+				flush()
+			}
+		}
+	}
+	flush()
+	return queries
+}
+
+func scanTHCPNRuntimeAttributes(rows *sql.Rows, table string, unresolved map[string]map[int64]bool, result map[int64]map[string]THCPNAttributeValue) error {
 	for rows.Next() {
 		var externalID int64
 		var key, raw string
@@ -248,7 +315,10 @@ WHERE a.deleted_at IS NULL ORDER BY a.device_id, a.attribute, a.id DESC`, "`"+ta
 		result[externalID][key] = value
 		delete(unresolved[key], externalID)
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return apperr.Wrap(apperr.KindDataSource, "read latest thcpn attributes", err)
+	}
+	return nil
 }
 
 func runtimePlaceholders(refs []thcpnLocationRef) (string, []any) {

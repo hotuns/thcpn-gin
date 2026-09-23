@@ -131,6 +131,7 @@ const adminNav = [
   { to: "/admin/devices", key: "devices", icon: Boxes, group: "assets" },
   { to: "/admin/firmware", key: "firmware", icon: HardDriveUpload, group: "assets" },
   { to: "/admin/sensors", key: "sensors", icon: Cpu, group: "assets" },
+  { to: "/admin/sensors-v2", key: "sensorsV2", icon: Cpu, group: "assets" },
   { to: "/admin/device-map", key: "deviceMap", icon: MapPinned, group: "assets" },
   { to: "/admin/workspaces", key: "workspaces", icon: Network, group: "platform" },
   ...(billingEnabled
@@ -176,7 +177,7 @@ function AdminShell() {
   const selectedNav = adminNav.find((item) =>
     item.to === "/admin"
       ? location.pathname === "/admin"
-      : location.pathname.startsWith(item.to),
+      : location.pathname === item.to || location.pathname.startsWith(`${item.to}/`),
   );
   const selectedKey = selectedNav?.to ?? "";
   const groupedItems: MenuProps["items"] = [
@@ -575,7 +576,8 @@ function AdminOverview() {
           <div className="admin-overview-shortcuts">
             <Link to="/admin/sources"><Database size={16} /><span><strong>数据源与同步</strong><small>连接配置、单设备与全量同步</small></span><ChevronRight size={14} /></Link>
             <Link to="/admin/devices"><Boxes size={16} /><span><strong>设备管理</strong><small>拓扑、分配和生命周期</small></span><ChevronRight size={14} /></Link>
-            <Link to="/admin/sensors"><Cpu size={16} /><span><strong>传感器模板</strong><small>协议参数与数据指标</small></span><ChevronRight size={14} /></Link>
+            <Link to="/admin/sensors"><Cpu size={16} /><span><strong>传感器模板 V1</strong><small>旧版协议参数与数据指标</small></span><ChevronRight size={14} /></Link>
+            <Link to="/admin/sensors-v2"><Cpu size={16} /><span><strong>传感器模板 V2</strong><small>LoRaWAN V2 协议与数据指标</small></span><ChevronRight size={14} /></Link>
             <Link to="/admin/logs"><Activity size={16} /><span><strong>平台日志</strong><small>错误诊断与请求检索</small></span><ChevronRight size={14} /></Link>
           </div>
         </Panel>
@@ -594,7 +596,8 @@ function AdminRoot() {
         <Route path="devices" element={<AdminDevicesPage />} />
         <Route path="devices/:deviceId" element={<AdminDevicesPage />} />
         <Route path="firmware" element={<AdminFirmwarePage />} />
-        <Route path="sensors" element={<AdminSensorsPage />} />
+        <Route path="sensors" element={<AdminSensorsPage key="v1" version="v1" />} />
+        <Route path="sensors-v2" element={<AdminSensorsPage key="v2" version="v2" />} />
         <Route path="device-map" element={<AdminDeviceInsightsPage />} />
         <Route path="logs" element={<AdminLogsPage />} />
         <Route path="workspaces" element={<AdminWorkspacesPage />} />

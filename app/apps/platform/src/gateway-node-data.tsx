@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useSearchParams, Link } from "react-router-dom";
-import { Search } from "lucide-react";
+import { Check, GripVertical, Search } from "lucide-react";
 import { api, formatApiError, type Device, type GatewayNode, type TelemetrySeries } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, CheckboxInput, Panel, SelectInput, StateView, Table } from "./platform-ui";
+import { Alert, AlertDescription, AlertTitle, Badge, Button, Panel, SelectInput, StateView, Table } from "./platform-ui";
 import { TelemetryCharts } from "./telemetry-charts";
 import { DeviceQueryToolbar, initialQueryRange } from "./device-query-toolbar";
 
@@ -24,6 +24,9 @@ export function GatewayNodeData({ gateway, workspaceId }: { gateway: Device; wor
   const [range, setRange] = useState(initialQueryRange);
   const draggedMetric = useRef<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
+  const [draggedMetricKey, setDraggedMetricKey] = useState("");
+  const [dragOverMetricKey, setDragOverMetricKey] = useState("");
+  const draggedMetricRef = useRef(false);
   const [applied, setApplied] = useState<{ mode: "node" | "compare"; node: string; metrics: string[]; start: string; end: string } | null>(null);
   const [page, setPage] = useState(0);
   const [view, setView] = useState<"chart" | "table">("chart");
@@ -83,6 +86,19 @@ export function GatewayNodeData({ gateway, workspaceId }: { gateway: Device; wor
     if (!dirty) void Promise.all(queries.map((query) => query.refetch()));
     else setApplied(next);
   };
+  const moveSelectedMetric = (targetKey: string) => {
+    const from = selected.indexOf(draggedMetricKey);
+    const to = selected.indexOf(targetKey);
+    if (from < 0 || to < 0 || from === to) return;
+    const next = [...selected];
+    next.splice(to, 0, next.splice(from, 1)[0]);
+    setSelected(next);
+  };
+  const finishMetricDrag = () => {
+    setDraggedMetricKey("");
+    setDragOverMetricKey("");
+    window.setTimeout(() => { draggedMetricRef.current = false; }, 0);
+  };
   const selectNode = (key: string) => setParams((current) => { const next = new URLSearchParams(current); next.set("node", key); return next; }, { replace: true });
   const points = series.flatMap((item) => item.points.map((point) => ({ ...point, stream: item.data_stream_id, name: item.name, unit: item.unit })));
 
@@ -96,15 +112,18 @@ export function GatewayNodeData({ gateway, workspaceId }: { gateway: Device; wor
           {mode === "node" && <label className="field"><span className="field-label">节点</span><SelectInput value={selectedNode} onChange={(event) => selectNode(event.target.value)} disabled={!nodes.length}>{nodes.map((node) => <option key={node.key} value={node.key}>{node.name}</option>)}</SelectInput></label>}
         </div>
         <DeviceQueryToolbar range={range} onChange={setRange}/>
-        {mode === "compare" ? <label className="field"><span className="field-label">对比指标</span><SelectInput value={selected[0] ?? ""} onChange={(event) => setSelected([event.target.value])}>{metrics.map((metric) => <option key={metric.key} value={metric.key}>{metric.name}{metric.unit ? ` · ${metric.unit}` : ""} · {metric.count} 个节点</option>)}</SelectInput></label> : <fieldset className="gateway-node-metric-field"><legend className="field-label">指标</legend><div className="gateway-node-metric-checks">{[...metrics].sort((a,b) => (selected.includes(a.key) ? selected.indexOf(a.key) : metrics.length) - (selected.includes(b.key) ? selected.indexOf(b.key) : metrics.length)).map((metric) => <label key={metric.key} draggable={selected.includes(metric.key)} onDragStart={() => { draggedMetric.current = metric.key; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const from = selected.indexOf(draggedMetric.current ?? ""); const to = selected.indexOf(metric.key); if (from < 0 || to < 0 || from === to) return; const next = [...selected]; next.splice(to, 0, next.splice(from, 1)[0]); setSelected(next); draggedMetric.current = null; }} className={selected.includes(metric.key) ? "selected" : ""}><CheckboxInput checked={selected.includes(metric.key)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, metric.key] : current.filter((key) => key !== metric.key))}/><span><strong>{metric.name}</strong><small>{metric.unit}</small></span></label>)}</div></fieldset>}
+        {mode === "compare" ? <label className="field gateway-node-compare-field"><span className="field-label">对比指标</span><SelectInput value={selected[0] ?? ""} onChange={(event) => setSelected([event.target.value])}>{metrics.map((metric) => <option key={metric.key} value={metric.key}>{metric.name}{metric.unit ? ` · ${metric.unit}` : ""} · {metric.count} 个节点</option>)}</SelectInput></label> : <fieldset className="gateway-node-metric-field"><legend className="field-label">指标 · 拖动已选项可调整图表顺序</legend><div className="gateway-node-metric-checks">{[...metrics].sort((a,b) => (selected.includes(a.key) ? selected.indexOf(a.key) : metrics.length) - (selected.includes(b.key) ? selected.indexOf(b.key) : metrics.length)).map((metric) => {
+          const checked = selected.includes(metric.key);
+          return <button key={metric.key} type="button" draggable={checked} onDragStart={(event) => { if (!checked) return; draggedMetricRef.current = true; setDraggedMetricKey(metric.key); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", metric.key); }} onDragOver={(event) => { if (!draggedMetricKey || !checked) return; event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDragOverMetricKey(metric.key); }} onDrop={(event) => { event.preventDefault(); moveSelectedMetric(metric.key); finishMetricDrag(); }} onDragEnd={finishMetricDrag} onClick={() => { if (draggedMetricRef.current) return; setSelected((current) => checked ? current.filter((key) => key !== metric.key) : [...current, metric.key]); }} className={[checked ? "selected" : "", draggedMetricKey === metric.key ? "dragging" : "", dragOverMetricKey === metric.key ? "drag-over" : ""].filter(Boolean).join(" ")}><GripVertical className="gateway-node-metric-drag-handle" size={13} aria-hidden="true"/><span className="gateway-node-metric-check">{checked && <Check size={12}/>}</span><span className="gateway-node-metric-copy"><strong>{metric.name}</strong><small>{metric.unit || "无单位"}</small></span></button>;
+        })}</div></fieldset>}
         {!nodes.length && !nodesQuery.error && <StateView type="empty" title="暂无节点" description="当前组网站还没有配置节点。"/>}
         {nodes.length > 0 && !metrics.length && <StateView type="empty" title="暂无指标" description="该节点尚未同步有效的指标配置；节点仍可正常选择。"/>}
       </>}
     </Panel>
     <Panel className="section-gap gateway-node-chart-panel">
       <div className="panel-header"><h2 className="panel-title">{applied?.mode === "compare" ? "节点对比" : "数据结果"}</h2><div className="header-actions"><Link className="button button-secondary" to={`/exports?${new URLSearchParams({system:"group",gateway:gateway.id,nodes:mode === "node" ? selectedNode : nodes.map((node) => node.key).join(","),start:range.start,end:range.end})}`}>导出</Link><Button variant="secondary" onClick={() => setView(view === "chart" ? "table" : "chart")}>{view === "chart" ? "查看表格" : "查看曲线"}</Button></div></div>
-      {failures.map((failure) => <div key={failure.label} className="form-error">{failure.label}：{formatApiError(failure.error).message}</div>)}
-      {series.filter((item) => item.error).map((item) => <div key={item.data_stream_id} className="form-error">{item.name}：{item.error}</div>)}
+      {failures.map((failure) => <Alert key={failure.label} variant="destructive" className="request-error-inline"><AlertTitle>{failure.label}读取失败</AlertTitle><AlertDescription><p>{formatApiError(failure.error).message}</p></AlertDescription></Alert>)}
+      {series.filter((item) => item.error).map((item) => <Alert key={item.data_stream_id} variant="destructive" className="request-error-inline"><AlertTitle>{item.name}读取失败</AlertTitle><AlertDescription><p>{item.error}</p></AlertDescription></Alert>)}
       {series.some((item) => !item.complete && !item.error) && <div className="command-note">部分指标数据不完整，请缩小时间范围后重试。</div>}
       {series.flatMap((item) => item.warnings ?? []).map((warning, index) => <div key={index} className="command-note">{warning.message}</div>)}
       {loading && <StateView type="loading" title="正在查询" description="正在读取所选节点的数据。"/>}

@@ -24,9 +24,11 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "./utils";
+import { Alert, AlertDescription, AlertTitle } from "./alert";
 import { useLocale } from "@thcpn/i18n";
 
 export { cn } from "./utils";
+export { Alert, AlertDescription, AlertTitle } from "./alert";
 
 export function Button({
   variant = "primary",
@@ -376,8 +378,27 @@ export function StateView({
   requestId?: string;
 }) {
   const { t } = useLocale();
+  if (type === "error") {
+    return (
+      <div className="error-state">
+        <Alert variant="destructive" className="state-error-alert">
+          <FileWarning size={18} />
+          <div>
+            <AlertTitle>{title}</AlertTitle>
+            <AlertDescription>
+              <p>{description}</p>
+              {requestId && (
+                <small>{t("requestId", { id: requestId })}</small>
+              )}
+            </AlertDescription>
+            {action && <div className="state-error-action">{action}</div>}
+          </div>
+        </Alert>
+      </div>
+    );
+  }
   const Icon =
-    type === "empty" ? Inbox : type === "error" ? FileWarning : RefreshCw;
+    type === "empty" ? Inbox : RefreshCw;
   return (
     <div className={`${type}-state`}>
       <div className="state-icon">

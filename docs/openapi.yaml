@@ -1873,6 +1873,7 @@ paths:
         - {name: status, in: query, schema: {type: string, enum: [publishing, partial, completed, failed]}}
         - {name: version, in: query, schema: {type: string}}
         - {name: device, in: query, schema: {type: string}}
+        - {name: source_family, in: query, schema: {type: string, enum: [thcpn, carbon, lorawan_v2]}}
       responses:
         "200": {description: Firmware releases., content: {application/json: {schema: {$ref: "#/components/schemas/FirmwareReleaseListResponse"}}}}
         "401": {$ref: "#/components/responses/Unauthorized"}
@@ -3049,9 +3050,11 @@ paths:
       tags: [Admin]
       operationId: adminListSensorTemplates
       summary: List platform sensor templates
+      description: V1 (thcpn) and V2 (lorawan_v2) are separate template records. Defaults to V1.
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: q, in: query, schema: { type: string } }
+        - { name: source_family, in: query, schema: { type: string, enum: [thcpn, lorawan_v2], default: thcpn } }
         - { name: port, in: query, schema: { type: string } }
         - { name: driver, in: query, schema: { type: string } }
         - { name: status, in: query, schema: { type: string, enum: [active, disabled] } }
@@ -10181,6 +10184,7 @@ components:
         created_at: { $ref: "#/components/schemas/Timestamp" }
         updated_at: { $ref: "#/components/schemas/Timestamp" }
     SensorTemplateRequest:
+      description: A template belongs exclusively to V1 (thcpn) or V2 (lorawan_v2). Supply only one variant; omitting variants defaults to V1. An existing template cannot change family.
       type: object
       required: [sensor_type, port_num, port_nums, params, status]
       properties:
