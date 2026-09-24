@@ -52,8 +52,6 @@ const initialValues = {
   metrics: [],
   params_json: '{\n  "command": "",\n  "wait_time": 60,\n  "contents": []\n}',
   lora_enabled: false,
-  lora_wait_time: 60,
-  lora_mode: "visual",
   lora_items: [],
   lora_content_json: "[]",
 };
@@ -89,6 +87,7 @@ type LoRaVisualItem = {
   address?: string;
   model?: string;
   mappings?: Array<{
+    info?: JsonObject;
     key?: string;
     rule?: string;
     unit?: string;
@@ -152,13 +151,27 @@ function splitLoRaContent(content: unknown): LoRaVisualItem[] {
   });
 }
 
+export function attachMetricInfo(items: LoRaVisualItem[], metrics: JsonObject[]): LoRaVisualItem[] {
+  return items.map(item => ({ ...item, mappings: item.mappings?.map(mapping => {
+    const metric = metrics.find(metric => metric.key === mapping.key);
+    return { ...mapping, info: { ...((metric?.info ?? {}) as JsonObject), unit: mapping.unit ?? (metric?.info as JsonObject)?.unit ?? "" } };
+  }) }));
+}
+
+export function collectMetricInfo(items: LoRaVisualItem[]): JsonObject[] {
+  return items.flatMap(item => (item.mappings ?? []).map(mapping => ({
+    key: mapping.key,
+    info: { ...mapping.info, unit: mapping.info?.unit ?? "" },
+  })));
+}
+
 function buildLoRaContent(items: LoRaVisualItem[]): unknown[] {
   return (items ?? []).map((item) => {
     const mappings = item.mappings ?? [];
     if (item.kind === "ad")
       return [
         "ad",
-        mappings.map((entry) => [entry.key, entry.rule, entry.unit ?? ""]),
+        mappings.map((entry) => [entry.key, entry.rule, entry.info?.unit ?? entry.unit ?? ""]),
         Number(item.port ?? 0),
       ];
     if (item.kind === "485")
@@ -166,7 +179,7 @@ function buildLoRaContent(items: LoRaVisualItem[]): unknown[] {
         "485",
         [
           item.command ?? "",
-          mappings.map((entry) => [entry.key, entry.rule, entry.unit ?? ""]),
+          mappings.map((entry) => [entry.key, entry.rule, entry.info?.unit ?? entry.unit ?? ""]),
         ],
       ];
     if (item.kind === "sdi")
@@ -230,7 +243,7 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
       {}) as JsonObject;
     const lora = (variants.lorawan_v2 ?? {}) as JsonObject;
     const loraContent = Array.isArray(lora.content) ? lora.content : [];
-    const loraItems = splitLoRaContent(loraContent);
+    const loraItems = attachMetricInfo(splitLoRaContent(loraContent), visual.metrics);
     form.setFieldsValue(
       item
         ? {
@@ -246,18 +259,13 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
             metrics: visual.metrics,
             params_json: JSON.stringify(params, null, 2),
             lora_enabled: isV2,
-            lora_wait_time: lora.wait_time ?? 60,
-            lora_mode:
-              loraContent.length > 0 && loraItems.length !== loraContent.length
-                ? "json"
-                : "visual",
             lora_items: loraItems,
             lora_content_json: JSON.stringify(loraContent, null, 2),
           }
         : { ...initialValues, lora_enabled: isV2 },
     );
     setParamExtras(item ? visual.extras : {});
-    setParamsMode("visual");
+    setParamsMode(isV2 && loraItems.length !== loraContent.length ? "json" : "visual");
     setEditor(
       mode === "edit" && item
         ? { mode, source: item }
@@ -284,14 +292,14 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
           ...paramExtras,
           command: values.command ?? "",
           wait_time: values.wait_time ?? 0,
-          contents: values.metrics ?? [],
+          contents: isV2 ? collectMetricInfo(values.lora_items ?? []) : values.metrics ?? [],
         };
       }
       let loraContent: unknown[] = [];
       if (isV2) {
         try {
           loraContent =
-            values.lora_mode === "json"
+            paramsMode === "json"
               ? JSON.parse(String(values.lora_content_json ?? "[]"))
               : buildLoRaContent(values.lora_items ?? []);
         } catch {
@@ -317,7 +325,7 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
           ? params.contents
           : []) as JsonObject[],
         variants: isV2 ? {
-          lorawan_v2: { wait_time: Number(values.lora_wait_time ?? 0), content: loraContent },
+          lorawan_v2: { content: loraContent },
         } : {
           thcpn: {
             port: values.port?.trim() ?? "",
@@ -357,10 +365,10 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
       const values = form.getFieldsValue(true);
       const params = {
         ...paramExtras,
-        command: values.command ?? "",
-        wait_time: values.wait_time ?? 0,
+        ...(!isV2 ? { command: values.command ?? "", wait_time: values.wait_time ?? 0 } : {}),
         contents: values.metrics ?? [],
       };
+      if (isV2) form.setFieldValue("lora_content_json", JSON.stringify(buildLoRaContent(values.lora_items ?? []), null, 2));
       form.setFieldValue("params_json", JSON.stringify(params, null, 2));
       form.setFields([{ name: "params_json", errors: [] }]);
       setParamsMode("json");
@@ -369,7 +377,15 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
     try {
       const params = parseParamsJSON(form.getFieldValue("params_json"));
       const visual = splitParams(params);
+      let loraItems: LoRaVisualItem[] = [];
+      if (isV2) {
+        const content = JSON.parse(String(form.getFieldValue("lora_content_json") ?? "[]"));
+        if (!Array.isArray(content)) throw new Error("Invalid protocol array");
+        loraItems = attachMetricInfo(splitLoRaContent(content), visual.metrics);
+        if (loraItems.length !== content.length) throw new Error("Unsupported protocol");
+      }
       form.setFieldsValue({
+        ...(isV2 ? { lora_items: loraItems } : {}),
         command: visual.command,
         wait_time: visual.wait_time,
         metrics: visual.metrics,
@@ -663,9 +679,9 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
           <div className="sensor-template-params">
             <div className="visual-subsection-head">
               <div>
-                <strong>{isV2 ? "V2 数据指标" : "V1 协议与指标"}</strong>
+                <strong>{isV2 ? "协议与指标" : "V1 协议与指标"}</strong>
                 <span>
-                  {isV2 ? "定义本模板的指标名称和单位，Key 需与下方协议配置对应。" : "配置旧版设备的指标、命令、解码和端口。"}
+                  {isV2 ? "在协议项中直接添加指标，并配置名称、单位和解析规则。" : "配置旧版设备的指标、命令、解码和端口。"}
                 </span>
               </div>
             </div>
@@ -686,7 +702,7 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
                           <InputNumber min={0} style={{ width: "100%" }} />
                         </Form.Item>
                       </div>}
-                      <div className="visual-subsection-head">
+                      {!isV2 && <><div className="visual-subsection-head">
                         <div>
                           <strong>数据指标</strong>
                           <span>
@@ -807,129 +823,11 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
                             </Button>
                           </div>
                         )}
-                      </Form.List>
-                      {Object.keys(paramExtras).length > 0 && (
-                        <Alert
-                          type="info"
-                          showIcon
-                          message={`已保留 ${Object.keys(paramExtras).length} 个扩展参数`}
-                          description="扩展参数不会丢失，可在 JSON 编辑中查看和修改。"
-                        />
-                      )}
-                    </>
-                  ),
-                },
-                {
-                  key: "json",
-                  label: "JSON 编辑",
-                  children: (
-                    <Form.Item
-                      name="params_json"
-                      extra={isV2 ? "维护 contents 中的指标 Key、名称和单位。" : "完整维护 command、wait_time、contents 和其他厂商扩展字段。"}
-                      rules={[{ required: true, message: "请输入参数 JSON" }]}
-                    >
-                      <Input.TextArea
-                        rows={24}
-                        className="mono"
-                        spellCheck={false}
-                      />
-                    </Form.Item>
-                  ),
-                },
-              ]}
-            />
-            {isV2 && <><div className="visual-subsection-head">
-              <div>
-                <strong>LoRaWAN V2 配置</strong>
-                <span>
-                  使用上游原生 ad / 485 / sdi / iic 数组；指标 Key
-                  必须与本模板指标一致
-                </span>
-              </div>
-            </div>
-            <Form.Item
-              noStyle
-              shouldUpdate={(before, after) =>
-                before.lora_enabled !== after.lora_enabled
-              }
-            >
-              {({ getFieldValue }) =>
-                getFieldValue("lora_enabled") ? (
-                  <>
-                    <Form.Item
-                      name="lora_wait_time"
-                      label="建议等待时间（秒）"
-                      rules={[{ required: true }]}
-                    >
-                      <InputNumber
-                        min={0}
-                        max={65535}
-                        style={{ width: "100%" }}
-                      />
-                    </Form.Item>
-                    <Form.Item name="lora_mode" hidden>
-                      <Input />
-                    </Form.Item>
-                    <Form.Item
-                      noStyle
-                      shouldUpdate={(before, after) =>
-                        before.lora_mode !== after.lora_mode
-                      }
-                    >
-                      {({ getFieldValue, setFieldValue }) => (
-                        <Tabs
-                          activeKey={getFieldValue("lora_mode") ?? "visual"}
-                          onChange={(key) => {
-                            try {
-                              if (key === "json") {
-                                setFieldValue(
-                                  "lora_content_json",
-                                  JSON.stringify(
-                                    buildLoRaContent(
-                                      getFieldValue("lora_items") ?? [],
-                                    ),
-                                    null,
-                                    2,
-                                  ),
-                                );
-                              } else {
-                                const parsed = JSON.parse(
-                                  String(
-                                    getFieldValue("lora_content_json") ?? "[]",
-                                  ),
-                                );
-                                setFieldValue(
-                                  "lora_items",
-                                  splitLoRaContent(parsed),
-                                );
-                              }
-                              setFieldValue("lora_mode", key);
-                            } catch {
-                              setFeedback("请先修正 LoRaWAN V2 JSON 配置");
-                            }
-                          }}
-                          items={[
-                            {
-                              key: "visual",
-                              label: "可视化配置",
-                              children: (
+                      </Form.List></>}
+                      {isV2 && <>
+                        <div className="visual-subsection-head"><strong>协议配置</strong></div>
                                 <Form.Item noStyle shouldUpdate>
                                   {({ getFieldValue }) => {
-                                    const metrics = (getFieldValue("metrics") ??
-                                      []) as Array<JsonObject>;
-                                    const metricOptions = metrics
-                                      .map((metric) => ({
-                                        value: String(metric.key ?? ""),
-                                        label: String(
-                                          (
-                                            metric.info as
-                                              JsonObject | undefined
-                                          )?.name ??
-                                            metric.key ??
-                                            "",
-                                        ),
-                                      }))
-                                      .filter((item) => item.value);
                                     return (
                                       <Form.List name="lora_items">
                                         {(fields, { add, remove, move }) => (
@@ -1136,7 +1034,7 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
                                                           {mappingFields.map(
                                                             (mapping) => (
                                                               <div
-                                                                className="lora-mapping-row"
+                                                                className="lora-template-metric-row"
                                                                 key={
                                                                   mapping.key
                                                                 }
@@ -1146,22 +1044,16 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
                                                                     mapping.name,
                                                                     "key",
                                                                   ]}
-                                                                  label="指标"
-                                                                  rules={[
-                                                                    {
-                                                                      required: true,
-                                                                      message:
-                                                                        "请选择指标",
-                                                                    },
-                                                                  ]}
+                                                                  label="Key"
+                                                                  rules={[{ required: true, message: "请输入 Key" }]}
                                                                 >
-                                                                  <Select
-                                                                    showSearch
-                                                                    options={
-                                                                      metricOptions
-                                                                    }
-                                                                  />
+                                                                  <Input />
                                                                 </Form.Item>
+                                                                <Form.Item name={[mapping.name, "info", "name"]} label="名称" rules={[{ required: true, message: "请输入名称" }]}><Input /></Form.Item>
+                                                                <Form.Item name={[mapping.name, "info", "type"]} label="类型"><Input /></Form.Item>
+                                                                <Form.Item name={[mapping.name, "info", "unit"]} label="单位"><Input /></Form.Item>
+                                                                <Form.Item name={[mapping.name, "info", "min"]} label="最小值"><InputNumber style={{ width: "100%" }} /></Form.Item>
+                                                                <Form.Item name={[mapping.name, "info", "max"]} label="最大值"><InputNumber style={{ width: "100%" }} /></Form.Item>
                                                                 {kind ===
                                                                   "ad" ||
                                                                 kind ===
@@ -1183,15 +1075,7 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
                                                                     >
                                                                       <Input className="code-input" />
                                                                     </Form.Item>
-                                                                    <Form.Item
-                                                                      name={[
-                                                                        mapping.name,
-                                                                        "unit",
-                                                                      ]}
-                                                                      label="单位"
-                                                                    >
-                                                                      <Input />
-                                                                    </Form.Item>
+
                                                                   </>
                                                                 ) : null}
                                                                 {kind ===
@@ -1237,12 +1121,12 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
                                                               actions.add({
                                                                 key: "",
                                                                 rule: "",
-                                                                unit: "",
+                                                                info: { name: "", type: "", unit: "" },
                                                                 index: "",
                                                               })
                                                             }
                                                           >
-                                                            添加指标映射
+                                                            添加指标
                                                           </Button>
                                                         </div>
                                                       )}
@@ -1276,12 +1160,36 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
                                     );
                                   }}
                                 </Form.Item>
-                              ),
-                            },
-                            {
-                              key: "json",
-                              label: "高级 JSON",
-                              children: (
+                      </>}
+                      {Object.keys(paramExtras).length > 0 && (
+                        <Alert
+                          type="info"
+                          showIcon
+                          message={`已保留 ${Object.keys(paramExtras).length} 个扩展参数`}
+                          description="扩展参数不会丢失，可在 JSON 编辑中查看和修改。"
+                        />
+                      )}
+                    </>
+                  ),
+                },
+                {
+                  key: "json",
+                  label: "JSON 编辑",
+                  children: (
+                    <>
+                    <Form.Item
+                      label={isV2 ? "数据指标 JSON" : undefined}
+                      name="params_json"
+                      extra={isV2 ? "维护 contents 中的指标 Key、名称和单位。" : "完整维护 command、wait_time、contents 和其他厂商扩展字段。"}
+                      rules={[{ required: true, message: "请输入参数 JSON" }]}
+                    >
+                      <Input.TextArea
+                        rows={24}
+                        className="mono"
+                        spellCheck={false}
+                      />
+                    </Form.Item>
+                    {isV2 && (
                                 <Form.Item
                                   name="lora_content_json"
                                   label="LoRaWAN V2 原生配置"
@@ -1307,17 +1215,13 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
                                     spellCheck={false}
                                   />
                                 </Form.Item>
-                              ),
-                            },
-                          ]}
-                        />
-                      )}
-                    </Form.Item>
-                  </>
-                ) : null
-              }
-            </Form.Item>
-            </>}
+                    )}
+                    </>
+                  ),
+                },
+              ]}
+            />
+
           </div>
         </Form>
       </Drawer>

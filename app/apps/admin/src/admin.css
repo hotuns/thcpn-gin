@@ -495,6 +495,19 @@
   flex: 1;
 }
 
+.lora-template-metric-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+.lora-template-metric-row .ant-form-item { margin-bottom: 0; }
+@media (max-width: 640px) {
+  .lora-template-metric-row { grid-template-columns: minmax(0, 1fr); }
+}
 .lora-mapping-row,
 .lora-node-mapping-row {
   display: grid;
