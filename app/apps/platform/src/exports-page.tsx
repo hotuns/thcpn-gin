@@ -1,6 +1,6 @@
-import { Fragment, useMemo, useState, type FormEvent } from "react";
+import { Fragment, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Check,
   ChevronDown,
@@ -26,7 +26,6 @@ import {
   Button,
   CheckboxInput,
   ChoiceCard,
-  DateTimeInput,
   EntityPicker,
   PageHeader,
   Panel,
@@ -36,6 +35,8 @@ import {
   Table,
   type PickerOption,
 } from "./platform-ui";
+
+import { DataRangeFields, validDataRange } from "./data-builder";
 
 type ResourceType = "device" | "data_stream" | "dataset" | "media";
 type ExportDraft = {
@@ -144,18 +145,20 @@ export function buildBatchExportPayload(
   };
 }
 
-export function ExportsPage() {
+export function ExportsPage({ creating = false }: { creating?: boolean }) {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { currentId } = useWorkspace();
-  const [params, setParams] = useSearchParams();
+  const [params] = useSearchParams();
   const requestedSystem = params.get("system") as ExportSystem | null;
-  const [system, setSystem] = useState<ExportSystem | null>(
+  const [system, setSystem] = useState<ExportSystem>(
     ["standard", "group", "carbon"].includes(requestedSystem ?? "")
-      ? requestedSystem
-      : null,
+      ? requestedSystem!
+      : "standard",
   );
   const [mine, setMine] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
-  const [feedback, setFeedback] = useState("");
+  const [feedback, setFeedback] = useState(location.state?.exportCreated ? "导出任务已创建" : "");
   const [downloading, setDownloading] = useState("");
   const [detailId, setDetailId] = useState("");
   const query = useQuery({
@@ -165,18 +168,18 @@ export function ExportsPage() {
       mine ? "mine" : "workspace",
     ),
     queryFn: () => api.exports.list(currentId!, mine, 500),
-    enabled: Boolean(currentId),
+    enabled: Boolean(currentId) && !creating,
     refetchInterval: 15_000,
   });
   const devices = useQuery({
     queryKey: workspaceQueryKey(currentId, "devices"),
     queryFn: () => api.devices.list(currentId!),
-    enabled: Boolean(currentId),
+    enabled: Boolean(currentId) && creating,
   });
   const deviceMap = useQuery({
     queryKey: workspaceQueryKey(currentId, "device-map", "true"),
     queryFn: () => api.devices.map(currentId!, true),
-    enabled: Boolean(currentId),
+    enabled: Boolean(currentId) && creating,
   });
   const tagsByDevice = useMemo(
     () => new Map((deviceMap.data?.items ?? []).map((item) => [item.device_id, item.environment.research_tags])),
@@ -198,9 +201,7 @@ export function ExportsPage() {
     try {
       await api.exports.create(payload);
       setFeedback("导出任务已创建");
-      setSystem(null);
-      setParams({});
-      await query.refetch();
+      navigate("/exports", { replace: true, state: { exportCreated: true } });
       return true;
     } catch (error) {
       const item = formatApiError(error);
@@ -227,6 +228,7 @@ export function ExportsPage() {
       setDownloading("");
     }
   };
+  if (!creating && requestedSystem && ["standard", "group", "carbon"].includes(requestedSystem)) return <Navigate to={`/exports/new?${params.toString()}`} replace />;
   if (!currentId)
     return (
       <>
@@ -245,25 +247,27 @@ export function ExportsPage() {
     ["pending", "running"].includes(item.status),
   ).length;
   return (
-    <div className="export-page">
+    <div className={`export-page${creating ? " dataset-editor-page export-editor-page" : ""}`}>
       <PageHeader
         eyebrow="组织 / 数据导出"
-        title="数据导出"
+        title={creating ? "新建导出" : "数据导出"}
         description="标准站、组网站和碳汇站使用各自的创建流程，任务统一在这里生成和下载。"
         actions={
           <div className="header-actions">
+            {creating ? <Button variant="secondary" onClick={() => navigate("/exports")}>返回导出列表</Button> : <>
             <Button variant="secondary" onClick={() => void query.refetch()}>
               <RefreshCw size={14} />
               刷新
             </Button>
-            <Button data-onboarding="export-create" onClick={() => setSystem(system ? null : "standard")}>
+            <Button data-onboarding="export-create" onClick={() => navigate("/exports/new")}>
               <Plus size={14} />
-              {system ? "收起创建" : "新建导出"}
+              新建导出
             </Button>
+            </>}
           </div>
         }
       />
-      <div className="export-summary" data-onboarding="export-summary">
+      <div className="export-summary" data-onboarding="export-summary" hidden={creating}>
         <div>
           <span className="export-summary-icon">
             <FileArchive size={16} />
@@ -306,35 +310,37 @@ export function ExportsPage() {
         </div>
       </div>
       {feedback && <div className="command-note section-gap">{feedback}</div>}
-      {system === null ? null : (
+      {creating && (
         <div className="export-create-shell section-gap">
-          <ExportSystemChooser selected={system} onSelect={setSystem} />
           {system === "standard" ? (
             <StandardExportForm
               devices={exportDevices}
+              chooser={<ExportSystemChooser selected={system} onSelect={setSystem} />}
               params={params}
-              onClose={() => setSystem(null)}
+              onClose={() => navigate("/exports")}
               onCreate={runCreate}
             />
           ) : system === "group" ? (
             <GroupExportForm
               devices={exportDevices}
               tagsByDevice={tagsByDevice}
+              chooser={<ExportSystemChooser selected={system} onSelect={setSystem} />}
               params={params}
-              onClose={() => setSystem(null)}
+              onClose={() => navigate("/exports")}
               onCreate={runCreate}
             />
           ) : (
             <CarbonExportForm
               devices={exportDevices}
+              chooser={<ExportSystemChooser selected={system} onSelect={setSystem} />}
               params={params}
-              onClose={() => setSystem(null)}
+              onClose={() => navigate("/exports")}
               onCreate={runCreate}
             />
           )}
         </div>
       )}
-      <Panel className="section-gap export-list-panel" data-onboarding="export-list">
+      {!creating && <Panel className="section-gap export-list-panel" data-onboarding="export-list">
         <div className="export-toolbar">
           <div>
             <div className="export-view-switch">
@@ -479,7 +485,7 @@ export function ExportsPage() {
             description="创建任务后会显示在这里。"
           />
         )}
-      </Panel>
+      </Panel>}
     </div>
   );
 }
@@ -492,8 +498,8 @@ function ExportSystemChooser({
   onSelect: (value: ExportSystem) => void;
 }) {
   return (
-    <section className="export-system-selector">
-      <div className="export-builder-heading"><span>1</span><div><h2>选择导出类型</h2><p>根据设备体系选择对应的导出方式</p></div></div>
+    <section className="export-system-selector dataset-editor-section">
+      <div className="dataset-editor-section-heading"><div className="dataset-step-heading"><span>1</span><div><h2>选择导出类型</h2><p>根据设备体系选择对应的导出方式</p></div></div></div>
       <div className="export-system-cards">
       {(
         [
@@ -521,6 +527,7 @@ function ExportSystemChooser({
         return (
           <button
             key={item.id}
+            type="button"
             className={selected === item.id ? "active" : ""}
             onClick={() => onSelect(item.id)}
           >
@@ -536,46 +543,12 @@ function ExportSystemChooser({
 }
 
 type FormCommon = {
+  chooser: ReactNode;
   params: URLSearchParams;
   onClose: () => void;
   onCreate: (payload: JsonRecord) => Promise<boolean>;
 };
-function RangeFields({
-  start,
-  end,
-  setStart,
-  setEnd,
-}: {
-  start: string;
-  end: string;
-  setStart: (v: string) => void;
-  setEnd: (v: string) => void;
-}) {
-  const preset = () => {
-    const range = defaultRange();
-    setStart(range.start);
-    setEnd(range.end);
-  };
-  return (
-    <section className="export-range-section">
-      <div className="export-range-head">
-        <span>
-          <strong>时间范围</strong>
-          <small>默认查询当前时间往前 7 天</small>
-        </span>
-        <button type="button" onClick={preset}>
-          <RefreshCw size={13} />
-          恢复最近 7 天
-        </button>
-      </div>
-      <div className="export-range-inputs">
-        <DateTimeInput label="开始时间" value={start} onChange={setStart} />
-        <span className="export-range-arrow">→</span>
-        <DateTimeInput label="结束时间" value={end} onChange={setEnd} />
-      </div>
-    </section>
-  );
-}
+const RangeFields = DataRangeFields;
 function FormFooter({
   count,
   busy,
@@ -585,6 +558,7 @@ function FormFooter({
   end,
   content,
   label = "创建 ZIP 导出",
+  invalid = false,
 }: {
   count: number;
   busy: boolean;
@@ -594,10 +568,11 @@ function FormFooter({
   end: string;
   content: string;
   label?: string;
+  invalid?: boolean;
 }) {
   return (
-    <aside className="export-builder-summary">
-      <div className="export-builder-heading"><span>3</span><div><h2>检查并创建</h2><p>任务创建后将在下方列表生成文件</p></div></div>
+    <aside className="export-builder-summary dataset-builder-summary">
+      <div className="dataset-builder-summary-heading"><span>3</span><div><h2>检查并创建</h2><p>任务创建后返回列表查看进度和下载文件</p></div></div>
       <dl>
         <div><dt>导出类型</dt><dd>{system}</dd></div>
         <div><dt>导出目标</dt><dd>{count ? `${count} 项` : "未选择"}</dd></div>
@@ -606,7 +581,7 @@ function FormFooter({
       </dl>
       <div className="export-builder-actions">
         <Button type="button" variant="secondary" onClick={onClose}>取消</Button>
-        <Button type="submit" disabled={busy || count === 0}>{busy ? "创建中…" : label}</Button>
+        <Button type="submit" disabled={busy || count === 0 || invalid || !validDataRange(start, end)}>{busy ? "创建中…" : label}</Button>
       </div>
     </aside>
   );
@@ -615,6 +590,7 @@ function FormFooter({
 function StandardExportForm({
   devices,
   params,
+  chooser,
   onClose,
   onCreate,
 }: { devices: JsonRecord[] } & FormCommon) {
@@ -634,6 +610,7 @@ function StandardExportForm({
     );
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (busy || !validDataRange(start, end)) return;
     setBusy(true);
     await onCreate(
       buildBatchExportPayload("standard", selected, start, end, images),
@@ -641,24 +618,23 @@ function StandardExportForm({
     setBusy(false);
   };
   return (
-    <Panel className="export-system-form">
-      <div className="panel-header">
-        <div>
+    <div className="export-system-form">
+      <form className="export-builder dataset-builder" onSubmit={submit}>
+        <div className="export-builder-main dataset-builder-main">
+          {chooser}
+          <section className="dataset-editor-section export-settings-section">
+      <div className="dataset-editor-section-heading">
+        <div className="dataset-step-heading">
           <span className="export-form-icon">
-            <Sprout size={17} />
+            2
           </span>
           <div>
             <h2 className="panel-title">标准站导出</h2>
             <div className="panel-kicker">选择一台或多台独立标准站</div>
           </div>
         </div>
-        <Button variant="ghost" onClick={onClose}>
-          <X size={14} />
-          关闭
-        </Button>
       </div>
-      <form className="export-builder" onSubmit={submit}>
-        <div className="export-builder-main">
+        <div className="export-settings-fields">
         <div className="export-picker-layout">
           <EntityPicker
             label="标准站"
@@ -676,7 +652,7 @@ function StandardExportForm({
               <span>{selected.length} 台</span>
             </div>
             {selected.length === 0 ? (
-              <p>从左侧下拉列表选择设备</p>
+              <p>从上方选择器选择设备</p>
             ) : (
               selected.map((id) => (
                 <button type="button" key={id} onClick={() => toggle(id)}>
@@ -705,9 +681,11 @@ function StandardExportForm({
           description="同时打包设备图片与 image-index.csv"
         />
         </div>
+          </section>
+        </div>
         <FormFooter count={selected.length} busy={busy} onClose={onClose} system="标准站导出" start={start} end={end} content={images ? "设备数据和图片" : "设备数据"} />
       </form>
-    </Panel>
+    </div>
   );
 }
 
@@ -715,6 +693,7 @@ function GroupExportForm({
   devices,
   tagsByDevice,
   params,
+  chooser,
   onClose,
   onCreate,
 }: { devices: JsonRecord[]; tagsByDevice: Map<string, string[]> } & FormCommon) {
@@ -732,7 +711,7 @@ function GroupExportForm({
   const gateway = gateways.find((item) => value(item, "id") === gatewayId);
   const lorawan = value(gateway ?? {}, "source_family") === "lorawan_v2";
   const nodeItems = children.data?.items ?? [];
-  const nodes = nodeItems.map((node) => ({ id: node.key, name: node.name, serial_no: node.target.kind === "device" ? node.target.device_id : `节点 ${node.target.node_index}` }));
+  const nodes = nodeItems.map((node) => ({ id: node.key, name: node.name, serial_no: node.target.kind === "device" ? `ID ${node.target.device_id.slice(0, 8)}` : `节点 ${node.target.node_index}` }));
   const filteredNodes = nodes.filter((item) =>
     `${value(item, "name")} ${value(item, "serial_no")} ${(tagsByDevice.get(value(item, "id")) ?? []).join(" ")}`
       .toLowerCase()
@@ -751,9 +730,10 @@ function GroupExportForm({
     setSelected(null);
     setKeyword("");
   };
-  const effective = selected ?? nodes.map((item) => value(item, "id"));
+  const effective = (selected ?? nodes.map((item) => value(item, "id"))).filter(id => nodes.some(node => node.id === id));
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (busy || !validDataRange(start, end)) return;
     setBusy(true);
     const chosen = nodeItems.filter((node) => effective.includes(node.key));
     const ids = [...new Set(chosen.map((node) => node.target.kind === "device" ? node.target.device_id : node.target.gateway_device_id))];
@@ -766,24 +746,23 @@ function GroupExportForm({
     setBusy(false);
   };
   return (
-    <Panel className="export-system-form">
-      <div className="panel-header">
-        <div>
+    <div className="export-system-form">
+      <form className="export-builder dataset-builder" onSubmit={submit}>
+        <div className="export-builder-main dataset-builder-main">
+          {chooser}
+          <section className="dataset-editor-section export-settings-section">
+      <div className="dataset-editor-section-heading">
+        <div className="dataset-step-heading">
           <span className="export-form-icon">
-            <Network size={17} />
+            2
           </span>
           <div>
             <h2 className="panel-title">组网站导出</h2>
             <div className="panel-kicker">一次选择一个组网站，再选择其节点</div>
           </div>
         </div>
-        <Button variant="ghost" onClick={onClose}>
-          <X size={14} />
-          关闭
-        </Button>
       </div>
-      <form className="export-builder" onSubmit={submit}>
-        <div className="export-builder-main">
+        <div className="export-settings-fields">
         <div className="export-group-layout">
           <EntityPicker
             label="组网站"
@@ -822,6 +801,7 @@ function GroupExportForm({
               )}
             </div>
             {children.error && <Alert variant="destructive" className="request-error-inline"><AlertTitle>设备数据加载失败</AlertTitle><AlertDescription><p>{formatApiError(children.error).message}</p></AlertDescription></Alert>}
+            {!gatewayId ? <p className="data-builder-empty">请先选择组网站</p> : children.isLoading ? <p className="data-builder-empty">正在加载节点…</p> : !children.error && !filteredNodes.length ? <p className="data-builder-empty">没有匹配的节点</p> : null}
             <div className="export-device-checks">
               {filteredNodes.map((item) => {
                 const id = value(item, "id");
@@ -838,12 +818,9 @@ function GroupExportForm({
                         )
                       }
                     />
-                    <span className="export-check-mark">
-                      {checked && <Check size={13} />}
-                    </span>
                     <span>
                       <strong>{value(item, "name")}</strong>
-                      <small>SN {value(item, "serial_no")}</small>
+                      {value(item, "serial_no") && <small>{value(item, "serial_no")}</small>}
                     </span>
                   </label>
                 );
@@ -864,15 +841,18 @@ function GroupExportForm({
           description="按节点目录整理图片与索引"
         />}
         </div>
+          </section>
+        </div>
         <FormFooter count={effective.length} busy={busy} onClose={onClose} system="组网站导出" start={start} end={end} content={!lorawan && images ? "设备数据和图片" : "设备数据"} />
       </form>
-    </Panel>
+    </div>
   );
 }
 
 function CarbonExportForm({
   devices,
   params,
+  chooser,
   onClose,
   onCreate,
 }: { devices: JsonRecord[] } & FormCommon) {
@@ -900,7 +880,7 @@ function CarbonExportForm({
   const [flux, setFlux] = useState(true);
   const [raw, setRaw] = useState(true);
   const [busy, setBusy] = useState(false);
-  const effectiveNodes = nodes ?? allNodes;
+  const effectiveNodes = (nodes ?? allNodes).filter(id => allNodes.includes(id));
   const toggleField = (field: string) =>
     setFields((now) =>
       now.includes(field)
@@ -915,6 +895,8 @@ function CarbonExportForm({
     );
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (busy || !validDataRange(start, end)) return;
+    if (!effectiveNodes.length || !fields.length || (!flux && !raw) || overview.isLoading || overview.error) return;
     setBusy(true);
     await onCreate({
       resource_type: "device",
@@ -932,11 +914,15 @@ function CarbonExportForm({
     setBusy(false);
   };
   return (
-    <Panel className="export-system-form">
-      <div className="panel-header">
-        <div>
+    <div className="export-system-form">
+      <form className="export-builder dataset-builder" onSubmit={submit}>
+        <div className="export-builder-main dataset-builder-main">
+          {chooser}
+          <section className="dataset-editor-section export-settings-section">
+      <div className="dataset-editor-section-heading">
+        <div className="dataset-step-heading">
           <span className="export-form-icon">
-            <Sprout size={17} />
+            2
           </span>
           <div>
             <h2 className="panel-title">碳汇站导出</h2>
@@ -945,13 +931,8 @@ function CarbonExportForm({
             </div>
           </div>
         </div>
-        <Button variant="ghost" onClick={onClose}>
-          <X size={14} />
-          关闭
-        </Button>
       </div>
-      <form className="export-builder" onSubmit={submit}>
-        <div className="export-builder-main">
+        <div className="export-settings-fields">
         <EntityPicker
           label="碳汇站"
           icon={<Sprout size={16} />}
@@ -964,6 +945,7 @@ function CarbonExportForm({
           placeholder="请选择碳汇站"
           searchPlaceholder="搜索碳汇站名称或序列号"
         />
+        {overview.error && <StateView type="error" title="设备数据加载失败" description={formatApiError(overview.error).message} />}
         <div className="carbon-export-selector">
           <section>
             <div className="export-selector-title">
@@ -1055,7 +1037,10 @@ function CarbonExportForm({
           </div>
         </div>
         </div>
+          </section>
+        </div>
         <FormFooter
+          invalid={(!flux && !raw) || overview.isLoading || Boolean(overview.error)}
           count={effectiveNodes.length * fields.length}
           busy={busy}
           onClose={onClose}
@@ -1065,7 +1050,7 @@ function CarbonExportForm({
           content={[flux ? "通量数据" : "", raw ? "原始采样" : ""].filter(Boolean).join("、") || "未选择"}
         />
       </form>
-    </Panel>
+    </div>
   );
 }
 

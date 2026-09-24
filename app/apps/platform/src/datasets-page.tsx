@@ -24,6 +24,9 @@ import {
 } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, CheckboxInput, IconButton, Input, PageHeader, Panel, SelectInput, StateView, Table } from "./platform-ui";
+import { DataRangeFields, validDataRange } from "./data-builder";
+import { Alert, AlertDescription, AlertTitle } from "./components/ui/alert";
+import { SearchInput, Tabs, TabsList, TabsTrigger } from "./platform-ui";
 import { TelemetryCharts } from "./telemetry-charts";
 import { TelemetryTable } from "./telemetry-table";
 import { dataComparisonPath } from "./data-workflow";
@@ -33,6 +36,10 @@ type SourceInput = {
   source_type: Dataset["sources"][number]["source_type"];
   source_id: string;
 };
+export function selectDatasetStreams(current: SourceInput[], ids: string[], checked: boolean): SourceInput[] {
+  if (!checked) return current.filter(source => source.source_type !== "data_stream" || !ids.includes(source.source_id));
+  return [...current, ...[...new Set(ids)].filter(id => !current.some(source => source.source_type === "data_stream" && source.source_id === id)).map(source_id => ({ source_type: "data_stream" as const, source_id }))];
+}
 type AddableSourceType = Extract<
   SourceInput["source_type"],
   "device" | "data_stream"
@@ -732,7 +739,8 @@ function DatasetForm({
     dataset?.data_type === "image" ? "image" : "telemetry",
   );
   const [deviceId, setDeviceId] = useState("");
-  const [selectedStreamIds, setSelectedStreamIds] = useState<string[]>([]);
+  const [streamSearch, setStreamSearch] = useState("");
+  const selectedStreamIds = sources.filter(source => source.source_type === "data_stream").map(source => source.source_id);
   const [error, setError] = useState("");
   const datasetDevices = useMemo(
     () => devices.filter((item) => Boolean(datasetDeviceSystem(item))),
@@ -781,67 +789,45 @@ function DatasetForm({
     enabled: sourceType === "data_stream" && Boolean(deviceId),
   });
   useEffect(() => {
-    setSelectedStreamIds([]);
+    setStreamSearch("");
   }, [deviceId, sourceType, streamKind]);
-  const addSources = () => {
-    const ids = sourceType === "device" ? [deviceId] : selectedStreamIds;
+  const canAddCurrentDevice = () => {
     const currentSystems = new Set(
       sources.flatMap((source) => {
         if (source.source_type === "device") {
-          const item = devices.find((candidate) => String(candidate.id) === source.source_id);
+          const item = datasetSelectableDevices.find((candidate) => String(candidate.id) === source.source_id);
           return datasetDeviceSystem(item) ? [datasetDeviceSystem(item)] : [];
         }
         return [];
       }),
     );
     const selectedSystem = datasetDeviceSystem(
-      devices.find((item) => String(item.id) === deviceId),
+      datasetSelectableDevices.find((item) => String(item.id) === deviceId),
     );
     if (selectedSystem && currentSystems.size > 0 && !currentSystems.has(selectedSystem)) {
       setError("一个数据集只能选择标准站或组网站中的一种设备体系");
-      return;
+      return false;
     }
-    const additions = ids
-      .filter(Boolean)
-      .filter(
-        (id) =>
-          !sources.some(
-            (item) => item.source_type === sourceType && item.source_id === id,
-          ),
-      )
-      .map((source_id) => ({ source_type: sourceType, source_id }));
-    if (!additions.length) return;
-    setSources((current) => [...current, ...additions]);
-    if (sourceType === "device") setDataType("mixed");
-    if (sourceType === "data_stream") {
-      setDataType((current) => current === "image" && streamKind === "telemetry" ? "mixed" : current === "telemetry" && streamKind === "image" ? "mixed" : streamKind);
-    }
-    setError("");
-    if (sourceType === "data_stream") setSelectedStreamIds([]);
+    return true;
   };
-  const toggleStream = (streamId: string) => {
-    setSelectedStreamIds((current) =>
-      current.includes(streamId)
-        ? current.filter((id) => id !== streamId)
-        : [...current, streamId],
-    );
+  const addSources = () => {
+    if (!deviceId || !canAddCurrentDevice() || sources.some(source => source.source_type === "device" && source.source_id === deviceId)) return;
+    setSources(current => [...current, { source_type: "device", source_id: deviceId }]);
+    setDataType("mixed");
+    setError("");
   };
   const availableStreams =
-    streams.data?.items.filter((item) =>
-      streamKind === "image" ? item.type === "image" : item.type === "telemetry",
-    ) ?? [];
-  const availableStreamIds = availableStreams.map((item) => item.id);
-  const existingStreamIds = new Set(
-    sources
-      .filter((item) => item.source_type === "data_stream")
-      .map((item) => item.source_id),
-  );
-  const selectableStreamIds = availableStreamIds.filter(
-    (id) => !existingStreamIds.has(id),
-  );
-  const allStreamsSelected =
-    selectableStreamIds.length > 0 &&
-    selectableStreamIds.every((id) => selectedStreamIds.includes(id));
+    streams.data?.items.filter(item => (streamKind === "image" ? item.type === "image" : item.type === "telemetry")) ?? [];
+  const visibleStreams = availableStreams.filter(item => `${item.name} ${item.code} ${item.unit ?? ""}`.toLowerCase().includes(streamSearch.toLowerCase()));
+  const availableStreamIds = visibleStreams.map(item => item.id);
+  const allStreamsSelected = availableStreamIds.length > 0 && availableStreamIds.every(id => selectedStreamIds.includes(id));
+  const changeStreams = (ids: string[], checked: boolean) => {
+    if (checked && !canAddCurrentDevice()) return;
+    setSources(current => selectDatasetStreams(current, ids, checked));
+    if (checked) setDataType(current => current === "mixed" || (sources.length > 0 && current !== streamKind) ? "mixed" : streamKind);
+    setError("");
+  };
+  const toggleStream = (streamId: string) => changeStreams([streamId], !selectedStreamIds.includes(streamId));
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!sources.length) {
@@ -930,14 +916,7 @@ function DatasetForm({
                 {projects.map((item) => <option key={String(item.id)} value={String(item.id)}>{String(item.name)}</option>)}
               </SelectInput>
             </label>
-            <label className="field">
-              <span className="field-label">开始时间</span>
-              <Input required type="datetime-local" value={startTime} onChange={(event) => setStartTime(event.target.value)} />
-            </label>
-            <label className="field">
-              <span className="field-label">结束时间</span>
-              <Input required type="datetime-local" value={endTime} onChange={(event) => setEndTime(event.target.value)} />
-            </label>
+            <div className="dataset-description"><DataRangeFields start={startTime} end={endTime} setStart={setStartTime} setEnd={setEndTime} /></div>
             {dataset && (
               <label className="field">
                 <span className="field-label">状态</span>
@@ -963,22 +942,9 @@ function DatasetForm({
             </div>
             <span className="dataset-source-count">{sources.length} 个已选择</span>
           </div>
-          <div className="dataset-source-mode" role="group" aria-label="来源类型">
-            <button
-              type="button"
-              className={sourceType === "device" ? "active" : ""}
-              onClick={() => setSourceType("device")}
-            >
-              整台设备
-            </button>
-            <button
-              type="button"
-              className={sourceType === "data_stream" ? "active" : ""}
-              onClick={() => setSourceType("data_stream")}
-            >
-              数据指标
-            </button>
-          </div>
+          <Tabs value={sourceType} onValueChange={value => setSourceType(value as AddableSourceType)}>
+            <TabsList aria-label="来源类型"><TabsTrigger value="device">整台设备</TabsTrigger><TabsTrigger value="data_stream">数据指标</TabsTrigger></TabsList>
+          </Tabs>
           <div className="source-picker">
             <label className="field">
               <span className="field-label">设备</span>
@@ -993,7 +959,7 @@ function DatasetForm({
               <Button
                 type="button"
                 variant="secondary"
-                disabled={!deviceId}
+                disabled={!deviceId || sources.some(source => source.source_type === "device" && source.source_id === deviceId)}
                 onClick={addSources}
               >
                 <Plus size={13} />
@@ -1010,63 +976,48 @@ function DatasetForm({
                   </strong>
                   <span>
                     {deviceId
-                      ? `${selectedStreamIds.length} 项已选`
+                      ? `${availableStreams.filter(item => selectedStreamIds.includes(item.id)).length} 项已选`
                       : "选择设备后加载指标"}
                   </span>
                 </div>
-                {deviceId && selectableStreamIds.length > 0 && (
+                {deviceId && availableStreamIds.length > 0 && (
                   <button
                     type="button"
                     className="dataset-stream-select-all"
                     onClick={() =>
-                      setSelectedStreamIds(
-                        allStreamsSelected ? [] : availableStreamIds,
-                      )
+                      changeStreams(availableStreamIds, !allStreamsSelected)
                     }
                   >
                     {allStreamsSelected ? "清空选择" : "全选指标"}
                   </button>
                 )}
               </div>
-              <div className="dataset-stream-kind" role="group" aria-label="数据类型">
-                <button
-                  type="button"
-                  className={streamKind === "telemetry" ? "active" : ""}
-                  onClick={() => setStreamKind("telemetry")}
-                >
-                  设备数据
-                </button>
-                <button
-                  type="button"
-                  className={streamKind === "image" ? "active" : ""}
-                  onClick={() => setStreamKind("image")}
-                >
-                  图片
-                </button>
+              <div className="data-builder-stream-toolbar">
+                <Tabs value={streamKind} onValueChange={value => setStreamKind(value as "telemetry" | "image")}><TabsList aria-label="数据类型"><TabsTrigger value="telemetry">设备数据</TabsTrigger><TabsTrigger value="image">图片</TabsTrigger></TabsList></Tabs>
+                <SearchInput value={streamSearch} onChange={event => setStreamSearch(event.target.value)} placeholder="搜索指标名称或编码" />
               </div>
+              <p className="data-builder-hint">勾选即加入数据集，取消勾选即可移除</p>
               {!deviceId ? (
                 <div className="dataset-stream-empty">请先选择设备</div>
               ) : streams.isLoading ? (
                 <div className="dataset-stream-empty">正在加载数据指标…</div>
-              ) : availableStreams.length ? (
+              ) : streams.error ? (
+                <StateView type="error" title="设备数据加载失败" description={formatApiError(streams.error).message} />
+              ) : visibleStreams.length ? (
                 <div className="dataset-stream-options">
-                  {availableStreams.map((item) => (
+                  {visibleStreams.map((item) => (
                     <label
                       key={item.id}
-                      className={`dataset-stream-option${selectedStreamIds.includes(item.id) ? " selected" : ""}${existingStreamIds.has(item.id) ? " added" : ""}`}
+                      className={`dataset-stream-option${selectedStreamIds.includes(item.id) ? " selected" : ""}`}
                     >
                       <CheckboxInput
-                        checked={
-                          existingStreamIds.has(item.id) ||
-                          selectedStreamIds.includes(item.id)
-                        }
-                        disabled={existingStreamIds.has(item.id)}
+                        checked={selectedStreamIds.includes(item.id)}
                         onChange={() => toggleStream(item.id)}
                       />
                       <span>
                         <strong>{item.name}</strong>
                         <small>
-                          {existingStreamIds.has(item.id) ? "已添加" : item.code}
+                          {item.unit ? `${item.code} · ${item.unit}` : item.code}
                         </small>
                       </span>
                     </label>
@@ -1074,20 +1025,10 @@ function DatasetForm({
                 </div>
               ) : (
                 <div className="dataset-stream-empty">
-                  该设备暂无可用{streamKind === "image" ? "图片数据流" : "数据指标"}
+                  {streamSearch ? "没有匹配的指标" : <>该设备暂无可用{streamKind === "image" ? "图片数据流" : "数据指标"}</>}
                 </div>
               )}
-              <div className="dataset-stream-picker-actions">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={!selectedStreamIds.length}
-                  onClick={addSources}
-                >
-                  <Plus size={13} />
-                  添加已选{streamKind === "image" ? "图片" : "指标"}
-                </Button>
-              </div>
+
             </div>
           )}
           <div className="dataset-selected-sources">
@@ -1100,7 +1041,7 @@ function DatasetForm({
                   title={source.source_id}
                 >
                   <Database size={13} />
-                  <SourceName source={source} devices={devices} />
+                  <SourceName source={source} devices={datasetSelectableDevices} />
                   <small>{sourceTypeLabel(source.source_type)}</small>
                   <button
                     type="button"
@@ -1125,13 +1066,14 @@ function DatasetForm({
         <aside className="dataset-builder-summary" data-onboarding="dataset-save">
           <div className="dataset-builder-summary-heading"><span>3</span><div><h2>检查并保存</h2><p>确认范围与来源后创建数据集</p></div></div>
           <dl>
+            <div><dt>名称</dt><dd>{name || "未填写"}</dd></div>
             <div><dt>数据类型</dt><dd>{datasetTypeLabel(dataType)}</dd></div>
             <div><dt>数据来源</dt><dd>{sources.length ? `${sources.length} 项` : "未选择"}</dd></div>
             <div><dt>时间范围</dt><dd>{startTime.replace("T", " ")}<span>至</span>{endTime.replace("T", " ")}</dd></div>
             <div><dt>关联项目</dt><dd>{projects.find((item) => String(item.id) === projectId)?.name?.toString() ?? "未关联"}</dd></div>
           </dl>
-          {error && <div className="form-error dataset-error">{error}</div>}
-          {!dataset && <Button type="submit" disabled={busy || !name || !sources.length}>
+          {error && <Alert variant="destructive"><AlertTitle>无法保存数据集</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
+          {!dataset && <Button type="submit" disabled={busy || !name.trim() || !sources.length || !validDataRange(startTime, endTime)}>
             {busy ? "保存中…" : "创建数据集"}
           </Button>}
         </aside>

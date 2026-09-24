@@ -615,7 +615,8 @@ export function PlatformApp() {
               path="/datasets/:datasetId"
               element={<DatasetDetailPage />}
             />
-            <Route path="/exports" element={<ExportsPage />} />
+            <Route path="/exports" element={<ExportsPage key="export-list" />} />
+            <Route path="/exports/new" element={<ExportsPage key="export-create" creating />} />
             <Route path="/processing" element={<ProcessingPage />} />
             <Route path="/processing/:taskId" element={<ProcessingTaskDetailPage />} />
             <Route path="/wallboards" element={<WallboardsPage />} />

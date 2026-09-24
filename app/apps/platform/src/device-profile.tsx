@@ -29,7 +29,7 @@ import {
   type JsonRecord,
 } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, CheckboxInput, Input, Panel, SelectInput, Sheet, SheetContent, SheetTitle, StateView, Textarea } from "./platform-ui";
+import { Badge, Button, CheckboxInput, Input, Panel, SelectInput, Sheet, SheetContent, SheetTitle, StateView, Switch, Textarea } from "./platform-ui";
 import { iconifyIconUrl } from "@thcpn/device-map";
 import { renderPhotoToolbar } from "./device-media";
 
@@ -654,7 +654,7 @@ function ResearchTagEditor({disabled,value,options,onChange}:{disabled:boolean;v
 
 function EnvironmentField({label,field,overrides,toggle,children}:{label:string;field:string;overrides:Set<string>;toggle:(field:string)=>void;children:ReactNode}) {
   const enabled=overrides.has(field);
-  return <div className={`field environment-field ${enabled?"is-overridden":""}`}><div className="field-label"><span>{label}</span><label className="environment-override"><CheckboxInput checked={enabled} onChange={()=>toggle(field)}/><i aria-hidden="true"/><b>单独设置</b></label></div>{children}</div>;
+  return <div className={`field environment-field ${enabled?"is-overridden":""}`}><div className="field-label"><span>{label}</span><label className="environment-override"><Switch checked={enabled} onCheckedChange={()=>toggle(field)}/><b>单独设置</b></label></div>{children}</div>;
 }
 
 function DeviceTypeSelect({disabled,options,value,onChange}:{disabled:boolean;options:DeviceTaxonomyTerm[];value:string;onChange:(value:string)=>void}) {
@@ -680,7 +680,7 @@ function DeviceTypeOptionIcon({term}:{term?:DeviceTaxonomyTerm}) {
 function EnvironmentMultiField({label,field,overrides,toggle,options,value,onChange}:{label:string;field:string;overrides:Set<string>;toggle:(field:string)=>void;options:DeviceTaxonomyTerm[];value:string[];onChange:(value:string[])=>void}) {
   const enabled=overrides.has(field);
   const change=(id:string,checked:boolean)=>onChange(checked?Array.from(new Set([...value,id])):value.filter((item)=>item!==id));
-  return <div className={`field environment-field environment-multi-field ${enabled?"is-overridden":""}`}><span className="field-label">{label}<label className="environment-override"><CheckboxInput checked={enabled} onChange={()=>toggle(field)}/><i aria-hidden="true"/><b>单独设置</b></label></span><div className="taxonomy-choice-grid" aria-disabled={!enabled}>{options.map((term)=><label key={term.id} className={value.includes(term.id)?"selected":""}><CheckboxInput disabled={!enabled} checked={value.includes(term.id)} onChange={(event)=>change(term.id,event.target.checked)}/><span>{term.name_zh}</span></label>)}</div>{!options.length&&<span className="field-hint">暂无可用分类选项</span>}</div>;
+  return <div className={`field environment-field environment-multi-field ${enabled?"is-overridden":""}`}><span className="field-label">{label}<label className="environment-override"><Switch checked={enabled} onCheckedChange={()=>toggle(field)}/><b>单独设置</b></label></span><div className="taxonomy-choice-grid" aria-disabled={!enabled}>{options.map((term)=><label key={term.id} className={value.includes(term.id)?"selected":""}><CheckboxInput disabled={!enabled} checked={value.includes(term.id)} onChange={(event)=>change(term.id,event.target.checked)}/><span>{term.name_zh}</span></label>)}</div>{!options.length&&<span className="field-hint">暂无可用分类选项</span>}</div>;
 }
 
 async function moveImage(

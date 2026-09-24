@@ -1,0 +1,64 @@
+/* Shared data workflows: one reading column, a separate review column. */
+.export-page.export-editor-page .export-system-form form.export-builder { padding: 0; background: transparent; }
+.export-editor-page .export-system-form .export-builder-main { background: transparent; border: 0; padding: 0; }
+.export-editor-page .export-settings-fields { display: grid; gap: 24px; min-width: 0; }
+.export-editor-page .export-system-selector { margin: 0; }
+.export-editor-page .export-system-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.export-editor-page .export-system-cards > button { min-width: 0; }
+.export-editor-page .dataset-step-heading .export-form-icon { width: 24px; height: 24px; }
+@media (max-width: 640px) {
+  .export-editor-page .export-system-selector .export-system-cards { grid-template-columns: minmax(0, 1fr); }
+  .export-page.export-editor-page .export-system-form form.export-builder { padding: 0; }
+}
+.data-builder-range { display: grid; gap: 16px; padding: 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.data-builder-section-title { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.data-builder-presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.data-builder-range-inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.data-builder-range-inputs .field { min-width: 0; display: grid; gap: 8px; }
+.data-builder-range-inputs input { width: 100%; min-width: 0; }
+.data-builder-validation { margin: 0; color: var(--red); font-size: var(--font-size-small); }
+.data-builder-empty { padding: 24px 16px; margin: 0; text-align: center; color: var(--muted); }
+.data-builder-hint { color: var(--muted); font-size: var(--font-size-small); line-height: 1.6; }
+.export-page .export-summary[hidden] { display: none; }
+.export-page .export-system-form { overflow: visible; }
+.export-page .export-system-form form.export-builder { grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; padding: 24px; background: var(--panel); align-items: start; }
+.export-page .export-builder-main { padding: 0; gap: 24px; }
+.export-page .export-group-layout, .export-page .export-picker-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.export-page .export-builder-summary { position: sticky; top: 82px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-subtle); padding: 20px; }
+.export-page .export-device-checks { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); max-height: 320px; overflow-y: auto; padding: 12px; }
+.export-page .export-device-checks > label { min-height: 56px; display: flex; align-items: center; gap: 12px; padding: 12px; }
+.export-page .export-device-checks > label > .shadcn-checkbox { flex: 0 0 auto; }
+.export-page .export-picker-layout aside { max-height: 200px; overflow-y: auto; }
+.export-page .export-builder-actions { grid-template-columns: 1fr; }
+.export-page .export-builder-actions > :first-child { order: 1; }
+.dataset-editor-page .dataset-builder { grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; }
+.dataset-editor-page .dataset-builder-main { display: grid; gap: 24px; background: transparent; border: 0; }
+.dataset-editor-page .dataset-editor-section { padding: 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+.dataset-editor-page .dataset-form-grid { gap: 20px; }
+.dataset-editor-page .dataset-form-grid .field { display: grid; gap: 8px; }
+.dataset-editor-page .dataset-builder-summary { border-radius: 8px; background: var(--surface-subtle); }
+.dataset-editor-page .dataset-editor-section-heading { padding-bottom: 20px; }
+.dataset-editor-page .source-picker { grid-template-columns: minmax(0, 1fr) auto; margin-top: 20px; gap: 12px; }
+.dataset-editor-page .source-picker > .field { display: grid; gap: 8px; }
+.dataset-editor-page .dataset-stream-picker { padding: 16px; margin-top: 20px; background: var(--panel); }
+.data-builder-stream-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 16px; }
+.data-builder-stream-toolbar > :last-child { flex: 1; min-width: 180px; }
+.dataset-editor-page .dataset-stream-options { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; max-height: 360px; }
+.dataset-editor-page .dataset-stream-option { padding: 12px; gap: 10px; align-items: center; }
+.dataset-editor-page .dataset-stream-option strong { line-height: 1.5; }
+.dataset-editor-page .dataset-stream-option small { overflow-wrap: anywhere; }
+.dataset-editor-page .dataset-selected-sources { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.dataset-editor-page .source-chips { max-height: 240px; overflow-y: auto; }
+@media (max-width: 1100px) {
+  .export-page .export-system-form form.export-builder, .dataset-editor-page .dataset-builder { grid-template-columns: minmax(0, 1fr); }
+  .export-page .export-builder-summary, .dataset-editor-page .dataset-builder-summary { position: static; }
+  .export-page .export-builder-actions { display: flex; justify-content: flex-end; }
+  .export-page .export-builder-actions > :first-child { order: 0; }
+}
+@media (max-width: 640px) {
+  .data-builder-range-inputs, .dataset-editor-page .source-picker { grid-template-columns: minmax(0, 1fr); }
+  .export-page .export-system-form form.export-builder, .dataset-editor-page .dataset-editor-section { padding: 16px; }
+  .data-builder-range { padding: 14px; }
+  .dataset-editor-page .dataset-stream-picker-header { align-items: flex-start; }
+  .dataset-editor-page .dataset-stream-picker-header > div { display: grid; gap: 4px; }
+}

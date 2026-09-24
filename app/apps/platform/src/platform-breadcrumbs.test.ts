@@ -11,6 +11,11 @@ describe("platformBreadcrumbs", () => {
   });
 
   it("provides a navigable parent for nested editor and task routes", () => {
+    expect(platformBreadcrumbs("/exports/new")).toEqual([
+      { key: "overview", to: "/dashboard" },
+      { key: "exports", to: "/exports" },
+      { key: "createExport" },
+    ]);
     expect(platformBreadcrumbs("/datasets/data-1/edit").at(-2)).toEqual({ key: "datasets", to: "/datasets" });
     expect(platformBreadcrumbs("/processing/task-1").at(-2)).toEqual({ key: "processing", to: "/processing" });
   });

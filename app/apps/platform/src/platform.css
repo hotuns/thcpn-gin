@@ -8165,48 +8165,6 @@ body::-webkit-scrollbar-corner,
   gap: 6px;
   cursor: pointer;
 }
-.environment-override input {
-  width: 1px;
-  height: 1px;
-  position: absolute;
-  top: 50%;
-  left: 8px;
-  margin: 0;
-  opacity: 0;
-  transform: translateY(-50%);
-}
-.environment-override i {
-  width: 28px;
-  height: 16px;
-  position: relative;
-  display: inline-block;
-  background: var(--surface-subtle);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  transition: 140ms ease;
-}
-.environment-override i::after {
-  content: "";
-  width: 10px;
-  height: 10px;
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  background: var(--muted);
-  border-radius: 50%;
-  transition: 140ms ease;
-}
-.environment-override input:checked + i {
-  background: var(--blue);
-  border-color: var(--blue);
-}
-.environment-override input:checked + i::after {
-  left: 14px;
-  background: white;
-}
-.environment-override input:focus-visible + i {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 18%, transparent);
-}
 .environment-override b {
   color: var(--muted);
   font-size: var(--font-size-caption);
@@ -10255,47 +10213,6 @@ body::-webkit-scrollbar-corner,
   font-weight: var(--font-weight-medium);
   cursor: pointer;
   user-select: none;
-}
-.demo-mode-toggle input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-.demo-mode-toggle i {
-  position: relative;
-  width: 24px;
-  height: 14px;
-  border: 1px solid color-mix(in srgb, var(--muted) 36%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--muted) 10%, transparent);
-}
-.demo-mode-toggle i::after {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--muted) 64%, transparent);
-  content: "";
-  transition:
-    transform var(--duration-quick) var(--ease-smooth-out),
-    background-color var(--duration-quick) var(--ease-smooth-out);
-}
-.demo-mode-toggle input:checked + i::after {
-  background: var(--blue);
-  transform: translateX(10px);
-}
-.demo-mode-toggle input:focus-visible + i {
-  outline: 2px solid color-mix(in srgb, var(--blue) 35%, transparent);
-  outline-offset: 2px;
-}
-@media (prefers-reduced-motion: reduce) {
-  .demo-mode-toggle i::after {
-    transition: none;
-  }
 }
 .sms-row {
   display: grid;

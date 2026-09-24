@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, KeyRound, MessageSquareText } from "lucide-react";
 import { api, ApiError, formatApiError } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
-import { Brand, Button, CheckboxInput, Input } from "./platform-ui";
+import { Brand, Button, Input, Switch } from "./platform-ui";
 import { LanguageSwitcher, useLocale } from "@thcpn/i18n";
 import { LoginVisualCarousel } from "./login-visual-carousel";
 
@@ -452,7 +452,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
           {forgotPassword ? <div className="auth-form-footer"><button type="button" className="link" onClick={() => { setForgotPassword(false); setMessage(""); }}>{t("platform:auth.backLogin")}</button></div> : <div className="auth-form-footer">
             <span>{register ? t("platform:auth.hasAccount") : t("platform:auth.noAccount")}</span>
             <Link className="link" to={register ? "/login" : "/register"}>{register ? t("platform:auth.backLogin") : t("platform:auth.register")}</Link>
-            {!register && <label className="demo-mode-toggle"><span>演示模式</span><CheckboxInput role="switch" checked={demoMode} onChange={(event) => switchDemoMode(event.target.checked)} /><i aria-hidden="true" /></label>}
+            {!register && <label className="demo-mode-toggle"><span>演示模式</span><Switch checked={demoMode} onCheckedChange={switchDemoMode} /></label>}
           </div>}
         </div>
       </section>

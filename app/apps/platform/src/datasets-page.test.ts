@@ -3,11 +3,19 @@ import {
   buildDatasetPayload,
   datasetDetailPath,
   datasetEditPath,
+  selectDatasetStreams,
 } from "./datasets-page";
 
 const draft = { workspaceId: "w1", projectId: "p1", name: "  Trial A  ", description: "field data", dataType: "telemetry", startTime: "2026-01-01T08:00", endTime: "2026-01-02T08:00", sources: [{ source_type: "device" as const, source_id: "d1" }, { source_type: "data_stream" as const, source_id: "s1" }], status: "active" };
 
 describe("dataset payload", () => {
+  it("adds immediately without duplicates and only clears the visible selection", () => {
+    const sources = [{ source_type: "device" as const, source_id: "device1" }, { source_type: "data_stream" as const, source_id: "other-device-metric" }];
+    const selected = selectDatasetStreams(sources, ["metric1", "metric1", "metric2"], true);
+    expect(selected).toHaveLength(4);
+    expect(selectDatasetStreams(selected, ["metric1"], true)).toEqual(selected);
+    expect(selectDatasetStreams(selected, ["metric1", "metric2"], false)).toEqual(sources);
+  });
   it("creates a contract-compliant source definition", () => {
     expect(buildDatasetPayload(draft)).toMatchObject({ workspace_id: "w1", project_id: "p1", name: "Trial A", data_type: "telemetry", sources: [{ source_type: "device", source_id: "d1" }, { source_type: "data_stream", source_id: "s1" }] });
   });
