@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
 import {
   Link,
   Navigate,
@@ -14,6 +15,10 @@ import {
   Clock3,
   ArrowLeft,
   Battery,
+  BatteryLow,
+  BatteryMedium,
+  BatteryFull,
+  BatteryWarning,
   BellRing,
   CircleAlert,
   CircleCheck,
@@ -28,6 +33,10 @@ import {
   ScanLine,
   Search,
   Signal,
+  SignalZero,
+  SignalLow,
+  SignalMedium,
+  SignalHigh,
   Settings2,
   Trash2,
   Upload,
@@ -124,10 +133,25 @@ const numericAttributeValue = (
   attribute?: THCPNLatestAttributesResponse["attributes"][string],
 ) => {
   const value = attribute?.parsed_value ?? attribute?.raw_value;
+  if (value == null || (typeof value === "string" && !value.trim())) return null;
   const numeric = typeof value === "number" ? value : Number(value);
   return Number.isFinite(numeric) ? numeric : null;
 };
-export const inferSignalReading = (value: number | null): VitalReading => {
+export const csqSignalBars = (value: number | null): number | null => {
+  if (value === null || !Number.isInteger(value) || value < 0 || value > 31) return null;
+  return value === 0 ? 0 : value < 10 ? 1 : value < 15 ? 2 : value < 20 ? 3 : 4;
+};
+export const inferSignalReading = (value: number | null, csq = false): VitalReading => {
+  if (csq) {
+    if (value === 99) return { level: "unknown", valueLabel: "未知", description: "信号未知 / 未检测到网络（CSQ 99）" };
+    if (value === null || !Number.isInteger(value) || value < 0 || value > 31)
+      return { level: "unknown", valueLabel: "—", description: "暂无有效 CSQ 信号数据" };
+    return {
+      level: value >= 20 ? "good" : value >= 15 ? "fair" : value >= 10 ? "low" : "critical",
+      valueLabel: `CSQ ${value}`,
+      description: `CSQ ${value} / 31`,
+    };
+  }
   if (value === null || value < 0)
     return { level: "unknown", valueLabel: "—", description: "暂无信号数据" };
   const normalized = Math.min(100, Math.round(value));
@@ -145,7 +169,21 @@ export const inferSignalReading = (value: number | null): VitalReading => {
     description: `信号 ${normalized}%（暂按 70/40/20 分级）`,
   };
 };
-export const inferBatteryReading = (value: number | null): VitalReading => {
+export const leadAcidBatteryLevel = (value: number | null): VitalLevel => {
+  if (value === null || !Number.isFinite(value) || value <= 0) return "unknown";
+  return value <= 11.3 ? "critical" : value < 12 ? "low" : value < 12.6 ? "fair" : "good";
+};
+export const inferBatteryReading = (value: number | null, leadAcid = false, lithiumVoltage = false): VitalReading => {
+  if (lithiumVoltage) {
+    if (value === null || !Number.isFinite(value) || value <= 0) return { level: "unknown", valueLabel: "—", description: "暂无电量数据" };
+    return { level: "unknown", valueLabel: `${value.toFixed(2)}V`, description: `${value.toFixed(2)}V（仅显示电压，电量分档待确认）` };
+  }
+  if (leadAcid) {
+    const level = leadAcidBatteryLevel(value);
+    return level === "unknown"
+      ? { level, valueLabel: "—", description: "暂无电量数据" }
+      : { level, valueLabel: `${value!.toFixed(2)}V`, description: `${value!.toFixed(2)}V（电压分档，非精确剩余电量）` };
+  }
   if (value === null || value < 0)
     return { level: "unknown", valueLabel: "—", description: "暂无电量数据" };
   if (value >= 8 && value <= 16) {
@@ -612,7 +650,7 @@ function DeviceRows({
           </div>
         </td>
         <td>
-          {!camera?<DeviceVitalIndicators attributes={runtime?.attributes} loading={runtimeLoading}/>:<span className="cell-sub">不适用</span>}
+          {!camera?<DeviceVitalIndicators attributes={runtime?.attributes} loading={runtimeLoading} csq={deviceCategory(device) === "standalone"} lithiumVoltage={device.source_family === "thcpn" && ["gateway", "gateway_node"].includes(deviceCategory(device))}/>:<span className="cell-sub">不适用</span>}
         </td>
         <td>
           {!camera?<div className="device-last-report" title={overviewTime(runtime?.source_device.updated_at)}><Clock3 size={13}/><span>{runtime?.source_device.updated_at?relativeTime(runtime.source_device.updated_at):"暂无上报"}</span></div>:<span className="cell-sub">视频设备</span>}
@@ -678,35 +716,51 @@ const relativeTime = (input: string) => {
 function DeviceVitalIndicators({
   attributes,
   loading = false,
+  csq = false,
+  lithiumVoltage = false,
 }: {
   attributes?: THCPNLatestAttributesResponse["attributes"];
   loading?: boolean;
+  csq?: boolean;
+  lithiumVoltage?: boolean;
 }) {
   const battery = inferBatteryReading(
     loading ? null : numericAttributeValue(attributes?.battery),
+    csq,
+    lithiumVoltage,
   );
   const signal = inferSignalReading(
     loading ? null : numericAttributeValue(attributes?.signal),
+    csq,
   );
+  const bars = csqSignalBars(loading ? null : numericAttributeValue(attributes?.signal));
+  const SignalIcon = csq ? [SignalZero, SignalLow, SignalMedium, SignalHigh, Signal][bars ?? 0] : Signal;
+  const BatteryIcon = csq ? ({ unknown: Battery, critical: BatteryWarning, low: BatteryLow, fair: BatteryMedium, good: BatteryFull })[battery.level] : Battery;
   return (
-    <div className={`device-vitals ${loading ? "loading" : ""}`}>
-      <span
+    <TooltipProvider delayDuration={200}><div className={`device-vitals device-vitals-refined ${loading ? "loading" : ""}`}>
+      <Tooltip><TooltipTrigger asChild><span
+        tabIndex={0}
         className={`device-vital ${battery.level}`}
-        title={loading ? "正在读取电量" : battery.description}
         aria-label={loading ? "正在读取电量" : battery.description}
       >
-        <Battery size={15} aria-hidden="true" />
-        <small>{loading ? "…" : battery.valueLabel}</small>
-      </span>
-      <span
+        <BatteryIcon size={20} aria-hidden="true" />
+        {(!csq || battery.level === "unknown") && <small>{loading ? "…" : battery.valueLabel}</small>}
+      </span></TooltipTrigger><TooltipContent className="device-vital-tooltip">
+        <div><strong>电池</strong><b>{loading ? "…" : battery.valueLabel}</b></div>
+        <p>{loading ? "正在读取电量" : battery.description}</p>
+      </TooltipContent></Tooltip>
+      <Tooltip><TooltipTrigger asChild><span
+        tabIndex={0}
         className={`device-vital ${signal.level}`}
-        title={loading ? "正在读取信号" : signal.description}
         aria-label={loading ? "正在读取信号" : signal.description}
       >
-        <Signal size={15} aria-hidden="true" />
-        <small>{loading ? "…" : signal.valueLabel}</small>
-      </span>
-    </div>
+        <SignalIcon size={20} aria-hidden="true" />
+        {(!csq || bars === null) && <small>{loading ? "…" : signal.valueLabel}</small>}
+      </span></TooltipTrigger><TooltipContent className="device-vital-tooltip">
+        <div><strong>信号</strong><b>{loading ? "…" : signal.valueLabel}</b></div>
+        <p>{loading ? "正在读取信号" : signal.description}</p>
+      </TooltipContent></Tooltip>
+    </div></TooltipProvider>
   );
 }
 
@@ -1034,7 +1088,7 @@ function DeviceProfileOperational({ device, workspaceId }: { device: Device; wor
       <div className="device-profile-section-heading"><div><h3><Gauge size={16} />运行概况</h3><span>能力与设备最新状态</span></div><span title={`最近更新 ${overviewTime(device.updated_at)}`}><Clock3 size={14} aria-hidden="true" />{overviewTime(device.updated_at)}</span></div>
       <div className="device-overview-summary">
         <div className="device-detail-capabilities device-overview-capabilities">{device.capabilities.length ? device.capabilities.map((item) => <span key={item} title={item}><Badge tone="info">{deviceCapabilityLabel(item)}</Badge></span>) : <span className="muted">未声明设备能力</span>}</div>
-        <DeviceVitalIndicators attributes={latestAttributes.data?.attributes} loading={!carbonDevice && latestAttributes.isLoading} />
+        <DeviceVitalIndicators attributes={latestAttributes.data?.attributes} loading={!carbonDevice && latestAttributes.isLoading} csq={deviceCategory(device) === "standalone"} lithiumVoltage={device.source_family === "thcpn" && ["gateway", "gateway_node"].includes(deviceCategory(device))} />
       </div>
     </section>
     <section className="device-source-runtime">

@@ -35,7 +35,6 @@ import {
 import { billingEnabled } from "./features";
 import {
   api,
-  apiErrorEvent,
   commonStatusLabel,
   formatApiError,
   roleTemplateLabel,
@@ -49,9 +48,6 @@ import {
 import {
   Badge,
   Brand,
-  Alert,
-  AlertDescription,
-  AlertTitle,
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
@@ -70,6 +66,7 @@ import {
   Table,
 } from "./platform-ui";
 import { AccountMenu, WorkspaceMenu } from "./shell-menus";
+import { RequestErrorToasts } from "./request-error-toasts";
 import { OnboardingTour } from "./onboarding-tour";
 import { platformBreadcrumbs } from "./platform-breadcrumbs";
 import { LanguageSwitcher, useLocale } from "@thcpn/i18n";
@@ -177,7 +174,6 @@ function Shell() {
   const { t } = useLocale();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [onboardingSession, setOnboardingSession] = useState(0);
-  const [requestError, setRequestError] = useState<ReturnType<typeof formatApiError> | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem("thcpn:sidebar-collapsed") === "true",
   );
@@ -195,13 +191,6 @@ function Shell() {
   useEffect(() => {
     localStorage.setItem("thcpn:sidebar-collapsed", String(sidebarCollapsed));
   }, [sidebarCollapsed]);
-  useEffect(() => {
-    const showRequestError = (event: Event) => {
-      setRequestError(formatApiError((event as CustomEvent).detail));
-    };
-    window.addEventListener(apiErrorEvent, showRequestError);
-    return () => window.removeEventListener(apiErrorEvent, showRequestError);
-  }, []);
   useEffect(() => {
     if (!mobileOpen) return;
     const previousOverflow = document.body.style.overflow;
@@ -350,19 +339,7 @@ function Shell() {
         </main>
       </div>
       {user?.id ? <OnboardingTour key={onboardingSession} userId={user.id} startOpen={onboardingSession > 0} /> : null}
-      {requestError ? (
-        <Alert variant="destructive" className="global-request-error" aria-live="assertive">
-          <AlertTriangle size={22} />
-          <div>
-            <AlertTitle>{requestError.status === 401 ? t("errors.unauthorized") : requestError.status === 403 ? t("errors.permission_denied") : t("requestFailed")}</AlertTitle>
-            <AlertDescription>
-              <p>{requestError.message}</p>
-              {requestError.requestId ? <small>{t("requestId", { id: requestError.requestId })}</small> : null}
-            </AlertDescription>
-          </div>
-          <CloseButton onClick={() => setRequestError(null)} />
-        </Alert>
-      ) : null}
+      <RequestErrorToasts />
     </div>
   );
 }

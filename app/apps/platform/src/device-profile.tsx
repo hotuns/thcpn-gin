@@ -30,6 +30,7 @@ import {
 } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, CheckboxInput, Input, Panel, SelectInput, Sheet, SheetContent, SheetTitle, StateView, Switch, Textarea } from "./platform-ui";
+import { DeviceProfileGallery } from "./device-profile-gallery";
 import { iconifyIconUrl } from "@thcpn/device-map";
 import { renderPhotoToolbar } from "./device-media";
 
@@ -123,10 +124,6 @@ export function DeviceProfileTab({
   const profile = query.data;
   const location = profile.effective_location;
   const images = profile.images ?? [];
-  const coverIndex = Math.max(0, images.findIndex((image) => image.is_cover));
-  const galleryImages = images
-    .map((image, index) => ({ image, index }))
-    .filter(({ index }) => index !== coverIndex);
   const latitude = location?.latitude;
   const longitude = location?.longitude;
   const projectName = projects.find((item) => String(item.id) === device.project_id)?.name;
@@ -243,7 +240,7 @@ export function DeviceProfileTab({
               <div className="panel-kicker">设备外观、铭牌与安装环境</div>
             </div>
             <div className="header-actions">
-              <Badge tone="info">{images.length} / 12</Badge>
+              <Badge tone="info">已上传 {images.length} 张图片</Badge>
               {profile.can_configure && images.length > 0 && (
                 <Button
                   variant="secondary"
@@ -330,36 +327,7 @@ export function DeviceProfileTab({
                   )}
                 </div>
               ))}
-            </div> : <div className={`device-profile-showcase ${images.length === 1 ? "single" : ""}`}>
-              <button
-                className="device-profile-showcase-main"
-                type="button"
-                onClick={() => setPreviewIndex(coverIndex)}
-              >
-                <img
-                  src={images[coverIndex].preview_url}
-                  alt={images[coverIndex].caption || images[coverIndex].original_filename}
-                />
-                <span className="image-cover-badge">封面</span>
-                <span className="device-profile-showcase-caption">
-                  {images[coverIndex].caption || device.name}
-                </span>
-              </button>
-              {galleryImages.length > 0 && (
-                <div className="device-profile-showcase-thumbs">
-                  {galleryImages.slice(0, 4).map(({ image, index }, thumbIndex) => {
-                    const remaining = galleryImages.length - 4;
-                    const showRemaining = thumbIndex === 3 && remaining > 0;
-                    return (
-                      <button type="button" key={image.id} onClick={() => setPreviewIndex(index)}>
-                        <img src={image.preview_url} alt={image.caption || image.original_filename} />
-                        {showRemaining && <span className="device-profile-image-more">+{remaining}</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+            </div> : <DeviceProfileGallery images={images} onPreview={setPreviewIndex} />
           ) : (
             <StateView
               type="empty"

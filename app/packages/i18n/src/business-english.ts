@@ -1,5 +1,7 @@
 // Generated from static platform UI copy. Existing hand-written translations in legacy.ts take precedence.
 export const businessEnglish: Record<string, string> = {
+  "信号未知 / 未检测到网络（CSQ 99）": "Signal unknown / network not detected (CSQ 99)",
+  "暂无有效 CSQ 信号数据": "No valid CSQ signal data",
   "返回导出列表": "Back to exports",
   "任务创建后返回列表查看进度和下载文件": "After creation, return to the list to track progress and download files.",
   "最近 1 天": "Last 24 hours",
