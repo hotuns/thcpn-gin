@@ -60,6 +60,11 @@ type Config struct {
 	ImageStreamIDs     []uuid.UUID `json:"image_stream_ids"`
 	ComparisonStreamID *uuid.UUID  `json:"comparison_stream"`
 	TrendHours         int         `json:"trend_hours"`
+	Description        string      `json:"description,omitempty"`
+	Layout             string      `json:"layout,omitempty"`
+	Presentation       string      `json:"presentation,omitempty"`
+	ShowImages         *bool       `json:"show_images,omitempty"`
+	ShowTrends         *bool       `json:"show_trends,omitempty"`
 }
 type Device struct {
 	ID               uuid.UUID  `json:"id"`
@@ -121,7 +126,12 @@ func NewService(db *pgxpool.Pool, telemetryService *telemetry.Service, mediaServ
 }
 
 func catalog() ([]Template, error) {
-	return []Template{}, nil
+	return []Template{{
+		Code: "atlas-tech", Version: 1, ComponentKey: "atlas-tech", Name: "一张图 · 科技观测",
+		Description: "地图、设备指标与现场影像联动的交互式观测门户", Cover: "atlas", Scene: "organization",
+		DefaultRefreshSeconds: 60, ConfigSchema: json.RawMessage(`{"type":"object"}`),
+		SampleData: json.RawMessage(`{"devices":[],"metrics":[],"images":[]}`),
+	}}, nil
 }
 
 func (s *Service) Sync(ctx context.Context) error {
@@ -202,23 +212,6 @@ func (s *Service) Template(ctx context.Context, code string, publishedOnly bool)
 	return Template{}, apperr.New(apperr.KindNotFound, "wallboard template not found")
 }
 
-func (s *Service) UpdateTemplate(ctx context.Context, code, status, tier, price, copy string) (Template, error) {
-	if status != "published" && status != "unpublished" {
-		return Template{}, apperr.New(apperr.KindInvalidArgument, "invalid template status")
-	}
-	if tier != "free" && tier != "premium" {
-		return Template{}, apperr.New(apperr.KindInvalidArgument, "invalid template tier")
-	}
-	result, err := s.db.Exec(ctx, `UPDATE wallboard_templates SET status=$2,tier=$3,display_price=$4,contact_copy=$5,updated_at=now() WHERE code=$1`, code, status, tier, strings.TrimSpace(price), strings.TrimSpace(copy))
-	if err != nil {
-		return Template{}, apperr.Wrap(apperr.KindInternal, "update wallboard template", err)
-	}
-	if result.RowsAffected() == 0 {
-		return Template{}, apperr.New(apperr.KindNotFound, "wallboard template not found")
-	}
-	return s.Template(ctx, code, false)
-}
-
 func (s *Service) List(ctx context.Context, workspaceID uuid.UUID) ([]Wallboard, error) {
 	rows, err := s.db.Query(ctx, wallboardSelect+` WHERE w.workspace_id=$1 ORDER BY w.updated_at DESC`, workspaceID)
 	if err != nil {
@@ -260,6 +253,9 @@ func (s *Service) Save(ctx context.Context, workspaceID, actorID, id uuid.UUID, 
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return Wallboard{}, apperr.New(apperr.KindInvalidArgument, "wallboard name is required")
+	}
+	if len([]rune(name)) > 120 {
+		return Wallboard{}, apperr.New(apperr.KindInvalidArgument, "wallboard name exceeds 120 characters")
 	}
 	var template Template
 	var err error
@@ -322,6 +318,18 @@ func (s *Service) validateConfig(ctx context.Context, workspaceID uuid.UUID, sce
 	}
 	if c.TrendHours > 720 {
 		return c, apperr.New(apperr.KindInvalidArgument, "trend_hours exceeds 720")
+	}
+	if c.Layout != "" && c.Layout != "balanced" && c.Layout != "map" {
+		return c, apperr.New(apperr.KindInvalidArgument, "layout must be balanced or map")
+	}
+	if c.Presentation == "" {
+		c.Presentation = "technology"
+	}
+	if c.Presentation != "technology" && c.Presentation != "panorama" {
+		return c, apperr.New(apperr.KindInvalidArgument, "unknown atlas presentation")
+	}
+	if len([]rune(c.Description)) > 300 {
+		return c, apperr.New(apperr.KindInvalidArgument, "description exceeds 300 characters")
 	}
 	if scene == "site" && c.SiteID == nil {
 		return c, apperr.New(apperr.KindInvalidArgument, "site_id is required")

@@ -1,6 +1,8 @@
+import { atlasZh, atlasEn } from "./atlas";
 export const resources = {
   "zh-CN": {
     common: {
+      atlas: atlasZh,
       appTitle: "In-situ EcoCloud | 原位生态云",
       mainNavigation: "主导航",
       language: "语言",
@@ -118,7 +120,7 @@ export const resources = {
         datasets: "数据集",
         processing: "数据处理",
         exports: "数据导出",
-        wallboards: "大屏展示",
+        wallboards: "一张图",
         workspaces: "组织",
         subscription: "订阅与用量",
         notifications: "通知中心",
@@ -306,7 +308,6 @@ export const resources = {
         demoAccounts: "演示账号",
         administrators: "管理员账号",
         processingPlans: "数据处理方案",
-        wallboardTemplates: "大屏模板",
         metadata: "元数据",
         settings: "系统设置",
         backPlatform: "返回用户平台",
@@ -374,6 +375,7 @@ export const resources = {
   },
   "en-US": {
     common: {
+      atlas: atlasEn,
       appTitle: "In-situ EcoCloud",
       mainNavigation: "Main navigation",
       language: "Language",
@@ -495,7 +497,7 @@ export const resources = {
         datasets: "Datasets",
         processing: "Processing",
         exports: "Data export",
-        wallboards: "Wallboards",
+        wallboards: "Atlas",
         workspaces: "Workspaces",
         subscription: "Subscription & usage",
         notifications: "Notifications",
@@ -641,7 +643,6 @@ export const resources = {
         demoAccounts: "Demo accounts",
         administrators: "Administrators",
         processingPlans: "Processing plans",
-        wallboardTemplates: "Wallboard templates",
         metadata: "Metadata",
         settings: "System settings",
         backPlatform: "Back to platform",

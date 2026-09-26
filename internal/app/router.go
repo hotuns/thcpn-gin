@@ -266,7 +266,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	publicDeviceHandler := publicdevice.NewHandler(publicDeviceService, telemetryService, mediaService, permissionChecker, auditService, deps.Redis, cfg.Auth.JWTSecret)
 	exportHandler := export.NewHandler(exportService, permissionChecker, auditService)
 	processingHandler := processing.NewHandler(processingService, permissionChecker, billingService, auditService)
-	wallboardHandler := wallboard.NewHandler(wallboardService, permissionChecker, auditService)
+	wallboardHandler := wallboard.NewHandler(wallboardService, permissionChecker)
 	notificationHandler := notification.NewHandler(notificationService)
 	alertHandler := alerting.NewHandler(alertService, permissionChecker, auditService)
 	if taskClient := task.NewClient(deps.Redis); taskClient != nil {
@@ -524,9 +524,6 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.PUT("/processing/plans/:plan_id", processingHandler.AdminUpdatePlan)
 	admin.POST("/processing/plans/:plan_id/publish", processingHandler.AdminPublishPlan)
 	admin.POST("/processing/plans/:plan_id/disable", processingHandler.AdminDisablePlan)
-	admin.GET("/wallboard-templates", wallboardHandler.AdminTemplates)
-	admin.POST("/wallboard-templates/sync", wallboardHandler.AdminSync)
-	admin.PATCH("/wallboard-templates/:code", wallboardHandler.AdminUpdate)
 	admin.GET("/platform-logs", platformLogHandler.List)
 	admin.GET("/platform-logs/export", platformLogHandler.Export)
 	admin.GET("/platform-logs/policy", platformLogHandler.Policy)

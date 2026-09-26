@@ -40,6 +40,9 @@ export type DeviceNodeTarget = Schema<"DeviceNodeTarget">;
 export type DeviceInteractionContext = Schema<"DeviceInteractionContext">;
 export type DeviceChild = Schema<"DeviceChild">;
 export type DataStream = Schema<"DataStream"> & { computed?: boolean };
+export type AtlasConfig = Schema<"AtlasConfig">;
+export type AtlasView = Schema<"AtlasView">;
+export type AtlasSaveRequest = Schema<"AtlasSaveRequest">;
 export type DeviceMetadata = {
   id: string;
   device_id: string;
@@ -612,6 +615,13 @@ export const api = {
     adminList: (filters: JsonRecord = {}) =>
       request<ListResponse<JsonRecord>>(`/api/v1/admin/workspaces${queryString(filters as Record<string, string | number | boolean>)}`),
   },
+  atlas: {
+    list: (workspaceId: string) => request<ListResponse<AtlasView> & { can_manage: boolean }>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/wallboards`),
+    get: (workspaceId: string, id: string) => request<AtlasView>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/wallboards/${encodeURIComponent(id)}`),
+    create: (workspaceId: string, payload: AtlasSaveRequest) => jsonRequest<AtlasView>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/wallboards`, "POST", payload),
+    update: (workspaceId: string, id: string, payload: AtlasSaveRequest) => jsonRequest<AtlasView>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/wallboards/${encodeURIComponent(id)}`, "PUT", payload),
+    archive: (workspaceId: string, id: string) => request<void>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/wallboards/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  },
   wallboards: {
     templates: () => request<ListResponse<WallboardTemplate>>("/api/v1/wallboard-templates"),
     preview: (code: string) => request<{ template: WallboardTemplate; snapshot: WallboardSnapshot }>(`/api/v1/wallboard-templates/${encodeURIComponent(code)}/preview`),
@@ -1141,11 +1151,6 @@ export const api = {
       update: (id: string, payload: JsonRecord) => jsonRequest<ProcessingPlan>(`/api/v1/admin/processing/plans/${encodeURIComponent(id)}`, "PUT", payload),
       publish: (id: string) => jsonRequest<ProcessingPlan>(`/api/v1/admin/processing/plans/${encodeURIComponent(id)}/publish`, "POST", {}),
       disable: (id: string) => jsonRequest<ProcessingPlan>(`/api/v1/admin/processing/plans/${encodeURIComponent(id)}/disable`, "POST", {}),
-    },
-    wallboardTemplates: {
-      list: () => request<ListResponse<WallboardTemplate>>("/api/v1/admin/wallboard-templates"),
-      sync: () => jsonRequest<ListResponse<WallboardTemplate>>("/api/v1/admin/wallboard-templates/sync", "POST", {}),
-      update: (code: string, payload: JsonRecord) => jsonRequest<WallboardTemplate>(`/api/v1/admin/wallboard-templates/${encodeURIComponent(code)}`, "PATCH", payload),
     },
     announcements: {
       list: () => request<JsonRecord>("/api/v1/admin/announcements"),

@@ -39,7 +39,7 @@ function defaultStyle(): StyleSpecification {
   };
 }
 
-export function DeviceMap({ points, onSelect, selectedDeviceId, height = 520, styleUrl, mapStyle }: { points: DeviceMapPoint[]; onSelect?: (id: string) => void; selectedDeviceId?: string; height?: number | string; styleUrl?: string; mapStyle?: StyleSpecification }) {
+export function DeviceMap({ points, onSelect, selectedDeviceId, height = 520, styleUrl, mapStyle, showNavigation = true }: { points: DeviceMapPoint[]; onSelect?: (id: string) => void; selectedDeviceId?: string; height?: number | string; styleUrl?: string; mapStyle?: StyleSpecification; showNavigation?: boolean }) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
   const markers = useRef<maplibregl.Marker[]>([]);
@@ -52,7 +52,7 @@ export function DeviceMap({ points, onSelect, selectedDeviceId, height = 520, st
     if (!container.current || map.current) return;
     const instance = new maplibregl.Map({ container: container.current, style: mapStyle || styleUrl || defaultStyle(), center: [104, 35], zoom: 3, attributionControl: {} });
     map.current = instance;
-    instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+    if (showNavigation) instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     const startDragging = () => instance.getContainer().classList.add("is-dragging");
     const stopDragging = () => instance.getContainer().classList.remove("is-dragging");
     instance.on("dragstart", startDragging);
@@ -61,7 +61,7 @@ export function DeviceMap({ points, onSelect, selectedDeviceId, height = 520, st
     const observer = new ResizeObserver(() => instance.resize());
     observer.observe(container.current);
     return () => { observer.disconnect(); instance.off("dragstart", startDragging); instance.off("dragend", stopDragging); markers.current.forEach((marker) => marker.remove()); markers.current = []; instance.remove(); map.current = null; };
-  }, [styleUrl, mapStyle]);
+  }, [styleUrl, mapStyle, showNavigation]);
   useEffect(() => {
     let attempts = 0;
     let retry: ReturnType<typeof setInterval> | undefined;

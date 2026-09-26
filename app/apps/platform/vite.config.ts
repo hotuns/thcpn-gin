@@ -13,7 +13,6 @@ export default defineConfig({
     viteStaticCopy({
       targets: [
         { src: "../../node_modules/ezuikit-js/ezuikit_static", dest: "." },
-        { src: "../../node_modules/cesium/Build/Cesium/{Workers,Assets,Widgets,ThirdParty}", dest: "cesium" },
       ],
     }),
     {
@@ -31,7 +30,6 @@ export default defineConfig({
       },
     },
   ],
-  define: { CESIUM_BASE_URL: JSON.stringify("/cesium") },
   server: {
     host: "127.0.0.1",
     port: 5173,

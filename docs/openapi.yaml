@@ -64,6 +64,69 @@ tags:
   - name: AuditLogs
     description: Sensitive operation audit log APIs
 paths:
+  /api/v1/workspaces/{workspace_id}/wallboards:
+    parameters:
+      - {name: workspace_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: listAtlasViews
+      summary: List saved atlas views (wallboard.view permission)
+      responses:
+        '200':
+          description: Saved workspace views
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, can_manage]
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/AtlasView'}}
+                  can_manage: {type: boolean, description: Whether the actor can manage views in this workspace.}
+    post:
+      operationId: createAtlasView
+      summary: Save an atlas view (wallboard.manage permission)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AtlasSaveRequest'}
+      responses:
+        '201':
+          description: Saved view
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AtlasView'}
+  /api/v1/workspaces/{workspace_id}/wallboards/{id}:
+    parameters:
+      - {name: workspace_id, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getAtlasView
+      summary: Read an atlas view (wallboard.view permission)
+      responses:
+        '200':
+          description: Saved view
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AtlasView'}
+    put:
+      operationId: updateAtlasView
+      summary: Update an atlas view (wallboard.manage permission)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AtlasSaveRequest'}
+      responses:
+        '200':
+          description: Saved view
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AtlasView'}
+    delete:
+      operationId: archiveAtlasView
+      summary: Archive an atlas view without deleting device data (wallboard.manage permission)
+      responses:
+        '204': {description: Archived}
   /api/v1/admin/data-sources/{data_source_id}/sync:
     post:
       tags: [Admin]
@@ -6879,6 +6942,48 @@ components:
                   message: internal error
                   request_id: req_123
   schemas:
+    AtlasConfig:
+      type: object
+      description: Atlas settings stored under the existing wallboard permission boundary. Telemetry and media use existing access-controlled query APIs.
+      properties:
+        device_ids:
+          type: array
+          maxItems: 50
+          items: {type: string, format: uuid}
+          description: Empty means all accessible devices in the workspace.
+        telemetry_stream_ids:
+          type: array
+          items: {type: string, format: uuid}
+          description: Preferred metrics; all other metrics remain accessible.
+        trend_hours: {type: integer, minimum: 1, maximum: 720, default: 24}
+        description: {type: string, maxLength: 300}
+        layout: {type: string, enum: [balanced, map], default: balanced}
+        presentation: {type: string, enum: [technology, panorama], default: technology, description: Registered presentation template, independent of device and module settings.}
+        show_images: {type: boolean, default: true}
+        show_trends: {type: boolean, default: true}
+    AtlasSaveRequest:
+      type: object
+      required: [name, template_code, config]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        template_code: {type: string, const: atlas-tech}
+        config: {$ref: '#/components/schemas/AtlasConfig'}
+    AtlasView:
+      type: object
+      required: [id, workspace_id, name, template_code, template_version, template_name, component_key, config, status, created_by, created_at, updated_at]
+      properties:
+        id: {type: string, format: uuid}
+        workspace_id: {type: string, format: uuid}
+        name: {type: string}
+        template_code: {type: string}
+        template_version: {type: integer}
+        template_name: {type: string}
+        component_key: {type: string}
+        config: {$ref: '#/components/schemas/AtlasConfig'}
+        status: {type: string, enum: [active, archived]}
+        created_by: {type: string, format: uuid}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
     StatusResponse:
       type: object
       required:

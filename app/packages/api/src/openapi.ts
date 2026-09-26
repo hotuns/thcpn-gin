@@ -4,6 +4,48 @@
  */
 
 export interface paths {
+    "/api/v1/workspaces/{workspace_id}/wallboards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        /** List saved atlas views (wallboard.view permission) */
+        get: operations["listAtlasViews"];
+        put?: never;
+        /** Save an atlas view (wallboard.manage permission) */
+        post: operations["createAtlasView"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/wallboards/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Read an atlas view (wallboard.view permission) */
+        get: operations["getAtlasView"];
+        /** Update an atlas view (wallboard.manage permission) */
+        put: operations["updateAtlasView"];
+        post?: never;
+        /** Archive an atlas view without deleting device data (wallboard.manage permission) */
+        delete: operations["archiveAtlasView"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/data-sources/{data_source_id}/sync": {
         parameters: {
             query?: never;
@@ -4934,6 +4976,57 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description Atlas settings stored under the existing wallboard permission boundary. Telemetry and media use existing access-controlled query APIs. */
+        AtlasConfig: {
+            /** @description Empty means all accessible devices in the workspace. */
+            device_ids?: string[];
+            /** @description Preferred metrics; all other metrics remain accessible. */
+            telemetry_stream_ids?: string[];
+            /** @default 24 */
+            trend_hours: number;
+            description?: string;
+            /**
+             * @default balanced
+             * @enum {string}
+             */
+            layout: "balanced" | "map";
+            /**
+             * @description Registered presentation template
+             * @default technology
+             * @enum {string}
+             */
+            presentation: "technology" | "panorama";
+            /** @default true */
+            show_images: boolean;
+            /** @default true */
+            show_trends: boolean;
+        };
+        AtlasSaveRequest: {
+            name: string;
+            /** @constant */
+            template_code: "atlas-tech";
+            config: components["schemas"]["AtlasConfig"];
+        };
+        AtlasView: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            workspace_id: string;
+            name: string;
+            template_code: string;
+            template_version: number;
+            template_name: string;
+            component_key: string;
+            config: components["schemas"]["AtlasConfig"];
+            /** @enum {string} */
+            status: "active" | "archived";
+            /** Format: uuid */
+            created_by: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
         StatusResponse: {
             /** @example ok */
             status: string;
@@ -7608,6 +7701,129 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listAtlasViews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Saved workspace views */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AtlasView"][];
+                        /** @description Whether the actor can manage views in this workspace. */
+                        can_manage: boolean;
+                    };
+                };
+            };
+        };
+    };
+    createAtlasView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AtlasSaveRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved view */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AtlasView"];
+                };
+            };
+        };
+    };
+    getAtlasView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Saved view */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AtlasView"];
+                };
+            };
+        };
+    };
+    updateAtlasView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AtlasSaveRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved view */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AtlasView"];
+                };
+            };
+        };
+    };
+    archiveAtlasView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archived */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     getHealthz: {
         parameters: {
             query?: never;

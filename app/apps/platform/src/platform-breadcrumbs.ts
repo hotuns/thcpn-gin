@@ -17,8 +17,7 @@ export function platformBreadcrumbs(pathname: string): PlatformBreadcrumb[] {
   if (pathname === "/processing") return [root, { key: "processing" }];
   if (pathname === "/exports") return [root, { key: "exports" }];
   if (pathname === "/exports/new") return [root, { key: "exports", to: "/exports" }, { key: "createExport" }];
-  if (/^\/wallboards\/[^/]+\/play$/.test(pathname)) return [root, { key: "wallboards", to: "/wallboards" }, { key: "wallboardPlay" }];
-  if (pathname === "/wallboards") return [root, { key: "wallboards" }];
+  if (pathname === "/atlas" || pathname.startsWith("/atlas/")) return [root, { key: "wallboards", to: pathname === "/atlas" ? undefined : "/atlas" }];
   if (pathname === "/settings") return [root, { key: "workspaces", to: "/workspaces" }, { key: "settings" }];
   if (pathname === "/workspaces") return [root, { key: "workspaces" }];
   if (pathname === "/subscription") return [root, { key: "subscription" }];

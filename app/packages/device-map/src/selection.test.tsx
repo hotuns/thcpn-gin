@@ -2,14 +2,25 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { expect, it, vi } from 'vitest';
-const camera = vi.hoisted(()=>({fitBounds:vi.fn(),easeTo:vi.fn()}));
+const camera = vi.hoisted(()=>({fitBounds:vi.fn(),easeTo:vi.fn(),addControl:vi.fn()}));
 vi.mock('maplibre-gl',()=>({
- Map:class { addControl(){} on(){} off(){} remove(){} resize(){} fitBounds=camera.fitBounds;easeTo=camera.easeTo;getBounds(){return {getWest:()=>-180,getSouth:()=>-85,getEast:()=>180,getNorth:()=>85};}getZoom(){return 10;} },
+ Map:class { addControl=camera.addControl; on(){} off(){} remove(){} resize(){} fitBounds=camera.fitBounds;easeTo=camera.easeTo;getBounds(){return {getWest:()=>-180,getSouth:()=>-85,getEast:()=>180,getNorth:()=>85};}getZoom(){return 10;} },
  NavigationControl:class {},
  LngLatBounds:class {extend(){return this;}getCenter(){return [0,0];}},
  Marker:class {setLngLat(){return this;}addTo(){return this;}remove(){}},
 }));
 import { DeviceMap, type DeviceMapPoint } from './index';
+it('can omit navigation controls while retaining the default for other maps',async()=>{
+ vi.stubGlobal('ResizeObserver',class {observe(){}disconnect(){}});
+ const root=createRoot(document.createElement('div'));
+ camera.addControl.mockClear();
+ try {
+  await act(async()=>root.render(<DeviceMap points={[]} showNavigation={false}/>));
+  expect(camera.addControl).not.toHaveBeenCalled();
+  await act(async()=>root.render(<DeviceMap points={[]}/>));
+  expect(camera.addControl).toHaveBeenCalledTimes(1);
+ } finally {await act(async()=>root.unmount());vi.unstubAllGlobals();}
+});
 it('centers selection without fitting all points or changing zoom',async()=>{
  vi.stubGlobal('ResizeObserver',class {observe(){}disconnect(){}});
  const element=document.createElement('div');const root=createRoot(element);

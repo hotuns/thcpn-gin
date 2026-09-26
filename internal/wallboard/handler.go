@@ -7,9 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"thcpn-gin/internal/adminauth"
 	"thcpn-gin/internal/apperr"
-	"thcpn-gin/internal/audit"
 	"thcpn-gin/internal/auth"
 	"thcpn-gin/internal/httpx"
 	"thcpn-gin/internal/permission"
@@ -18,11 +16,10 @@ import (
 type Handler struct {
 	service *Service
 	checker *permission.Checker
-	audit   *audit.Service
 }
 
-func NewHandler(service *Service, checker *permission.Checker, auditService *audit.Service) *Handler {
-	return &Handler{service: service, checker: checker, audit: auditService}
+func NewHandler(service *Service, checker *permission.Checker) *Handler {
+	return &Handler{service: service, checker: checker}
 }
 
 func (h *Handler) Templates(c *gin.Context) {
@@ -47,7 +44,7 @@ func (h *Handler) Preview(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"template": item, "snapshot": sample})
 }
 func (h *Handler) List(c *gin.Context) {
-	workspaceID, _, ok := h.authorize(c, "wallboard.view")
+	workspaceID, actor, ok := h.authorize(c, "wallboard.view")
 	if !ok {
 		return
 	}
@@ -56,7 +53,12 @@ func (h *Handler) List(c *gin.Context) {
 		httpx.WriteAppError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": items})
+	manage, err := h.checker.Can(c.Request.Context(), permission.Actor{UserID: actor.UserID}, "wallboard.manage", permission.ResourceRef{Type: "workspace", ID: workspaceID})
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items, "can_manage": manage.Allowed})
 }
 func (h *Handler) Get(c *gin.Context) {
 	workspaceID, _, id, ok := h.authorizeItem(c, "wallboard.view")
@@ -140,51 +142,6 @@ func (h *Handler) Snapshot(c *gin.Context) {
 	c.JSON(http.StatusOK, item)
 }
 
-func (h *Handler) AdminTemplates(c *gin.Context) {
-	items, err := h.service.Templates(c.Request.Context(), true)
-	if err != nil {
-		httpx.WriteAppError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"items": items})
-}
-func (h *Handler) AdminSync(c *gin.Context) {
-	actor, ok := adminauth.ActorFromContext(c)
-	if !ok {
-		return
-	}
-	err := h.service.Sync(c.Request.Context())
-	h.record(c, "admin.wallboard_template.sync", "", actor.UserID, err)
-	if err != nil {
-		httpx.WriteAppError(c, err)
-		return
-	}
-	h.AdminTemplates(c)
-}
-func (h *Handler) AdminUpdate(c *gin.Context) {
-	actor, ok := adminauth.ActorFromContext(c)
-	if !ok {
-		return
-	}
-	var req struct {
-		Status       string `json:"status"`
-		Tier         string `json:"tier"`
-		DisplayPrice string `json:"display_price"`
-		ContactCopy  string `json:"contact_copy"`
-	}
-	if c.ShouldBindJSON(&req) != nil {
-		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
-		return
-	}
-	item, err := h.service.UpdateTemplate(c.Request.Context(), c.Param("code"), req.Status, req.Tier, req.DisplayPrice, req.ContactCopy)
-	h.record(c, "admin.wallboard_template.update", c.Param("code"), actor.UserID, err)
-	if err != nil {
-		httpx.WriteAppError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, item)
-}
-
 func (h *Handler) authorize(c *gin.Context, action string) (uuid.UUID, auth.Actor, bool) {
 	workspaceID, err := uuid.Parse(c.Param("workspace_id"))
 	if err != nil || workspaceID == uuid.Nil {
@@ -218,16 +175,4 @@ func (h *Handler) authorizeItem(c *gin.Context, action string) (uuid.UUID, auth.
 		return uuid.Nil, auth.Actor{}, uuid.Nil, false
 	}
 	return workspaceID, actor, id, true
-}
-func (h *Handler) record(c *gin.Context, action, resourceID string, actorID uuid.UUID, cause error) {
-	if h.audit == nil {
-		return
-	}
-	result := audit.ResultSuccess
-	reason := ""
-	if cause != nil {
-		result = audit.ResultFailure
-		reason = apperr.MessageOf(cause)
-	}
-	_, _ = h.audit.Record(c.Request.Context(), audit.FromRequest(c, audit.RecordInput{Action: action, ResourceType: "wallboard_template", Result: result, Reason: reason}))
 }

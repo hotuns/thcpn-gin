@@ -107,8 +107,7 @@ const ExportsPage = lazy(() =>
 );
 const ProcessingPage = lazy(() => import("./processing-page").then((module) => ({ default: module.ProcessingPage })));
 const ProcessingTaskDetailPage = lazy(() => import("./processing-page").then((module) => ({ default: module.ProcessingTaskDetailPage })));
-const WallboardsPage = lazy(() => import("./wallboards-page").then((module) => ({ default: module.WallboardsPage })));
-const WallboardPlayPage = lazy(() => import("./wallboards-page").then((module) => ({ default: module.WallboardPlayPage })));
+const AtlasPage = lazy(() => import("./atlas-page").then((module) => ({ default: module.AtlasPage })));
 const DataComparisonPage = lazy(() =>
   import("./data-comparison-page").then((module) => ({
     default: module.DataComparisonPage,
@@ -156,7 +155,7 @@ const navGroups = [
       { to: "/datasets", key: "datasets", icon: Table2 },
       { to: "/processing", key: "processing", icon: Workflow },
       { to: "/exports", key: "exports", icon: Download },
-      { to: "/wallboards", key: "wallboards", icon: MonitorUp },
+      { to: "/atlas", key: "wallboards", icon: MapPinned },
     ],
   },
   {
@@ -596,7 +595,8 @@ export function PlatformApp() {
             <Route path="/exports/new" element={<ExportsPage key="export-create" creating />} />
             <Route path="/processing" element={<ProcessingPage />} />
             <Route path="/processing/:taskId" element={<ProcessingTaskDetailPage />} />
-            <Route path="/wallboards" element={<WallboardsPage />} />
+            <Route path="/atlas" element={<AtlasPage />} />
+            <Route path="/atlas/:id" element={<AtlasPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             {billingEnabled ? (
               <Route path="/subscription" element={<SubscriptionPage />} />
@@ -605,7 +605,6 @@ export function PlatformApp() {
             <Route path="/account" element={<AccountPage />} />
             <Route path="*" element={<RootRedirect />} />
           </Route>
-          <Route path="/wallboards/:id/play" element={<WallboardPlayPage />} />
         </Route>
       </Routes>
     </Suspense>

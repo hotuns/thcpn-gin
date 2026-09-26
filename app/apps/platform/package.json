@@ -17,7 +17,6 @@
     "@thcpn/i18n": "*",
     "@thcpn/ui": "*",
     "@thcpn/workspace": "*",
-    "cesium": "^1.145.0",
     "class-variance-authority": "^0.7.1",
     "cmdk": "^1.1.1",
     "embla-carousel-react": "^8.6.0",

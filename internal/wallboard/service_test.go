@@ -3,6 +3,7 @@ package wallboard
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -10,13 +11,48 @@ import (
 	"thcpn-gin/internal/datasource"
 )
 
-func TestCatalogIsEmpty(t *testing.T) {
+func TestCatalogProvidesAtlas(t *testing.T) {
 	items, err := catalog()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 0 {
-		t.Fatalf("got %d templates, want none", len(items))
+	if len(items) != 1 || items[0].Code != "atlas-tech" || items[0].Scene != "organization" {
+		t.Fatalf("unexpected atlas catalog: %#v", items)
+	}
+}
+
+func TestAtlasConfig(t *testing.T) {
+	for _, raw := range []string{`{"presentation":"analysis"}`, `{"layout":"other"}`, `{"trend_hours":721}`, `{"description":"` + strings.Repeat("字", 301) + `"}`} {
+		if _, err := (&Service{}).validateConfig(context.Background(), uuid.New(), "organization", json.RawMessage(raw)); err == nil {
+			t.Fatalf("accepted invalid config: %s", raw)
+		}
+	}
+	c, err := (&Service{}).validateConfig(context.Background(), uuid.New(), "organization", json.RawMessage(`{"layout":"map","description":"科研观测","show_images":false,"show_trends":true}`))
+	if err != nil || c.ShowImages == nil || *c.ShowImages || c.Layout != "map" || c.Description != "科研观测" {
+		t.Fatalf("atlas config not preserved: %#v, %v", c, err)
+	}
+}
+
+func TestAtlasPresentationRoundTrip(t *testing.T) {
+	for _, presentation := range []string{"technology", "panorama"} {
+		raw, _ := json.Marshal(Config{Presentation: presentation})
+		config, err := (&Service{}).validateConfig(context.Background(), uuid.New(), "organization", raw)
+		if err != nil || config.Presentation != presentation {
+			t.Fatalf("presentation lost: %#v, %v", config, err)
+		}
+		encoded, _ := json.Marshal(config)
+		var saved Config
+		if err := json.Unmarshal(encoded, &saved); err != nil || saved.Presentation != presentation {
+			t.Fatalf("presentation did not survive serialization: %s", encoded)
+		}
+	}
+}
+
+func TestAtlasRejectsInvalidNameBeforePersistence(t *testing.T) {
+	for _, name := range []string{"  ", strings.Repeat("字", 121)} {
+		if _, err := (&Service{}).Save(context.Background(), uuid.New(), uuid.New(), uuid.Nil, name, "atlas-tech", json.RawMessage(`{}`)); err == nil {
+			t.Fatalf("accepted invalid name: %q", name)
+		}
 	}
 }
 
