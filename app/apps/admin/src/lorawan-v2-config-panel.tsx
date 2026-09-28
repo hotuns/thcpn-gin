@@ -1,4 +1,5 @@
 import { invalidateNodeNames } from "@thcpn/workspace";
+import { NodeSensorEditor, serializeNodeSensorDraft } from './node-sensor-editor';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -7,7 +8,6 @@ import {
   Collapse,
   Form,
   Input,
-  InputNumber,
   Popconfirm,
   Select,
   Space,
@@ -43,351 +43,14 @@ const managementLabel: Record<string, { label: string; color: string }> = {
   unmanaged: { label: "未托管", color: "orange" },
 };
 
-type ProtocolItem = {
-  kind: "ad" | "485" | "sdi" | "iic";
-  port?: number;
-  command?: string;
-  address?: string;
-  model?: string;
-  mappings: Array<{
-    key: string;
-    rule?: string;
-    unit?: string;
-    index?: string;
-  }>;
-};
 
-const splitProtocolContent = (content: unknown[]): ProtocolItem[] =>
-  content.flatMap<ProtocolItem>((raw) => {
-    if (!Array.isArray(raw)) return [];
-    const kind = raw[0] as ProtocolItem["kind"];
-    const inner = Array.isArray(raw[1]) ? raw[1] : [];
-    if (kind === "ad")
-      return [
-        {
-          kind,
-          port: Number(raw[2] ?? 0),
-          mappings: inner.map((entry) => ({
-            key: text(entry?.[0], ""),
-            rule: text(entry?.[1], ""),
-            unit: text(entry?.[2], ""),
-          })),
-        },
-      ];
-    if (kind === "485")
-      return [
-        {
-          kind,
-          command: text(inner[0], ""),
-          mappings: (Array.isArray(inner[1]) ? inner[1] : []).map((entry) => ({
-            key: text(entry?.[0], ""),
-            rule: text(entry?.[1], ""),
-            unit: text(entry?.[2], ""),
-          })),
-        },
-      ];
-    if (kind === "sdi")
-      return [
-        {
-          kind,
-          address: text(inner[0], ""),
-          mappings: (Array.isArray(inner[1]) ? inner[1] : []).map((entry) => ({
-            key: text(entry?.[0], ""),
-            index: text(entry?.[1], ""),
-          })),
-        },
-      ];
-    if (kind === "iic")
-      return [
-        {
-          kind,
-          model: text(inner[0], ""),
-          address: text(inner[1], ""),
-          mappings: (Array.isArray(inner[2]) ? inner[2] : []).map((key) => ({
-            key: text(key, ""),
-          })),
-        },
-      ];
-    return [];
-  });
-
-const buildProtocolContent = (items: ProtocolItem[]): unknown[] =>
-  items.map((item) => {
-    if (item.kind === "ad")
-      return [
-        "ad",
-        item.mappings.map((entry) => [
-          entry.key,
-          entry.rule ?? "",
-          entry.unit ?? "",
-        ]),
-        Number(item.port ?? 0),
-      ];
-    if (item.kind === "485")
-      return [
-        "485",
-        [
-          item.command ?? "",
-          item.mappings.map((entry) => [
-            entry.key,
-            entry.rule ?? "",
-            entry.unit ?? "",
-          ]),
-        ],
-      ];
-    if (item.kind === "sdi")
-      return [
-        "sdi",
-        [
-          item.address ?? "",
-          item.mappings.map((entry) => [entry.key, entry.index ?? ""]),
-        ],
-      ];
-    return [
-      "iic",
-      [
-        item.model ?? "",
-        item.address ?? "",
-        item.mappings.map((entry) => entry.key),
-      ],
-    ];
-  });
-
-function ProtocolEditor({
-  content,
-  metrics,
-  onChange,
-}: {
-  content: unknown[];
-  metrics: JsonRecord[];
-  onChange: (content: unknown[]) => void;
-}) {
-  const [items, setItems] = useState<ProtocolItem[]>(() =>
-    splitProtocolContent(content),
-  );
-  const commit = (next: ProtocolItem[]) => {
-    setItems(next);
-    onChange(buildProtocolContent(next));
-  };
-  const updateItem = (index: number, patch: Partial<ProtocolItem>) =>
-    commit(
-      items.map((item, position) =>
-        position === index ? { ...item, ...patch } : item,
-      ),
-    );
-  const updateMapping = (
-    itemIndex: number,
-    mappingIndex: number,
-    patch: Partial<ProtocolItem["mappings"][number]>,
-  ) =>
-    updateItem(itemIndex, {
-      mappings: items[itemIndex].mappings.map((mapping, position) =>
-        position === mappingIndex ? { ...mapping, ...patch } : mapping,
-      ),
-    });
-  const metricOptions = metrics
-    .map((metric) => ({
-      value: text(metric.key, ""),
-      label: text(metric.name, text(metric.key)),
-    }))
-    .filter((item) => item.value);
-  return (
-    <div className="lora-node-protocol-list">
-      {items.map((item, itemIndex) => (
-        <div className="lora-node-protocol-item" key={itemIndex}>
-          <div className="lora-node-protocol-head">
-            <strong>协议项 {itemIndex + 1}</strong>
-            <Button
-              size="small"
-              danger
-              onClick={() =>
-                commit(items.filter((_, index) => index !== itemIndex))
-              }
-            >
-              删除
-            </Button>
-          </div>
-          <div className="config-form-grid config-form-grid-3">
-            <label>
-              <span>协议类型</span>
-              <Select
-                value={item.kind}
-                options={[
-                  { value: "ad", label: "AD 模拟量" },
-                  { value: "485", label: "RS-485" },
-                  { value: "sdi", label: "SDI-12" },
-                  { value: "iic", label: "IIC" },
-                ]}
-                onChange={(kind) =>
-                  updateItem(itemIndex, { kind, mappings: item.mappings })
-                }
-              />
-            </label>
-            {item.kind === "ad" ? (
-              <label>
-                <span>AD 端口</span>
-                <InputNumber
-                  min={0}
-                  precision={0}
-                  value={item.port}
-                  onChange={(port) =>
-                    updateItem(itemIndex, { port: Number(port ?? 0) })
-                  }
-                />
-              </label>
-            ) : null}
-            {item.kind === "485" ? (
-              <label>
-                <span>请求命令</span>
-                <Input
-                  value={item.command}
-                  onChange={(event) =>
-                    updateItem(itemIndex, { command: event.target.value })
-                  }
-                />
-              </label>
-            ) : null}
-            {item.kind === "sdi" ? (
-              <label>
-                <span>SDI 地址</span>
-                <Input
-                  value={item.address}
-                  onChange={(event) =>
-                    updateItem(itemIndex, { address: event.target.value })
-                  }
-                />
-              </label>
-            ) : null}
-            {item.kind === "iic" ? (
-              <>
-                <label>
-                  <span>IIC 型号</span>
-                  <Input
-                    value={item.model}
-                    onChange={(event) =>
-                      updateItem(itemIndex, { model: event.target.value })
-                    }
-                  />
-                </label>
-                <label>
-                  <span>IIC 地址</span>
-                  <Input
-                    value={item.address}
-                    onChange={(event) =>
-                      updateItem(itemIndex, { address: event.target.value })
-                    }
-                  />
-                </label>
-              </>
-            ) : null}
-          </div>
-          <div className="lora-node-mapping-list">
-            {item.mappings.map((mapping, mappingIndex) => (
-              <div className="lora-node-mapping-row" key={mappingIndex}>
-                <label>
-                  <span>指标</span>
-                  <Select
-                    value={mapping.key}
-                    options={metricOptions}
-                    onChange={(key) =>
-                      updateMapping(itemIndex, mappingIndex, { key })
-                    }
-                  />
-                </label>
-                {item.kind === "ad" || item.kind === "485" ? (
-                  <>
-                    <label>
-                      <span>解析规则</span>
-                      <Input
-                        value={mapping.rule}
-                        onChange={(event) =>
-                          updateMapping(itemIndex, mappingIndex, {
-                            rule: event.target.value,
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span>单位</span>
-                      <Input
-                        value={mapping.unit}
-                        onChange={(event) =>
-                          updateMapping(itemIndex, mappingIndex, {
-                            unit: event.target.value,
-                          })
-                        }
-                      />
-                    </label>
-                  </>
-                ) : null}
-                {item.kind === "sdi" ? (
-                  <label>
-                    <span>返回索引</span>
-                    <Input
-                      value={mapping.index}
-                      onChange={(event) =>
-                        updateMapping(itemIndex, mappingIndex, {
-                          index: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                ) : null}
-                <Button
-                  size="small"
-                  danger
-                  onClick={() =>
-                    updateItem(itemIndex, {
-                      mappings: item.mappings.filter(
-                        (_, index) => index !== mappingIndex,
-                      ),
-                    })
-                  }
-                >
-                  删除
-                </Button>
-              </div>
-            ))}
-            <Button
-              type="dashed"
-              block
-              onClick={() =>
-                updateItem(itemIndex, {
-                  mappings: [
-                    ...item.mappings,
-                    {
-                      key: metricOptions[0]?.value ?? "",
-                      rule: "",
-                      unit: "",
-                      index: "",
-                    },
-                  ],
-                })
-              }
-            >
-              添加指标映射
-            </Button>
-          </div>
-        </div>
-      ))}
-      <Button
-        type="dashed"
-        block
-        onClick={() =>
-          commit([...items, { kind: "485", command: "", mappings: [] }])
-        }
-      >
-        添加协议项
-      </Button>
-    </div>
-  );
-}
 
 export function LoRaWANV2ConfigPanel({ deviceId }: { deviceId: string }) {
   return <LoRaWANV2ConfigContent key={deviceId} deviceId={deviceId} />;
 }
 
 function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
+  const [sensorForm] = Form.useForm();
   const queryClient = useQueryClient();
   const nodes = useQuery({
     queryKey: ["admin", "device", deviceId, "nodes"],
@@ -404,21 +67,13 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
   }, [nodes.data, node]);
 
   const [gatewayJSON, setGatewayJSON] = useState("{}");
-  const [waitTime, setWaitTime] = useState(0);
+
   const [sensorJSON, setSensorJSON] = useState("[]");
   const [sensorMetricsJSON, setSensorMetricsJSON] = useState("[]");
-  const [sensorMode, setSensorMode] = useState("templates");
+
   const [sensorDirty, setSensorDirty] = useState(false);
   const loadedSensorConfig = useRef("");
-  const templateInstanceSequence = useRef(0);
-  const [templateInstances, setTemplateInstances] = useState<
-    Array<{
-      instance_id: string;
-      template_id: number;
-      sensor_type: string;
-      content: unknown[];
-    }>
-  >([]);
+
   const [timeContent, setTimeContent] = useState("");
   const [busy, setBusy] = useState("");
   const [feedback, setFeedback] = useState("");
@@ -500,26 +155,12 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
     const current = payload(latest.data);
     const content = Array.isArray(current.content) ? current.content : [];
     const metrics = Array.isArray(current.metrics) ? current.metrics : [];
-    const instances = Array.isArray(current.template_instances)
-      ? (current.template_instances as JsonRecord[])
-      : [];
-    const configKey = `${node}:${text(current.upstream_config_id ?? current.id, "")}:${JSON.stringify(content)}`;
+    const configKey = `${node}:${text(current.upstream_config_id ?? current.id, "")}:${JSON.stringify(content)}:${JSON.stringify(metrics)}`;
     if (loadedSensorConfig.current === configKey) return;
     loadedSensorConfig.current = configKey;
     setSensorJSON(JSON.stringify(content, null, 2));
     setSensorMetricsJSON(JSON.stringify(metrics, null, 2));
-    setWaitTime(Number(current.wait_time ?? 0));
-    setTemplateInstances(
-      instances
-        .map((item) => ({
-          instance_id: `loaded-${node}-${templateInstanceSequence.current++}`,
-          template_id: Number(item.template_id),
-          sensor_type: text(item.sensor_type, "传感器"),
-          content: Array.isArray(item.content) ? item.content : [],
-        }))
-        .filter((item) => Number.isInteger(item.template_id)),
-    );
-    setSensorMode(instances.length ? "templates" : "advanced");
+
     setSensorDirty(false);
   }, [latest.data, node]);
   const refreshPlatformCatalog = async () => {
@@ -558,25 +199,8 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
         await gateways.refetch();
       }
       if (kind === "sensor") {
-        const request =
-          sensorMode === "templates"
-            ? {
-                mode: "templates",
-                wait_time: waitTime,
-                template_instances: templateInstances.map(
-                  ({ template_id, sensor_type, content }) => ({
-                    template_id,
-                    sensor_type,
-                    content,
-                  }),
-                ),
-              }
-            : {
-                mode: "advanced",
-                wait_time: waitTime,
-                content: parseArray(sensorJSON),
-                metrics: parseArray(sensorMetricsJSON),
-              };
+        await sensorForm.validateFields();
+        const request = { mode: "advanced", wait_time: 0, content: parseArray(sensorJSON), metrics: parseArray(sensorMetricsJSON) };
         result = await api.admin.updateDeviceSourceConfig(
           deviceId,
           "sensor",
@@ -720,8 +344,8 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                         loadedSensorConfig.current = "";
                         setSensorJSON("[]");
                         setSensorMetricsJSON("[]");
-                        setTemplateInstances([]);
-                        setWaitTime(0);
+
+
                         setTimeContent("");
                         setSensorDirty(false);
                       }}
@@ -789,282 +413,15 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                         );
                       })()
                     : null}
-                  <div className="lora-config-step"><span className="lora-config-step-number">2</span><div><strong>编辑配置草稿</strong><span>推荐使用模板；提交时只会使用当前选中的编辑方式，未提交的修改不会自动保存。</span></div></div>
-                  <Form layout="vertical">
-                    <Tabs
-                      className="lora-config-mode-tabs"
-                      activeKey={sensorMode}
-                      onChange={(mode) => {
-                        if (mode === "advanced" && sensorMode === "templates") {
-                          const content = templateInstances.flatMap(
-                            (instance) => instance.content,
-                          );
-                          const metrics = templateInstances.flatMap(
-                            (instance) => {
-                              const template = loraTemplates.find(
-                                (item) => item.id === instance.template_id,
-                              );
-                              return (template?.metrics ?? []).map(
-                                (metric) => ({
-                                  key: metric.key,
-                                  name: metric.name || metric.key,
-                                  type: metric.type ?? "",
-                                  unit: metric.unit ?? "",
-                                }),
-                              );
-                            },
-                          );
-                          const current = latest.data
-                            ? payload(latest.data)
-                            : {};
-                          const fallbackMetrics = Array.isArray(current.metrics)
-                            ? current.metrics
-                            : [];
-                          setSensorJSON(JSON.stringify(content, null, 2));
-                          setSensorMetricsJSON(
-                            JSON.stringify(
-                              metrics.length ? metrics : fallbackMetrics,
-                              null,
-                              2,
-                            ),
-                          );
-                        }
-                        setSensorMode(mode);
-                        setSensorDirty(true);
-                      }}
-                      items={[
-                        {
-                          key: "templates",
-                          label: "使用模板（推荐）",
-                          children: (
-                            <>
-                              <Alert
-                                type="info"
-                                showIcon
-                                message="一个节点可以配置多个传感器"
-                                description="逐个添加传感器实例；同一模板可以重复添加。实例顺序就是提交给上游的协议配置顺序。"
-                              />
-                              <Form.Item
-                                className="lora-template-add"
-                                label="添加传感器"
-                                extra={
-                                  loraTemplates.length
-                                    ? "只显示已经维护 LoRaWAN V2 协议配置的模板。"
-                                    : "暂无可用模板，请先到「传感器模板 V2」中新建模板。"
-                                }
-                              >
-                                <Select
-                                  value={undefined}
-                                  placeholder="选择一个模板并添加"
-                                  loading={templates.isLoading}
-                                  disabled={!loraTemplates.length}
-                                  options={loraTemplates.map((item) => ({
-                                    value: item.id,
-                                    label: `${item.sensor_type} · ${item.metrics.map((metric) => metric.name || metric.key).join("、")}`,
-                                  }))}
-                                  onChange={(id: number) => {
-                                    const template = loraTemplates.find(
-                                      (item) => item.id === id,
-                                    );
-                                    if (!template) return;
-                                    const variant = ((
-                                      template.variants as JsonRecord
-                                    ).lorawan_v2 ?? {}) as JsonRecord;
-                                    const next = [
-                                      ...templateInstances,
-                                      {
-                                        instance_id: `new-${templateInstanceSequence.current++}`,
-                                        template_id: id,
-                                        sensor_type: template.sensor_type,
-                                        content: (variant.content ??
-                                          []) as unknown[],
-                                      },
-                                    ];
-                                    setTemplateInstances(next);
-                                    setSensorDirty(true);
-                                    const suggested = next.map((item) => {
-                                      const source = loraTemplates.find(
-                                        (candidate) =>
-                                          candidate.id === item.template_id,
-                                      );
-                                      return Number(
-                                        (
-                                          (
-                                            source?.variants as
-                                              JsonRecord | undefined
-                                          )?.lorawan_v2 as
-                                            JsonRecord | undefined
-                                        )?.wait_time ?? 0,
-                                      );
-                                    });
-                                    setWaitTime(Math.max(0, ...suggested));
-                                  }}
-                                />
-                              </Form.Item>
-                              {templateInstances.map((instance, index) => (
-                                <div
-                                  className="lora-template-instance"
-                                  key={instance.instance_id}
-                                >
-                                  <div className="lora-template-instance-head">
-                                    <div>
-                                      <span>传感器实例 {index + 1}</span>
-                                      <strong>{instance.sensor_type}</strong>
-                                    </div>
-                                    <Space size={4}>
-                                      <Button
-                                        size="small"
-                                        disabled={index === 0}
-                                        onClick={() =>
-                                          setTemplateInstances((items) => {
-                                            const next = [...items];
-                                            [next[index - 1], next[index]] = [
-                                              next[index],
-                                              next[index - 1],
-                                            ];
-                                            setSensorDirty(true);
-                                            return next;
-                                          })
-                                        }
-                                      >
-                                        上移
-                                      </Button>
-                                      <Button
-                                        size="small"
-                                        disabled={
-                                          index === templateInstances.length - 1
-                                        }
-                                        onClick={() =>
-                                          setTemplateInstances((items) => {
-                                            const next = [...items];
-                                            [next[index], next[index + 1]] = [
-                                              next[index + 1],
-                                              next[index],
-                                            ];
-                                            setSensorDirty(true);
-                                            return next;
-                                          })
-                                        }
-                                      >
-                                        下移
-                                      </Button>
-                                      <Button
-                                        size="small"
-                                        danger
-                                        onClick={() => {
-                                          setTemplateInstances((items) =>
-                                            items.filter(
-                                              (item) =>
-                                                item.instance_id !==
-                                                instance.instance_id,
-                                            ),
-                                          );
-                                          setSensorDirty(true);
-                                        }}
-                                      >
-                                        删除
-                                      </Button>
-                                    </Space>
-                                  </div>
-                                  <div className="lora-template-instance-metrics">
-                                    {(
-                                      loraTemplates.find(
-                                        (item) =>
-                                          item.id === instance.template_id,
-                                      )?.metrics ?? []
-                                    ).map((metric) => (
-                                      <Tag
-                                        key={`${instance.instance_id}-${metric.key}`}
-                                      >
-                                        {metric.name || metric.key}
-                                        {metric.unit ? ` · ${metric.unit}` : ""}
-                                      </Tag>
-                                    ))}
-                                  </div>
-                                  <ProtocolEditor
-                                    content={instance.content}
-                                    metrics={
-                                      (loraTemplates.find(
-                                        (item) =>
-                                          item.id === instance.template_id,
-                                      )?.metrics ?? []) as JsonRecord[]
-                                    }
-                                    onChange={(content) => {
-                                      setTemplateInstances((items) =>
-                                        items.map((item) =>
-                                          item.instance_id ===
-                                          instance.instance_id
-                                            ? { ...item, content }
-                                            : item,
-                                        ),
-                                      );
-                                      setSensorDirty(true);
-                                    }}
-                                  />
-                                </div>
-                              ))}
-                            </>
-                          ),
-                        },
-                        {
-                          key: "advanced",
-                          label: "手动编辑 JSON",
-                          children: (
-                            <>
-                              <Alert
-                                type="warning"
-                                showIcon
-                                message="高级模式不会关联模板"
-                                description="必须为原生配置中的每一个指标 Key 提供中文名称；平台不会根据相似 Key 猜测。"
-                              />
-                              <Form.Item
-                                label="上游原生 content"
-                                extra="必须符合 ad / 485 / sdi / iic 数组格式。"
-                              >
-                                <Input.TextArea
-                                  rows={10}
-                                  value={sensorJSON}
-                                  onChange={(event) => {
-                                    setSensorJSON(event.target.value);
-                                    setSensorDirty(true);
-                                  }}
-                                  spellCheck={false}
-                                />
-                              </Form.Item>
-                              <Form.Item
-                                label="指标语义"
-                                extra="每项必须包含 key 和中文 name，可附带 type、unit。"
-                              >
-                                <Input.TextArea
-                                  rows={8}
-                                  value={sensorMetricsJSON}
-                                  onChange={(event) => {
-                                    setSensorMetricsJSON(event.target.value);
-                                    setSensorDirty(true);
-                                  }}
-                                  spellCheck={false}
-                                />
-                              </Form.Item>
-                            </>
-                          ),
-                        },
-                      ]}
-                    />
+                  <div className="lora-config-step"><span className="lora-config-step-number">2</span><div><strong>编辑配置草稿</strong><span>协议和指标在同一表单编辑；可导入模板作为起点，修改只应用于当前节点。</span></div></div>
+                  <Form form={sensorForm} layout="vertical" onValuesChange={(_, values) => {
+                    const draft = serializeNodeSensorDraft(values.lora_items ?? []);
+                    setSensorJSON(draft.content); setSensorMetricsJSON(draft.metrics); setSensorDirty(true);
+                  }}>
+                    <NodeSensorEditor key={node} contentJSON={sensorJSON} metricsJSON={sensorMetricsJSON} templates={loraTemplates} onChange={(content, metrics) => {setSensorJSON(content); setSensorMetricsJSON(metrics); setSensorDirty(true);}} />
                     <div className="lora-config-step"><span className="lora-config-step-number">3</span><div><strong>确认并提交</strong><span>提交会写入源端；“已接受”不等于设备已应用。</span></div></div>
-                    <Form.Item label="等待时间（秒）">
-                      <InputNumber
-                        min={0}
-                        max={65535}
-                        precision={0}
-                        value={waitTime}
-                        onChange={(item) => {
-                          setWaitTime(Number(item ?? 0));
-                          setSensorDirty(true);
-                        }}
-                      />
-                    </Form.Item>
                     <Popconfirm title={`提交节点 ${node} 的传感器配置？`} description="配置将写入 LoRa V2 服务，设备是否应用需等待回报。" okText="确认提交" cancelText="取消" onConfirm={() => void run("sensor")}>
-                      <Button type="primary" disabled={sensorMode === "templates" && !templateInstances.length} loading={busy === "sensor"}>提交到 LoRa V2</Button>
+                      <Button type="primary"  loading={busy === "sensor"}>提交到 LoRa V2</Button>
                     </Popconfirm>
                   </Form>
                   <Collapse className="lora-config-history" items={[{ key: "history", label: `节点 ${node} 历史配置（${list(sensors.data).length}）`, children: <Table rowKey={(item) => text(item.id)} size="small" dataSource={list(sensors.data)} columns={columns} pagination={false} /> }]} />
@@ -1102,7 +459,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                         setNode(next);
                         loadedSensorConfig.current = "";
                         setSensorJSON("[]");
-                        setWaitTime(0);
+
                         setTimeContent("");
                         setSensorDirty(false);
                       }}

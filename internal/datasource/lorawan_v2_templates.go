@@ -15,10 +15,12 @@ import (
 )
 
 type loraWANV2MetricSemantic struct {
-	Key  string `json:"key"`
-	Name string `json:"name"`
-	Type string `json:"type,omitempty"`
-	Unit string `json:"unit,omitempty"`
+	Key  string   `json:"key"`
+	Name string   `json:"name"`
+	Type string   `json:"type,omitempty"`
+	Unit string   `json:"unit,omitempty"`
+	Min  *float64 `json:"min,omitempty"`
+	Max  *float64 `json:"max,omitempty"`
 }
 
 type loraWANV2CompiledConfig struct {
@@ -110,6 +112,18 @@ func (s *Service) compileLoRaWANV2NodeConfig(ctx context.Context, raw any) (lora
 				return result, apperr.New(apperr.KindInvalidArgument, "invalid advanced metric")
 			}
 			item := loraWANV2MetricSemantic{Key: strings.TrimSpace(stringValue(metric["key"])), Name: strings.TrimSpace(stringValue(metric["name"])), Type: strings.TrimSpace(stringValue(metric["type"])), Unit: strings.TrimSpace(stringValue(metric["unit"]))}
+			for key, target := range map[string]**float64{"min": &item.Min, "max": &item.Max} {
+				if value, exists := metric[key]; exists && value != nil {
+					number, ok := value.(float64)
+					if !ok {
+						return result, apperr.New(apperr.KindInvalidArgument, "metric range must be numeric")
+					}
+					*target = &number
+				}
+			}
+			if item.Min != nil && item.Max != nil && *item.Min > *item.Max {
+				return result, apperr.New(apperr.KindInvalidArgument, "metric minimum exceeds maximum")
+			}
 			if item.Key == "" || item.Name == "" {
 				return result, apperr.New(apperr.KindInvalidArgument, "every advanced metric requires key and name")
 			}
