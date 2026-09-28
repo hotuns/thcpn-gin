@@ -193,9 +193,7 @@ function ComparisonChart({
     const rows = new Map<number, Record<string, number | string>>();
     series.forEach((item) => {
       const itemStats = nextStats.get(item.data_stream_id)!;
-      const step = Math.max(1, Math.ceil(item.points.length / 600));
-      item.points.forEach((point, index) => {
-        if (index % step !== 0 && index !== item.points.length - 1) return;
+      item.points.forEach((point) => {
         const time = Date.parse(point.ts);
         if (!Number.isFinite(time) || !Number.isFinite(point.value)) return;
         const row = rows.get(time) ?? { time };
@@ -373,14 +371,12 @@ function TelemetryChart({
     )
     .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
   if (!source.length) return null;
-  const step = Math.max(1, Math.ceil(source.length / 600));
   const directionByTime = new Map(
     windDirectionSeries?.points
       .filter((point) => Number.isFinite(point.value) && Number.isFinite(Date.parse(point.ts)))
       .map((point) => [Date.parse(point.ts), point.value]) ?? [],
   );
   const data = source
-    .filter((_, index) => index % step === 0 || index === source.length - 1)
     .map((point) => {
       const time = Date.parse(point.ts);
       return { ...point, time, windDirection: directionByTime.get(time) };

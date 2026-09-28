@@ -3,6 +3,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { useSearchParams, Link } from "react-router-dom";
 import { Check, GripVertical, Search } from "lucide-react";
 import { api, formatApiError, type Device, type GatewayNode, type TelemetrySeries } from "@thcpn/api";
+import { fullTelemetry } from "./full-telemetry";
 import { workspaceQueryKey } from "@thcpn/workspace";
 import { Alert, AlertDescription, AlertTitle, Badge, Button, Panel, SelectInput, StateView, Table } from "./platform-ui";
 import { TelemetryCharts } from "./telemetry-charts";
@@ -63,10 +64,10 @@ export function GatewayNodeData({ gateway, workspaceId }: { gateway: Device; wor
     return [...groups.values()];
   }, [nodes, applied]);
   const queries = useQueries({ queries: queryGroups.map((group) => ({
-    queryKey: workspaceQueryKey(workspaceId, "gateway", gateway.id, "telemetry", group.deviceId, group.streams.map((stream) => stream.id).join(","), applied?.start ?? "", applied?.end ?? ""),
-    queryFn: () => api.telemetry.device(group.deviceId, {
+    queryKey: workspaceQueryKey(workspaceId, "gateway", gateway.id, "telemetry-full", group.deviceId, group.streams.map((stream) => stream.id).join(","), applied?.start ?? "", applied?.end ?? ""),
+    queryFn: () => fullTelemetry(group.deviceId, {
       startTime: new Date(applied!.start).toISOString(), endTime: new Date(applied!.end).toISOString(),
-      dataStreamIds: group.streams.map((stream) => stream.id), limit: 5000, adaptive: true, targetPoints: 500,
+      dataStreamIds: group.streams.map((stream) => stream.id),
     }),
     enabled: Boolean(applied),
   })) });

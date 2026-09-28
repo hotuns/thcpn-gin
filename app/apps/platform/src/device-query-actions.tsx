@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { fullTelemetry } from "./full-telemetry";
 import { Check, GripVertical, Search } from "lucide-react";
 import {
   api,
@@ -12,7 +13,6 @@ import { DeviceQueryToolbar } from "./device-query-toolbar";
 
 type QueryInput = { startTime: string; endTime: string };
 const totalRawPointBudget = 20_000;
-const totalChartPointBudget = 6_000;
 const telemetryQueryConcurrency = 4;
 
 async function queryTelemetryStreams(
@@ -49,13 +49,6 @@ export async function querySelectedTelemetry(
       Math.floor(totalRawPointBudget / Math.max(1, streamIds.length)),
     ),
   );
-  const targetPoints = Math.min(
-    1000,
-    Math.max(
-      200,
-      Math.floor(totalChartPointBudget / Math.max(1, streamIds.length)),
-    ),
-  );
   if (!streamIds.length)
     return {
       device_id: deviceId,
@@ -64,13 +57,11 @@ export async function querySelectedTelemetry(
       limit: rawLimit,
       series: [],
     };
-  return client.device(deviceId, {
+  return fullTelemetry(deviceId, {
     ...input,
     limit: rawLimit,
-    adaptive: true,
-    targetPoints,
     dataStreamIds: streamIds,
-  });
+  }, client);
 }
 
 export async function querySelectedTelemetryRaw(
