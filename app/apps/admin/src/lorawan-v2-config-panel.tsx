@@ -24,8 +24,15 @@ const text = (input: unknown, fallback = "—") =>
     : String(input);
 const payload = (input: JsonRecord | undefined) =>
   (input?.payload ?? input ?? {}) as JsonRecord;
-const list = (input: JsonRecord | undefined) =>
-  (payload(input).data ?? payload(input).items ?? []) as JsonRecord[];
+export function configurationHistory(input: unknown): JsonRecord[] {
+  if (Array.isArray(input)) {
+    return input.filter((item): item is JsonRecord => Boolean(item) && typeof item === "object" && !Array.isArray(item));
+  }
+  if (!input || typeof input !== "object") return [];
+  const object = input as JsonRecord;
+  return configurationHistory(object.payload ?? object.data ?? object.items);
+}
+const list = configurationHistory;
 const parseObject = (raw: string) => {
   const result = JSON.parse(raw);
   if (!result || Array.isArray(result) || typeof result !== "object")
