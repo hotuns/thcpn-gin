@@ -13,8 +13,56 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"thcpn-gin/internal/db/sqlc"
 	"thcpn-gin/internal/testdb"
 )
+
+func TestLoRaWANV2SyncReactivatesDisabledDiagnostics(t *testing.T) {
+	db := testdb.Open(t, 0)
+	ctx := t.Context()
+	admin := testdb.Admin(t, db)
+	var sourceID uuid.UUID
+	if err := db.QueryRow(ctx, `INSERT INTO data_sources(name,type,dsn_secret_ref,created_by) VALUES('test','http_api','TEST_ONLY',$1) RETURNING id`, admin).Scan(&sourceID); err != nil {
+		t.Fatal(err)
+	}
+	source := sqlc.DataSource{ID: sourceID}
+	service := NewService(db)
+	gateway := LoRaWANV2Gateway{SN: "TEST-RESTORE", NodeCount: 2}
+	spec := func(node int, key string) loraWANV2StreamSpec {
+		cfg, _ := json.Marshal(loraWANV2TelemetryConfig{GatewaySN: gateway.SN, NodeIndex: &node, Metric: key})
+		return loraWANV2StreamSpec{Code: loraWANV2StreamCode(fmt.Sprintf("node_%d", node), key), Name: key, AdapterConfig: cfg}
+	}
+	initial := []loraWANV2StreamSpec{spec(1, "battery"), spec(2, "FRPFD")}
+	first, err := service.persistLoRaWANV2Gateway(ctx, source, gateway, initial, true, admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Reproduce the legacy catalog that had disabled built-in diagnostics.
+	if _, err := service.persistLoRaWANV2Gateway(ctx, source, gateway, initial[1:], true, admin); err != nil {
+		t.Fatal(err)
+	}
+	var originalID uuid.UUID
+	if err := db.QueryRow(ctx, `SELECT b.id FROM data_stream_bindings b JOIN data_streams s ON s.id=b.data_stream_id WHERE s.device_id=$1 AND s.code='lora_node_1_battery' AND b.status='disabled'`, first.Device.ID).Scan(&originalID); err != nil {
+		t.Fatal(err)
+	}
+	updated := []loraWANV2StreamSpec{spec(1, "battery"), spec(2, "diams")}
+	for range 2 {
+		if _, err := service.persistLoRaWANV2Gateway(ctx, source, gateway, updated, true, admin); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var active bool
+	if err := db.QueryRow(ctx, `SELECT status='active' FROM data_stream_bindings WHERE id=$1`, originalID).Scan(&active); err != nil || !active {
+		t.Fatalf("binding not reactivated: %v %v", active, err)
+	}
+	var count int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM data_streams WHERE device_id=$1 AND status='active' AND code IN ('lora_node_1_battery','lora_node_2_diams')`, first.Device.ID).Scan(&count); err != nil || count != 2 {
+		t.Fatalf("new catalog not committed: %d %v", count, err)
+	}
+	if err := db.QueryRow(ctx, `SELECT status='disabled' FROM data_streams WHERE device_id=$1 AND code='lora_node_2_frpfd'`, first.Device.ID).Scan(&active); err != nil || !active {
+		t.Fatalf("old metric not disabled: %v %v", active, err)
+	}
+}
 
 func TestCompileLoRaWANV2TemplatesSupportsAllSensorKinds(t *testing.T) {
 	db := testdb.Open(t, 0)

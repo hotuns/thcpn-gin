@@ -877,6 +877,22 @@ func upsertLoRaWANV2DataStreamBinding(ctx context.Context, q *sqlc.Queries, sour
 		return DataStreamBinding{}, err
 	}
 	current, err := q.GetActiveDataStreamBinding(ctx, streamID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Disabled mappings still participate in the unique index. Reactivate the
+		// existing native mapping instead of inserting it again during discovery.
+		bindings, listErr := q.ListDataStreamBindingsByDataStream(ctx, streamID)
+		if listErr != nil {
+			return DataStreamBinding{}, apperr.Wrap(apperr.KindInternal, "lookup disabled lorawan_v2 binding", listErr)
+		}
+		for _, binding := range bindings {
+			if binding.DataSourceID == sourceID && binding.AdapterCode == AdapterLoRaWANV2 && binding.PayloadType == "json" &&
+				derefString(binding.TableName) == "" && derefString(binding.DeviceKeyField) == "" &&
+				derefString(binding.DeviceKeyValue) == "" && derefString(binding.TimeField) == "" && derefString(binding.ValueField) == "" {
+				current, err = binding, nil
+				break
+			}
+		}
+	}
 	if err == nil {
 		updated, err := q.UpdateDataStreamBinding(ctx, sqlc.UpdateDataStreamBindingParams{ID: current.ID, DataSourceID: sourceID, AdapterCode: normalized.AdapterCode, DatabaseName: normalized.DatabaseName, SchemaName: normalized.SchemaName, TableName: normalized.TableName, DeviceKeyField: normalized.DeviceKeyField, DeviceKeyValue: normalized.DeviceKeyValue, TimeField: normalized.TimeField, ValueField: normalized.ValueField, PayloadType: normalized.PayloadType, AdapterConfigJson: normalized.AdapterConfigJSON, Status: normalized.Status})
 		if err != nil {
