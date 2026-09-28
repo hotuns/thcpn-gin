@@ -2,6 +2,7 @@ package datasource
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"thcpn-gin/internal/apperr"
 	"time"
@@ -17,6 +18,7 @@ func queryLoRaWANV2Metrics(ctx context.Context, client *loraWANV2Client, cfg lor
 	results := make(map[string]TelemetryResult, len(metrics))
 	collectors := make(map[string]*thcpnAdaptiveTelemetryCollector, len(metrics))
 	missing := map[string]int{}
+	invalid := map[string]int{}
 	for _, metric := range metrics {
 		results[metric] = TelemetryResult{Points: []TelemetryPoint{}}
 		if adaptive {
@@ -32,9 +34,14 @@ func queryLoRaWANV2Metrics(ctx context.Context, client *loraWANV2Client, cfg lor
 			return
 		}
 		for metric, item := range results {
-			value, ok := loraWANV2Number(record.Values[metric])
+			raw, exists := record.Values[metric]
+			value, ok := loraWANV2Number(raw)
 			if !ok {
-				missing[metric]++
+				if exists {
+					invalid[metric]++
+				} else {
+					missing[metric]++
+				}
 				continue
 			}
 			value = normalizeLoRaWANV2MetricValue(metric, value)
@@ -65,8 +72,8 @@ func queryLoRaWANV2Metrics(ctx context.Context, client *loraWANV2Client, cfg lor
 			item.Points = points
 			item.Sampled = true
 		}
-		if missing[metric] > 0 {
-			item.Warnings = append(item.Warnings, QueryWarning{Code: "missing_metric", Message: "部分记录未包含有效的指标值", Count: missing[metric]})
+		if count := missing[metric] + invalid[metric]; count > 0 {
+			item.Warnings = append(item.Warnings, QueryWarning{Code: "missing_metric", Message: fmt.Sprintf("指标 Key「%s」：%d 条记录缺少该字段，%d 条记录的值为空或不是有效数值；这些记录已跳过", metric, missing[metric], invalid[metric]), Count: count})
 		}
 		results[metric] = item
 	}

@@ -307,7 +307,7 @@ func TestLoRaWANV2AdaptiveReadsWholeRangeAndSparseMetrics(t *testing.T) {
 		data := make([]map[string]any, 50)
 		for i := range data {
 			index := (page-1)*50 + i
-			data[i] = map[string]any{"ts": 1760000000 + index, "temp": index}
+			data[i] = map[string]any{"ts": 1760000000 + index, "temp": index, "invalid": "not-a-number"}
 			if index%10 == 0 {
 				data[i]["sparse"] = index
 			}
@@ -319,7 +319,7 @@ func TestLoRaWANV2AdaptiveReadsWholeRangeAndSparseMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	series, rows, err := queryLoRaWANV2Metrics(context.Background(), client, loraWANV2TelemetryConfig{GatewaySN: "GW"}, []string{"temp", "sparse"}, time.Unix(1760000000, 0), time.Unix(1760000100, 0), 10, true, 10)
+	series, rows, err := queryLoRaWANV2Metrics(context.Background(), client, loraWANV2TelemetryConfig{GatewaySN: "GW"}, []string{"temp", "sparse", "invalid"}, time.Unix(1760000000, 0), time.Unix(1760000100, 0), 10, true, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,6 +329,13 @@ func TestLoRaWANV2AdaptiveReadsWholeRangeAndSparseMetrics(t *testing.T) {
 	}
 	if series["sparse"].SourceCount != 10 || !series["sparse"].Complete || len(series["sparse"].Warnings) != 1 {
 		t.Fatalf("unexpected sparse result: %#v", series["sparse"])
+	}
+	if got := series["sparse"].Warnings[0].Message; got != "指标 Key「sparse」：90 条记录缺少该字段，0 条记录的值为空或不是有效数值；这些记录已跳过" {
+		t.Fatalf("warning does not identify the missing key: %s", got)
+	}
+	invalid := series["invalid"]
+	if len(invalid.Warnings) != 1 || invalid.Warnings[0].Count != 100 || invalid.Warnings[0].Message != "指标 Key「invalid」：0 条记录缺少该字段，100 条记录的值为空或不是有效数值；这些记录已跳过" {
+		t.Fatalf("invalid values should not be reported as absent keys: %#v", invalid)
 	}
 }
 
