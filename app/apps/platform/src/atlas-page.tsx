@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { AtlasClock } from "./atlas-clock";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -431,6 +432,7 @@ function AtlasWorkspace({
     <div
       className={`atlas-shell ${present ? "is-presenting" : ""} atlas-layout-${config.layout} atlas-template-${template.id}`}
     >
+      <div className="atlas-topbar">
       <header className="atlas-header">
         <div className="atlas-brand-mark">
           <Globe2 size={25} />
@@ -442,7 +444,14 @@ function AtlasWorkspace({
           <h1>{board.data?.name ?? a("defaultName")}</h1>
           {config.description && <p>{config.description}</p>}
         </div>
+      </header>
+      <AtlasHealth
+        workspaceId={workspaceId}
+        deviceIds={scoped.map((device) => device.device_id)}
+        loading={devices.isLoading}
+      />
         <div className="atlas-header-actions">
+          <AtlasClock />
           <Button
             className="atlas-fullscreen-button"
             variant="ghost"
@@ -453,12 +462,7 @@ function AtlasWorkspace({
             {present ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
           </Button>
         </div>
-      </header>
-      <AtlasHealth
-        workspaceId={workspaceId}
-        deviceIds={scoped.map((device) => device.device_id)}
-        loading={devices.isLoading}
-      />
+      </div>
       {(devices.error || error) && (
         <div className="atlas-top-warning" role="alert">
           {error ||

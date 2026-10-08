@@ -1,4 +1,40 @@
 /* Atlas is a scoped, dark observation workspace, not a fixed-resolution TV canvas. */
+.atlas-topbar { display: contents; }
+.atlas-shell:not(.atlas-template-panorama) > .atlas-topbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(340px, 1.4fr) auto;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 18px;
+}
+.atlas-shell:not(.atlas-template-panorama) > .atlas-topbar > .atlas-header { margin-bottom: 0; }
+.atlas-shell:not(.atlas-template-panorama) > .atlas-topbar > .atlas-health {
+  margin-bottom: 0;
+  padding: 0 20px;
+  border: 0;
+  border-left: 1px solid #29414f;
+  border-radius: 0;
+  background: transparent;
+  grid-template-columns: 1fr;
+  gap: 7px;
+}
+.atlas-shell:not(.atlas-template-panorama) > .atlas-topbar > .atlas-health > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.atlas-shell:not(.atlas-template-panorama) > .atlas-topbar .atlas-health-count > strong { font-size: 22px; }
+.atlas-shell:not(.atlas-template-panorama) > .atlas-topbar .atlas-health > footer { font-size: 9px; opacity: .8; }
+.atlas-clock { display: grid; gap: 3px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.atlas-clock > span { color: #91abb9; font-size: 10px; letter-spacing: .12em; }
+.atlas-clock > strong { color: #d9edf3; font-size: 20px; font-weight: 500; letter-spacing: .06em; }
+.atlas-shell > .atlas-topbar > .atlas-header-actions { align-self: start; gap: 14px; }
+.atlas-template-panorama > .atlas-topbar > .atlas-header-actions { top: 18px; right: 22px; z-index: 5; }
+@media (max-width: 1050px) {
+  .atlas-shell:not(.atlas-template-panorama) > .atlas-topbar { grid-template-columns: minmax(0, 1fr) auto; gap: 14px; }
+  .atlas-shell:not(.atlas-template-panorama) > .atlas-topbar > .atlas-health { grid-column: 1 / -1; grid-row: 2; padding: 12px 0 0; border-left: 0; border-top: 1px solid #29414f; }
+  .atlas-shell:not(.atlas-template-panorama) > .atlas-topbar > .atlas-header-actions { grid-column: 2; grid-row: 1; }
+}
 .atlas-route .page {
   padding: 0;
   max-width: none;

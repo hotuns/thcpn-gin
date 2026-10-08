@@ -5,7 +5,8 @@ import { Check, GripVertical, Search } from "lucide-react";
 import { api, formatApiError, type Device, type GatewayNode, type TelemetrySeries } from "@thcpn/api";
 import { fullTelemetry } from "./full-telemetry";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Alert, AlertDescription, AlertTitle, Badge, Button, Panel, SelectInput, StateView, Table } from "./platform-ui";
+import { Alert, AlertDescription, AlertTitle, Badge, Button, Panel, SelectInput, StateView } from "./platform-ui";
+import { TelemetryTable } from "./telemetry-table";
 import { TelemetryCharts } from "./telemetry-charts";
 import { DeviceQueryToolbar, initialQueryRange } from "./device-query-toolbar";
 
@@ -29,7 +30,7 @@ export function GatewayNodeData({ gateway, workspaceId }: { gateway: Device; wor
   const [dragOverMetricKey, setDragOverMetricKey] = useState("");
   const draggedMetricRef = useRef(false);
   const [applied, setApplied] = useState<{ mode: "node" | "compare"; node: string; metrics: string[]; start: string; end: string } | null>(null);
-  const [page, setPage] = useState(0);
+
   const [view, setView] = useState<"chart" | "table">("chart");
   const availableNodes = mode === "node" ? nodes.filter((node) => node.key === selectedNode) : nodes;
   const metrics = useMemo(() => {
@@ -82,7 +83,7 @@ export function GatewayNodeData({ gateway, workspaceId }: { gateway: Device; wor
   const invalid = !range.start || !range.end || Date.parse(range.start) >= Date.parse(range.end);
   const dirty = !applied || applied.node !== selectedNode || applied.mode !== mode || applied.metrics.join() !== selected.join() || applied.start !== range.start || applied.end !== range.end;
   const search = () => {
-    setPage(0);
+
     const next = { ...range, node: selectedNode, metrics: [...selected], mode };
     if (!dirty) void Promise.all(queries.map((query) => query.refetch()));
     else setApplied(next);
@@ -101,7 +102,7 @@ export function GatewayNodeData({ gateway, workspaceId }: { gateway: Device; wor
     window.setTimeout(() => { draggedMetricRef.current = false; }, 0);
   };
   const selectNode = (key: string) => setParams((current) => { const next = new URLSearchParams(current); next.set("node", key); return next; }, { replace: true });
-  const points = series.flatMap((item) => item.points.map((point) => ({ ...point, stream: item.data_stream_id, name: item.name, unit: item.unit })));
+  const points = series.flatMap((item) => item.points.map((point) => ({ ...point, series: item })));
 
   return <div className="device-data-layout"><div className="device-data-content gateway-node-data">
     <Panel className="gateway-node-query">
@@ -128,7 +129,7 @@ export function GatewayNodeData({ gateway, workspaceId }: { gateway: Device; wor
       {series.some((item) => !item.complete && !item.error) && <div className="command-note">部分指标数据不完整，请缩小时间范围后重试。</div>}
       {series.flatMap((item) => item.warnings ?? []).map((warning, index) => <div key={index} className="command-note">{warning.message}</div>)}
       {loading && <StateView type="loading" title="正在查询" description="正在读取所选节点的数据。"/>}
-      {points.length && applied ? view === "chart" ? <TelemetryCharts series={series} startTime={applied.start} endTime={applied.end} displayMode={applied.mode === "compare" ? "compare" : undefined}/> : <div className="table-wrap"><Table><thead><tr><th>指标</th><th>时间</th><th>数值</th></tr></thead><tbody>{points.slice(page * 100, (page + 1) * 100).map((point, index) => <tr key={`${point.stream}:${index}`}><td>{point.name}</td><td>{new Date(point.ts).toLocaleString()}</td><td>{point.value} {point.unit}</td></tr>)}</tbody></Table><div className="header-actions"><Button disabled={page === 0} onClick={() => setPage(page - 1)}>上一页</Button><span>{page + 1} / {Math.max(1, Math.ceil(points.length / 100))}</span><Button disabled={(page + 1) * 100 >= points.length} onClick={() => setPage(page + 1)}>下一页</Button></div></div> : !loading && !failures.length ? <StateView type="empty" title={applied ? "当前范围没有数据" : "请选择查询条件"} description="选择节点、指标与时间范围后点击查询。"/> : null}
+      {points.length > 0 && applied ? view === "chart" ? <TelemetryCharts series={series} startTime={applied.start} endTime={applied.end} displayMode={applied.mode === "compare" ? "compare" : undefined}/> : <TelemetryTable key={`${applied.node}:${applied.mode}:${applied.start}:${applied.end}:${applied.metrics.join(",")}`} points={points} formatTime={(value) => value ? new Date(value).toLocaleString() : "—"} /> : !loading && !failures.length ? <StateView type="empty" title={applied ? "当前范围没有数据" : "请选择查询条件"} description="选择节点、指标与时间范围后点击查询。"/> : null}
     </Panel>
   </div></div>;
 }

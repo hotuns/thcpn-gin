@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { LoRaProtocolFields, attachMetricInfo, collectMetricInfo, splitLoRaContent, buildLoRaContent, type LoRaVisualItem } from './lora-protocol-fields';
 export { attachMetricInfo, collectMetricInfo } from './lora-protocol-fields';
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
   ChevronUp,
@@ -60,6 +60,16 @@ const initialValues = {
 
 type JsonObject = Record<string, unknown>;
 
+export function v1ToV2Content(item: Pick<THCPNSensorTemplate, "port" | "params"> & { port_num?: number }): unknown[] {
+  const params = item.params as JsonObject;
+  const metrics = Array.isArray(params.contents) ? params.contents as JsonObject[] : [];
+  const mappings = metrics.map(metric => [metric.key, metric.decode ?? "", (metric.info as JsonObject)?.unit ?? ""]);
+  const port = (item.port ?? "").toLowerCase();
+  if (port === "485") return [["485", [params.command ?? "", mappings]]];
+  if (port === "ad") return [["ad", mappings, item.port_num ?? 0]];
+  return [];
+}
+
 const knownParamKeys = new Set(["command", "wait_time", "contents"]);
 
 function splitParams(params: JsonObject) {
@@ -85,7 +95,9 @@ function parseParamsJSON(raw: unknown): JsonObject {
 
 
 export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) {
-  const isV2 = version === "v2";
+  const [copyToV2, setCopyToV2] = useState(false);
+  const queryClient = useQueryClient();
+  const isV2 = version === "v2" || copyToV2;
   const title = `传感器模板 ${version.toUpperCase()}`;
   const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState("");
@@ -103,7 +115,7 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
     queryFn: () =>
       api.admin.platformSensorTemplates({
         q: keyword,
-        source_family: isV2 ? "lorawan_v2" : "thcpn",
+        source_family: version === "v2" ? "lorawan_v2" : "thcpn",
         status: status ?? "",
         page,
         page_size: 20,
@@ -118,14 +130,17 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
   const openEditor = (
     mode: "create" | "edit",
     source?: THCPNSensorTemplate,
+    targetV2 = version === "v2",
   ) => {
+    const isV2 = targetV2;
+    setCopyToV2(version === "v1" && targetV2);
     const item = source;
     const params = (item?.params ?? {}) as JsonObject;
     const visual = splitParams(params);
     const variants = ((item as unknown as JsonObject)?.variants ??
       {}) as JsonObject;
     const lora = (variants.lorawan_v2 ?? {}) as JsonObject;
-    const loraContent = Array.isArray(lora.content) ? lora.content : [];
+    const loraContent = Array.isArray(lora.content) ? lora.content : targetV2 && version === "v1" && item ? v1ToV2Content(item) : [];
     const loraItems = attachMetricInfo(splitLoRaContent(loraContent), visual.metrics);
     form.setFieldsValue(
       item
@@ -229,8 +244,11 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
         await api.admin.createSensorTemplate(payload);
       }
       setEditor(null);
+      setCopyToV2(false);
       form.resetFields();
       await query.refetch();
+      await queryClient.invalidateQueries({ queryKey: ["admin", "sensor-templates", "v2"] });
+      if (copyToV2) setFeedback("已复制到传感器模板 V2，原 V1 模板保持不变。请前往传感器模板 V2 查看。");
     } catch (error) {
       if ((error as { errorFields?: unknown }).errorFields) return;
       const detail = formatApiError(error);
@@ -320,10 +338,10 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
       <PageHeader
         eyebrow="Assets / sensor templates"
         title={title}
-        description={isV2 ? "用于 LoRaWAN V2 的独立协议与指标模板。修改仅影响后续配置。" : "用于旧版设备的传感器协议与指标模板。修改仅影响后续配置。"}
+        description={version === "v2" ? "用于 LoRaWAN V2 的独立协议与指标模板。修改仅影响后续配置。" : "用于旧版设备的传感器协议与指标模板。修改仅影响后续配置。"}
         actions={
           <Space>
-            {!isV2 && <Button
+            {version === "v1" && <Button
               icon={<Download size={14} />}
               onClick={() => setImportOpen(true)}
             >
@@ -413,7 +431,7 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
                   </div>
                 ),
               },
-              ...(!isV2 ? [{ title: "驱动", dataIndex: "driver", width: 140 },
+              ...(version === "v1" ? [{ title: "驱动", dataIndex: "driver", width: 140 },
               {
                 title: "端口",
                 width: 120,
@@ -467,7 +485,7 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
               },
               {
                 title: "操作",
-                width: 210,
+                width: version === "v1" ? 300 : 210,
                 fixed: "right",
                 render: (_, item) => (
                   <Space size={2}>
@@ -487,6 +505,7 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
                     >
                       复制
                     </Button>
+                    {version === "v1" && <Button type="link" size="small" icon={<Copy size={13} />} onClick={() => openEditor("create", item, true)}>复制到 V2</Button>}
                     <Popconfirm
                       title="删除传感器模板？"
                       description="已有设备配置不会受影响。"
@@ -509,19 +528,20 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
         )}
       </Panel>
       <Drawer
-        title={`${editor?.mode === "edit" ? "编辑" : "新增"}${title}`}
+        title={copyToV2 ? "复制到传感器模板 V2" : `${editor?.mode === "edit" ? "编辑" : "新增"}${title}`}
         open={Boolean(editor)}
         width={920}
-        onClose={() => setEditor(null)}
+        onClose={() => { setEditor(null); setCopyToV2(false); }}
         extra={
           <Space>
-            <Button onClick={() => setEditor(null)}>取消</Button>
+            <Button onClick={() => { setEditor(null); setCopyToV2(false); }}>取消</Button>
             <Button type="primary" loading={busy} onClick={() => void save()}>
               保存
             </Button>
           </Space>
         }
       >
+        {copyToV2 && <Alert type="warning" showIcon title="另存为独立的 V2 模板，不修改原模板或设备配置" description="已带入指标资料。485、AD 配置会生成转换草稿，请核对命令、解析规则及端口；其他协议需手动填写 V2 协议项，可在 JSON 模式查看原指标资料。V1 等待时间不会复制。" />}
         <Form form={form} layout="vertical" initialValues={initialValues}>
           <Form.Item
             name="sensor_type"

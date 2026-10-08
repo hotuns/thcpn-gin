@@ -7,6 +7,7 @@ import { api, formatApiError, type Device } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, IconButton, Panel, StateView, NodeNameEditor } from "./platform-ui";
 import { nodeDeviceId } from "./gateway-node-data";
+import { queryNodeStatus } from "./gateway-overview-query";
 
 export function GatewayOverview({ device, workspaceId }: { device: Device; workspaceId: string }) {
   const queryClient = useQueryClient();
@@ -15,23 +16,21 @@ export function GatewayOverview({ device, workspaceId }: { device: Device; works
   const nodes = useQuery({ queryKey: workspaceQueryKey(workspaceId, "device", device.id, "nodes"), queryFn: () => api.devices.nodes(device.id) });
   const range = useMemo(() => { const end = new Date(); return { startTime: new Date(end.getTime() - 7 * 86_400_000).toISOString(), endTime: end.toISOString() }; }, [device.id, refresh]);
   const groups = useMemo(() => {
-    const result = new Map<string, string[]>();
-    for (const node of nodes.data?.items ?? []) for (const stream of node.streams) {
-      const id = nodeDeviceId(node); result.set(id, [...(result.get(id) ?? []), stream.id]);
-    }
-    return [...result].map(([id, streams]) => ({ id, streams }));
+    return (nodes.data?.items ?? []).filter(node => node.streams.length).map(node => ({ key: node.key, id: nodeDeviceId(node), streams: node.streams.map(stream => stream.id) }));
   }, [nodes.data]);
   const telemetry = useQueries({ queries: groups.map((group) => ({
     queryKey: workspaceQueryKey(workspaceId, "gateway", device.id, "overview", group.id, group.streams.join(","), range.startTime, range.endTime),
-    queryFn: () => api.telemetry.device(group.id, { ...range, dataStreamIds: group.streams, adaptive: true, targetPoints: 2, limit: 500 }),
+    queryFn: () => device.source_family === "lorawan_v2"
+      ? queryNodeStatus(group.id, { ...range, dataStreamIds: group.streams })
+      : api.telemetry.device(group.id, { ...range, dataStreamIds: group.streams, adaptive: true, targetPoints: 2, limit: 500 }),
     staleTime: 60_000,
   })) });
   const series = new Map(telemetry.flatMap((query) => (query.data?.series ?? []).map((item) => [item.data_stream_id, item] as const)));
   const rows = (nodes.data?.items ?? []).map((node) => {
-    const query = telemetry[groups.findIndex((group) => group.id === nodeDeviceId(node))];
+    const query = telemetry[groups.findIndex((group) => group.key === node.key)];
     const readings = node.streams.flatMap((stream) => series.get(stream.id)?.points ?? []);
     const latest = readings.reduce<string | undefined>((current, point) => !current || Date.parse(point.ts) > Date.parse(current) ? point.ts : current, undefined);
-    return { node, latest, loading: query?.isFetching, error: query?.error ?? node.streams.map((stream) => series.get(stream.id)?.error).find(Boolean), complete: node.streams.every((stream) => series.get(stream.id)?.complete !== false) };
+    return { node, latest, loading: query?.isFetching, error: query?.error ?? node.streams.map((stream) => series.get(stream.id)?.error).find(Boolean), complete: Boolean(latest) || node.streams.every((stream) => series.get(stream.id)?.complete !== false) };
   });
   const open = (node?: string) => setParams((current) => { const next = new URLSearchParams(current); next.set("tab", "data"); if (node) next.set("node", node); return next; });
   return <div className="gateway-overview">

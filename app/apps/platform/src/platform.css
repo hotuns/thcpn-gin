@@ -1498,6 +1498,10 @@
     text-align: left;
   }
 }
+.chart-heading-actions { display: flex; align-items: center; gap: 12px; }
+.shadcn-dialog-content.telemetry-expanded-dialog { width: 80vw; max-width: 80vw; max-height: 92dvh; overflow-y: auto; }
+.telemetry-expanded-dialog .telemetry-chart { border: 0; width: 100%; min-width: 0; }
+.telemetry-expanded-dialog .chart-canvas { height: clamp(280px, 60dvh, 760px); }
 .telemetry-chart {
   min-width: 0;
   padding: 16px 20px 12px;

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import {
   Area,
   Bar,
@@ -12,7 +12,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { ChartNoAxesCombined, PanelsTopLeft } from "lucide-react";
+import { ChartNoAxesCombined, PanelsTopLeft, Maximize2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, IconButton } from "./platform-ui";
 import type { TelemetrySeries } from "@thcpn/api";
 import { useLocale } from "@thcpn/i18n";
 import { useChartZoom } from "./chart-zoom";
@@ -248,7 +249,7 @@ function ComparisonChart({
         <ResponsiveContainer width="100%" height="100%">
           <LineChart
             data={data}
-            margin={{ top: 18, right: 18, bottom: 4, left: 0 }}
+            margin={{ top: 18, right: 18, bottom: 4, left: 12 }}
           >
             <CartesianGrid
               vertical={false}
@@ -271,7 +272,7 @@ function ComparisonChart({
               domain={[0, 100]}
               ticks={[0, 25, 50, 75, 100]}
               tickFormatter={(value) => `${value}%`}
-              width={42}
+              width="auto" tickMargin={10}
               tickLine={false}
               axisLine={false}
             />
@@ -355,6 +356,7 @@ function TelemetryChart({
   startTime,
   endTime,
   zoomable,
+  expanded = false,
 }: {
   series: TelemetrySeries;
   colorIndex: number;
@@ -362,7 +364,10 @@ function TelemetryChart({
   startTime: string;
   endTime: string;
   zoomable: boolean;
+  expanded?: boolean;
 }) {
+  const [open, setOpen] = useState(false);
+  const fillId = useId();
   const { t, formatNumber, formatDateTime } = useLocale();
   const source = series.points
     .filter(
@@ -410,12 +415,15 @@ function TelemetryChart({
             </div>
           </div>
         </div>
+        <div className="chart-heading-actions">
         <div className="chart-latest">
           <small>{t("platform:telemetry.latest")}</small>
           <div>
             <strong>{latest ? formatNumber(latest.value, { maximumFractionDigits: 2 }) : "—"}</strong>
             <span>{series.unit}</span>
           </div>
+        </div>
+        {!expanded && <IconButton label={t("platform:telemetry.expand")} onClick={() => setOpen(true)}><Maximize2 size={16} /></IconButton>}
         </div>
       </header>
       <div
@@ -427,11 +435,11 @@ function TelemetryChart({
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
             data={data}
-            margin={{ top: 12, right: 8, bottom: 2, left: 0 }}
+            margin={{ top: 12, right: 8, bottom: 2, left: 12 }}
           >
             <defs>
               <linearGradient
-                id={`telemetry-fill-${colorIndex}`}
+                id={fillId}
                 x1="0"
                 y1="0"
                 x2="0"
@@ -466,7 +474,8 @@ function TelemetryChart({
               domain={windDirection ? [0, 360] : rainfall ? [0, max + domainPadding] : [min - domainPadding, max + domainPadding]}
               ticks={windDirection ? [0, 45, 90, 135, 180, 225, 270, 315, 360] : undefined}
               tickFormatter={(value) => windDirection ? windDirectionLabel(Number(value)) : formatNumber(value, { maximumFractionDigits: 2 })}
-              width={48}
+              width="auto"
+              tickMargin={10}
               tickLine={false}
               axisLine={false}
             />
@@ -507,7 +516,7 @@ function TelemetryChart({
                 dataKey="value"
                 stroke="var(--chart)"
                 strokeWidth={2}
-                fill={`url(#telemetry-fill-${colorIndex})`}
+                fill={`url(#${fillId})`}
                 dot={
                   windSpeedWithDirection
                     ? (props) => <WindArrow {...props as WindArrowProps} />
@@ -539,6 +548,12 @@ function TelemetryChart({
           {series.warnings.map((warning) => warning.message).join("；")}
         </div>
       ) : null}
+      {!expanded && <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="telemetry-expanded-dialog" aria-describedby={undefined}>
+          <DialogHeader><DialogTitle>{series.name} · {t("platform:telemetry.expand")}</DialogTitle></DialogHeader>
+          {open && <TelemetryChart series={series} colorIndex={colorIndex} windDirectionSeries={windDirectionSeries} startTime={startTime} endTime={endTime} zoomable expanded />}
+        </DialogContent>
+      </Dialog>}
     </section>
   );
 }

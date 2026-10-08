@@ -601,7 +601,7 @@ function AtlasTrend({
                     ...p,
                     time: Date.parse(p.ts),
                   }))}
-                  margin={{ top: 12, right: 14, bottom: 0, left: 0 }}
+                  margin={{ top: 12, right: 14, bottom: 0, left: 12 }}
                 >
                   <defs>
                     <linearGradient
@@ -638,7 +638,7 @@ function AtlasTrend({
                     minTickGap={40}
                   />
                   <YAxis
-                    width={50}
+                    width="auto" tickMargin={10}
                     domain={["auto", "auto"]}
                     tick={{ fill: "#8ba6b7", fontSize: 10 }}
                     tickFormatter={numberLabel}

@@ -549,7 +549,7 @@ function MultiAxisComparisonChart({ items, alignment }: { items: { config: Compa
               tick={{ fontSize: 9, fill: color }}
               tickLine={false}
               axisLine={{ stroke: color }}
-              width={52}
+              width="auto" tickMargin={10}
               tickFormatter={(value) => formatNumber(Number(value))}
               label={{ value: group.unit, angle: -90, position: index % 2 ? "insideRight" : "insideLeft", fill: color, fontSize: 9 }}
             />;
@@ -611,7 +611,7 @@ function RelativeComparisonChart({ items, method, alignment }: { items: { config
     <ComparisonLegend items={items} />
     <div className="relative-comparison-chart">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 12, right: 18, bottom: 8, left: 0 }}>
+        <LineChart data={data} margin={{ top: 12, right: 18, bottom: 8, left: 12 }}>
           <CartesianGrid stroke="#e5edf3" strokeDasharray="3 4" vertical={false} />
           <XAxis
             dataKey="x"
@@ -621,7 +621,7 @@ function RelativeComparisonChart({ items, method, alignment }: { items: { config
             minTickGap={48}
             tick={{ fontSize: 10 }}
           />
-          <YAxis domain={method === "minmax" ? [0, 1] : ["auto", "auto"]} tickFormatter={(value) => formatNumber(Number(value))} tick={{ fontSize: 10 }} width={48} />
+          <YAxis domain={method === "minmax" ? [0, 1] : ["auto", "auto"]} tickFormatter={(value) => formatNumber(Number(value))} tick={{ fontSize: 10 }} width="auto" tickMargin={10} />
           <Tooltip content={<ComparisonTooltip items={items} mode={method} />} />
           {items.map((item, index) => <Line key={item.config.id} type="monotone" dataKey={item.config.id} name={item.config.id} stroke={colors[index % colors.length]} strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />)}
         </LineChart>
