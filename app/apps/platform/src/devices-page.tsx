@@ -76,6 +76,7 @@ import { SamplingProfilePanel } from "./sampling-profile";
 import { DeviceCombobox } from "./device-combobox";
 import { ComputedStreamsPanel, DeviceMetadataPanel } from "./device-computed-data";
 import { GatewayNodeData } from "./gateway-node-data";
+import { NodeVitals, useNodeRuntime } from "./node-vitals";
 import {
   DEVICE_LIST_GC_TIME,
   DEVICE_LIST_STALE_TIME,
@@ -1982,6 +1983,7 @@ export function DeviceChildren({
   deviceId: string;
   onData: (id?: string) => void;
 }) {
+  const runtime = useNodeRuntime(workspaceId, deviceId);
   const query = useQuery({
     queryKey: workspaceQueryKey(workspaceId, "device", deviceId, "nodes"),
     queryFn: () => api.devices.nodes(deviceId),
@@ -2020,6 +2022,7 @@ export function DeviceChildren({
             <div className="cell-sub">
               {node.streams.length ? `${node.streams.length} 个指标` : "暂无指标"}
             </div>
+            <NodeVitals item={runtime.data?.items.find(item => item.key === node.key)} loading={runtime.isLoading} error={runtime.isError}/>
           </div>
           <div>
             {node.target.kind === "device" ? (

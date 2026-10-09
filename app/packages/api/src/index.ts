@@ -6,6 +6,7 @@ type Schema<Name extends keyof components["schemas"]> =
   components["schemas"][Name];
 
 export type User = Schema<"UserProfile"> & { is_demo?: boolean };
+export type NodeRuntime = Schema<"NodeRuntime">;
 export type SendCodeResponse = Schema<"SendCodeResponse">;
 export type MfaStatus = Schema<"MfaStatusResponse">;
 export type TotpSetup = Schema<"TotpSetupResponse">;
@@ -867,6 +868,7 @@ export const api = {
       ),
     renameNode: (id: string, index: number, name: string) => jsonRequest<{name: string; custom_name: string}>(`/api/v1/devices/${encodeURIComponent(id)}/nodes/${index}`, "PATCH", {name}),
     nodes: (id: string) => request<Schema<"GatewayNodeList">>(`/api/v1/devices/${encodeURIComponent(id)}/nodes`),
+    nodeRuntime: (id: string) => request<{ items: NodeRuntime[]; refreshed_at: string }>(`/api/v1/devices/${encodeURIComponent(id)}/nodes/runtime`),
     reconcileConfig: (id: string) => jsonRequest<JsonRecord>(`/api/v1/devices/${encodeURIComponent(id)}/config/resync`, "POST", {}),
     context: (id: string) => request<DeviceInteractionContext>(`/api/v1/devices/${encodeURIComponent(id)}/context`),
     children: (id: string) =>

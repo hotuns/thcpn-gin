@@ -1,4 +1,8 @@
 export const atlasZh = {
+  terrain3d: "立体地形",
+  terrain2d: "平面地图",
+  terrainHint: "切换立体地形与平面地图",
+  terrainUnavailable: "高程暂不可用，已切换平面地图",
   title: "一张图",
   reportingOverview: "设备运行概况",
   reportingWindow: "近 24 小时",
@@ -20,9 +24,9 @@ export const atlasZh = {
   readOnlyHint: "你可以查看已保存视图；创建和自定义视图需要工作区管理权限。",
   displayTemplate: "展示模板",
   chooseTemplate: "选择模板",
-  templateTechnology: "科技总览",
-  templateTechnologyHint: "分栏展示设备、地图与指标，适合日常观测。",
-  templatePanorama: "全景地图",
+  templateTechnology: "数据指挥台",
+  templateTechnologyHint: "地图与曲线分区，指标和图片同屏，专注观测分析。",
+  templatePanorama: "空间态势",
   templatePanoramaHint: "全幅地图与半透明悬浮面板，适合全域展示与汇报。",
   templateChooserHint:
     "切换只影响布局，不改变设备数据。可在自定义中保存为当前视图或另存为。",
@@ -163,10 +167,14 @@ export const atlasEn: Record<keyof typeof atlasZh, string> = {
   title: "Atlas",
   displayTemplate: "Presentation",
   chooseTemplate: "Choose template",
-  templateTechnology: "Observation workspace",
+  terrain3d: "3D terrain",
+  terrain2d: "2D map",
+  terrainHint: "Switch between terrain and flat map",
+  terrainUnavailable: "Elevation unavailable. Showing the flat map.",
+  templateTechnology: "Data command center",
   templateTechnologyHint:
-    "Device, map and metric columns for everyday exploration.",
-  templatePanorama: "Panoramic map",
+    "A map and analysis deck with metrics and imagery side by side.",
+  templatePanorama: "Spatial overview",
   templatePanoramaHint:
     "An edge-to-edge map with translucent panels for presentations.",
   templateChooserHint:

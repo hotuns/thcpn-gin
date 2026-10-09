@@ -579,6 +579,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.PATCH("/devices/:device_id/nodes/:node_index", deviceHandler.AdminRenameNode)
 	authed.PATCH("/devices/:device_id/nodes/:node_index", deviceHandler.RenameNode)
 	authed.GET("/devices/:device_id/nodes", deviceHandler.Nodes)
+	authed.GET("/devices/:device_id/nodes/runtime", dataSourceHandler.NodeRuntime)
 	admin.GET("/devices/:device_id/context", deviceHandler.AdminInteraction)
 	authed.GET("/devices/:device_id/context", deviceHandler.Interaction)
 	authed.POST("/devices/:device_id/camera/live-session", cameraHandler.CreateLiveSession)

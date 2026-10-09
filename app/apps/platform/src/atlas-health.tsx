@@ -2,6 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { api, type THCPNDeviceRuntimeBatchResponse } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
 import { useLocale } from "@thcpn/i18n";
+import {
+  RadioTower,
+  CircleCheck,
+  TriangleAlert,
+  CircleHelp,
+} from "lucide-react";
 
 export function reportingCounts(
   ids: string[],
@@ -62,6 +68,15 @@ export function AtlasHealth({
       <div className="atlas-health-grid">
         {(["total", "normal", "overdue", "unknown"] as const).map((key) => (
           <div className={`atlas-health-count is-${key}`} key={key}>
+            {key === "total" ? (
+              <RadioTower size={19} />
+            ) : key === "normal" ? (
+              <CircleCheck size={19} />
+            ) : key === "overdue" ? (
+              <TriangleAlert size={19} />
+            ) : (
+              <CircleHelp size={19} />
+            )}
             <span>{a(`reporting_${key}`)}</span>
             <strong>
               {(key === "total" ? loading : pending)

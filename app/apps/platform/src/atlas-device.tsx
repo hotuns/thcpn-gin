@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
   Activity,
   ArrowUpRight,
   Check,
+  CalendarRange,
   ChevronLeft,
   ChevronRight,
   Database,
@@ -38,6 +40,8 @@ import {
   Table,
 } from "./platform-ui";
 import { AtlasMedia } from "./atlas-media";
+import { useSceneReveal } from "./use-scene-reveal";
+import { ObservationIcon } from "./observation-icon";
 import {
   numberLabel,
   seriesSummary,
@@ -52,19 +56,19 @@ export function AtlasDevice({
   workspaceId,
   config,
   onSelection,
-  initialTab = "metrics",
+  analysisHost,
 }: {
   device: DeviceMapItem;
   workspaceId: string;
   config: AtlasConfig;
   onSelection: (ids: string[]) => void;
   initialTab?: "metrics" | "images";
+  analysisHost?: HTMLElement | null;
 }) {
   const { t, locale } = useLocale();
+  const revealed = useSceneReveal();
   const a = (key: string) => t(`atlas.${key}`);
-  const [tab, setTab] = useState<string>(
-    config.show_images === false ? "metrics" : initialTab,
-  );
+  const [tab, setTab] = useState("images");
   const [nodeKey, setNodeKey] = useState("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -120,7 +124,7 @@ export function AtlasDevice({
       : metrics.slice(0, 2).map((s) => s.id)) ??
     []
   ).filter((id) => metrics.some((s) => s.id === id));
-  const visible = matches.slice(page * 8, page * 8 + 8);
+  const visible = matches.slice(page * 6, page * 6 + 6);
   // Query only the visible cards and chart page, not every selected stream.
   const currentChartPage = Math.min(
     chartPage,
@@ -151,7 +155,6 @@ export function AtlasDevice({
           targetPoints: 300,
           limit: 5000,
         }),
-      enabled: tab === "metrics",
       staleTime: 60000,
       retry: false,
     })),
@@ -187,7 +190,10 @@ export function AtlasDevice({
     node?.target.kind === "device" ? node.target.device_id : device.device_id;
   return (
     <section className="atlas-detail">
-      <header className="atlas-detail-heading">
+      <header
+        className="atlas-detail-heading t-panel-slide"
+        data-open={revealed}
+      >
         <div>
           <span className="atlas-overline">{a("explore")}</span>
           <h2>{device.name}</h2>
@@ -207,22 +213,6 @@ export function AtlasDevice({
         </Link>
       </header>
       <div className="atlas-detail-controls">
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList>
-            <TabsTrigger value="metrics">
-              {a("metrics")}{" "}
-              <small>
-                {catalog.filter((s) => s.type === "telemetry").length}
-              </small>
-            </TabsTrigger>
-            {config.show_images !== false && (
-              <>
-                <TabsTrigger value="images">{a("images")}</TabsTrigger>
-                <TabsTrigger value="photos">{a("photos")}</TabsTrigger>
-              </>
-            )}
-          </TabsList>
-        </Tabs>
         {nodes.data?.items.length ? (
           <SelectInput
             aria-label={a("node")}
@@ -247,7 +237,7 @@ export function AtlasDevice({
           </p>
         )}
       </div>
-      {tab !== "photos" && (
+      {
         <div className="atlas-range">
           <div className="atlas-presets">
             {[24, 168, 720].map((h, i) => (
@@ -256,49 +246,59 @@ export function AtlasDevice({
               </Button>
             ))}
           </div>
-          <div className="atlas-range-inputs">
-            <label>
-              <span>{a("start")}</span>
-              <Input
-                aria-label={a("start")}
-                type="datetime-local"
-                value={localTime(draft.start)}
-                onChange={(e) => setDraft({ ...draft, start: e.target.value })}
-              />
-            </label>
-            <label>
-              <span>{a("end")}</span>
-              <Input
-                aria-label={a("end")}
-                type="datetime-local"
-                value={localTime(draft.end)}
-                onChange={(e) => setDraft({ ...draft, end: e.target.value })}
-              />
-            </label>
-            <Button
-              onClick={() => {
-                if (!validRange(draft.start, draft.end)) {
-                  setRangeError(true);
-                  return;
-                }
-                setRange({
-                  start: new Date(draft.start).toISOString(),
-                  end: new Date(draft.end).toISOString(),
-                });
-                setRangeError(false);
-              }}
-            >
-              {a("apply")}
-            </Button>
-          </div>
-          {rangeError && (
-            <p role="alert" className="atlas-warning">
-              {a("invalidRange")}
-            </p>
-          )}
+          <details className="atlas-range-editor">
+            <summary>
+              <CalendarRange size={14} />
+              <span>
+                {dateLabel(range.start)} — {dateLabel(range.end)}
+              </span>
+            </summary>
+            <div className="atlas-range-inputs">
+              <label>
+                <span>{a("start")}</span>
+                <Input
+                  aria-label={a("start")}
+                  type="datetime-local"
+                  value={localTime(draft.start)}
+                  onChange={(e) =>
+                    setDraft({ ...draft, start: e.target.value })
+                  }
+                />
+              </label>
+              <label>
+                <span>{a("end")}</span>
+                <Input
+                  aria-label={a("end")}
+                  type="datetime-local"
+                  value={localTime(draft.end)}
+                  onChange={(e) => setDraft({ ...draft, end: e.target.value })}
+                />
+              </label>
+              <Button
+                onClick={() => {
+                  if (!validRange(draft.start, draft.end)) {
+                    setRangeError(true);
+                    return;
+                  }
+                  setRange({
+                    start: new Date(draft.start).toISOString(),
+                    end: new Date(draft.end).toISOString(),
+                  });
+                  setRangeError(false);
+                }}
+              >
+                {a("apply")}
+              </Button>
+            </div>
+            {rangeError && (
+              <p role="alert" className="atlas-warning">
+                {a("invalidRange")}
+              </p>
+            )}
+          </details>
         </div>
-      )}
-      {tab === "metrics" ? (
+      }
+      {
         <>
           <div className="atlas-metric-toolbar">
             <span>
@@ -347,6 +347,7 @@ export function AtlasDevice({
                     aria-pressed={selected.includes(stream.id)}
                   >
                     <span className="atlas-metric-name">
+                      <ObservationIcon unit={stream.unit} size={15} />
                       <span title={stream.name}>{stream.name}</span>
                       <span className="atlas-check">
                         {selected.includes(stream.id) && <Check size={11} />}
@@ -379,7 +380,7 @@ export function AtlasDevice({
               })}
             </div>
           )}
-          {matches.length > 8 && (
+          {matches.length > 6 && (
             <div className="atlas-pagination">
               <Button
                 variant="ghost"
@@ -390,12 +391,12 @@ export function AtlasDevice({
                 <ChevronLeft size={14} />
               </Button>
               <span>
-                {page + 1} / {Math.ceil(matches.length / 8)}
+                {page + 1} / {Math.ceil(matches.length / 6)}
               </span>
               <Button
                 variant="ghost"
                 aria-label={a("next")}
-                disabled={(page + 1) * 8 >= matches.length}
+                disabled={(page + 1) * 6 >= matches.length}
                 onClick={() => setPage(page + 1)}
               >
                 <ChevronRight size={14} />
@@ -409,7 +410,11 @@ export function AtlasDevice({
             </Button>
           </div>
           {config.show_trends !== false && (
-            <>
+            <AtlasAnalysis host={analysisHost}>
+              <div className="atlas-analysis-title">
+                <Activity size={14} />
+                {a("chart")}
+              </div>
               <div className="atlas-trends">
                 {!selected.length && <AtlasEmpty text={a("nothingSelected")} />}{" "}
                 {chartIds.map((id) => {
@@ -451,23 +456,45 @@ export function AtlasDevice({
                   </Button>
                 </nav>
               )}
-            </>
+            </AtlasAnalysis>
           )}
         </>
-      ) : (
-        <AtlasMedia
-          key={`${tab}:${imageDevice}`}
-          workspaceId={workspaceId}
-          deviceId={tab === "photos" ? device.device_id : imageDevice}
-          streams={catalog.filter(
-            (s) => s.type === "image" && s.device_id === imageDevice,
-          )}
-          range={range}
-          asset={tab === "photos"}
-        />
+      }
+      {config.show_images !== false && (
+        <section className="atlas-imagery">
+          <Tabs value={tab} onValueChange={setTab}>
+            <TabsList>
+              <TabsTrigger value="images">{a("images")}</TabsTrigger>
+              <TabsTrigger value="photos">{a("photos")}</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <AtlasMedia
+            key={`${tab}:${imageDevice}`}
+            workspaceId={workspaceId}
+            deviceId={tab === "photos" ? device.device_id : imageDevice}
+            streams={catalog.filter(
+              (s) => s.type === "image" && s.device_id === imageDevice,
+            )}
+            range={range}
+            asset={tab === "photos"}
+            pageSize={2}
+          />
+        </section>
       )}
     </section>
   );
+}
+
+// One query/selection owner for both templates; only the chart destination changes.
+function AtlasAnalysis({
+  host,
+  children,
+}: {
+  host?: HTMLElement | null;
+  children: ReactNode;
+}) {
+  const content = <section className="atlas-analysis">{children}</section>;
+  return host ? createPortal(content, host) : content;
 }
 
 function localTime(value: string) {
@@ -638,7 +665,8 @@ function AtlasTrend({
                     minTickGap={40}
                   />
                   <YAxis
-                    width="auto" tickMargin={10}
+                    width="auto"
+                    tickMargin={10}
                     domain={["auto", "auto"]}
                     tick={{ fill: "#8ba6b7", fontSize: 10 }}
                     tickFormatter={numberLabel}

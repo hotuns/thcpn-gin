@@ -108,6 +108,7 @@ const ExportsPage = lazy(() =>
 const ProcessingPage = lazy(() => import("./processing-page").then((module) => ({ default: module.ProcessingPage })));
 const ProcessingTaskDetailPage = lazy(() => import("./processing-page").then((module) => ({ default: module.ProcessingTaskDetailPage })));
 const AtlasPage = lazy(() => import("./atlas-page").then((module) => ({ default: module.AtlasPage })));
+const DigitalPlotPage = lazy(() => import("./digital-plot-page").then((module) => ({ default: module.DigitalPlotPage })));
 const DataComparisonPage = lazy(() =>
   import("./data-comparison-page").then((module) => ({
     default: module.DataComparisonPage,
@@ -596,6 +597,7 @@ export function PlatformApp() {
             <Route path="/processing" element={<ProcessingPage />} />
             <Route path="/processing/:taskId" element={<ProcessingTaskDetailPage />} />
             <Route path="/atlas" element={<AtlasPage />} />
+            <Route path="/atlas/topics/digital-plot" element={<DigitalPlotPage />} />
             <Route path="/atlas/:id" element={<AtlasPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             {billingEnabled ? (

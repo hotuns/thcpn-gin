@@ -55,6 +55,12 @@ vi.mock("recharts", () => ({
 let root: Root;
 let container: HTMLDivElement;
 beforeEach(() => {
+  vi.spyOn(api.media, "images").mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    page_size: 2,
+  });
   vi.spyOn(api.devices, "runtime").mockResolvedValue({
     items: [],
     failures: [],
@@ -320,18 +326,76 @@ describe("atlas interactions", () => {
         onSelection={() => {}}
       />,
     );
-    expect(data).toHaveBeenCalledTimes(8);
-    expect(container.querySelectorAll(".atlas-metric")).toHaveLength(8);
+    expect(data).toHaveBeenCalledTimes(6);
+    expect(container.querySelectorAll(".atlas-metric")).toHaveLength(6);
     expect(container.querySelectorAll(".atlas-trend")).toHaveLength(4);
+    expect(container.querySelector(".atlas-imagery")).not.toBeNull();
+    const rangeEditor = container.querySelector<HTMLDetailsElement>(
+      ".atlas-range-editor",
+    )!;
+    expect(rangeEditor.open).toBe(false);
+    await act(async () => rangeEditor.querySelector("summary")!.click());
+    expect(rangeEditor.open).toBe(true);
+    expect(
+      rangeEditor.querySelectorAll('input[type="datetime-local"]'),
+    ).toHaveLength(2);
+    // Expanding the editor must not change the applied range or issue queries.
+    expect(data).toHaveBeenCalledTimes(6);
     const next = container.querySelector(
       ".atlas-pagination button:last-child",
     ) as HTMLButtonElement;
     await act(async () => next.click());
     await settle();
     expect(container.querySelector(".atlas-metrics")?.textContent).toContain(
-      "metric-9",
+      "metric-7",
     );
-    expect(data).toHaveBeenCalledTimes(16);
+    expect(data).toHaveBeenCalledTimes(12);
+  });
+  it("places command-center trends in the map analysis slot without hiding metrics or images", async () => {
+    vi.spyOn(api.dataStreams, "list").mockResolvedValue({
+      items: [stream("voltage")],
+    });
+    vi.spyOn(api.telemetry, "dataStream").mockResolvedValue({
+      device_id: "device",
+      start_time: "",
+      end_time: "",
+      limit: 5000,
+      series: [
+        {
+          data_stream_id: "voltage",
+          code: "voltage",
+          name: "Voltage",
+          points,
+          source_count: 2,
+          returned_count: 2,
+          complete: true,
+          sampled: false,
+        },
+      ],
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    try {
+      await mount(
+        <AtlasDevice
+          device={device}
+          workspaceId="workspace"
+          config={defaultAtlasConfig}
+          onSelection={() => {}}
+          analysisHost={host}
+        />,
+      );
+      expect(host.querySelectorAll(".atlas-trend")).toHaveLength(1);
+      expect(container.querySelector(".atlas-trend")).toBeNull();
+      expect(container.querySelector(".atlas-metric")).not.toBeNull();
+      expect(container.querySelector(".atlas-imagery")).not.toBeNull();
+      expect(api.media.images).toHaveBeenCalledWith(
+        "device",
+        expect.objectContaining({ page_size: 2 }),
+      );
+    } finally {
+      host.remove();
+    }
   });
   it("paginates capture images beyond the first twelve", async () => {
     const images = vi.spyOn(api.media, "images").mockResolvedValue({

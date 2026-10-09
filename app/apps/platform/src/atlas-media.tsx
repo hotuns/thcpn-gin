@@ -14,18 +14,20 @@ export function AtlasMedia({
   streams,
   range,
   asset,
+  pageSize = 12,
 }: {
   workspaceId: string;
   deviceId: string;
   streams: DataStream[];
   range: { start: string; end: string };
   asset: boolean;
+  pageSize?: number;
 }) {
   // The range key remounts pagination so a new search always starts at page one.
   return (
     <MediaBrowser
       key={`${range.start}:${range.end}`}
-      {...{ workspaceId, deviceId, streams, range, asset }}
+      {...{ workspaceId, deviceId, streams, range, asset, pageSize }}
     />
   );
 }
@@ -35,6 +37,7 @@ function MediaBrowser({
   streams,
   range,
   asset,
+  pageSize = 12,
 }: Parameters<typeof AtlasMedia>[0]) {
   const { t, locale } = useLocale();
   const a = (key: string) => t(`atlas.${key}`);
@@ -51,6 +54,7 @@ function MediaBrowser({
       range.start,
       range.end,
       String(page),
+      String(pageSize),
     ),
     queryFn: () =>
       stream === "all"
@@ -58,13 +62,13 @@ function MediaBrowser({
             start_time: range.start,
             end_time: range.end,
             page,
-            page_size: 12,
+            page_size: pageSize,
           })
         : api.media.dataStream(stream, {
             start_time: range.start,
             end_time: range.end,
             page,
-            page_size: 12,
+            page_size: pageSize,
           }),
     enabled: !asset,
     staleTime: 60000,
@@ -95,7 +99,9 @@ function MediaBrowser({
       }));
   const query = asset ? profile : images;
   const total = asset ? items.length : (images.data?.total ?? 0);
-  const displayed = asset ? items.slice((page - 1) * 12, page * 12) : items;
+  const displayed = asset
+    ? items.slice((page - 1) * pageSize, page * pageSize)
+    : items;
   return (
     <div className="atlas-media">
       <div className="atlas-media-toolbar">
@@ -165,7 +171,7 @@ function MediaBrowser({
           ))}
         </div>
       )}
-      {total > 12 && (
+      {total > pageSize && (
         <div className="atlas-pagination">
           <Button
             variant="ghost"
@@ -178,11 +184,11 @@ function MediaBrowser({
             {a("previous")}
           </Button>
           <span>
-            {page} / {Math.ceil(total / 12)}
+            {page} / {Math.ceil(total / pageSize)}
           </span>
           <Button
             variant="ghost"
-            disabled={page * 12 >= total || query.isFetching}
+            disabled={page * pageSize >= total || query.isFetching}
             onClick={() => {
               setPage(page + 1);
               setPreview(-1);

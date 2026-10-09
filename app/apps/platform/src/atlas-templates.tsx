@@ -8,6 +8,7 @@ type AtlasSlots = {
   directory: ReactNode;
   map: ReactNode;
   inspector: ReactNode;
+  analysis?: ReactNode;
 };
 type AtlasTemplate = {
   id: AtlasPresentation;
@@ -19,11 +20,14 @@ type AtlasTemplate = {
 
 // Layouts own composition only. Queries, permissions and device selection stay
 // in the workspace, so a new template cannot accidentally fork data behavior.
-function TechnologyLayout({ directory, map, inspector }: AtlasSlots) {
+function TechnologyLayout({ directory, map, inspector, analysis }: AtlasSlots) {
   return (
     <div className="atlas-workbench">
       {directory}
-      {map}
+      <div className="atlas-map-stack">
+        {map}
+        {analysis}
+      </div>
       {inspector}
     </div>
   );

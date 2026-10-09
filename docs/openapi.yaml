@@ -305,6 +305,28 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/GatewayNodeList" }
+  /api/v1/devices/{device_id}/nodes/runtime:
+    get:
+      tags: [Devices]
+      summary: Read latest gateway node diagnostics within the last three days
+      parameters:
+        - in: path
+          name: device_id
+          required: true
+          schema: { $ref: "#/components/schemas/UUID" }
+      responses:
+        "200":
+          description: Node failures are isolated; absent readings are omitted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, refreshed_at]
+                properties:
+                  refreshed_at: { type: string, format: date-time }
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/NodeRuntime" }
   /healthz:
     get:
       tags:
@@ -6942,6 +6964,16 @@ components:
                   message: internal error
                   request_id: req_123
   schemas:
+    NodeRuntime:
+      type: object
+      required: [key]
+      properties:
+        key: { type: string }
+        sampled_at: { type: string, format: date-time }
+        battery: { type: number, description: Battery voltage in volts }
+        rssi: { type: number, description: LoRa RSSI in dBm; THCPN raw signal otherwise }
+        snr: { type: number }
+        error: { type: string }
     AtlasConfig:
       type: object
       description: Atlas settings stored under the existing wallboard permission boundary. Telemetry and media use existing access-controlled query APIs.

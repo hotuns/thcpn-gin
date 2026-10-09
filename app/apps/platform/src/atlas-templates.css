@@ -586,3 +586,10 @@
     inset: auto;
   }
 }
+.atlas-custom-showcase { position: relative; display: flex; justify-content: space-between; overflow: hidden; background: #0b2531; border: 1px solid #284c59; color: #e4f5fa; padding: 28px; border-radius: 12px; margin-bottom: 28px; }
+.atlas-custom-showcase > div { position: relative; z-index: 1; max-width: 70%; }
+.atlas-custom-showcase #atlas-custom-title { color: #7bdfcf; font-size: 12px; letter-spacing: .15em; }
+.atlas-custom-showcase h2 { margin: 10px 0; color: #e4f5fa; font-size: 23px; }
+.atlas-custom-showcase p { color: #a9c0ca; max-width: 560px; margin-bottom: 20px; }
+.atlas-custom-showcase > img { position: absolute; inset: 0 0 0 auto; width: 34%; height: 100%; object-fit: cover; opacity: .5; mask-image: linear-gradient(to right, transparent, black); }
+.atlas-custom-badge { position: absolute; right: 20px; top: 20px; padding: 4px 8px; border: 1px solid #a6803e; border-radius: 3px; color: #eeb865; font-size: 11px; }

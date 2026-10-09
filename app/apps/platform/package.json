@@ -23,6 +23,7 @@
     "ezuikit-js": "^9.0.12",
     "gifenc": "^1.0.3",
     "lucide-react": "^0.468.0",
+    "maplibre-gl": "6.0.0",
     "qrcode.react": "^4.2.0",
     "radix-ui": "^1.6.7",
     "react": "^19.2.7",

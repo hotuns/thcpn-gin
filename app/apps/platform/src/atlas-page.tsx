@@ -61,6 +61,7 @@ import {
 } from "./atlas-model";
 import "./atlas.css";
 import "./atlas-templates.css";
+import "./observatory.css";
 import {
   atlasTemplate,
   atlasTemplates,
@@ -155,6 +156,11 @@ function AtlasHome({ workspaceId }: { workspaceId: string }) {
           {a("refresh")}
         </Button>
       </header>
+      <section className="atlas-custom-showcase" aria-labelledby="atlas-custom-title">
+        <div><span id="atlas-custom-title">{t("digitalPlot.category")}</span><h2>{t("digitalPlot.title")}</h2><p>{t("digitalPlot.description")}</p><Button onClick={() => navigate("/atlas/topics/digital-plot")}>{t("digitalPlot.enter")} ↗</Button></div>
+        <img src="/digital-plot/forest-orthophoto.png" alt="" />
+        <span className="atlas-custom-badge">{t("digitalPlot.demo")}</span>
+      </section>
       <ol className="atlas-creation-steps" aria-label={a("creationSteps")}>
         {["chooseTemplate", "configure", "save"].map((step, index) => (
           <li key={step}>
@@ -331,6 +337,7 @@ function AtlasWorkspace({
   const [kind, setKind] = useState("all");
   const [present, setPresent] = useState(false);
   const [reset, setReset] = useState(0);
+  const [analysisHost, setAnalysisHost] = useState<HTMLDivElement | null>(null);
   const [error, setError] = useState("");
   const devices = useQuery({
     queryKey: workspaceQueryKey(workspaceId, "atlas", "map"),
@@ -479,6 +486,7 @@ function AtlasWorkspace({
         </div>
       )}
       <Layout
+        analysis={config.show_trends !== false && selected ? <div className="atlas-analysis-host" ref={setAnalysisHost} /> : undefined}
         directory={
           <aside className="atlas-directory">
             <header>
@@ -557,6 +565,7 @@ function AtlasWorkspace({
                   selectedId={selected?.device_id ?? ""}
                   onSelect={onSelect}
                   reset={reset}
+                  panorama={template.id === "panorama"}
                 />
               </Suspense>
             </MapBoundary>
@@ -595,6 +604,7 @@ function AtlasWorkspace({
                 config={config}
                 onSelection={() => {}}
                 initialTab={template.initialTab}
+                analysisHost={template.id === "technology" ? analysisHost : null}
               />
             ) : (
               <div className="atlas-welcome">
