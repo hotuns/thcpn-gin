@@ -193,7 +193,7 @@ export function RecentDeviceImages({
             </Button>
           </div>
         </div>
-        {query.isLoading ? (
+        {query.isFetching ? (
           <StateView
             type="loading"
             title="正在加载最近图片"
@@ -411,7 +411,7 @@ export function LegacyDeviceMedia({
         {feedback && (
           <div className="command-note media-feedback">{feedback}</div>
         )}
-        {query.isLoading ? (
+        {query.isFetching && !query.isFetchingNextPage ? (
           <StateView
             type="loading"
             title="正在加载设备图片"

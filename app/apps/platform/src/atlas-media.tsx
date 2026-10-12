@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PhotoSlider } from "react-photo-view";
 import "react-photo-view/dist/react-photo-view.css";
-import { Camera, ImageOff, ZoomIn } from "lucide-react";
+import { Camera, ImageOff, ZoomIn, LoaderCircle } from "lucide-react";
 import { api, formatApiError, type DataStream } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
 import { useLocale } from "@thcpn/i18n";
@@ -131,8 +131,8 @@ function MediaBrowser({
           {a("refresh")}
         </Button>
       </div>
-      {query.isLoading ? (
-        <div className="atlas-empty">{a("loading")}</div>
+      {query.isFetching ? (
+        <div className="atlas-empty" role="status" aria-busy="true"><LoaderCircle className="spin" aria-hidden="true"/>{a("loading")}</div>
       ) : query.error ? (
         <div className="atlas-error" role="alert">
           <p>{formatApiError(query.error).message}</p>

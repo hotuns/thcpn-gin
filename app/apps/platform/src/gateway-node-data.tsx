@@ -8,6 +8,7 @@ import { workspaceQueryKey } from "@thcpn/workspace";
 import { Alert, AlertDescription, AlertTitle, Badge, Button, Panel, SelectInput, StateView } from "./platform-ui";
 import { TelemetryTable } from "./telemetry-table";
 import { TelemetryCharts } from "./telemetry-charts";
+import { TelemetryLoading } from "./telemetry-loading";
 import { DeviceQueryToolbar, initialQueryRange } from "./device-query-toolbar";
 
 export const nodeDeviceId = (node: GatewayNode) => node.target.kind === "device" ? node.target.device_id : node.target.gateway_device_id;
@@ -23,7 +24,7 @@ export function GatewayNodeData({ gateway, workspaceId }: { gateway: Device; wor
   const requestedNode = params.get("node") ?? "";
   const selectedNode = nodes.some((node) => node.key === requestedNode) ? requestedNode : nodes[0]?.key ?? "";
   const [mode, setMode] = useState<"node" | "compare">("node");
-  const [range, setRange] = useState(initialQueryRange);
+  const [range, setRange] = useState(() => initialQueryRange(gateway.source_family === "lorawan_v2" ? 6 : 168));
   const draggedMetric = useRef<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [draggedMetricKey, setDraggedMetricKey] = useState("");
@@ -128,8 +129,7 @@ export function GatewayNodeData({ gateway, workspaceId }: { gateway: Device; wor
       {series.filter((item) => item.error).map((item) => <Alert key={item.data_stream_id} variant="destructive" className="request-error-inline"><AlertTitle>{item.name}读取失败</AlertTitle><AlertDescription><p>{item.error}</p></AlertDescription></Alert>)}
       {series.some((item) => !item.complete && !item.error) && <div className="command-note">部分指标数据不完整，请缩小时间范围后重试。</div>}
       {series.flatMap((item) => item.warnings ?? []).map((warning, index) => <div key={index} className="command-note">{warning.message}</div>)}
-      {loading && <StateView type="loading" title="正在查询" description="正在读取所选节点的数据。"/>}
-      {points.length > 0 && applied ? view === "chart" ? <TelemetryCharts series={series} startTime={applied.start} endTime={applied.end} displayMode={applied.mode === "compare" ? "compare" : undefined}/> : <TelemetryTable key={`${applied.node}:${applied.mode}:${applied.start}:${applied.end}:${applied.metrics.join(",")}`} points={points} formatTime={(value) => value ? new Date(value).toLocaleString() : "—"} /> : !loading && !failures.length ? <StateView type="empty" title={applied ? "当前范围没有数据" : "请选择查询条件"} description="选择节点、指标与时间范围后点击查询。"/> : null}
+      {loading ? <TelemetryLoading/> : points.length > 0 && applied ? view === "chart" ? <TelemetryCharts series={series} startTime={applied.start} endTime={applied.end} displayMode={applied.mode === "compare" ? "compare" : undefined}/> : <TelemetryTable key={`${applied.node}:${applied.mode}:${applied.start}:${applied.end}:${applied.metrics.join(",")}`} points={points} formatTime={(value) => value ? new Date(value).toLocaleString() : "—"} /> : !failures.length ? <StateView type="empty" title={applied ? "当前范围没有数据" : "请选择查询条件"} description="选择节点、指标与时间范围后点击查询。"/> : null}
     </Panel>
   </div></div>;
 }

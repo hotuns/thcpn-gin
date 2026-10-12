@@ -1279,7 +1279,7 @@ function DatasetPreview({
           title="时间范围无效"
           description="数据集保存的开始时间必须早于结束时间，请进入编辑修正。"
         />
-      ) : query.isLoading ? (
+      ) : query.isFetching ? (
         <StateView
           type="loading"
           title="正在生成预览"

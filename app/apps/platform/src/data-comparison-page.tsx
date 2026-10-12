@@ -406,7 +406,7 @@ export function DataComparisonPage() {
                 <Badge tone="info">{successful.length} / {applied.length} 项</Badge>
               </div>
             </div>
-            {loading && !successful.length ? (
+            {loading ? (
               <StateView type="loading" title="正在加载对比数据" description="各对比项正在并行查询。" />
             ) : successful.length ? (
               chartMode === "raw"

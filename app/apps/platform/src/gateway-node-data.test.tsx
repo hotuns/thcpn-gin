@@ -31,6 +31,41 @@ function node(index:number, family:string): GatewayNode {
  return { custom_name: "", can_rename: false, key:family==="lorawan_v2"?`gateway:${id}:node:${index}`:`device:${id}`,name:`节点 ${index}`,target,streams:[{id:`stream-${index}`,device_id:id,code:"temperature",name:"温度",type:"telemetry",unit:"℃",status:"active",computed:false,created_by:"admin",created_at:"",updated_at:""}] };
 }
 describe("unified gateway query",()=>{
+ for (const family of ["lorawan_v2", "thcpn"]) it(`${family}: initializes the correct time range`, async () => {
+  await mount([node(1,family)],family);
+  const inputs=container.querySelectorAll<HTMLInputElement>('input[type="datetime-local"]');
+  expect(Date.parse(inputs[1].value)-Date.parse(inputs[0].value)).toBe((family==="lorawan_v2"?6:168)*3_600_000);
+ });
+ it("shows the standard skeleton for first load, cached refresh, changed range and table refresh", async () => {
+  let finish: (()=>void) | undefined;
+  const telemetry=vi.spyOn(api.telemetry,"device").mockImplementation((_id,input)=>new Promise(resolve=>{
+   finish=()=>resolve({device_id:_id,limit:5000,start_time:input.startTime,end_time:input.endTime,series:[{data_stream_id:"stream-1",code:"temperature",name:"温度",points:[{ts:input.endTime,value:20,quality:"good"}],source_count:1,returned_count:1,sampled:false,complete:true}]});
+  }));
+  await mount([node(1,"lorawan_v2")],"lorawan_v2");
+  const click=async(text:string)=>{await act(async()=>{[...container.querySelectorAll("button")].find(b=>b.textContent===text)!.click();});await act(flush);};
+  const complete=async()=>{await act(async()=>finish!());await act(flush);};
+  await click("查询");
+  expect(container.querySelector('.telemetry-loading[aria-busy="true"]')).not.toBeNull();
+  await complete();
+  expect(container.querySelector('.telemetry-loading')).toBeNull();
+  expect(container.textContent).toContain("趋势图");
+  await click("刷新");
+  expect(container.querySelector('.telemetry-loading')).not.toBeNull();
+  expect(container.textContent).not.toContain("趋势图");
+  await complete();
+  await click("3 天");
+  expect(container.querySelector('.telemetry-loading')).toBeNull();
+  await click("查询");
+  expect(container.querySelector('.telemetry-loading')).not.toBeNull();
+  await complete();
+  await click("查看表格");
+  await click("刷新");
+  expect(container.querySelector('.telemetry-loading')).not.toBeNull();
+  expect(container.querySelector('table')).toBeNull();
+  await complete();
+  expect(container.querySelector('.telemetry-loading')).toBeNull();
+  expect(telemetry).toHaveBeenCalledTimes(4);
+ });
  for (const family of ["thcpn","lorawan_v2"]) it(`${family}: comparison batches by physical device and keeps partial results`,async()=>{
   const telemetry=vi.spyOn(api.telemetry,"device").mockImplementation(async(_id,input)=>({device_id:_id,limit:5000,start_time:input.startTime,end_time:input.endTime,series:(input.dataStreamIds??[]).map((id)=>({data_stream_id:id,code:"temperature",name:"温度",points:[],source_count:0,returned_count:0,sampled:false,complete:id!=="stream-2",...(id==="stream-2"?{error:"节点读取失败"}:{})}))}));
   await mount([node(1,family),node(2,family)],family);

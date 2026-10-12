@@ -7,6 +7,7 @@ import {
   ArrowUpRight,
   Check,
   CalendarRange,
+  LoaderCircle,
   ChevronLeft,
   ChevronRight,
   Database,
@@ -354,7 +355,7 @@ export function AtlasDevice({
                       </span>
                     </span>
                     <span className="atlas-metric-value">
-                      {query?.isLoading
+                      {query?.isFetching
                         ? "…"
                         : numberLabel(summary.latest?.value)}
                       <small>{stream.unit}</small>
@@ -428,7 +429,7 @@ export function AtlasDevice({
                         (s) => s.data_stream_id === id,
                       )}
                       error={q?.error}
-                      loading={q?.isLoading}
+                      loading={q?.isFetching}
                       retry={() => void q?.refetch()}
                       range={range}
                     />
@@ -562,7 +563,7 @@ function AtlasTrend({
         </Button>
       </header>
       {loading ? (
-        <AtlasEmpty text={a("loading")} />
+        <div className="atlas-empty" role="status" aria-busy="true"><LoaderCircle className="spin" aria-hidden="true"/>{a("loading")}</div>
       ) : error ? (
         <AtlasError error={error} retry={retry} />
       ) : series?.error ? (

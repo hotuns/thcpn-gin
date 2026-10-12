@@ -17,6 +17,7 @@ import {
   querySelectedTelemetryRaw,
 } from "./device-query-actions";
 import { TelemetryCharts } from "./telemetry-charts";
+import { TelemetryLoading } from "./telemetry-loading";
 import { TelemetryTable } from "./telemetry-table";
 import { dataComparisonPath, datasetCreatePath } from "./data-workflow";
 import { DeviceCombobox } from "./device-combobox";
@@ -500,7 +501,7 @@ export function DeviceDataPage({
                 </Button>
               </div>
             </div>
-            {telemetryQuery.isLoading ? (
+            {telemetryQuery.isFetching ? (
               <TelemetryLoading />
             ) : telemetryQuery.error ? (
               <StateView
@@ -545,7 +546,7 @@ export function DeviceDataPage({
                   {detailOpen ? `${points.length} 条` : "按需加载"}
                 </Badge>
               </summary>
-              {detailTelemetryQuery.isLoading ? (
+              {detailTelemetryQuery.isFetching ? (
                 <StateView type="loading" title="正在加载数据明细" description="正在读取原始数据点。" />
               ) : detailTelemetryQuery.error ? (
                 <StateView
@@ -612,35 +613,5 @@ export function DeviceDataPage({
         </>
       )}
     </>
-  );
-}
-
-function TelemetryLoading() {
-  return (
-    <div
-      className="telemetry-loading"
-      aria-label="正在生成数据趋势"
-      aria-busy="true"
-    >
-      <div className="telemetry-loading-head">
-        <span />
-        <span />
-      </div>
-      <div className="telemetry-loading-stats">
-        <span />
-        <span />
-        <span />
-        <span />
-      </div>
-      <div className="telemetry-loading-chart">
-        <i />
-        <i />
-        <i />
-        <i />
-        <i />
-        <i />
-      </div>
-      <div className="telemetry-loading-caption">正在读取并整理时间序列…</div>
-    </div>
   );
 }

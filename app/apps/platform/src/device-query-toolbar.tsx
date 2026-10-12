@@ -1,6 +1,9 @@
 export type DeviceQueryRange = { start: string; end: string };
 export const localQueryTime = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-export const initialQueryRange = (): DeviceQueryRange => ({ start: localQueryTime(new Date(Date.now() - 7 * 86_400_000)), end: localQueryTime(new Date()) });
+export const initialQueryRange = (hours = 168): DeviceQueryRange => {
+  const end = new Date();
+  return { start: localQueryTime(new Date(end.getTime() - hours * 3_600_000)), end: localQueryTime(end) };
+};
 
 export function DeviceQueryToolbar({ range, onChange, onPreset }: { range: DeviceQueryRange; onChange: (range: DeviceQueryRange) => void; onPreset?: (hours: number) => void }) {
   const invalid = !range.start || !range.end || Date.parse(range.start) >= Date.parse(range.end);

@@ -1157,7 +1157,7 @@ function StandardDeviceOverview({
                   查看全部
                 </Button>
               </div>
-              {telemetry.isLoading ? (
+              {telemetry.isFetching ? (
                 <StateView
                   type="loading"
                   title="正在加载最近数据"
