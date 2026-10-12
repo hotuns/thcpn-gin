@@ -8669,6 +8669,10 @@ components:
         - created_at
         - updated_at
       properties:
+        iccid:
+          type: string
+          pattern: '^[0-9]{19,20}$'
+          description: Administrator-maintained SIM card ICCID.
         id:
           $ref: "#/components/schemas/UUID"
         assignment_id:
@@ -9441,8 +9445,10 @@ components:
       type: object
       description: System admin update for mutable device asset fields. Platform serial numbers are generated once and cannot be edited. Assignment, topology relations, and lifecycle are managed separately.
       properties:
-        product_id:
+        iccid:
           type: string
+          pattern: '^([0-9]{19,20})?$'
+          description: Administrator-maintained SIM card ICCID. Empty string clears it; omitted value preserves it.
         name:
           type: string
         status:
@@ -9944,9 +9950,9 @@ components:
         idempotency_key: {$ref: "#/components/schemas/UUID"}
     LoRaWANV2CreateGatewayRequest:
       type: object
-      required: [sn, node_count]
+      required: [idempotency_key, node_count]
       properties:
-        sn: {type: string}
+        idempotency_key: { $ref: "#/components/schemas/UUID", description: "Client-generated request key. The backend generates a stable gateway SN for retries." }
         node_count: {type: integer, minimum: 1, maximum: 254}
     CreateSourceDeviceRequest:
       type: object
@@ -9959,7 +9965,7 @@ components:
           type: string
         iccid:
           type: string
-          description: Required for THCPN devices.
+          description: Optional SIM card ICCID for THCPN devices.
         version:
           type: string
           enum: ["1.0", "2.0"]

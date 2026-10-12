@@ -21,6 +21,7 @@ import {
   Table,
   Tag,
   Tabs,
+  Tooltip,
 } from "@thcpn/admin-ui";
 import {
   api,
@@ -293,7 +294,7 @@ export function AdminDevicesPage() {
     setDetail(null);
     if (next === "edit")
       form.setFieldsValue({
-        product_id: record.product_id,
+        iccid: record.iccid ?? "",
         name: record.name,
         status: record.status,
         device_type: record.device_type,
@@ -369,6 +370,7 @@ export function AdminDevicesPage() {
     setCreatedSourceDevice(null);
     setMode("create-device");
     form.resetFields();
+    form.setFieldValue("idempotency_key", crypto.randomUUID());
   };
   const close = () => {
     setMode(null);
@@ -481,13 +483,19 @@ export function AdminDevicesPage() {
         if (!dataSourceID) throw new Error("请选择数据源");
         if (sourceKind === "lorawan_v2") {
           const created = await api.admin.createLoRaWANV2Gateway(dataSourceID, {
-            sn: String(fields.sn ?? "").trim(),
+            idempotency_key: form.getFieldValue("idempotency_key") ?? crypto.randomUUID(),
             node_count: Number(fields.node_count),
           });
           const projection = (created.sync ?? {}) as JsonRecord;
           const createdDevice = (projection.device ?? {}) as JsonRecord;
           const createdDeviceID = String(createdDevice.id ?? "").trim();
           if (!createdDeviceID) throw new Error("网关已创建，但未返回平台设备 ID");
+          if (created.default_config_error) {
+            setCreatedSourceDevice({ ...created, sn:(created.gateway as JsonRecord)?.sn, data_source_id:dataSourceID, source_kind:sourceKind, platform_device_id:createdDeviceID, sync_error:String(created.default_config_error) });
+            setFeedback("网关已创建，默认配置写入失败。可重试同一网关。");
+            await query.refetch();
+            return;
+          }
           close();
           await query.refetch();
           navigate(`/admin/devices/${encodeURIComponent(createdDeviceID)}`);
@@ -535,6 +543,7 @@ export function AdminDevicesPage() {
   };
   const retryCreatedSourceDevice = async () => {
     if (busy || !createdSourceDevice) return;
+    if (createdSourceDevice.source_kind === "lorawan_v2") { await submit(); return; }
     const dataSourceID = String(createdSourceDevice.data_source_id ?? "").trim();
     const sourceDeviceID = Number(createdSourceDevice.source_device_id);
     const sourceKind = String(createdSourceDevice.source_kind ?? "").trim();
@@ -627,10 +636,10 @@ export function AdminDevicesPage() {
   const managementOverlays = (
     <>
       {configResult ? <ConfigApplyResult result={configResult} onClose={() => setConfigResult(null)} /> : null}
-      <Drawer title={drawerTitle(mode, selected)} open={Boolean(mode)} onClose={close} size={mode === "config" ? 1180 : 620} extra={mode === "attributes" ? <Button onClick={close}>关闭</Button> : <Space><Button onClick={close}>取消</Button><Button type="primary" danger={mode === "config"} loading={busy} onClick={() => void (mode === "create-device" && createdSourceDevice?.sync_error ? retryCreatedSourceDevice() : submit())}>{mode === "create-device" && createdSourceDevice?.sync_error ? "重试同步" : mode === "create-device" ? "创建设备" : "保存"}</Button></Space>}>
+      <Drawer title={drawerTitle(mode, selected)} open={Boolean(mode)} onClose={close} size={mode === "config" ? 1180 : 620} extra={mode === "attributes" ? <Button onClick={close}>关闭</Button> : <Space><Button onClick={close}>取消</Button><Button type="primary" danger={mode === "config"} loading={busy} onClick={() => void (mode === "create-device" && createdSourceDevice?.sync_error ? retryCreatedSourceDevice() : submit())}>{mode === "create-device" && createdSourceDevice?.sync_error ? (createdSourceDevice.source_kind === "lorawan_v2" ? "重试默认配置" : "重试同步") : mode === "create-device" ? "创建设备" : "保存"}</Button></Space>}>
         {mode === "config" && configConflict ? <Alert className="config-conflict-alert" type="warning" showIcon title="源配置已变化，当前草稿尚未保存" description="复制草稿后重新加载最新配置；系统不会强制覆盖其他操作写入的版本。" action={<Space orientation="vertical"><Button size="small" onClick={() => void navigator.clipboard.writeText(JSON.stringify(parseTHCPNConfig(form.getFieldsValue() as THCPNConfigFields), null, 2))}>复制草稿</Button><Button size="small" type="primary" onClick={() => { setConfigConflict(false); void loadDetail("config", selected); }}>重新加载</Button></Space>} /> : null}
         <Form form={form} layout="vertical">{mode === "create-device" ? <DeviceCreateForm form={form} sources={sourceQuery.data?.items ?? []} sourcesLoading={sourceQuery.isLoading} /> : <DeviceForm mode={mode} form={form} devices={allRows} deviceId={id} />}</Form>
-        {mode === "create-device" && createdSourceDevice?.sync_error ? <Alert type="warning" showIcon title="源库设备已创建，但平台同步失败" description={<div>源库 ID {value(createdSourceDevice.source_device_id)} · SN {value(createdSourceDevice.sn)}<br />{value(createdSourceDevice.sync_error)}</div>} /> : null}
+        {mode === "create-device" && createdSourceDevice?.sync_error ? <Alert type="warning" showIcon title={createdSourceDevice.source_kind === "lorawan_v2" ? "网关已创建，默认配置写入失败" : "源库设备已创建，但平台同步失败"} description={<div>SN {value(createdSourceDevice.sn)}<br />{value(createdSourceDevice.sync_error)}</div>} /> : null}
         <StructuredDetail mode={mode} detail={detail} busy={busy} onRemove={(childId) => selected && void removeChild(value(selected.id, ""), childId)} />
         {mode === "config" && detail ? <ConfigContext detail={detail as JsonRecord} /> : null}
         <div className="drawer-note"><Settings2 size={15} />{mode === "config" ? "高级配置会写入外部设备库，并刷新平台数据流与绑定。提交前请确认 JSON 结构。" : mode === "create-device" ? "设备会先在对应数据源创建，再登记为平台设备；LoRa V2 网关沿用输入的 SN。" : "所有操作都作用于标题中显示的当前设备；完成后设备列表会自动刷新。"}</div>
@@ -924,11 +933,11 @@ function DeviceDetailPanel({
     <section className="admin-detail-section">
       <div className="admin-detail-section-head"><div><h2>设备资料</h2><span>系统设备的身份与资产状态</span></div><Button icon={<Pencil size={14} />} onClick={() => onOpen("edit")}>编辑</Button></div>
       <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }} items={[
-        { key: "serial", label: "序列号", children: <span className="mono">{value(device.serial_no)}</span> },
-        { key: "product", label: "产品 ID", children: value(device.product_id) },
+        { key: "serial", label: "平台序列号", children: <Tooltip title="平台生成的资产编号，用于认领和查找设备，不一定等于厂家 SN。"><span className="mono">{value(device.serial_no)}</span></Tooltip> },
+        { key: "iccid", label: "物联卡 ICCID", children: <span className="mono">{value(device.iccid, "未记录")}</span> },
         { key: "type", label: "设备类型", children: deviceModelLabel(device) },
-        { key: "externalId", label: device.source_family === "lorawan_v2" ? "源端网关 SN" : "源库设备 ID", children: <span className="mono">{value(device.source_family === "lorawan_v2" ? device.external_key : device.external_device_id, "未关联")}</span> },
-        { key: "id", label: "设备 ID", span: 2, children: <span className="mono admin-break-value">{value(device.id)}</span> },
+        { key: "externalId", label: device.source_family === "lorawan_v2" ? "采集服务网关 SN" : "采集服务设备 ID", children: <Tooltip title="用于关联采集数据源中的设备；LoRaWAN V2 使用网关 SN，THCPN/Carbon 使用源数据库编号。"><span className="mono">{value(device.source_family === "lorawan_v2" ? device.external_key : device.external_device_id, "未关联")}</span></Tooltip> },
+        { key: "id", label: "平台设备 ID", span: 2, children: <Tooltip title="平台内部唯一 UUID，用于接口、关联和排障，不是硬件 SN。"><span className="mono admin-break-value">{value(device.id)}</span></Tooltip> },
         { key: "status", label: "资产状态", children: <Tag color={device.status === "active" ? "green" : "default"}>{deviceStatusLabel(value(device.status, ""))}</Tag> },
         { key: "created", label: "创建时间", children: date(device.created_at) },
         { key: "updated", label: "更新时间", children: date(device.updated_at) },
@@ -1048,7 +1057,7 @@ function DeviceDetailPanel({
     </section>
   </div>;
   return <Panel className="admin-device-detail"><div className="admin-device-detail-summary"><div><span>设备 ID</span><strong className="mono">{value(device.id)}</strong></div><div><span>生命周期</span><Tag color="blue">{deviceLifecycleLabel(value(device.lifecycle_status, ""))}</Tag></div><div><span>分配状态</span><strong>{device.workspace_id ? "已分配" : "未分配"}</strong></div><div><span>资产状态</span><Tag color={device.status === "active" ? "green" : "default"}>{deviceStatusLabel(value(device.status, ""))}</Tag></div></div><Tabs className="admin-device-detail-tabs" items={[
-    { key: "overview", label: "概览", children: overview },
+    { key: "overview", label: "设备信息", children: overview },
     { key: "data", label: "设备数据", children: <AdminDeviceDataPanel device={device} /> },
     ...(value(device.source_family, "") === "lorawan_v2" ? [
       { key: "configuration", label: "LoRa 配置", children: <LoRaWANV2ConfigPanel deviceId={value(device.id, "")} /> },
@@ -1319,8 +1328,8 @@ function DeviceForm({
         <Form.Item name="name" label="设备名称" rules={[{ required: true }]}>
           <Input />
         </Form.Item>
-        <Form.Item name="product_id" label="产品 ID">
-          <Input />
+        <Form.Item name="iccid" label="物联卡 ICCID" extra="当前安装的物联卡编号，19–20 位数字；留空可清除。" rules={[{ pattern: /^[0-9]{19,20}$/, message: "请输入 19–20 位数字的 ICCID" }]} normalize={text => text?.trim()}>
+          <Input maxLength={20} placeholder="请输入物联卡 ICCID" />
         </Form.Item>
         <div className="drawer-grid">
           <Form.Item name="device_type" label="设备类型">
@@ -1908,8 +1917,8 @@ function DeviceCreateForm({
           <Form.Item name="name" label="设备名称" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="iccid" label="ICCID" rules={[{ required: true }]}>
-            <Input />
+          <Form.Item name="iccid" label="物联卡 ICCID（选填）" rules={[{ pattern: /^[0-9]{19,20}$/, message: "请输入 19–20 位数字的 ICCID" }]} normalize={text => text?.trim()}>
+            <Input maxLength={20} />
           </Form.Item>
           <Form.Item name="version" label="版本" rules={[{ required: true }]}>
             <Select options={[{ value: "1.0", label: "1.0" }, { value: "2.0", label: "2.0" }]} />
@@ -1928,9 +1937,7 @@ function DeviceCreateForm({
       ) : null}
       {sourceKind === "lorawan_v2" ? (
         <>
-          <Form.Item name="sn" label="网关 SN" rules={[{ required: true, whitespace: true, message: "请输入网关 SN" }]}>
-            <Input />
-          </Form.Item>
+          <Alert type="info" showIcon message="网关 SN 将自动生成" description="创建后自动写入默认网关配置，可在设备信息中查看 SN。" style={{marginBottom:16}} />
           <Form.Item name="node_count" label="节点数" rules={[{ required: true, message: "请输入节点数" }]}>
             <InputNumber min={1} max={254} precision={0} style={{ width: "100%" }} />
           </Form.Item>

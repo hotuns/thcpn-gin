@@ -62,7 +62,7 @@ func (s *Service) withInteractions(ctx context.Context, items []Device) ([]Devic
         CASE WHEN src.source_family='lorawan_v2' THEN COALESCE((SELECT value_json::text::int FROM device_metadata WHERE device_id=d.id AND key='lorawan_v2_nodes_count'),0)
              ELSE (SELECT count(*) FROM device_relations WHERE parent_device_id=d.id AND relation_type='gateway_node' AND status='active') END,
         EXISTS (SELECT 1 FROM data_streams WHERE device_id=d.id AND status='active' AND type='telemetry'),
-        EXISTS (SELECT 1 FROM data_streams WHERE device_id=d.id AND status='active' AND type='image')
+        EXISTS (SELECT 1 FROM data_streams WHERE device_id=d.id AND status='active' AND type='image'), d.iccid
         FROM devices d LEFT JOIN device_source_refs ref ON ref.device_id=d.id AND ref.status='active'
         LEFT JOIN data_sources src ON src.id=ref.data_source_id WHERE d.id=ANY($1::uuid[])`, ids)
 	if err != nil {
@@ -74,10 +74,12 @@ func (s *Service) withInteractions(ctx context.Context, items []Device) ([]Devic
 		var family, status, externalKey, adapter string
 		var count int64
 		var telemetry, media bool
-		if err := rows.Scan(&id, &family, &status, &externalKey, &adapter, &count, &telemetry, &media); err != nil {
+		var iccid *string
+		if err := rows.Scan(&id, &family, &status, &externalKey, &adapter, &count, &telemetry, &media, &iccid); err != nil {
 			return nil, err
 		}
 		item := &items[indices[id]]
+		item.ICCID = iccid
 		item.SourceFamily, item.SourceStatus, item.ChildCount = family, status, count
 		item.ExternalKey = externalKey
 		item.Features = interactionFeatures(item.DeviceType, family, telemetry, media)

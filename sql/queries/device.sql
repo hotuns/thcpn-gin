@@ -6,10 +6,10 @@ INSERT INTO devices (
     activated_at
 )
 VALUES ($1, $2, 'active', now())
-RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type;
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type, iccid;
 
 -- name: GetDevice :one
-SELECT id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type
+SELECT id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type, iccid
 FROM devices
 WHERE id = $1;
 
@@ -20,14 +20,14 @@ SET product_id = $2,
     status = $4,
     updated_at = now()
 WHERE id = $1
-RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type;
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type, iccid;
 
 -- name: UpdateDeviceType :one
 UPDATE devices
 SET device_type = $2,
     updated_at = now()
 WHERE id = $1
-RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type;
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type, iccid;
 
 -- name: CreateDeviceAssignment :one
 INSERT INTO device_assignments (
@@ -307,7 +307,7 @@ SET lifecycle_status = $2,
     lifecycle_updated_at = $3,
     updated_at = now()
 WHERE id = $1
-RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type;
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type, iccid;
 
 -- name: CreateDeviceLifecycleEvent :one
 INSERT INTO device_lifecycle_events (
@@ -352,4 +352,4 @@ SET product_id = sqlc.narg(product_id),
     status = sqlc.arg(status),
     updated_at = now()
 WHERE id = sqlc.arg(id)
-RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type;
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type, iccid;

@@ -1222,7 +1222,7 @@ export const api = {
       request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/health`),
     loraWANV2Gateways: (id: string, input: JsonRecord = {}) =>
       request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways${queryString(input as Record<string, string | number | boolean>)}`),
-    createLoRaWANV2Gateway: (id: string, payload: JsonRecord) =>
+    createLoRaWANV2Gateway: (id: string, payload: Schema<"LoRaWANV2CreateGatewayRequest">) =>
       jsonRequest<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways`, "POST", payload),
     loraWANV2Gateway: (id: string, sn: string) =>
       request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}`),

@@ -25,6 +25,7 @@ type Service struct {
 }
 
 type Device struct {
+	ICCID               *string    `json:"iccid,omitempty"`
 	SourceFamily        string     `json:"source_family,omitempty"`
 	SourceStatus        string     `json:"source_status,omitempty"`
 	Features            []string   `json:"features"`
@@ -159,6 +160,7 @@ type DemoPlacementInput struct {
 }
 
 type AdminUpdateInput struct {
+	ICCID        *string
 	DeviceID     uuid.UUID
 	ProductID    *string
 	Name         *string
@@ -1048,6 +1050,16 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (Device, error)
 }
 
 func (s *Service) AdminUpdate(ctx context.Context, input AdminUpdateInput) (Device, error) {
+	if input.ProductID != nil {
+		return Device{}, apperr.New(apperr.KindInvalidArgument, "product identifier is set during device creation and cannot be edited")
+	}
+	if input.ICCID != nil {
+		normalized, err := normalizeICCID(*input.ICCID)
+		if err != nil {
+			return Device{}, err
+		}
+		input.ICCID = &normalized
+	}
 	if input.DeviceID == uuid.Nil {
 		return Device{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
 	}
@@ -1122,6 +1134,12 @@ func (s *Service) AdminUpdate(ctx context.Context, input AdminUpdateInput) (Devi
 	})
 	if err != nil {
 		return Device{}, mapWriteError(err, "update device")
+	}
+
+	if input.ICCID != nil {
+		if _, err := tx.Exec(ctx, "UPDATE devices SET iccid=NULLIF($2, '') WHERE id=$1", input.DeviceID, *input.ICCID); err != nil {
+			return Device{}, apperr.Wrap(apperr.KindInternal, "update device ICCID", err)
+		}
 	}
 
 	if input.DeviceType != nil {

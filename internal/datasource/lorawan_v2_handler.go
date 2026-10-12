@@ -16,8 +16,8 @@ import (
 )
 
 type createLoRaWANV2GatewayRequest struct {
-	SN        string `json:"sn"`
-	NodeCount int    `json:"node_count"`
+	RequestID uuid.UUID `json:"idempotency_key"`
+	NodeCount int       `json:"node_count"`
 }
 
 func (h *Handler) AdminLoRaWANV2Health(c *gin.Context) {
@@ -51,17 +51,29 @@ func (h *Handler) AdminCreateLoRaWANV2Gateway(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
-	result, err := h.service.CreateLoRaWANV2Gateway(c.Request.Context(), id, req.SN, req.NodeCount, actor.UserID)
+	if req.RequestID == uuid.Nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "idempotency_key is required"))
+		return
+	}
+	sn := generatedLoRaWANV2SN(id, actor.UserID, req.RequestID)
+	result, err := h.service.CreateLoRaWANV2Gateway(c.Request.Context(), id, sn, req.NodeCount, actor.UserID)
 	if err != nil {
 		h.recordLoRaWANV2(c, actor.UserID, id, "lorawan_v2.gateway.create", audit.ResultFailure, apperr.MessageOf(err))
 		httpx.WriteAppError(c, err)
 		return
 	}
 	reason := "gateway_sn=" + result.Gateway.SN
+	if result.ConfigError != "" {
+		reason += "; default_config_error=" + result.ConfigError
+	}
 	if result.CatalogWarning != "" {
 		reason += "; catalog_warning=" + result.CatalogWarning
 	}
-	if !h.recordLoRaWANV2(c, actor.UserID, id, "lorawan_v2.gateway.create", audit.ResultSuccess, reason) {
+	auditResult := audit.ResultSuccess
+	if result.ConfigError != "" {
+		auditResult = audit.ResultFailure
+	}
+	if !h.recordLoRaWANV2(c, actor.UserID, id, "lorawan_v2.gateway.create", auditResult, reason) {
 		return
 	}
 	c.JSON(http.StatusCreated, result)

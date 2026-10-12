@@ -97,6 +97,7 @@ type LoRaWANV2AllGatewaysSyncResult struct {
 }
 
 type LoRaWANV2CreateGatewayResult struct {
+	ConfigError    string                      `json:"default_config_error,omitempty"`
 	Gateway        LoRaWANV2Gateway            `json:"gateway"`
 	Sync           *LoRaWANV2GatewaySyncResult `json:"sync,omitempty"`
 	CatalogWarning string                      `json:"catalog_warning,omitempty"`
@@ -463,6 +464,7 @@ func (s *Service) CreateLoRaWANV2Gateway(ctx context.Context, dataSourceID uuid.
 	}
 	defer unlock()
 	gateway, err := client.getGateway(ctx, sn)
+	created := false
 	if errors.Is(err, errLoRaWANV2GatewayNotFound) {
 		payload, createErr := client.request(ctx, http.MethodPost, "/device", url.Values{}, map[string]any{"sn": sn, "node_count": nodeCount})
 		if createErr != nil {
@@ -471,6 +473,7 @@ func (s *Service) CreateLoRaWANV2Gateway(ctx context.Context, dataSourceID uuid.
 		if err := json.Unmarshal(payload, &gateway); err != nil {
 			return LoRaWANV2CreateGatewayResult{}, apperr.New(apperr.KindDataSource, "invalid created lorawan_v2 gateway")
 		}
+		created = true
 	} else if err != nil {
 		return LoRaWANV2CreateGatewayResult{}, err
 	} else if gateway.NodeCount != nodeCount {
@@ -483,6 +486,22 @@ func (s *Service) CreateLoRaWANV2Gateway(ctx context.Context, dataSourceID uuid.
 		return LoRaWANV2CreateGatewayResult{}, err
 	}
 	result.Sync = &synced
+	needsConfig := created
+	if !created {
+		history, historyErr := client.request(ctx, http.MethodGet, "/device/"+url.PathEscape(sn)+"/configs", url.Values{}, nil)
+		if historyErr != nil {
+			result.ConfigError = apperr.MessageOf(historyErr)
+		} else if count, valid := loRaWANV2ConfigurationCount(history); !valid {
+			result.ConfigError = "unable to read gateway configuration history"
+		} else {
+			needsConfig = count == 0
+		}
+	}
+	if needsConfig {
+		if _, configErr := client.request(ctx, http.MethodPost, "/device/"+url.PathEscape(sn)+"/config", url.Values{}, map[string]any{"content": defaultLoRaWANV2GatewayConfig(sn)}); configErr != nil {
+			result.ConfigError = apperr.MessageOf(configErr)
+		}
+	}
 	if catalogErr != nil {
 		result.CatalogWarning = apperr.MessageOf(catalogErr)
 	}

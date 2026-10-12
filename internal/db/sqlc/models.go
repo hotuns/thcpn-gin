@@ -299,6 +299,8 @@ type Device struct {
 	LifecycleUpdatedAt pgtype.Timestamptz `json:"lifecycle_updated_at"`
 	// 平台设备类型，例如 gateway、gateway_node、camera、carbon_sink 或 standalone。
 	DeviceType string `json:"device_type"`
+	// 管理员记录的物联卡 ICCID；不随采集数据源同步覆盖。
+	Iccid *string `json:"iccid"`
 }
 
 // 物理设备到工作区、项目和站点的当前或历史分配记录；同一设备仅允许一条有效分配。
@@ -844,7 +846,7 @@ type SensorTemplate struct {
 	Metrics []byte `json:"metrics"`
 }
 
-// Protocol-specific configuration for a shared sensor template.
+// Exclusive template protocol: thcpn = V1, lorawan_v2 = V2. Versions have independent template identities.
 type SensorTemplateVariant struct {
 	ID           int64              `json:"id"`
 	TemplateID   int64              `json:"template_id"`

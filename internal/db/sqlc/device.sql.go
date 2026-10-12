@@ -79,7 +79,7 @@ INSERT INTO devices (
     activated_at
 )
 VALUES ($1, $2, 'active', now())
-RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type, iccid
 `
 
 type CreateDeviceParams struct {
@@ -102,6 +102,7 @@ func (q *Queries) CreateDevice(ctx context.Context, arg CreateDeviceParams) (Dev
 		&i.LifecycleStatus,
 		&i.LifecycleUpdatedAt,
 		&i.DeviceType,
+		&i.Iccid,
 	)
 	return i, err
 }
@@ -339,7 +340,7 @@ func (q *Queries) GetActiveDeviceAssignmentByDataStream(ctx context.Context, id 
 }
 
 const getDevice = `-- name: GetDevice :one
-SELECT id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type
+SELECT id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type, iccid
 FROM devices
 WHERE id = $1
 `
@@ -359,6 +360,7 @@ func (q *Queries) GetDevice(ctx context.Context, id uuid.UUID) (Device, error) {
 		&i.LifecycleStatus,
 		&i.LifecycleUpdatedAt,
 		&i.DeviceType,
+		&i.Iccid,
 	)
 	return i, err
 }
@@ -971,7 +973,7 @@ SET product_id = $2,
     status = $4,
     updated_at = now()
 WHERE id = $1
-RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type, iccid
 `
 
 type UpdateDeviceParams struct {
@@ -1001,6 +1003,7 @@ func (q *Queries) UpdateDevice(ctx context.Context, arg UpdateDeviceParams) (Dev
 		&i.LifecycleStatus,
 		&i.LifecycleUpdatedAt,
 		&i.DeviceType,
+		&i.Iccid,
 	)
 	return i, err
 }
@@ -1047,7 +1050,7 @@ SET lifecycle_status = $2,
     lifecycle_updated_at = $3,
     updated_at = now()
 WHERE id = $1
-RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type, iccid
 `
 
 type UpdateDeviceLifecycleParams struct {
@@ -1071,6 +1074,7 @@ func (q *Queries) UpdateDeviceLifecycle(ctx context.Context, arg UpdateDeviceLif
 		&i.LifecycleStatus,
 		&i.LifecycleUpdatedAt,
 		&i.DeviceType,
+		&i.Iccid,
 	)
 	return i, err
 }
@@ -1080,7 +1084,7 @@ UPDATE devices
 SET device_type = $2,
     updated_at = now()
 WHERE id = $1
-RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type, iccid
 `
 
 type UpdateDeviceTypeParams struct {
@@ -1103,6 +1107,7 @@ func (q *Queries) UpdateDeviceType(ctx context.Context, arg UpdateDeviceTypePara
 		&i.LifecycleStatus,
 		&i.LifecycleUpdatedAt,
 		&i.DeviceType,
+		&i.Iccid,
 	)
 	return i, err
 }
@@ -1114,7 +1119,7 @@ SET product_id = $1,
     status = $3,
     updated_at = now()
 WHERE id = $4
-RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type, iccid
 `
 
 type UpdateSyncedDeviceParams struct {
@@ -1145,6 +1150,7 @@ func (q *Queries) UpdateSyncedDevice(ctx context.Context, arg UpdateSyncedDevice
 		&i.LifecycleStatus,
 		&i.LifecycleUpdatedAt,
 		&i.DeviceType,
+		&i.Iccid,
 	)
 	return i, err
 }

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
+  App as AntApp,
   Button,
   Collapse,
   Form,
@@ -33,6 +34,12 @@ export function configurationHistory(input: unknown): JsonRecord[] {
   return configurationHistory(object.payload ?? object.data ?? object.items);
 }
 const list = configurationHistory;
+export function formattedConfiguration(value: unknown): string {
+  if (typeof value === "string") {
+    try { return JSON.stringify(JSON.parse(value), null, 2); } catch { return value; }
+  }
+  return JSON.stringify(value, null, 2) ?? "";
+}
 const parseObject = (raw: string) => {
   const result = JSON.parse(raw);
   if (!result || Array.isArray(result) || typeof result !== "object")
@@ -57,6 +64,7 @@ export function LoRaWANV2ConfigPanel({ deviceId }: { deviceId: string }) {
 }
 
 function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
+  const { message } = AntApp.useApp();
   const [sensorForm] = Form.useForm();
   const queryClient = useQueryClient();
   const nodes = useQuery({
@@ -198,10 +206,11 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
     try {
       let result: JsonRecord = {};
       if (kind === "gateway") {
+        const content = parseObject(gatewayJSON);
         result = await api.admin.updateDeviceSourceConfig(
           deviceId,
           "gateway",
-          parseObject(gatewayJSON),
+          content.content && typeof content.content === "object" ? content : { content },
         );
         await gateways.refetch();
       }
@@ -256,7 +265,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
     {
       title: "配置内容",
       render: (_: unknown, item: JsonRecord) => (
-        <code>{JSON.stringify(item.content ?? item)}</code>
+        <div className="lora-history-content"><Button size="small" onClick={async () => { try { await navigator.clipboard.writeText(formattedConfiguration(item.content ?? item)); void message.success("JSON 已复制"); } catch { void message.error("复制失败，请展开 JSON 后手动复制"); } }}>复制 JSON</Button><details className="lora-history-json"><summary>查看 JSON</summary><pre>{formattedConfiguration(item.content ?? item)}</pre></details></div>
       ),
     },
   ];
@@ -312,6 +321,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                         spellCheck={false}
                       />
                     </Form.Item>
+                    <Button style={{marginRight:8}} onClick={() => { try { setGatewayJSON(JSON.stringify(parseObject(gatewayJSON),null,2)); } catch { setFeedback("JSON 格式不正确"); } }}>格式化 JSON</Button>
                     <Popconfirm title="提交网关配置？" description="配置将写入 LoRa V2 服务，设备是否应用需等待回报。" okText="确认提交" cancelText="取消" onConfirm={() => void run("gateway")}>
                       <Button type="primary" loading={busy === "gateway"}>提交到 LoRa V2</Button>
                     </Popconfirm>

@@ -2,6 +2,7 @@ package datasource
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -23,6 +24,14 @@ func TestCreateLoRaWANV2GatewayUsesUpstreamSNAndSurvivesCatalogFailure(t *testin
 			_, _ = w.Write([]byte(`{"success":false,"error_code":"0x10010201","error_message":"not found"}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/device":
 			_, _ = w.Write([]byte(`{"success":true,"payload":{"sn":"` + sn + `","node_count":1}}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/device/"+sn+"/config":
+			var request struct {
+				Content map[string]any `json:"content"`
+			}
+			if json.NewDecoder(r.Body).Decode(&request) != nil || request.Content["system"].(map[string]any)["did"] != sn {
+				t.Error("default configuration missing generated device SN")
+			}
+			_, _ = w.Write([]byte(`{"success":true,"payload":{"id":1}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/device/"+sn+"/infos":
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = w.Write([]byte(`{"success":false,"error_code":"test","error_message":"not ready"}`))
@@ -51,6 +60,9 @@ func TestCreateLoRaWANV2GatewayUsesUpstreamSNAndSurvivesCatalogFailure(t *testin
 	if result.CatalogWarning == "" {
 		t.Fatal("expected catalog warning")
 	}
+	if result.ConfigError != "" {
+		t.Fatalf("default config failed: %s", result.ConfigError)
+	}
 	var serial string
 	if err := db.QueryRow(ctx, `SELECT serial_no FROM devices WHERE id=$1`, result.Sync.Device.ID).Scan(&serial); err != nil {
 		t.Fatal(err)
@@ -64,6 +76,67 @@ func TestCreateLoRaWANV2GatewayUsesUpstreamSNAndSurvivesCatalogFailure(t *testin
 	}
 	if !firmwareCapability {
 		t.Fatal("LoRaWAN V2 gateway is missing firmware_update capability")
+	}
+}
+
+func TestGatewayDefaultConfigurationRetryDoesNotCreateDuplicateDevice(t *testing.T) {
+	db := testdb.Open(t, 0)
+	actor := testdb.Admin(t, db)
+	source := uuid.New()
+	sn := generatedLoRaWANV2SN(source, actor, uuid.New())
+	deviceCreates, configAttempts := 0, 0
+	exists, configured := false, false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/device/"+sn:
+			if !exists {
+				w.WriteHeader(404)
+				fmt.Fprint(w, `{"success":false,"error_code":"0x10010201"}`)
+				return
+			}
+			fmt.Fprintf(w, `{"success":true,"payload":{"sn":%q,"node_count":1}}`, sn)
+		case r.Method == "POST" && r.URL.Path == "/device":
+			exists = true
+			deviceCreates++
+			fmt.Fprintf(w, `{"success":true,"payload":{"sn":%q,"node_count":1}}`, sn)
+		case r.Method == "GET" && r.URL.Path == "/device/"+sn+"/configs":
+			if configured {
+				fmt.Fprint(w, `{"success":true,"payload":[{"id":1}]}`)
+			} else {
+				fmt.Fprint(w, `{"success":true,"payload":[]}`)
+			}
+		case r.Method == "POST" && r.URL.Path == "/device/"+sn+"/config":
+			configAttempts++
+			if configAttempts == 1 {
+				w.WriteHeader(500)
+				fmt.Fprint(w, `{"success":false,"error_message":"temporary failure"}`)
+				return
+			}
+			configured = true
+			fmt.Fprint(w, `{"success":true,"payload":{"id":1}}`)
+		default:
+			w.WriteHeader(500)
+			fmt.Fprint(w, `{"success":false,"error_message":"no telemetry"}`)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("TEST_GATEWAY_RETRY_SECRET", fmt.Sprintf(`{"base_url":%q,"username":"test","password":"test"}`, server.URL))
+	if _, err := db.Exec(t.Context(), `INSERT INTO data_sources(id,name,type,source_family,dsn_secret_ref,created_by) VALUES($1,'LoRa','http_api','lorawan_v2','env:TEST_GATEWAY_RETRY_SECRET',$2)`, source, actor); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(db)
+	for attempt := 0; attempt < 3; attempt++ {
+		result, err := service.CreateLoRaWANV2Gateway(t.Context(), source, sn, 1, actor)
+		if err != nil || result.Sync == nil {
+			t.Fatalf("gateway create failed: %v", err)
+		}
+		if (attempt == 0) != (result.ConfigError != "") {
+			t.Fatal("default configuration result did not reflect failure or recovery")
+		}
+	}
+	if deviceCreates != 1 || configAttempts != 2 {
+		t.Fatalf("duplicate device/configuration writes: devices=%d configs=%d", deviceCreates, configAttempts)
 	}
 }
 

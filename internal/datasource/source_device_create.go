@@ -107,7 +107,7 @@ func createTHCPNSourceDevice(ctx context.Context, source sqlc.DataSource, input 
 	if name == "" || !utf8.ValidString(name) || utf8.RuneCountInString(name) > 255 {
 		return 0, "", apperr.New(apperr.KindInvalidArgument, "invalid thcpn device name")
 	}
-	if iccid == "" || !utf8.ValidString(iccid) || utf8.RuneCountInString(iccid) > 50 {
+	if !utf8.ValidString(iccid) || utf8.RuneCountInString(iccid) > 50 {
 		return 0, "", apperr.New(apperr.KindInvalidArgument, "invalid iccid")
 	}
 	if version != "1.0" && version != "2.0" {

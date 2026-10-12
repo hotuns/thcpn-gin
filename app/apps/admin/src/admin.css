@@ -457,6 +457,13 @@
 .lora-config-node .ant-select { min-width: 220px; }
 .lora-config-mode-tabs { margin-top: 8px; }
 .lora-config-history { margin-top: 20px; }
+.lora-config-history { max-width:100%; min-width:0; overflow-x:auto; }
+.lora-config-history .ant-table table { table-layout:fixed; width:100%; }
+.lora-history-json { min-width:0; max-width:100%; }
+.lora-history-content { min-width:0; display:grid; gap:8px; }
+.lora-history-content > button { justify-self:start; }
+.lora-history-json summary { cursor:pointer; color:var(--ant-color-primary); }
+.lora-history-json pre { max-height:360px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; line-height:1.6; margin:10px 0 0; padding:12px; background:var(--ant-color-fill-quaternary); border-radius:6px; }
 .lora-protocol-list,
 .lora-mapping-list,
 .lora-node-protocol-list,

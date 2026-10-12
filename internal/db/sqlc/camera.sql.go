@@ -22,7 +22,7 @@ INSERT INTO devices (
     device_type
 )
 VALUES ($1, $2, 'active', now(), 'online', now(), 'camera')
-RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type, iccid
 `
 
 type CreateCameraDeviceParams struct {
@@ -45,6 +45,7 @@ func (q *Queries) CreateCameraDevice(ctx context.Context, arg CreateCameraDevice
 		&i.LifecycleStatus,
 		&i.LifecycleUpdatedAt,
 		&i.DeviceType,
+		&i.Iccid,
 	)
 	return i, err
 }

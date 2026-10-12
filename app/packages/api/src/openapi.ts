@@ -5983,6 +5983,8 @@ export interface components {
         };
         /** @description System-level device asset view. Assignment fields are present only when the device has an active Workspace assignment. */
         Device: {
+            /** @description Administrator-maintained SIM card ICCID. */
+            iccid?: string;
             id: components["schemas"]["UUID"];
             assignment_id?: components["schemas"]["UUID"];
             workspace_id?: components["schemas"]["UUID"];
@@ -6440,7 +6442,8 @@ export interface components {
         };
         /** @description System admin update for mutable device asset fields. Platform serial numbers are generated once and cannot be edited. Assignment, topology relations, and lifecycle are managed separately. */
         AdminUpdateDeviceRequest: {
-            product_id?: string;
+            /** @description Administrator-maintained SIM card ICCID. Empty string clears it; omitted value preserves it. */
+            iccid?: string;
             name?: string;
             status?: components["schemas"]["DeviceStatus"];
             device_type?: components["schemas"]["DeviceTopologyRole"];
@@ -6723,14 +6726,15 @@ export interface components {
             idempotency_key: components["schemas"]["UUID"];
         };
         LoRaWANV2CreateGatewayRequest: {
-            sn: string;
+            /** @description Client-generated request key. The backend generates a stable gateway SN for retries. */
+            idempotency_key: components["schemas"]["UUID"];
             node_count: number;
         };
         CreateSourceDeviceRequest: {
             /** @enum {string} */
             source_kind: "thcpn_standard" | "thcpn_gateway" | "thcpn_node" | "carbon";
             name: string;
-            /** @description Required for THCPN devices. */
+            /** @description Optional SIM card ICCID for THCPN devices. */
             iccid?: string;
             /**
              * @description Required for THCPN devices.
