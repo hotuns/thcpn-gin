@@ -282,7 +282,7 @@ export interface paths {
         put?: never;
         /**
          * Write source configuration and report source and platform stages separately
-         * @description For LoRaWAN V2 sensor configuration use the templates or advanced discriminated request. Gateway and time configurations retain their source-native object shape.
+         * @description For LoRaWAN V2 sensor configuration use the templates or advanced discriminated request. Sensor edits reconcile only the selected node's platform metrics, preserving other nodes; they do not scan the full gateway. Gateway and time configurations retain their source-native object shape.
          */
         post: {
             parameters: {

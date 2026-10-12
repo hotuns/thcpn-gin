@@ -135,7 +135,13 @@ func (h *Handler) AdminDeviceSourceConfig(c *gin.Context) {
 			return
 		}
 	}
-	_, syncErr := h.service.SyncLoRaWANV2Gateway(c.Request.Context(), SyncLoRaWANV2GatewayInput{DataSourceID: ref.DataSourceID, GatewaySN: ref.GatewaySN, ActorUserID: actor.UserID})
+	input := SyncLoRaWANV2GatewayInput{DataSourceID: ref.DataSourceID, GatewaySN: ref.GatewaySN, ActorUserID: actor.UserID}
+	var syncErr error
+	if compiled != nil {
+		syncErr = h.service.syncLoRaWANV2Node(c.Request.Context(), input, nodeIndex)
+	} else {
+		_, syncErr = h.service.SyncLoRaWANV2Gateway(c.Request.Context(), input)
+	}
 	status := "completed"
 	state.Platform = "synced"
 	if syncErr != nil {

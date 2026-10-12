@@ -527,6 +527,34 @@ func (s *Service) SyncLoRaWANV2Gateway(ctx context.Context, input SyncLoRaWANV2G
 	return s.syncLoRaWANV2Gateway(ctx, source, client, gateway, input.ActorUserID)
 }
 
+// Sensor edits only reconcile their node. A full gateway scan per edit makes
+// batch updates quadratic and lets an unrelated node failure block this node.
+func (s *Service) syncLoRaWANV2Node(ctx context.Context, input SyncLoRaWANV2GatewayInput, node int) error {
+	source, err := s.loadLoRaWANV2DataSource(ctx, input.DataSourceID)
+	if err != nil {
+		return err
+	}
+	client, err := newLoRaWANV2Client(ctx, NewRuntime(nil).resolver, dataSourceFromSQL(source))
+	if err != nil {
+		return err
+	}
+	unlock, err := s.lockSourceSync(ctx, source.ID.String()+"/lorawan_v2/"+input.GatewaySN)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	gateway, err := client.getGateway(ctx, input.GatewaySN)
+	if err != nil {
+		return err
+	}
+	specs, err := loraWANV2DiscoverStreams(ctx, client, gateway, node)
+	if err != nil {
+		return err
+	}
+	_, err = s.persistLoRaWANV2Gateway(ctx, source, gateway, specs, false, input.ActorUserID, node)
+	return err
+}
+
 func (s *Service) SyncAllLoRaWANV2Gateways(ctx context.Context, input SyncAllLoRaWANV2GatewaysInput) (LoRaWANV2AllGatewaysSyncResult, error) {
 	result := LoRaWANV2AllGatewaysSyncResult{DataSourceID: input.DataSourceID, Failures: []LoRaWANV2SyncFailure{}}
 	if input.DataSourceID == uuid.Nil || input.ActorUserID == uuid.Nil {
@@ -603,7 +631,7 @@ func (s *Service) syncLoRaWANV2Gateway(ctx context.Context, source sqlc.DataSour
 	return s.persistLoRaWANV2Gateway(ctx, source, gateway, specs, true, actorID)
 }
 
-func (s *Service) persistLoRaWANV2Gateway(ctx context.Context, source sqlc.DataSource, gateway LoRaWANV2Gateway, specs []loraWANV2StreamSpec, catalogComplete bool, actorID uuid.UUID) (LoRaWANV2GatewaySyncResult, error) {
+func (s *Service) persistLoRaWANV2Gateway(ctx context.Context, source sqlc.DataSource, gateway LoRaWANV2Gateway, specs []loraWANV2StreamSpec, catalogComplete bool, actorID uuid.UUID, nodeScope ...int) (LoRaWANV2GatewaySyncResult, error) {
 	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return LoRaWANV2GatewaySyncResult{}, apperr.Wrap(apperr.KindInternal, "begin lorawan_v2 gateway sync", err)
@@ -682,13 +710,18 @@ func (s *Service) persistLoRaWANV2Gateway(ctx context.Context, source sqlc.DataS
 	for _, spec := range specs {
 		activeCodes = append(activeCodes, spec.Code)
 	}
-	if catalogComplete {
+	if catalogComplete || len(nodeScope) > 0 {
+		scope := 0
+		if len(nodeScope) > 0 {
+			scope = nodeScope[0]
+		}
 		if _, err := tx.Exec(ctx, `WITH stale AS (
   SELECT ds.id FROM data_streams ds JOIN data_stream_bindings b ON b.data_stream_id=ds.id
   WHERE ds.device_id=$1 AND b.data_source_id=$2 AND b.adapter_code='lorawan_v2' AND b.status='active'
    AND b.adapter_config_json ? 'node_index' AND NOT (ds.code=ANY($3::text[]))
+   AND ($4::int=0 OR b.adapter_config_json->>'node_index'=$4::text)
  ), disabled AS (UPDATE data_stream_bindings SET status='disabled',updated_at=now() WHERE data_stream_id IN (SELECT id FROM stale) AND status='active' RETURNING data_stream_id)
-	 UPDATE data_streams SET status='disabled',updated_at=now() WHERE id IN (SELECT data_stream_id FROM disabled)`, device.ID, source.ID, activeCodes); err != nil {
+	 UPDATE data_streams SET status='disabled',updated_at=now() WHERE id IN (SELECT data_stream_id FROM disabled)`, device.ID, source.ID, activeCodes, scope); err != nil {
 			return LoRaWANV2GatewaySyncResult{}, apperr.Wrap(apperr.KindInternal, "disable removed node metrics", err)
 		}
 	}
@@ -700,7 +733,7 @@ func (s *Service) persistLoRaWANV2Gateway(ctx context.Context, source sqlc.DataS
 	return LoRaWANV2GatewaySyncResult{Device: syncedDeviceFromSQL(device, nil), SourceRef: ref, Gateway: gateway, DataStreams: streams, Bindings: bindings}, nil
 }
 
-func loraWANV2DiscoverStreams(ctx context.Context, client *loraWANV2Client, gateway LoRaWANV2Gateway) ([]loraWANV2StreamSpec, error) {
+func loraWANV2DiscoverStreams(ctx context.Context, client *loraWANV2Client, gateway LoRaWANV2Gateway, nodeScope ...int) ([]loraWANV2StreamSpec, error) {
 	if gateway.NodeCount < 0 || gateway.NodeCount > 254 {
 		return nil, apperr.New(apperr.KindDataSource, "invalid lorawan_v2 node count")
 	}
@@ -731,25 +764,33 @@ func loraWANV2DiscoverStreams(ctx context.Context, client *loraWANV2Client, gate
 		}
 		return nil
 	}
-	end := time.Now().UTC()
-	records, _, err := client.listRecords(ctx, loraWANV2TelemetryConfig{GatewaySN: gateway.SN}, end.AddDate(0, 0, -3), end, 1)
-	if err != nil {
-		return nil, err
+	if len(nodeScope) > 0 && (nodeScope[0] < 1 || nodeScope[0] > gateway.NodeCount) {
+		return nil, apperr.New(apperr.KindInvalidArgument, "node_index is outside gateway node range")
 	}
-	gatewayMetrics := map[string]string{}
-	for _, record := range records {
-		for key, raw := range record.Values {
-			if key != "ts" && key != "meta" {
-				if _, ok := loraWANV2Number(raw); ok {
-					gatewayMetrics[key] = loraWANV2GatewayMetricUnits[key]
+	if len(nodeScope) == 0 {
+		end := time.Now().UTC()
+		records, _, err := client.listRecords(ctx, loraWANV2TelemetryConfig{GatewaySN: gateway.SN}, end.AddDate(0, 0, -3), end, 1)
+		if err != nil {
+			return nil, err
+		}
+		gatewayMetrics := map[string]string{}
+		for _, record := range records {
+			for key, raw := range record.Values {
+				if key != "ts" && key != "meta" {
+					if _, ok := loraWANV2Number(raw); ok {
+						gatewayMetrics[key] = loraWANV2GatewayMetricUnits[key]
+					}
 				}
 			}
 		}
-	}
-	if err := appendMetrics(nil, gatewayMetrics, ""); err != nil {
-		return nil, err
+		if err := appendMetrics(nil, gatewayMetrics, ""); err != nil {
+			return nil, err
+		}
 	}
 	for index := 1; index <= gateway.NodeCount; index++ {
+		if len(nodeScope) > 0 && index != nodeScope[0] {
+			continue
+		}
 		units, configHash, err := loraWANV2NodeMetricCatalog(ctx, client, gateway.SN, index)
 		if err != nil {
 			return nil, apperr.Wrap(apperr.KindDataSource, "read node "+strconv.Itoa(index)+" sensor configuration", err)

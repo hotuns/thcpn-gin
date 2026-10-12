@@ -31,4 +31,24 @@ describe("node sensor configuration batch", () => {
     await submitNodeSensorBatch("gateway", [1, 1, 2], {}, vi.fn());
     expect(write).toHaveBeenCalledTimes(2);
   });
+
+  it("bounds concurrency to three and preserves target order despite out-of-order completion", async () => {
+    let active = 0;
+    let peak = 0;
+    const completions = new Map<number, () => void>();
+    vi.spyOn(api.admin, "updateDeviceSourceConfig").mockImplementation((_id, _kind, _payload, node) => new Promise(resolve => {
+      active++;
+      peak = Math.max(peak, active);
+      completions.set(node!, () => { active--; resolve({ write_state: { platform: "synced" } }); });
+    }));
+    const pending = submitNodeSensorBatch("gateway", [1, 2, 3, 4, 5], {}, vi.fn());
+    expect([...completions.keys()]).toEqual([1, 2, 3]);
+    completions.get(3)!();
+    await vi.waitFor(() => expect(completions.has(4)).toBe(true));
+    completions.get(4)!();
+    await vi.waitFor(() => expect(completions.has(5)).toBe(true));
+    for (const node of [5, 2, 1]) completions.get(node)!();
+    expect((await pending).map(item => item.node)).toEqual([1, 2, 3, 4, 5]);
+    expect(peak).toBe(3);
+  });
 });

@@ -64,6 +64,122 @@ func TestLoRaWANV2SyncReactivatesDisabledDiagnostics(t *testing.T) {
 	}
 }
 
+func TestLoRaWANV2NodeSyncPreservesOtherNodes(t *testing.T) {
+	db := testdb.Open(t, 0)
+	ctx := t.Context()
+	admin := testdb.Admin(t, db)
+	var sourceID uuid.UUID
+	if err := db.QueryRow(ctx, `INSERT INTO data_sources(name,type,dsn_secret_ref,created_by) VALUES('scoped','http_api','TEST_ONLY',$1) RETURNING id`, admin).Scan(&sourceID); err != nil {
+		t.Fatal(err)
+	}
+	source := sqlc.DataSource{ID: sourceID}
+	service := NewService(db)
+	gateway := LoRaWANV2Gateway{SN: "SCOPED", NodeCount: 100}
+	spec := func(node int, key string) loraWANV2StreamSpec {
+		cfg, _ := json.Marshal(loraWANV2TelemetryConfig{GatewaySN: gateway.SN, NodeIndex: &node, Metric: key})
+		return loraWANV2StreamSpec{Code: loraWANV2StreamCode(fmt.Sprintf("node_%d", node), key), Name: key, AdapterConfig: cfg}
+	}
+	first, err := service.persistLoRaWANV2Gateway(ctx, source, gateway, []loraWANV2StreamSpec{spec(1, "old"), spec(2, "temp"), spec(1, "battery")}, true, admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		_, err = service.persistLoRaWANV2Gateway(ctx, source, gateway, []loraWANV2StreamSpec{spec(1, "new"), spec(1, "battery")}, false, admin, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for code, want := range map[string]string{"lora_node_1_old": "disabled", "lora_node_1_new": "active", "lora_node_1_battery": "active", "lora_node_2_temp": "active"} {
+		var status string
+		if err := db.QueryRow(ctx, `SELECT status FROM data_streams WHERE device_id=$1 AND code=$2`, first.Device.ID, code).Scan(&status); err != nil || status != want {
+			t.Fatalf("%s: got %s want %s: %v", code, status, want, err)
+		}
+	}
+}
+
+func TestLoRaWANV2ScopedDiscoveryDoesNotScanGateway(t *testing.T) {
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.Path)
+		if r.URL.Path != "/device/GW/node/42/sensor_config/latest" {
+			t.Errorf("unexpected full scan: %s", r.URL.Path)
+			w.WriteHeader(500)
+			return
+		}
+		fmt.Fprint(w, `{"success":true,"payload":{"id":1,"content":[["ad",[["temp","1,0","C"]],1]]}}`)
+	}))
+	defer server.Close()
+	baseURL, _ := url.Parse(server.URL)
+	client := &loraWANV2Client{baseURL: baseURL, client: server.Client()}
+	specs, err := loraWANV2DiscoverStreams(t.Context(), client, LoRaWANV2Gateway{SN: "GW", NodeCount: 100}, 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(requests) != 1 {
+		t.Fatalf("got %d requests for one edited node", len(requests))
+	}
+	if len(specs) < 2 {
+		t.Fatal("missing metrics/diagnostics")
+	}
+	for _, spec := range specs {
+		var cfg loraWANV2TelemetryConfig
+		if err := json.Unmarshal(spec.AdapterConfig, &cfg); err != nil || cfg.NodeIndex == nil || *cfg.NodeIndex != 42 {
+			t.Fatalf("out of scope stream: %+v", spec)
+		}
+	}
+}
+
+func TestLoRaWANV2NodeSyncServiceReadsOnlyEditedNode(t *testing.T) {
+	db := testdb.Open(t, 0)
+	ctx := t.Context()
+	admin := testdb.Admin(t, db)
+	var paths []string
+	fail := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		switch r.URL.Path {
+		case "/device/GW":
+			fmt.Fprint(w, `{"success":true,"payload":{"sn":"GW","node_count":100}}`)
+		case "/device/GW/node/42/sensor_config/latest":
+			if fail {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			fmt.Fprint(w, `{"success":true,"payload":{"id":1,"content":[["ad",[["temp","1,0","C"]],1]]}}`)
+		default:
+			t.Errorf("unexpected gateway scan: %s", r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer server.Close()
+	secret, _ := json.Marshal(map[string]string{"base_url": server.URL, "username": "test", "password": "test"})
+	t.Setenv("TEST_NODE_SYNC_SOURCE", string(secret))
+	var sourceID uuid.UUID
+	if err := db.QueryRow(ctx, `INSERT INTO data_sources(name,type,source_family,dsn_secret_ref,created_by) VALUES('node sync','http_api','lorawan_v2','env:TEST_NODE_SYNC_SOURCE',$1) RETURNING id`, admin).Scan(&sourceID); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(db)
+	input := SyncLoRaWANV2GatewayInput{DataSourceID: sourceID, GatewaySN: "GW", ActorUserID: admin}
+	if err := service.syncLoRaWANV2Node(ctx, input, 42); err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) != 2 {
+		t.Fatalf("expected gateway + one node read, got %v", paths)
+	}
+	var count int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM data_streams WHERE status='active'`).Scan(&count); err != nil || count < 2 {
+		t.Fatalf("missing platform metrics: %d %v", count, err)
+	}
+	fail = true
+	if err := service.syncLoRaWANV2Node(ctx, input, 42); err == nil {
+		t.Fatal("upstream failure hidden")
+	}
+	var after int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM data_streams WHERE status='active'`).Scan(&after); err != nil || after != count {
+		t.Fatalf("failed sync changed platform catalog: %d %v", after, err)
+	}
+}
+
 func TestCompileLoRaWANV2TemplatesSupportsAllSensorKinds(t *testing.T) {
 	db := testdb.Open(t, 0)
 	ctx := t.Context()
