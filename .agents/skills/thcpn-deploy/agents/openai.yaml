@@ -1,0 +1,4 @@
+interface:
+  display_name: "THCPN 提交部署"
+  short_description: "提交并部署原位生态云，包含备份、迁移、验证及回滚流程"
+  default_prompt: "使用 $thcpn-deploy 提交当前已完成的改动并部署到服务器。"
