@@ -457,6 +457,9 @@
 .lora-config-node .ant-select { min-width: 220px; }
 .lora-config-mode-tabs { margin-top: 8px; }
 .lora-config-history { margin-top: 20px; }
+.lora-config-apply-nodes { display:grid; gap:12px; padding:16px; margin-bottom:16px; border:1px solid var(--ant-color-border-secondary); border-radius:6px; }
+.lora-config-apply-nodes .ant-checkbox-group { display:flex; flex-wrap:wrap; gap:10px 16px; }
+.lora-config-apply-nodes > span { color:var(--ant-color-text-secondary); font-size:12px; overflow-wrap:anywhere; }
 .lora-config-history { max-width:100%; min-width:0; overflow-x:auto; }
 .lora-config-history .ant-table table { table-layout:fixed; width:100%; }
 .lora-history-json { min-width:0; max-width:100%; }

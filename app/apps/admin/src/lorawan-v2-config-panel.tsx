@@ -1,11 +1,13 @@
 import { invalidateNodeNames } from "@thcpn/workspace";
 import { NodeSensorEditor, serializeNodeSensorDraft } from './node-sensor-editor';
+import { sensorConfigTargets, submitNodeSensorBatch, type NodeConfigResult } from "./node-config-batch";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
   App as AntApp,
   Button,
+  Checkbox,
   Collapse,
   Form,
   Input,
@@ -64,7 +66,7 @@ export function LoRaWANV2ConfigPanel({ deviceId }: { deviceId: string }) {
 }
 
 function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
-  const { message } = AntApp.useApp();
+  const { message, modal } = AntApp.useApp();
   const [sensorForm] = Form.useForm();
   const queryClient = useQueryClient();
   const nodes = useQuery({
@@ -91,6 +93,17 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
 
   const [timeContent, setTimeContent] = useState("");
   const [busy, setBusy] = useState("");
+  const [applyToOthers, setApplyToOthers] = useState(false);
+  const [selectedOtherNodes, setSelectedOtherNodes] = useState<number[]>([]);
+  const [sensorResults, setSensorResults] = useState<NodeConfigResult[]>([]);
+  const sensorNodeOptions = (nodes.data?.items ?? []).flatMap(item => item.target.kind === "gateway_node" ? [{ value: item.target.node_index, label: item.name }] : []);
+  const nodeSetKey = sensorNodeOptions.map(item => item.value).sort((a,b) => a-b).join(",");
+  useEffect(() => {
+    setSelectedOtherNodes(nodeSetKey.split(",").filter(Boolean).map(Number).filter(index => index !== node));
+    setApplyToOthers(false);
+    setSensorResults([]);
+  }, [deviceId, node, nodeSetKey]);
+  const sensorTargets = sensorConfigTargets(node, selectedOtherNodes, sensorNodeOptions.map(item => item.value), applyToOthers);
   const [feedback, setFeedback] = useState("");
   const gateways = useQuery({
     queryKey: ["admin", deviceId, "gateway-configs"],
@@ -201,6 +214,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
     }
   };
   const run = async (kind: "gateway" | "sensor" | "time") => {
+    if (busy) return;
     setBusy(kind);
     setFeedback("");
     try {
@@ -217,18 +231,22 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
       if (kind === "sensor") {
         await sensorForm.validateFields();
         const request = { mode: "advanced", wait_time: 0, content: parseArray(sensorJSON), metrics: parseArray(sensorMetricsJSON) };
-        result = await api.admin.updateDeviceSourceConfig(
-          deviceId,
-          "sensor",
-          request,
-          node,
-        );
+        const results = await submitNodeSensorBatch(deviceId, sensorTargets, request, setSensorResults);
+        setNeedsRecovery(results.some(item => item.status === "sync_failed"));
+        const failed = results.filter(item => item.status === "failed").length;
+        const pendingSync = results.filter(item => item.status === "sync_failed").length;
+        setFeedback(`已提交 ${results.length} 个节点：${results.length-failed-pendingSync} 个平台已同步，${pendingSync} 个待恢复同步，${failed} 个失败。设备是否应用需等待回报。`);
+        for (const item of results) {
+          void queryClient.invalidateQueries({ queryKey: ["admin",deviceId,item.node,"sensor-configs"] });
+          void queryClient.invalidateQueries({ queryKey: ["admin",deviceId,item.node,"sensor-config-latest"] });
+        }
         await Promise.all([
           sensors.refetch(),
           latest.refetch(),
           nodes.refetch(),
         ]);
-        setSensorDirty(false);
+        if (results.find(item => item.node === node)?.status !== "failed") setSensorDirty(false);
+        return;
       }
       if (kind === "time")
         result = await api.admin.updateDeviceSourceConfig(
@@ -335,11 +353,12 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
               label: "节点传感器配置",
               children: (
                 <>
-                  <div className="lora-config-step"><span className="lora-config-step-number">1</span><div><strong>选择节点</strong><span>以下查看和编辑操作只作用于所选节点。</span></div></div>
+                  <div className="lora-config-step"><span className="lora-config-step-number">1</span><div><strong>选择节点</strong><span>查看所选节点的配置，以此为草稿；提交时可同时应用到其他节点。</span></div></div>
                   <Space className="lora-config-node" wrap>
                     <Select
                       value={node}
                       aria-label="选择配置节点"
+                      disabled={Boolean(busy)}
                       options={(nodes.data?.items ?? [])
                         .filter((item) => item.target.kind === "gateway_node")
                         .map((item) => ({
@@ -430,17 +449,38 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                         );
                       })()
                     : null}
-                  <div className="lora-config-step"><span className="lora-config-step-number">2</span><div><strong>编辑配置草稿</strong><span>协议和指标在同一表单编辑；可导入模板作为起点，修改只应用于当前节点。</span></div></div>
-                  <Form form={sensorForm} layout="vertical" onValuesChange={(_, values) => {
+                  <div className="lora-config-step"><span className="lora-config-step-number">2</span><div><strong>编辑配置草稿</strong><span>协议和指标在同一表单编辑；可选择将同一份配置应用到其他节点。</span></div></div>
+                  <Form form={sensorForm} layout="vertical" disabled={Boolean(busy)} onValuesChange={(_, values) => {
                     const draft = serializeNodeSensorDraft(values.lora_items ?? []);
                     setSensorJSON(draft.content); setSensorMetricsJSON(draft.metrics); setSensorDirty(true);
                   }}>
                     <NodeSensorEditor key={node} contentJSON={sensorJSON} metricsJSON={sensorMetricsJSON} templates={loraTemplates} onChange={(content, metrics) => {setSensorJSON(content); setSensorMetricsJSON(metrics); setSensorDirty(true);}} />
                     <div className="lora-config-step"><span className="lora-config-step-number">3</span><div><strong>确认并提交</strong><span>提交会写入源端；“已接受”不等于设备已应用。</span></div></div>
-                    <Popconfirm title={`提交节点 ${node} 的传感器配置？`} description="配置将写入 LoRa V2 服务，设备是否应用需等待回报。" okText="确认提交" cancelText="取消" onConfirm={() => void run("sensor")}>
-                      <Button type="primary"  loading={busy === "sensor"}>提交到 LoRa V2</Button>
-                    </Popconfirm>
+                    <div className="lora-config-apply-nodes">
+                      <Checkbox checked={applyToOthers && sensorNodeOptions.length > 1} disabled={Boolean(busy) || sensorNodeOptions.length < 2} onChange={event => setApplyToOthers(event.target.checked)}>同时应用到其他节点</Checkbox>
+                      {applyToOthers && sensorNodeOptions.length > 1 ? <Checkbox.Group aria-label="同时应用的节点" disabled={Boolean(busy)} options={sensorNodeOptions.filter(item => item.value !== node)} value={selectedOtherNodes} onChange={values => setSelectedOtherNodes(values.map(Number))} /> : null}
+                      <span>应用范围：{sensorTargets.map(index => sensorNodeOptions.find(item => item.value === index)?.label ?? `节点 ${index}`).join("、")}</span>
+                    </div>
+                    {applyToOthers ? <Button type="primary" disabled={Boolean(busy) || nodes.isLoading || !sensorNodeOptions.length} loading={busy === "sensor"} onClick={async () => {
+                      try {
+                        await sensorForm.validateFields();
+                        parseArray(sensorJSON); parseArray(sensorMetricsJSON);
+                        modal.confirm({
+                          title: "确认同时应用到其他节点？",
+                          content: <div><p>以下 {sensorTargets.length} 个节点的协议和指标将更新为当前编辑的配置：</p><ul>{sensorTargets.map(index => <li key={index}>{sensorNodeOptions.find(item => item.value === index)?.label ?? `节点 ${index}`}</li>)}</ul><p>配置提交至 LoRa V2 服务后，设备是否应用需等待回报。</p></div>,
+                          okText: `确认应用到 ${sensorTargets.length} 个节点`,
+                          cancelText: "取消",
+                          autoFocusButton: "cancel",
+                          onOk: () => run("sensor"),
+                        });
+                      } catch (error) {
+                        if (error instanceof Error) setFeedback(error instanceof SyntaxError ? "JSON 格式不正确" : error.message);
+                      }
+                    }}>提交到 LoRa V2</Button> : <Popconfirm title={`提交节点 ${node} 的传感器配置？`} description="配置将写入 LoRa V2 服务，设备是否应用需等待回报。" okText="确认提交" cancelText="取消" onConfirm={() => void run("sensor")} disabled={Boolean(busy)}>
+                      <Button type="primary" disabled={Boolean(busy) || nodes.isLoading || !sensorNodeOptions.length} loading={busy === "sensor"}>提交到 LoRa V2</Button>
+                    </Popconfirm>}
                   </Form>
+                  {sensorResults.length ? <Table size="small" rowKey="node" pagination={false} dataSource={sensorResults} columns={[{title:"节点",dataIndex:"node",width:90},{title:"提交状态",dataIndex:"status",width:140,render:(status:NodeConfigResult["status"]) => <Tag color={status === "synced" ? "green" : status === "submitting" ? "blue" : status === "sync_failed" ? "orange" : "red"}>{{submitting:"提交中",synced:"平台已同步",sync_failed:"待恢复同步",failed:"提交失败"}[status]}</Tag>},{title:"结果说明",dataIndex:"detail"}]} /> : null}
                   <Collapse className="lora-config-history" items={[{ key: "history", label: `节点 ${node} 历史配置（${list(sensors.data).length}）`, children: <Table rowKey={(item) => text(item.id)} size="small" dataSource={list(sensors.data)} columns={columns} pagination={false} /> }]} />
                 </>
               ),
