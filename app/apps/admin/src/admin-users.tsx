@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { useMemo, useState } from "react";
+import { validateUserContact } from "./user-contact";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Alert, App as AntApp, Button, Card, Descriptions, Drawer, Form, Input, Modal, Select, Space, Table, Tabs, Tag, Tooltip } from "@thcpn/admin-ui";
@@ -66,7 +67,7 @@ export function AdminUsersPage() {
       </div>
       {query.isError ? <ErrorState error={query.error} /> : <Table rowKey="id" loading={query.isLoading} columns={columns} dataSource={items} scroll={{ x: 1180 }} pagination={{ current: filters.page, pageSize: 20, total: query.data?.total ?? 0, showSizeChanger: false, onChange: (page) => apply("page", String(page)) }} />}
     </Panel>
-    <Modal title="创建平台用户" open={createOpen} onCancel={() => setCreateOpen(false)} onOk={() => void create()} okText="创建用户" destroyOnHidden><Alert type="info" showIcon message="系统会生成一次性临时密码，用户首次登录必须修改。" style={{ marginBottom: 16 }} /><Form form={form} layout="vertical"><Form.Item name="name" label="姓名" rules={[{ required: true, message: "请输入姓名" }]}><Input /></Form.Item><Form.Item name="email" label="邮箱"><Input type="email" /></Form.Item><Form.Item name="phone" label="手机号"><Input /></Form.Item><Form.Item name="reason" label="创建原因" rules={[{ required: true, min: 5, message: "请填写至少 5 个字符的原因" }]}><Input.TextArea rows={3} /></Form.Item></Form></Modal>
+    <Modal title="创建平台用户" open={createOpen} onCancel={() => setCreateOpen(false)} onOk={() => void create()} okText="创建用户" destroyOnHidden><Alert type="info" showIcon message="手机号或邮箱至少填写一项，均可用于密码登录。系统会生成临时密码，用户首次登录必须修改。" style={{ marginBottom: 16 }} /><Form form={form} layout="vertical"><Form.Item name="name" label="姓名" rules={[{ required: true, message: "请输入姓名" }]}><Input /></Form.Item><Form.Item name="email" label="邮箱（与手机号至少填一项）" dependencies={["phone"]} normalize={value => value?.trim()} rules={[({ getFieldValue }) => ({ validator: (_, value) => { const error = validateUserContact("email", value, getFieldValue("phone")); return error ? Promise.reject(new Error(error)) : Promise.resolve(); } })]}><Input type="email" /></Form.Item><Form.Item name="phone" label="手机号（与邮箱至少填一项）" dependencies={["email"]} normalize={value => value?.trim()} rules={[({ getFieldValue }) => ({ validator: (_, value) => { const error = validateUserContact("phone", value, getFieldValue("email")); return error ? Promise.reject(new Error(error)) : Promise.resolve(); } })]}><Input /></Form.Item><Form.Item name="reason" label="创建原因" rules={[{ required: true, min: 5, message: "请填写至少 5 个字符的原因" }]}><Input.TextArea rows={3} /></Form.Item></Form></Modal>
     <Modal title="临时密码仅显示一次" open={Boolean(password)} onCancel={() => setPassword("")} footer={<Button type="primary" onClick={() => { void navigator.clipboard.writeText(password); void message.success("临时密码已复制"); }}>复制并关闭</Button>}><Alert type="warning" showIcon message="请通过安全渠道交付给用户，关闭后无法再次查看。" /><div className="temporary-password">{password}</div></Modal>
   </>;
 }

@@ -371,12 +371,11 @@ export function AuthPage({ register = false }: { register?: boolean }) {
               </>
             ) : (
               <label className="field">
-                <span className="field-label">{demoMode ? "用户名" : t("platform:auth.phone")}</span>
+                <span className="field-label">{demoMode ? "用户名" : t("platform:auth.identifier")}</span>
                 <Input
                   required
-                  type={demoMode ? "text" : "tel"}
-                  inputMode={demoMode ? "text" : "tel"}
-                  pattern={demoMode ? undefined : "[+0-9 -]{6,22}"}
+                  type="text"
+                  inputMode="text"
                   autoComplete="username"
                   value={identifier}
                   onChange={(event) => setIdentifier(event.target.value)}
