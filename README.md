@@ -139,6 +139,10 @@ make run-all
 
 `make run-all` 会启动 PostgreSQL、Redis、迁移、处理器、API、Worker、用户前端和后台前端。
 
+本地 API 默认使用 `http://127.0.0.1:18080`，用户前端为 `http://127.0.0.1:5173`，后台管理为 `http://127.0.0.1:5174/admin/`。两套前端自动代理到本地 API。需要更换 API 端口时运行 `make run-all LOCAL_API_PORT=18081`。Docker 部署的 API 端口配置不受影响。
+
+`stop-local` 仅停止工作目录属于本仓库的 Go/Vite 应用进程，不根据端口终止 Docker 或其他项目。启动前需要确保 Docker/OrbStack 已运行。
+
 也可以分别运行：
 
 ```bash

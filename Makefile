@@ -12,6 +12,9 @@ MIGRATE_STEPS ?= 1
 MIGRATE_DATABASE_URL ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)?sslmode=disable
 MIGRATE_IMAGE ?= migrate/migrate:v4.17.1
 SQLC_IMAGE ?= sqlc/sqlc:1.27.0
+LOCAL_API_PORT ?= 18080
+LOCAL_API_ADDR ?= 127.0.0.1:$(LOCAL_API_PORT)
+LOCAL_API_URL ?= http://$(LOCAL_API_ADDR)
 
 .PHONY: db-up db-down processor-up migrate-up migrate-down sqlc test stop-local run-api run-worker run-all app-install run-platform run-admin build-app deploy deploy-down deploy-logs
 
@@ -37,23 +40,11 @@ test:
 	go test ./...
 
 stop-local:
-	@echo "Stopping existing THCPN application services..."
-	@for port in 8080 8081 5173 5174 5176; do \
-		pids="$$(lsof -tiTCP:$$port -sTCP:LISTEN 2>/dev/null || true)"; \
-		if [ -n "$$pids" ]; then \
-			echo "  stopping port $$port (pid $$pids)"; \
-			kill $$pids 2>/dev/null || true; \
-		fi; \
-	done
-	@for pid in $$(pgrep -f '^go run \./cmd/(api|worker)$$' 2>/dev/null || true); do \
-		children="$$(pgrep -P $$pid 2>/dev/null || true)"; \
-		if [ -n "$$children" ]; then kill $$children 2>/dev/null || true; fi; \
-		kill $$pid 2>/dev/null || true; \
-	done
+	@bash scripts/stop-local.sh "$(CURDIR)"
 	@docker compose stop processor >/dev/null 2>&1 || true
 
 run-api:
-	go run ./cmd/api
+	SERVER_ADDR="$(LOCAL_API_ADDR)" go run ./cmd/api
 
 run-worker:
 	go run ./cmd/worker
@@ -68,10 +59,10 @@ app-install:
 	cd app && npm install
 
 run-platform:
-	cd app && npm run dev:platform
+	cd app && VITE_API_PROXY_TARGET="$(LOCAL_API_URL)" npm run dev:platform
 
 run-admin:
-	cd app && npm run dev:admin
+	cd app && VITE_API_PROXY_TARGET="$(LOCAL_API_URL)" npm run dev:admin
 
 build-app:
 	cd app && npm run build
