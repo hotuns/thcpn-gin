@@ -4870,6 +4870,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/devices/{device_id}/nodes/{node_index}/location": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update platform-owned LoRaWAN V2 node coordinates */
+        patch: operations["updateNodeLocation"];
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/nodes/{node_index}/location": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update platform-owned LoRaWAN V2 node coordinates as system administrator */
+        patch: operations["adminUpdateNodeLocation"];
+        trace?: never;
+    };
     "/api/v1/devices/{device_id}/nodes/{node_index}": {
         parameters: {
             query?: never;
@@ -6154,6 +6188,9 @@ export interface components {
             overridden_fields: string[];
         };
         DeviceMapItem: {
+            /** @description Parent gateway for a virtual LoRaWAN V2 node; device_id is a stable map marker ID */
+            gateway_device_id?: components["schemas"]["UUID"];
+            node_index?: number;
             device_id: components["schemas"]["UUID"];
             name: string;
             serial_no: string;
@@ -6166,7 +6203,7 @@ export interface components {
             /** Format: double */
             longitude?: number;
             /** @enum {string} */
-            location_source: "device" | "site" | "gateway" | "none";
+            location_source: "device" | "site" | "gateway" | "source" | "node" | "none";
             /** Format: int64 */
             child_count: number;
             environment: components["schemas"]["DeviceEnvironmentValues"];
@@ -6406,7 +6443,18 @@ export interface components {
                 network?: string;
             };
         };
+        /** @description WGS84 coordinates; supply both numbers or both null to clear. */
+        NodeLocation: {
+            /** Format: double */
+            latitude: number | null;
+            /** Format: double */
+            longitude: number | null;
+        };
         GatewayNode: {
+            /** Format: double */
+            latitude?: number;
+            /** Format: double */
+            longitude?: number;
             key: string;
             name: string;
             custom_name: string;
@@ -15052,6 +15100,88 @@ export interface operations {
             };
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    updateNodeLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: components["schemas"]["UUID"];
+                node_index: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeLocation"];
+            };
+        };
+        responses: {
+            /** @description Saved without sending configuration to the device; both null clears the location. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeLocation"];
+                };
+            };
+            /** @description Invalid coordinates or node */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Device configuration permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminUpdateNodeLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: components["schemas"]["UUID"];
+                node_index: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeLocation"];
+            };
+        };
+        responses: {
+            /** @description Saved node coordinates */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeLocation"];
+                };
+            };
+            /** @description Invalid coordinates or node */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description System administrator required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     renameNode: {

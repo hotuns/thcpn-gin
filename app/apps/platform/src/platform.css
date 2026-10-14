@@ -8791,6 +8791,17 @@ body::-webkit-scrollbar-corner,
 .gateway-node-row:hover {
   background: color-mix(in srgb, var(--blue) 5%, var(--panel));
 }
+.gateway-node-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  padding: 10px 0;
+}
+.gateway-node-identity > .gateway-node-name-link {
+  flex-basis: 100%;
+  text-align: left;
+}
 .gateway-node-row > .icon-btn {
   justify-self: end;
 }

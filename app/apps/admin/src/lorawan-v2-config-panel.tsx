@@ -1,6 +1,7 @@
 import { invalidateNodeNames } from "@thcpn/workspace";
 import { NodeSensorEditor, serializeNodeSensorDraft } from './node-sensor-editor';
 import { sensorConfigTargets, submitNodeSensorBatch, type NodeConfigResult } from "./node-config-batch";
+import { AdminNodeLocationEditor } from "./node-location-editor";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -387,6 +388,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                       }}
                     />
                     {nodes.data?.items.some(item => item.target.kind === "gateway_node" && item.target.node_index === node) && <NodeNameEditor name={nodes.data?.items.find(item => item.target.kind === "gateway_node" && item.target.node_index === node)?.custom_name ?? ""} onSave={async name => {await api.admin.renameNode(deviceId, node, name); await invalidateNodeNames(queryClient);}}/>}
+                    {nodes.data?.items.filter(item => item.target.kind === "gateway_node" && item.target.node_index === node).map(item => <AdminNodeLocationEditor key={item.key} deviceId={deviceId} node={item}/>)}
                     {currentManagement ? <Tag color={currentManagement.color}>{currentManagement.label}</Tag> : null}
                   </Space>
                   {latest.data

@@ -33,7 +33,7 @@ export type DeviceTaxonomyTerm = { id: string; kind: "ecosystem" | "observation_
 export type DeviceEnvironmentValues = { ecosystem?: DeviceTaxonomyTerm; observation_objects: DeviceTaxonomyTerm[]; purposes: DeviceTaxonomyTerm[]; management?: DeviceTaxonomyTerm; deployment?: DeviceTaxonomyTerm; altitude_m?: number; commissioned_year?: number; research_tags: string[] };
 export type DeviceEnvironment = { device_id: string; direct: DeviceEnvironmentValues; effective: DeviceEnvironmentValues; overridden_fields: string[]; sources: Record<string, string>; parent_device_id?: string; site_id?: string; updated_at?: string };
 export type SiteEnvironment = { site_id: string; values: DeviceEnvironmentValues; updated_at?: string };
-export type DeviceMapItem = { device_id: string; name: string; serial_no: string; device_type: string; status: string; workspace_id?: string; site_id?: string; latitude?: number; longitude?: number; location_source: string; child_count: number; environment: DeviceEnvironmentValues };
+export type DeviceMapItem = { device_id: string; gateway_device_id?: string; node_index?: number; name: string; serial_no: string; device_type: string; status: string; workspace_id?: string; site_id?: string; latitude?: number; longitude?: number; location_source: string; child_count: number; environment: DeviceEnvironmentValues };
 export type DeviceMapResult = { items: DeviceMapItem[]; total: number; located: number; unlocated: number; unclassified: number };
 export type SourceOperation = Schema<"SourceOperation">;
 export type GatewayNode = Schema<"GatewayNode">;
@@ -866,6 +866,7 @@ export const api = {
         `/api/v1/devices/${encodeURIComponent(id)}/profile/images/${encodeURIComponent(imageId)}`,
         { method: "DELETE" },
       ),
+    updateNodeLocation: (id: string, index: number, location: {latitude: number | null; longitude: number | null}) => jsonRequest(`/api/v1/devices/${encodeURIComponent(id)}/nodes/${index}/location`, "PATCH", location),
     renameNode: (id: string, index: number, name: string) => jsonRequest<{name: string; custom_name: string}>(`/api/v1/devices/${encodeURIComponent(id)}/nodes/${index}`, "PATCH", {name}),
     nodes: (id: string) => request<Schema<"GatewayNodeList">>(`/api/v1/devices/${encodeURIComponent(id)}/nodes`),
     nodeRuntime: (id: string) => request<{ items: NodeRuntime[]; refreshed_at: string }>(`/api/v1/devices/${encodeURIComponent(id)}/nodes/runtime`),
@@ -1254,6 +1255,7 @@ export const api = {
       request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/logs${queryString(input as Record<string, string | number | boolean>)}`),
     deviceLoRaWANV2GatewayLogs: (id: string, input: JsonRecord = {}) =>
       request<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/logs${queryString(input as Record<string, string | number | boolean>)}`),
+    updateNodeLocation: (id: string, index: number, location: {latitude: number | null; longitude: number | null}) => jsonRequest(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes/${index}/location`, "PATCH", location),
     renameNode: (id: string, index: number, name: string) => jsonRequest<{name: string; custom_name: string}>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes/${index}`, "PATCH", {name}),
     deviceNodes: (id: string) => request<Schema<"GatewayNodeList">>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes`),
     reconcileDeviceConfig: (id: string) => jsonRequest<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/config/resync`, "POST", {}),

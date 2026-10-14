@@ -6554,6 +6554,48 @@ paths:
         "200": { description: Temporary object URL. }
         "403": { $ref: "#/components/responses/PermissionDenied" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/devices/{device_id}/nodes/{node_index}/location:
+    patch:
+      operationId: updateNodeLocation
+      summary: Update platform-owned LoRaWAN V2 node coordinates
+      security: [{bearerAuth: []}]
+      parameters:
+        - { in: path, name: device_id, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+        - { in: path, name: node_index, required: true, schema: { type: integer, minimum: 1, maximum: 254 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NodeLocation" }
+      responses:
+        "200":
+          description: Saved without sending configuration to the device; both null clears the location.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NodeLocation" }
+        "400": { description: Invalid coordinates or node }
+        "403": { description: Device configuration permission required }
+  /api/v1/admin/devices/{device_id}/nodes/{node_index}/location:
+    patch:
+      operationId: adminUpdateNodeLocation
+      summary: Update platform-owned LoRaWAN V2 node coordinates as system administrator
+      security: [{bearerAuth: []}]
+      parameters:
+        - { in: path, name: device_id, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+        - { in: path, name: node_index, required: true, schema: { type: integer, minimum: 1, maximum: 254 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NodeLocation" }
+      responses:
+        "200":
+          description: Saved node coordinates
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NodeLocation" }
+        "400": { description: Invalid coordinates or node }
+        "403": { description: System administrator required }
   /api/v1/devices/{device_id}/nodes/{node_index}:
     patch:
       operationId: renameNode
@@ -8914,6 +8956,8 @@ components:
       type: object
       required: [device_id, name, serial_no, device_type, status, location_source, child_count, environment]
       properties:
+        gateway_device_id: { $ref: "#/components/schemas/UUID", description: Parent gateway for a virtual LoRaWAN V2 node; device_id is a stable map marker ID, not an independent device. }
+        node_index: { type: integer, minimum: 1, maximum: 254 }
         device_id: { $ref: "#/components/schemas/UUID" }
         name: { type: string }
         serial_no: { type: string }
@@ -8923,7 +8967,7 @@ components:
         site_id: { $ref: "#/components/schemas/UUID" }
         latitude: { type: number, format: double }
         longitude: { type: number, format: double }
-        location_source: { type: string, enum: [device, site, gateway, none] }
+        location_source: { type: string, enum: [device, site, gateway, source, node, none] }
         child_count: { type: integer, format: int64 }
         environment: { $ref: "#/components/schemas/DeviceEnvironmentValues" }
     DeviceMapResponse:
@@ -9379,10 +9423,19 @@ components:
             battery: {type: string}
             signal: {type: string}
             network: {type: string}
+    NodeLocation:
+      type: object
+      required: [latitude, longitude]
+      description: WGS84 coordinates; supply both numbers or both null to clear.
+      properties:
+        latitude: { type: number, nullable: true, format: double, minimum: -90, maximum: 90 }
+        longitude: { type: number, nullable: true, format: double, minimum: -180, maximum: 180 }
     GatewayNode:
       type: object
       required: [key, name, target, streams, custom_name, can_rename]
       properties:
+        latitude: { type: number, format: double, minimum: -90, maximum: 90 }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180 }
         key: { type: string }
         name: { type: string }
         custom_name: { type: string }

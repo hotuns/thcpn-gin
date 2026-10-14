@@ -1,5 +1,15 @@
 // Generated from static platform UI copy. Existing hand-written translations in legacy.ts take precedence.
 export const businessEnglish: Record<string, string> = {
+"填写 WGS84 经纬度；仅保存到平台，不下发设备。地图开启显示子节点后可见。": "Enter WGS84 coordinates. Saved on the platform only, not sent to the device. Enable child nodes on the map to view it.",
+"清空位置": "Clear location",
+"纬度（-90 ～ 90）": "Latitude (-90 to 90)",
+"经度（-180 ～ 180）": "Longitude (-180 to 180)",
+"节点位置": "Node location",
+"设置位置": "Set location",
+"节点定位": "Node location",
+"数据源定位": "Source location",
+"节点位置已保存": "Node location saved",
+"WGS84 坐标，仅保存到平台，不下发设备。": "WGS84 coordinates, saved on the platform only; not sent to the device.",
 "上限": "Upper limit",
 "下限": "Lower limit",
 "下限必须小于上限。": "The lower limit must be less than the upper limit.",

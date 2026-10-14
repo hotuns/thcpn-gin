@@ -577,6 +577,8 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.GET("/devices/:device_id/children", deviceHandler.Children)
 	admin.GET("/devices/:device_id/nodes", deviceHandler.AdminNodes)
 	admin.PATCH("/devices/:device_id/nodes/:node_index", deviceHandler.AdminRenameNode)
+	admin.PATCH("/devices/:device_id/nodes/:node_index/location", deviceHandler.AdminNodeLocation)
+	authed.PATCH("/devices/:device_id/nodes/:node_index/location", deviceHandler.NodeLocation)
 	authed.PATCH("/devices/:device_id/nodes/:node_index", deviceHandler.RenameNode)
 	authed.GET("/devices/:device_id/nodes", deviceHandler.Nodes)
 	authed.GET("/devices/:device_id/nodes/runtime", dataSourceHandler.NodeRuntime)

@@ -138,7 +138,7 @@ function DeviceMapDetail({ item, onClose }: { item: DeviceMapItem; onClose: () =
         <div><dt>观测对象</dt><dd>{item.environment.observation_objects.map((term) => term.name_zh).join("、") || "未设置"}</dd></div>
         <div><dt>坐标</dt><dd className="mono">{item.longitude?.toFixed(5)}, {item.latitude?.toFixed(5)}</dd></div>
       </dl>
-      <Button onClick={() => window.location.assign(`/devices/${item.device_id}`)}>查看设备资料<ChevronRight size={15} /></Button>
+      <Button onClick={() => window.location.assign(item.gateway_device_id && item.node_index ? `/devices/${item.gateway_device_id}?tab=data&node=${encodeURIComponent(`gateway:${item.gateway_device_id}:node:${item.node_index}`)}` : `/devices/${item.device_id}`)}>查看设备资料<ChevronRight size={15} /></Button>
     </aside>
   );
 }

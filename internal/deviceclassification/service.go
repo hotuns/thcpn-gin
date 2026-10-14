@@ -3,6 +3,7 @@ package deviceclassification
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -101,18 +102,20 @@ type UpdateSiteInput struct {
 }
 
 type MapItem struct {
-	DeviceID       uuid.UUID  `json:"device_id"`
-	Name           string     `json:"name"`
-	SerialNo       string     `json:"serial_no"`
-	DeviceType     string     `json:"device_type"`
-	Status         string     `json:"status"`
-	WorkspaceID    *uuid.UUID `json:"workspace_id,omitempty"`
-	SiteID         *uuid.UUID `json:"site_id,omitempty"`
-	Latitude       *float64   `json:"latitude,omitempty"`
-	Longitude      *float64   `json:"longitude,omitempty"`
-	LocationSource string     `json:"location_source"`
-	ChildCount     int64      `json:"child_count"`
-	Environment    Values     `json:"environment"`
+	GatewayDeviceID *uuid.UUID `json:"gateway_device_id,omitempty"`
+	NodeIndex       *int       `json:"node_index,omitempty"`
+	DeviceID        uuid.UUID  `json:"device_id"`
+	Name            string     `json:"name"`
+	SerialNo        string     `json:"serial_no"`
+	DeviceType      string     `json:"device_type"`
+	Status          string     `json:"status"`
+	WorkspaceID     *uuid.UUID `json:"workspace_id,omitempty"`
+	SiteID          *uuid.UUID `json:"site_id,omitempty"`
+	Latitude        *float64   `json:"latitude,omitempty"`
+	Longitude       *float64   `json:"longitude,omitempty"`
+	LocationSource  string     `json:"location_source"`
+	ChildCount      int64      `json:"child_count"`
+	Environment     Values     `json:"environment"`
 }
 
 type MapResult struct {
@@ -411,8 +414,54 @@ func (s *Service) Map(ctx context.Context, workspaceID *uuid.UUID, includeChildr
 			}
 		}
 	}
+	if includeChildren {
+		if err := s.appendIndexedNodeLocations(ctx, &result, deviceIDs); err != nil {
+			return MapResult{}, err
+		}
+	}
 	recount(&result)
 	return result, nil
+}
+
+func (s *Service) appendIndexedNodeLocations(ctx context.Context, result *MapResult, ids []uuid.UUID) error {
+	parents := map[uuid.UUID]MapItem{}
+	for _, item := range result.Items {
+		parents[item.DeviceID] = item
+	}
+	rows, err := s.db.Query(ctx, `SELECT DISTINCT p.device_id,p.node_index,p.name,p.latitude,p.longitude FROM node_profiles p
+ JOIN device_source_refs r ON r.device_id=p.device_id AND r.adapter_code='lorawan_v2' AND r.status='active'
+ JOIN device_metadata m ON m.device_id=p.device_id AND m.key='lorawan_v2_nodes_count'
+ WHERE p.device_id=ANY($1::uuid[]) AND p.latitude IS NOT NULL AND p.longitude IS NOT NULL AND p.node_index<=m.value_json::text::int ORDER BY p.device_id,p.node_index`, ids)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		var index int
+		var name string
+		var lat, lon *float64
+		if err := rows.Scan(&id, &index, &name, &lat, &lon); err != nil {
+			return err
+		}
+		item := parents[id]
+		item.GatewayDeviceID = &id
+		item.NodeIndex = &index
+		item.DeviceID = uuid.NewSHA1(id, []byte(fmt.Sprintf("node:%d", index)))
+		if name == "" {
+			name = fmt.Sprintf("节点 %d", index)
+		} else {
+			name = fmt.Sprintf("%s · 节点 %d", name, index)
+		}
+		item.Name = name
+		item.DeviceType = "gateway_node"
+		item.Latitude = lat
+		item.Longitude = lon
+		item.LocationSource = "node"
+		item.ChildCount = 0
+		result.Items = append(result.Items, item)
+	}
+	return rows.Err()
 }
 
 func (s *Service) MapDemo(ctx context.Context, userID uuid.UUID, includeChildren bool) (MapResult, error) {
@@ -443,10 +492,14 @@ func (s *Service) MapDemo(ctx context.Context, userID uuid.UUID, includeChildren
 	}
 	items := make([]MapItem, 0, len(selected))
 	for _, item := range result.Items {
-		placement, ok := selected[item.DeviceID]
+		lookupID := item.DeviceID
+		if item.GatewayDeviceID != nil {
+			lookupID = *item.GatewayDeviceID
+		}
+		placement, ok := selected[lookupID]
 		if ok {
 			item.SiteID = placement.siteID
-			if placement.latitude != nil && placement.longitude != nil {
+			if item.NodeIndex == nil && placement.latitude != nil && placement.longitude != nil {
 				item.Latitude = placement.latitude
 				item.Longitude = placement.longitude
 				item.LocationSource = "site"

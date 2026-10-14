@@ -3,14 +3,18 @@ package device
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"thcpn-gin/internal/audit"
 	"thcpn-gin/internal/auth"
 	"thcpn-gin/internal/db/sqlc"
+	"thcpn-gin/internal/deviceclassification"
 	"thcpn-gin/internal/permission"
 	"thcpn-gin/internal/testdb"
 )
@@ -26,8 +30,11 @@ func TestNodeNamingPermissionsPersistenceAndMigration(t *testing.T) {
 		}
 	}
 	// Validate reversible migration in an isolated database, never the user's data.
+	testdb.Apply(t, db, "../../migrations/000042_node_locations.down.sql")
+	testdb.Apply(t, db, "../../migrations/000042_node_locations.up.sql")
 	testdb.Apply(t, db, "../../migrations/000037_node_profiles.down.sql")
 	testdb.Apply(t, db, "../../migrations/000037_node_profiles.up.sql")
+	testdb.Apply(t, db, "../../migrations/000042_node_locations.up.sql")
 	owner, viewer, outsider, workspace := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	for _, id := range []uuid.UUID{owner, viewer, outsider} {
 		must(`INSERT INTO users(id,name,email) VALUES($1,'Test',$2)`, id, id.String()+"@test.invalid")
@@ -91,6 +98,91 @@ func TestNodeNamingPermissionsPersistenceAndMigration(t *testing.T) {
 		t.Helper()
 		if r.Code != status {
 			t.Fatalf("got %d want %d: %s", r.Code, status, r.Body.String())
+		}
+	}
+	locationCall := func(actor auth.Actor, target uuid.UUID, index int, body string) *httptest.ResponseRecorder {
+		router := gin.New()
+		router.Use(func(c *gin.Context) { auth.SetActorContext(c, actor); c.Next() })
+		if actor.IsSystemAdmin {
+			router.PATCH("/devices/:device_id/nodes/:node_index/location", h.AdminNodeLocation)
+		} else {
+			router.PATCH("/devices/:device_id/nodes/:node_index/location", h.NodeLocation)
+		}
+		request := httptest.NewRequest(http.MethodPatch, fmt.Sprintf("/devices/%s/nodes/%d/location", target, index), strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		return response
+	}
+	for _, body := range []string{`{}`, `{"latitude":30}`, `{"latitude":null,"longitude":12}`, `{"latitude":91,"longitude":12}`, `{"latitude":30,"longitude":181}`} {
+		expect(locationCall(user, gateway, 1, body), 400)
+	}
+	expect(locationCall(auth.Actor{UserID: viewer}, gateway, 1, `{"latitude":30,"longitude":120}`), 403)
+	expect(locationCall(auth.Actor{UserID: outsider}, gateway, 1, `{"latitude":30,"longitude":120}`), 403)
+	expect(locationCall(user, gateway, 5, `{"latitude":30,"longitude":120}`), 400)
+	expect(locationCall(user, carbon, 1, `{"latitude":30,"longitude":120}`), 400)
+	expect(locationCall(user, gateway, 1, `{"latitude":30,"longitude":120}`), 200)
+	expect(call(gateway, "1", "地块节点", user, false), 200)
+	locatedNodes, e := svc.ListGatewayNodes(ctx, gateway)
+	if e != nil || locatedNodes[0].Latitude == nil || *locatedNodes[0].Latitude != 30 || locatedNodes[0].Longitude == nil || *locatedNodes[0].Longitude != 120 {
+		t.Fatalf("node location lost after rename: %+v %v", locatedNodes, e)
+	}
+	mapService := deviceclassification.NewService(db)
+	mapWithNodes, e := mapService.Map(ctx, &workspace, true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var markerID uuid.UUID
+	for _, item := range mapWithNodes.Items {
+		if item.GatewayDeviceID != nil && *item.GatewayDeviceID == gateway && item.NodeIndex != nil && *item.NodeIndex == 1 {
+			markerID = item.DeviceID
+			if markerID == gateway || *item.Latitude != 30 || item.LocationSource != "node" {
+				t.Fatal("invalid virtual node marker", item)
+			}
+		}
+	}
+	if markerID == uuid.Nil {
+		t.Fatal("located node missing from map")
+	}
+	withoutNodes, e := mapService.Map(ctx, &workspace, false)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, item := range withoutNodes.Items {
+		if item.GatewayDeviceID != nil {
+			t.Fatal("node shown with children disabled")
+		}
+	}
+	otherWorkspace := uuid.New()
+	hidden, e := mapService.Map(ctx, &otherWorkspace, true)
+	if e != nil || len(hidden.Items) != 0 {
+		t.Fatalf("node leaked across workspace: %+v %v", hidden, e)
+	}
+	var locationAudits int
+	if e := db.QueryRow(ctx, `SELECT count(*) FROM audit_logs WHERE action='device.node.location' AND workspace_id=$1 AND actor_id=$2`, workspace, owner).Scan(&locationAudits); e != nil || locationAudits != 1 {
+		t.Fatalf("missing location audit: %d %v", locationAudits, e)
+	}
+	expect(locationCall(user, gateway, 1, `{"latitude":null,"longitude":null}`), 200)
+	lat, lon := 35.0, 125.0
+	if e := svc.UpdateNodeLocation(ctx, gateway, 1, NodeLocationInput{Latitude: &lat, Longitude: &lon}, audit.RecordInput{ActorType: audit.ActorUser, ActorID: audit.UserActorID(uuid.New())}); e == nil {
+		t.Fatal("missing audit actor must fail atomically")
+	}
+	var retained *float64
+	if e := db.QueryRow(ctx, `SELECT latitude FROM node_profiles WHERE device_id=$1 AND node_index=1`, gateway).Scan(&retained); e != nil || retained != nil {
+		t.Fatalf("failed audit persisted coordinates: %v %v", retained, e)
+	}
+	expect(locationCall(sys, gateway, 2, `{"latitude":0,"longitude":0}`), 200)
+	var adminAudits int
+	if e := db.QueryRow(ctx, `SELECT count(*) FROM audit_logs WHERE action='device.node.location' AND actor_admin_id=$1 AND actor_type='system_admin'`, admin).Scan(&adminAudits); e != nil || adminAudits != 1 {
+		t.Fatalf("missing admin location audit: %d %v", adminAudits, e)
+	}
+	cleared, e := mapService.Map(ctx, &workspace, true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, item := range cleared.Items {
+		if item.DeviceID == markerID {
+			t.Fatal("cleared node still displayed")
 		}
 	}
 	for _, id := range []uuid.UUID{viewer, outsider} {

@@ -31,6 +31,8 @@ func (t NodeTarget) Key() string {
 }
 
 type GatewayNode struct {
+	Latitude   *float64                `json:"latitude,omitempty"`
+	Longitude  *float64                `json:"longitude,omitempty"`
 	CustomName string                  `json:"custom_name"`
 	CanRename  bool                    `json:"can_rename"`
 	Key        string                  `json:"key"`
@@ -168,9 +170,28 @@ func (s *Service) listIndexedNodes(ctx context.Context, gateway Device) ([]Gatew
 		return nil, err
 	}
 	nodes := make([]GatewayNode, 0, gateway.ChildCount)
+	locations, err := s.db.Query(ctx, `SELECT node_index,latitude,longitude FROM node_profiles WHERE device_id=$1`, gateway.ID)
+	if err != nil {
+		return nil, err
+	}
+	positions := map[int][2]*float64{}
+	for locations.Next() {
+		var index int
+		var lat, lon *float64
+		if err := locations.Scan(&index, &lat, &lon); err != nil {
+			locations.Close()
+			return nil, err
+		}
+		positions[index] = [2]*float64{lat, lon}
+	}
+	locationErr := locations.Err()
+	locations.Close()
+	if locationErr != nil {
+		return nil, locationErr
+	}
 	for index := 1; index <= int(gateway.ChildCount); index++ {
 		target := NodeTarget{Kind: "gateway_node", GatewayDeviceID: &gateway.ID, NodeIndex: &index}
-		nodes = append(nodes, GatewayNode{Key: target.Key(), Name: nodeprofile.Label(names[index], index), CustomName: names[index], Target: target, Streams: []datastream.DataStream{}})
+		nodes = append(nodes, GatewayNode{Latitude: positions[index][0], Longitude: positions[index][1], Key: target.Key(), Name: nodeprofile.Label(names[index], index), CustomName: names[index], Target: target, Streams: []datastream.DataStream{}})
 	}
 	rows, err := s.db.Query(ctx, `SELECT ds.id, ds.device_id, ds.code, ds.name, ds.type, ds.unit, ds.status, ds.created_by, ds.created_at, ds.updated_at, b.adapter_config_json
         FROM data_streams ds JOIN data_stream_bindings b ON b.data_stream_id=ds.id AND b.status='active' AND b.adapter_code='lorawan_v2'
