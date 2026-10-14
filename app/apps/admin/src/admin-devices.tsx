@@ -17,6 +17,7 @@ import {
   Modal,
   Popconfirm,
   Select,
+  Segmented,
   Space,
   Table,
   Tag,
@@ -34,7 +35,8 @@ import {
   formatApiError,
   type JsonRecord,
 } from "@thcpn/api";
-import { Badge, PageHeader, Panel, StateView, NodeNameEditor } from "@thcpn/ui";
+import { Badge, PageHeader, Panel, StateView } from "@thcpn/ui";
+import { AdminNodeNameEditor as NodeNameEditor } from "./node-name-editor";
 import {
   configFieldsFromDetail,
   parseTHCPNConfig,
@@ -715,22 +717,11 @@ export function AdminDevicesPage() {
           <Badge tone="info">{rows.length} 台设备</Badge>
         </div>
         <div className="admin-device-categories">
-          {[
-            { key: "all", label: "全部" },
-            { key: "standalone", label: "标准站" },
-            { key: "gateway", label: "组网站" },
-            { key: "carbon_sink", label: "碳汇站" },
+          <Segmented value={category} onChange={value => setCategory(String(value))} options={[
+            { key: "all", label: "全部" }, { key: "standalone", label: "标准站" },
+            { key: "gateway", label: "组网站" }, { key: "carbon_sink", label: "碳汇站" },
             { key: "camera", label: "监控站" },
-          ].map((item) => (
-            <button
-              key={item.key}
-              className={category === item.key ? "active" : ""}
-              onClick={() => setCategory(item.key)}
-            >
-              {item.label}
-              <strong>{counts[item.key as keyof typeof counts]}</strong>
-            </button>
-          ))}
+          ].map(item => ({ value: item.key, label: <Space size={8}><span>{item.label}</span><Tag color={category === item.key ? "blue" : undefined}>{counts[item.key as keyof typeof counts]}</Tag></Space> }))}/>
         </div>
         {selectedRowKeys.length ? (
           <div className="admin-device-batch-toolbar">

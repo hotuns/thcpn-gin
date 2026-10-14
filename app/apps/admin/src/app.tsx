@@ -45,15 +45,13 @@ import {
 	UsersRound,
 } from "lucide-react";
 import { Avatar, Dropdown, Input, Menu, Modal, Space, Tooltip, type MenuProps } from "antd";
+import { Button, CloseButton, IconButton } from "@thcpn/admin-ui";
 import { ApiError, api, formatApiError } from "@thcpn/api";
 import { billingEnabled } from "./features";
 import { useAdminAuth } from "@thcpn/auth";
 import {
   Badge,
   Brand,
-  Button,
-  CloseButton,
-  IconButton,
   PageHeader,
   Panel,
   StateView,
@@ -362,7 +360,7 @@ function AdminShell() {
           <label>新密码<Input.Password required minLength={8} maxLength={128} autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label>
           <label>确认新密码<Input.Password required autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>
           {passwordError && <div className="admin-login-error">{passwordError}</div>}
-          <div className="admin-password-actions"><Button type="button" variant="secondary" onClick={closePassword}>取消</Button><Button type="submit" disabled={passwordBusy || !currentPassword || !newPassword || !confirmPassword}>{passwordBusy ? "保存中…" : "确认修改"}</Button></div>
+          <div className="admin-password-actions"><Button htmlType="button" onClick={closePassword}>取消</Button><Button type="primary" htmlType="submit" disabled={passwordBusy || !currentPassword || !newPassword || !confirmPassword}>{passwordBusy ? "保存中…" : "确认修改"}</Button></div>
         </form>
       </Modal>
     </div>
@@ -378,7 +376,7 @@ function Forbidden() {
         description="系统后台使用独立的管理员账号登录。工作区负责人或普通成员权限不能替代系统管理员身份。"
         action={
           <a href={`${platformUrl}/dashboard`}>
-            <Button>
+            <Button type="primary">
               <Home size={15} />
               返回用户平台
             </Button>
@@ -418,7 +416,7 @@ function AdminLoginPage() {
     catch (reason) { setError(formatApiError(reason).message); }
     finally { setBusy(false); }
   };
-  return <main className="admin-auth-page"><div className="admin-auth-actions"><LanguageSwitcher compact /><Tooltip title={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")}><IconButton label={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")} onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>{resolvedTheme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</IconButton></Tooltip></div><section className="admin-auth-panel"><div className="brand-mark"><img src="/brand/insitu-ecocloud-logo.png" alt="" /></div><div className="eyebrow">IN-SITU ECOCLOUD / SYSTEM CONTROL</div><h1>{t("admin:auth.title")}</h1><p>{t("admin:auth.copy")}</p><form onSubmit={submit}><label>{t("admin:auth.email")}<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required /></label><label>{t("admin:auth.password")}<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></label>{error && <div className="admin-login-error">{error}</div>}<button type="submit" disabled={busy}>{busy ? t("admin:auth.signingIn") : t("admin:auth.submit")}</button></form><a href={`${platformUrl}/login`}>{t("admin:auth.back")}</a></section></main>;
+  return <main className="admin-auth-page"><div className="admin-auth-actions"><LanguageSwitcher compact /><Tooltip title={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")}><IconButton label={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")} onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>{resolvedTheme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</IconButton></Tooltip></div><section className="admin-auth-panel"><div className="brand-mark"><img src="/brand/insitu-ecocloud-logo.png" alt="" /></div><div className="eyebrow">IN-SITU ECOCLOUD / SYSTEM CONTROL</div><h1>{t("admin:auth.title")}</h1><p>{t("admin:auth.copy")}</p><form onSubmit={submit}><label>{t("admin:auth.email")}<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required /></label><label>{t("admin:auth.password")}<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></label>{error && <div className="admin-login-error">{error}</div>}<Button type="primary" htmlType="submit" size="large" block loading={busy} disabled={busy}>{busy ? t("admin:auth.signingIn") : t("admin:auth.submit")}</Button></form><a href={`${platformUrl}/login`}>{t("admin:auth.back")}</a></section></main>;
 }
 
 const overviewText = (input: unknown, fallback = "—") =>
@@ -517,7 +515,7 @@ function AdminOverview() {
               {health.isSuccess ? <CircleCheck size={13} /> : <AlertTriangle size={13} />}
               API {health.isSuccess ? "运行正常" : health.isLoading ? "检查中" : "不可用"}
             </Badge>
-            <Button variant="secondary" onClick={refreshAll} disabled={refreshing}>
+            <Button  onClick={refreshAll} disabled={refreshing}>
               <RefreshCw size={14} className={refreshing ? "admin-spin" : ""} />
               刷新
             </Button>

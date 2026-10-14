@@ -24,7 +24,8 @@ import {
   Tag,
 } from "@thcpn/admin-ui";
 import { api, formatApiError, type JsonRecord } from "@thcpn/api";
-import { StateView, NodeNameEditor } from "@thcpn/ui";
+import { StateView } from "@thcpn/ui";
+import { AdminNodeNameEditor as NodeNameEditor } from "./node-name-editor";
 
 const text = (input: unknown, fallback = "—") =>
   input === undefined || input === null || input === ""
