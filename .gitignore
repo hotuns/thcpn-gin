@@ -8,6 +8,7 @@
 /tmp/
 /var/
 /coverage.out
+/docs/user-manual/
 /app/node_modules/
 /app/**/node_modules/
 /app/**/dist/
