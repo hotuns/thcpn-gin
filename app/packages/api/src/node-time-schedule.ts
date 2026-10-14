@@ -5,6 +5,7 @@ export function parseNodeTimeSchedule(content: string): NodeTimeSchedule {
   const fields = content.trim().split(/\s+/);
   if (fields.length !== 2) return { valid: false };
   const list = (value: string, max: number): number[] | null => {
+    if (value === "*") return Array.from({ length: max + 1 }, (_, index) => index);
     if (!/^\d{1,2}(,\d{1,2})*$/.test(value)) return null;
     const values = value.split(",").map(Number);
     if (values.some(item => item > max)) return null;
@@ -21,6 +22,11 @@ export function describeNodeTimeSchedule(content: string, locale = "zh-CN"): str
   const schedule = parseNodeTimeSchedule(content);
   const zh = locale.startsWith("zh");
   if (!schedule.valid) return zh ? "无法识别启动时间，请核对原始配置。" : "Unable to interpret the start times. Check the original configuration.";
+  const allMinutes = schedule.minutes.length === 60;
+  const allHours = schedule.hours.length === 24;
+  if (allMinutes && allHours) return zh ? "全天每分钟启动采集，共 1440 次/天" : "Start sampling every minute throughout the day; 1440 starts per day";
+  if (allHours) return zh ? `每小时的 ${schedule.minutes.join("、")} 分启动采集，共 ${schedule.times.length} 次/天` : `Start sampling at minute(s) ${schedule.minutes.join(", ")} of every hour; ${schedule.times.length} starts per day`;
+  if (allMinutes) return zh ? `每天 ${schedule.hours.join("、")} 点的每分钟启动采集，共 ${schedule.times.length} 次/天` : `Start sampling every minute during hour(s) ${schedule.hours.join(", ")} daily; ${schedule.times.length} starts per day`;
   if (schedule.times.length <= 12) return zh ? `每天 ${schedule.times.join("、")} 启动采集` : `Start sampling daily at ${schedule.times.join(", ")}`;
   return zh
     ? `每天 ${schedule.hours.join("、")} 点的 ${schedule.minutes.join("、")} 分启动采集，共 ${schedule.times.length} 次`

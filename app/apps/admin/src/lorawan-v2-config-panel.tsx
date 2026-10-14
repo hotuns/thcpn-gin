@@ -543,7 +543,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                       }}
                     />
                   </Space>
-                  <Form.Item label="时间配置文本" required extra="格式：分钟列表 小时列表。10,20 10 表示每天 10:10、10:20 启动采集，按设备时钟执行。">
+                  <Form.Item label="时间配置文本" required extra="格式：分钟列表 小时列表。* 表示所有分钟或小时；10,20,30 * 表示每小时第 10、20、30 分启动，* * 表示全天每分钟启动。按设备时钟执行。">
                     {timeConfig.isLoading ? <p>正在读取时间配置</p> : timeConfig.error ? <Alert type="warning" showIcon message={formatApiError(timeConfig.error).message}/> : timeConfig.data ? <Alert type="info" message="当前源端时间配置" description={<><p>{describeNodeTimeSchedule(timeConfig.data.content,locale)}</p><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{timeConfig.data.content}</pre><span>更新时间：{new Date(timeConfig.data.updated_at ?? timeConfig.data.created_at).toLocaleString()}</span><Button size="small" onClick={() => setTimeContent(timeConfig.data!.content)}>载入编辑</Button><p>源端保存的配置不等于设备已应用。</p></>}/> : <p>暂无时间配置</p>}
                     <Input.TextArea
                       rows={8}
