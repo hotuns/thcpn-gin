@@ -106,7 +106,7 @@ func (h *Handler) AdminListLoRaWANV2NodeSensorConfigs(c *gin.Context) {
 	h.adminLoRaWANV2NodeGet(c, "/sensor_configs")
 }
 func (h *Handler) AdminCreateLoRaWANV2NodeSensorConfig(c *gin.Context) {
-	h.adminLoRaWANV2NodeWrite(c, "/sensor_config", "lorawan_v2.node_sensor_config.create", http.StatusCreated)
+	h.adminLoRaWANV2NodeWrite(c, "/sensor_config", "lorawan_v2.node_sensor_config.create", http.StatusOK)
 }
 func (h *Handler) AdminGetLatestLoRaWANV2NodeSensorConfig(c *gin.Context) {
 	h.adminLoRaWANV2NodeGet(c, "/sensor_config/latest")
@@ -175,7 +175,15 @@ func (h *Handler) adminLoRaWANV2GatewayWrite(c *gin.Context, suffix, action stri
 		httpx.WriteAppError(c, err)
 		return
 	}
-	h.adminLoRaWANV2Write(c, http.MethodPost, "/device/"+url.PathEscape(sn)+suffix, loraWANV2JSONBody(c), action, status)
+	body := loraWANV2JSONBody(c)
+	if suffix == "/config" {
+		body, err = normalizeLoRaWANV2GatewayConfig(body, sn)
+		if err != nil {
+			httpx.WriteAppError(c, err)
+			return
+		}
+	}
+	h.adminLoRaWANV2Write(c, http.MethodPost, "/device/"+url.PathEscape(sn)+suffix, body, action, status)
 }
 func (h *Handler) adminLoRaWANV2NodeWrite(c *gin.Context, suffix, action string, status int) {
 	path, ok := h.loraWANV2NodePath(c, suffix)
@@ -192,8 +200,8 @@ func (h *Handler) loraWANV2NodePath(c *gin.Context, suffix string) (string, bool
 		return "", false
 	}
 	index, err := strconv.Atoi(c.Param("node_index"))
-	if err != nil || index < 1 || index > 255 {
-		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "node_index must be between 1 and 255"))
+	if err != nil || index < 1 || index > 254 {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "node_index must be between 1 and 254"))
 		return "", false
 	}
 	return "/device/" + url.PathEscape(sn) + "/node/" + strconv.Itoa(index) + suffix, true

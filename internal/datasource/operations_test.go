@@ -25,10 +25,8 @@ func TestCreateLoRaWANV2GatewayUsesUpstreamSNAndSurvivesCatalogFailure(t *testin
 		case r.Method == http.MethodPost && r.URL.Path == "/device":
 			_, _ = w.Write([]byte(`{"success":true,"payload":{"sn":"` + sn + `","node_count":1}}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/device/"+sn+"/config":
-			var request struct {
-				Content map[string]any `json:"content"`
-			}
-			if json.NewDecoder(r.Body).Decode(&request) != nil || request.Content["system"].(map[string]any)["did"] != sn {
+			var request map[string]any
+			if json.NewDecoder(r.Body).Decode(&request) != nil || request["system"].(map[string]any)["did"] != sn || request["system"].(map[string]any)["cid"] != nil {
 				t.Error("default configuration missing generated device SN")
 			}
 			_, _ = w.Write([]byte(`{"success":true,"payload":{"id":1}}`))

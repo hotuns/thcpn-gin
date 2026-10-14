@@ -1,4 +1,7 @@
 import { invalidateNodeNames } from "@thcpn/workspace";
+import { validateSensorWaitTime } from "./sensor-config-wait-time";
+import { useLocale } from "@thcpn/i18n";
+import { describeNodeTimeSchedule, parseNodeTimeSchedule } from "@thcpn/api";
 import { NodeSensorEditor, serializeNodeSensorDraft } from './node-sensor-editor';
 import { sensorConfigTargets, submitNodeSensorBatch, type NodeConfigResult } from "./node-config-batch";
 import { AdminNodeLocationEditor } from "./node-location-editor";
@@ -12,6 +15,7 @@ import {
   Collapse,
   Form,
   Input,
+  InputNumber,
   Popconfirm,
   Select,
   Space,
@@ -67,6 +71,7 @@ export function LoRaWANV2ConfigPanel({ deviceId }: { deviceId: string }) {
 }
 
 function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
+  const {locale}=useLocale();
   const { message, modal } = AntApp.useApp();
   const [sensorForm] = Form.useForm();
   const queryClient = useQueryClient();
@@ -90,9 +95,14 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
   const [sensorMetricsJSON, setSensorMetricsJSON] = useState("[]");
 
   const [sensorDirty, setSensorDirty] = useState(false);
+  const [sensorWaitTime,setSensorWaitTime]=useState<number|null>(0);
   const loadedSensorConfig = useRef("");
+  useEffect(()=>{setSensorWaitTime(0);loadedSensorConfig.current="";},[deviceId,node]);
 
   const [timeContent, setTimeContent] = useState("");
+  const timeConfig = useQuery({ queryKey: ["admin",deviceId,node,"time-config"], queryFn: () => api.admin.nodeTimeConfig(deviceId,node), enabled: Boolean(node), retry: false });
+  const timeHistory = useQuery({ queryKey: ["admin",deviceId,node,"time-configs"], queryFn: () => api.admin.nodeTimeConfigs(deviceId,node), enabled: Boolean(node), retry: false });
+  const reportedInfo = useQuery({ queryKey: ["admin",deviceId,"lorawan-info"], queryFn: () => api.admin.lorawanInfo(deviceId), retry: false });
   const [busy, setBusy] = useState("");
   const [applyToOthers, setApplyToOthers] = useState(false);
   const [selectedOtherNodes, setSelectedOtherNodes] = useState<number[]>([]);
@@ -184,11 +194,13 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
     const current = payload(latest.data);
     const content = Array.isArray(current.content) ? current.content : [];
     const metrics = Array.isArray(current.metrics) ? current.metrics : [];
-    const configKey = `${node}:${text(current.upstream_config_id ?? current.id, "")}:${JSON.stringify(content)}:${JSON.stringify(metrics)}`;
+    const waitTime=Number(current.wait_time ?? 0);
+    const configKey = `${node}:${text(current.upstream_config_id ?? current.id, "")}:${JSON.stringify(content)}:${JSON.stringify(metrics)}:${waitTime}`;
     if (loadedSensorConfig.current === configKey) return;
     loadedSensorConfig.current = configKey;
     setSensorJSON(JSON.stringify(content, null, 2));
     setSensorMetricsJSON(JSON.stringify(metrics, null, 2));
+    setSensorWaitTime(waitTime);
 
     setSensorDirty(false);
   }, [latest.data, node]);
@@ -225,13 +237,13 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
         result = await api.admin.updateDeviceSourceConfig(
           deviceId,
           "gateway",
-          content.content && typeof content.content === "object" ? content : { content },
+          content.content && typeof content.content === "object" ? content.content as JsonRecord : content,
         );
         await gateways.refetch();
       }
       if (kind === "sensor") {
         await sensorForm.validateFields();
-        const request = { mode: "advanced", wait_time: 0, content: parseArray(sensorJSON), metrics: parseArray(sensorMetricsJSON) };
+        const request = { mode: "advanced", wait_time: validateSensorWaitTime(sensorWaitTime), content: parseArray(sensorJSON), metrics: parseArray(sensorMetricsJSON) };
         const results = await submitNodeSensorBatch(deviceId, sensorTargets, request, setSensorResults);
         setNeedsRecovery(results.some(item => item.status === "sync_failed"));
         const failed = results.filter(item => item.status === "failed").length;
@@ -257,6 +269,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
           node,
         );
       const state = result.write_state as JsonRecord | undefined;
+      if (kind==="time") { await timeConfig.refetch(); await timeHistory.refetch(); }
       const partial = state?.platform === "failed";
       setNeedsRecovery(partial);
       setFeedback(
@@ -284,7 +297,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
     {
       title: "配置内容",
       render: (_: unknown, item: JsonRecord) => (
-        <div className="lora-history-content"><Button size="small" onClick={async () => { try { await navigator.clipboard.writeText(formattedConfiguration(item.content ?? item)); void message.success("JSON 已复制"); } catch { void message.error("复制失败，请展开 JSON 后手动复制"); } }}>复制 JSON</Button><details className="lora-history-json"><summary>查看 JSON</summary><pre>{formattedConfiguration(item.content ?? item)}</pre></details></div>
+        <div className="lora-history-content"><Button size="small" onClick={async () => { try { await navigator.clipboard.writeText(formattedConfiguration(item.config_content ?? item.content ?? item)); void message.success("JSON 已复制"); } catch { void message.error("复制失败，请展开 JSON 后手动复制"); } }}>复制 JSON</Button><details className="lora-history-json"><summary>查看 JSON</summary><pre>{formattedConfiguration(item.config_content ?? item.content ?? item)}</pre></details></div>
       ),
     },
   ];
@@ -293,6 +306,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
     : null;
   return (
     <div className="admin-device-detail-content">
+      <Alert type="info" showIcon message="设备上报信息" description={reportedInfo.isLoading ? "正在读取设备上报信息" : reportedInfo.error ? formatApiError(reportedInfo.error).message : `设备上报 ICCID：${reportedInfo.data?.iccid || "未上报"} · 固件版本：${reportedInfo.data?.firmware_version || "未上报"}`} />
       <section className="admin-detail-section">
         <div className="admin-detail-section-head">
           <div>
@@ -457,6 +471,9 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                     setSensorJSON(draft.content); setSensorMetricsJSON(draft.metrics); setSensorDirty(true);
                   }}>
                     <NodeSensorEditor key={node} contentJSON={sensorJSON} metricsJSON={sensorMetricsJSON} templates={loraTemplates} onChange={(content, metrics) => {setSensorJSON(content); setSensorMetricsJSON(metrics); setSensorDirty(true);}} />
+                    <Form.Item label="等待时间（wait_time）" required extra="单位：秒，范围 0–65535；与节点传感器配置一起提交，批量应用时所有选中节点使用同一值。">
+                      <InputNumber aria-label="等待时间（秒）" min={0} max={65535} precision={0} step={1} value={sensorWaitTime} onChange={value=>{setSensorWaitTime(value);setSensorDirty(true);}} addonAfter="秒" style={{width:240,maxWidth:"100%"}} />
+                    </Form.Item>
                     <div className="lora-config-step"><span className="lora-config-step-number">3</span><div><strong>确认并提交</strong><span>提交会写入源端；“已接受”不等于设备已应用。</span></div></div>
                     <div className="lora-config-apply-nodes">
                       <Checkbox checked={applyToOthers && sensorNodeOptions.length > 1} disabled={Boolean(busy) || sensorNodeOptions.length < 2} onChange={event => setApplyToOthers(event.target.checked)}>同时应用到其他节点</Checkbox>
@@ -467,6 +484,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                       try {
                         await sensorForm.validateFields();
                         parseArray(sensorJSON); parseArray(sensorMetricsJSON);
+                        validateSensorWaitTime(sensorWaitTime);
                         modal.confirm({
                           title: "确认同时应用到其他节点？",
                           content: <div><p>以下 {sensorTargets.length} 个节点的协议和指标将更新为当前编辑的配置：</p><ul>{sensorTargets.map(index => <li key={index}>{sensorNodeOptions.find(item => item.value === index)?.label ?? `节点 ${index}`}</li>)}</ul><p>配置提交至 LoRa V2 服务后，设备是否应用需等待回报。</p></div>,
@@ -524,16 +542,20 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                       }}
                     />
                   </Space>
-                  <Form.Item label="时间配置文本" required>
+                  <Form.Item label="时间配置文本" required extra="格式：分钟列表 小时列表。10,20 10 表示每天 10:10、10:20 启动采集，按设备时钟执行。">
+                    {timeConfig.isLoading ? <p>正在读取时间配置</p> : timeConfig.error ? <Alert type="warning" showIcon message={formatApiError(timeConfig.error).message}/> : timeConfig.data ? <Alert type="info" message="当前源端时间配置" description={<><p>{describeNodeTimeSchedule(timeConfig.data.content,locale)}</p><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{timeConfig.data.content}</pre><span>更新时间：{new Date(timeConfig.data.updated_at ?? timeConfig.data.created_at).toLocaleString()}</span><Button size="small" onClick={() => setTimeContent(timeConfig.data!.content)}>载入编辑</Button><p>源端保存的配置不等于设备已应用。</p></>}/> : <p>暂无时间配置</p>}
                     <Input.TextArea
                       rows={8}
                       value={timeContent}
+                      placeholder="10,20 10"
                       onChange={(event) => setTimeContent(event.target.value)}
                     />
                   </Form.Item>
                   <Popconfirm title={`提交节点 ${node} 的时间配置？`} description="配置将写入 LoRa V2 服务，设备是否应用需等待回报。" okText="确认提交" cancelText="取消" onConfirm={() => void run("time")}>
                     <Button type="primary" disabled={!timeContent} loading={busy === "time"}>提交到 LoRa V2</Button>
                   </Popconfirm>
+                  {timeContent.trim() ? <Alert type={parseNodeTimeSchedule(timeContent).valid ? "info" : "warning"} showIcon message={describeNodeTimeSchedule(timeContent,locale)}/> : null}
+                  {timeHistory.error ? <Alert type="warning" message={formatApiError(timeHistory.error).message}/> : <Collapse items={(timeHistory.data ?? []).map(item => ({key:String(item.id),label:`配置 ${item.id} · ${new Date(item.created_at).toLocaleString()}`,children:<><p>{describeNodeTimeSchedule(item.content,locale)}</p><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{item.content}</pre></>}))}/>}
                 </Form>
               ),
             },

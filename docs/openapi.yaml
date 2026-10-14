@@ -64,6 +64,66 @@ tags:
   - name: AuditLogs
     description: Sensitive operation audit log APIs
 paths:
+  /api/v1/devices/{device_id}/lorawan-v2/info:
+    get: &loraDeviceInfo
+      tags: [Devices]
+      summary: Read latest reported LoRaWAN V2 gateway information within 90 days
+      description: Reads bounded /infos rather than the upstream /info endpoint with a known collection mismatch. Reported ICCID is independent from the manually recorded asset ICCID.
+      parameters:
+        - {in: path, name: device_id, required: true, schema: {$ref: "#/components/schemas/UUID"}}
+      responses:
+        "200":
+          description: Gateway report or null
+          content:
+            application/json:
+              schema: {oneOf: [{$ref: "#/components/schemas/LoRaWANV2ReportedInfo"}, {type: "null"}]}
+  /api/v1/admin/devices/{device_id}/lorawan-v2/info:
+    get: *loraDeviceInfo
+  /api/v1/devices/{device_id}/nodes/{node_index}/time-config:
+    get: &loraNodeTimeLatest
+      tags: [Devices]
+      summary: Read latest LoRaWAN V2 node time configuration
+      description: Requires device view permission. Source configuration does not confirm that firmware has applied it. An unavailable upstream route is an error, not an empty configuration.
+      parameters: &loraNodeTimeParams
+        - {in: path, name: device_id, required: true, schema: {$ref: "#/components/schemas/UUID"}}
+        - {in: path, name: node_index, required: true, schema: {type: integer, minimum: 1, maximum: 254}}
+      responses:
+        "200":
+          description: Latest saved configuration or null if none exists
+          content:
+            application/json:
+              schema: {oneOf: [{$ref: "#/components/schemas/LoRaWANV2TimeConfig"}, {type: "null"}]}
+  /api/v1/admin/devices/{device_id}/nodes/{node_index}/time-config:
+    get: *loraNodeTimeLatest
+  /api/v1/devices/{device_id}/nodes/{node_index}/time-configs:
+    get: &loraNodeTimeHistory
+      tags: [Devices]
+      summary: Read LoRaWAN V2 node time configuration history
+      parameters: *loraNodeTimeParams
+      responses:
+        "200":
+          description: Saved configuration history
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/LoRaWANV2TimeConfig"}}
+  /api/v1/admin/devices/{device_id}/nodes/{node_index}/time-configs:
+    get: *loraNodeTimeHistory
+  /api/v1/devices/{device_id}/nodes/{node_index}/time-configs/{config_id}:
+    get: &loraNodeTimeDetail
+      tags: [Devices]
+      summary: Read an individual LoRaWAN V2 node time configuration
+      parameters:
+        - {in: path, name: device_id, required: true, schema: {$ref: "#/components/schemas/UUID"}}
+        - {in: path, name: node_index, required: true, schema: {type: integer, minimum: 1, maximum: 254}}
+        - {in: path, name: config_id, required: true, schema: {type: integer, minimum: 0}}
+      responses:
+        "200":
+          description: Saved configuration
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LoRaWANV2TimeConfig"}
+  /api/v1/admin/devices/{device_id}/nodes/{node_index}/time-configs/{config_id}:
+    get: *loraNodeTimeDetail
   /api/v1/workspaces/{workspace_id}/wallboards:
     parameters:
       - {name: workspace_id, in: path, required: true, schema: {type: string, format: uuid}}
@@ -2285,7 +2345,7 @@ paths:
       summary: Create node sensor configuration from a JSON object
       security: [{bearerAuth: []}, {devUserHeader: []}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}
-      responses: {"201": {description: Node sensor configuration payload, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "400": {$ref: "#/components/responses/InvalidArgument"}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
+      responses: {"200": {description: Node sensor configuration payload, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "400": {$ref: "#/components/responses/InvalidArgument"}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
   /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/gateways/{gateway_sn}/nodes/{node_index}/sensor-configs/latest:
     parameters: [{$ref: "#/components/parameters/DataSourceID"}, {$ref: "#/components/parameters/LoRaWANV2GatewaySN"}, {$ref: "#/components/parameters/LoRaWANV2NodeIndex"}]
     get:
@@ -6841,7 +6901,7 @@ components:
       name: node_index
       in: path
       required: true
-      schema: {type: integer, minimum: 1, maximum: 255}
+      schema: {type: integer, minimum: 1, maximum: 254}
     LoRaWANV2ConfigID:
       name: config_id
       in: path
@@ -9444,6 +9504,29 @@ components:
         streams:
           type: array
           items: { $ref: "#/components/schemas/DataStream" }
+    LoRaWANV2TimeConfig:
+      type: object
+      required: [id, gateway_sn, node_index, content, wait_time, created_at]
+      properties:
+        id: {type: integer, format: int64}
+        gateway_sn: {type: string}
+        node_index: {type: integer, minimum: 1, maximum: 254}
+        content: {type: string, description: "Daily start schedule: comma-separated minutes, a space, then comma-separated hours. Example '10,20 10' starts daily at 10:10 and 10:20 according to the device clock. Preserve unsupported source text without guessing execution times."}
+        wait_time: {type: integer, minimum: 0, maximum: 65535}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: [string, "null"], format: date-time}
+    LoRaWANV2ReportedInfo:
+      type: object
+      required: [ts, iccid, firmware_version, cell, battery, latitude, longitude, altitude]
+      properties:
+        ts: {type: object, additionalProperties: true, description: BSON extended JSON date in milliseconds}
+        iccid: {type: string}
+        firmware_version: {type: string}
+        cell: {type: integer}
+        battery: {type: number}
+        latitude: {type: number}
+        longitude: {type: number}
+        altitude: {type: number}
     GatewayNodeList:
       type: object
       required: [items]

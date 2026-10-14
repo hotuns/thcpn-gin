@@ -10,6 +10,7 @@ import { TelemetryTable } from "./telemetry-table";
 import { TelemetryCharts } from "./telemetry-charts";
 import { TelemetryLoading } from "./telemetry-loading";
 import { DeviceQueryToolbar, initialQueryRange } from "./device-query-toolbar";
+import { LoRaWANNodeTimeConfig } from "./lorawan-node-time-config";
 
 export const nodeDeviceId = (node: GatewayNode) => node.target.kind === "device" ? node.target.device_id : node.target.gateway_device_id;
 export const nodeMetricKey = (stream: GatewayNode["streams"][number]) => `${stream.code}\u0000${stream.unit ?? ""}`;
@@ -23,6 +24,7 @@ export function GatewayNodeData({ gateway, workspaceId }: { gateway: Device; wor
   const nodes = nodesQuery.data?.items ?? [];
   const requestedNode = params.get("node") ?? "";
   const selectedNode = nodes.some((node) => node.key === requestedNode) ? requestedNode : nodes[0]?.key ?? "";
+  const currentNode = nodes.find(node=>node.key===selectedNode);
   const [mode, setMode] = useState<"node" | "compare">("node");
   const [range, setRange] = useState(() => initialQueryRange(gateway.source_family === "lorawan_v2" ? 6 : 168));
   const draggedMetric = useRef<string | null>(null);
@@ -106,6 +108,7 @@ export function GatewayNodeData({ gateway, workspaceId }: { gateway: Device; wor
   const points = series.flatMap((item) => item.points.map((point) => ({ ...point, series: item })));
 
   return <div className="device-data-layout"><div className="device-data-content gateway-node-data">
+    {gateway.source_family==="lorawan_v2" && mode==="node" && currentNode?.target.kind==="gateway_node" ? <LoRaWANNodeTimeConfig deviceId={gateway.id} workspaceId={workspaceId} nodeIndex={currentNode.target.node_index}/> : null}
     <Panel className="gateway-node-query">
       <div className="panel-header"><div><h2 className="panel-title">节点数据查询</h2><div className="panel-kicker">选择节点与指标，查看趋势或对比节点</div></div><div className="header-actions">{dirty && <Badge tone="warning">条件未应用</Badge>}<Button disabled={invalid || !selected.length || loading || !selectedNode} onClick={search}><Search size={14}/>{loading ? "查询中…" : dirty ? "查询" : "刷新"}</Button></div></div>
       {nodesQuery.error && <StateView type="error" title="节点加载失败" description={formatApiError(nodesQuery.error).message} />}

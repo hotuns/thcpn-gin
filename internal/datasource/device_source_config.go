@@ -57,8 +57,11 @@ func (h *Handler) AdminDeviceSourceConfig(c *gin.Context) {
 		} else {
 			path += "/time_config"
 			if c.Request.Method == http.MethodGet {
-				httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "time configuration history is not supported"))
-				return
+				if c.Query("latest") == "true" {
+					path += "/latest"
+				} else {
+					path += "s"
+				}
 			}
 		}
 	default:
@@ -77,6 +80,13 @@ func (h *Handler) AdminDeviceSourceConfig(c *gin.Context) {
 		if body == nil {
 			httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 			return
+		}
+		if kind == "gateway" {
+			body, err = normalizeLoRaWANV2GatewayConfig(body, ref.GatewaySN)
+			if err != nil {
+				httpx.WriteAppError(c, err)
+				return
+			}
 		}
 		if kind == "sensor" {
 			nodeIndex, _ = strconv.Atoi(c.Query("node_index"))
@@ -139,7 +149,7 @@ func (h *Handler) AdminDeviceSourceConfig(c *gin.Context) {
 	var syncErr error
 	if compiled != nil {
 		syncErr = h.service.syncLoRaWANV2Node(c.Request.Context(), input, nodeIndex)
-	} else {
+	} else if kind != "time" {
 		_, syncErr = h.service.SyncLoRaWANV2Gateway(c.Request.Context(), input)
 	}
 	status := "completed"

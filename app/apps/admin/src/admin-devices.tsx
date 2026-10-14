@@ -915,6 +915,7 @@ function DeviceDetailPanel({
   onUnassign: () => void;
 }) {
   const children = (childrenData?.items as JsonRecord[] | undefined) ?? [];
+  const reportedInfo=useQuery({queryKey:["admin",String(device.id),"lorawan-info"],queryFn:()=>api.admin.lorawanInfo(String(device.id)),enabled:device.source_family==="lorawan_v2",staleTime:60000,retry:false});
   const events = (lifecycleData?.events as JsonRecord[] | undefined) ?? [];
   const capabilities = Array.isArray(device.capabilities) ? device.capabilities.map(String) : [];
   const capabilityDefinitions = useQuery({ queryKey: ["admin", "metadata", "capabilities"], queryFn: api.admin.metadata });
@@ -934,7 +935,8 @@ function DeviceDetailPanel({
       <div className="admin-detail-section-head"><div><h2>设备资料</h2><span>系统设备的身份与资产状态</span></div><Button icon={<Pencil size={14} />} onClick={() => onOpen("edit")}>编辑</Button></div>
       <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }} items={[
         { key: "serial", label: "平台序列号", children: <Tooltip title="平台生成的资产编号，用于认领和查找设备，不一定等于厂家 SN。"><span className="mono">{value(device.serial_no)}</span></Tooltip> },
-        { key: "iccid", label: "物联卡 ICCID", children: <span className="mono">{value(device.iccid, "未记录")}</span> },
+        { key: "iccid", label: device.source_family==="lorawan_v2" ? "人工登记 ICCID" : "物联卡 ICCID", children: <span className="mono">{value(device.iccid, "未记录")}</span> },
+        ...(device.source_family==="lorawan_v2" ? [{key:"reported-iccid",label:"设备上报 ICCID",children:<span className="mono">{reportedInfo.isLoading ? "读取中" : reportedInfo.error ? formatApiError(reportedInfo.error).message : reportedInfo.data?.iccid || "未上报"}</span>}] : []),
         { key: "type", label: "设备类型", children: deviceModelLabel(device) },
         { key: "externalId", label: device.source_family === "lorawan_v2" ? "采集服务网关 SN" : "采集服务设备 ID", children: <Tooltip title="用于关联采集数据源中的设备；LoRaWAN V2 使用网关 SN，THCPN/Carbon 使用源数据库编号。"><span className="mono">{value(device.source_family === "lorawan_v2" ? device.external_key : device.external_device_id, "未关联")}</span></Tooltip> },
         { key: "id", label: "平台设备 ID", span: 2, children: <Tooltip title="平台内部唯一 UUID，用于接口、关联和排障，不是硬件 SN。"><span className="mono admin-break-value">{value(device.id)}</span></Tooltip> },

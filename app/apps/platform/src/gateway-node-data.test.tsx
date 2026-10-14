@@ -13,6 +13,7 @@ beforeAll(() => { Element.prototype.scrollIntoView = vi.fn(); });
 afterEach(async () => { await act(async () => root?.unmount()); container?.remove(); vi.restoreAllMocks(); });
 const flush = () => new Promise((resolve) => setTimeout(resolve, 20));
 async function mount(nodes: GatewayNode[], family: string) {
+ vi.spyOn(api.devices,"nodeTimeConfig").mockResolvedValue(null);
  vi.spyOn(api.devices, "nodes").mockResolvedValue({ items: nodes });
  container=document.createElement("div"); document.body.append(container); root=createRoot(container);
  const client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0}}});

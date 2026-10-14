@@ -8,6 +8,7 @@ import { workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, IconButton, Panel, StateView, NodeNameEditor } from "./platform-ui";
 import { NodeVitals, useNodeRuntime } from "./node-vitals";
 import { NodeLocationEditor } from "./node-location-editor";
+import { LoRaWANGatewayInfo } from "./lorawan-gateway-info";
 
 
 export function GatewayOverview({ device, workspaceId }: { device: Device; workspaceId: string }) {
@@ -24,6 +25,7 @@ export function GatewayOverview({ device, workspaceId }: { device: Device; works
   });
   const open = (node?: string) => setParams((current) => { const next = new URLSearchParams(current); next.set("tab", "data"); if (node) next.set("node", node); return next; });
   return <div className="gateway-overview">
+    {device.source_family==="lorawan_v2" ? <LoRaWANGatewayInfo deviceId={device.id} workspaceId={workspaceId}/> : null}
     <section className="gateway-overview-hero"><div className="gateway-overview-hero-main"><div className="gateway-overview-icon"><RadioTower size={22}/></div><div><span>组网站概览</span><h2>{device.name}</h2><p>节点配置与最近三天的数据情况</p></div></div><div className="gateway-overview-hero-meta"><Button variant="secondary" onClick={() => { void nodes.refetch(); void runtime.refetch(); }}>刷新</Button></div></section>
     {nodes.error ? <StateView type="error" title="节点读取失败" description={formatApiError(nodes.error).message}/> : nodes.isLoading ? <StateView type="loading" title="正在读取节点" description="正在汇总节点与指标。"/> : <>
       <div className="gateway-overview-kpis"><div><span>配置节点</span><strong>{rows.length}</strong><small>个节点</small></div><div><span>数据指标</span><strong>{rows.reduce((total, row) => total + row.node.streams.length, 0)}</strong><small>个指标</small></div><div><span>最近有数据</span><strong>{rows.filter((row) => row.latest).length}</strong><small>最近三天</small></div><div><span>读取失败</span><strong>{rows.filter((row) => row.error).length}</strong><small>个节点</small></div></div>

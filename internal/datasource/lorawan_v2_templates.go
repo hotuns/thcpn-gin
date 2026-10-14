@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"math"
 	"reflect"
 	"sort"
 	"strconv"
@@ -42,7 +43,17 @@ func (s *Service) compileLoRaWANV2NodeConfig(ctx context.Context, raw any) (lora
 	}
 	result := loraWANV2CompiledConfig{Status: "managed", Instances: []map[string]any{}, Metrics: []loraWANV2MetricSemantic{}}
 	waitTimeProvided := false
-	if value, ok := input["wait_time"].(float64); ok {
+	if raw, exists := input["wait_time"]; exists {
+		value, ok := raw.(float64)
+		if integer, isInt := raw.(int); isInt {
+			value, ok = float64(integer), true
+		}
+		if integer, isInt64 := raw.(int64); isInt64 {
+			value, ok = float64(integer), true
+		}
+		if !ok || math.Trunc(value) != value || value < 0 || value > 65535 {
+			return result, apperr.New(apperr.KindInvalidArgument, "wait_time must be an integer between 0 and 65535 seconds")
+		}
 		result.WaitTime = int(value)
 		waitTimeProvided = true
 	}

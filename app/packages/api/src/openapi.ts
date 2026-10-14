@@ -4,6 +4,330 @@
  */
 
 export interface paths {
+    "/api/v1/devices/{device_id}/lorawan-v2/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read latest reported LoRaWAN V2 gateway information within 90 days
+         * @description Reads bounded /infos rather than the upstream /info endpoint with a known collection mismatch. Reported ICCID is independent from the manually recorded asset ICCID.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    device_id: components["schemas"]["UUID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Gateway report or null */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LoRaWANV2ReportedInfo"] | null;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/lorawan-v2/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read latest reported LoRaWAN V2 gateway information within 90 days
+         * @description Reads bounded /infos rather than the upstream /info endpoint with a known collection mismatch. Reported ICCID is independent from the manually recorded asset ICCID.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    device_id: components["schemas"]["UUID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Gateway report or null */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LoRaWANV2ReportedInfo"] | null;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/nodes/{node_index}/time-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read latest LoRaWAN V2 node time configuration
+         * @description Requires device view permission. Source configuration does not confirm that firmware has applied it. An unavailable upstream route is an error, not an empty configuration.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    device_id: components["schemas"]["UUID"];
+                    node_index: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Latest saved configuration or null if none exists */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LoRaWANV2TimeConfig"] | null;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/nodes/{node_index}/time-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read latest LoRaWAN V2 node time configuration
+         * @description Requires device view permission. Source configuration does not confirm that firmware has applied it. An unavailable upstream route is an error, not an empty configuration.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    device_id: components["schemas"]["UUID"];
+                    node_index: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Latest saved configuration or null if none exists */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LoRaWANV2TimeConfig"] | null;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/nodes/{node_index}/time-configs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read LoRaWAN V2 node time configuration history */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    device_id: components["schemas"]["UUID"];
+                    node_index: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Saved configuration history */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LoRaWANV2TimeConfig"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/nodes/{node_index}/time-configs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read LoRaWAN V2 node time configuration history */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    device_id: components["schemas"]["UUID"];
+                    node_index: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Saved configuration history */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LoRaWANV2TimeConfig"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/nodes/{node_index}/time-configs/{config_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read an individual LoRaWAN V2 node time configuration */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    device_id: components["schemas"]["UUID"];
+                    node_index: number;
+                    config_id: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Saved configuration */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LoRaWANV2TimeConfig"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/nodes/{node_index}/time-configs/{config_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read an individual LoRaWAN V2 node time configuration */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    device_id: components["schemas"]["UUID"];
+                    node_index: number;
+                    config_id: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Saved configuration */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LoRaWANV2TimeConfig"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/wallboards": {
         parameters: {
             query?: never;
@@ -6462,6 +6786,32 @@ export interface components {
             target: components["schemas"]["DeviceNodeTarget"];
             streams: components["schemas"]["DataStream"][];
         };
+        LoRaWANV2TimeConfig: {
+            /** Format: int64 */
+            id: number;
+            gateway_sn: string;
+            node_index: number;
+            /** @description Daily start schedule: comma-separated minutes, a space, then comma-separated hours. Example '10,20 10' starts daily at 10:10 and 10:20 according to the device clock. Preserve unsupported source text without guessing execution times. */
+            content: string;
+            wait_time: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at?: string | null;
+        };
+        LoRaWANV2ReportedInfo: {
+            /** @description BSON extended JSON date in milliseconds */
+            ts: {
+                [key: string]: unknown;
+            };
+            iccid: string;
+            firmware_version: string;
+            cell: number;
+            battery: number;
+            latitude: number;
+            longitude: number;
+            altitude: number;
+        };
         GatewayNodeList: {
             items: components["schemas"]["GatewayNode"][];
         };
@@ -10411,7 +10761,7 @@ export interface operations {
         };
         responses: {
             /** @description Node sensor configuration payload */
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

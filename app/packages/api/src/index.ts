@@ -1,6 +1,7 @@
 import type { components } from "./openapi";
 export * from "./display-labels";
 export * from "./sampling-profile";
+export * from "./node-time-schedule";
 
 type Schema<Name extends keyof components["schemas"]> =
   components["schemas"][Name];
@@ -37,6 +38,8 @@ export type DeviceMapItem = { device_id: string; gateway_device_id?: string; nod
 export type DeviceMapResult = { items: DeviceMapItem[]; total: number; located: number; unlocated: number; unclassified: number };
 export type SourceOperation = Schema<"SourceOperation">;
 export type GatewayNode = Schema<"GatewayNode">;
+export type LoRaWANV2TimeConfig = Schema<"LoRaWANV2TimeConfig">;
+export type LoRaWANV2GatewayInfo = Schema<"LoRaWANV2ReportedInfo">;
 export type DeviceNodeTarget = Schema<"DeviceNodeTarget">;
 export type DeviceInteractionContext = Schema<"DeviceInteractionContext">;
 export type DeviceChild = Schema<"DeviceChild">;
@@ -868,6 +871,10 @@ export const api = {
       ),
     updateNodeLocation: (id: string, index: number, location: {latitude: number | null; longitude: number | null}) => jsonRequest(`/api/v1/devices/${encodeURIComponent(id)}/nodes/${index}/location`, "PATCH", location),
     renameNode: (id: string, index: number, name: string) => jsonRequest<{name: string; custom_name: string}>(`/api/v1/devices/${encodeURIComponent(id)}/nodes/${index}`, "PATCH", {name}),
+    nodeTimeConfig: (id: string, index: number) => request<LoRaWANV2TimeConfig | null>(`/api/v1/devices/${encodeURIComponent(id)}/nodes/${index}/time-config`),
+    nodeTimeConfigs: (id: string, index: number) => request<LoRaWANV2TimeConfig[]>(`/api/v1/devices/${encodeURIComponent(id)}/nodes/${index}/time-configs`),
+    nodeTimeConfigDetail: (id: string, index: number, configId: number) => request<LoRaWANV2TimeConfig>(`/api/v1/devices/${encodeURIComponent(id)}/nodes/${index}/time-configs/${configId}`),
+    lorawanInfo: (id: string) => request<LoRaWANV2GatewayInfo | null>(`/api/v1/devices/${encodeURIComponent(id)}/lorawan-v2/info`),
     nodes: (id: string) => request<Schema<"GatewayNodeList">>(`/api/v1/devices/${encodeURIComponent(id)}/nodes`),
     nodeRuntime: (id: string) => request<{ items: NodeRuntime[]; refreshed_at: string }>(`/api/v1/devices/${encodeURIComponent(id)}/nodes/runtime`),
     reconcileConfig: (id: string) => jsonRequest<JsonRecord>(`/api/v1/devices/${encodeURIComponent(id)}/config/resync`, "POST", {}),
@@ -1257,6 +1264,10 @@ export const api = {
       request<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/logs${queryString(input as Record<string, string | number | boolean>)}`),
     updateNodeLocation: (id: string, index: number, location: {latitude: number | null; longitude: number | null}) => jsonRequest(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes/${index}/location`, "PATCH", location),
     renameNode: (id: string, index: number, name: string) => jsonRequest<{name: string; custom_name: string}>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes/${index}`, "PATCH", {name}),
+    nodeTimeConfig: (id: string, index: number) => request<LoRaWANV2TimeConfig | null>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes/${index}/time-config`),
+    nodeTimeConfigs: (id: string, index: number) => request<LoRaWANV2TimeConfig[]>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes/${index}/time-configs`),
+    nodeTimeConfigDetail: (id: string, index: number, configId: number) => request<LoRaWANV2TimeConfig>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes/${index}/time-configs/${configId}`),
+    lorawanInfo: (id: string) => request<LoRaWANV2GatewayInfo | null>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/info`),
     deviceNodes: (id: string) => request<Schema<"GatewayNodeList">>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes`),
     reconcileDeviceConfig: (id: string) => jsonRequest<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/config/resync`, "POST", {}),
     startSourceSync: (id: string) => request<SourceOperation>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/sync`, { method: "POST" }),

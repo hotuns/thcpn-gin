@@ -219,6 +219,9 @@ func (c *loraWANV2Client) request(ctx context.Context, method, requestPath strin
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		var envelope loraWANV2Envelope
+		if response.StatusCode == http.StatusNotFound && strings.Contains(requestPath, "/time_config") && json.Unmarshal(raw, &envelope) != nil {
+			return nil, apperr.New(apperr.KindDataSource, "上游尚未开放节点时间配置读取接口，请升级 LoRaWAN V2 服务并注册时间配置 GET 路由")
+		}
 		if response.StatusCode == http.StatusNotFound && json.Unmarshal(raw, &envelope) == nil && !envelope.Success {
 			switch envelope.ErrorCode {
 			case "0x10011307":
@@ -498,7 +501,7 @@ func (s *Service) CreateLoRaWANV2Gateway(ctx context.Context, dataSourceID uuid.
 		}
 	}
 	if needsConfig {
-		if _, configErr := client.request(ctx, http.MethodPost, "/device/"+url.PathEscape(sn)+"/config", url.Values{}, map[string]any{"content": defaultLoRaWANV2GatewayConfig(sn)}); configErr != nil {
+		if _, configErr := client.request(ctx, http.MethodPost, "/device/"+url.PathEscape(sn)+"/config", url.Values{}, defaultLoRaWANV2GatewayConfig(sn)); configErr != nil {
 			result.ConfigError = apperr.MessageOf(configErr)
 		}
 	}
