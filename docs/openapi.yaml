@@ -2006,6 +2006,70 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/admin/firmwares:
+    get:
+      tags: [Admin]
+      operationId: adminListFirmwareLibrary
+      summary: List reusable firmware artifacts, isolated by source and device compatibility
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: "#/components/parameters/Page"}
+        - {$ref: "#/components/parameters/PageSize"}
+        - {name: source_family, in: query, schema: {type: string, enum: [thcpn, carbon, lorawan_v2]}}
+        - {name: device_id, in: query, description: Only artifacts compatible with this device., schema: {$ref: "#/components/schemas/UUID"}}
+      responses:
+        "200": {description: Firmware library., content: {application/json: {schema: {type: object, required: [items, total, page, page_size], properties: {items: {type: array, items: {$ref: "#/components/schemas/FirmwareArtifact"}}, total: {type: integer}, page: {type: integer}, page_size: {type: integer}}}}}}
+    post:
+      tags: [Admin]
+      operationId: adminUploadFirmwareLibrary
+      summary: Upload firmware once without upgrading any device
+      description: Select the data source directly; no reference device is required. Uses only that family's OSS; never the platform object store. Admin supplies the MD5. Maximum file size is 100 MB.
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, version, verify_value, data_source_id, idempotency_key]
+              properties:
+                file: {type: string, format: binary}
+                version: {type: string, description: LoRaWAN V2 uses three components such as 5.2.1.}
+                verify_value: {type: string, pattern: "^[0-9A-Fa-f]{32}$"}
+                build_id: {type: integer, format: int64, minimum: 1, description: Required for Carbon.}
+                data_source_id: {$ref: "#/components/schemas/UUID"}
+                idempotency_key: {$ref: "#/components/schemas/UUID"}
+      responses:
+        "201": {description: Artifact stored; no device is upgraded., content: {application/json: {schema: {$ref: "#/components/schemas/FirmwareArtifact"}}}}
+        "400": {$ref: "#/components/responses/InvalidArgument"}
+  /api/v1/admin/firmwares/{firmware_id}:
+    parameters:
+      - {name: firmware_id, in: path, required: true, schema: {$ref: "#/components/schemas/UUID"}}
+    patch:
+      tags: [Admin]
+      operationId: adminArchiveFirmwareLibrary
+      summary: Archive or restore a firmware artifact without deleting its file or history
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, required: [archived], properties: {archived: {type: boolean}}}
+      responses:
+        "204": {description: Updated.}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/admin/firmware-candidates:
+    get:
+      tags: [Admin]
+      operationId: adminListFirmwareCandidates
+      summary: List eligible reference devices or compatible release targets
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: "#/components/parameters/Page"}
+        - {$ref: "#/components/parameters/PageSize"}
+        - {name: firmware_id, in: query, schema: {$ref: "#/components/schemas/UUID"}}
+      responses:
+        "200": {description: Server-filtered candidates; defaults to pages of 100., content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {$ref: "#/components/schemas/FirmwareCandidate"}}}}}}}
   /api/v1/admin/firmware-releases:
     get:
       tags: [Admin]
@@ -2026,12 +2090,20 @@ paths:
     post:
       tags: [Admin]
       operationId: adminCreateFirmwareRelease
-      summary: Upload and publish firmware to supported source devices
-      description: Uploads the artifact to the selected source family's object store. LoRaWAN V2 is registered through its API; THCPN and Carbon are registered directly in their source firmware tables. Carbon build_id is supplied by the administrator. The platform object store is not used.
+      summary: Publish selected library firmware to compatible devices
+      description: JSON reuses the existing artifact without uploading. Every target must match its source instance and family. Legacy multipart uploads remain supported. LoRaWAN V2 uses its API; THCPN and Carbon use their own firmware tables. Archived artifacts cannot be published or retried.
       security: [{bearerAuth: []}]
       requestBody:
         required: true
         content:
+          application/json:
+            schema:
+              type: object
+              required: [firmware_id, device_ids, idempotency_key]
+              properties:
+                firmware_id: {$ref: "#/components/schemas/UUID"}
+                device_ids: {type: array, minItems: 1, uniqueItems: true, items: {$ref: "#/components/schemas/UUID"}}
+                idempotency_key: {$ref: "#/components/schemas/UUID"}
           multipart/form-data:
             schema: {$ref: "#/components/schemas/CreateFirmwareReleaseRequest"}
       responses:
@@ -10046,11 +10118,45 @@ components:
         published_at: {$ref: "#/components/schemas/Timestamp"}
         created_at: {$ref: "#/components/schemas/Timestamp"}
         updated_at: {$ref: "#/components/schemas/Timestamp"}
+    FirmwareCandidate:
+      type: object
+      required: [id, name, serial_no, data_source_id, data_source_name, source_family, device_type]
+      properties:
+        id: {$ref: "#/components/schemas/UUID"}
+        name: {type: string}
+        serial_no: {type: string}
+        data_source_id: {$ref: "#/components/schemas/UUID"}
+        data_source_name: {type: string}
+        source_family: {type: string, enum: [thcpn, carbon, lorawan_v2]}
+        device_type: {type: string}
+        product_id: {type: string}
+    FirmwareArtifact:
+      type: object
+      required: [id, data_source_id, data_source_name, source_family, device_type, original_filename, object_key, public_url, content_type, size_bytes, version, firmware_version, verify_value, archived, created_at]
+      properties:
+        id: {$ref: "#/components/schemas/UUID"}
+        data_source_id: {$ref: "#/components/schemas/UUID"}
+        data_source_name: {type: string}
+        source_family: {type: string, enum: [thcpn, carbon, lorawan_v2]}
+        device_type: {type: string}
+        product_id: {type: string}
+        original_filename: {type: string}
+        object_key: {type: string}
+        public_url: {type: string, format: uri}
+        content_type: {type: string}
+        size_bytes: {type: integer, format: int64}
+        version: {type: string}
+        firmware_version: {type: integer, format: int64}
+        verify_value: {type: string, pattern: "^[0-9A-Fa-f]{32}$"}
+        build_id: {type: integer, format: int64}
+        archived: {type: boolean}
+        created_at: {$ref: "#/components/schemas/Timestamp"}
     FirmwareRelease:
       type: object
       required: [id, original_filename, object_key, public_url, content_type, size_bytes, version, firmware_version, verify_value, source_family, status, created_at, updated_at, targets]
       properties:
         id: {$ref: "#/components/schemas/UUID"}
+        firmware_id: {$ref: "#/components/schemas/UUID"}
         original_filename: {type: string}
         object_key: {type: string}
         public_url: {type: string, format: uri}

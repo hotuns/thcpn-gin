@@ -51,6 +51,7 @@ type SourcePublisher interface {
 }
 
 type UploadInput struct {
+	DataSourceID                                uuid.UUID
 	Filename, ContentType, Version, VerifyValue string
 	SizeBytes                                   int64
 	Body                                        io.Reader
@@ -61,6 +62,7 @@ type UploadInput struct {
 }
 
 type Release struct {
+	FirmwareID       *uuid.UUID `json:"firmware_id,omitempty"`
 	ID               uuid.UUID  `json:"id"`
 	OriginalFilename string     `json:"original_filename"`
 	ObjectKey        string     `json:"object_key"`
@@ -105,6 +107,8 @@ type ListResult struct {
 }
 
 type targetRef struct {
+	DeviceType                           string
+	ProductID                            *string
 	DeviceID, DataSourceID               uuid.UUID
 	DeviceName, WorkspaceName, GatewaySN string
 	SourceFamily                         string
@@ -141,65 +145,88 @@ func ParseVersion(value string) (string, uint32, error) {
 }
 
 func (s *Service) Create(ctx context.Context, input UploadInput) (Release, error) {
-	if input.ActorAdminID == uuid.Nil {
-		return Release{}, apperr.New(apperr.KindInvalidArgument, "administrator is required")
+	if input.ActorAdminID == uuid.Nil || input.IdempotencyKey == uuid.Nil {
+		return Release{}, apperr.New(apperr.KindInvalidArgument, "administrator and idempotency key are required")
 	}
-	if input.IdempotencyKey == uuid.Nil {
-		return Release{}, apperr.New(apperr.KindInvalidArgument, "idempotency_key is required")
-	}
-	var existingID uuid.UUID
-	if err := s.db.QueryRow(ctx, `SELECT id FROM firmware_releases WHERE created_by=$1 AND idempotency_key=$2`, input.ActorAdminID, input.IdempotencyKey).Scan(&existingID); err == nil {
-		return s.Get(ctx, existingID)
+	var existing uuid.UUID
+	if err := s.db.QueryRow(ctx, `SELECT id FROM firmware_releases WHERE created_by=$1 AND idempotency_key=$2`, input.ActorAdminID, input.IdempotencyKey).Scan(&existing); err == nil {
+		return s.Get(ctx, existing)
 	} else if err != pgx.ErrNoRows {
-		return Release{}, apperr.Wrap(apperr.KindInternal, "check firmware release idempotency", err)
-	}
-	if strings.TrimSpace(input.Filename) == "" {
-		return Release{}, apperr.New(apperr.KindInvalidArgument, "firmware filename is required")
-	}
-	if input.Body == nil || input.SizeBytes <= 0 || input.SizeBytes > MaxFileSize {
-		return Release{}, apperr.New(apperr.KindInvalidArgument, "firmware file must be between 1 byte and 100 MB")
-	}
-	if s.dataSources == nil {
-		return Release{}, apperr.New(apperr.KindInternal, "firmware service is not configured")
+		return Release{}, err
 	}
 	refs, err := s.targetRefs(ctx, input.DeviceIDs)
 	if err != nil {
 		return Release{}, err
 	}
-	family := refs[0].SourceFamily
-	dataSourceID := refs[0].DataSourceID
 	for _, ref := range refs[1:] {
-		if ref.SourceFamily != family || ref.DataSourceID != dataSourceID {
-			return Release{}, apperr.New(apperr.KindInvalidArgument, "all firmware targets must belong to the same source")
+		if !sameFirmwareScope(refs[0], ref) {
+			return Release{}, apperr.New(apperr.KindInvalidArgument, "firmware targets must share the same data source")
 		}
+	}
+	profile := input
+	profile.DataSourceID = refs[0].DataSourceID
+	artifact, err := s.UploadFirmware(ctx, profile)
+	if err != nil {
+		return Release{}, err
+	}
+	return s.PublishFirmware(ctx, PublishInput{FirmwareID: artifact.ID, DeviceIDs: input.DeviceIDs, ActorAdminID: input.ActorAdminID, IdempotencyKey: input.IdempotencyKey})
+}
+
+func (s *Service) UploadFirmware(ctx context.Context, input UploadInput) (Artifact, error) {
+	if input.ActorAdminID == uuid.Nil {
+		return Artifact{}, apperr.New(apperr.KindInvalidArgument, "administrator is required")
+	}
+	if input.IdempotencyKey == uuid.Nil {
+		return Artifact{}, apperr.New(apperr.KindInvalidArgument, "idempotency_key is required")
+	}
+	var existingID uuid.UUID
+	if err := s.db.QueryRow(ctx, `SELECT id FROM firmware_artifacts WHERE created_by=$1 AND idempotency_key=$2`, input.ActorAdminID, input.IdempotencyKey).Scan(&existingID); err == nil {
+		return s.GetFirmware(ctx, existingID)
+	} else if err != pgx.ErrNoRows {
+		return Artifact{}, apperr.Wrap(apperr.KindInternal, "check firmware release idempotency", err)
+	}
+	if strings.TrimSpace(input.Filename) == "" {
+		return Artifact{}, apperr.New(apperr.KindInvalidArgument, "firmware filename is required")
+	}
+	if input.Body == nil || input.SizeBytes <= 0 || input.SizeBytes > MaxFileSize {
+		return Artifact{}, apperr.New(apperr.KindInvalidArgument, "firmware file must be between 1 byte and 100 MB")
+	}
+	dataSourceID := input.DataSourceID
+	var family string
+	err := s.db.QueryRow(ctx, `SELECT source_family FROM data_sources WHERE id=$1 AND status='active' AND source_family IN ('lorawan_v2','thcpn','carbon')`, dataSourceID).Scan(&family)
+	if err == pgx.ErrNoRows {
+		return Artifact{}, apperr.New(apperr.KindInvalidArgument, "select an active firmware data source")
+	}
+	if err != nil {
+		return Artifact{}, err
 	}
 	version := strings.TrimSpace(input.Version)
 	var encoded uint32
 	if family == "lorawan_v2" {
 		version, encoded, err = ParseVersion(version)
 		if err != nil {
-			return Release{}, err
+			return Artifact{}, err
 		}
 	} else if version == "" || len(version) > 96 || (family == "carbon" && len(version) > 64) {
-		return Release{}, apperr.New(apperr.KindInvalidArgument, "firmware version is invalid")
+		return Artifact{}, apperr.New(apperr.KindInvalidArgument, "firmware version is invalid")
 	}
 	if family == "carbon" && (input.BuildID == nil || *input.BuildID <= 0) {
-		return Release{}, apperr.New(apperr.KindInvalidArgument, "carbon firmware build_id is required")
+		return Artifact{}, apperr.New(apperr.KindInvalidArgument, "carbon firmware build_id is required")
 	}
 	verify := strings.TrimSpace(input.VerifyValue)
 	if !md5Base16Pattern.MatchString(verify) {
-		return Release{}, apperr.New(apperr.KindInvalidArgument, "verify_value must be a 32 character MD5 Base16 string")
+		return Artifact{}, apperr.New(apperr.KindInvalidArgument, "verify_value must be a 32 character MD5 Base16 string")
 	}
 	artifact, ok := s.stores[family]
 	if !ok || artifact.Store == nil {
-		return Release{}, apperr.New(apperr.KindInternal, family+" firmware object store is not configured")
+		return Artifact{}, apperr.New(apperr.KindInternal, family+" firmware object store is not configured")
 	}
 	if artifact.PublicURLPrefix == "" {
-		return Release{}, apperr.New(apperr.KindInvalidArgument, family+" object store public_url_prefix is required for firmware publishing")
+		return Artifact{}, apperr.New(apperr.KindInvalidArgument, family+" object store public_url_prefix is required for firmware publishing")
 	}
 	publicBase, parseErr := url.Parse(artifact.PublicURLPrefix)
 	if parseErr != nil || (publicBase.Scheme != "http" && publicBase.Scheme != "https") || publicBase.Host == "" {
-		return Release{}, apperr.New(apperr.KindInvalidArgument, family+" object store public_url_prefix must be an absolute HTTP URL")
+		return Artifact{}, apperr.New(apperr.KindInvalidArgument, family+" object store public_url_prefix must be an absolute HTTP URL")
 	}
 
 	releaseID := uuid.New()
@@ -212,42 +239,55 @@ func (s *Service) Create(ctx context.Context, input UploadInput) (Release, error
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
-	if err := artifact.Store.Put(ctx, objectstore.PutInput{ObjectKey: objectKey, ContentType: contentType, Body: io.LimitReader(input.Body, MaxFileSize+1)}); err != nil {
-		return Release{}, apperr.Wrap(apperr.KindInternal, "upload firmware object", err)
+	body := &countingReader{Reader: io.LimitReader(input.Body, MaxFileSize+1)}
+	if err := artifact.Store.Put(ctx, objectstore.PutInput{ObjectKey: objectKey, ContentType: contentType, Body: body}); err != nil {
+		_ = artifact.Store.Delete(ctx, objectKey)
+		return Artifact{}, apperr.Wrap(apperr.KindInternal, "upload firmware object", err)
+	}
+	if body.count != input.SizeBytes || body.count > MaxFileSize {
+		_ = artifact.Store.Delete(ctx, objectKey)
+		return Artifact{}, apperr.New(apperr.KindInvalidArgument, "firmware file size does not match upload")
 	}
 	publicURL := artifact.PublicURLPrefix + "/" + objectKey
+
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		_ = artifact.Store.Delete(ctx, objectKey)
-		return Release{}, apperr.Wrap(apperr.KindInternal, "begin firmware release", err)
+		return Artifact{}, err
 	}
 	defer tx.Rollback(ctx)
-	_, err = tx.Exec(ctx, `INSERT INTO firmware_releases(id,original_filename,object_key,public_url,content_type,size_bytes,version,firmware_version,verify_value,source_family,build_id,created_by,idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, releaseID, strings.TrimSpace(input.Filename), objectKey, publicURL, contentType, input.SizeBytes, version, int64(encoded), verify, family, input.BuildID, input.ActorAdminID, input.IdempotencyKey)
-	if err == nil {
-		for _, ref := range refs {
-			var gatewaySN any
-			if ref.GatewaySN != "" {
-				gatewaySN = ref.GatewaySN
-			}
-			_, err = tx.Exec(ctx, `INSERT INTO firmware_release_targets(release_id,device_id,data_source_id,gateway_sn,external_device_id) VALUES($1,$2,$3,$4,$5)`, releaseID, ref.DeviceID, ref.DataSourceID, gatewaySN, ref.ExternalDeviceID)
-			if err != nil {
-				break
-			}
+	var inserted uuid.UUID
+	err = tx.QueryRow(ctx, `INSERT INTO firmware_artifacts(id,data_source_id,source_family,device_type,product_id,original_filename,object_key,public_url,content_type,size_bytes,version,firmware_version,verify_value,build_id,created_by,idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) ON CONFLICT(created_by,idempotency_key) DO NOTHING RETURNING id`, releaseID, dataSourceID, family, "", nil, strings.TrimSpace(input.Filename), objectKey, publicURL, contentType, input.SizeBytes, version, int64(encoded), verify, input.BuildID, input.ActorAdminID, input.IdempotencyKey).Scan(&inserted)
+	if err == pgx.ErrNoRows {
+		_ = tx.Rollback(ctx)
+		_ = artifact.Store.Delete(ctx, objectKey)
+		if e := s.db.QueryRow(ctx, `SELECT id FROM firmware_artifacts WHERE created_by=$1 AND idempotency_key=$2`, input.ActorAdminID, input.IdempotencyKey).Scan(&existingID); e != nil {
+			return Artifact{}, e
 		}
+		return s.GetFirmware(ctx, existingID)
+	}
+	if err == nil {
+		err = recordFirmwareAudit(ctx, tx, input.ActorAdminID, "firmware.library.upload", releaseID)
 	}
 	if err != nil {
 		_ = artifact.Store.Delete(ctx, objectKey)
-		return Release{}, apperr.Wrap(apperr.KindInternal, "create firmware release", err)
+		return Artifact{}, apperr.Wrap(apperr.KindInternal, "save firmware artifact", err)
 	}
 	if err = tx.Commit(ctx); err != nil {
-		_ = artifact.Store.Delete(ctx, objectKey)
-		return Release{}, apperr.Wrap(apperr.KindInternal, "commit firmware release", err)
+		return Artifact{}, apperr.Wrap(apperr.KindInternal, "commit firmware artifact", err)
 	}
+	return s.GetFirmware(ctx, releaseID)
+}
 
-	for _, ref := range refs {
-		_ = s.publish(ctx, releaseID, ref.DeviceID, false)
-	}
-	return s.Get(ctx, releaseID)
+type countingReader struct {
+	io.Reader
+	count int64
+}
+
+func (r *countingReader) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	r.count += int64(n)
+	return n, err
 }
 
 func (s *Service) Retry(ctx context.Context, releaseID, targetID uuid.UUID) (Release, error) {
@@ -295,28 +335,31 @@ func (s *Service) publish(ctx context.Context, releaseID, deviceID uuid.UUID, re
 		return nil
 	}
 	var upstreamID int64
-	switch sourceFamily {
-	case "lorawan_v2":
-		payload, requestErr := s.dataSources.LoRaWANV2Request(ctx, dataSourceID, http.MethodPost, "/device/"+url.PathEscape(gatewaySN)+"/firmware", nil, map[string]any{"firmware_version": uint32(encoded), "url": publicURL, "verify_value": verify})
-		if requestErr == nil {
-			var response struct {
-				ID int64 `json:"id"`
+	err = s.validatePublishingTarget(ctx, releaseID, deviceID, dataSourceID, gatewaySN, externalDeviceID)
+	if err == nil {
+		switch sourceFamily {
+		case "lorawan_v2":
+			payload, requestErr := s.dataSources.LoRaWANV2Request(ctx, dataSourceID, http.MethodPost, "/device/"+url.PathEscape(gatewaySN)+"/firmware", nil, map[string]any{"firmware_version": uint32(encoded), "url": publicURL, "verify_value": verify})
+			if requestErr == nil {
+				var response struct {
+					ID int64 `json:"id"`
+				}
+				if json.Unmarshal(payload, &response) != nil || response.ID <= 0 {
+					requestErr = apperr.New(apperr.KindDataSource, "lorawan_v2 firmware response is missing id")
+				} else {
+					upstreamID = response.ID
+				}
 			}
-			if json.Unmarshal(payload, &response) != nil || response.ID <= 0 {
-				requestErr = apperr.New(apperr.KindDataSource, "lorawan_v2 firmware response is missing id")
+			err = requestErr
+		case "thcpn", "carbon":
+			if externalDeviceID == nil {
+				err = apperr.New(apperr.KindInternal, "source firmware target is missing external_device_id")
 			} else {
-				upstreamID = response.ID
+				upstreamID, err = s.dataSources.RegisterSourceFirmware(ctx, datasource.SourceFirmwareInput{DataSourceID: dataSourceID, SourceFamily: sourceFamily, ExternalDeviceID: *externalDeviceID, Version: version, BuildID: buildID, ObjectKey: objectKey, PublicURL: publicURL, VerifyValue: verify})
 			}
+		default:
+			err = apperr.New(apperr.KindInvalidArgument, "firmware source family is not supported")
 		}
-		err = requestErr
-	case "thcpn", "carbon":
-		if externalDeviceID == nil {
-			err = apperr.New(apperr.KindInternal, "source firmware target is missing external_device_id")
-		} else {
-			upstreamID, err = s.dataSources.RegisterSourceFirmware(ctx, datasource.SourceFirmwareInput{DataSourceID: dataSourceID, SourceFamily: sourceFamily, ExternalDeviceID: *externalDeviceID, Version: version, BuildID: buildID, ObjectKey: objectKey, PublicURL: publicURL, VerifyValue: verify})
-		}
-	default:
-		err = apperr.New(apperr.KindInvalidArgument, "firmware source family is not supported")
 	}
 	if err != nil {
 		message := apperr.MessageOf(err)
@@ -349,7 +392,14 @@ func (s *Service) targetRefs(ctx context.Context, ids []uuid.UUID) ([]targetRef,
 		}
 		seen[id] = struct{}{}
 		var ref targetRef
-		err := s.db.QueryRow(ctx, `SELECT d.id,ref.data_source_id,d.name,COALESCE(w.name,''),src.source_family,CASE WHEN src.source_family='lorawan_v2' THEN ref.external_key ELSE '' END,CASE WHEN src.source_family IN ('thcpn','carbon') THEN ref.external_key::bigint ELSE NULL END FROM devices d JOIN device_source_refs ref ON ref.device_id=d.id AND ref.status='active' JOIN data_sources src ON src.id=ref.data_source_id AND src.source_family IN ('thcpn','carbon','lorawan_v2') AND src.status='active' LEFT JOIN device_assignments a ON a.device_id=d.id AND a.status='active' LEFT JOIN workspaces w ON w.id=a.workspace_id WHERE d.id=$1 AND EXISTS(SELECT 1 FROM device_capabilities c WHERE c.device_id=d.id AND c.capability_code='firmware_update') ORDER BY ref.created_at DESC LIMIT 1`, id).Scan(&ref.DeviceID, &ref.DataSourceID, &ref.DeviceName, &ref.WorkspaceName, &ref.SourceFamily, &ref.GatewaySN, &ref.ExternalDeviceID)
+		err := s.db.QueryRow(ctx, `SELECT d.id,ref.data_source_id,d.name,COALESCE(w.name,''),src.source_family,
+ CASE WHEN src.source_family='lorawan_v2' THEN ref.external_key ELSE '' END,
+ CASE WHEN src.source_family IN ('thcpn','carbon') AND ref.external_key ~ '^[0-9]{1,18}$' THEN ref.external_key::bigint ELSE NULL END,d.device_type,d.product_id
+ FROM devices d JOIN LATERAL (SELECT * FROM device_source_refs WHERE device_id=d.id AND status='active' ORDER BY created_at DESC,id DESC LIMIT 1) ref ON true
+ JOIN data_sources src ON src.id=ref.data_source_id AND src.source_family IN ('thcpn','carbon','lorawan_v2') AND src.status='active'
+ LEFT JOIN device_assignments a ON a.device_id=d.id AND a.status='active' LEFT JOIN workspaces w ON w.id=a.workspace_id
+ WHERE d.id=$1 AND d.status='active' AND (src.source_family!='lorawan_v2' OR d.device_type='gateway')
+ AND EXISTS(SELECT 1 FROM device_capabilities c WHERE c.device_id=d.id AND c.capability_code='firmware_update') LIMIT 1`, id).Scan(&ref.DeviceID, &ref.DataSourceID, &ref.DeviceName, &ref.WorkspaceName, &ref.SourceFamily, &ref.GatewaySN, &ref.ExternalDeviceID, &ref.DeviceType, &ref.ProductID)
 		if err == pgx.ErrNoRows {
 			return nil, apperr.New(apperr.KindInvalidArgument, "device is not an active firmware target")
 		}
@@ -401,7 +451,7 @@ func (s *Service) List(ctx context.Context, page, pageSize int, status, version,
 		return ListResult{}, apperr.Wrap(apperr.KindInternal, "count firmware releases", err)
 	}
 	args = append(args, pageSize, (page-1)*pageSize)
-	rows, err := s.db.Query(ctx, fmt.Sprintf(`SELECT id,original_filename,object_key,public_url,content_type,size_bytes,version,firmware_version,verify_value,source_family,build_id,status,created_by,created_at,updated_at FROM firmware_releases r WHERE %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, whereSQL, len(args)-1, len(args)), args...)
+	rows, err := s.db.Query(ctx, fmt.Sprintf(`SELECT id,firmware_id,original_filename,object_key,public_url,content_type,size_bytes,version,firmware_version,verify_value,source_family,build_id,status,created_by,created_at,updated_at FROM firmware_releases r WHERE %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, whereSQL, len(args)-1, len(args)), args...)
 	if err != nil {
 		return ListResult{}, apperr.Wrap(apperr.KindInternal, "list firmware releases", err)
 	}
@@ -410,7 +460,7 @@ func (s *Service) List(ctx context.Context, page, pageSize int, status, version,
 	for rows.Next() {
 		var item Release
 		var encoded int64
-		if err = rows.Scan(&item.ID, &item.OriginalFilename, &item.ObjectKey, &item.PublicURL, &item.ContentType, &item.SizeBytes, &item.Version, &encoded, &item.VerifyValue, &item.SourceFamily, &item.BuildID, &item.Status, &item.CreatedBy, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		if err = rows.Scan(&item.ID, &item.FirmwareID, &item.OriginalFilename, &item.ObjectKey, &item.PublicURL, &item.ContentType, &item.SizeBytes, &item.Version, &encoded, &item.VerifyValue, &item.SourceFamily, &item.BuildID, &item.Status, &item.CreatedBy, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return ListResult{}, err
 		}
 		item.FirmwareVersion = uint32(encoded)
@@ -426,7 +476,7 @@ func (s *Service) List(ctx context.Context, page, pageSize int, status, version,
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (Release, error) {
 	var item Release
 	var encoded int64
-	err := s.db.QueryRow(ctx, `SELECT id,original_filename,object_key,public_url,content_type,size_bytes,version,firmware_version,verify_value,source_family,build_id,status,created_by,created_at,updated_at FROM firmware_releases WHERE id=$1`, id).Scan(&item.ID, &item.OriginalFilename, &item.ObjectKey, &item.PublicURL, &item.ContentType, &item.SizeBytes, &item.Version, &encoded, &item.VerifyValue, &item.SourceFamily, &item.BuildID, &item.Status, &item.CreatedBy, &item.CreatedAt, &item.UpdatedAt)
+	err := s.db.QueryRow(ctx, `SELECT id,firmware_id,original_filename,object_key,public_url,content_type,size_bytes,version,firmware_version,verify_value,source_family,build_id,status,created_by,created_at,updated_at FROM firmware_releases WHERE id=$1`, id).Scan(&item.ID, &item.FirmwareID, &item.OriginalFilename, &item.ObjectKey, &item.PublicURL, &item.ContentType, &item.SizeBytes, &item.Version, &encoded, &item.VerifyValue, &item.SourceFamily, &item.BuildID, &item.Status, &item.CreatedBy, &item.CreatedAt, &item.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return Release{}, apperr.New(apperr.KindNotFound, "firmware release not found")
 	}

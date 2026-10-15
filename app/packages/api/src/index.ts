@@ -149,12 +149,16 @@ export type FirmwareReleaseTarget = {
   error_message?: string; published_at?: string; created_at: string; updated_at: string;
 };
 export type FirmwareRelease = {
-  id: string; original_filename: string; object_key: string; public_url: string; content_type: string;
+  id: string; firmware_id?: string; original_filename: string; object_key: string; public_url: string; content_type: string;
   size_bytes: number; version: string; firmware_version: number; verify_value: string;
   source_family: "thcpn" | "carbon" | "lorawan_v2"; build_id?: number;
   status: "publishing" | "partial" | "completed" | "failed"; created_by?: string;
   created_at: string; updated_at: string; targets: FirmwareReleaseTarget[];
 };
+export type FirmwareArtifact = Omit<FirmwareRelease, "firmware_id" | "status" | "targets" | "updated_at"> & {
+  data_source_id: string; data_source_name: string; device_type: string; product_id?: string; archived: boolean;
+};
+export type FirmwareCandidate = { id: string; name: string; serial_no: string; data_source_id: string; data_source_name: string; source_family: FirmwareRelease["source_family"]; device_type: string; product_id?: string };
 export type JsonRecord = Record<string, unknown>;
 export type ProcessingProcessor = {
   code: string; version: string; name: string; description: string;
@@ -1289,6 +1293,25 @@ export const api = {
       request<ListResponse<FirmwareRelease>>(`/api/v1/admin/firmware-releases${queryString(filters)}`),
     firmwareRelease: (id: string) =>
       request<FirmwareRelease>(`/api/v1/admin/firmware-releases/${encodeURIComponent(id)}`),
+    firmwares: (filters: Record<string, string | number | boolean | undefined> = {}) =>
+      request<ListResponse<FirmwareArtifact>>(`/api/v1/admin/firmwares${queryString(filters)}`),
+    firmwareCandidates: async (firmwareId?: string) => {
+      const items: FirmwareCandidate[] = [];
+      for (let page = 1; ; page++) {
+        const result = await request<ListResponse<FirmwareCandidate>>(`/api/v1/admin/firmware-candidates${queryString({ firmware_id: firmwareId, page, page_size: 100 })}`);
+        items.push(...result.items);
+        if (result.items.length < 100) return { items };
+      }
+    },
+    archiveFirmware: (id: string, archived: boolean) => jsonRequest<void>(`/api/v1/admin/firmwares/${encodeURIComponent(id)}`, "PATCH", { archived }),
+    publishFirmware: (input: { firmware_id: string; device_ids: string[]; idempotency_key: string }) => jsonRequest<FirmwareRelease>("/api/v1/admin/firmware-releases", "POST", input),
+    uploadFirmware: (input: { file: File; version: string; verifyValue: string; buildId?: string; dataSourceId: string; idempotencyKey: string }) => {
+      const body = new FormData();
+      body.append("file", input.file); body.append("version", input.version); body.append("verify_value", input.verifyValue);
+      if (input.buildId) body.append("build_id", input.buildId);
+      body.append("data_source_id", input.dataSourceId); body.append("idempotency_key", input.idempotencyKey);
+      return request<FirmwareArtifact>("/api/v1/admin/firmwares", { method: "POST", body });
+    },
     createFirmwareRelease: (input: { file: File; version: string; verifyValue: string; buildId?: string; deviceIds: string[]; idempotencyKey: string }) => {
       const body = new FormData();
       body.append("file", input.file);

@@ -17,7 +17,6 @@ import {
   Modal,
   Popconfirm,
   Select,
-  Segmented,
   Space,
   Table,
   Tag,
@@ -47,6 +46,7 @@ import { configChangeSummary, configDraftFromDetail, duplicateSensorWarnings, pa
 import { DeviceLogsPanel } from "./device-logs-panel";
 import { LoRaWANV2LogsPanel } from "./lorawan-v2-logs-panel";
 import { LoRaWANV2ConfigPanel } from "./lorawan-v2-config-panel";
+import { DeviceFirmwareDialog } from "./device-firmware-dialog";
 
 type Mode =
   | "edit"
@@ -78,6 +78,7 @@ const deviceModelOf = (item: JsonRecord) =>
   value(item.source_family, "") === "lorawan_v2" ? "lorawan_v2" : categoryOf(item);
 
 export function AdminDevicesPage() {
+  const [firmwareDevice, setFirmwareDevice] = useState<JsonRecord | null>(null);
   const { deviceId } = useParams();
   const navigate = useNavigate();
   const query = useQuery({
@@ -291,6 +292,7 @@ export function AdminDevicesPage() {
   };
 
   const open = (next: Exclude<Mode, null>, record: JsonRecord) => {
+    if (next === "firmware") { setFirmwareDevice(record); return; }
     setSelected(record);
     setMode(next);
     setDetail(null);
@@ -309,8 +311,6 @@ export function AdminDevicesPage() {
       });
     if (next === "calibration")
       form.setFieldsValue({ calibration_type: "zero_point", parameters: "{}" });
-    if (next === "firmware")
-      form.setFieldsValue({ firmware_version: "", package_uri: "", checksum: "", scheduled_at: "" });
     if (next === "child") {
       form.setFieldsValue({ child_device_id: "" });
       void loadDetail("children", record);
@@ -430,13 +430,6 @@ export function AdminDevicesPage() {
           ...(fields.parameters?.trim() && fields.parameters.trim() !== "{}"
             ? { parameters: JSON.parse(fields.parameters) }
             : {}),
-        });
-      if (mode === "firmware")
-        await api.admin.upgradeDeviceFirmware(id, {
-          firmware_version: fields.firmware_version.trim(),
-          ...(fields.package_uri?.trim() ? { package_uri: fields.package_uri.trim() } : {}),
-          ...(fields.checksum?.trim() ? { checksum: fields.checksum.trim() } : {}),
-          ...(fields.scheduled_at ? { scheduled_at: new Date(fields.scheduled_at).toISOString() } : {}),
         });
       if (mode === "child") await api.admin.addDeviceChild(id, fields);
       if (mode === "lifecycle") await api.admin.updateLifecycle(id, fields);
@@ -637,6 +630,7 @@ export function AdminDevicesPage() {
 
   const managementOverlays = (
     <>
+      {firmwareDevice ? <DeviceFirmwareDialog key={String(firmwareDevice.id)} deviceId={String(firmwareDevice.id)} deviceName={value(firmwareDevice.name)} serialNo={value(firmwareDevice.serial_no)} onClose={() => setFirmwareDevice(null)} /> : null}
       {configResult ? <ConfigApplyResult result={configResult} onClose={() => setConfigResult(null)} /> : null}
       <Drawer title={drawerTitle(mode, selected)} open={Boolean(mode)} onClose={close} size={mode === "config" ? 1180 : 620} extra={mode === "attributes" ? <Button onClick={close}>关闭</Button> : <Space><Button onClick={close}>取消</Button><Button type="primary" danger={mode === "config"} loading={busy} onClick={() => void (mode === "create-device" && createdSourceDevice?.sync_error ? retryCreatedSourceDevice() : submit())}>{mode === "create-device" && createdSourceDevice?.sync_error ? (createdSourceDevice.source_kind === "lorawan_v2" ? "重试默认配置" : "重试同步") : mode === "create-device" ? "创建设备" : "保存"}</Button></Space>}>
         {mode === "config" && configConflict ? <Alert className="config-conflict-alert" type="warning" showIcon title="源配置已变化，当前草稿尚未保存" description="复制草稿后重新加载最新配置；系统不会强制覆盖其他操作写入的版本。" action={<Space orientation="vertical"><Button size="small" onClick={() => void navigator.clipboard.writeText(JSON.stringify(parseTHCPNConfig(form.getFieldsValue() as THCPNConfigFields), null, 2))}>复制草稿</Button><Button size="small" type="primary" onClick={() => { setConfigConflict(false); void loadDetail("config", selected); }}>重新加载</Button></Space>} /> : null}
@@ -651,19 +645,19 @@ export function AdminDevicesPage() {
 
   if (deviceId) {
     const device = allRows.find((item) => value(item.id, "") === deviceId);
-    if (query.isLoading) return <StateView type="loading" title="正在加载设备详情" description="正在读取系统设备资产。" />;
+    if (query.isLoading) return <StateView type="loading" title="正在加载设备详情" description="正在读取设备资料。" />;
     if (query.error) return <StateView type="error" title="设备详情加载失败" description={formatApiError(query.error).message} requestId={formatApiError(query.error).requestId} />;
     if (!device) return <StateView type="empty" title="设备不存在" description="该设备可能已被删除或尚未同步。" action={<Button><Link to="/admin/devices">返回设备列表</Link></Button>} />;
     const isCamera = categoryOf(device) === "camera";
     const refreshDetail = () => void Promise.all([query.refetch(), detailLifecycleQuery.refetch(), ...(isCarbonDetail ? [detailCarbonQuery.refetch()] : [detailAttributesQuery.refetch(), detailChildrenQuery.refetch(), detailConfigQuery.refetch()])]);
-    return <><PageHeader eyebrow="System / devices / detail" title={value(device.name, "未命名设备")} description={`${value(device.serial_no, device.id)} · ${deviceModelLabel(device)}`} actions={<Space><Button><Link to="/admin/devices">返回列表</Link></Button><Button type="primary" icon={<Pencil size={14} />} onClick={() => open("edit", device)}>编辑资料</Button><Button icon={<RefreshCw size={14} />} onClick={refreshDetail}>刷新</Button></Space>} />{feedback && <div className="admin-feedback section-gap">{feedback}</div>}<DeviceDetailPanel device={device} isCamera={isCamera} isCarbon={isCarbonDetail} carbonData={detailCarbonQuery.data as unknown as JsonRecord | undefined} carbonLoading={detailCarbonQuery.isLoading} carbonError={detailCarbonQuery.error} attributes={detailAttributesQuery.data as unknown as JsonRecord | undefined} attributesLoading={detailAttributesQuery.isLoading} attributesError={detailAttributesQuery.error} childrenData={detailChildrenQuery.data as unknown as JsonRecord | undefined} childrenLoading={detailChildrenQuery.isLoading} childrenError={detailChildrenQuery.error} lifecycleData={detailLifecycleQuery.data as JsonRecord | undefined} lifecycleLoading={detailLifecycleQuery.isLoading} lifecycleError={detailLifecycleQuery.error} configData={detailConfigQuery.data as JsonRecord | undefined} configLoading={detailConfigQuery.isLoading} configError={detailConfigQuery.error} onOpen={(next) => next === "firmware" ? navigate(`/admin/firmware?device_id=${encodeURIComponent(String(device.id))}`) : open(next, device)} onUnassign={() => void unassign(device)} />{managementOverlays}</>;
+    return <><PageHeader eyebrow="System / devices / detail" title={value(device.name, "未命名设备")} description={`${value(device.serial_no, device.id)} · ${deviceModelLabel(device)}`} actions={<Space><Button><Link to="/admin/devices">返回列表</Link></Button><Button type="primary" icon={<Pencil size={14} />} onClick={() => open("edit", device)}>编辑资料</Button><Button icon={<RefreshCw size={14} />} onClick={refreshDetail}>刷新</Button></Space>} />{feedback && <div className="admin-feedback section-gap">{feedback}</div>}<DeviceDetailPanel device={device} isCamera={isCamera} isCarbon={isCarbonDetail} carbonData={detailCarbonQuery.data as unknown as JsonRecord | undefined} carbonLoading={detailCarbonQuery.isLoading} carbonError={detailCarbonQuery.error} attributes={detailAttributesQuery.data as unknown as JsonRecord | undefined} attributesLoading={detailAttributesQuery.isLoading} attributesError={detailAttributesQuery.error} childrenData={detailChildrenQuery.data as unknown as JsonRecord | undefined} childrenLoading={detailChildrenQuery.isLoading} childrenError={detailChildrenQuery.error} lifecycleData={detailLifecycleQuery.data as JsonRecord | undefined} lifecycleLoading={detailLifecycleQuery.isLoading} lifecycleError={detailLifecycleQuery.error} configData={detailConfigQuery.data as JsonRecord | undefined} configLoading={detailConfigQuery.isLoading} configError={detailConfigQuery.error} onOpen={(next) => open(next, device)} onUnassign={() => void unassign(device)} />{managementOverlays}</>;
   }
 
   return (
     <>
       <PageHeader
         eyebrow="System / devices"
-        title="系统设备"
+        title="设备列表"
         description="统一管理标准站、组网站、碳汇站和监控站。"
         actions={<Space><Button type="primary" onClick={openDeviceCreate}>创建设备</Button><Button icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>刷新</Button></Space>}
       />
@@ -717,11 +711,11 @@ export function AdminDevicesPage() {
           <Badge tone="info">{rows.length} 台设备</Badge>
         </div>
         <div className="admin-device-categories">
-          <Segmented value={category} onChange={value => setCategory(String(value))} options={[
+          <Tabs activeKey={category} onChange={setCategory} items={[
             { key: "all", label: "全部" }, { key: "standalone", label: "标准站" },
             { key: "gateway", label: "组网站" }, { key: "carbon_sink", label: "碳汇站" },
             { key: "camera", label: "监控站" },
-          ].map(item => ({ value: item.key, label: <Space size={8}><span>{item.label}</span><Tag color={category === item.key ? "blue" : undefined}>{counts[item.key as keyof typeof counts]}</Tag></Space> }))}/>
+          ].map(item => ({ key: item.key, label: <Space size={8}><span>{item.label}</span><Tag color={category === item.key ? "blue" : undefined}>{counts[item.key as keyof typeof counts]}</Tag></Space> }))}/>
         </div>
         {selectedRowKeys.length ? (
           <div className="admin-device-batch-toolbar">
@@ -740,7 +734,7 @@ export function AdminDevicesPage() {
           <StateView
             type="loading"
             title="正在加载设备"
-            description="正在读取系统设备资产。"
+            description="正在读取设备资料。"
           />
         ) : query.error ? (
           <StateView
@@ -923,7 +917,7 @@ function DeviceDetailPanel({
   const queryLoading = ({ loading, data, error }: DetailQueryProps) => loading && !data && !error;
   const overview = <div className="admin-device-detail-content">
     <section className="admin-detail-section">
-      <div className="admin-detail-section-head"><div><h2>设备资料</h2><span>系统设备的身份与资产状态</span></div><Button icon={<Pencil size={14} />} onClick={() => onOpen("edit")}>编辑</Button></div>
+      <div className="admin-detail-section-head"><div><h2>设备资料</h2><span>设备身份与资产状态</span></div><Button icon={<Pencil size={14} />} onClick={() => onOpen("edit")}>编辑</Button></div>
       <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }} items={[
         { key: "serial", label: "平台序列号", children: <Tooltip title="平台生成的资产编号，用于认领和查找设备，不一定等于厂家 SN。"><span className="mono">{value(device.serial_no)}</span></Tooltip> },
         { key: "iccid", label: device.source_family==="lorawan_v2" ? "人工登记 ICCID" : "物联卡 ICCID", children: <span className="mono">{value(device.iccid, "未记录")}</span> },
@@ -1405,15 +1399,6 @@ function DeviceForm({
         <Form.Item name="parameters" label="设备参数 JSON">
           <Input.TextArea rows={6} spellCheck={false} />
         </Form.Item>
-      </>
-    );
-  if (mode === "firmware")
-    return (
-      <>
-        <Form.Item name="firmware_version" label="目标版本" rules={[{ required: true }]}><Input placeholder="例如 2.4.1" /></Form.Item>
-        <Form.Item name="package_uri" label="固件包 URI"><Input /></Form.Item>
-        <Form.Item name="checksum" label="Checksum"><Input /></Form.Item>
-        <Form.Item name="scheduled_at" label="计划执行时间"><Input type="datetime-local" /></Form.Item>
       </>
     );
   if (mode === "child")

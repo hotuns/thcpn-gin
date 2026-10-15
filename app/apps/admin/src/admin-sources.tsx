@@ -262,7 +262,7 @@ export function AdminSourcesPage() {
       <PageHeader
         eyebrow="System / sources"
         title="数据源"
-        description="维护系统级连接，并同步已存在的源库设备。设备创建统一在系统设备页面完成。"
+        description="维护系统级连接，并同步已存在的源库设备。设备创建统一在设备列表页面完成。"
         actions={
           <Space>
             <Button icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>

@@ -2108,6 +2108,63 @@ export interface paths {
         patch: operations["adminUpdateDataSource"];
         trace?: never;
     };
+    "/api/v1/admin/firmwares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List reusable firmware artifacts, isolated by source and device compatibility */
+        get: operations["adminListFirmwareLibrary"];
+        put?: never;
+        /**
+         * Upload firmware once without upgrading any device
+         * @description Select the data source directly; no reference device is required. Uses only that family's OSS; never the platform object store. Admin supplies the MD5. Maximum file size is 100 MB.
+         */
+        post: operations["adminUploadFirmwareLibrary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/firmwares/{firmware_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                firmware_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Archive or restore a firmware artifact without deleting its file or history */
+        patch: operations["adminArchiveFirmwareLibrary"];
+        trace?: never;
+    };
+    "/api/v1/admin/firmware-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List eligible reference devices or compatible release targets */
+        get: operations["adminListFirmwareCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/firmware-releases": {
         parameters: {
             query?: never;
@@ -2119,8 +2176,8 @@ export interface paths {
         get: operations["adminListFirmwareReleases"];
         put?: never;
         /**
-         * Upload and publish firmware to supported source devices
-         * @description Uploads the artifact to the selected source family's object store. LoRaWAN V2 is registered through its API; THCPN and Carbon are registered directly in their source firmware tables. Carbon build_id is supplied by the administrator. The platform object store is not used.
+         * Publish selected library firmware to compatible devices
+         * @description JSON reuses the existing artifact without uploading. Every target must match its source instance and family. Legacy multipart uploads remain supported. LoRaWAN V2 uses its API; THCPN and Carbon use their own firmware tables. Archived artifacts cannot be published or retried.
          */
         post: operations["adminCreateFirmwareRelease"];
         delete?: never;
@@ -7072,8 +7129,44 @@ export interface components {
             created_at: components["schemas"]["Timestamp"];
             updated_at: components["schemas"]["Timestamp"];
         };
+        FirmwareCandidate: {
+            id: components["schemas"]["UUID"];
+            name: string;
+            serial_no: string;
+            data_source_id: components["schemas"]["UUID"];
+            data_source_name: string;
+            /** @enum {string} */
+            source_family: "thcpn" | "carbon" | "lorawan_v2";
+            device_type: string;
+            product_id?: string;
+        };
+        FirmwareArtifact: {
+            id: components["schemas"]["UUID"];
+            data_source_id: components["schemas"]["UUID"];
+            data_source_name: string;
+            /** @enum {string} */
+            source_family: "thcpn" | "carbon" | "lorawan_v2";
+            device_type: string;
+            product_id?: string;
+            original_filename: string;
+            object_key: string;
+            /** Format: uri */
+            public_url: string;
+            content_type: string;
+            /** Format: int64 */
+            size_bytes: number;
+            version: string;
+            /** Format: int64 */
+            firmware_version: number;
+            verify_value: string;
+            /** Format: int64 */
+            build_id?: number;
+            archived: boolean;
+            created_at: components["schemas"]["Timestamp"];
+        };
         FirmwareRelease: {
             id: components["schemas"]["UUID"];
+            firmware_id?: components["schemas"]["UUID"];
             original_filename: string;
             object_key: string;
             /** Format: uri */
@@ -10116,6 +10209,128 @@ export interface operations {
             500: components["responses"]["Internal"];
         };
     };
+    adminListFirmwareLibrary: {
+        parameters: {
+            query?: {
+                page?: components["parameters"]["Page"];
+                page_size?: components["parameters"]["PageSize"];
+                source_family?: "thcpn" | "carbon" | "lorawan_v2";
+                /** @description Only artifacts compatible with this device. */
+                device_id?: components["schemas"]["UUID"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Firmware library. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["FirmwareArtifact"][];
+                        total: number;
+                        page: number;
+                        page_size: number;
+                    };
+                };
+            };
+        };
+    };
+    adminUploadFirmwareLibrary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                    /** @description LoRaWAN V2 uses three components such as 5.2.1. */
+                    version: string;
+                    verify_value: string;
+                    /**
+                     * Format: int64
+                     * @description Required for Carbon.
+                     */
+                    build_id?: number;
+                    data_source_id: components["schemas"]["UUID"];
+                    idempotency_key: components["schemas"]["UUID"];
+                };
+            };
+        };
+        responses: {
+            /** @description Artifact stored; no device is upgraded. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FirmwareArtifact"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+        };
+    };
+    adminArchiveFirmwareLibrary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                firmware_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    archived: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminListFirmwareCandidates: {
+        parameters: {
+            query?: {
+                page?: components["parameters"]["Page"];
+                page_size?: components["parameters"]["PageSize"];
+                firmware_id?: components["schemas"]["UUID"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server-filtered candidates; defaults to pages of 100. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["FirmwareCandidate"][];
+                    };
+                };
+            };
+        };
+    };
     adminListFirmwareReleases: {
         parameters: {
             query?: {
@@ -10154,6 +10369,11 @@ export interface operations {
         };
         requestBody: {
             content: {
+                "application/json": {
+                    firmware_id: components["schemas"]["UUID"];
+                    device_ids: components["schemas"]["UUID"][];
+                    idempotency_key: components["schemas"]["UUID"];
+                };
                 "multipart/form-data": components["schemas"]["CreateFirmwareReleaseRequest"];
             };
         };

@@ -498,7 +498,7 @@ function AdminOverview() {
     { label: "停用工作区", count: disabledWorkspaces, detail: "当前不可正常使用", to: "/admin/workspaces?status=disabled", tone: disabledWorkspaces ? "warning" : "success" },
   ] as const;
   const metrics = [
-    { label: "系统设备", value: overviewCount(devices), suffix: "台", issue: unassignedDevices, issueLabel: "未分配", icon: Boxes, to: "/admin/devices" },
+    { label: "设备列表", value: overviewCount(devices), suffix: "台", issue: unassignedDevices, issueLabel: "未分配", icon: Boxes, to: "/admin/devices" },
     { label: "数据源", value: overviewCount(sources), suffix: "个", issue: inactiveSources, issueLabel: "异常", icon: Database, to: "/admin/sources" },
     { label: "平台用户", value: overviewCount(users), suffix: "人", issue: restrictedUsers, issueLabel: "受限", icon: UserRound, to: "/admin/users" },
     { label: "工作区", value: overviewCount(workspaces), suffix: "个", issue: disabledWorkspaces, issueLabel: "停用", icon: Network, to: "/admin/workspaces" },

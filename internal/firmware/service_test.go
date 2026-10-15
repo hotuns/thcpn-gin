@@ -16,12 +16,14 @@ import (
 )
 
 type memoryStore struct {
+	puts    int
 	data    []byte
 	key     string
 	deleted bool
 }
 
 func (s *memoryStore) Put(_ context.Context, input objectstore.PutInput) error {
+	s.puts++
 	data, err := io.ReadAll(input.Body)
 	s.data = data
 	s.key = input.ObjectKey
