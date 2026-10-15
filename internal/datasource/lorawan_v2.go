@@ -501,7 +501,11 @@ func (s *Service) CreateLoRaWANV2Gateway(ctx context.Context, dataSourceID uuid.
 		}
 	}
 	if needsConfig {
-		if _, configErr := client.request(ctx, http.MethodPost, "/device/"+url.PathEscape(sn)+"/config", url.Values{}, defaultLoRaWANV2GatewayConfig(sn)); configErr != nil {
+		config, configErr := normalizeLoRaWANV2GatewayConfig(defaultLoRaWANV2GatewayConfig(sn), sn)
+		if configErr == nil {
+			_, configErr = client.request(ctx, http.MethodPost, "/device/"+url.PathEscape(sn)+"/config", url.Values{}, config)
+		}
+		if configErr != nil {
 			result.ConfigError = apperr.MessageOf(configErr)
 		}
 	}

@@ -16,7 +16,7 @@ func generatedLoRaWANV2SN(source, actor, request uuid.UUID) string {
 
 func defaultLoRaWANV2GatewayConfig(sn string) map[string]any {
 	raw := `{
- "system":{"did":"{device_sn}","log_print_lvl":"all","log_file_lvl":"all"},
+ "system":{"did":"{device_sn}","cid":1,"log_print_lvl":"all","log_file_lvl":"all"},
  "wdt":{"enable":0,"timeout":60,"feed":30},
  "device":{"clean_session":1,"chunk_size":64,"lora_chunk_snr":1000,"lora_chunk_rssi":1000,"error_max":2},
  "platform":{

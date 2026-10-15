@@ -35,8 +35,13 @@ func TestLoRaWANV2GatewayConfigurationContract(t *testing.T) {
 	if _, err := normalizeLoRaWANV2GatewayConfig(map[string]any{"system": map[string]any{"did": "other"}}, "GW"); err == nil {
 		t.Fatal("accepted mismatched gateway identity")
 	}
-	if defaultLoRaWANV2GatewayConfig("GW")["system"].(map[string]any)["cid"] != nil {
-		t.Fatal("default config specifies upstream-owned cid")
+	defaults := defaultLoRaWANV2GatewayConfig("GW")
+	if defaults["system"].(map[string]any)["cid"] != float64(1) {
+		t.Fatal("default draft must include cid placeholder")
+	}
+	write, err := normalizeLoRaWANV2GatewayConfig(defaults, "GW")
+	if err != nil || write["system"].(map[string]any)["cid"] != nil {
+		t.Fatal("upstream-owned cid must not be sent", err)
 	}
 }
 
