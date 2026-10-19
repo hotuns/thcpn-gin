@@ -1687,6 +1687,14 @@ func buildTHCPNImageStreamSpecs(externalDeviceID int64, shardStrategy string, ra
 		Name string `json:"name"`
 		Desc string `json:"desc"`
 	}
+	// Some legacy stations store the empty image section as {}. Accept only
+	// the empty dictionary; nonempty objects are malformed image configs.
+	if bytes.HasPrefix(bytes.TrimSpace(raw), []byte("{")) {
+		var object map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &object); err == nil && len(object) == 0 {
+			return []thcpnStreamSpec{}, nil
+		}
+	}
 	if len(raw) == 0 {
 		raw = []byte("[]")
 	}

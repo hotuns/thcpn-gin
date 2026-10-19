@@ -30,6 +30,16 @@ func TestTHCPNLegacyConfigProjection(t *testing.T) {
 	}
 }
 
+func TestTHCPNEmptyLegacyImageObject(t *testing.T) {
+	specs, err := buildTHCPNStreamSpecs(286, json.RawMessage(`{"temp":{"desc":"温度"}}`), json.RawMessage(`{}`))
+	if err != nil || len(specs) != 1 {
+		t.Fatalf("empty legacy image rejected: %+v %v", specs, err)
+	}
+	if _, err = buildTHCPNStreamSpecs(425, json.RawMessage(`[]`), json.RawMessage(`{"data_capture_invl":"0 *"}`)); err == nil {
+		t.Fatal("accepted malformed image control object")
+	}
+}
+
 func TestTHCPNAvatarFailureDoesNotBlockDeviceAndRetries(t *testing.T) {
 	db := testdb.Open(t, 0)
 	ctx := t.Context()
