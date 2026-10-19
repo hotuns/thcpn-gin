@@ -6,13 +6,13 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/audit"
+	lorawanv2 "thcpn-gin/internal/datasource/sources/lorawanv2"
+	"thcpn-gin/internal/httpx"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-
-	"thcpn-gin/internal/apperr"
-	"thcpn-gin/internal/audit"
-	"thcpn-gin/internal/httpx"
 )
 
 type createLoRaWANV2GatewayRequest struct {
@@ -25,18 +25,16 @@ func (h *Handler) AdminLoRaWANV2Health(c *gin.Context) {
 	if !ok {
 		return
 	}
-	payload, err := h.service.LoRaWANV2Health(c.Request.Context(), id)
+	payload, err := h.service.LoRaWAN.LoRaWANV2Health(c.Request.Context(), id)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
 	writeLoRaWANV2Payload(c, http.StatusOK, payload)
 }
-
 func (h *Handler) AdminListLoRaWANV2Gateways(c *gin.Context) {
 	h.adminLoRaWANV2Get(c, "/devices", loraWANV2PageQueryFromContext(c))
 }
-
 func (h *Handler) AdminCreateLoRaWANV2Gateway(c *gin.Context) {
 	actor, ok := actorFromContext(c)
 	if !ok {
@@ -55,8 +53,8 @@ func (h *Handler) AdminCreateLoRaWANV2Gateway(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "idempotency_key is required"))
 		return
 	}
-	sn := generatedLoRaWANV2SN(id, actor.UserID, req.RequestID)
-	result, err := h.service.CreateLoRaWANV2Gateway(c.Request.Context(), id, sn, req.NodeCount, actor.UserID)
+	sn := lorawanv2.GeneratedLoRaWANV2SN(id, actor.UserID, req.RequestID)
+	result, err := h.service.LoRaWAN.CreateLoRaWANV2Gateway(c.Request.Context(), id, sn, req.NodeCount, actor.UserID)
 	if err != nil {
 		h.recordLoRaWANV2(c, actor.UserID, id, "lorawan_v2.gateway.create", audit.ResultFailure, apperr.MessageOf(err))
 		httpx.WriteAppError(c, err)
@@ -78,9 +76,7 @@ func (h *Handler) AdminCreateLoRaWANV2Gateway(c *gin.Context) {
 	}
 	c.JSON(http.StatusCreated, result)
 }
-
 func (h *Handler) AdminGetLoRaWANV2Gateway(c *gin.Context) { h.adminLoRaWANV2GatewayGet(c, "") }
-
 func (h *Handler) AdminListLoRaWANV2Firmwares(c *gin.Context) {
 	h.adminLoRaWANV2Get(c, "/firmwares", loraWANV2FirmwareQuery(c))
 }
@@ -125,12 +121,12 @@ func (h *Handler) AdminListDeviceLoRaWANV2GatewayLogs(c *gin.Context) {
 	if !ok {
 		return
 	}
-	ref, err := h.service.LoRaWANV2GatewayForDevice(c.Request.Context(), deviceID)
+	ref, err := h.service.LoRaWAN.LoRaWANV2GatewayForDevice(c.Request.Context(), deviceID)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
-	payload, err := h.service.LoRaWANV2Request(c.Request.Context(), ref.DataSourceID, http.MethodGet, "/device/"+url.PathEscape(ref.GatewaySN)+"/logs", loraWANV2AllowedQuery(c), nil)
+	payload, err := h.service.LoRaWAN.LoRaWANV2Request(c.Request.Context(), ref.DataSourceID, http.MethodGet, "/device/"+url.PathEscape(ref.GatewaySN)+"/logs", loraWANV2AllowedQuery(c), nil)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -142,7 +138,7 @@ func (h *Handler) AdminGetDeviceLoRaWANV2Context(c *gin.Context) {
 	if !ok {
 		return
 	}
-	ref, err := h.service.LoRaWANV2GatewayForDevice(c.Request.Context(), deviceID)
+	ref, err := h.service.LoRaWAN.LoRaWANV2GatewayForDevice(c.Request.Context(), deviceID)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -153,9 +149,8 @@ func (h *Handler) AdminListLoRaWANV2NodeData(c *gin.Context) { h.adminLoRaWANV2N
 func (h *Handler) AdminListLoRaWANV2GatewayInfos(c *gin.Context) {
 	h.adminLoRaWANV2GatewayGet(c, "/infos")
 }
-
 func (h *Handler) adminLoRaWANV2GatewayGet(c *gin.Context, suffix string) {
-	sn, err := loraWANV2PathSN(c.Param("gateway_sn"))
+	sn, err := lorawanv2.LoraWANV2PathSN(c.Param("gateway_sn"))
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -170,14 +165,14 @@ func (h *Handler) adminLoRaWANV2NodeGet(c *gin.Context, suffix string) {
 	h.adminLoRaWANV2Get(c, path, loraWANV2AllowedQuery(c))
 }
 func (h *Handler) adminLoRaWANV2GatewayWrite(c *gin.Context, suffix, action string, status int) {
-	sn, err := loraWANV2PathSN(c.Param("gateway_sn"))
+	sn, err := lorawanv2.LoraWANV2PathSN(c.Param("gateway_sn"))
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
 	body := loraWANV2JSONBody(c)
 	if suffix == "/config" {
-		body, err = normalizeLoRaWANV2GatewayConfig(body, sn)
+		body, err = lorawanv2.NormalizeLoRaWANV2GatewayConfig(body, sn)
 		if err != nil {
 			httpx.WriteAppError(c, err)
 			return
@@ -192,9 +187,8 @@ func (h *Handler) adminLoRaWANV2NodeWrite(c *gin.Context, suffix, action string,
 	}
 	h.adminLoRaWANV2Write(c, http.MethodPost, path, loraWANV2JSONBody(c), action, status)
 }
-
 func (h *Handler) loraWANV2NodePath(c *gin.Context, suffix string) (string, bool) {
-	sn, err := loraWANV2PathSN(c.Param("gateway_sn"))
+	sn, err := lorawanv2.LoraWANV2PathSN(c.Param("gateway_sn"))
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return "", false
@@ -206,13 +200,12 @@ func (h *Handler) loraWANV2NodePath(c *gin.Context, suffix string) (string, bool
 	}
 	return "/device/" + url.PathEscape(sn) + "/node/" + strconv.Itoa(index) + suffix, true
 }
-
 func (h *Handler) adminLoRaWANV2Get(c *gin.Context, path string, query url.Values) {
 	id, ok := parseUUIDParam(c, "data_source_id")
 	if !ok {
 		return
 	}
-	payload, err := h.service.LoRaWANV2Request(c.Request.Context(), id, http.MethodGet, path, query, nil)
+	payload, err := h.service.LoRaWAN.LoRaWANV2Request(c.Request.Context(), id, http.MethodGet, path, query, nil)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -232,7 +225,7 @@ func (h *Handler) adminLoRaWANV2Write(c *gin.Context, method, path string, body 
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
-	payload, err := h.service.LoRaWANV2Request(c.Request.Context(), id, method, path, url.Values{}, body)
+	payload, err := h.service.LoRaWAN.LoRaWANV2Request(c.Request.Context(), id, method, path, url.Values{}, body)
 	if err != nil {
 		h.recordLoRaWANV2(c, actor.UserID, id, action, audit.ResultFailure, apperr.MessageOf(err))
 		httpx.WriteAppError(c, err)
@@ -243,7 +236,6 @@ func (h *Handler) adminLoRaWANV2Write(c *gin.Context, method, path string, body 
 	}
 	writeLoRaWANV2Payload(c, status, payload)
 }
-
 func loraWANV2JSONBody(c *gin.Context) any {
 	var raw json.RawMessage
 	if err := c.ShouldBindJSON(&raw); err != nil || !json.Valid(raw) {
@@ -261,7 +253,6 @@ func writeLoRaWANV2Payload(c *gin.Context, status int, payload json.RawMessage) 
 func (h *Handler) recordLoRaWANV2(c *gin.Context, actorID, sourceID uuid.UUID, action string, result string, reason string) bool {
 	return h.record(c, audit.RecordInput{ActorType: audit.ActorUser, ActorID: audit.UserActorID(actorID), Action: action, ResourceType: "data_source", ResourceID: audit.ResourceID(sourceID), Result: result, Reason: reason})
 }
-
 func loraWANV2AllowedQuery(c *gin.Context) url.Values {
 	query := loraWANV2PageQueryFromContext(c)
 	for _, key := range []string{"start_at", "end_at", "metrics"} {
@@ -274,7 +265,7 @@ func loraWANV2AllowedQuery(c *gin.Context) url.Values {
 func loraWANV2PageQueryFromContext(c *gin.Context) url.Values {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
-	return loraWANV2PageQuery(page, size)
+	return lorawanv2.LoraWANV2PageQuery(page, size)
 }
 func loraWANV2FirmwareQuery(c *gin.Context) url.Values {
 	query := loraWANV2PageQueryFromContext(c)

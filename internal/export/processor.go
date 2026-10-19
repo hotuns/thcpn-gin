@@ -29,6 +29,8 @@ import (
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/datasource"
+	platform "thcpn-gin/internal/datasource/platform"
+	carbon "thcpn-gin/internal/datasource/sources/carbon"
 	"thcpn-gin/internal/db/sqlc"
 	"thcpn-gin/internal/device"
 	"thcpn-gin/internal/metrics"
@@ -44,11 +46,11 @@ const (
 )
 
 type TelemetryRuntime interface {
-	QueryTelemetry(ctx context.Context, source datasource.DataSource, req datasource.TelemetryQuery) (datasource.TelemetryResult, error)
+	QueryTelemetry(ctx context.Context, source platform.DataSource, req platform.TelemetryQuery) (platform.TelemetryResult, error)
 }
 
 type MediaRuntime interface {
-	QueryMedia(ctx context.Context, source datasource.DataSource, req datasource.MediaQuery) (datasource.MediaResult, error)
+	QueryMedia(ctx context.Context, source platform.DataSource, req platform.MediaQuery) (platform.MediaResult, error)
 }
 
 type Runtime interface {
@@ -115,7 +117,7 @@ type telemetrySeries struct {
 	Code         string
 	Name         string
 	Unit         string
-	Points       []datasource.TelemetryPoint
+	Points       []platform.TelemetryPoint
 }
 
 type renderedExport struct {
@@ -646,9 +648,9 @@ func (p *Processor) queryTelemetryStreamFull(ctx context.Context, stream sqlc.Da
 	if limit <= 0 {
 		limit = 100000
 	}
-	var result datasource.TelemetryResult
+	var result platform.TelemetryResult
 	for attempt := 0; attempt < 8; attempt++ {
-		result, err = p.runtime.QueryTelemetry(ctx, source, datasource.TelemetryQuery{Binding: binding, Start: start, End: end, Limit: limit})
+		result, err = p.runtime.QueryTelemetry(ctx, source, platform.TelemetryQuery{Binding: binding, Start: start, End: end, Limit: limit})
 		if err != nil {
 			return telemetrySeries{}, err
 		}
@@ -924,7 +926,7 @@ func (p *Processor) queryMediaStream(ctx context.Context, stream sqlc.DataStream
 	if err != nil {
 		return nil, err
 	}
-	result, err := p.runtime.QueryMedia(ctx, source, datasource.MediaQuery{
+	result, err := p.runtime.QueryMedia(ctx, source, platform.MediaQuery{
 		Binding:   binding,
 		Start:     start,
 		End:       end,
@@ -984,7 +986,7 @@ func (p *Processor) queryDeviceMediaAll(ctx context.Context, deviceID uuid.UUID,
 		page := 1
 		streamCount := 0
 		for {
-			result, err := p.runtime.QueryMedia(ctx, source, datasource.MediaQuery{Binding: binding, Start: start, End: end, Page: page, PageSize: pageSize, MediaType: stream.Type})
+			result, err := p.runtime.QueryMedia(ctx, source, platform.MediaQuery{Binding: binding, Start: start, End: end, Page: page, PageSize: pageSize, MediaType: stream.Type})
 			if err != nil {
 				return nil, err
 			}
@@ -1031,9 +1033,9 @@ func (p *Processor) queryTelemetry(ctx context.Context, resourceType string, res
 			if series.Error != "" {
 				return nil, apperr.New(apperr.KindDataSource, "telemetry export failed: "+series.Error)
 			}
-			points := make([]datasource.TelemetryPoint, 0, len(series.Points))
+			points := make([]platform.TelemetryPoint, 0, len(series.Points))
 			for _, point := range series.Points {
-				points = append(points, datasource.TelemetryPoint{Timestamp: point.Timestamp, Value: point.Value, Quality: point.Quality})
+				points = append(points, platform.TelemetryPoint{Timestamp: point.Timestamp, Value: point.Value, Quality: point.Quality})
 			}
 			unit := ""
 			if series.Unit != nil {
@@ -1099,7 +1101,7 @@ func (p *Processor) queryTelemetryStream(ctx context.Context, stream sqlc.DataSt
 	if err != nil {
 		return telemetrySeries{}, err
 	}
-	result, err := p.runtime.QueryTelemetry(ctx, source, datasource.TelemetryQuery{
+	result, err := p.runtime.QueryTelemetry(ctx, source, platform.TelemetryQuery{
 		Binding: binding,
 		Start:   start,
 		End:     end,
@@ -1221,13 +1223,13 @@ func renderWideTelemetryCSV(series []telemetrySeries) ([]byte, []telemetryMetada
 	copy(columns, series)
 	sort.Slice(columns, func(i, j int) bool { return columns[i].Code < columns[j].Code })
 	metadata := make([]telemetryMetadataRow, 0, len(columns))
-	byTimestamp := map[string]map[string]datasource.TelemetryPoint{}
+	byTimestamp := map[string]map[string]platform.TelemetryPoint{}
 	for _, item := range columns {
 		metadata = append(metadata, telemetryMetadataRow{Code: item.Code, Name: item.Name, Unit: item.Unit, Type: "telemetry"})
 		for _, point := range item.Points {
 			key := point.Timestamp.UTC().Format(time.RFC3339Nano)
 			if byTimestamp[key] == nil {
-				byTimestamp[key] = map[string]datasource.TelemetryPoint{}
+				byTimestamp[key] = map[string]platform.TelemetryPoint{}
 			}
 			byTimestamp[key][item.Code] = point
 		}
@@ -1343,7 +1345,7 @@ func (p *Processor) renderCarbonStationZIP(ctx context.Context, job Job, cfg car
 			field := strings.TrimSpace(rawField)
 			folder := path.Join(deviceFolder, fmt.Sprintf("node-%d", nodeID), safeArchiveSegment(field))
 			if cfg.IncludeFlux {
-				points, queryErr := p.dataSources.CarbonFlux(ctx, job.ResourceID, nodeID, field, cfg.StartTime, cfg.EndTime)
+				points, queryErr := p.dataSources.Carbon.CarbonFlux(ctx, job.ResourceID, nodeID, field, cfg.StartTime, cfg.EndTime)
 				if queryErr != nil {
 					return nil, queryErr
 				}
@@ -1413,7 +1415,7 @@ func (p *Processor) renderCarbonStationZIP(ctx context.Context, job Job, cfg car
 	return buf.Bytes(), nil
 }
 
-func renderCarbonFluxCSV(deviceID uuid.UUID, points []datasource.CarbonFluxPoint) ([]byte, error) {
+func renderCarbonFluxCSV(deviceID uuid.UUID, points []carbon.CarbonFluxPoint) ([]byte, error) {
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
 	if err := writer.Write([]string{"device_id", "node_id", "period", "period_at", "field", "nee", "er", "gpp", "unit"}); err != nil {
@@ -1435,7 +1437,7 @@ func renderCarbonFluxCSV(deviceID uuid.UUID, points []datasource.CarbonFluxPoint
 }
 
 func (p *Processor) renderCarbonRawCSV(ctx context.Context, deviceID uuid.UUID, cfg requestConfig) ([]byte, error) {
-	periods, err := p.dataSources.CarbonPeriods(ctx, deviceID, cfg.NodeID, cfg.StartTime, cfg.EndTime)
+	periods, err := p.dataSources.Carbon.CarbonPeriods(ctx, deviceID, cfg.NodeID, cfg.StartTime, cfg.EndTime)
 	if err != nil {
 		return nil, err
 	}
@@ -1449,7 +1451,7 @@ func (p *Processor) renderCarbonRawCSV(ctx context.Context, deviceID uuid.UUID, 
 		if rows >= cfg.Limit {
 			break
 		}
-		detail, err := p.dataSources.CarbonPeriod(ctx, deviceID, cfg.NodeID, cfg.Field, summary.Period)
+		detail, err := p.dataSources.Carbon.CarbonPeriod(ctx, deviceID, cfg.NodeID, cfg.Field, summary.Period)
 		if err != nil {
 			if apperr.KindOf(err) == apperr.KindNotFound {
 				continue

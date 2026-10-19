@@ -2,8 +2,9 @@ package datasource
 
 import (
 	"testing"
-
 	"thcpn-gin/internal/apperr"
+	platform "thcpn-gin/internal/datasource/platform"
+	carbon "thcpn-gin/internal/datasource/sources/carbon"
 )
 
 func TestCreatedSourceDeviceSN(t *testing.T) {
@@ -18,21 +19,20 @@ func TestCreatedSourceDeviceSN(t *testing.T) {
 		{"thcreate.v3.", 27, "59e4cd355551f173fc5fb2be5118571a"},
 	}
 	for _, tt := range tests {
-		if got := createdSourceDeviceSN(tt.prefix, tt.id); got != tt.want {
+		if got := platform.CreatedSourceDeviceSN(tt.prefix, tt.id); got != tt.want {
 			t.Errorf("createdSourceDeviceSN(%q, %d) = %q, want %q", tt.prefix, tt.id, got, tt.want)
 		}
 	}
 }
-
 func TestSourceFamilyForCreatedDeviceKind(t *testing.T) {
 	tests := []struct {
 		kind string
 		want string
 	}{
-		{kind: createdSourceDeviceTHCPNStandard, want: sourceFamilyTHCPN},
-		{kind: createdSourceDeviceTHCPNGateway, want: sourceFamilyTHCPN},
-		{kind: createdSourceDeviceTHCPNNode, want: sourceFamilyTHCPN},
-		{kind: createdSourceDeviceCarbon, want: sourceFamilyCarbon},
+		{kind: platform.CreatedSourceDeviceTHCPNStandard, want: platform.SourceFamilyTHCPN},
+		{kind: platform.CreatedSourceDeviceTHCPNGateway, want: platform.SourceFamilyTHCPN},
+		{kind: platform.CreatedSourceDeviceTHCPNNode, want: platform.SourceFamilyTHCPN},
+		{kind: platform.CreatedSourceDeviceCarbon, want: platform.SourceFamilyCarbon},
 	}
 	for _, tt := range tests {
 		got, err := sourceFamilyForCreatedDeviceKind(tt.kind)
@@ -44,19 +44,18 @@ func TestSourceFamilyForCreatedDeviceKind(t *testing.T) {
 		t.Fatalf("expected invalid kind error, got %v", err)
 	}
 }
-
 func TestNormalizeCarbonNodesCount(t *testing.T) {
-	got, err := normalizeCarbonNodesCount(nil)
+	got, err := carbon.NormalizeCarbonNodesCount(nil)
 	if err != nil || got != 16 {
 		t.Fatalf("default nodes count = %d, %v", got, err)
 	}
 	valid := int64(24)
-	got, err = normalizeCarbonNodesCount(&valid)
+	got, err = carbon.NormalizeCarbonNodesCount(&valid)
 	if err != nil || got != valid {
 		t.Fatalf("valid nodes count = %d, %v", got, err)
 	}
 	for _, value := range []int64{0, -1} {
-		if _, err := normalizeCarbonNodesCount(&value); apperr.KindOf(err) != apperr.KindInvalidArgument {
+		if _, err := carbon.NormalizeCarbonNodesCount(&value); apperr.KindOf(err) != apperr.KindInvalidArgument {
 			t.Fatalf("expected invalid nodes count %d, got %v", value, err)
 		}
 	}

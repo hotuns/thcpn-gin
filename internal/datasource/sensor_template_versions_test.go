@@ -2,9 +2,10 @@ package datasource
 
 import (
 	"testing"
+	platform "thcpn-gin/internal/datasource/platform"
+	"thcpn-gin/internal/testdb"
 
 	"github.com/google/uuid"
-	"thcpn-gin/internal/testdb"
 )
 
 func TestSensorTemplateVersionMigration(t *testing.T) {
@@ -25,12 +26,12 @@ func TestSensorTemplateVersionMigration(t *testing.T) {
 	must(`INSERT INTO devices(id,name,serial_no,device_type,status) VALUES($1,'Gateway','version-test','gateway','active')`, device)
 	must(`INSERT INTO lorawan_v2_node_config_snapshots(device_id,node_index,content_hash,wait_time,content_json,template_instances,metrics_json,management_status) VALUES($1,1,'hash',60,'[]',jsonb_build_array(jsonb_build_object('template_id',$2::bigint,'sensor_type','Shared')),'[]','managed')`, device, original)
 	testdb.Apply(t, db, "../../migrations/000040_separate_sensor_template_versions.up.sql")
-	service := &Service{db: db}
-	v1, err := service.ListTHCPNSensorTemplates(ctx, THCPNSensorTemplateListInput{})
+	service := NewService(db)
+	v1, err := service.ListSensorTemplates(ctx, platform.SensorTemplateListInput{SourceFamily: "thcpn"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	v2, err := service.ListTHCPNSensorTemplates(ctx, THCPNSensorTemplateListInput{SourceFamily: "lorawan_v2"})
+	v2, err := service.ListSensorTemplates(ctx, platform.SensorTemplateListInput{SourceFamily: "lorawan_v2"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +45,7 @@ func TestSensorTemplateVersionMigration(t *testing.T) {
 	if linked != v2.Items[0].ID {
 		t.Fatalf("snapshot references %d, want %d", linked, v2.Items[0].ID)
 	}
-	_, err = service.UpdateTHCPNSensorTemplate(ctx, linked, THCPNSensorTemplateWriteInput{SensorType: "Changed", Params: map[string]any{}, Status: "active"})
+	_, err = service.UpdateSensorTemplate(ctx, linked, platform.SensorTemplateWriteInput{SensorType: "Changed", Params: map[string]any{}, Status: "active"})
 	if err == nil {
 		t.Fatal("V2 must not be converted to V1")
 	}
@@ -58,9 +59,8 @@ func TestSensorTemplateVersionMigration(t *testing.T) {
 		t.Fatalf("down/up duplicated templates: %d", count)
 	}
 }
-
 func TestSensorTemplateRejectsMixedVersions(t *testing.T) {
-	err := validateSensorTemplateWrite(THCPNSensorTemplateWriteInput{SensorType: "Mixed", Variants: map[string]map[string]any{"thcpn": {}, "lorawan_v2": {}}})
+	err := platform.ValidateSensorTemplateWrite(platform.SensorTemplateWriteInput{SensorType: "Mixed", Variants: map[string]map[string]any{"thcpn": {}, "lorawan_v2": {}}})
 	if err == nil {
 		t.Fatal("mixed V1/V2 template must be rejected")
 	}

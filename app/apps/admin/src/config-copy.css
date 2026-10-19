@@ -1,0 +1,7 @@
+.config-copy-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-block: 16px; }
+.config-copy-toolbar > span { color: #475569; font-size: 13px; }
+.config-copy-content { width: 100%; margin-block: 16px; }
+.config-copy-content > .ant-space-item { width: 100%; min-width: 0; }
+.config-copy-field { display: flex; flex-direction: column; gap: 8px; }
+.config-copy-preview { margin-top: 12px; }
+.config-copy-preview pre { max-height: 320px; overflow: auto; padding: 12px; border-radius: 6px; background: #f8fafc; white-space: pre-wrap; overflow-wrap: anywhere; }

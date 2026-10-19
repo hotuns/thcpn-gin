@@ -52,13 +52,13 @@ import {
   deviceStatusOptions,
   deviceTopologyRoleLabel,
   formatApiError,
-  parseTHCPNConfig,
+  parseDeviceConfig,
   type Device,
   type DeviceTaxonomyTerm,
   type JsonRecord,
   type TelemetrySeries,
   type THCPNLatestAttributesResponse,
-  type THCPNConfigFields,
+  type DeviceConfigFields,
 } from "@thcpn/api";
 import { iconifyIconUrl } from "@thcpn/device-map";
 import { useAuth } from "@thcpn/auth";
@@ -1429,7 +1429,7 @@ function SystemDeviceConfig({
   const [targetWorkspaceId, setTargetWorkspaceId] = useState(
     device.workspace_id ?? "",
   );
-  const [fields, setFields] = useState<THCPNConfigFields>({
+  const [fields, setFields] = useState<DeviceConfigFields>({
     data_json: "[]",
     image_json: "[]",
     control_json: "{}",
@@ -1442,7 +1442,7 @@ function SystemDeviceConfig({
   const submitConfig = async () => {
     setLocalError("");
     try {
-      const payload = parseTHCPNConfig(fields);
+      const payload = parseDeviceConfig(fields);
       if (!window.confirm("确认写入 THCPN 外部设备库并刷新平台数据流？"))
         return;
       await run(

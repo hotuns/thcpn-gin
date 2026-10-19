@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"thcpn-gin/internal/datasource/platform"
 	"time"
 
 	"github.com/google/uuid"
@@ -466,7 +467,7 @@ func (s *Service) buildSnapshot(ctx context.Context, workspaceID uuid.UUID, cfg 
 		for _, device := range out.Devices {
 			deviceIDs = append(deviceIDs, device.ID)
 		}
-		runtime, runtimeErr := s.datasource.THCPNDeviceRuntime(ctx, deviceIDs)
+		runtime, runtimeErr := s.datasource.DeviceRuntime(ctx, deviceIDs)
 		if runtimeErr == nil {
 			applyRuntime(&out, runtime)
 		} else {
@@ -528,8 +529,8 @@ func (s *Service) buildSnapshot(ctx context.Context, workspaceID uuid.UUID, cfg 
 	return out, nil
 }
 
-func applyRuntime(snapshot *Snapshot, runtime datasource.THCPNDeviceRuntimeBatchResponse) {
-	items := make(map[uuid.UUID]datasource.THCPNLatestAttributesResponse, len(runtime.Items))
+func applyRuntime(snapshot *Snapshot, runtime platform.DeviceRuntimeBatch) {
+	items := make(map[uuid.UUID]platform.DeviceRuntimeItem, len(runtime.Items))
 	failures := make(map[uuid.UUID]string, len(runtime.Failures))
 	for _, item := range runtime.Items {
 		items[item.DeviceID] = item
@@ -559,7 +560,7 @@ func applyRuntime(snapshot *Snapshot, runtime datasource.THCPNDeviceRuntimeBatch
 	}
 }
 
-func numericAttribute(value datasource.THCPNAttributeValue) *float64 {
+func numericAttribute(value platform.RuntimeAttribute) *float64 {
 	if value.RawValue == "" {
 		return nil
 	}
@@ -570,7 +571,7 @@ func numericAttribute(value datasource.THCPNAttributeValue) *float64 {
 	return &number
 }
 
-func latestRuntimeTime(item datasource.THCPNLatestAttributesResponse) *time.Time {
+func latestRuntimeTime(item platform.DeviceRuntimeItem) *time.Time {
 	var latest *time.Time
 	for _, value := range item.Attributes {
 		candidate := value.SampledAt

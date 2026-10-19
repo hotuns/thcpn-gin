@@ -85,13 +85,10 @@ export type THCPNLatestAttributesResponse = Schema<"THCPNLatestAttributesRespons
 export type THCPNDeviceRuntimeBatchResponse = Schema<"THCPNDeviceRuntimeBatchResponse">;
 export type THCPNDeviceLogListResponse = Schema<"THCPNDeviceLogListResponse">;
 export type THCPNDeviceLogAccessResponse = Schema<"THCPNDeviceLogAccessResponse">;
-export type THCPNSensorTemplate = Schema<"THCPNSensorTemplate">;
-export type THCPNSensorMetric = Schema<"THCPNSensorMetric">;
-export type THCPNSensorTemplateListResponse = Schema<"THCPNSensorTemplateListResponse">;
+export type SensorTemplate = Schema<"SensorTemplate">;
+export type SensorMetric = Schema<"SensorMetric">;
+export type SensorTemplateListResponse = Schema<"SensorTemplateListResponse">;
 export type SensorTemplateRequest = Schema<"SensorTemplateRequest">;
-export type SensorTemplate = THCPNSensorTemplate;
-export type SensorMetric = THCPNSensorMetric;
-export type SensorTemplateListResponse = THCPNSensorTemplateListResponse;
 export type LoRaWANV2TemplateSensorConfigRequest = Schema<"LoRaWANV2TemplateSensorConfigRequest">;
 export type LoRaWANV2AdvancedSensorConfigRequest = Schema<"LoRaWANV2AdvancedSensorConfigRequest">;
 export type SamplingProfile = Schema<"SamplingProfileResponse">;
@@ -1437,7 +1434,7 @@ export const api = {
       ),
     deviceConfig: (id: string) =>
       request<JsonRecord>(
-        `/api/v1/admin/devices/${encodeURIComponent(id)}/thcpn-config`,
+        `/api/v1/admin/devices/${encodeURIComponent(id)}/config`,
       ),
     deviceEnvironment: (id: string) => request<DeviceEnvironment>(`/api/v1/admin/devices/${encodeURIComponent(id)}/environment`),
     siteEnvironment: (id: string) => request<SiteEnvironment>(`/api/v1/admin/sites/${encodeURIComponent(id)}/environment`),
@@ -1449,15 +1446,15 @@ export const api = {
     deleteDeviceTaxonomy: (id: string) => request<void>(`/api/v1/admin/metadata/device-taxonomy/${encodeURIComponent(id)}`, { method: "DELETE" }),
     deviceMap: (includeChildren = false) => request<DeviceMapResult>(`/api/v1/admin/device-map?include_children=${includeChildren}`),
     sensorTemplates: (id: string, input: JsonRecord = {}) =>
-      request<THCPNSensorTemplateListResponse>(
+      request<SensorTemplateListResponse>(
         `/api/v1/admin/devices/${encodeURIComponent(id)}/sensor-templates${queryString(input as Record<string, string | number | boolean>)}`,
       ),
     platformSensorTemplates: (input: JsonRecord = {}) =>
-      request<THCPNSensorTemplateListResponse>(
+      request<SensorTemplateListResponse>(
         `/api/v1/admin/sensor-templates${queryString(input as Record<string, string | number | boolean>)}`,
       ),
     createSensorTemplate: (payload: SensorTemplateRequest) =>
-      jsonRequest<THCPNSensorTemplate>(
+      jsonRequest<SensorTemplate>(
         "/api/v1/admin/sensor-templates",
         "POST",
         payload,
@@ -1469,7 +1466,7 @@ export const api = {
         { data_source_id: dataSourceId },
       ),
     updateSensorTemplate: (id: number, payload: SensorTemplateRequest) =>
-      jsonRequest<THCPNSensorTemplate>(
+      jsonRequest<SensorTemplate>(
         `/api/v1/admin/sensor-templates/${id}`,
         "PUT",
         payload,
@@ -1480,7 +1477,7 @@ export const api = {
       }),
     updateDeviceConfig: (id: string, payload: JsonRecord) =>
       jsonRequest<JsonRecord>(
-        `/api/v1/admin/devices/${encodeURIComponent(id)}/thcpn-config`,
+        `/api/v1/admin/devices/${encodeURIComponent(id)}/config`,
         "POST",
         payload,
       ),
@@ -1626,9 +1623,9 @@ export const api = {
 
 export {
   configFieldsFromDetail,
-  parseTHCPNConfig,
+  parseDeviceConfig,
   validateConfigField,
-  type THCPNConfigFields,
-} from "./thcpn-config";
+  type DeviceConfigFields,
+} from "./device-config";
 
 export { request };

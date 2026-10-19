@@ -15,7 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"thcpn-gin/internal/apperr"
-	"thcpn-gin/internal/datasource"
+	platform "thcpn-gin/internal/datasource/platform"
 	"thcpn-gin/internal/objectstore"
 )
 
@@ -89,7 +89,7 @@ func TestRenderTelemetryCSV(t *testing.T) {
 		Code:         "soil_moisture_10",
 		Name:         "Soil moisture 10cm",
 		Unit:         "%",
-		Points: []datasource.TelemetryPoint{{
+		Points: []platform.TelemetryPoint{{
 			Timestamp: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
 			Value:     21.5,
 			Quality:   "valid",
@@ -127,7 +127,7 @@ func TestRenderTelemetryXLSX(t *testing.T) {
 		Code:         "soil_moisture_10",
 		Name:         "Soil & <moisture>",
 		Unit:         "%",
-		Points: []datasource.TelemetryPoint{{
+		Points: []platform.TelemetryPoint{{
 			Timestamp: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
 			Value:     21.5,
 			Quality:   "valid",

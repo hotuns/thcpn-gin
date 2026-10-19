@@ -286,7 +286,7 @@ func (h *Handler) CarbonOverview(c *gin.Context) {
 		return
 	}
 	_ = key
-	result, err := h.dataSources.CarbonOverview(c, deviceID)
+	result, err := h.dataSources.Carbon.CarbonOverview(c, deviceID)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -307,7 +307,7 @@ func (h *Handler) CarbonFlux(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := h.dataSources.CarbonFlux(c, deviceID, nodeID, c.Query("field"), start, end)
+	result, err := h.dataSources.Carbon.CarbonFlux(c, deviceID, nodeID, c.Query("field"), start, end)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -328,7 +328,7 @@ func (h *Handler) CarbonPeriods(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := h.dataSources.CarbonPeriods(c, deviceID, nodeID, start, end)
+	result, err := h.dataSources.Carbon.CarbonPeriods(c, deviceID, nodeID, start, end)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -341,7 +341,7 @@ func (h *Handler) CarbonPeriod(c *gin.Context) {
 		return
 	}
 	nodeID, _ := strconv.Atoi(c.Query("node_id"))
-	result, err := h.dataSources.CarbonPeriod(c, deviceID, nodeID, c.Query("field"), c.Query("period"))
+	result, err := h.dataSources.Carbon.CarbonPeriod(c, deviceID, nodeID, c.Query("field"), c.Query("period"))
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return

@@ -32,7 +32,9 @@
 - `internal/permission`：权限目录、资源解析和授权判断。
 - `internal/audit`：审计写入和查询。
 - `internal/project`、`site`、`device`、`datastream`、`dataset`：平台资源领域模块。
-- `internal/datasource`：设备数据源元信息、同步和运行时 adapter。
+- `internal/datasource`：数据源组装、公共设备编排和 HTTP/worker 入口。
+- `internal/datasource/platform`：中立契约、操作状态、平台存储与通用查询基础设施，不依赖具体来源。
+- `internal/datasource/sources/*`：各来源独立实现与测试；禁止相互导入。
 - `internal/telemetry`、`media`：设备数据查询工作流。
 - `internal/export`、`task`：导出任务和异步处理。
 - `internal/objectstore`：对象上传、读取、删除和临时访问签名。
@@ -77,6 +79,8 @@
 - 平台业务库不保存大量原始设备采集数据。
 
 ## 设备数据源与 Adapter
+
+- 涉及数据源的设备创建、配置、同步、查询、媒体或固件开发，必须先阅读并遵循 [数据源代码组织与开发规则](docs/datasource-development-rules.md)。新增来源应独立实现，禁止增加跨来源业务耦合；现有混合实现按任务范围渐进迁移。
 
 - 所有设备数据查询必须通过 `internal/datasource` adapter 层。
 - 业务模块不得绕过 adapter 直接访问设备数据源。

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Form, Input, Select, Tabs } from "@thcpn/admin-ui";
-import type { JsonRecord, THCPNSensorTemplate } from "@thcpn/api";
+import type { JsonRecord, SensorTemplate } from "@thcpn/api";
 import { LoRaProtocolFields, attachMetricInfo, buildLoRaContent, collectMetricInfo, splitLoRaContent, type LoRaVisualItem } from "./lora-protocol-fields";
 
 export function readNodeSensorDraft(contentJSON: string, metricsJSON: string) {
@@ -23,7 +23,7 @@ export function serializeNodeSensorDraft(items: LoRaVisualItem[]) {
 }
 
 export function NodeSensorEditor({ contentJSON, metricsJSON, templates, onChange }: {
-  contentJSON: string; metricsJSON: string; templates: THCPNSensorTemplate[];
+  contentJSON: string; metricsJSON: string; templates: SensorTemplate[];
   onChange: (content: string, metrics: string) => void;
 }) {
   const form = Form.useFormInstance();

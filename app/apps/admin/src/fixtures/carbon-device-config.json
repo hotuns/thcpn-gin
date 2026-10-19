@@ -1,0 +1,129 @@
+{
+  "data_json": [
+    {
+      "allowed_hardware_interface_channels": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "description": "ME01-TH温湿度",
+      "hardware_interface_channel": 1,
+      "hardware_interface_type": "485",
+      "params": {
+        "command": "010301000002c5f7",
+        "contents": [
+          {
+            "decode": "0,0.1,0,>2i",
+            "info": {
+              "index": 0,
+              "max": 0,
+              "min": 0,
+              "name": "湿度",
+              "type": "2834ae1a-8c34-4b1f-9769-e84b97ace2fd",
+              "unit": "%"
+            },
+            "key": "humiL"
+          },
+          {
+            "decode": "1,0.1,0,>2i",
+            "info": {
+              "index": 0,
+              "max": 0,
+              "min": 0,
+              "name": "温度",
+              "type": "87d00d02-b9ae-4501-80e5-ffd2191995b3",
+              "unit": "℃"
+            },
+            "key": "tempL"
+          }
+        ],
+        "wait_time": 0
+      },
+      "sensor_id": 1,
+      "software_interface_type": "modbusrtu"
+    },
+    {
+      "allowed_hardware_interface_channels": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "description": "ME02-TH温湿度",
+      "hardware_interface_channel": 1,
+      "hardware_interface_type": "485",
+      "params": {
+        "command": "020301000002c5c4",
+        "contents": [
+          {
+            "decode": "0,0.1,0,>2i",
+            "info": {
+              "index": 0,
+              "max": 0,
+              "min": 0,
+              "name": "湿度",
+              "type": "2834ae1a-8c34-4b1f-9769-e84b97ace2fd",
+              "unit": "%"
+            },
+            "key": "humiB"
+          },
+          {
+            "decode": "1,0.1,0,>2i",
+            "info": {
+              "index": 0,
+              "max": 0,
+              "min": 0,
+              "name": "温度",
+              "type": "87d00d02-b9ae-4501-80e5-ffd2191995b3",
+              "unit": "℃"
+            },
+            "key": "tempB"
+          }
+        ],
+        "wait_time": 0
+      },
+      "sensor_id": 1,
+      "software_interface_type": "modbusrtu"
+    },
+    {
+      "allowed_hardware_interface_channels": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "description": "GMP343",
+      "hardware_interface_channel": 2,
+      "hardware_interface_type": "c_485",
+      "params": {
+        "command": null,
+        "contents": [
+          {
+            "decode": null,
+            "info": {
+              "index": 0,
+              "max": 0,
+              "min": 0,
+              "name": "二氧化碳",
+              "type": "2719e627-78bc-4d91-9a38-b453b4f77154",
+              "unit": "ppm"
+            },
+            "key": "CO2"
+          }
+        ],
+        "wait_time": 0
+      },
+      "sensor_id": 2,
+      "software_interface_type": "gmp343"
+    }
+  ],
+  "image_json": [],
+  "control_json": {
+    "data_capture_invl": "0 *",
+    "data_upload_invl": "0 *",
+    "image_capture_invl": "",
+    "image_upload_invl": "",
+    "misc_invl": "50 8,12,16"
+  }
+}

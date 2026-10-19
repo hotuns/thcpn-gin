@@ -15,6 +15,7 @@ import (
 	"thcpn-gin/internal/computedstream"
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/datasource"
+	platform "thcpn-gin/internal/datasource/platform"
 	"thcpn-gin/internal/db"
 	"thcpn-gin/internal/deviceclaim"
 	"thcpn-gin/internal/export"
@@ -68,7 +69,7 @@ func run() int {
 		return 1
 	}
 	defer pg.Close()
-	defer datasource.CloseDataSourceConnections()
+	defer platform.CloseDataSourceConnections()
 
 	redisClient, err := db.NewRedis(ctx, cfg.Redis)
 	if err != nil {

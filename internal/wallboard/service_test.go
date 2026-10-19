@@ -5,10 +5,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"thcpn-gin/internal/datasource/platform"
 
 	"github.com/google/uuid"
-
-	"thcpn-gin/internal/datasource"
 )
 
 func TestCatalogProvidesAtlas(t *testing.T) {
@@ -69,11 +68,11 @@ func TestOrganizationConfigRejectsMoreThanFiftyDevices(t *testing.T) {
 }
 
 func TestNumericAttribute(t *testing.T) {
-	value := numericAttribute(datasource.THCPNAttributeValue{RawValue: " 78.5 "})
+	value := numericAttribute(platform.RuntimeAttribute{RawValue: " 78.5 "})
 	if value == nil || *value != 78.5 {
 		t.Fatalf("unexpected numeric attribute: %v", value)
 	}
-	if numericAttribute(datasource.THCPNAttributeValue{RawValue: "unknown"}) != nil {
+	if numericAttribute(platform.RuntimeAttribute{RawValue: "unknown"}) != nil {
 		t.Fatal("invalid numeric attribute should be nil")
 	}
 }
@@ -83,9 +82,9 @@ func TestApplyRuntimeKeepsDemoSiteLocation(t *testing.T) {
 	siteLatitude, siteLongitude := 39.9, 116.4
 	deviceLatitude, deviceLongitude := 31.2, 121.5
 	snapshot := Snapshot{Devices: []Device{{ID: deviceID, Latitude: &siteLatitude, Longitude: &siteLongitude, DemoSiteLocation: true}}}
-	applyRuntime(&snapshot, datasource.THCPNDeviceRuntimeBatchResponse{Items: []datasource.THCPNLatestAttributesResponse{{
+	applyRuntime(&snapshot, platform.DeviceRuntimeBatch{Items: []platform.DeviceRuntimeItem{{
 		DeviceID:     deviceID,
-		SourceDevice: datasource.THCPNExternalDeviceMetadata{Latitude: &deviceLatitude, Longitude: &deviceLongitude},
+		SourceDevice: platform.RuntimeDevice{Latitude: &deviceLatitude, Longitude: &deviceLongitude},
 	}}})
 	if snapshot.Devices[0].Latitude != &siteLatitude || snapshot.Devices[0].Longitude != &siteLongitude || snapshot.Devices[0].LocationSource != "site" {
 		t.Fatalf("demo site location was overwritten: %#v", snapshot.Devices[0])

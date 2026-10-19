@@ -26,6 +26,9 @@ import {
 import { api, formatApiError, type JsonRecord } from "@thcpn/api";
 import { StateView } from "@thcpn/ui";
 import { AdminNodeNameEditor as NodeNameEditor } from "./node-name-editor";
+import { LoRaWANV2GatewayConfigCopy, LoRaWANV2SensorConfigCopy, LoRaWANV2TimeConfigCopy } from "./lorawan-v2-config-copy";
+import { configurationHistory } from "./lorawan-v2-config-copy-model";
+export { configurationHistory } from "./lorawan-v2-config-copy-model";
 
 const text = (input: unknown, fallback = "—") =>
   input === undefined || input === null || input === ""
@@ -33,14 +36,6 @@ const text = (input: unknown, fallback = "—") =>
     : String(input);
 const payload = (input: JsonRecord | undefined) =>
   (input?.payload ?? input ?? {}) as JsonRecord;
-export function configurationHistory(input: unknown): JsonRecord[] {
-  if (Array.isArray(input)) {
-    return input.filter((item): item is JsonRecord => Boolean(item) && typeof item === "object" && !Array.isArray(item));
-  }
-  if (!input || typeof input !== "object") return [];
-  const object = input as JsonRecord;
-  return configurationHistory(object.payload ?? object.data ?? object.items);
-}
 const list = configurationHistory;
 export function formattedConfiguration(value: unknown): string {
   if (typeof value === "string") {
@@ -98,7 +93,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
   const [sensorDirty, setSensorDirty] = useState(false);
   const [sensorWaitTime,setSensorWaitTime]=useState<number|null>(0);
   const loadedSensorConfig = useRef("");
-  useEffect(()=>{setSensorWaitTime(0);loadedSensorConfig.current="";},[deviceId,node]);
+  useEffect(()=>{setSensorWaitTime(0);setSensorDirty(false);loadedSensorConfig.current="";},[deviceId,node]);
 
   const [timeContent, setTimeContent] = useState("");
   const timeConfig = useQuery({ queryKey: ["admin",deviceId,node,"time-config"], queryFn: () => api.admin.nodeTimeConfig(deviceId,node), enabled: Boolean(node), retry: false });
@@ -191,7 +186,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
     nodes.error ?? gateways.error ?? sensors.error ?? latest.error;
   const [needsRecovery, setNeedsRecovery] = useState(false);
   useEffect(() => {
-    if (!latest.data) return;
+    if (!latest.data || sensorDirty) return;
     const current = payload(latest.data);
     const content = Array.isArray(current.content) ? current.content : [];
     const metrics = Array.isArray(current.metrics) ? current.metrics : [];
@@ -204,7 +199,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
     setSensorWaitTime(waitTime);
 
     setSensorDirty(false);
-  }, [latest.data, node]);
+  }, [latest.data, node, sensorDirty]);
   const refreshPlatformCatalog = async () => {
     setBusy("recover");
     setFeedback("");
@@ -346,6 +341,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
               children: (
                 <>
                   <Alert className="lora-config-intro" type="info" showIcon message="网关配置" description="编辑网关的原生 JSON，确认内容后提交到 LoRa V2 服务。下方可查看历史记录。" />
+                  <LoRaWANV2GatewayConfigCopy deviceId={deviceId} disabled={Boolean(busy)} onCopy={setGatewayJSON} />
                   <Form layout="vertical">
                     <Form.Item label="新增配置（JSON 对象）">
                       <Input.TextArea
@@ -467,6 +463,9 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                       })()
                     : null}
                   <div className="lora-config-step"><span className="lora-config-step-number">2</span><div><strong>编辑配置草稿</strong><span>协议和指标在同一表单编辑；可选择将同一份配置应用到其他节点。</span></div></div>
+                  <LoRaWANV2SensorConfigCopy key={`sensor-copy-${deviceId}-${node}`} deviceId={deviceId} node={node}
+                    disabled={Boolean(busy) || nodes.isLoading || !sensorNodeOptions.some(item => item.value === node)}
+                    onCopy={draft => { setSensorJSON(draft.content); setSensorMetricsJSON(draft.metrics); setSensorWaitTime(draft.waitTime); setSensorDirty(true); setSensorResults([]); }} />
                   <Form form={sensorForm} layout="vertical" disabled={Boolean(busy)} onValuesChange={(_, values) => {
                     const draft = serializeNodeSensorDraft(values.lora_items ?? []);
                     setSensorJSON(draft.content); setSensorMetricsJSON(draft.metrics); setSensorDirty(true);
@@ -544,6 +543,8 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                     />
                   </Space>
                   <Form.Item label="时间配置文本" required extra="格式：分钟列表 小时列表。* 表示所有分钟或小时；10,20,30 * 表示每小时第 10、20、30 分启动，* * 表示全天每分钟启动。按设备时钟执行。">
+                    <LoRaWANV2TimeConfigCopy key={`time-copy-${deviceId}-${node}`} deviceId={deviceId} node={node}
+                      disabled={Boolean(busy) || nodes.isLoading || !sensorNodeOptions.some(item => item.value === node)} onCopy={setTimeContent} />
                     {timeConfig.isLoading ? <p>正在读取时间配置</p> : timeConfig.error ? <Alert type="warning" showIcon message={formatApiError(timeConfig.error).message}/> : timeConfig.data ? <Alert type="info" message="当前源端时间配置" description={<><p>{describeNodeTimeSchedule(timeConfig.data.content,locale)}</p><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{timeConfig.data.content}</pre><span>更新时间：{new Date(timeConfig.data.updated_at ?? timeConfig.data.created_at).toLocaleString()}</span><Button size="small" onClick={() => setTimeContent(timeConfig.data!.content)}>载入编辑</Button><p>源端保存的配置不等于设备已应用。</p></>}/> : <p>暂无时间配置</p>}
                     <Input.TextArea
                       rows={8}

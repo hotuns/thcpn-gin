@@ -1,0 +1,91 @@
+package lorawanv2
+
+import (
+	"context"
+	"fmt"
+	"sort"
+	"thcpn-gin/internal/apperr"
+	platform "thcpn-gin/internal/datasource/platform"
+	"time"
+)
+
+func queryLoRaWANV2Metrics(ctx context.Context, client *LoraWANV2Client, cfg loraWANV2TelemetryConfig, metrics []string, start, end time.Time, limit int, adaptive bool, target int) (map[string]platform.TelemetryResult, int, error) {
+	if limit <= 0 || !end.After(start) {
+		return nil, 0, apperr.New(apperr.KindInvalidArgument, "valid time range and limit are required")
+	}
+	if adaptive && target < 2 {
+		return nil, 0, apperr.New(apperr.KindInvalidArgument, "adaptive queries require at least two target points")
+	}
+	results := make(map[string]platform.TelemetryResult, len(metrics))
+	collectors := make(map[string]*platform.AdaptiveTelemetryCollector, len(metrics))
+	missing := map[string]int{}
+	invalid := map[string]int{}
+	for _, metric := range metrics {
+		results[metric] = platform.TelemetryResult{Points: []platform.TelemetryPoint{}}
+		if adaptive {
+			collectors[metric] = platform.NewAdaptiveTelemetryCollector(start, end, target, max(2, target-2))
+		}
+	}
+	scanLimit := limit
+	if adaptive {
+		scanLimit = 0
+	}
+	rows, complete, err := client.scanRecords(ctx, cfg, start, end, scanLimit, func(record loraWANV2Record) {
+		if record.Timestamp.Before(start) || record.Timestamp.After(end) {
+			return
+		}
+		for metric, item := range results {
+			raw, exists := record.Values[metric]
+			value, ok := loraWANV2Number(raw)
+			if !ok {
+				if exists {
+					invalid[metric]++
+				} else {
+					missing[metric]++
+				}
+				continue
+			}
+			value = normalizeLoRaWANV2MetricValue(metric, value)
+			point := platform.TelemetryPoint{Timestamp: record.Timestamp, Value: value, Quality: "valid"}
+			item.SourceCount++
+			if adaptive {
+				collectors[metric].Add(point)
+			} else {
+				item.Points = append(item.Points, point)
+			}
+			results[metric] = item
+		}
+	})
+	if err != nil {
+		return nil, rows, err
+	}
+	for metric, item := range results {
+		item.Complete = complete
+		if adaptive {
+			item.Points, item.Sampled = collectors[metric].Result()
+		}
+		sort.SliceStable(item.Points, func(i, j int) bool { return item.Points[i].Timestamp.Before(item.Points[j].Timestamp) })
+		if adaptive && len(item.Points) > target {
+			points := make([]platform.TelemetryPoint, target)
+			for i := range points {
+				points[i] = item.Points[i*(len(item.Points)-1)/(target-1)]
+			}
+			item.Points = points
+			item.Sampled = true
+		}
+		if count := missing[metric] + invalid[metric]; count > 0 {
+			item.Warnings = append(item.Warnings, platform.QueryWarning{Code: "missing_metric", Message: fmt.Sprintf("指标 Key「%s」：%d 条记录缺少该字段，%d 条记录的值为空或不是有效数值；这些记录已跳过", metric, missing[metric], invalid[metric]), Count: count})
+		}
+		results[metric] = item
+	}
+	return results, rows, nil
+}
+func normalizeLoRaWANV2MetricValue(metric string, value float64) float64 {
+	// LoRaWAN V2 exposes sd_card_rate as a 0..1 ratio. Data streams use the
+	// user-facing percent unit, so normalize it at the adapter boundary for
+	// charts, exports and alert thresholds alike.
+	if metric == "sd_card_rate" {
+		return value * 100
+	}
+	return value
+}

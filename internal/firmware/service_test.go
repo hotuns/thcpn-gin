@@ -3,14 +3,12 @@ package firmware
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"io"
-	"net/url"
 	"testing"
+	"thcpn-gin/internal/datasource/platform"
 
 	"github.com/google/uuid"
 
-	"thcpn-gin/internal/datasource"
 	"thcpn-gin/internal/objectstore"
 	"thcpn-gin/internal/testdb"
 )
@@ -34,31 +32,20 @@ func (s *memoryStore) Get(context.Context, string) (objectstore.GetResult, error
 }
 func (s *memoryStore) Delete(context.Context, string) error { s.deleted = true; return nil }
 
-type publisherCall struct {
-	source uuid.UUID
-	path   string
-	body   map[string]any
-}
 type fakePublisher struct {
-	calls       []publisherCall
-	sourceCalls []datasource.SourceFirmwareInput
+	sourceCalls []platform.SourceFirmwareInput
 	fail        bool
 }
 
-func (p *fakePublisher) RegisterSourceFirmware(_ context.Context, input datasource.SourceFirmwareInput) (int64, error) {
+func (p *fakePublisher) RegisterSourceFirmware(_ context.Context, input platform.SourceFirmwareInput) (int64, error) {
 	p.sourceCalls = append(p.sourceCalls, input)
 	if p.fail {
 		return 0, io.ErrUnexpectedEOF
 	}
-	return 43, nil
-}
-
-func (p *fakePublisher) LoRaWANV2Request(_ context.Context, source uuid.UUID, _ string, path string, _ url.Values, body any) (json.RawMessage, error) {
-	p.calls = append(p.calls, publisherCall{source: source, path: path, body: body.(map[string]any)})
-	if p.fail {
-		return nil, io.ErrUnexpectedEOF
+	if input.SourceFamily == "lorawan_v2" {
+		return 42, nil
 	}
-	return json.RawMessage(`{"id":42,"device_sn":"GW-1"}`), nil
+	return 43, nil
 }
 
 func TestCreateCarbonFirmwareRequiresAndPublishesAdminBuildID(t *testing.T) {
@@ -155,15 +142,15 @@ func TestCreateUploadsAndPublishesLoRaWANV2Firmware(t *testing.T) {
 	if result.Status != "completed" || len(result.Targets) != 1 || result.Targets[0].UpstreamFirmwareID == nil || *result.Targets[0].UpstreamFirmwareID != 42 {
 		t.Fatalf("unexpected result: %#v", result)
 	}
-	if string(store.data) != "test" || store.key == "" || len(publisher.calls) != 1 {
-		t.Fatalf("upload or publish missing: %#v %#v", store, publisher.calls)
+	if string(store.data) != "test" || store.key == "" || len(publisher.sourceCalls) != 1 {
+		t.Fatalf("upload or publish missing: %#v %#v", store, publisher.sourceCalls)
 	}
-	call := publisher.calls[0]
-	if call.path != "/device/GW-1/firmware" || call.body["firmware_version"] != uint32(16909056) || call.body["verify_value"] != "0123456789abcdef0123456789ABCDEF" {
+	call := publisher.sourceCalls[0]
+	if call.GatewaySN != "GW-1" || call.EncodedVersion != uint32(16909056) || call.VerifyValue != "0123456789abcdef0123456789ABCDEF" {
 		t.Fatalf("unexpected upstream request: %#v", call)
 	}
 	repeated, err := service.Create(ctx, UploadInput{Filename: "ignored.bin", Version: "9.9.9", VerifyValue: "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", SizeBytes: 7, Body: bytes.NewReader([]byte("ignored")), DeviceIDs: []uuid.UUID{device}, ActorAdminID: admin, IdempotencyKey: idempotencyKey})
-	if err != nil || repeated.ID != result.ID || len(publisher.calls) != 1 {
+	if err != nil || repeated.ID != result.ID || len(publisher.sourceCalls) != 1 {
 		t.Fatalf("idempotent retry created another release: %#v %v", repeated, err)
 	}
 }

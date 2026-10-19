@@ -326,6 +326,12 @@ Site：
 - 显示采集时间、媒体类型和可用的缩略图/预览。
 - 下载入口只使用后端返回的临时 URL。
 
+后台配置编辑提供“从同类型设备复制配置”：仅选择来源体系、设备角色、产品型号均相同的设备，按名称或序列号搜索，读取源端最新配置并预览后，明确确认替换当前草稿。复制本身不保存、不下发；用户检查后沿用目标设备的保存、确认、审计和失败恢复流程。读取失败、取消或切换来源不会修改草稿。THCPN、Carbon 仅复制 data/image/control，保留目标设备自己的配置版本校验令牌与平台身份，未知配置字段原样保留；无法解析的历史配置明确报错，不转成空配置。
+
+配置编辑器、语义校验和保存摘要按明确的 source_family 注册。THCPN 保留其可视化传感器、图片和控制编辑；Carbon 使用独立的原生 JSON 编辑器，展示 sensor_id、hardware_interface_type、hardware_interface_channel、software_interface_type，不要求 THCPN 的 sensorType、port、sensor、port_num。Carbon 原样保留 params.command 和 params.contents[].decode 中的 null、指标语义及未知字段；data_capture_invl、data_upload_invl、image_capture_invl、image_upload_invl、misc_invl 按原生两段计划文本校验，允许空字符串及纯空白字符串并保留原文；重复 sensor_id 可用于不同采集实例。图片配置只按已确认的数组容器约束处理，不套用 THCPN 图片 key 要求。复制配置和保存使用目标来源的编辑及校验流程，不能只统一类型名称而继续复用 THCPN 业务规则。
+
+LoRaWAN V2 网关、节点传感器、节点时间配置分别复用同一复制选择器，原生配置转换保留在 LoRa 模块。网关复制替换 system.did 为目标 SN，并移除由源服务分配的 system.cid，保留 URL/Topic 占位符。节点配置可选择同类型其他网关的节点，也可选择当前网关其他节点，排除当前节点自身；传感器复制同时包含协议、指标与 wait_time，时间配置仅复制 content，不复制来源节点编号或配置 ID。复制后的传感器草稿不得被后台配置刷新覆盖；已有“同时应用到其他节点”仍按原有确认范围执行。
+
 相机：
 
 - 仅对具备相机能力的设备请求 live session。

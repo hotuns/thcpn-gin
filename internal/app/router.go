@@ -165,7 +165,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	})
 	objectHandler := objectstore.NewHandler(objectStore, objectSigner)
 	deviceProfileService := deviceprofile.NewService(deps.Postgres, objectStore, objectSigner, func(ctx context.Context, deviceID uuid.UUID) (deviceprofile.SourceLocation, bool, error) {
-		locations, err := dataSourceService.LiveTHCPNDeviceLocations(ctx, []uuid.UUID{deviceID})
+		locations, err := dataSourceService.LiveDeviceLocations(ctx, []uuid.UUID{deviceID})
 		if err != nil {
 			return deviceprofile.SourceLocation{}, false, err
 		}
@@ -173,7 +173,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 		return deviceprofile.SourceLocation{Latitude: location.Latitude, Longitude: location.Longitude}, found, nil
 	})
 	deviceClassificationService := deviceclassification.NewService(deps.Postgres, func(ctx context.Context, deviceIDs []uuid.UUID) (map[uuid.UUID]deviceclassification.SourceLocation, error) {
-		locations, err := dataSourceService.LiveTHCPNDeviceLocations(ctx, deviceIDs)
+		locations, err := dataSourceService.LiveDeviceLocations(ctx, deviceIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -440,7 +440,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.PATCH("/devices/:device_id/lifecycle", deviceHandler.AdminUpdateLifecycle)
 	admin.GET("/devices/:device_id/capabilities", deviceHandler.AdminCapabilities)
 	admin.PATCH("/devices/:device_id/capabilities", deviceHandler.AdminUpdateCapabilities)
-	admin.GET("/devices/:device_id/thcpn-config", dataSourceHandler.AdminGetTHCPNDeviceConfig)
+	admin.GET("/devices/:device_id/config", dataSourceHandler.AdminGetDeviceConfig)
 	admin.POST("/devices/:device_id/config/resync", dataSourceHandler.AdminReconcileDeviceConfig)
 	admin.GET("/devices/:device_id/source-config/:config_kind", dataSourceHandler.AdminDeviceSourceConfig)
 	admin.GET("/devices/:device_id/lorawan-v2/info", dataSourceHandler.AdminDeviceLoRaWANV2Info)
@@ -455,8 +455,8 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.POST("/data-sources/:data_source_id/sync", dataSourceHandler.AdminStartSourceSync)
 	admin.GET("/source-operations/:operation_id", dataSourceHandler.AdminSourceOperation)
 	admin.GET("/data-sources/:data_source_id/operations", dataSourceHandler.AdminSourceOperations)
-	admin.POST("/devices/:device_id/thcpn-config", dataSourceHandler.AdminUpdateTHCPNDeviceConfig)
-	admin.GET("/devices/:device_id/sensor-templates", dataSourceHandler.AdminListTHCPNSensorTemplates)
+	admin.POST("/devices/:device_id/config", dataSourceHandler.AdminUpdateDeviceConfig)
+	admin.GET("/devices/:device_id/sensor-templates", dataSourceHandler.AdminListDeviceSensorTemplates)
 	admin.GET("/sensor-templates", dataSourceHandler.AdminListSensorTemplates)
 	admin.POST("/sensor-templates", dataSourceHandler.AdminCreateSensorTemplate)
 	admin.POST("/sensor-templates/import", dataSourceHandler.AdminImportSensorTemplates)

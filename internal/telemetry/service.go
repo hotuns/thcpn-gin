@@ -16,15 +16,16 @@ import (
 	"thcpn-gin/internal/computedstream"
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/datasource"
+	platform "thcpn-gin/internal/datasource/platform"
 	"thcpn-gin/internal/db/sqlc"
 )
 
 type TelemetryRuntime interface {
-	QueryTelemetry(ctx context.Context, source datasource.DataSource, req datasource.TelemetryQuery) (datasource.TelemetryResult, error)
+	QueryTelemetry(ctx context.Context, source platform.DataSource, req platform.TelemetryQuery) (platform.TelemetryResult, error)
 }
 
 type batchTelemetryRuntime interface {
-	QueryTelemetryBatch(ctx context.Context, source datasource.DataSource, req datasource.TelemetryBatchQuery) (datasource.TelemetryBatchResult, error)
+	QueryTelemetryBatch(ctx context.Context, source platform.DataSource, req platform.TelemetryBatchQuery) (platform.TelemetryBatchResult, error)
 }
 
 type Service struct {
@@ -419,7 +420,7 @@ func (s *Service) querySeries(ctx context.Context, stream sqlc.DataStream, start
 	if err != nil {
 		return Series{}, err
 	}
-	points, err := s.runtime.QueryTelemetry(ctx, source, datasource.TelemetryQuery{
+	points, err := s.runtime.QueryTelemetry(ctx, source, platform.TelemetryQuery{
 		Binding:      binding,
 		Start:        start,
 		End:          end,
@@ -448,9 +449,9 @@ func (s *Service) querySeriesBatch(ctx context.Context, streams []sqlc.DataStrea
 		return items, nil
 	}
 	type sourceGroup struct {
-		source   datasource.DataSource
+		source   platform.DataSource
 		streams  []sqlc.DataStream
-		bindings []datasource.DataStreamBinding
+		bindings []platform.DataStreamBinding
 	}
 	groups := make(map[uuid.UUID]*sourceGroup)
 	for _, stream := range streams {
@@ -470,10 +471,10 @@ func (s *Service) querySeriesBatch(ctx context.Context, streams []sqlc.DataStrea
 		group.streams = append(group.streams, stream)
 		group.bindings = append(group.bindings, binding)
 	}
-	results := make(map[uuid.UUID]datasource.TelemetryResult, len(streams))
+	results := make(map[uuid.UUID]platform.TelemetryResult, len(streams))
 	failures := map[uuid.UUID]string{}
 	for _, group := range groups {
-		batch, err := batchRuntime.QueryTelemetryBatch(ctx, group.source, datasource.TelemetryBatchQuery{
+		batch, err := batchRuntime.QueryTelemetryBatch(ctx, group.source, platform.TelemetryBatchQuery{
 			Bindings: group.bindings, Start: start, End: end, Limit: limit, Adaptive: adaptive, TargetPoints: targetPoints,
 		})
 		if err != nil {
@@ -504,7 +505,7 @@ func (s *Service) querySeriesBatch(ctx context.Context, streams []sqlc.DataStrea
 	return items, nil
 }
 
-func seriesFromDatasource(stream sqlc.DataStream, points datasource.TelemetryResult) Series {
+func seriesFromDatasource(stream sqlc.DataStream, points platform.TelemetryResult) Series {
 	sourceCount := points.SourceCount
 	if sourceCount == 0 && len(points.Points) > 0 {
 		sourceCount = len(points.Points)
@@ -523,7 +524,7 @@ func seriesFromDatasource(stream sqlc.DataStream, points datasource.TelemetryRes
 	}
 }
 
-func pointsFromDatasource(points []datasource.TelemetryPoint) []Point {
+func pointsFromDatasource(points []platform.TelemetryPoint) []Point {
 	items := make([]Point, 0, len(points))
 	for _, point := range points {
 		items = append(items, Point{
@@ -535,7 +536,7 @@ func pointsFromDatasource(points []datasource.TelemetryPoint) []Point {
 	return items
 }
 
-func warningsFromDatasource(warnings []datasource.QueryWarning) []Warning {
+func warningsFromDatasource(warnings []platform.QueryWarning) []Warning {
 	items := make([]Warning, 0, len(warnings))
 	for _, warning := range warnings {
 		items = append(items, Warning{

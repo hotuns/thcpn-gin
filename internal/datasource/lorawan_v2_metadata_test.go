@@ -6,22 +6,24 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 	"thcpn-gin/internal/auth"
+	lorawanv2 "thcpn-gin/internal/datasource/sources/lorawanv2"
 	"thcpn-gin/internal/db/sqlc"
 	"thcpn-gin/internal/permission"
 	"thcpn-gin/internal/testdb"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 func TestLoRaWANV2GatewayConfigurationContract(t *testing.T) {
 	body := map[string]any{"content": map[string]any{"system": map[string]any{"did": "GW", "cid": float64(7)}, "platform": map[string]any{"settings_url": "http://host/device/{device_sn}/config"}}}
-	config, err := normalizeLoRaWANV2GatewayConfig(body, "GW")
+	config, err := lorawanv2.NormalizeLoRaWANV2GatewayConfig(body, "GW")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,19 +34,18 @@ func TestLoRaWANV2GatewayConfigurationContract(t *testing.T) {
 	if body["content"].(map[string]any)["system"].(map[string]any)["cid"] == nil {
 		t.Fatal("normalization mutated caller draft")
 	}
-	if _, err := normalizeLoRaWANV2GatewayConfig(map[string]any{"system": map[string]any{"did": "other"}}, "GW"); err == nil {
+	if _, err := lorawanv2.NormalizeLoRaWANV2GatewayConfig(map[string]any{"system": map[string]any{"did": "other"}}, "GW"); err == nil {
 		t.Fatal("accepted mismatched gateway identity")
 	}
-	defaults := defaultLoRaWANV2GatewayConfig("GW")
+	defaults := lorawanv2.DefaultLoRaWANV2GatewayConfig("GW")
 	if defaults["system"].(map[string]any)["cid"] != float64(1) {
 		t.Fatal("default draft must include cid placeholder")
 	}
-	write, err := normalizeLoRaWANV2GatewayConfig(defaults, "GW")
+	write, err := lorawanv2.NormalizeLoRaWANV2GatewayConfig(defaults, "GW")
 	if err != nil || write["system"].(map[string]any)["cid"] != nil {
 		t.Fatal("upstream-owned cid must not be sent", err)
 	}
 }
-
 func TestLoRaWANV2MetadataReadPermissionsAndContracts(t *testing.T) {
 	db := testdb.Open(t, 0)
 	ctx := t.Context()
@@ -112,7 +113,6 @@ func TestLoRaWANV2MetadataReadPermissionsAndContracts(t *testing.T) {
 		t.Fatal("reported ICCID overwrote manual record", err)
 	}
 }
-
 func TestLoRaWANV2TimeConfigurationMissingVersusUnavailable(t *testing.T) {
 	for _, missing := range []bool{false, true} {
 		t.Run(map[bool]string{false: "unregistered route", true: "no saved configuration"}[missing], func(t *testing.T) {
@@ -124,12 +124,12 @@ func TestLoRaWANV2TimeConfigurationMissingVersusUnavailable(t *testing.T) {
 			}))
 			defer server.Close()
 			base, _ := url.Parse(server.URL)
-			client := &loraWANV2Client{baseURL: base, client: server.Client()}
-			_, err := client.request(context.Background(), http.MethodGet, "/device/GW/node/1/time_config/latest", nil, nil)
+			client := &lorawanv2.LoraWANV2Client{BaseURL: base, Client: server.Client()}
+			_, err := client.Request(context.Background(), http.MethodGet, "/device/GW/node/1/time_config/latest", nil, nil)
 			if err == nil {
 				t.Fatal("missing error")
 			}
-			if missing && !errors.Is(err, errLoRaWANV2SensorConfigNotFound) {
+			if missing && !errors.Is(err, lorawanv2.ErrLoRaWANV2SensorConfigNotFound) {
 				t.Fatalf("lost no-config marker: %v", err)
 			}
 			if !missing && !strings.Contains(err.Error(), "GET") {

@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	lorawanv2 "thcpn-gin/internal/datasource/sources/lorawanv2"
+	"thcpn-gin/internal/testdb"
 
 	"github.com/google/uuid"
-
-	"thcpn-gin/internal/testdb"
 )
 
 func TestCreateLoRaWANV2GatewayUsesUpstreamSNAndSurvivesCatalogFailure(t *testing.T) {
@@ -48,7 +48,7 @@ func TestCreateLoRaWANV2GatewayUsesUpstreamSNAndSurvivesCatalogFailure(t *testin
 	if _, err := db.Exec(ctx, `INSERT INTO data_sources(id,name,type,source_family,dsn_secret_ref,created_by) VALUES($1,'LoRa','http_api','lorawan_v2',$2,$3)`, source, "env:"+envKey, admin); err != nil {
 		t.Fatal(err)
 	}
-	result, err := NewService(db).CreateLoRaWANV2Gateway(ctx, source, sn, 1, admin)
+	result, err := NewService(db).LoRaWAN.CreateLoRaWANV2Gateway(ctx, source, sn, 1, admin)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,12 +76,11 @@ func TestCreateLoRaWANV2GatewayUsesUpstreamSNAndSurvivesCatalogFailure(t *testin
 		t.Fatal("LoRaWAN V2 gateway is missing firmware_update capability")
 	}
 }
-
 func TestGatewayDefaultConfigurationRetryDoesNotCreateDuplicateDevice(t *testing.T) {
 	db := testdb.Open(t, 0)
 	actor := testdb.Admin(t, db)
 	source := uuid.New()
-	sn := generatedLoRaWANV2SN(source, actor, uuid.New())
+	sn := lorawanv2.GeneratedLoRaWANV2SN(source, actor, uuid.New())
 	deviceCreates, configAttempts := 0, 0
 	exists, configured := false, false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -125,7 +124,7 @@ func TestGatewayDefaultConfigurationRetryDoesNotCreateDuplicateDevice(t *testing
 	}
 	service := NewService(db)
 	for attempt := 0; attempt < 3; attempt++ {
-		result, err := service.CreateLoRaWANV2Gateway(t.Context(), source, sn, 1, actor)
+		result, err := service.LoRaWAN.CreateLoRaWANV2Gateway(t.Context(), source, sn, 1, actor)
 		if err != nil || result.Sync == nil {
 			t.Fatalf("gateway create failed: %v", err)
 		}
@@ -168,7 +167,7 @@ func TestSourceSyncQueueKeepsOneActiveOperationAndRecordsEnqueueFailure(t *testi
 	if _, err := svc.StartSourceSync(ctx, source, admin); err == nil {
 		t.Fatal("duplicate source sync accepted")
 	}
-	if err := svc.finishSourceOperation(op.ID, "completed", map[string]int{"synced": 1}, nil); err != nil {
+	if err := svc.FinishSourceOperation(op.ID, "completed", map[string]int{"synced": 1}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.RunSourceSync(ctx, op.ID); err != nil {
@@ -186,7 +185,6 @@ func TestSourceSyncQueueKeepsOneActiveOperationAndRecordsEnqueueFailure(t *testi
 		t.Fatalf("missing persisted failure: %#v", items)
 	}
 }
-
 func TestSourceSyncQueueAcceptsLoRaWANV2(t *testing.T) {
 	db := testdb.Open(t, 0)
 	ctx := t.Context()

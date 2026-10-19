@@ -32,13 +32,13 @@ import {
   api,
   formatApiError,
   type SensorTemplateRequest,
-  type THCPNSensorTemplate,
+  type SensorTemplate,
 } from "@thcpn/api";
 import { PageHeader, Panel, StateView } from "@thcpn/ui";
 
 type EditorState =
-  | { mode: "create"; source?: THCPNSensorTemplate }
-  | { mode: "edit"; source: THCPNSensorTemplate }
+  | { mode: "create"; source?: SensorTemplate }
+  | { mode: "edit"; source: SensorTemplate }
   | null;
 
 const initialValues = {
@@ -60,7 +60,7 @@ const initialValues = {
 
 type JsonObject = Record<string, unknown>;
 
-export function v1ToV2Content(item: Pick<THCPNSensorTemplate, "port" | "params"> & { port_num?: number }): unknown[] {
+export function v1ToV2Content(item: Pick<SensorTemplate, "port" | "params"> & { port_num?: number }): unknown[] {
   const params = item.params as JsonObject;
   const metrics = Array.isArray(params.contents) ? params.contents as JsonObject[] : [];
   const mappings = metrics.map(metric => [metric.key, metric.decode ?? "", (metric.info as JsonObject)?.unit ?? ""]);
@@ -129,7 +129,7 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
 
   const openEditor = (
     mode: "create" | "edit",
-    source?: THCPNSensorTemplate,
+    source?: SensorTemplate,
     targetV2 = version === "v2",
   ) => {
     const isV2 = targetV2;
@@ -435,12 +435,12 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
               {
                 title: "端口",
                 width: 120,
-                render: (_: unknown, item: THCPNSensorTemplate) => `${item.port || "—"} · ${item.port_num}`,
+                render: (_: unknown, item: SensorTemplate) => `${item.port || "—"} · ${item.port_num}`,
               },
               {
                 title: "可选编号",
                 width: 170,
-                render: (_: unknown, item: THCPNSensorTemplate) =>
+                render: (_: unknown, item: SensorTemplate) =>
                   item.port_nums.length ? item.port_nums.join(", ") : "—",
               }] : []),
               {

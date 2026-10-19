@@ -10,11 +10,12 @@ import (
 	"sync"
 	"testing"
 
+	"thcpn-gin/internal/audit"
+	"thcpn-gin/internal/testdb"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"thcpn-gin/internal/audit"
-	"thcpn-gin/internal/testdb"
 )
 
 type libraryFixture struct {
@@ -62,15 +63,15 @@ func (f libraryFixture) publish(t *testing.T, a Artifact) Release {
 func TestLibraryUploadReusesArtifactAcrossReleases(t *testing.T) {
 	f := fixture(t)
 	a := f.upload(t)
-	if len(f.publisher.calls) != 0 || f.otherStore.puts != 0 || f.store.puts != 1 || !strings.HasPrefix(a.PublicURL, "https://lora.example.test/firmwares/") {
+	if len(f.publisher.sourceCalls) != 0 || f.otherStore.puts != 0 || f.store.puts != 1 || !strings.HasPrefix(a.PublicURL, "https://lora.example.test/firmwares/") {
 		t.Fatal("upload dispatched to wrong store or device")
 	}
 	first, second := f.publish(t, a), f.publish(t, a)
-	if first.ID == second.ID || first.ObjectKey != second.ObjectKey || first.FirmwareID == nil || *first.FirmwareID != a.ID || f.store.puts != 1 || len(f.publisher.calls) != 2 {
+	if first.ID == second.ID || first.ObjectKey != second.ObjectKey || first.FirmwareID == nil || *first.FirmwareID != a.ID || f.store.puts != 1 || len(f.publisher.sourceCalls) != 2 {
 		t.Fatal("artifact was not reused")
 	}
 	replay, err := f.service.PublishFirmware(t.Context(), PublishInput{FirmwareID: a.ID, DeviceIDs: []uuid.UUID{f.device}, ActorAdminID: f.admin, IdempotencyKey: readReleaseKey(t, f.db, first.ID)})
-	if err != nil || replay.ID != first.ID || len(f.publisher.calls) != 2 {
+	if err != nil || replay.ID != first.ID || len(f.publisher.sourceCalls) != 2 {
 		t.Fatalf("replay: %v", err)
 	}
 	list, err := f.service.ListFirmware(t.Context(), 1, 20, "lorawan_v2")
@@ -125,7 +126,7 @@ func TestLibraryRejectsChangedSourceTypeAndProduct(t *testing.T) {
 				execTest(t, f.db, `UPDATE devices SET status='disabled' WHERE id=$1`, f.device)
 			}
 			_, err := f.service.PublishFirmware(ctx, PublishInput{FirmwareID: a.ID, DeviceIDs: []uuid.UUID{f.device}, ActorAdminID: f.admin, IdempotencyKey: uuid.New()})
-			if err == nil || len(f.publisher.calls) != 0 {
+			if err == nil || len(f.publisher.sourceCalls) != 0 {
 				t.Fatal("incompatible target reached publisher")
 			}
 			execTest(t, f.db, `UPDATE devices SET product_id=NULL,device_type='gateway',status='active' WHERE id=$1`, f.device)
@@ -145,7 +146,7 @@ func TestLibraryArchiveAndRetryBindingGuard(t *testing.T) {
 	execTest(t, f.db, `UPDATE device_source_refs SET external_key='changed-sn' WHERE device_id=$1`, f.device)
 	f.publisher.fail = false
 	retried, err := f.service.Retry(t.Context(), r.ID, r.Targets[0].ID)
-	if err == nil || retried.Status != "failed" || len(f.publisher.calls) != 1 {
+	if err == nil || retried.Status != "failed" || len(f.publisher.sourceCalls) != 1 {
 		t.Fatalf("retry guard: %#v %v", retried, err)
 	}
 	execTest(t, f.db, `UPDATE device_source_refs SET external_key='GW-1' WHERE device_id=$1`, f.device)
@@ -157,7 +158,7 @@ func TestLibraryArchiveAndRetryBindingGuard(t *testing.T) {
 		t.Fatal("archived artifact published")
 	}
 	retried, err = f.service.Retry(t.Context(), r.ID, r.Targets[0].ID)
-	if err == nil || retried.Status != "failed" || len(f.publisher.calls) != 1 {
+	if err == nil || retried.Status != "failed" || len(f.publisher.sourceCalls) != 1 {
 		t.Fatal("archived artifact retried")
 	}
 	if err = f.service.SetFirmwareArchived(t.Context(), a.ID, false, f.admin); err != nil {
@@ -184,7 +185,7 @@ func TestLibraryUploadDoesNotRequireAnyEligibleDevice(t *testing.T) {
 	execTest(t, f.db, `UPDATE devices SET status='disabled' WHERE id=$1`, f.device)
 	execTest(t, f.db, `DELETE FROM device_capabilities WHERE device_id=$1`, f.device)
 	a := f.upload(t)
-	if a.DataSourceID != f.source || f.store.puts != 1 || len(f.publisher.calls) != 0 {
+	if a.DataSourceID != f.source || f.store.puts != 1 || len(f.publisher.sourceCalls) != 0 {
 		t.Fatal("source-only upload depended on a reference device")
 	}
 	execTest(t, f.db, `UPDATE data_sources SET status='disabled' WHERE id=$1`, f.source)
@@ -229,7 +230,7 @@ func TestLibraryConcurrentPublishIdempotency(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if len(f.publisher.calls) != 1 || f.store.puts != 1 {
+	if len(f.publisher.sourceCalls) != 1 || f.store.puts != 1 {
 		t.Fatal("concurrent request registered twice")
 	}
 	input.DeviceIDs = append(input.DeviceIDs, uuid.New())

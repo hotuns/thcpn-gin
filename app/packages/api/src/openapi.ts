@@ -511,7 +511,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["UpdateTHCPNDeviceConfigResponse"];
+                        "application/json": components["schemas"]["UpdateDeviceConfigResponse"];
                     };
                 };
             };
@@ -549,7 +549,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["UpdateTHCPNDeviceConfigResponse"];
+                        "application/json": components["schemas"]["UpdateDeviceConfigResponse"];
                     };
                 };
             };
@@ -3126,7 +3126,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/devices/{device_id}/thcpn-config": {
+    "/api/v1/admin/devices/{device_id}/config": {
         parameters: {
             query?: never;
             header?: never;
@@ -3137,16 +3137,16 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get latest THCPN device config
-         * @description Requires a valid administrator bearer token. Returns the latest THCPN `device_config` row and the latest platform config snapshot for a synced THCPN device.
+         * Get latest device source config
+         * @description Requires a valid administrator bearer token. Returns the latest source configuration and platform snapshot through the registered configuration capability. Currently supported by THCPN and Carbon sources.
          */
-        get: operations["adminGetTHCPNDeviceConfig"];
+        get: operations["adminGetDeviceConfig"];
         put?: never;
         /**
-         * Insert and apply a new THCPN device config
-         * @description Requires a valid administrator bearer token. Inserts a new row into the THCPN legacy `device_config` table, then applies the config to platform config snapshots, data streams and bindings.
+         * Save and apply a new device source config
+         * @description Requires a valid administrator bearer token. Saves a new configuration version through the registered source capability and applies its platform projection. Source acceptance, platform synchronization and device application are separate states; partial success must be reconciled without repeating the source write.
          */
-        post: operations["adminUpdateTHCPNDeviceConfig"];
+        post: operations["adminUpdateDeviceConfig"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3167,7 +3167,7 @@ export interface paths {
          * List active platform sensor templates for a device
          * @description Requires a valid administrator bearer token. Reads the platform template catalog and adapts config entries to the selected device.
          */
-        get: operations["adminListTHCPNSensorTemplates"];
+        get: operations["adminListDeviceSensorTemplates"];
         put?: never;
         post?: never;
         delete?: never;
@@ -7350,7 +7350,7 @@ export interface components {
             synced_at: components["schemas"]["Timestamp"];
             created_at: components["schemas"]["Timestamp"];
         };
-        THCPNDeviceConfig: {
+        DeviceConfig: {
             /** Format: int64 */
             id: number;
             /** Format: int64 */
@@ -7370,15 +7370,15 @@ export interface components {
             created_at?: components["schemas"]["Timestamp"];
             updated_at?: components["schemas"]["Timestamp"];
         };
-        THCPNDeviceConfigDetailResponse: {
+        DeviceConfigDetail: {
             device_id: components["schemas"]["UUID"];
             data_source_id: components["schemas"]["UUID"];
             /** Format: int64 */
             external_device_id: number;
-            latest_config: components["schemas"]["THCPNDeviceConfig"];
+            latest_config: components["schemas"]["DeviceConfig"];
             latest_snapshot?: components["schemas"]["DeviceConfigSnapshot"];
         };
-        THCPNSensorMetric: {
+        SensorMetric: {
             key: string;
             name?: string;
             type?: string;
@@ -7391,7 +7391,7 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        THCPNSensorTemplate: {
+        SensorTemplate: {
             /** Format: int64 */
             id: number;
             sensor_type: string;
@@ -7406,7 +7406,7 @@ export interface components {
             };
             /** @enum {string} */
             status: "active" | "disabled";
-            metrics: components["schemas"]["THCPNSensorMetric"][];
+            metrics: components["schemas"]["SensorMetric"][];
             variants: {
                 [key: string]: {
                     [key: string]: unknown;
@@ -7420,7 +7420,7 @@ export interface components {
             created_at?: components["schemas"]["Timestamp"];
             updated_at?: components["schemas"]["Timestamp"];
         };
-        /** @description A template belongs exclusively to V1 (thcpn) or V2 (lorawan_v2). Supply only one variant; omitting variants defaults to V1. An existing template cannot change family. */
+        /** @description A template belongs to exactly one registered source family. Supply one explicit variant; there is no default family. An existing template cannot change family. */
         SensorTemplateRequest: {
             sensor_type: string;
             description?: string;
@@ -7435,7 +7435,7 @@ export interface components {
             metrics?: {
                 [key: string]: unknown;
             }[];
-            variants?: {
+            variants: {
                 [key: string]: {
                     [key: string]: unknown;
                 };
@@ -7472,8 +7472,8 @@ export interface components {
             content: unknown[];
             metrics: components["schemas"]["LoRaWANV2MetricSemantic"][];
         };
-        THCPNSensorTemplateListResponse: {
-            items: components["schemas"]["THCPNSensorTemplate"][];
+        SensorTemplateListResponse: {
+            items: components["schemas"]["SensorTemplate"][];
             total: number;
             page: number;
             page_size: number;
@@ -7554,7 +7554,7 @@ export interface components {
             /** Format: int64 */
             expected_config_id: number;
         };
-        UpdateTHCPNDeviceConfigRequest: {
+        UpdateDeviceConfigRequest: {
             data_json: {
                 [key: string]: unknown;
             }[];
@@ -7567,13 +7567,13 @@ export interface components {
             /** Format: int64 */
             expected_config_id: number;
         };
-        UpdateTHCPNDeviceConfigResponse: {
+        UpdateDeviceConfigResponse: {
             write_state?: components["schemas"]["ConfigWriteState"];
             device_id: components["schemas"]["UUID"];
             data_source_id: components["schemas"]["UUID"];
             /** Format: int64 */
             external_device_id: number;
-            config: components["schemas"]["THCPNDeviceConfig"];
+            config: components["schemas"]["DeviceConfig"];
             config_snapshot: components["schemas"]["DeviceConfigSnapshot"];
             data_streams: components["schemas"]["SyncedDataStream"][];
             bindings: components["schemas"]["DataStreamBinding"][];
@@ -7603,6 +7603,8 @@ export interface components {
             config_snapshot: components["schemas"]["DeviceConfigSnapshot"];
             data_streams: components["schemas"]["SyncedDataStream"][];
             bindings: components["schemas"]["DataStreamBinding"][];
+            /** @description Optional avatar enrichment failures; device synchronization remains successful and missing avatars are retried on the next sync. */
+            warnings?: components["schemas"]["QueryWarning"][];
             external_device: components["schemas"]["THCPNExternalDeviceMetadata"];
         };
         THCPNGatewaySyncResult: {
@@ -11925,7 +11927,7 @@ export interface operations {
             500: components["responses"]["Internal"];
         };
     };
-    adminGetTHCPNDeviceConfig: {
+    adminGetDeviceConfig: {
         parameters: {
             query?: never;
             header?: never;
@@ -11937,13 +11939,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Latest THCPN device config. */
+            /** @description Latest source device config. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["THCPNDeviceConfigDetailResponse"];
+                    "application/json": components["schemas"]["DeviceConfigDetail"];
                 };
             };
             400: components["responses"]["InvalidArgument"];
@@ -11953,7 +11955,7 @@ export interface operations {
             500: components["responses"]["Internal"];
         };
     };
-    adminUpdateTHCPNDeviceConfig: {
+    adminUpdateDeviceConfig: {
         parameters: {
             query?: never;
             header?: never;
@@ -11965,17 +11967,17 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UpdateTHCPNDeviceConfigRequest"];
+                "application/json": components["schemas"]["UpdateDeviceConfigRequest"];
             };
         };
         responses: {
-            /** @description New THCPN config inserted and applied. */
+            /** @description Source configuration save result, including partial success when platform synchronization fails. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UpdateTHCPNDeviceConfigResponse"];
+                    "application/json": components["schemas"]["UpdateDeviceConfigResponse"];
                 };
             };
             400: components["responses"]["InvalidArgument"];
@@ -11986,7 +11988,7 @@ export interface operations {
             500: components["responses"]["Internal"];
         };
     };
-    adminListTHCPNSensorTemplates: {
+    adminListDeviceSensorTemplates: {
         parameters: {
             query?: {
                 q?: string;
@@ -12010,7 +12012,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["THCPNSensorTemplateListResponse"];
+                    "application/json": components["schemas"]["SensorTemplateListResponse"];
                 };
             };
             400: components["responses"]["InvalidArgument"];
@@ -12043,7 +12045,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["THCPNSensorTemplateListResponse"];
+                    "application/json": components["schemas"]["SensorTemplateListResponse"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -12069,7 +12071,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["THCPNSensorTemplate"];
+                    "application/json": components["schemas"]["SensorTemplate"];
                 };
             };
             400: components["responses"]["InvalidArgument"];
@@ -12183,7 +12185,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["THCPNSensorTemplate"];
+                    "application/json": components["schemas"]["SensorTemplate"];
                 };
             };
             404: components["responses"]["NotFound"];
@@ -12208,7 +12210,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["THCPNSensorTemplate"];
+                    "application/json": components["schemas"]["SensorTemplate"];
                 };
             };
             400: components["responses"]["InvalidArgument"];

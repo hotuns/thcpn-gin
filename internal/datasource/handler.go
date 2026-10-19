@@ -10,18 +10,20 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/audit"
+	"thcpn-gin/internal/auth"
+	platform "thcpn-gin/internal/datasource/platform"
+	carbon "thcpn-gin/internal/datasource/sources/carbon"
+	thcpn "thcpn-gin/internal/datasource/sources/thcpn"
+	"thcpn-gin/internal/httpx"
+	"thcpn-gin/internal/objectstore"
+	"thcpn-gin/internal/permission"
 	"time"
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-
-	"thcpn-gin/internal/apperr"
-	"thcpn-gin/internal/audit"
-	"thcpn-gin/internal/auth"
-	"thcpn-gin/internal/httpx"
-	"thcpn-gin/internal/objectstore"
-	"thcpn-gin/internal/permission"
 )
 
 const (
@@ -38,7 +40,6 @@ type Handler struct {
 		EnsureEligible(context.Context) (int64, error)
 	}
 }
-
 type createDataSourceRequest struct {
 	WorkspaceID  string  `json:"workspace_id"`
 	Name         string  `json:"name"`
@@ -46,7 +47,6 @@ type createDataSourceRequest struct {
 	SourceFamily *string `json:"source_family"`
 	DsnSecretRef string  `json:"dsn_secret_ref"`
 }
-
 type updateDataSourceRequest struct {
 	Name         *string `json:"name"`
 	Type         *string `json:"type"`
@@ -54,7 +54,6 @@ type updateDataSourceRequest struct {
 	DsnSecretRef *string `json:"dsn_secret_ref"`
 	Status       *string `json:"status"`
 }
-
 type sensorTemplateRequest struct {
 	SensorType  string                    `json:"sensor_type"`
 	Description string                    `json:"description"`
@@ -67,11 +66,9 @@ type sensorTemplateRequest struct {
 	Variants    map[string]map[string]any `json:"variants"`
 	Status      string                    `json:"status"`
 }
-
 type importSensorTemplatesRequest struct {
 	DataSourceID string `json:"data_source_id"`
 }
-
 type createBindingRequest struct {
 	DataStreamID      string          `json:"data_stream_id"`
 	DataSourceID      string          `json:"data_source_id"`
@@ -87,7 +84,6 @@ type createBindingRequest struct {
 	AdapterConfigJSON json.RawMessage `json:"adapter_config"`
 	QueryConfigJSON   json.RawMessage `json:"query_config"`
 }
-
 type updateBindingRequest struct {
 	DataSourceID      *string          `json:"data_source_id"`
 	AdapterCode       *string          `json:"adapter_code"`
@@ -103,19 +99,15 @@ type updateBindingRequest struct {
 	QueryConfigJSON   *json.RawMessage `json:"query_config"`
 	Status            *string          `json:"status"`
 }
-
 type syncTHCPNStandardStationRequest struct {
 	ExternalDeviceID int64 `json:"external_device_id"`
 }
-
 type syncTHCPNGatewayRequest struct {
 	ExternalGatewayID int64 `json:"external_gateway_id"`
 }
-
 type syncCarbonDeviceRequest struct {
 	ExternalDeviceID int64 `json:"external_device_id"`
 }
-
 type createSourceDeviceRequest struct {
 	SourceKind string `json:"source_kind"`
 	Name       string `json:"name"`
@@ -123,19 +115,16 @@ type createSourceDeviceRequest struct {
 	Version    string `json:"version"`
 	NodesCount *int64 `json:"nodes_count"`
 }
-
 type retrySourceDeviceSyncRequest struct {
 	SourceKind     string `json:"source_kind"`
 	SourceDeviceID int64  `json:"source_device_id"`
 }
-
-type updateTHCPNDeviceConfigRequest struct {
+type updateDeviceConfigRequest struct {
 	DataJSON         json.RawMessage `json:"data_json"`
 	ImageJSON        json.RawMessage `json:"image_json"`
 	ControlJSON      json.RawMessage `json:"control_json"`
 	ExpectedConfigID int64           `json:"expected_config_id" binding:"required,min=1"`
 }
-
 type updateSamplingProfileRequest struct {
 	Mode              string `json:"mode"`
 	DataMinutes       []int  `json:"data_minutes"`
@@ -156,17 +145,14 @@ func NewHandler(service *Service, checker *permission.Checker, auditServices ...
 	}
 	return &Handler{service: service, checker: checker, audit: auditService}
 }
-
 func (h *Handler) SetTHCPNLogSigner(signer *objectstore.Signer) {
 	h.logSigner = signer
 }
-
 func (h *Handler) SetClaimCredentialEnsurer(ensurer interface {
 	EnsureEligible(context.Context) (int64, error)
 }) {
 	h.claimEnsurer = ensurer
 }
-
 func (h *Handler) ensureClaimCredentials(ctx context.Context) error {
 	if h.claimEnsurer == nil {
 		return nil
@@ -174,46 +160,42 @@ func (h *Handler) ensureClaimCredentials(ctx context.Context) error {
 	_, err := h.claimEnsurer.EnsureEligible(ctx)
 	return err
 }
-
 func (h *Handler) LatestTHCPNDeviceAttributes(c *gin.Context) {
 	deviceID, ok := parseUUIDParam(c, "device_id")
 	if !ok || !h.authorize(c, "device", deviceID, "device.view") {
 		return
 	}
-	result, err := h.service.LatestTHCPNDeviceAttributes(c.Request.Context(), deviceID)
+	result, err := h.service.THCPN.LatestTHCPNDeviceAttributes(c.Request.Context(), deviceID)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) CarbonOverview(c *gin.Context) {
 	deviceID, ok := parseUUIDParam(c, "device_id")
 	if !ok || !h.authorize(c, "device", deviceID, "device.view") {
 		return
 	}
-	result, err := h.service.CarbonOverview(c.Request.Context(), deviceID)
+	result, err := h.service.Carbon.CarbonOverview(c.Request.Context(), deviceID)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) AdminCarbonOverview(c *gin.Context) {
 	deviceID, ok := parseUUIDParam(c, "device_id")
 	if !ok {
 		return
 	}
-	result, err := h.service.CarbonOverview(c.Request.Context(), deviceID)
+	result, err := h.service.Carbon.CarbonOverview(c.Request.Context(), deviceID)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) CarbonFlux(c *gin.Context) {
 	deviceID, ok := parseUUIDParam(c, "device_id")
 	if !ok || !h.authorize(c, "device", deviceID, "device.view") {
@@ -232,14 +214,13 @@ func (h *Handler) CarbonFlux(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := h.service.CarbonFlux(c.Request.Context(), deviceID, nodeID, field, start, end)
+	result, err := h.service.Carbon.CarbonFlux(c.Request.Context(), deviceID, nodeID, field, start, end)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) CarbonPeriods(c *gin.Context) {
 	deviceID, ok := parseUUIDParam(c, "device_id")
 	if !ok || !h.authorize(c, "device", deviceID, "device.view") {
@@ -253,14 +234,13 @@ func (h *Handler) CarbonPeriods(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := h.service.CarbonPeriods(c.Request.Context(), deviceID, nodeID, start, end)
+	result, err := h.service.Carbon.CarbonPeriods(c.Request.Context(), deviceID, nodeID, start, end)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": result})
 }
-
 func (h *Handler) CarbonPeriod(c *gin.Context) {
 	deviceID, ok := parseUUIDParam(c, "device_id")
 	if !ok || !h.authorize(c, "device", deviceID, "device.view") {
@@ -280,14 +260,13 @@ func (h *Handler) CarbonPeriod(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "period is required"))
 		return
 	}
-	result, err := h.service.CarbonPeriod(c.Request.Context(), deviceID, nodeID, field, period)
+	result, err := h.service.Carbon.CarbonPeriod(c.Request.Context(), deviceID, nodeID, field, period)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) THCPNDeviceRuntime(c *gin.Context) {
 	deviceIDs, ok := parseDeviceIDs(c)
 	if !ok {
@@ -298,27 +277,25 @@ func (h *Handler) THCPNDeviceRuntime(c *gin.Context) {
 			return
 		}
 	}
-	result, err := h.service.THCPNDeviceRuntime(c.Request.Context(), deviceIDs)
+	result, err := h.service.THCPN.THCPNDeviceRuntime(c.Request.Context(), deviceIDs)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) AdminTHCPNDeviceRuntime(c *gin.Context) {
 	deviceIDs, ok := parseDeviceIDs(c)
 	if !ok {
 		return
 	}
-	result, err := h.service.THCPNDeviceRuntime(c.Request.Context(), deviceIDs)
+	result, err := h.service.THCPN.THCPNDeviceRuntime(c.Request.Context(), deviceIDs)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) GetSamplingProfile(c *gin.Context) {
 	deviceID, ok := parseUUIDParam(c, "device_id")
 	if !ok || !h.authorize(c, "device", deviceID, "device.view") {
@@ -343,7 +320,6 @@ func (h *Handler) GetSamplingProfile(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) UpdateSamplingProfile(c *gin.Context) {
 	actor, ok := actorFromContext(c)
 	if !ok {
@@ -359,7 +335,7 @@ func (h *Handler) UpdateSamplingProfile(c *gin.Context) {
 		return
 	}
 	previous, _ := h.service.GetSamplingProfile(c.Request.Context(), deviceID)
-	result, err := h.service.UpdateSamplingProfile(c.Request.Context(), SamplingProfileUpdateInput{
+	result, err := h.service.UpdateSamplingProfile(c.Request.Context(), platform.SamplingProfileUpdateInput{
 		DeviceID: deviceID, Mode: req.Mode, DataMinutes: req.DataMinutes, DataHours: req.DataHours,
 		UploadMinutes: req.UploadMinutes, UploadHours: req.UploadHours, ImageMinute: req.ImageMinute,
 		ImageHours: req.ImageHours, ImageUploadMinute: req.ImageUploadMinute, ImageUploadHours: req.ImageUploadHours,
@@ -383,13 +359,12 @@ func (h *Handler) UpdateSamplingProfile(c *gin.Context) {
 	result.CanEdit = true
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) AdminLatestTHCPNDeviceAttributes(c *gin.Context) {
 	deviceID, ok := parseUUIDParam(c, "device_id")
 	if !ok {
 		return
 	}
-	result, err := h.service.LatestTHCPNDeviceAttributes(c.Request.Context(), deviceID)
+	result, err := h.service.THCPN.LatestTHCPNDeviceAttributes(c.Request.Context(), deviceID)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -400,7 +375,6 @@ func (h *Handler) AdminLatestTHCPNDeviceAttributes(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) AdminListTHCPNDeviceLogs(c *gin.Context) {
 	deviceID, ok := parseUUIDParam(c, "device_id")
 	if !ok {
@@ -422,7 +396,7 @@ func (h *Handler) AdminListTHCPNDeviceLogs(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := h.service.ListTHCPNDeviceLogs(c.Request.Context(), THCPNDeviceLogListInput{
+	result, err := h.service.THCPN.ListTHCPNDeviceLogs(c.Request.Context(), thcpn.THCPNDeviceLogListInput{
 		DeviceID: deviceID,
 		Start:    start,
 		End:      end,
@@ -436,21 +410,18 @@ func (h *Handler) AdminListTHCPNDeviceLogs(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) AdminPreviewTHCPNDeviceLog(c *gin.Context) {
 	h.adminTHCPNDeviceLogAccess(c, "preview")
 }
-
 func (h *Handler) AdminDownloadTHCPNDeviceLog(c *gin.Context) {
 	h.adminTHCPNDeviceLogAccess(c, "download")
 }
-
 func (h *Handler) adminTHCPNDeviceLogAccess(c *gin.Context, mode string) {
 	deviceID, ok := parseUUIDParam(c, "device_id")
 	if !ok {
 		return
 	}
-	logItem, err := h.service.GetTHCPNDeviceLog(c.Request.Context(), deviceID, c.Param("log_uuid"))
+	logItem, err := h.service.THCPN.GetTHCPNDeviceLog(c.Request.Context(), deviceID, c.Param("log_uuid"))
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -521,7 +492,6 @@ func fetchTextLogPreview(ctx context.Context, rawURL string) (string, error) {
 	}
 	return string(content), nil
 }
-
 func logPreviewKind(value string) string {
 	switch strings.ToLower(filepath.Ext(value)) {
 	case ".log", ".txt", ".json", ".csv", ".xml", ".yaml", ".yml", ".md":
@@ -534,7 +504,6 @@ func logPreviewKind(value string) string {
 		return "download"
 	}
 }
-
 func parseOptionalLogDate(c *gin.Context, name string) (time.Time, bool) {
 	value := strings.TrimSpace(c.Query(name))
 	if value == "" {
@@ -549,7 +518,6 @@ func parseOptionalLogDate(c *gin.Context, name string) (time.Time, bool) {
 	httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid "+name))
 	return time.Time{}, false
 }
-
 func parseOptionalIntQuery(c *gin.Context, name string) (int, bool) {
 	value := strings.TrimSpace(c.Query(name))
 	if value == "" {
@@ -562,7 +530,6 @@ func parseOptionalIntQuery(c *gin.Context, name string) (int, bool) {
 	}
 	return parsed, true
 }
-
 func actorID(c *gin.Context) uuid.UUID {
 	actor, ok := auth.ActorFromContext(c)
 	if !ok {
@@ -575,27 +542,21 @@ func actorID(c *gin.Context) uuid.UUID {
 	}
 	return actor.UserID
 }
-
 func (h *Handler) ListDataSources(c *gin.Context) {
 	httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "data sources are system managed"))
 }
-
 func (h *Handler) CreateDataSource(c *gin.Context) {
 	httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "data sources are system managed"))
 }
-
 func (h *Handler) GetDataSource(c *gin.Context) {
 	httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "data sources are system managed"))
 }
-
 func (h *Handler) UpdateDataSource(c *gin.Context) {
 	httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "data sources are system managed"))
 }
-
 func (h *Handler) SyncTHCPNStandardStation(c *gin.Context) {
 	httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "data sources are system managed"))
 }
-
 func (h *Handler) AdminListDataSources(c *gin.Context) {
 	items, err := h.service.ListSystemDataSources(c.Request.Context())
 	if err != nil {
@@ -604,7 +565,6 @@ func (h *Handler) AdminListDataSources(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
-
 func (h *Handler) AdminCreateDataSource(c *gin.Context) {
 	actor, ok := actorFromContext(c)
 	if !ok {
@@ -617,7 +577,7 @@ func (h *Handler) AdminCreateDataSource(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.CreateDataSource(c.Request.Context(), CreateDataSourceInput{
+	result, err := h.service.CreateDataSource(c.Request.Context(), platform.CreateDataSourceInput{
 		Name:         req.Name,
 		Type:         req.Type,
 		SourceFamily: req.SourceFamily,
@@ -630,7 +590,6 @@ func (h *Handler) AdminCreateDataSource(c *gin.Context) {
 	}
 	c.JSON(http.StatusCreated, result)
 }
-
 func (h *Handler) AdminUpdateDataSource(c *gin.Context) {
 	dataSourceID, ok := parseUUIDParam(c, "data_source_id")
 	if !ok {
@@ -643,7 +602,7 @@ func (h *Handler) AdminUpdateDataSource(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.UpdateDataSource(c.Request.Context(), UpdateDataSourceInput{
+	result, err := h.service.UpdateDataSource(c.Request.Context(), platform.UpdateDataSourceInput{
 		DataSourceID: dataSourceID,
 		Name:         req.Name,
 		Type:         req.Type,
@@ -657,7 +616,6 @@ func (h *Handler) AdminUpdateDataSource(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) AdminCreateSourceDevice(c *gin.Context) {
 	actor, ok := actorFromContext(c)
 	if !ok {
@@ -672,7 +630,7 @@ func (h *Handler) AdminCreateSourceDevice(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
-	result, err := h.service.CreateSourceDevice(c.Request.Context(), CreateSourceDeviceInput{
+	result, err := h.service.CreateSourceDevice(c.Request.Context(), platform.CreateSourceDeviceInput{
 		DataSourceID: dataSourceID, SourceKind: req.SourceKind, Name: req.Name, ICCID: req.ICCID,
 		Version: req.Version, NodesCount: req.NodesCount, ActorUserID: actor.UserID,
 	})
@@ -690,7 +648,6 @@ func (h *Handler) AdminCreateSourceDevice(c *gin.Context) {
 	}
 	c.JSON(http.StatusCreated, result)
 }
-
 func (h *Handler) AdminRetrySourceDeviceSync(c *gin.Context) {
 	actor, ok := actorFromContext(c)
 	if !ok {
@@ -719,7 +676,6 @@ func (h *Handler) AdminRetrySourceDeviceSync(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) AdminSyncTHCPNStandardStation(c *gin.Context) {
 	actor, ok := actorFromContext(c)
 	if !ok {
@@ -735,7 +691,7 @@ func (h *Handler) AdminSyncTHCPNStandardStation(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
-	result, err := h.service.SyncTHCPNStandardStation(c.Request.Context(), SyncTHCPNStandardStationInput{
+	result, err := h.service.THCPN.SyncTHCPNStandardStation(c.Request.Context(), thcpn.SyncTHCPNStandardStationInput{
 		DataSourceID:     dataSourceID,
 		ExternalDeviceID: req.ExternalDeviceID,
 		ActorUserID:      actor.UserID,
@@ -746,20 +702,18 @@ func (h *Handler) AdminSyncTHCPNStandardStation(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) AdminListCarbonDevices(c *gin.Context) {
 	dataSourceID, ok := parseUUIDParam(c, "data_source_id")
 	if !ok {
 		return
 	}
-	items, err := h.service.ListCarbonDevices(c.Request.Context(), dataSourceID)
+	items, err := h.service.Carbon.ListCarbonDevices(c.Request.Context(), dataSourceID)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
-
 func (h *Handler) AdminSyncCarbonDevice(c *gin.Context) {
 	actor, ok := actorFromContext(c)
 	if !ok {
@@ -774,7 +728,7 @@ func (h *Handler) AdminSyncCarbonDevice(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
-	result, err := h.service.SyncCarbonDevice(c.Request.Context(), SyncCarbonDeviceInput{
+	result, err := h.service.Carbon.SyncCarbonDevice(c.Request.Context(), carbon.SyncCarbonDeviceInput{
 		DataSourceID: dataSourceID, ExternalDeviceID: req.ExternalDeviceID, ActorUserID: actor.UserID,
 	})
 	if err != nil {
@@ -787,11 +741,8 @@ func (h *Handler) AdminSyncCarbonDevice(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) AdminSyncAllCarbonDevices(c *gin.Context) { h.AdminStartSourceSync(c) }
-
-func (h *Handler) AdminSyncAllTHCPNDevices(c *gin.Context) { h.AdminStartSourceSync(c) }
-
+func (h *Handler) AdminSyncAllTHCPNDevices(c *gin.Context)  { h.AdminStartSourceSync(c) }
 func (h *Handler) AdminSyncTHCPNGateway(c *gin.Context) {
 	actor, ok := actorFromContext(c)
 	if !ok {
@@ -807,7 +758,7 @@ func (h *Handler) AdminSyncTHCPNGateway(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
-	result, err := h.service.SyncTHCPNGateway(c.Request.Context(), SyncTHCPNGatewayInput{
+	result, err := h.service.THCPN.SyncTHCPNGateway(c.Request.Context(), thcpn.SyncTHCPNGatewayInput{
 		DataSourceID:      dataSourceID,
 		ExternalGatewayID: req.ExternalGatewayID,
 		ActorUserID:       actor.UserID,
@@ -855,8 +806,7 @@ func (h *Handler) AdminSyncTHCPNGateway(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, result)
 }
-
-func (h *Handler) AdminGetTHCPNDeviceConfig(c *gin.Context) {
+func (h *Handler) AdminGetDeviceConfig(c *gin.Context) {
 	deviceID, ok := parseUUIDParam(c, "device_id")
 	if !ok {
 		return
@@ -868,8 +818,7 @@ func (h *Handler) AdminGetTHCPNDeviceConfig(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, result)
 }
-
-func (h *Handler) AdminListTHCPNSensorTemplates(c *gin.Context) {
+func (h *Handler) AdminListDeviceSensorTemplates(c *gin.Context) {
 	deviceID, ok := parseUUIDParam(c, "device_id")
 	if !ok {
 		return
@@ -882,7 +831,7 @@ func (h *Handler) AdminListTHCPNSensorTemplates(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := h.service.ListTHCPNSensorTemplates(c.Request.Context(), THCPNSensorTemplateListInput{
+	result, err := h.service.ListSensorTemplates(c.Request.Context(), platform.SensorTemplateListInput{
 		DeviceID: deviceID, Search: c.Query("q"), Port: c.Query("port"), Driver: c.Query("driver"), Page: page, PageSize: pageSize,
 	})
 	if err != nil {
@@ -891,7 +840,6 @@ func (h *Handler) AdminListTHCPNSensorTemplates(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) AdminListSensorTemplates(c *gin.Context) {
 	page, ok := parseOptionalIntQuery(c, "page")
 	if !ok {
@@ -901,7 +849,7 @@ func (h *Handler) AdminListSensorTemplates(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := h.service.ListTHCPNSensorTemplates(c.Request.Context(), THCPNSensorTemplateListInput{
+	result, err := h.service.ListSensorTemplates(c.Request.Context(), platform.SensorTemplateListInput{
 		Search: c.Query("q"), Port: c.Query("port"), Driver: c.Query("driver"), Status: c.Query("status"), SourceFamily: c.Query("source_family"), Page: page, PageSize: pageSize,
 	})
 	if err != nil {
@@ -910,7 +858,6 @@ func (h *Handler) AdminListSensorTemplates(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) AdminCreateSensorTemplate(c *gin.Context) {
 	actor, ok := actorFromContext(c)
 	if !ok {
@@ -921,27 +868,25 @@ func (h *Handler) AdminCreateSensorTemplate(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
-	result, err := h.service.CreateTHCPNSensorTemplate(c.Request.Context(), sensorTemplateInput(req, actor.SystemAdministratorID()))
+	result, err := h.service.CreateSensorTemplate(c.Request.Context(), sensorTemplateInput(req, actor.SystemAdministratorID()))
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, result)
 }
-
 func (h *Handler) AdminGetSensorTemplate(c *gin.Context) {
 	id, ok := parseInt64Param(c, "template_id")
 	if !ok {
 		return
 	}
-	result, err := h.service.GetTHCPNSensorTemplate(c.Request.Context(), id)
+	result, err := h.service.GetSensorTemplate(c.Request.Context(), id)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) AdminUpdateSensorTemplate(c *gin.Context) {
 	actor, ok := actorFromContext(c)
 	if !ok {
@@ -956,26 +901,24 @@ func (h *Handler) AdminUpdateSensorTemplate(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
-	result, err := h.service.UpdateTHCPNSensorTemplate(c.Request.Context(), id, sensorTemplateInput(req, actor.SystemAdministratorID()))
+	result, err := h.service.UpdateSensorTemplate(c.Request.Context(), id, sensorTemplateInput(req, actor.SystemAdministratorID()))
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) AdminDeleteSensorTemplate(c *gin.Context) {
 	id, ok := parseInt64Param(c, "template_id")
 	if !ok {
 		return
 	}
-	if err := h.service.DeleteTHCPNSensorTemplate(c.Request.Context(), id); err != nil {
+	if err := h.service.DeleteSensorTemplate(c.Request.Context(), id); err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
 }
-
 func (h *Handler) AdminImportSensorTemplates(c *gin.Context) {
 	actor, ok := actorFromContext(c)
 	if !ok {
@@ -990,22 +933,20 @@ func (h *Handler) AdminImportSensorTemplates(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := h.service.ImportTHCPNSensorTemplates(c.Request.Context(), dataSourceID, actor.SystemAdministratorID())
+	result, err := h.service.THCPN.ImportSensorTemplates(c.Request.Context(), dataSourceID, actor.SystemAdministratorID())
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, result)
 }
-
-func sensorTemplateInput(req sensorTemplateRequest, actorID uuid.UUID) THCPNSensorTemplateWriteInput {
-	return THCPNSensorTemplateWriteInput{
+func sensorTemplateInput(req sensorTemplateRequest, actorID uuid.UUID) platform.SensorTemplateWriteInput {
+	return platform.SensorTemplateWriteInput{
 		SensorType: req.SensorType, Description: req.Description, Port: req.Port, PortNum: req.PortNum,
 		Driver: req.Driver, PortNums: req.PortNums, Params: req.Params, Metrics: req.Metrics, Variants: req.Variants, Status: req.Status, ActorID: actorID,
 	}
 }
-
-func (h *Handler) AdminUpdateTHCPNDeviceConfig(c *gin.Context) {
+func (h *Handler) AdminUpdateDeviceConfig(c *gin.Context) {
 	actor, ok := actorFromContext(c)
 	if !ok {
 		return
@@ -1014,12 +955,12 @@ func (h *Handler) AdminUpdateTHCPNDeviceConfig(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var req updateTHCPNDeviceConfigRequest
+	var req updateDeviceConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
-	result, err := h.service.UpdateDeviceConfig(c.Request.Context(), UpdateTHCPNDeviceConfigInput{
+	result, err := h.service.UpdateDeviceConfig(c.Request.Context(), platform.UpdateDeviceConfigInput{
 		DeviceID: deviceID, DataJSON: req.DataJSON, ImageJSON: req.ImageJSON, ControlJSON: req.ControlJSON,
 		ExpectedConfigID: req.ExpectedConfigID, ActorUserID: actor.UserID,
 	})
@@ -1059,7 +1000,6 @@ func (h *Handler) AdminUpdateTHCPNDeviceConfig(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) ListBindings(c *gin.Context) {
 	dataStreamID, ok := parseUUIDValue(c.Query("data_stream_id"), "data_stream_id", c)
 	if !ok {
@@ -1076,7 +1016,6 @@ func (h *Handler) ListBindings(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
-
 func (h *Handler) CreateBinding(c *gin.Context) {
 	actor, ok := actorFromContext(c)
 	if !ok {
@@ -1101,7 +1040,7 @@ func (h *Handler) CreateBinding(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.CreateDataStreamBinding(c.Request.Context(), CreateDataStreamBindingInput{
+	result, err := h.service.CreateDataStreamBinding(c.Request.Context(), platform.CreateDataStreamBindingInput{
 		DataStreamID:      dataStreamID,
 		DataSourceID:      dataSourceID,
 		AdapterCode:       req.AdapterCode,
@@ -1122,7 +1061,6 @@ func (h *Handler) CreateBinding(c *gin.Context) {
 	}
 	c.JSON(http.StatusCreated, result)
 }
-
 func (h *Handler) GetBinding(c *gin.Context) {
 	bindingID, ok := parseUUIDParam(c, "binding_id")
 	if !ok {
@@ -1139,7 +1077,6 @@ func (h *Handler) GetBinding(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) UpdateBinding(c *gin.Context) {
 	bindingID, ok := parseUUIDParam(c, "binding_id")
 	if !ok {
@@ -1165,7 +1102,7 @@ func (h *Handler) UpdateBinding(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := h.service.UpdateDataStreamBinding(c.Request.Context(), UpdateDataStreamBindingInput{
+	result, err := h.service.UpdateDataStreamBinding(c.Request.Context(), platform.UpdateDataStreamBindingInput{
 		BindingID:         bindingID,
 		DataSourceID:      dataSourceID,
 		AdapterCode:       req.AdapterCode,
@@ -1186,21 +1123,18 @@ func (h *Handler) UpdateBinding(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func createBindingAdapterConfig(req createBindingRequest) json.RawMessage {
 	if len(req.AdapterConfigJSON) > 0 {
 		return req.AdapterConfigJSON
 	}
 	return req.QueryConfigJSON
 }
-
 func updateBindingAdapterConfig(req updateBindingRequest) *json.RawMessage {
 	if req.AdapterConfigJSON != nil {
 		return req.AdapterConfigJSON
 	}
 	return req.QueryConfigJSON
 }
-
 func (h *Handler) authorize(c *gin.Context, resourceType string, resourceID uuid.UUID, action string) bool {
 	actor, ok := actorFromContext(c)
 	if !ok {
@@ -1225,7 +1159,6 @@ func (h *Handler) authorize(c *gin.Context, resourceType string, resourceID uuid
 	}
 	return true
 }
-
 func actorFromContext(c *gin.Context) (auth.Actor, bool) {
 	actor, ok := auth.ActorFromContext(c)
 	if !ok {
@@ -1234,7 +1167,6 @@ func actorFromContext(c *gin.Context) (auth.Actor, bool) {
 	}
 	return actor, true
 }
-
 func parseDeviceIDs(c *gin.Context) ([]uuid.UUID, bool) {
 	raw := strings.TrimSpace(c.Query("device_ids"))
 	if raw == "" {
@@ -1242,7 +1174,7 @@ func parseDeviceIDs(c *gin.Context) ([]uuid.UUID, bool) {
 		return nil, false
 	}
 	parts := strings.Split(raw, ",")
-	if len(parts) > maxTHCPNRuntimeDevices {
+	if len(parts) > thcpn.MaxTHCPNRuntimeDevices {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "at most 200 device ids are allowed"))
 		return nil, false
 	}
@@ -1255,13 +1187,11 @@ func parseDeviceIDs(c *gin.Context) ([]uuid.UUID, bool) {
 		}
 		result = append(result, id)
 	}
-	return uniqueUUIDs(result), true
+	return thcpn.UniqueUUIDs(result), true
 }
-
 func parseUUIDParam(c *gin.Context, name string) (uuid.UUID, bool) {
 	return parseUUIDValue(c.Param(name), name, c)
 }
-
 func parseInt64Param(c *gin.Context, name string) (int64, bool) {
 	value, err := strconv.ParseInt(strings.TrimSpace(c.Param(name)), 10, 64)
 	if err != nil || value <= 0 {
@@ -1270,7 +1200,6 @@ func parseInt64Param(c *gin.Context, name string) (int64, bool) {
 	}
 	return value, true
 }
-
 func parsePositiveQueryInt(c *gin.Context, name string) (int, bool) {
 	value, err := strconv.Atoi(strings.TrimSpace(c.Query(name)))
 	if err != nil || value <= 0 {
@@ -1279,9 +1208,8 @@ func parsePositiveQueryInt(c *gin.Context, name string) (int, bool) {
 	}
 	return value, true
 }
-
 func parseCarbonRange(c *gin.Context) (time.Time, time.Time, bool) {
-	now := time.Now().In(carbonLocation)
+	now := time.Now().In(carbon.CarbonLocation)
 	start, err := parseCarbonTime(c.Query("start"), now.AddDate(0, 0, -7))
 	if err != nil {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid start"))
@@ -1298,23 +1226,21 @@ func parseCarbonRange(c *gin.Context) (time.Time, time.Time, bool) {
 	}
 	return start, end, true
 }
-
 func parseCarbonTime(raw string, fallback time.Time) (time.Time, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return fallback, nil
 	}
 	if parsed, err := time.Parse(time.RFC3339, raw); err == nil {
-		return parsed.In(carbonLocation), nil
+		return parsed.In(carbon.CarbonLocation), nil
 	}
 	for _, layout := range []string{"2006-01-02 15:04:05", "2006-01-02T15:04", "2006-01-02"} {
-		if parsed, err := time.ParseInLocation(layout, raw, carbonLocation); err == nil {
+		if parsed, err := time.ParseInLocation(layout, raw, carbon.CarbonLocation); err == nil {
 			return parsed, nil
 		}
 	}
 	return time.Time{}, errors.New("invalid carbon time")
 }
-
 func parseUUIDValue(value string, name string, c *gin.Context) (uuid.UUID, bool) {
 	id, err := uuid.Parse(value)
 	if err != nil {
@@ -1323,7 +1249,6 @@ func parseUUIDValue(value string, name string, c *gin.Context) (uuid.UUID, bool)
 	}
 	return id, true
 }
-
 func parseOptionalUUIDValue(value string, name string, c *gin.Context) (*uuid.UUID, bool) {
 	if value == "" {
 		return nil, true
@@ -1334,21 +1259,18 @@ func parseOptionalUUIDValue(value string, name string, c *gin.Context) (*uuid.UU
 	}
 	return &id, true
 }
-
 func parseOptionalUUIDPointer(value *string, name string, c *gin.Context) (*uuid.UUID, bool) {
 	if value == nil {
 		return nil, true
 	}
 	return parseOptionalUUIDValue(*value, name, c)
 }
-
 func uuidValue(value *uuid.UUID) uuid.UUID {
 	if value == nil {
 		return uuid.Nil
 	}
 	return *value
 }
-
 func (h *Handler) record(c *gin.Context, input audit.RecordInput) bool {
 	if h.audit == nil {
 		return true

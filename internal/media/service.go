@@ -16,6 +16,7 @@ import (
 	"thcpn-gin/internal/billing"
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/datasource"
+	platform "thcpn-gin/internal/datasource/platform"
 	"thcpn-gin/internal/db/sqlc"
 	"thcpn-gin/internal/objectstore"
 )
@@ -28,7 +29,7 @@ const (
 )
 
 type Runtime interface {
-	QueryMedia(ctx context.Context, source datasource.DataSource, req datasource.MediaQuery) (datasource.MediaResult, error)
+	QueryMedia(ctx context.Context, source platform.DataSource, req platform.MediaQuery) (platform.MediaResult, error)
 }
 
 type Service struct {
@@ -365,7 +366,7 @@ func (s *Service) queryStream(ctx context.Context, stream sqlc.DataStream, start
 	if err != nil {
 		return ListResult{}, err
 	}
-	result, err := s.runtime.QueryMedia(ctx, source, datasource.MediaQuery{
+	result, err := s.runtime.QueryMedia(ctx, source, platform.MediaQuery{
 		Binding:   binding,
 		Start:     start,
 		End:       end,
@@ -383,7 +384,7 @@ func (s *Service) queryStream(ctx context.Context, stream sqlc.DataStream, start
 	return ListResult{Items: items, Page: page, PageSize: pageSize, Total: result.Total}, nil
 }
 
-func (s *Service) itemsFromDatasource(stream sqlc.DataStream, records []datasource.MediaRecord, downloadAllowed bool, deleteAllowed bool) ([]Item, error) {
+func (s *Service) itemsFromDatasource(stream sqlc.DataStream, records []platform.MediaRecord, downloadAllowed bool, deleteAllowed bool) ([]Item, error) {
 	if s.signer == nil {
 		return nil, apperr.New(apperr.KindInternal, "object store signer is not configured")
 	}

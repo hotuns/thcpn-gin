@@ -1,32 +1,19 @@
 package datasource
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"math"
 	"net/http"
-	"net/url"
 	"strconv"
 	"sync"
+	platform "thcpn-gin/internal/datasource/platform"
+	"thcpn-gin/internal/device"
+	"thcpn-gin/internal/httpx"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"thcpn-gin/internal/device"
-	"thcpn-gin/internal/httpx"
 )
-
-// NodeRuntime is independent of sensor metric mappings: diagnostics belong to
-// the node itself, and a changed sensor configuration must not hide them.
-type NodeRuntime struct {
-	Key       string     `json:"key"`
-	SampledAt *time.Time `json:"sampled_at,omitempty"`
-	Battery   *float64   `json:"battery,omitempty"`
-	RSSI      *float64   `json:"rssi,omitempty"`
-	SNR       *float64   `json:"snr,omitempty"`
-	Error     string     `json:"error,omitempty"`
-}
 
 func (h *Handler) NodeRuntime(c *gin.Context) {
 	id, ok := parseUUIDParam(c, "device_id")
@@ -36,7 +23,7 @@ func (h *Handler) NodeRuntime(c *gin.Context) {
 	if !h.authorize(c, "device", id, "device.view") {
 		return
 	}
-	nodes, err := device.NewService(h.service.db).ListGatewayNodes(c.Request.Context(), id)
+	nodes, err := device.NewService(h.service.DB).ListGatewayNodes(c.Request.Context(), id)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -47,7 +34,7 @@ func (h *Handler) NodeRuntime(c *gin.Context) {
 			return
 		}
 	}
-	result := make([]NodeRuntime, len(nodes))
+	result := make([]platform.NodeRuntime, len(nodes))
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
 	defer cancel()
 	now := time.Now().UTC()
@@ -66,7 +53,7 @@ func (h *Handler) NodeRuntime(c *gin.Context) {
 				return
 			}
 			if node.Target.DeviceID != nil {
-				batch, e := h.service.THCPNDeviceRuntime(ctx, []uuid.UUID{*node.Target.DeviceID})
+				batch, e := h.service.DeviceRuntime(ctx, []uuid.UUID{*node.Target.DeviceID})
 				if e != nil || len(batch.Failures) > 0 {
 					result[i].Error = "节点状态读取失败"
 					return
@@ -96,47 +83,24 @@ func (h *Handler) NodeRuntime(c *gin.Context) {
 				}
 				return
 			}
-			ref, e := h.service.LoRaWANV2GatewayForDevice(ctx, id)
-			if e != nil || node.Target.NodeIndex == nil {
-				result[i].Error = "节点数据源不可用"
+			if node.Target.NodeIndex == nil {
+				result[i].Error = "节点目标无效"
 				return
 			}
-			q := url.Values{"page": {"1"}, "page_size": {"1"}, "start_at": {strconv.FormatInt(now.Add(-72*time.Hour).Unix(), 10)}, "end_at": {strconv.FormatInt(now.Unix(), 10)}}
-			payload, e := h.service.LoRaWANV2Request(ctx, ref.DataSourceID, http.MethodGet, "/device/"+url.PathEscape(ref.GatewaySN)+"/node/"+strconv.Itoa(*node.Target.NodeIndex)+"/data", q, nil)
-			if e != nil {
+			module, err := h.service.moduleForDevice(ctx, id)
+			if err != nil || module.NodeRuntime == nil {
+				result[i].Error = "节点状态读取不可用"
+				return
+			}
+			item, err := module.NodeRuntime.ReadNodeRuntime(ctx, id, *node.Target.NodeIndex, node.Key, now)
+			if err != nil {
 				result[i].Error = "节点状态读取失败"
 				return
 			}
-			var data struct {
-				Data []map[string]json.RawMessage `json:"data"`
-			}
-			if json.Unmarshal(payload, &data) != nil {
-				result[i].Error = "节点状态格式错误"
-				return
-			}
-			if len(data.Data) == 0 {
-				return
-			}
-			result[i] = parseNodeRuntime(node.Key, data.Data[0])
+			result[i] = item
+
 		}(i, node)
 	}
 	wg.Wait()
 	c.JSON(http.StatusOK, gin.H{"items": result, "refreshed_at": now})
-}
-
-func parseNodeRuntime(key string, row map[string]json.RawMessage) NodeRuntime {
-	result := NodeRuntime{Key: key}
-	if ts, err := loraWANV2Timestamp(row["ts"]); err == nil {
-		result.SampledAt = &ts
-	}
-	for key, target := range map[string]**float64{"battery": &result.Battery, "rssi": &result.RSSI, "snr": &result.SNR} {
-		raw := bytes.TrimSpace(row[key])
-		if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
-			continue
-		}
-		if value, ok := loraWANV2Number(raw); ok && !math.IsNaN(value) && !math.IsInf(value, 0) {
-			*target = &value
-		}
-	}
-	return result
 }

@@ -2,15 +2,14 @@ package firmware
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"thcpn-gin/internal/datasource/platform"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,7 +17,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"thcpn-gin/internal/apperr"
-	"thcpn-gin/internal/datasource"
 	"thcpn-gin/internal/objectstore"
 )
 
@@ -37,17 +35,8 @@ type ArtifactStore struct {
 	PublicURLPrefix string
 }
 
-type LoRaWANV2Publisher interface {
-	LoRaWANV2Request(context.Context, uuid.UUID, string, string, url.Values, any) (json.RawMessage, error)
-}
-
-type SourceFirmwareWriter interface {
-	RegisterSourceFirmware(context.Context, datasource.SourceFirmwareInput) (int64, error)
-}
-
 type SourcePublisher interface {
-	LoRaWANV2Publisher
-	SourceFirmwareWriter
+	RegisterSourceFirmware(context.Context, platform.SourceFirmwareInput) (int64, error)
 }
 
 type UploadInput struct {
@@ -337,30 +326,13 @@ func (s *Service) publish(ctx context.Context, releaseID, deviceID uuid.UUID, re
 	var upstreamID int64
 	err = s.validatePublishingTarget(ctx, releaseID, deviceID, dataSourceID, gatewaySN, externalDeviceID)
 	if err == nil {
-		switch sourceFamily {
-		case "lorawan_v2":
-			payload, requestErr := s.dataSources.LoRaWANV2Request(ctx, dataSourceID, http.MethodPost, "/device/"+url.PathEscape(gatewaySN)+"/firmware", nil, map[string]any{"firmware_version": uint32(encoded), "url": publicURL, "verify_value": verify})
-			if requestErr == nil {
-				var response struct {
-					ID int64 `json:"id"`
-				}
-				if json.Unmarshal(payload, &response) != nil || response.ID <= 0 {
-					requestErr = apperr.New(apperr.KindDataSource, "lorawan_v2 firmware response is missing id")
-				} else {
-					upstreamID = response.ID
-				}
-			}
-			err = requestErr
-		case "thcpn", "carbon":
-			if externalDeviceID == nil {
-				err = apperr.New(apperr.KindInternal, "source firmware target is missing external_device_id")
-			} else {
-				upstreamID, err = s.dataSources.RegisterSourceFirmware(ctx, datasource.SourceFirmwareInput{DataSourceID: dataSourceID, SourceFamily: sourceFamily, ExternalDeviceID: *externalDeviceID, Version: version, BuildID: buildID, ObjectKey: objectKey, PublicURL: publicURL, VerifyValue: verify})
-			}
-		default:
-			err = apperr.New(apperr.KindInvalidArgument, "firmware source family is not supported")
+		externalID := int64(0)
+		if externalDeviceID != nil {
+			externalID = *externalDeviceID
 		}
+		upstreamID, err = s.dataSources.RegisterSourceFirmware(ctx, platform.SourceFirmwareInput{DataSourceID: dataSourceID, SourceFamily: sourceFamily, ExternalDeviceID: externalID, GatewaySN: gatewaySN, Version: version, EncodedVersion: uint32(encoded), BuildID: buildID, ObjectKey: objectKey, PublicURL: publicURL, VerifyValue: verify})
 	}
+
 	if err != nil {
 		message := apperr.MessageOf(err)
 		_, _ = s.db.Exec(ctx, `UPDATE firmware_release_targets SET status='failed',error_message=$2,updated_at=now() WHERE id=$1`, targetID, message)

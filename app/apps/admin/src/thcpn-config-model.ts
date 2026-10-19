@@ -1,4 +1,5 @@
-import type { JsonRecord } from "@thcpn/api";
+import { parseDeviceConfig, type DeviceConfigFields, type JsonRecord } from "@thcpn/api";
+import type { ConfigSaveReview } from "./config-save-types";
 
 export type THCPNConfigDraft = {
   sensors: JsonRecord[];
@@ -169,4 +170,20 @@ function multisetChanges(before: string[], after: string[]) {
 
 export function cloneConfigValue<T>(value: T): T {
   return clone(value);
+}
+
+export function prepareTHCPNConfigSave(fields: DeviceConfigFields, original: JsonRecord): ConfigSaveReview {
+  const payload = parseDeviceConfig(fields);
+  const after = parseAdvancedConfig({ data: fields.data_json, image: fields.image_json, control: fields.control_json }, fields.expected_config_id);
+  const validation = validateVisualConfig(after);
+  if (validation.length) throw new Error(validation.join("；"));
+  const summary = configChangeSummary(configDraftFromDetail(original), after);
+  return { payload, warnings: duplicateSensorWarnings(after.sensors), destructive: summary.sensorsRemoved > 0 || summary.imagesRemoved > 0, changes: [
+    summary.sensorsAdded ? `新增 ${summary.sensorsAdded} 个传感器` : "",
+    summary.sensorsRemoved ? `删除 ${summary.sensorsRemoved} 个传感器` : "",
+    summary.metricsChanged ? (summary.metricsBefore !== summary.metricsAfter ? `指标 ${summary.metricsBefore} → ${summary.metricsAfter}` : "指标定义已修改") : "",
+    summary.imagesAdded ? `新增 ${summary.imagesAdded} 个图片通道` : "",
+    summary.imagesRemoved ? `删除 ${summary.imagesRemoved} 个图片通道` : "",
+    summary.controlChanged ? "控制策略已修改" : "",
+  ].filter(Boolean) };
 }

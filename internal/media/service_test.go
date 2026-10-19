@@ -9,7 +9,7 @@ import (
 
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/config"
-	"thcpn-gin/internal/datasource"
+	platform "thcpn-gin/internal/datasource/platform"
 	"thcpn-gin/internal/db/sqlc"
 	"thcpn-gin/internal/objectstore"
 )
@@ -67,7 +67,7 @@ func TestItemsFromDatasourceIncludesDeleteURLWhenAllowed(t *testing.T) {
 	}
 	thumbnailKey := "thumbs/img-1.jpg"
 
-	items, err := service.itemsFromDatasource(stream, []datasource.MediaRecord{{
+	items, err := service.itemsFromDatasource(stream, []platform.MediaRecord{{
 		ID:                 "img-1",
 		ObjectKey:          "raw/img-1.jpg",
 		ThumbnailObjectKey: &thumbnailKey,

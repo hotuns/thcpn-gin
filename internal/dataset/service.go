@@ -15,6 +15,7 @@ import (
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/datasource"
+	platform "thcpn-gin/internal/datasource/platform"
 	"thcpn-gin/internal/db/sqlc"
 	telemetrysvc "thcpn-gin/internal/telemetry"
 )
@@ -29,7 +30,7 @@ type Service struct {
 }
 
 type TelemetryRuntime interface {
-	QueryTelemetry(ctx context.Context, source datasource.DataSource, req datasource.TelemetryQuery) (datasource.TelemetryResult, error)
+	QueryTelemetry(ctx context.Context, source platform.DataSource, req platform.TelemetryQuery) (platform.TelemetryResult, error)
 }
 
 type QueryDependencies struct {
@@ -537,7 +538,7 @@ func (s *Service) queryTelemetrySeries(ctx context.Context, sourceType string, s
 	if err != nil {
 		return TelemetrySeries{}, err
 	}
-	result, err := s.runtime.QueryTelemetry(ctx, source, datasource.TelemetryQuery{
+	result, err := s.runtime.QueryTelemetry(ctx, source, platform.TelemetryQuery{
 		Binding: binding,
 		Start:   start,
 		End:     end,
@@ -833,7 +834,7 @@ func sourcesFromSQL(sources []sqlc.DatasetSource) []DatasetSource {
 	return items
 }
 
-func telemetryPointsFromDatasource(points []datasource.TelemetryPoint) []TelemetryPoint {
+func telemetryPointsFromDatasource(points []platform.TelemetryPoint) []TelemetryPoint {
 	items := make([]TelemetryPoint, 0, len(points))
 	for _, point := range points {
 		items = append(items, TelemetryPoint{
@@ -845,7 +846,7 @@ func telemetryPointsFromDatasource(points []datasource.TelemetryPoint) []Telemet
 	return items
 }
 
-func warningsFromDatasource(warnings []datasource.QueryWarning) []Warning {
+func warningsFromDatasource(warnings []platform.QueryWarning) []Warning {
 	items := make([]Warning, 0, len(warnings))
 	for _, warning := range warnings {
 		items = append(items, Warning{

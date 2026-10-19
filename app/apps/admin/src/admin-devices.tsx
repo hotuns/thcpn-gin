@@ -38,15 +38,17 @@ import { Badge, PageHeader, Panel, StateView } from "@thcpn/ui";
 import { AdminNodeNameEditor as NodeNameEditor } from "./node-name-editor";
 import {
   configFieldsFromDetail,
-  parseTHCPNConfig,
-  type THCPNConfigFields,
-} from "./thcpn-config";
-import { THCPNVisualConfigEditor } from "./thcpn-config-editor";
-import { configChangeSummary, configDraftFromDetail, duplicateSensorWarnings, parseAdvancedConfig, validateVisualConfig } from "./thcpn-config-model";
+  copiedDeviceConfigFields,
+  parseDeviceConfig,
+  type DeviceConfigFields,
+} from "./device-config";
+import { DeviceConfigEditor } from "./device-config-editor";
+import { prepareDeviceConfigSave, type ConfigSaveReview } from "./config-save-model";
 import { DeviceLogsPanel } from "./device-logs-panel";
 import { LoRaWANV2LogsPanel } from "./lorawan-v2-logs-panel";
 import { LoRaWANV2ConfigPanel } from "./lorawan-v2-config-panel";
 import { DeviceFirmwareDialog } from "./device-firmware-dialog";
+import { ConfigCopyPicker } from "./config-copy-picker";
 
 type Mode =
   | "edit"
@@ -438,16 +440,10 @@ export function AdminDevicesPage() {
           capabilities: fields.capabilities ?? [],
         });
       if (mode === "config") {
-        const payload = parseTHCPNConfig(fields as THCPNConfigFields);
-        const after = parseAdvancedConfig({ data: fields.data_json, image: fields.image_json, control: fields.control_json }, fields.expected_config_id);
-        const validation = validateVisualConfig(after);
-        if (validation.length) throw new Error(validation.join("；"));
-        const before = configDraftFromDetail((detail ?? {}) as JsonRecord);
-        const summary = configChangeSummary(before, after);
-        const warnings = duplicateSensorWarnings(after.sensors);
-        const confirmed = await confirmConfigSave(summary, warnings);
+        const review = prepareDeviceConfigSave(String(selected?.source_family ?? ""), fields as DeviceConfigFields, (detail ?? {}) as JsonRecord);
+        const confirmed = await confirmConfigSave(review);
         if (!confirmed) { setBusy(false); return; }
-        const response = await api.admin.updateDeviceConfig(id, payload);
+        const response = await api.admin.updateDeviceConfig(id, review.payload);
         setConfigResult({ deviceName: value(selected?.name, id), response });
       }
       if (mode === "camera") await api.admin.createCamera(fields);
@@ -633,12 +629,12 @@ export function AdminDevicesPage() {
       {firmwareDevice ? <DeviceFirmwareDialog key={String(firmwareDevice.id)} deviceId={String(firmwareDevice.id)} deviceName={value(firmwareDevice.name)} serialNo={value(firmwareDevice.serial_no)} onClose={() => setFirmwareDevice(null)} /> : null}
       {configResult ? <ConfigApplyResult result={configResult} onClose={() => setConfigResult(null)} /> : null}
       <Drawer title={drawerTitle(mode, selected)} open={Boolean(mode)} onClose={close} size={mode === "config" ? 1180 : 620} extra={mode === "attributes" ? <Button onClick={close}>关闭</Button> : <Space><Button onClick={close}>取消</Button><Button type="primary" danger={mode === "config"} loading={busy} onClick={() => void (mode === "create-device" && createdSourceDevice?.sync_error ? retryCreatedSourceDevice() : submit())}>{mode === "create-device" && createdSourceDevice?.sync_error ? (createdSourceDevice.source_kind === "lorawan_v2" ? "重试默认配置" : "重试同步") : mode === "create-device" ? "创建设备" : "保存"}</Button></Space>}>
-        {mode === "config" && configConflict ? <Alert className="config-conflict-alert" type="warning" showIcon title="源配置已变化，当前草稿尚未保存" description="复制草稿后重新加载最新配置；系统不会强制覆盖其他操作写入的版本。" action={<Space orientation="vertical"><Button size="small" onClick={() => void navigator.clipboard.writeText(JSON.stringify(parseTHCPNConfig(form.getFieldsValue() as THCPNConfigFields), null, 2))}>复制草稿</Button><Button size="small" type="primary" onClick={() => { setConfigConflict(false); void loadDetail("config", selected); }}>重新加载</Button></Space>} /> : null}
-        <Form form={form} layout="vertical">{mode === "create-device" ? <DeviceCreateForm form={form} sources={sourceQuery.data?.items ?? []} sourcesLoading={sourceQuery.isLoading} /> : <DeviceForm mode={mode} form={form} devices={allRows} deviceId={id} />}</Form>
+        {mode === "config" && configConflict ? <Alert className="config-conflict-alert" type="warning" showIcon title="源配置已变化，当前草稿尚未保存" description="复制草稿后重新加载最新配置；系统不会强制覆盖其他操作写入的版本。" action={<Space orientation="vertical"><Button size="small" onClick={() => void navigator.clipboard.writeText(JSON.stringify(parseDeviceConfig(form.getFieldsValue() as DeviceConfigFields), null, 2))}>复制草稿</Button><Button size="small" type="primary" onClick={() => { setConfigConflict(false); void loadDetail("config", selected); }}>重新加载</Button></Space>} /> : null}
+        <Form form={form} layout="vertical">{mode === "create-device" ? <DeviceCreateForm form={form} sources={sourceQuery.data?.items ?? []} sourcesLoading={sourceQuery.isLoading} /> : <DeviceForm mode={mode} form={form} devices={allRows} deviceId={id} busy={busy} />}</Form>
         {mode === "create-device" && createdSourceDevice?.sync_error ? <Alert type="warning" showIcon title={createdSourceDevice.source_kind === "lorawan_v2" ? "网关已创建，默认配置写入失败" : "源库设备已创建，但平台同步失败"} description={<div>SN {value(createdSourceDevice.sn)}<br />{value(createdSourceDevice.sync_error)}</div>} /> : null}
         <StructuredDetail mode={mode} detail={detail} busy={busy} onRemove={(childId) => selected && void removeChild(value(selected.id, ""), childId)} />
         {mode === "config" && detail ? <ConfigContext detail={detail as JsonRecord} /> : null}
-        <div className="drawer-note"><Settings2 size={15} />{mode === "config" ? "高级配置会写入外部设备库，并刷新平台数据流与绑定。提交前请确认 JSON 结构。" : mode === "create-device" ? "设备会先在对应数据源创建，再登记为平台设备；LoRa V2 网关沿用输入的 SN。" : "所有操作都作用于标题中显示的当前设备；完成后设备列表会自动刷新。"}</div>
+        <div className="drawer-note"><Settings2 size={15} />{mode === "config" ? "保存会写入当前设备的数据源，并按来源规则刷新平台配置。提交前请确认配置内容。" : mode === "create-device" ? "设备会先在对应数据源创建，再登记为平台设备；LoRa V2 网关沿用输入的 SN。" : "所有操作都作用于标题中显示的当前设备；完成后设备列表会自动刷新。"}</div>
       </Drawer>
     </>
   );
@@ -830,25 +826,17 @@ type DetailQueryProps = {
   error: unknown;
 };
 
-function confirmConfigSave(summary: ReturnType<typeof configChangeSummary>, warnings: string[]) {
-  const changes = [
-    summary.sensorsAdded ? `新增 ${summary.sensorsAdded} 个传感器` : "",
-    summary.sensorsRemoved ? `删除 ${summary.sensorsRemoved} 个传感器` : "",
-    summary.metricsChanged ? (summary.metricsBefore !== summary.metricsAfter ? `指标 ${summary.metricsBefore} → ${summary.metricsAfter}` : "指标定义已修改") : "",
-    summary.imagesAdded ? `新增 ${summary.imagesAdded} 个图片通道` : "",
-    summary.imagesRemoved ? `删除 ${summary.imagesRemoved} 个图片通道` : "",
-    summary.controlChanged ? "控制策略已修改" : "",
-  ].filter(Boolean);
+function confirmConfigSave(review: ConfigSaveReview) {
   return new Promise<boolean>((resolve) => {
     let settled = false;
     const finish = (value: boolean) => { if (!settled) { settled = true; resolve(value); } };
     Modal.confirm({
-      title: "保存并下发设备配置？",
+      title: "保存设备配置？",
       width: 560,
-      okText: "保存并下发",
+      okText: "确认保存",
       cancelText: "继续编辑",
-      okButtonProps: { danger: summary.sensorsRemoved > 0 || summary.imagesRemoved > 0 },
-      content: <div className="config-save-summary"><p>{changes.length ? changes.join("；") : "配置内容已修改"}</p>{warnings.length ? <Alert type="warning" showIcon title="共享总线存在重复命令" description={warnings.join("；")} /> : null}<p>系统会写入 THCPN 外部设备库，并同步 DataStream 与 Binding。</p></div>,
+      okButtonProps: { danger: review.destructive },
+      content: <div className="config-save-summary"><p>{review.changes.length ? review.changes.join("；") : "配置内容已修改"}</p>{review.warnings.length ? <Alert type="warning" showIcon title="配置提示" description={review.warnings.join("；")} /> : null}<p>系统会保存到当前设备的数据源，并刷新平台配置。源端保存不代表设备已经应用。</p></div>,
       onOk: () => finish(true),
       onCancel: () => finish(false),
       afterClose: () => finish(false),
@@ -1269,12 +1257,15 @@ function DeviceForm({
   form,
   devices,
   deviceId,
+  busy,
 }: {
   mode: Mode;
   form: FormInstance<any>;
   devices: JsonRecord[];
   deviceId: string;
+  busy: boolean;
 }) {
+  const configVersion = Form.useWatch("expected_config_id", { form, preserve: true });
   const workspaceId = Form.useWatch("target_workspace_id", form);
   const projectId = Form.useWatch("project_id", form);
   const workspaces = useQuery({
@@ -1475,10 +1466,18 @@ function DeviceForm({
         <Alert
           type="info"
           showIcon
-          title="可视化设备配置"
-          description="保存会创建新的外部配置版本，并重新生成平台数据流和绑定。未知厂商字段会原样保留。"
+          title="设备配置编辑"
+          description="保存会在对应数据源创建配置版本，并刷新平台配置；数据通道按来源规则同步。未知厂商字段会原样保留。"
         />
-        <THCPNVisualConfigEditor deviceId={deviceId} form={form} />
+        <ConfigCopyPicker key={deviceId} targetDeviceId={deviceId} configKind="设备完整配置"
+          disabled={busy || !(Number(configVersion) > 0)}
+          read={async source => {
+            const detail = await api.admin.deviceConfig(String(source.id));
+            const draft = copiedDeviceConfigFields(detail);
+            return { draft, summary: `源端配置版本 ${String((detail.latest_config as JsonRecord).id)} · 数据、图片和控制配置`, preview: JSON.stringify({ data_json: JSON.parse(draft.data_json), image_json: JSON.parse(draft.image_json), control_json: JSON.parse(draft.control_json) }, null, 2) };
+          }}
+          onCopy={draft => form.setFieldsValue(draft)} />
+        <DeviceConfigEditor sourceFamily={String(devices.find(device => device.id === deviceId)?.source_family ?? "")} deviceId={deviceId} form={form} />
       </>
     );
   if (mode === "camera") return <CameraCreateFields form={form} />;
@@ -2064,7 +2063,7 @@ function drawerTitle(mode: Mode, selected: JsonRecord | null) {
         child: "添加子节点",
         lifecycle: "更新生命周期",
         capabilities: "设备能力",
-        config: "THCPN 高级配置",
+        config: "设备完整配置",
         calibration: "设备校准",
         firmware: "固件升级",
         camera: "创建监控站",

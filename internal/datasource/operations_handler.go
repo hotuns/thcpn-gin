@@ -1,10 +1,11 @@
 package datasource
 
 import (
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"thcpn-gin/internal/audit"
 	"thcpn-gin/internal/httpx"
+
+	"github.com/gin-gonic/gin"
 )
 
 func (h *Handler) AdminSourceOperation(c *gin.Context) {
@@ -59,7 +60,6 @@ func (h *Handler) reconcileDeviceConfig(c *gin.Context, admin bool) {
 	}
 	c.JSON(http.StatusOK, result)
 }
-
 func (h *Handler) AdminStartSourceSync(c *gin.Context) {
 	id, ok := parseUUIDParam(c, "data_source_id")
 	if !ok {
