@@ -42,7 +42,8 @@ func TestNormalizeLogRange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !start.Equal(time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)) || !end.Equal(time.Date(2026, 7, 4, 0, 0, 0, 0, time.UTC)) {
+	zone := time.FixedZone("Beijing", 8*3600)
+	if !start.Equal(time.Date(2026, 7, 1, 0, 0, 0, 0, zone)) || !end.Equal(time.Date(2026, 7, 4, 0, 0, 0, 0, zone)) {
 		t.Fatalf("normalized range = %s - %s", start, end)
 	}
 	if _, _, err := normalizeLogRange(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2027, 2, 1, 0, 0, 0, 0, time.UTC)); err == nil {

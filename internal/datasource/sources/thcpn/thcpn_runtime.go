@@ -189,7 +189,7 @@ func readTHCPNRuntimeAttributes(ctx context.Context, db *sql.DB, refs []thcpnLoc
 			unresolved[key][ref.ExternalDeviceID] = true
 		}
 	}
-	now := time.Now().UTC()
+	now := sourceMonthStart(time.Now())
 	for offset := 0; offset < thcpnAttributeLookback; offset++ {
 		if runtimeAttributesResolved(unresolved) {
 			break

@@ -79,7 +79,8 @@ func TestTHCPNLegacyConfigParsingAndPaths(t *testing.T) {
 	}
 }
 func TestTHCPNMonthlyShardRouting(t *testing.T) {
-	cutoverStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	zone := time.FixedZone("Beijing", 8*3600)
+	cutoverStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, zone)
 	beforeCutover := cutoverStart.Add(-time.Second)
 
 	if !useMonthlyTHCPNShards(cutoverStart) {
@@ -91,7 +92,7 @@ func TestTHCPNMonthlyShardRouting(t *testing.T) {
 
 	shards, err := monthlyTHCPNShardTables(
 		cutoverStart,
-		time.Date(2026, time.July, 31, 23, 59, 59, 0, time.UTC), defaultTHCPNMaxShardTables,
+		time.Date(2026, time.July, 31, 23, 59, 59, 0, zone), defaultTHCPNMaxShardTables,
 	)
 	if err != nil {
 		t.Fatalf("build monthly shard tables: %v", err)

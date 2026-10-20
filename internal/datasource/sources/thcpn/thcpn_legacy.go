@@ -499,6 +499,7 @@ func queryTHCPNShardTables(ctx context.Context, db *sql.DB, cfg thcpnLegacyBindi
 	return shards, nil
 }
 func useMonthlyTHCPNShards(start time.Time) bool {
+	start = start.In(platform.LegacySourceLocation)
 	year, month, day := start.Date()
 	cutoverYear, cutoverMonth, cutoverDay := thcpnMonthlyShardCutoverDate.Date()
 	if year != cutoverYear {
@@ -510,6 +511,7 @@ func useMonthlyTHCPNShards(start time.Time) bool {
 	return day >= cutoverDay
 }
 func monthlyTHCPNShardTables(start time.Time, end time.Time, maxShardTables int) ([]thcpnShardTable, error) {
+	start, end = start.In(platform.LegacySourceLocation), end.In(platform.LegacySourceLocation)
 	if end.Before(start) {
 		return nil, apperr.New(apperr.KindInvalidArgument, "thcpn shard query end must not be before start")
 	}

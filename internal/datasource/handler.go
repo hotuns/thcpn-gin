@@ -509,7 +509,7 @@ func parseOptionalLogDate(c *gin.Context, name string) (time.Time, bool) {
 	if value == "" {
 		return time.Time{}, true
 	}
-	if parsed, err := time.Parse("2006-01-02", value); err == nil {
+	if parsed, err := time.ParseInLocation("2006-01-02", value, platform.LegacySourceLocation); err == nil {
 		return parsed, true
 	}
 	if parsed, err := time.Parse(time.RFC3339, value); err == nil {

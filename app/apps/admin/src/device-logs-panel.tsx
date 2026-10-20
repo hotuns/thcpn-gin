@@ -4,9 +4,9 @@ import { Download, Eye, FileText, RefreshCw, Search } from "lucide-react";
 import { Button, Input, Modal, Space, Table } from "@thcpn/admin-ui";
 import { api, formatApiError } from "@thcpn/api";
 import { Badge, StateView } from "@thcpn/ui";
+import { sourceDateValue as dateValue } from "./source-date";
 
 const text = (value: unknown, fallback = "—") => value === undefined || value === null || value === "" ? fallback : String(value);
-const dateValue = (date: Date) => date.toISOString().slice(0, 10);
 const time = (value: unknown) => value ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "medium" }).format(new Date(String(value))) : "—";
 
 export function DeviceLogsPanel({ deviceId, deviceName }: { deviceId: string; deviceName?: string }) {

@@ -4,9 +4,9 @@ import { ExternalLink, RefreshCw, Search } from "lucide-react";
 import { Button, Input, Table } from "@thcpn/admin-ui";
 import { api, formatApiError, type JsonRecord } from "@thcpn/api";
 import { Badge, StateView } from "@thcpn/ui";
+import { sourceDateValue as dateValue } from "./source-date";
 
 const text = (input: unknown, fallback = "—") => input === undefined || input === null || input === "" ? fallback : String(input);
-const dateValue = (date: Date) => date.toISOString().slice(0, 10);
 const time = (input: unknown) => input ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "medium" }).format(new Date(String(input))) : "—";
 
 export function LoRaWANV2LogsPanel({ deviceId, deviceName }: { deviceId: string; deviceName: string }) {

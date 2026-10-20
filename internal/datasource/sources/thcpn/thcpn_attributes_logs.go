@@ -83,7 +83,7 @@ func (s *Service) LatestTHCPNDeviceAttributes(ctx context.Context, deviceID uuid
 		return THCPNLatestAttributesResponse{}, err
 	}
 	attributes := make(map[string]THCPNAttributeValue, 3)
-	now := time.Now().UTC()
+	now := sourceMonthStart(time.Now())
 	for _, attribute := range []string{"battery", "signal", "ext_info"} {
 		for offset := 0; offset < thcpnAttributeLookback; offset++ {
 			month := now.AddDate(0, -offset, 0)
@@ -318,8 +318,9 @@ func normalizeLogRange(start, end time.Time) (time.Time, time.Time, error) {
 	if end.IsZero() {
 		end = time.Now().UTC()
 	}
-	start = time.Date(start.UTC().Year(), start.UTC().Month(), start.UTC().Day(), 0, 0, 0, 0, time.UTC)
-	end = time.Date(end.UTC().Year(), end.UTC().Month(), end.UTC().Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, 1)
+	start, end = start.In(platform.LegacySourceLocation), end.In(platform.LegacySourceLocation)
+	start = time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, platform.LegacySourceLocation)
+	end = time.Date(end.Year(), end.Month(), end.Day(), 0, 0, 0, 0, platform.LegacySourceLocation).AddDate(0, 0, 1)
 	if !start.Before(end) {
 		return time.Time{}, time.Time{}, apperr.New(apperr.KindInvalidArgument, "log start must be before end")
 	}
@@ -329,8 +330,8 @@ func normalizeLogRange(start, end time.Time) (time.Time, time.Time, error) {
 	return start, end, nil
 }
 func monthsBetween(start, end time.Time) []time.Time {
-	current := time.Date(start.UTC().Year(), start.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
-	last := time.Date(end.UTC().Year(), end.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
+	current := sourceMonthStart(start)
+	last := sourceMonthStart(end)
 	months := make([]time.Time, 0, 12)
 	for !current.After(last) {
 		months = append(months, current)
@@ -339,5 +340,11 @@ func monthsBetween(start, end time.Time) []time.Time {
 	return months
 }
 func monthTable(prefix string, month time.Time) string {
-	return fmt.Sprintf("%s%04d%02d", prefix, month.UTC().Year(), month.UTC().Month())
+	month = month.In(platform.LegacySourceLocation)
+	return fmt.Sprintf("%s%04d%02d", prefix, month.Year(), month.Month())
+}
+
+func sourceMonthStart(value time.Time) time.Time {
+	value = value.In(platform.LegacySourceLocation)
+	return time.Date(value.Year(), value.Month(), 1, 0, 0, 0, 0, platform.LegacySourceLocation)
 }

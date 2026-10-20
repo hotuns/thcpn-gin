@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"net/url"
+	"strings"
 	"sync"
 	"thcpn-gin/internal/apperr"
 	"time"
@@ -52,11 +54,10 @@ func (r *Runtime) mysqlConnection(ctx context.Context, source DataSource, databa
 	if err != nil {
 		return nil, err
 	}
-	cfg, err := mysql.ParseDSN(dsn)
+	cfg, err := sourceMySQLConfig(dsn, source)
 	if err != nil {
 		return nil, apperr.Wrap(apperr.KindDataSource, "parse mysql data source dsn", err)
 	}
-	cfg.ParseTime = true
 	if databaseName != "" {
 		cfg.DBName = databaseName
 	}
@@ -94,6 +95,27 @@ func (r *Runtime) mysqlConnection(ctx context.Context, source DataSource, databa
 		previous.close()
 	}
 	return db, nil
+}
+
+func sourceMySQLConfig(dsn string, source DataSource) (*mysql.Config, error) {
+	cfg, err := mysql.ParseDSN(dsn)
+	if err != nil {
+		return nil, err
+	}
+	cfg.ParseTime = true
+	if source.SourceFamily != nil && (*source.SourceFamily == SourceFamilyTHCPN || *source.SourceFamily == SourceFamilyCarbon) {
+		// Legacy DATETIME columns store Beijing wall time. Local depends on the
+		// API/worker host and silently shifts both row decoding and range args.
+		query := ""
+		if index := strings.LastIndex(dsn, "?"); index >= 0 {
+			query = dsn[index+1:]
+		}
+		params, _ := url.ParseQuery(query)
+		if params.Get("loc") == "" || params.Get("loc") == "Local" {
+			cfg.Loc = LegacySourceLocation
+		}
+	}
+	return cfg, nil
 }
 func (r *Runtime) postgresConnection(ctx context.Context, source DataSource) (*pgxpool.Pool, error) {
 	dsn, err := r.Resolver.Resolve(ctx, source.DsnSecretRef)
