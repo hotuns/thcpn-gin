@@ -1,0 +1,19 @@
+.digital-plot .dp-three-map-host { overflow: hidden; background: radial-gradient(ellipse at 50% 58%, #10251f 0, #060c10 48%, #020609 85%); }
+.dp-three-map-host > canvas { display: block; width: 100%; height: 100%; outline: none; touch-action: none; }
+.dp-three-label-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.digital-plot .dp-three-label {
+  pointer-events: auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px; width: 68px; height: 41px; padding: 3px 5px 10px; border: 0; border-radius: 0;
+  color: var(--map-label-text); background-color: transparent; background-image: var(--map-label-background-image);
+  background-size: 100% 100%; background-repeat: no-repeat; cursor: pointer; text-shadow: 0 0 8px var(--map-label-text-glow);
+}
+.dp-three-label strong { font-size: 1em; line-height: 1.05; letter-spacing: .04em; }
+.dp-three-label small { font-size: .72em; line-height: 1.1; color: #e6f4eb; }
+.dp-three-label:hover, .dp-three-label.is-selected { filter: drop-shadow(0 0 5px var(--map-label-pointer-glow)); }
+.digital-plot .dp-three-station { pointer-events: auto; padding: 3px 5px; color: #efffdc; background: #07150dee; border: 1px solid var(--map-accent-soft); border-radius: 2px; font-size: 9px; line-height: 1; cursor: pointer; }
+.dp-three-label:focus-visible, .dp-three-station:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.digital-plot .dp-three-container > .dp-three-controls { left: 280px; top: auto; bottom: 24px; max-width: 230px; z-index: 3; }
+.dp-three-controls small { display: block; padding: 5px 8px; color: #b6c9bf; background: #030b09d9; font-size: 10px; }
+.dp-three-container .dp-map-message { display: flex; flex-direction: column; gap: 12px; text-align: center; }
+.dp-three-container .dp-map-message code { color: #e6c1a1; font-size: 11px; overflow-wrap: anywhere; }
+.digital-plot .dp-three-container .dp-map-warning { left: 50%; right: auto; bottom: 20px; transform: translateX(-50%); z-index: 4; }

@@ -3,7 +3,7 @@ import { Map, Marker, LngLatBounds, ScaleControl } from "maplibre-gl";
 import { tiandituImageryStyle } from "@thcpn/device-map";
 import type { DeviceMapItem } from "@thcpn/api";
 import { useLocale } from "@thcpn/i18n";
-import { Mountain, Map as MapIcon } from "lucide-react";
+import { Crosshair, Mountain, Map as MapIcon } from "lucide-react";
 import { Button } from "./platform-ui";
 import { located } from "./atlas-model";
 import {
@@ -18,8 +18,26 @@ type Props = {
   selectedId: string;
   onSelect: (id: string) => void;
   reset: number;
+  onReset: () => void;
   panorama?: boolean;
 };
+
+export function AtlasMapActions({ ready, terrain, terrainError, onReset, onTerrain }: {
+  ready: boolean; terrain: boolean; terrainError: boolean;
+  onReset: () => void; onTerrain: () => void;
+}) {
+  const { t } = useLocale();
+  return <div className="observatory-view-controls atlas-map-actions" role="group" aria-label={t("atlas.overview")}>
+    <Button variant="ghost" onClick={onReset}>
+      <Crosshair size={15} />{t("atlas.resetMap")}
+    </Button>
+    <Button variant="ghost" aria-pressed={terrain} disabled={!ready || terrainError} onClick={onTerrain} title={t("atlas.terrainHint")}>
+      {terrain ? <Mountain size={14} /> : <MapIcon size={14} />}
+      {t(terrain ? "atlas.terrain3d" : "atlas.terrain2d")}
+    </Button>
+    {terrainError && <small role="status">{t("atlas.terrainUnavailable")}</small>}
+  </div>;
+}
 export function AtlasMap(props: Props) {
   const { t } = useLocale();
   const host = useRef<HTMLDivElement>(null);
@@ -177,21 +195,7 @@ export function AtlasMap(props: Props) {
         className="observatory-map-canvas"
         aria-label={t("atlas.overview")}
       />
-      <div className="observatory-view-controls">
-        <Button
-          variant="ghost"
-          aria-pressed={terrain}
-          disabled={!ready || terrainError}
-          onClick={() => setTerrain(!terrain)}
-          title={t("atlas.terrainHint")}
-        >
-          {terrain ? <Mountain size={14} /> : <MapIcon size={14} />}
-          {t(terrain ? "atlas.terrain3d" : "atlas.terrain2d")}
-        </Button>
-        {terrainError && (
-          <small role="status">{t("atlas.terrainUnavailable")}</small>
-        )}
-      </div>
+      <AtlasMapActions ready={ready} terrain={terrain} terrainError={terrainError} onReset={props.onReset} onTerrain={() => setTerrain(value => !value)} />
       {(!ready || failed) && (
         <div
           className="observatory-map-status"

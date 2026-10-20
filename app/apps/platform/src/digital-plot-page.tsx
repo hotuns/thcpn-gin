@@ -42,6 +42,7 @@ import {
   Switch,
 } from "./platform-ui";
 import { AtlasClock } from "./atlas-clock";
+import { ObservatoryFrame, ObservatoryMasthead, ObservatoryPanelFrame, ObservatoryTitle } from "./observatory-decoration";
 import { demoStations } from "./digital-plot-field";
 import {
   advanceFrame,
@@ -61,6 +62,7 @@ import {
 } from "./digital-plot-model";
 import "./digital-plot.css";
 import "./observatory.css";
+import "./observatory-decoration.css";
 
 const DigitalPlotMap = lazy(() =>
   import("./digital-plot-map").then((m) => ({ default: m.DigitalPlotMap })),
@@ -192,16 +194,15 @@ export function DigitalPlotPage() {
       className={`digital-plot ${fullscreen ? "is-fullscreen" : ""}`}
       data-screen-label="Digital forest"
     >
+      <ObservatoryFrame />
       <header className="dp-header">
+        <ObservatoryMasthead />
         <Link to="/atlas" className="dp-back" title={d("back")}>
           <ArrowLeft size={17} />
           <Mountain size={28} />
           <span>{d("category")}</span>
         </Link>
-        <div className="dp-title">
-          <span>DIGITAL FIELD OBSERVATORY</span>
-          <h1>{d("title")}</h1>
-        </div>
+        <ObservatoryTitle className="dp-title" title={d("title")} />
         <div className="dp-header-tools">
           <span className="dp-demo">{d("demo")}</span>
           <AtlasClock />
@@ -222,6 +223,7 @@ export function DigitalPlotPage() {
       )}
       <div className="dp-scene">
         <aside className="dp-panel dp-directory">
+          <ObservatoryPanelFrame />
           <header>
             <h2>{d("directory")}</h2>
             <span>08</span>
@@ -376,6 +378,7 @@ export function DigitalPlotPage() {
           )}
         </section>
         <aside className="dp-panel dp-inspector">
+          <ObservatoryPanelFrame />
           <header>
             <div>
               <span className="dp-eyebrow">SELECTED PARCEL</span>
@@ -512,6 +515,7 @@ export function DigitalPlotPage() {
         </aside>
       </div>
       <section className="dp-panel dp-playback" aria-label={d("history")}>
+        <ObservatoryPanelFrame />
         <div className="dp-playback-heading">
           <h2>{d("history")}</h2>
           <span>

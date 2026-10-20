@@ -9,11 +9,11 @@ import {
   type ReactNode,
 } from "react";
 import { AtlasClock } from "./atlas-clock";
+import { ObservatoryFrame, ObservatoryMasthead, ObservatoryPanelFrame, ObservatoryTitle } from "./observatory-decoration";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   Compass,
-  Crosshair,
   Globe2,
   Layers3,
   MapPin,
@@ -62,6 +62,7 @@ import {
 import "./atlas.css";
 import "./atlas-templates.css";
 import "./observatory.css";
+import "./observatory-decoration.css";
 import {
   atlasTemplate,
   atlasTemplates,
@@ -439,20 +440,14 @@ function AtlasWorkspace({
     <div
       className={`atlas-shell ${present ? "is-presenting" : ""} atlas-layout-${config.layout} atlas-template-${template.id}`}
     >
+      <ObservatoryFrame />
       <div className="atlas-topbar">
+      <ObservatoryMasthead />
       <header className="atlas-header">
-        <div className="atlas-brand-mark">
-          <Globe2 size={25} />
-        </div>
-        <div className="atlas-title">
-          <span className="atlas-overline">
-            IN-SITU ECOCLOUD / {a("title")}
-          </span>
-          <h1>{board.data?.name ?? a("defaultName")}</h1>
-          {config.description && <p>{config.description}</p>}
-        </div>
+        <ObservatoryTitle className="atlas-title" title={board.data?.name ?? a("defaultName")} description={config.description} />
       </header>
       <AtlasHealth
+        framed={template.id === "panorama"}
         workspaceId={workspaceId}
         deviceIds={scoped.map((device) => device.device_id)}
         loading={devices.isLoading}
@@ -486,9 +481,10 @@ function AtlasWorkspace({
         </div>
       )}
       <Layout
-        analysis={config.show_trends !== false && selected ? <div className="atlas-analysis-host" ref={setAnalysisHost} /> : undefined}
+        analysis={config.show_trends !== false && selected ? <div className="atlas-analysis-host" ref={setAnalysisHost}><ObservatoryPanelFrame /></div> : undefined}
         directory={
           <aside className="atlas-directory">
+            <ObservatoryPanelFrame />
             <header>
               <h2>
                 <Layers3 size={16} />
@@ -565,6 +561,10 @@ function AtlasWorkspace({
                   selectedId={selected?.device_id ?? ""}
                   onSelect={onSelect}
                   reset={reset}
+                  onReset={() => {
+                    onSelect("");
+                    setReset(value => value + 1);
+                  }}
                   panorama={template.id === "panorama"}
                 />
               </Suspense>
@@ -572,18 +572,6 @@ function AtlasWorkspace({
             <div className="atlas-map-heading">
               <span className="atlas-overline">OBSERVATION NETWORK</span>
               <h2>{workspaceName}</h2>
-            </div>
-            <div className="atlas-map-tools">
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  onSelect("");
-                  setReset(reset + 1);
-                }}
-              >
-                <Crosshair size={15} />
-                {a("resetMap")}
-              </Button>
             </div>
             <div className="atlas-map-caption">
               <i />
@@ -596,6 +584,7 @@ function AtlasWorkspace({
         }
         inspector={
           <div className="atlas-inspector">
+            <ObservatoryPanelFrame />
             {selected ? (
               <AtlasDevice
                 key={`${selected.device_id}:${board.data?.updated_at ?? "default"}:${template.id}`}

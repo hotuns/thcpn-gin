@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, type THCPNDeviceRuntimeBatchResponse } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
 import { useLocale } from "@thcpn/i18n";
+import { ObservatoryPanelFrame } from "./observatory-decoration";
 import {
   RadioTower,
   CircleCheck,
@@ -34,10 +35,12 @@ export function AtlasHealth({
   workspaceId,
   deviceIds,
   loading,
+  framed = false,
 }: {
   workspaceId: string;
   deviceIds: string[];
   loading: boolean;
+  framed?: boolean;
 }) {
   const { t } = useLocale();
   const a = (key: string) => t(`atlas.${key}`);
@@ -61,6 +64,7 @@ export function AtlasHealth({
       className="atlas-summary atlas-health"
       aria-label={a("reportingOverview")}
     >
+      {framed && <ObservatoryPanelFrame />}
       <header>
         <strong>{a("reportingOverview")}</strong>
         <small>{a("reportingWindow")}</small>

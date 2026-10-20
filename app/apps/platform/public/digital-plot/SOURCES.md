@@ -15,6 +15,13 @@ color rendering only. The Qingshan site name, parcels, station positions,
 measurements and 2026 flight dates are fictional. No claim is made that these
 are real repeat surveys, measured interpolation, or data from a Chinese site.
 
-The worldwide satellite context is streamed from Esri World Imagery (not
-redistributed with the application). Map attribution is retained on screen.
-Service: https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer
+The digital-plot central scene uses Three.js meshes with geographically
+registered UV coordinates for this local image and the simulated IDW field.
+It does not request satellite tiles or real DEM terrain. Extrusion depth is
+illustrative, not measured elevation. Generic Atlas templates retain their
+separate MapLibre basemaps.
+
+The adapted renderer/effects derive from three-scope-map-skill by 宋夏天Dazzle
+(公众号：送你整个夏天), GPL-3.0-or-later. See ../licenses/three-scope-map/NOTICE
+and ../licenses/three-scope-map/LICENSE. This does not change the imagery's
+independent CC BY 4.0 license above.

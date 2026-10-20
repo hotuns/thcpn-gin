@@ -1,4 +1,8 @@
 export const digitalPlotZh = {
+  threePerspective: "立体样地",
+  threePlan: "俯视样地",
+  threeControls: "拖拽旋转 · 滚轮缩放 · 点击地块",
+  threeImageError: "本地正射影像未能加载，仍可查看立体地块和指标。",
   classification: "地块着色",
   heatmap: "热力分布",
   resolutionHint: "* 原始影像分辨率；预览图已降采样。",
@@ -63,7 +67,7 @@ export const digitalPlotZh = {
   scrub: "历史时间轴",
   flightMarker: "跳转航次",
   disclaimer:
-    "地块、设备、指标与航次均为模拟；影像为公开素材，不代表真实样地测绘成果。",
+    "地块、设备、指标、链路与航次均为模拟；立体厚度为示意，非实测地形；影像为公开素材。",
   source: "影像来源",
   mapError: "地图加载失败，可重试；仍可从左侧选择地块。",
   retry: "重新加载地图",
@@ -81,6 +85,10 @@ export const digitalPlotZh = {
   p7: "对照样地",
 };
 export const digitalPlotEn: Record<keyof typeof digitalPlotZh, string> = {
+  threePerspective: "3D parcels",
+  threePlan: "Top view",
+  threeControls: "Drag to orbit · Scroll to zoom · Click parcels",
+  threeImageError: "Local orthophoto unavailable. 3D parcels and metrics remain available.",
   fieldUnavailable:
     "Spatial shading unavailable. Parcel readings remain accessible.",
   classification: "Parcel colors",
@@ -146,7 +154,7 @@ export const digitalPlotEn: Record<keyof typeof digitalPlotZh, string> = {
   scrub: "History timeline",
   flightMarker: "Jump to flight",
   disclaimer:
-    "Parcels, devices, metrics and flights are simulated. Public imagery does not represent an actual survey of this study site.",
+    "Parcels, devices, metrics, links and flights are simulated. Extrusion is illustrative, not surveyed terrain. Imagery is public source material.",
   source: "Imagery source",
   mapError: "Map unavailable. Retry or select a parcel from the list.",
   retry: "Reload map",

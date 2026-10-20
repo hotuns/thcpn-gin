@@ -59,7 +59,7 @@ export function fieldValue(
 }
 
 // Small fixed texture (about 160 KB) avoids per-frame GeoJSON worker rebuilds.
-// Native map image layers drape this field onto DEM terrain, not screen-space SVG.
+// Geographic bounds register the field texture to the Three.js parcel surfaces.
 export function fieldPixels(
   frame: number,
   metric: PlotMetric,
