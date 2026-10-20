@@ -13,6 +13,7 @@ description: 提交并部署 thcpn-gin 原位生态云项目到既有 Docker Com
 - SSH 目标 hotuns@8.131.103.198，服务目录 /home/hotuns/thcpn-gin。
 - 服务器目录不是 Git checkout，不能直接 git pull。
 - Compose 文件：docker-compose.yml + .deploy/docker-compose.prebuilt.yml。
+- 若存在 .deploy/docker-compose.release.yml，后续 build/run/up/ps/回滚均追加该 overlay；它维护 Worker 导出临时卷和预构建前端，不能在后续发布中意外移除。
 - 后端使用 .deploy/Dockerfile.prebuilt，COPY .deploy/api、worker、adminctl。
 - 服务器 x86_64；本地交叉编译 CGO_ENABLED=0 GOOS=linux GOARCH=amd64。
 - 用户端和后台 Docker 镜像由 app/Dockerfile 的 platform/admin target 构建。
@@ -45,6 +46,7 @@ description: 提交并部署 thcpn-gin 原位生态云项目到既有 Docker Com
 5. 在服务器构建变更服务：
    docker compose -f docker-compose.yml -f .deploy/docker-compose.prebuilt.yml build <services>
    构建输出写入 .deploy/<commit>-build.log，按需读取尾部。失败时保留现有运行容器。
+   服务器磁盘紧张时使用 scripts/deploy/ 中的 docker-compose.release.yml 与 Dockerfile.frontend-prebuilt，复制到 .deploy/ 并追加 overlay。前端在本地 git archive 的已提交源码目录 npm ci/build，产物分别放 .deploy/frontend/platform、admin；构建时保留生产 VITE_TIANDITU_TOKEN 与 VITE_PLATFORM_URL，密钥只传给构建进程，不回显或提交。新 overlay 提供 export_tmp 卷，不覆盖已有生产配置；后续仍需带上它。macOS 传 tar 可使用 --no-xattrs 避免无意义的扩展属性警告。
 6. 有迁移时，镜像构建成功后再使用服务器配置执行：
    docker compose -f docker-compose.yml -f .deploy/docker-compose.prebuilt.yml run --rm migrate-init
    核对 schema_migrations 的版本和 dirty 状态。迁移失败不启动新程序，不自行清 dirty。
