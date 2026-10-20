@@ -60,7 +60,7 @@ func xlsxTelemetrySheetXML(series []telemetrySeries) string {
 				stringCell(item.Code),
 				stringCell(item.Name),
 				stringCell(item.Unit),
-				stringCell(point.Timestamp.UTC().Format(time.RFC3339Nano)),
+				stringCell(exportTime(point.Timestamp)),
 				numberCell(point.Value),
 				stringCell(point.Quality),
 			})

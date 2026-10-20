@@ -48,6 +48,7 @@ type Job struct {
 	ResourceID    uuid.UUID       `json:"resource_id"`
 	ExportType    string          `json:"export_type"`
 	RequestConfig json.RawMessage `json:"request_config"`
+	Progress      json.RawMessage `json:"progress"`
 	Status        string          `json:"status"`
 	FileObjectKey *string         `json:"file_object_key,omitempty"`
 	FileSizeBytes *int64          `json:"file_size_bytes,omitempty"`
@@ -466,9 +467,9 @@ func validateCarbonStationConfig(raw []byte) error {
 }
 
 func (s *Service) validateDeviceBatch(ctx context.Context, requestedBy, workspaceID, anchorID uuid.UUID, exportType string, raw []byte) error {
-	var config batchExportConfig
-	if err := json.Unmarshal(raw, &config); err != nil || len(config.DeviceIDs) == 0 {
-		return apperr.New(apperr.KindInvalidArgument, "device_ids are required for batch export")
+	config, err := parseBatchExportConfig(raw)
+	if err != nil {
+		return err
 	}
 	wantType := "standalone"
 	if exportType == "group_site_zip" {
@@ -568,6 +569,7 @@ func jobFromSQL(model sqlc.ExportJob) Job {
 		ResourceID:    model.ResourceID,
 		ExportType:    model.ExportType,
 		RequestConfig: json.RawMessage(model.RequestConfigJson),
+		Progress:      json.RawMessage(model.ProgressJson),
 		Status:        model.Status,
 		FileObjectKey: model.FileObjectKey,
 		FileSizeBytes: pgInt8Ptr(model.FileSizeBytes),

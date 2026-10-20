@@ -918,6 +918,7 @@ export const businessEnglish: Record<string, string> = {
   "通量叠加对比趋势图": "Flux overlay comparison trend chart",
   "通量读取失败": "Flux read failed",
   "通量数据": "Flux data",
+  "通量数据、原始采样": "Flux data and raw samples",
   "通量图表视图": "Flux chart view",
   "通知中心": "Notification Center",
   "同时打包设备图片与 image-index.csv": "Package device images and image-index.csv at the same time",

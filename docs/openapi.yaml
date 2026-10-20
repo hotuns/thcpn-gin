@@ -2890,6 +2890,7 @@ paths:
         - Admin
       operationId: adminListTHCPNDeviceLogs
       summary: List THCPN device logs
+      description: Date filters use the Asia/Shanghai calendar. Both dates are inclusive; source timestamps are returned with an explicit timezone.
       security:
         - bearerAuth: []
       parameters:
@@ -11392,6 +11393,19 @@ components:
           type: object
           additionalProperties: true
           description: Worker input. Group exports require gateway_id, node_targets (DeviceNodeTarget array), matching device_ids, start_time and end_time. Indexed LoRaWAN nodes do not support include_images.
+        progress:
+          type: object
+          description: Best-effort progress, refreshed approximately every 15 seconds while running. No heartbeat for five minutes marks a job failed. Missing counters mean execution has not yet reported progress.
+          properties:
+            stage:
+              type: string
+              enum: [packing, uploading]
+            packed_images:
+              type: integer
+              format: int64
+            packed_bytes:
+              type: integer
+              format: int64
         status:
           $ref: "#/components/schemas/ExportStatus"
         file_object_key:

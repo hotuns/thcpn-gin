@@ -2983,7 +2983,10 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** List THCPN device logs */
+        /**
+         * List THCPN device logs
+         * @description Date filters use the Asia/Shanghai calendar. Both dates are inclusive; source timestamps are returned with an explicit timezone.
+         */
         get: operations["adminListTHCPNDeviceLogs"];
         put?: never;
         post?: never;
@@ -7797,6 +7800,15 @@ export interface components {
             /** @description Worker input. Group exports require gateway_id, node_targets (DeviceNodeTarget array), matching device_ids, start_time and end_time. Indexed LoRaWAN nodes do not support include_images. */
             request_config?: {
                 [key: string]: unknown;
+            };
+            /** @description Best-effort progress, refreshed approximately every 15 seconds while running. No heartbeat for five minutes marks a job failed. Missing counters mean execution has not yet reported progress. */
+            progress?: {
+                /** @enum {string} */
+                stage?: "packing" | "uploading";
+                /** Format: int64 */
+                packed_images?: number;
+                /** Format: int64 */
+                packed_bytes?: number;
             };
             status: components["schemas"]["ExportStatus"];
             /** @description Object store key for a completed export. Present only after worker generation succeeds. */

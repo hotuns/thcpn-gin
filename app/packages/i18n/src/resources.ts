@@ -1,10 +1,12 @@
 import { atlasZh, atlasEn } from "./atlas";
 import { digitalPlotZh, digitalPlotEn } from "./digital-plot";
+import { exportEditorZh, exportEditorEn } from "./export-editor";
 export const resources = {
   "zh-CN": {
     common: {
       atlas: atlasZh,
       digitalPlot: digitalPlotZh,
+      exportEditor: exportEditorZh,
       appTitle: "In-situ EcoCloud | 原位生态云",
       mainNavigation: "主导航",
       language: "语言",
@@ -385,6 +387,7 @@ export const resources = {
     common: {
       atlas: atlasEn,
       digitalPlot: digitalPlotEn,
+      exportEditor: exportEditorEn,
       appTitle: "In-situ EcoCloud",
       mainNavigation: "Main navigation",
       language: "Language",

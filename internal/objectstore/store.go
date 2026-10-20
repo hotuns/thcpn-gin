@@ -1,10 +1,10 @@
 package objectstore
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -177,7 +177,8 @@ func (s *FileStore) Put(ctx context.Context, input PutInput) error {
 	if err != nil {
 		return apperr.Wrap(apperr.KindInternal, "create object file", err)
 	}
-	if _, err := io.Copy(file, input.Body); err != nil {
+	defer os.Remove(tmp)
+	if _, err := io.Copy(file, &contextReader{ctx: ctx, reader: input.Body}); err != nil {
 		_ = file.Close()
 		return apperr.Wrap(apperr.KindInternal, "write object file", err)
 	}
@@ -290,6 +291,23 @@ func (s *OSSStore) Put(ctx context.Context, input PutInput) error {
 	}
 	if contentType := strings.TrimSpace(input.ContentType); contentType != "" {
 		request.ContentType = oss.Ptr(contentType)
+	}
+	if uploaderClient, ok := s.client.(oss.UploadAPIClient); ok {
+		_, err := oss.NewUploader(uploaderClient, func(options *oss.UploaderOptions) {
+			options.PartSize = 16 << 20
+			options.ParallelNum = 1
+			options.LeavePartsOnError = false
+		}).UploadFrom(ctx, request, input.Body)
+		if err != nil {
+			var uploadErr *oss.UploadError
+			if errors.As(err, &uploadErr) && uploadErr.UploadId != "" {
+				cleanup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				_, _ = uploaderClient.AbortMultipartUpload(cleanup, &oss.AbortMultipartUploadRequest{Bucket: request.Bucket, Key: request.Key, UploadId: oss.Ptr(uploadErr.UploadId)})
+			}
+			return apperr.Wrap(apperr.KindInternal, "upload oss object", err)
+		}
+		return nil
 	}
 	if _, err := s.client.PutObject(ctx, request); err != nil {
 		return apperr.Wrap(apperr.KindInternal, "upload oss object", err)
@@ -421,11 +439,15 @@ func (s *S3Store) Put(ctx context.Context, input PutInput) error {
 		return err
 	}
 
-	body, err := io.ReadAll(input.Body)
+	body, size, cleanup, err := seekableBody(ctx, input.Body)
 	if err != nil {
-		return apperr.Wrap(apperr.KindInternal, "read object body", err)
+		return err
 	}
-	req, err := s.newSignedRequest(ctx, http.MethodPut, objectKey, bytes.NewReader(body), input.ContentType)
+	defer cleanup()
+	if size > multipartPartSize {
+		return s.putMultipart(ctx, objectKey, input.ContentType, body, size)
+	}
+	req, err := s.newSignedRequest(ctx, http.MethodPut, objectKey, body, input.ContentType)
 	if err != nil {
 		return err
 	}
@@ -458,19 +480,22 @@ func (s *S3Store) validateRemoteConfig() error {
 	return nil
 }
 
-func (s *S3Store) newSignedRequest(ctx context.Context, method string, objectKey string, body io.Reader, contentType string) (*http.Request, error) {
+func (s *S3Store) newSignedRequest(ctx context.Context, method string, objectKey string, body io.Reader, contentType string, query ...url.Values) (*http.Request, error) {
 	payloadHash := sha256HexString("")
+	var length int64
 	if body != nil {
 		if seeker, ok := body.(io.Seeker); ok {
 			current, _ := seeker.Seek(0, io.SeekCurrent)
-			data, err := io.ReadAll(body)
+			hash := sha256.New()
+			var err error
+			length, err = io.Copy(hash, &contextReader{ctx: ctx, reader: body})
 			if err != nil {
 				return nil, apperr.Wrap(apperr.KindInternal, "read object body", err)
 			}
 			if _, err := seeker.Seek(current, io.SeekStart); err != nil {
 				return nil, apperr.Wrap(apperr.KindInternal, "rewind object body", err)
 			}
-			payloadHash = sha256HexBytes(data)
+			payloadHash = hex.EncodeToString(hash.Sum(nil))
 		} else {
 			return nil, apperr.New(apperr.KindInternal, "object body must be seekable")
 		}
@@ -480,6 +505,9 @@ func (s *S3Store) newSignedRequest(ctx context.Context, method string, objectKey
 		return nil, apperr.Wrap(apperr.KindInternal, "parse object store endpoint", err)
 	}
 	u.Path = joinURLPath(s.cfg.Bucket, objectKey)
+	if len(query) > 0 {
+		u.RawQuery = strings.ReplaceAll(query[0].Encode(), "+", "%20")
+	}
 
 	now := s.now().UTC()
 	amzDate := now.Format(amzDateLayout)
@@ -492,7 +520,7 @@ func (s *S3Store) newSignedRequest(ctx context.Context, method string, objectKey
 	canonicalRequest := strings.Join([]string{
 		method,
 		u.EscapedPath(),
-		"",
+		u.RawQuery,
 		canonicalHeaders,
 		signedHeaders,
 		payloadHash,
@@ -508,6 +536,9 @@ func (s *S3Store) newSignedRequest(ctx context.Context, method string, objectKey
 	req, err := http.NewRequestWithContext(ctx, method, u.String(), body)
 	if err != nil {
 		return nil, apperr.Wrap(apperr.KindInternal, "create object store request", err)
+	}
+	if body != nil {
+		req.ContentLength = length
 	}
 	if strings.TrimSpace(contentType) != "" {
 		req.Header.Set("Content-Type", strings.TrimSpace(contentType))

@@ -25,18 +25,19 @@ import {
   Badge,
   Button,
   CheckboxInput,
-  ChoiceCard,
-  EntityPicker,
   PageHeader,
   Panel,
   SearchInput,
   SelectInput,
   StateView,
   Table,
+  Tabs, TabsList, TabsTrigger,
   type PickerOption,
 } from "./platform-ui";
 
 import { DataRangeFields, validDataRange } from "./data-builder";
+import { ExportDevicePicker, ExportContents, ExportContentToggle as ChoiceCard } from "./export-device-picker";
+import { useLocale } from "@thcpn/i18n";
 
 type ResourceType = "device" | "data_stream" | "dataset" | "media";
 type ExportDraft = {
@@ -129,6 +130,7 @@ export function buildBatchExportPayload(
   endTime: string,
   includeImages = true,
   group?: { id: string; name: string },
+  includeData = true,
 ): JsonRecord {
   return {
     resource_type: "device_batch",
@@ -138,7 +140,7 @@ export function buildBatchExportPayload(
       device_ids: deviceIds,
       start_time: new Date(startTime).toISOString(),
       end_time: new Date(endTime).toISOString(),
-      include_data: true,
+      include_data: includeData,
       include_images: includeImages,
       ...(group ? { gateway_id: group.id, gateway_name: group.name } : {}),
     },
@@ -160,6 +162,7 @@ export function ExportsPage({ creating = false }: { creating?: boolean }) {
   const [statusFilter, setStatusFilter] = useState("");
   const [feedback, setFeedback] = useState(location.state?.exportCreated ? "导出任务已创建" : "");
   const [downloading, setDownloading] = useState("");
+  const [retrying,setRetrying]=useState("");
   const [detailId, setDetailId] = useState("");
   const query = useQuery({
     queryKey: workspaceQueryKey(
@@ -196,6 +199,14 @@ export function ExportsPage({ creating = false }: { creating?: boolean }) {
       ),
     [query.data, statusFilter],
   );
+  const retry = async (job:ExportJob) => {
+    if (retrying) return;
+    setRetrying(job.id);
+    try {
+      await api.exports.create({resource_type:job.resource_type,resource_id:job.resource_id,export_type:job.export_type,request_config:job.request_config ?? {}});
+      await query.refetch();
+    } catch(error) {setFeedback(formatApiError(error).message);} finally {setRetrying("");}
+  };
   const runCreate = async (payload: JsonRecord) => {
     setFeedback("");
     try {
@@ -425,6 +436,7 @@ export function ExportsPage({ creating = false }: { creating?: boolean }) {
                         </td>
                         <td>
                           <ExportStatus status={job.status} />
+                          {job.status === "running" && <ExportProgress job={job} />}
                         </td>
                         <td>
                           {displayTime(job.created_at)}
@@ -433,41 +445,12 @@ export function ExportsPage({ creating = false }: { creating?: boolean }) {
                           </div>
                         </td>
                         <td>
-                          <div className="table-actions">
-                            <Button
-                              variant="secondary"
-                              onClick={() =>
-                                setDetailId(expanded ? "" : job.id)
-                              }
-                            >
-                              <ChevronDown size={13} />
-                              {expanded ? "收起" : "详情"}
-                            </Button>
-                            {canDownloadExport(job) ? (
-                              <Button
-                                disabled={downloading === job.id}
-                                onClick={() => void download(job)}
-                              >
-                                <Download size={13} />
-                                {downloading === job.id
-                                  ? "准备中…"
-                                  : exportDownloadLabel()}
-                              </Button>
-                            ) : (
-                              <span className="muted">
-                                {["pending", "running"].includes(job.status)
-                                  ? "正在生成"
-                                  : job.status === "success"
-                                    ? "文件已过期"
-                                    : "不可下载"}
-                              </span>
-                            )}
-                          </div>
+                          <ExportRowActions job={job} expanded={expanded} downloading={downloading === job.id} retrying={!!retrying} onToggle={()=>setDetailId(expanded ? "" : job.id)} onDownload={()=>void download(job)} onRetry={()=>void retry(job)} />
                         </td>
                       </tr>
                       {expanded && (
                         <tr className="export-detail-row">
-                          <td colSpan={7}>
+                          <td colSpan={7} id={`export-detail-${job.id}`}>
                             <ExportDetail job={job} />
                           </td>
                         </tr>
@@ -500,7 +483,8 @@ function ExportSystemChooser({
   return (
     <section className="export-system-selector dataset-editor-section">
       <div className="dataset-editor-section-heading"><div className="dataset-step-heading"><span>1</span><div><h2>选择导出类型</h2><p>根据设备体系选择对应的导出方式</p></div></div></div>
-      <div className="export-system-cards">
+      <Tabs value={selected} onValueChange={value => onSelect(value as ExportSystem)}>
+      <TabsList className="export-system-tabs" aria-label="选择导出类型">
       {(
         [
           {
@@ -525,19 +509,17 @@ function ExportSystemChooser({
       ).map((item) => {
         const Icon = item.icon;
         return (
-          <button
+          <TabsTrigger
             key={item.id}
-            type="button"
-            className={selected === item.id ? "active" : ""}
-            onClick={() => onSelect(item.id)}
+            value={item.id}
           >
             <Icon size={18} />
             <strong>{item.title}</strong>
-            <span>{item.text}</span>
-          </button>
+          </TabsTrigger>
         );
       })}
-      </div>
+      </TabsList>
+      </Tabs>
     </section>
   );
 }
@@ -570,19 +552,22 @@ function FormFooter({
   label?: string;
   invalid?: boolean;
 }) {
+  const { t } = useLocale();
+  const contentKeys: Record<string, string> = { "设备数据和图片": "dataImages", "设备数据": "dataOnly", "通量数据、原始采样": "fluxRaw", "通量数据": "flux", "原始采样": "raw", "图片": "imagesOnly", "未选择": "nothingSelected" };
   return (
     <aside className="export-builder-summary dataset-builder-summary">
-      <div className="dataset-builder-summary-heading"><span>3</span><div><h2>检查并创建</h2><p>任务创建后返回列表查看进度和下载文件</p></div></div>
+      <div className="dataset-builder-summary-heading"><span>3</span><div><h2>检查并创建</h2><p>{t("exportEditor.after")}</p></div></div>
       <dl>
         <div><dt>导出类型</dt><dd>{system}</dd></div>
-        <div><dt>导出目标</dt><dd>{count ? `${count} 项` : "未选择"}</dd></div>
+        <div><dt>导出目标</dt><dd>{count ? t("exportEditor.targets", { count }) : "未选择"}</dd></div>
         <div><dt>时间范围</dt><dd>{start.replace("T", " ")}<span>至</span>{end.replace("T", " ")}</dd></div>
-        <div><dt>导出内容</dt><dd>{content}</dd></div>
+        <div><dt>导出内容</dt><dd>{contentKeys[content] ? t(`exportEditor.${contentKeys[content]}`) : content}</dd></div>
       </dl>
       <div className="export-builder-actions">
         <Button type="button" variant="secondary" onClick={onClose}>取消</Button>
         <Button type="submit" disabled={busy || count === 0 || invalid || !validDataRange(start, end)}>{busy ? "创建中…" : label}</Button>
       </div>
+      <p className="export-review-hint" role="status">{t(busy ? "exportEditor.creating" : !count ? "exportEditor.missing" : invalid ? "exportEditor.invalidSettings" : !validDataRange(start, end) ? "exportEditor.invalidRange" : "exportEditor.ready")}</p>
     </aside>
   );
 }
@@ -603,17 +588,14 @@ function StandardExportForm({
   const [start, setStart] = useState(params.get("start") ?? range.start);
   const [end, setEnd] = useState(params.get("end") ?? range.end);
   const [images, setImages] = useState(true);
+  const [data, setData] = useState(true);
   const [busy, setBusy] = useState(false);
-  const toggle = (id: string) =>
-    setSelected((now) =>
-      now.includes(id) ? now.filter((item) => item !== id) : [...now, id],
-    );
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (busy || !validDataRange(start, end)) return;
+    if (busy || !selected.length || (!data && !images) || !validDataRange(start, end)) return;
     setBusy(true);
     await onCreate(
-      buildBatchExportPayload("standard", selected, start, end, images),
+      buildBatchExportPayload("standard", selected, start, end, images, undefined, data),
     );
     setBusy(false);
   };
@@ -636,37 +618,14 @@ function StandardExportForm({
       </div>
         <div className="export-settings-fields">
         <div className="export-picker-layout">
-          <EntityPicker
+          <ExportDevicePicker
             label="标准站"
-            icon={<Sprout size={16} />}
             options={pickerOptions(list)}
             selectedIds={selected}
             onChange={setSelected}
             mode="multiple"
-            placeholder="请选择标准站"
             searchPlaceholder="搜索标准站名称或序列号"
           />
-          <aside>
-            <div>
-              <strong>已选设备</strong>
-              <span>{selected.length} 台</span>
-            </div>
-            {selected.length === 0 ? (
-              <p>从上方选择器选择设备</p>
-            ) : (
-              selected.map((id) => (
-                <button type="button" key={id} onClick={() => toggle(id)}>
-                  <span>
-                    {value(
-                      list.find((item) => value(item, "id") === id) ?? {},
-                      "name",
-                    ) || id}
-                  </span>
-                  <X size={13} />
-                </button>
-              ))
-            )}
-          </aside>
         </div>
         <RangeFields
           start={start}
@@ -674,16 +633,11 @@ function StandardExportForm({
           setStart={setStart}
           setEnd={setEnd}
         />
-        <ChoiceCard
-          checked={images}
-          onChange={setImages}
-          title="包含图片"
-          description="同时打包设备图片与 image-index.csv"
-        />
+        <ExportContents data={data} images={images} setData={setData} setImages={setImages} />
         </div>
           </section>
         </div>
-        <FormFooter count={selected.length} busy={busy} onClose={onClose} system="标准站导出" start={start} end={end} content={images ? "设备数据和图片" : "设备数据"} />
+        <FormFooter count={selected.length} busy={busy} onClose={onClose} system="标准站导出" start={start} end={end} content={data && images ? "设备数据和图片" : data ? "设备数据" : images ? "图片" : "未选择"} invalid={!data && !images} />
       </form>
     </div>
   );
@@ -724,6 +678,7 @@ function GroupExportForm({
   const [start, setStart] = useState(params.get("start") ?? range.start);
   const [end, setEnd] = useState(params.get("end") ?? range.end);
   const [images, setImages] = useState(true);
+  const [data, setData] = useState(true);
   const [busy, setBusy] = useState(false);
   const chooseGateway = (id: string) => {
     setGatewayId(id);
@@ -733,14 +688,14 @@ function GroupExportForm({
   const effective = (selected ?? nodes.map((item) => value(item, "id"))).filter(id => nodes.some(node => node.id === id));
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (busy || !validDataRange(start, end)) return;
+    if (busy || !effective.length || (!data && (lorawan || !images)) || !validDataRange(start, end)) return;
     setBusy(true);
     const chosen = nodeItems.filter((node) => effective.includes(node.key));
     const ids = [...new Set(chosen.map((node) => node.target.kind === "device" ? node.target.device_id : node.target.gateway_device_id))];
     const payload = buildBatchExportPayload("group", ids, start, end, !lorawan && images, {
         id: gatewayId,
         name: value(gateway ?? {}, "name"),
-      });
+      }, data);
     (payload.request_config as JsonRecord).node_targets = chosen.map((node) => node.target);
     await onCreate(payload);
     setBusy(false);
@@ -764,39 +719,38 @@ function GroupExportForm({
       </div>
         <div className="export-settings-fields">
         <div className="export-group-layout">
-          <EntityPicker
+          <ExportDevicePicker
             label="组网站"
-            icon={<Network size={16} />}
             options={pickerOptions(gateways)}
             selectedIds={gatewayId ? [gatewayId] : []}
             onChange={(ids) => chooseGateway(ids[0] ?? "")}
-            placeholder="请选择组网站"
             searchPlaceholder="搜索组网站名称或序列号"
           />
           <section className="export-target-picker">
-            <SearchInput
+            {(nodes.length > 5 || keyword) && <SearchInput
               className="export-node-search"
+              aria-label="搜索节点名称或序列号"
               placeholder="搜索节点名称或序列号"
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
-            />
+            />}
             <div className="export-target-head">
               <span>
                 节点 <strong>{effective.length}</strong> / {nodes.length}
               </span>
               {nodes.length > 0 && (
                 <span className="export-target-actions">
-                  <button
+                  <Button variant="ghost"
                     type="button"
                     onClick={() =>
                       setSelected(nodes.map((item) => value(item, "id")))
                     }
                   >
                     全选
-                  </button>
-                  <button type="button" onClick={() => setSelected([])}>
+                  </Button>
+                  <Button variant="ghost" type="button" onClick={() => setSelected([])}>
                     清空
-                  </button>
+                  </Button>
                 </span>
               )}
             </div>
@@ -834,16 +788,11 @@ function GroupExportForm({
           setStart={setStart}
           setEnd={setEnd}
         />
-        {!lorawan && <ChoiceCard
-          checked={images}
-          onChange={setImages}
-          title="包含图片"
-          description="按节点目录整理图片与索引"
-        />}
+        <ExportContents data={data} images={!lorawan && images} setData={setData} setImages={setImages} imagesAvailable={!lorawan} />
         </div>
           </section>
         </div>
-        <FormFooter count={effective.length} busy={busy} onClose={onClose} system="组网站导出" start={start} end={end} content={!lorawan && images ? "设备数据和图片" : "设备数据"} />
+        <FormFooter count={effective.length} busy={busy} onClose={onClose} system="组网站导出" start={start} end={end} content={data && !lorawan && images ? "设备数据和图片" : data ? "设备数据" : !lorawan && images ? "图片" : "未选择"} invalid={!data && (lorawan || !images)} />
       </form>
     </div>
   );
@@ -933,16 +882,14 @@ function CarbonExportForm({
         </div>
       </div>
         <div className="export-settings-fields">
-        <EntityPicker
+        <ExportDevicePicker
           label="碳汇站"
-          icon={<Sprout size={16} />}
           options={pickerOptions(stations)}
           selectedIds={deviceId ? [deviceId] : []}
           onChange={(ids) => {
             setDeviceId(ids[0] ?? "");
             setNodes(null);
           }}
-          placeholder="请选择碳汇站"
           searchPlaceholder="搜索碳汇站名称或序列号"
         />
         {overview.error && <StateView type="error" title="设备数据加载失败" description={formatApiError(overview.error).message} />}
@@ -957,16 +904,14 @@ function CarbonExportForm({
                 {effectiveNodes.length}/{allNodes.length}
               </em>
             </div>
-            <div className="export-chip-grid">
+            <div className="export-option-checks">
               {allNodes.map((id) => (
-                <button
-                  type="button"
+                <label
                   className={effectiveNodes.includes(id) ? "active" : ""}
                   key={id}
-                  onClick={() => toggleNode(id)}
                 >
-                  {effectiveNodes.includes(id) && <Check size={13} />}{overview.data?.nodes.find(node => node.node_id === id)?.name ?? `节点 ${id}`}
-                </button>
+                  <CheckboxInput checked={effectiveNodes.includes(id)} onChange={() => toggleNode(id)} />{overview.data?.nodes.find(node => node.node_id === id)?.name ?? `节点 ${id}`}
+                </label>
               ))}
             </div>
           </section>
@@ -978,17 +923,15 @@ function CarbonExportForm({
               </span>
               <em>{fields.length}/4</em>
             </div>
-            <div className="export-chip-grid">
+            <div className="export-option-checks">
               {["A", "B", "C", "D"].map((field) => (
-                <button
-                  type="button"
+                <label
                   className={fields.includes(field) ? "active" : ""}
                   key={field}
-                  onClick={() => toggleField(field)}
                 >
-                  {fields.includes(field) && <Check size={13} />}
+                  <CheckboxInput checked={fields.includes(field)} onChange={() => toggleField(field)} />
                   <b>{field}</b> 地块
-                </button>
+                </label>
               ))}
             </div>
           </section>
@@ -1059,6 +1002,24 @@ function targetSummary(job: ExportJob, config: JsonRecord) {
     return `${Array.isArray(config.node_ids) ? config.node_ids.length : 0} 个 Node · ${Array.isArray(config.fields) ? config.fields.length : 0} 个地块`;
   if (job.resource_type === "dataset") return "1 个数据集";
   return `${Array.isArray(config.device_ids) ? config.device_ids.length : 1} 台设备`;
+}
+export function ExportProgress({job}:{job:ExportJob}) {
+  const {t}=useLocale();
+  const progress=job.progress;
+  if (!progress?.stage) return null;
+  return <div className="cell-sub" role="status">{t(progress.stage === "uploading" ? "exportEditor.uploadingProgress" : "exportEditor.packingProgress", {count:progress.packed_images ?? 0, size: `${((progress.packed_bytes ?? 0)/1048576).toFixed(1)} MB`})}</div>;
+}
+function RetryExportButton({busy,onRetry}:{busy:boolean;onRetry:()=>void}){
+  const {t}=useLocale();return <Button variant="secondary" disabled={busy} onClick={onRetry}><RefreshCw size={13}/>{t("exportEditor.retry")}</Button>;
+}
+export function ExportRowActions({job,expanded,downloading,retrying,onToggle,onDownload,onRetry}:{job:ExportJob;expanded:boolean;downloading:boolean;retrying:boolean;onToggle:()=>void;onDownload:()=>void;onRetry:()=>void}) {
+  const available=canDownloadExport(job);
+  const unavailable=["pending","running"].includes(job.status) ? "正在生成" : job.status === "success" ? "文件已过期" : "不可下载";
+  return <div className="table-actions export-row-actions">
+    <Button variant="secondary" aria-expanded={expanded} aria-controls={`export-detail-${job.id}`} onClick={onToggle}><ChevronDown size={13}/>{expanded ? "收起" : "详情"}</Button>
+    <Button variant="secondary" disabled={!available || downloading} onClick={onDownload}><Download size={13}/>{available ? downloading ? "准备中…" : exportDownloadLabel() : unavailable}</Button>
+    {job.status === "failed" && <RetryExportButton busy={retrying} onRetry={onRetry}/>}
+  </div>;
 }
 function ExportStatus({ status }: { status: string }) {
   const tone =

@@ -1,9 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { buildExportPayload, canDownloadExport, exportTypesFor } from "./exports-page";
+import { buildBatchExportPayload, buildExportPayload, canDownloadExport, exportTypesFor } from "./exports-page";
 
 const draft = { resourceType: "device" as const, resourceId: "d1", exportType: "telemetry_csv", startTime: "2026-01-01T08:00", endTime: "2026-01-02T08:00", limit: 1000, mediaType: "", expiresAt: "" };
 
 describe("export rules", () => {
+  it("preserves images-only, data-only and combined ZIP choices", () => {
+    for (const system of ["standard", "group"] as const) {
+      for (const [data, images] of [[false,true],[true,false],[true,true]]) {
+        const payload=buildBatchExportPayload(system,["d1"],draft.startTime,draft.endTime,images,system==="group"?{id:"g1",name:"Gateway"}:undefined,data);
+        expect(payload.request_config).toMatchObject({include_data:data,include_images:images});
+      }
+    }
+  });
   it("limits formats by resource type", () => {
     expect(exportTypesFor("dataset")).toEqual(["dataset_zip"]);
     expect(exportTypesFor("media")).toEqual(["media_zip"]);

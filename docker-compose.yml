@@ -73,6 +73,9 @@ services:
       OBJECT_STORE_BUCKET: ${OBJECT_STORE_BUCKET:-}
       OBJECT_STORE_REGION: ${OBJECT_STORE_REGION:-}
       OBJECT_STORE_LOCAL_PATH: "/var/lib/thcpn/objectstore"
+      EXPORT_TEMP_DIR: /var/lib/thcpn/export-tmp
+      EXPORT_MIN_FREE_MB: ${EXPORT_MIN_FREE_MB:-256}
+      EXPORT_MAX_CONCURRENT_JOBS: ${EXPORT_MAX_CONCURRENT_JOBS:-1}
       OBJECT_STORE_PUBLIC_URL_PREFIX: ${OBJECT_STORE_PUBLIC_URL_PREFIX:-}
       LORAWAN_V2_OSS_PROVIDER: ${LORAWAN_V2_OSS_PROVIDER:-oss}
       LORAWAN_V2_OSS_ENDPOINT: ${LORAWAN_V2_OSS_ENDPOINT:-https://oss-cn-beijing.aliyuncs.com}
@@ -155,6 +158,7 @@ services:
       processor:
         condition: service_started
     volumes:
+      - export_tmp:/var/lib/thcpn/export-tmp
       - objectstore_data:/var/lib/thcpn/objectstore
       - platform_logs:/var/log/thcpn
       - processor_artifacts:/var/lib/thcpn-processor/artifacts
@@ -204,6 +208,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  export_tmp:
   postgres_data:
   redis_data:
   processor_artifacts:

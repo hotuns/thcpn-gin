@@ -110,6 +110,10 @@ func run() int {
 	processingEngine := processing.NewEngine(pg, processorClient, media.NewService(pg, dataSourceService, datasource.NewRuntime(nil), objectstore.NewSigner(cfg.ObjectStore, cfg.Auth.JWTSecret), cfg.QueryLimits, objectstore.NewStore(cfg.ObjectStore)), objectstore.NewStore(cfg.ObjectStore))
 
 	if envBool("WORKER_RUN_ONCE") {
+		if err := processor.RecoverInterrupted(ctx); err != nil {
+			log.Error("recover interrupted exports", slog.Any("error", err))
+			return 1
+		}
 		if _, err := alertEvaluator.ProcessAvailable(ctx, 100); err != nil {
 			log.Error("process alerts", slog.Any("error", err))
 			return 1
@@ -141,6 +145,7 @@ func run() int {
 	startAlertScan(ctx, taskClient, log, time.Minute)
 	startExpiredAccessCleanup(ctx, accessGrantService, log, time.Hour)
 	startExpiredExportFileCleanup(ctx, processor, log, time.Hour)
+	startExportRecovery(ctx, processor, log)
 
 	serverErr := make(chan error, 1)
 	go func() {
@@ -178,6 +183,23 @@ func startAlertScan(ctx context.Context, client *task.Client, log *slog.Logger, 
 				return
 			case <-ticker.C:
 				enqueue()
+			}
+		}
+	}()
+}
+
+func startExportRecovery(ctx context.Context, processor *export.Processor, log *slog.Logger) {
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for {
+			if err := processor.RecoverInterrupted(ctx); err != nil {
+				log.Warn("recover interrupted exports", slog.Any("error", err))
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
 			}
 		}
 	}()

@@ -145,8 +145,11 @@ type BillingConfig struct {
 }
 
 type ExportConfig struct {
-	FileTTLHours int `yaml:"file_ttl_hours"`
-	MaxRows      int `yaml:"max_rows"`
+	FileTTLHours      int    `yaml:"file_ttl_hours"`
+	MaxRows           int    `yaml:"max_rows"`
+	TempDir           string `yaml:"temp_dir"`
+	MinFreeMB         int    `yaml:"min_free_mb"`
+	MaxConcurrentJobs int    `yaml:"max_concurrent_jobs"`
 }
 
 type ProcessingConfig struct {
@@ -286,8 +289,10 @@ func Default() Config {
 			DownloadUsageWarningPercentages: []int{80, 95},
 		},
 		Export: ExportConfig{
-			FileTTLHours: 72,
-			MaxRows:      100000,
+			FileTTLHours:      72,
+			MaxRows:           100000,
+			MinFreeMB:         256,
+			MaxConcurrentJobs: 1,
 		},
 		Processing: ProcessingConfig{
 			ProcessorURL: "http://127.0.0.1:8090",
@@ -534,6 +539,9 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.Export.MaxRows <= 0 {
 		return errors.New("export.max_rows must be greater than 0")
+	}
+	if cfg.Export.MinFreeMB <= 0 || cfg.Export.MaxConcurrentJobs <= 0 {
+		return errors.New("export.min_free_mb and max_concurrent_jobs must be positive")
 	}
 	if strings.TrimSpace(cfg.Processing.ProcessorURL) == "" {
 		return errors.New("processing.processor_url is required")
@@ -812,6 +820,19 @@ func applyEnv(cfg *Config) {
 	if value := strings.TrimSpace(os.Getenv("EXPORT_MAX_ROWS")); value != "" {
 		if rows, err := strconv.Atoi(value); err == nil {
 			cfg.Export.MaxRows = rows
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("EXPORT_TEMP_DIR")); value != "" {
+		cfg.Export.TempDir = value
+	}
+	if value := strings.TrimSpace(os.Getenv("EXPORT_MIN_FREE_MB")); value != "" {
+		if n, err := strconv.Atoi(value); err == nil {
+			cfg.Export.MinFreeMB = n
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("EXPORT_MAX_CONCURRENT_JOBS")); value != "" {
+		if n, err := strconv.Atoi(value); err == nil {
+			cfg.Export.MaxConcurrentJobs = n
 		}
 	}
 	if value := strings.TrimSpace(os.Getenv("PROCESSOR_URL")); value != "" {

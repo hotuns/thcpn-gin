@@ -47,10 +47,12 @@ func TestNodeNameSnapshotSurvivesRename(t *testing.T) {
 	}
 	must(`UPDATE node_profiles SET name='后来改名' WHERE device_id=$1`, gateway)
 	p := Processor{devices: device.NewService(db)}
-	body, err := p.renderIndexedNodeZIP(ctx, cfg)
+	var output bytes.Buffer
+	err = p.renderIndexedNodeZIP(ctx, cfg, &output)
 	if err != nil {
 		t.Fatal(err)
 	}
+	body := output.Bytes()
 	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
 	if err != nil {
 		t.Fatal(err)

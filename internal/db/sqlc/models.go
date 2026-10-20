@@ -559,6 +559,28 @@ type ExportJob struct {
 	ExpiresAt         pgtype.Timestamptz `json:"expires_at"`
 	RequestConfigJson []byte             `json:"request_config_json"`
 	FileSizeBytes     pgtype.Int8        `json:"file_size_bytes"`
+	ProgressJson      []byte             `json:"progress_json"`
+}
+
+type FirmwareArtifact struct {
+	ID               uuid.UUID          `json:"id"`
+	DataSourceID     uuid.UUID          `json:"data_source_id"`
+	SourceFamily     string             `json:"source_family"`
+	DeviceType       string             `json:"device_type"`
+	ProductID        *string            `json:"product_id"`
+	OriginalFilename string             `json:"original_filename"`
+	ObjectKey        string             `json:"object_key"`
+	PublicUrl        string             `json:"public_url"`
+	ContentType      string             `json:"content_type"`
+	SizeBytes        int64              `json:"size_bytes"`
+	Version          string             `json:"version"`
+	FirmwareVersion  int64              `json:"firmware_version"`
+	VerifyValue      string             `json:"verify_value"`
+	BuildID          pgtype.Int8        `json:"build_id"`
+	Archived         bool               `json:"archived"`
+	CreatedBy        *uuid.UUID         `json:"created_by"`
+	IdempotencyKey   uuid.UUID          `json:"idempotency_key"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 }
 
 // Source-owned firmware artifacts published to supported devices.
@@ -579,6 +601,7 @@ type FirmwareRelease struct {
 	IdempotencyKey   uuid.UUID          `json:"idempotency_key"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	FirmwareID       *uuid.UUID         `json:"firmware_id"`
 }
 
 // Per-device source firmware registration results.
@@ -655,6 +678,8 @@ type NodeProfile struct {
 	UpdatedBy     uuid.UUID          `json:"updated_by"`
 	UpdatedByType string             `json:"updated_by_type"`
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	Latitude      pgtype.Float8      `json:"latitude"`
+	Longitude     pgtype.Float8      `json:"longitude"`
 }
 
 // 稳定权限字典，按资源类型和动作定义权限 code。

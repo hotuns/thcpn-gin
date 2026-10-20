@@ -99,7 +99,7 @@ func TestRenderTelemetryCSV(t *testing.T) {
 		t.Fatalf("render csv: %v", err)
 	}
 	expectedPrefix := "data_stream_id,device_id,code,name,unit,ts,value,quality\n" +
-		streamID.String() + "," + deviceID.String() + ",soil_moisture_10,Soil moisture 10cm,%,2026-06-01T00:00:00Z,21.5,valid\n"
+		streamID.String() + "," + deviceID.String() + ",soil_moisture_10,Soil moisture 10cm,%,2026-06-01 08:00:00,21.5,valid\n"
 	if string(body) != expectedPrefix {
 		t.Fatalf("unexpected csv:\n%s", body)
 	}

@@ -117,6 +117,9 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("LORAWAN_V2_OSS_REGION", "cn-hangzhou")
 	t.Setenv("LORAWAN_V2_OSS_PUBLIC_URL_PREFIX", "https://lora-source-bucket.oss-cn-hangzhou.aliyuncs.com")
 	t.Setenv("EXPORT_MAX_ROWS", "250000")
+	t.Setenv("EXPORT_TEMP_DIR", "/tmp/export-test")
+	t.Setenv("EXPORT_MIN_FREE_MB", "512")
+	t.Setenv("EXPORT_MAX_CONCURRENT_JOBS", "2")
 	t.Setenv("TRACING_ENABLED", "true")
 	t.Setenv("TRACING_SERVICE_NAME", "thcpn-test")
 	t.Setenv("TRACING_EXPORTER", "otlp")
@@ -227,5 +230,8 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.Ezviz.AccessTokenTTLSeconds != 120 {
 		t.Fatalf("expected ezviz ttl override, got %d", cfg.Ezviz.AccessTokenTTLSeconds)
+	}
+	if cfg.Export.TempDir != "/tmp/export-test" || cfg.Export.MinFreeMB != 512 || cfg.Export.MaxConcurrentJobs != 2 {
+		t.Fatal("export worker configuration overrides not applied")
 	}
 }

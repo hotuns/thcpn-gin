@@ -125,6 +125,9 @@ billing:
 export:
   file_ttl_hours: 72
   max_rows: 100000
+  temp_dir: "" # default OS temp/thcpn-exports; mount dedicated disk for large exports
+  min_free_mb: 256
+  max_concurrent_jobs: 1 # per worker process
 
 processing:
   processor_url: "http://127.0.0.1:8090"

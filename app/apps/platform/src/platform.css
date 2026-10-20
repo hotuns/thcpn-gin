@@ -5362,7 +5362,9 @@ body::-webkit-scrollbar-corner,
 .export-row-actions {
   min-width: 190px;
   align-items: center;
+  flex-wrap: nowrap;
 }
+.export-row-actions > button { flex: 0 0 auto; white-space: nowrap; }
 .export-detail-toggle svg {
   transition: transform 160ms ease;
 }
@@ -5378,31 +5380,25 @@ body::-webkit-scrollbar-corner,
   background: var(--surface-muted);
 }
 .export-detail {
-  margin: 0 12px 12px;
-  overflow: hidden;
-  background: var(--panel);
-  border: 1px solid var(--soft-line);
-  border-radius: 7px;
-  box-shadow: 0 10px 26px rgba(24, 49, 73, 0.08);
-  animation: panel-enter 180ms ease-out;
+  margin: 0;
+  padding: 18px 20px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 .export-detail-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  border-top: 1px solid var(--soft-line);
-  border-bottom: 1px solid var(--soft-line);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px 24px;
 }
-.export-detail-grid > div {
+.export-page .export-detail-grid > div {
   min-width: 0;
   display: grid;
   align-content: start;
   gap: 5px;
-  padding: 13px 16px;
-  border-right: 1px solid var(--soft-line);
-  border-bottom: 1px solid var(--soft-line);
-}
-.export-detail-grid > div:nth-child(4n) {
-  border-right: 0;
+  padding: 0;
+  border: 0;
 }
 .export-detail-grid span,
 .export-config span {
@@ -5418,15 +5414,19 @@ body::-webkit-scrollbar-corner,
 .export-detail-error {
   margin: 14px 16px;
 }
+.export-detail > .form-error { margin-top: 16px; }
 .export-config {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  padding: 12px 16px;
-  background: #f8fafc;
+  gap: 12px 24px;
+  margin-top: 18px;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--soft-line);
+  background: transparent;
 }
 .export-config h3 {
   grid-column: 1 / -1;
-  margin: 0 0 10px;
+  margin: 0;
   color: var(--ink);
   font-size: var(--font-size-small);
 }
@@ -5434,8 +5434,7 @@ body::-webkit-scrollbar-corner,
   min-width: 0;
   display: grid;
   gap: 4px;
-  padding: 7px 10px;
-  border-left: 2px solid #d5e4f2;
+  padding: 0;
 }
 .media-toolbar {
   min-height: 56px;
