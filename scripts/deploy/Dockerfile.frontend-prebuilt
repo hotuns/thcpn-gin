@@ -1,0 +1,10 @@
+FROM nginx:1.29-alpine AS platform
+COPY .deploy/frontend/platform /usr/share/nginx/html
+COPY app/deploy/nginx-platform.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+
+FROM nginx:1.29-alpine AS admin
+RUN mkdir -p /usr/share/nginx/html/admin
+COPY .deploy/frontend/admin /usr/share/nginx/html/admin
+COPY app/deploy/nginx-admin.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80

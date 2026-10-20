@@ -10,6 +10,8 @@
 - `EXPORT_MIN_FREE_MB`：默认 256；创建前和写入期间检查剩余空间。检查不预留整个 ZIP 所需空间，也不能保证其他进程不占用磁盘；不足时明确失败。
 - `EXPORT_MAX_CONCURRENT_JOBS`：每个 Worker 默认仅执行一个导出；其他已领取的队列消息等待容量后才将数据库任务标为 running。多副本总并发为各副本之和。
 
+既有生产服务器不应直接覆盖主 Compose 文件。可将 `scripts/deploy/docker-compose.release.yml` 与 `Dockerfile.frontend-prebuilt` 复制到服务器 `.deploy/`，命令追加 `-f .deploy/docker-compose.release.yml`；该 overlay 添加 Worker 临时卷，并使用本地从提交版本构建、放在 `.deploy/frontend/platform` 和 `.deploy/frontend/admin` 的静态产物构建前端镜像，避免在空间紧张的服务器执行 npm 安装。保留现有 `.env`、主 Compose 与后端 prebuilt override。之后的部署、重建和回滚均应继续带上此 overlay。
+
 ## 状态与进度
 
 需先应用 migration `000045_export_progress` 再启动新 API/Worker。任务执行最长六小时；执行期间每 15 秒更新数据库心跳及 `progress`（阶段、已打包图片数、已打包字节数）。上传阶段显示打包完成量，不将其冒充已上传字节数。数据库写心跳失败会取消执行，防止在失去租约后继续工作。
