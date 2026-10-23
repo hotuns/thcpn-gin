@@ -1,5 +1,9 @@
 // Generated from static platform UI copy. Existing hand-written translations in legacy.ts take precedence.
 export const businessEnglish: Record<string, string> = {
+"为课题组或机构建立独立的设备与数据空间，创建后将自动切换到新组织。": "Create a separate device and data space for your research group or institution. You will switch to the new organization after creation.",
+"创建并切换": "Create and switch",
+"正在更新…": "Updating…",
+"消息类型": "Message type",
 "格式：分钟列表 小时列表。* 表示所有分钟或小时；10,20,30 * 表示每小时第 10、20、30 分启动，* * 表示全天每分钟启动。按设备时钟执行。": "Format: minute list, a space, then hour list. * means every minute or hour; 10,20,30 * starts at minute 10, 20 and 30 of every hour, while * * starts every minute all day. Runs according to the device clock.",
 "填写 WGS84 经纬度；仅保存到平台，不下发设备。地图开启显示子节点后可见。": "Enter WGS84 coordinates. Saved on the platform only, not sent to the device. Enable child nodes on the map to view it.",
 "清空位置": "Clear location",

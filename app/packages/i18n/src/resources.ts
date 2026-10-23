@@ -111,6 +111,7 @@ export const resources = {
     },
     platform: {
       brand: "原位生态云",
+      shell: { skipNavigation: "跳转到主要内容" },
       navigationGroups: {
         operations: "运行",
         data: "数据",
@@ -496,6 +497,7 @@ export const resources = {
     },
     platform: {
       brand: "In-situ EcoCloud",
+      shell: { skipNavigation: "Skip to main content" },
       navigationGroups: {
         operations: "Operations",
         data: "Data",

@@ -11,7 +11,6 @@ import {
 import {
   ChevronDown,
   ChevronRight,
-  Check,
   Clock3,
   ArrowLeft,
   Battery,
@@ -63,7 +62,26 @@ import {
 import { iconifyIconUrl } from "@thcpn/device-map";
 import { useAuth } from "@thcpn/auth";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, CheckboxInput, Input, Panel, SelectInput, StateView, Table, Textarea } from "./platform-ui";
+import {
+  Badge,
+  Button,
+  CheckboxInput,
+  Input,
+  Panel,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectInput,
+  SelectTrigger,
+  SelectValue,
+  StateView,
+  Table,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  Textarea,
+} from "./platform-ui";
 import { CameraLive, isCameraDevice, RecentDeviceImages } from "./device-media";
 import { DeviceDataPage } from "./pages";
 import { TelemetryCharts } from "./telemetry-charts";
@@ -253,21 +271,28 @@ export const firmwarePayload = (
   ...(scheduledAt ? { scheduled_at: new Date(scheduledAt).toISOString() } : {}),
 });
 
+const ALL_DEVICE_FILTER_VALUE = "__all_device_filter__";
+
 function DeviceFilterSelect({ label, value, options, onChange }: { label: string; value: string; options: FilterOption[]; onChange: (value: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const selected = options.find((item) => item.value === value) ?? options[0];
-  const select = (next: string) => {
-    onChange(next);
-    setOpen(false);
-  };
-  return <div className={`device-filter-select ${open ? "is-open" : ""}`} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
-    <button type="button" aria-label={label} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
-      <span>{selected?.label}</span><ChevronDown size={15}/>
-    </button>
-    {open ? <div className="device-filter-select-menu" role="listbox">
-      {options.map((item) => <button type="button" role="option" aria-selected={item.value === value} key={item.value || "all"} onClick={() => select(item.value)}><span>{item.label}</span>{item.value === value ? <Check size={14}/> : null}</button>)}
-    </div> : null}
-  </div>;
+  return (
+    <div className="device-filter-select">
+      <Select
+        value={value || ALL_DEVICE_FILTER_VALUE}
+        onValueChange={(next) => onChange(next === ALL_DEVICE_FILTER_VALUE ? "" : next)}
+      >
+        <SelectTrigger aria-label={label}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((item) => (
+            <SelectItem key={item.value || ALL_DEVICE_FILTER_VALUE} value={item.value || ALL_DEVICE_FILTER_VALUE}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
 }
 
 export function DevicesPage() {
@@ -465,7 +490,8 @@ export function DevicesPage() {
             {(projectId || siteId || deviceTypeId) && <button type="button" className="device-filter-reset" onClick={() => { setProjectId(""); setSiteId(""); setDeviceTypeId(""); }}><X size={13} />重置筛选</button>}
           </div>
         </div>
-        <div className="device-categories">
+        <Tabs value={category} onValueChange={(value) => setCategory(value as Category)}>
+        <TabsList className="device-categories" aria-label="设备分类">
           {(
             [
               { id: "all", label: "全部" },
@@ -475,16 +501,17 @@ export function DevicesPage() {
               { id: "camera", label: "监控站" },
             ] as Array<{ id: Category; label: string }>
           ).map((item) => (
-            <button
+            <TabsTrigger
               key={item.id}
+              value={item.id}
               className={category === item.id ? "active" : ""}
-              onClick={() => setCategory(item.id)}
             >
               <span>{item.label}</span>
               <strong>{counts[item.id]}</strong>
-            </button>
+            </TabsTrigger>
           ))}
-        </div>
+        </TabsList>
+        <TabsContent value={category} className="device-category-content" style={{ marginTop: 0 }}>
         {query.isLoading ? (
           <StateView
             type="loading"
@@ -552,6 +579,8 @@ export function DevicesPage() {
             }
           />
         )}
+        </TabsContent>
+        </Tabs>
       </Panel>
     </>
   );

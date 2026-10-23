@@ -1,25 +1,27 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type RefObject,
-} from "react";
 import { Link } from "react-router-dom";
 import {
   Check,
   Building2,
-  ChevronDown,
+  ChevronsUpDown,
   ChevronUp,
   LogOut,
-  Search,
   Settings,
   UserPlus,
   UserRound,
 } from "lucide-react";
 import { type AccessibleWorkspace, type User } from "@thcpn/api";
 import { domainLabels, useLocale } from "@thcpn/i18n";
-import { Input } from "./platform-ui";
+import { Button } from "./components/ui/button";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from "./components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,49 +44,6 @@ export const filterWorkspaces = (
   );
 };
 
-function usePopoverDismiss(
-  open: boolean,
-  onClose: () => void,
-  container: RefObject<HTMLDivElement | null>,
-) {
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!container.current?.contains(event.target as Node)) onClose();
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [container, onClose, open]);
-}
-
-function useDropdownPresence(open: boolean) {
-  const [visible, setVisible] = useState(open);
-  const [closing, setClosing] = useState(false);
-  useEffect(() => {
-    if (open) {
-      setVisible(true);
-      setClosing(false);
-      return;
-    }
-    if (!visible) return;
-    const value = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dropdown-close-dur")) || 150;
-    setClosing(true);
-    const timer = window.setTimeout(() => {
-      setVisible(false);
-      setClosing(false);
-    }, value);
-    return () => window.clearTimeout(timer);
-  }, [open, visible]);
-  return { visible, className: open ? "is-open" : closing ? "is-closing" : "" };
-}
-
 export function WorkspaceMenu({
   open,
   workspaces,
@@ -106,110 +65,78 @@ export function WorkspaceMenu({
 }) {
   const { t } = useLocale();
   const labels = domainLabels(t);
-  const container = useRef<HTMLDivElement>(null);
-  const [keyword, setKeyword] = useState("");
-  const dropdown = useDropdownPresence(open);
-  const filtered = useMemo(
-    () => filterWorkspaces(workspaces, keyword),
-    [keyword, workspaces],
-  );
-  usePopoverDismiss(open, onClose, container);
-  useEffect(() => {
-    if (!open) setKeyword("");
-  }, [open]);
 
   return (
-    <div className="workspace-menu-container" ref={container}>
-      <button
-        type="button"
-        className={`workspace-switcher workspace-trigger ${open ? "open" : ""}`}
-        aria-expanded={open}
-        aria-controls="workspace-switcher-card"
-        onClick={onToggle}
-      >
-        <Building2 className="workspace-trigger-icon" size={18} aria-hidden="true" />
-        <span className="workspace-trigger-copy">
-          <span className="workspace-label">{t("platform:workspace.current")}</span>
-          <strong>{loading ? t("platform:workspace.loading") : current?.name ?? t("platform:workspace.none")}</strong>
-          {current && (
-            <small>
-              {labels.role(
-                current.membership.role.code,
-                current.membership.role.name,
-              )}
-            </small>
-          )}
-        </span>
-        <ChevronDown size={15} aria-hidden="true" />
-      </button>
-      {dropdown.visible && (
-        <div
-          className={`sidebar-popover workspace-popover t-dropdown ${dropdown.className}`}
-          data-origin="top-left"
-          id="workspace-switcher-card"
-          role="dialog"
-          aria-label={t("platform:workspace.switch")}
-        >
-          {workspaces.length > 5 && (
-            <label className="workspace-search">
-              <Search size={14} aria-hidden="true" />
-              <Input
-                autoFocus
-                value={keyword}
-                onChange={(event) => setKeyword(event.target.value)}
-                placeholder={t("platform:workspace.search")}
-                aria-label={t("platform:workspace.search")}
-              />
-            </label>
-          )}
-          <div className="workspace-option-list">
-            {filtered.map((workspace) => {
-              const selected = workspace.id === current?.id;
-              return (
-                <button
-                  type="button"
-                  className={`workspace-option ${selected ? "selected" : ""}`}
-                  key={workspace.id}
-                  onClick={() => {
-                    onSwitch(workspace.id);
-                    onClose();
-                  }}
-                >
-                  <span>
-                    <strong>{workspace.name}</strong>
-                    <small>
-                      {labels.role(
-                        workspace.membership.role.code,
-                        workspace.membership.role.name,
-                      )}
-                    </small>
-                  </span>
-                  {selected && <Check size={14} aria-hidden="true" />}
-                </button>
-              );
-            })}
-            {!filtered.length && (
-              <div className="workspace-search-empty">{t("platform:workspace.noMatch")}</div>
-            )}
-          </div>
+    <Popover open={open} onOpenChange={(nextOpen) => {
+      if (nextOpen === open) return;
+      if (nextOpen) onToggle();
+      else onClose();
+    }}>
+      <div className="workspace-menu-container">
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            className="workspace-switcher workspace-trigger"
+            aria-label={`${t("platform:workspace.switch")}：${current?.name ?? t("platform:workspace.none")}`}
+            disabled={loading}
+          >
+            <Building2 className="workspace-trigger-icon" size={18} aria-hidden="true" />
+            <span className="workspace-trigger-copy">
+              <span className="workspace-label">{t("platform:workspace.current")}</span>
+              <strong>{loading ? t("platform:workspace.loading") : current?.name ?? t("platform:workspace.none")}</strong>
+              {current && <small>{labels.role(current.membership.role.code, current.membership.role.name)}</small>}
+            </span>
+            <ChevronsUpDown size={15} aria-hidden="true" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="workspace-command-popover" align="start" aria-label={t("platform:workspace.switch")}>
+          <Command filter={(value, search, keywords) => `${value} ${(keywords ?? []).join(" ")}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()) ? 1 : 0}>
+            <CommandInput placeholder={t("platform:workspace.search")} aria-label={t("platform:workspace.search")} />
+            <CommandList>
+              <CommandEmpty>{t("platform:workspace.noMatch")}</CommandEmpty>
+              <CommandGroup heading={t("platform:workspace.switch")}>
+                {workspaces.map((workspace) => (
+                  <CommandItem
+                    key={workspace.id}
+                    value={workspace.id}
+                    keywords={[workspace.name]}
+                    className="workspace-command-option"
+                    onSelect={() => {
+                      if (workspace.id !== current?.id) onSwitch(workspace.id);
+                      onClose();
+                    }}
+                  >
+                    <Building2 size={16} aria-hidden="true" />
+                    <span>
+                      <strong>{workspace.name}</strong>
+                      <small>{labels.role(workspace.membership.role.code, workspace.membership.role.name)}</small>
+                    </span>
+                    {workspace.id === current?.id && <Check size={16} aria-label={t("platform:workspace.current")} />}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
           {canManageWorkspace(current) && (
-            <div className="sidebar-popover-actions">
-              <Link to="/settings?tab=resources" onClick={onNavigate}>
-                <Settings size={15} aria-hidden="true" />
-                {t("platform:navigation.settings")}
-              </Link>
-              <Link
-                to="/settings?tab=access"
-                onClick={onNavigate}
-              >
-                <UserPlus size={15} aria-hidden="true" />
-                {t("platform:workspace.invite")}
-              </Link>
+            <div className="workspace-command-actions">
+              <CommandSeparator />
+              <Button variant="ghost" asChild>
+                <Link to="/settings?tab=resources" onClick={onNavigate}>
+                  <Settings size={15} aria-hidden="true" />
+                  {t("platform:navigation.settings")}
+                </Link>
+              </Button>
+              <Button variant="ghost" asChild>
+                <Link to="/settings?tab=access" onClick={onNavigate}>
+                  <UserPlus size={15} aria-hidden="true" />
+                  {t("platform:workspace.invite")}
+                </Link>
+              </Button>
             </div>
           )}
-        </div>
-      )}
-    </div>
+          </Command>
+        </PopoverContent>
+      </div>
+    </Popover>
   );
 }
 
@@ -240,8 +167,8 @@ export function AccountMenu({
     >
       <div className="account-menu-container">
         <DropdownMenuTrigger asChild>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
             className={`account-row account-trigger ${open ? "open" : ""}`}
             aria-label={t("platform:account.openMenu")}
           >
@@ -251,7 +178,7 @@ export function AccountMenu({
               <small>{user?.email ?? user?.phone ?? t("platform:account.platformAccount")}</small>
             </span>
             <ChevronUp size={15} aria-hidden="true" />
-          </button>
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="account-dropdown-content" side="top" align="start">
           <DropdownMenuItem asChild>

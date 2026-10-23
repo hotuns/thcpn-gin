@@ -1,4 +1,4 @@
-import { Fragment, lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { Fragment, lazy, Suspense, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Link,
@@ -21,16 +21,13 @@ import {
   Download,
   Gauge,
   HelpCircle,
-  Home,
   MapPinned,
-  MonitorUp,
+  Menu,
   PanelLeftClose,
   PanelLeftOpen,
   SlidersHorizontal,
   Table2,
-  Truck,
   Workflow,
-  X,
 } from "lucide-react";
 import { billingEnabled } from "./features";
 import {
@@ -55,10 +52,19 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
   Button,
-  CloseButton,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
   IconButton,
   Input,
-  MobileMenuButton,
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
   PageHeader,
   Panel,
   SelectInput,
@@ -192,18 +198,13 @@ function Shell() {
     localStorage.setItem("thcpn:sidebar-collapsed", String(sidebarCollapsed));
   }, [sidebarCollapsed]);
   useEffect(() => {
-    if (!mobileOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMobileOpen(false);
+    const desktop = window.matchMedia("(min-width: 681px)");
+    const closeOnDesktop = () => {
+      if (desktop.matches) setMobileOpen(false);
     };
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [mobileOpen]);
+    desktop.addEventListener("change", closeOnDesktop);
+    return () => desktop.removeEventListener("change", closeOnDesktop);
+  }, []);
   const notificationSummary = useQuery({
     queryKey: workspaceQueryKey(workspace.currentId, "notification-summary"),
     queryFn: async () => {
@@ -213,20 +214,8 @@ function Shell() {
     enabled: Boolean(workspace.currentId),
     refetchInterval: 60_000,
   });
-  return (
-    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
-      {mobileOpen && (
-        <button
-          type="button"
-          className="mobile-drawer-backdrop"
-          aria-label={t("closeNavigation")}
-          onClick={() => setMobileOpen(false)}
-        />
-      )}
-      <aside
-        className={`sidebar ${mobileOpen ? "open" : ""}`}
-        aria-label={t("mainNavigation")}
-      >
+  const sidebarContent = (
+    <>
         <div className="sidebar-brand-row">
           <Brand />
           <div className="desktop-sidebar-toggle">
@@ -236,9 +225,6 @@ function Shell() {
             >
               {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
             </IconButton>
-          </div>
-          <div className="mobile-close">
-            <CloseButton onClick={() => setMobileOpen(false)} />
           </div>
         </div>
         <WorkspaceMenu
@@ -258,7 +244,7 @@ function Shell() {
             setMobileOpen(false);
           }}
         />
-        <nav style={{ display: "grid", gap: 20 }}>
+        <nav className="sidebar-navigation" aria-label={t("mainNavigation")}>
           {navGroups.map((group) => (
             <div className="nav-group" key={group.key}>
               <div className="nav-title">{t(`platform:navigationGroups.${group.key}`)}</div>
@@ -304,7 +290,17 @@ function Shell() {
             }}
           />
         </div>
-      </aside>
+    </>
+  );
+  return (
+    <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+      <a className="skip-navigation" href="#main-content">{t("platform:shell.skipNavigation")}</a>
+      <aside className="sidebar" aria-label={t("mainNavigation")}>{!mobileOpen && sidebarContent}</aside>
+      <SheetContent side="left" className="mobile-navigation-sheet">
+        <SheetTitle className="sr-only">{t("mainNavigation")}</SheetTitle>
+        {sidebarContent}
+      </SheetContent>
       <div className="main-area">
         <header className="topbar">
           <div className="topbar-left">
@@ -316,7 +312,9 @@ function Shell() {
                 <PanelLeftOpen size={18} />
               </IconButton>
             </div>
-            <MobileMenuButton onClick={() => setMobileOpen(true)} />
+            <SheetTrigger asChild>
+              <IconButton className="mobile-menu" label={t("openNavigation")}><Menu size={18} /></IconButton>
+            </SheetTrigger>
             <Breadcrumb className="topbar-context">
               <BreadcrumbList>
                 {breadcrumbs.map((item,index)=><Fragment key={`${item.key}-${index}`}>{index>0&&<BreadcrumbSeparator/>}<BreadcrumbItem>{item.to?<BreadcrumbLink to={item.to}>{t(`platform:navigation.${item.key}`)}</BreadcrumbLink>:<BreadcrumbPage>{t(`platform:navigation.${item.key}`)}</BreadcrumbPage>}</BreadcrumbItem></Fragment>)}
@@ -334,13 +332,14 @@ function Shell() {
             </Link>
           </div>
         </header>
-        <main className="page">
+        <main id="main-content" className="page" tabIndex={-1}>
           <Outlet />
         </main>
       </div>
       {user?.id ? <OnboardingTour key={onboardingSession} userId={user.id} startOpen={onboardingSession > 0} /> : null}
       <RequestErrorToasts />
     </div>
+    </Sheet>
   );
 }
 
@@ -353,6 +352,7 @@ function Workspaces() {
   const [name, setName] = useState("");
   const [type, setType] = useState("lab");
   const [message, setMessage] = useState("");
+  const [formError, setFormError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (params.get("action") !== "create") return;
@@ -368,6 +368,7 @@ function Workspaces() {
   const submit = async () => {
     if (!name.trim() || busy) return;
     setBusy(true);
+    setFormError("");
     try {
       const created = await api.workspaces.create({
         name: name.trim(),
@@ -380,7 +381,7 @@ function Workspaces() {
       setCurrentId(created.workspace.id);
     } catch (e) {
       const value = formatApiError(e);
-      setMessage(
+      setFormError(
         `${value.message}${value.requestId ? ` · request id ${value.requestId}` : ""}`,
       );
     } finally {
@@ -388,43 +389,38 @@ function Workspaces() {
     }
   };
   return (
-    <>
+    <Dialog open={showForm} onOpenChange={(open) => { if (!busy) setShowForm(open); }}>
       <PageHeader
         eyebrow="组织"
         title="组织"
         description="管理你可以访问的组织。切换后，只显示所选组织内的设备、数据集和导出任务。"
         actions={
-          <Button onClick={() => setShowForm(true)}>
-            <Building2 size={15} />
-            创建组织
-          </Button>
+          <DialogTrigger asChild>
+            <Button onClick={() => setFormError("")}>
+              <Building2 size={15} />
+              创建组织
+            </Button>
+          </DialogTrigger>
         }
       />
       {message && (
-        <div className="command-note" style={{ marginBottom: 16 }}>
+        <div className="command-note" role="status" style={{ marginBottom: 16 }}>
           {message}
         </div>
       )}
-      {showForm && (
-        <Panel style={{ marginBottom: 16 } as React.CSSProperties}>
-          <div className="panel-header">
-            <h2 className="panel-title">创建组织组织</h2>
-            <IconButton label="关闭" onClick={() => setShowForm(false)}>
-              <X size={16} />
-            </IconButton>
-          </div>
-          <div className="panel-body form-grid" style={{ maxWidth: 520 }}>
+        <DialogContent onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }} onPointerDownOutside={(event) => { if (busy) event.preventDefault(); }}>
+          <DialogHeader>
+            <DialogTitle>创建组织</DialogTitle>
+            <DialogDescription>为课题组或机构建立独立的设备与数据空间，创建后将自动切换到新组织。</DialogDescription>
+          </DialogHeader>
+          <form className="shadcn-dialog-form" onSubmit={(event) => { event.preventDefault(); void submit(); }} aria-busy={busy}>
             <label className="field">
               <span className="field-label">组织名称</span>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="例如：作物生态课题组"
-              />
+              <Input required disabled={busy} value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：作物生态课题组" />
             </label>
             <label className="field">
               <span className="field-label">组织类型</span>
-              <SelectInput value={type} onChange={(e) => setType(e.target.value)}>
+              <SelectInput value={type} onValueChange={setType} disabled={busy} aria-label="组织类型">
                 <option value="lab">实验室</option>
                 <option value="institution">机构</option>
                 <option value="company">企业</option>
@@ -433,17 +429,13 @@ function Workspaces() {
                 <option value="other">其他</option>
               </SelectInput>
             </label>
-            <div>
-              <Button
-                onClick={() => void submit()}
-                disabled={busy || !name.trim()}
-              >
-                {busy ? "创建中…" : "确认创建"}
-              </Button>
-            </div>
-          </div>
-        </Panel>
-      )}
+            {formError && <div className="form-error" role="alert">{formError}</div>}
+            <DialogFooter>
+              <Button type="button" variant="secondary" disabled={busy} onClick={() => setShowForm(false)}>取消</Button>
+              <Button type="submit" disabled={busy || !name.trim()}>{busy ? "创建中…" : "创建并切换"}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
       {loading ? (
         <Panel>
           <StateView
@@ -548,7 +540,7 @@ function Workspaces() {
           </div>
         </Panel>
       )}
-    </>
+    </Dialog>
   );
 }
 

@@ -1,4 +1,4 @@
-import { Children, isValidElement, type ButtonHTMLAttributes, type ComponentProps, type InputHTMLAttributes, type ReactElement, type ReactNode, type SelectHTMLAttributes } from "react";
+import { Children, isValidElement, useState, type ButtonHTMLAttributes, type ComponentProps, type InputHTMLAttributes, type ReactElement, type ReactNode, type SelectHTMLAttributes } from "react";
 import { Search } from "lucide-react";
 import { cn } from "@thcpn/ui";
 import { Button as ShadcnButton } from "./components/ui/button";
@@ -49,15 +49,19 @@ export function SearchInput(props: Omit<InputHTMLAttributes<HTMLInputElement>, "
 export function CheckboxInput({ checked, disabled, onChange, "aria-label": ariaLabel }: Omit<InputHTMLAttributes<HTMLInputElement>, "type">) {
   return <Checkbox checked={checked} disabled={disabled} aria-label={ariaLabel} onCheckedChange={(next) => onChange?.({ target: { checked: next === true }, currentTarget: { checked: next === true } } as never)} />;
 }
-export function SelectInput({ leading, className, children, value, defaultValue, disabled, onChange, onValueChange, "aria-label": ariaLabel }: Omit<SelectHTMLAttributes<HTMLSelectElement>, "value" | "defaultValue"> & { leading?: ReactNode; value?: string | number; defaultValue?: string | number; onValueChange?: (value: string) => void }) {
+export function SelectInput({ leading, className, children, value, defaultValue, disabled, required, name, id, onBlur, onChange, onValueChange, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledBy, "aria-describedby": ariaDescribedBy, "aria-invalid": ariaInvalid }: Omit<SelectHTMLAttributes<HTMLSelectElement>, "value" | "defaultValue" | "onBlur"> & { leading?: ReactNode; value?: string | number; defaultValue?: string | number; onValueChange?: (value: string) => void; onBlur?: ComponentProps<typeof SelectTrigger>["onBlur"] }) {
   const options = Children.toArray(children).filter(isValidElement) as ReactElement<{ value?: string | number; children?: ReactNode; disabled?: boolean }>[];
-  const placeholder = options.find(option => String(option.props.value ?? "") === "")?.props.children;
-  const items = options.filter(option => String(option.props.value ?? "") !== "");
-  const change = (next: string) => {
+  const [uncontrolledValue, setUncontrolledValue] = useState(defaultValue ?? options[0]?.props.value ?? "");
+  const selectedValue = value ?? uncontrolledValue;
+  // Radix reserves an empty value for clearing; encode every option so “all/none” remains selectable.
+  const encode = (input: string | number) => `option:${input}`;
+  const change = (encoded: string) => {
+    const next = encoded.slice("option:".length);
+    if (value == null) setUncontrolledValue(next);
     onValueChange?.(next);
     onChange?.({ target: { value: next }, currentTarget: { value: next } } as never);
   };
-  return <span className={cn("ui-select radix-select-control", className)}>{leading && <span className="ui-control-leading">{leading}</span>}<Select value={value === "" || value == null ? undefined : String(value)} defaultValue={defaultValue == null ? undefined : String(defaultValue)} disabled={disabled} onValueChange={change}><SelectTrigger aria-label={ariaLabel} className="ui-select-trigger"><SelectValue placeholder={placeholder}/></SelectTrigger><SelectContent>{items.map((option, index)=><SelectItem key={`${String(option.props.value)}-${index}`} value={String(option.props.value)} disabled={option.props.disabled}>{option.props.children}</SelectItem>)}</SelectContent></Select></span>;
+  return <span className={cn("ui-select radix-select-control", className)}>{leading && <span className="ui-control-leading">{leading}</span>}{name && <input type="hidden" name={name} value={selectedValue} disabled={disabled} />}<Select value={encode(selectedValue)} disabled={disabled} required={required} onValueChange={change}><SelectTrigger id={id} onBlur={onBlur} aria-label={ariaLabel} aria-labelledby={ariaLabelledBy} aria-describedby={ariaDescribedBy} aria-invalid={ariaInvalid} className="ui-select-trigger"><SelectValue /></SelectTrigger><SelectContent>{options.map((option, index)=><SelectItem key={`${String(option.props.value)}-${index}`} value={encode(option.props.value ?? "")} disabled={option.props.disabled}>{option.props.children}</SelectItem>)}</SelectContent></Select></span>;
 }
 export function Panel({ className, ...props }: ComponentProps<typeof Card>) {
   return <Card className={className} {...props} />;
