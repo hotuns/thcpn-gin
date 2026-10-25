@@ -5509,6 +5509,14 @@ export interface components {
             code: components["schemas"]["ErrorCode"];
             message: string;
             request_id?: string;
+            /** @description Public actionable error context; never contains credentials or internal diagnostics. */
+            details?: {
+                /** @example ACCOUNT_LOCKED */
+                reason?: string;
+                retry_after_seconds?: number;
+                /** Format: date-time */
+                locked_until?: string;
+            };
         };
         /** @enum {string} */
         ErrorCode: "INVALID_ARGUMENT" | "UNAUTHORIZED" | "PERMISSION_DENIED" | "NOT_FOUND" | "CONFLICT" | "RATE_LIMITED" | "DATA_SOURCE_ERROR" | "INTERNAL" | "SERVICE_UNAVAILABLE";
@@ -8197,6 +8205,8 @@ export interface components {
         /** @description Request was rate-limited or the account is temporarily locked. */
         RateLimited: {
             headers: {
+                /** @description Remaining seconds before retrying, when known. */
+                "Retry-After"?: number;
                 [name: string]: unknown;
             };
             content: {

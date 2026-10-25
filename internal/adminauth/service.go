@@ -111,18 +111,23 @@ func (s *Service) Login(ctx context.Context, input LoginInput) (LoginResult, err
 		return LoginResult{}, apperr.New(apperr.KindUnauthorized, "administrator account is disabled")
 	}
 	if lockedUntil != nil && lockedUntil.After(time.Now()) {
-		return LoginResult{}, apperr.New(apperr.KindRateLimited, "administrator account is temporarily locked")
+		return LoginResult{}, apperr.AccountLocked(*lockedUntil, time.Now())
 	}
 	if !auth.CheckPassword(passwordHash, input.Password) {
+		if lockedUntil != nil {
+			failedAttempts = 0
+		}
 		next := failedAttempts + 1
 		var lock *time.Time
 		if next >= s.maxAttempts {
 			value := time.Now().Add(s.lockDuration)
 			lock = &value
 		}
-		_, _ = s.db.Exec(ctx, `UPDATE system_admins SET failed_attempts = $2, locked_until = $3, updated_at = now() WHERE id = $1`, id, next, lock)
+		if _, err := s.db.Exec(ctx, `UPDATE system_admins SET failed_attempts = $2, locked_until = $3, updated_at = now() WHERE id = $1`, id, next, lock); err != nil {
+			return LoginResult{}, apperr.Wrap(apperr.KindInternal, "record administrator password failure", err)
+		}
 		if lock != nil {
-			return LoginResult{}, apperr.New(apperr.KindRateLimited, "administrator account is temporarily locked")
+			return LoginResult{}, apperr.AccountLocked(*lock, time.Now())
 		}
 		return LoginResult{}, apperr.New(apperr.KindUnauthorized, "invalid administrator credentials")
 	}

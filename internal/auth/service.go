@@ -489,7 +489,7 @@ func (s *Service) loginWithCredential(ctx context.Context, userModel sqlc.User, 
 		return LoginResult{}, apperr.Wrap(apperr.KindInternal, "get user credential", err)
 	}
 	if credential.LockedUntil.Valid && credential.LockedUntil.Time.After(s.now()) {
-		return LoginResult{}, apperr.New(apperr.KindRateLimited, "account is temporarily locked")
+		return LoginResult{}, apperr.AccountLocked(credential.LockedUntil.Time, s.now())
 	}
 
 	if !CheckPassword(credential.PasswordHash, password) {
@@ -753,6 +753,9 @@ func createPersonalWorkspaceMembership(ctx context.Context, q *sqlc.Queries, use
 }
 
 func (s *Service) recordPasswordFailure(ctx context.Context, credential sqlc.UserCredential) error {
+	if credential.LockedUntil.Valid && !credential.LockedUntil.Time.After(s.now()) {
+		credential.FailedAttempts = 0
+	}
 	nextAttempts := credential.FailedAttempts + 1
 	var lockedUntil pgtype.Timestamptz
 	if nextAttempts >= int32(s.authCfg.Password.FailedAttemptLimit) {
@@ -769,7 +772,7 @@ func (s *Service) recordPasswordFailure(ctx context.Context, credential sqlc.Use
 		return apperr.Wrap(apperr.KindInternal, "record password failure", err)
 	}
 	if lockedUntil.Valid {
-		return apperr.New(apperr.KindRateLimited, "account is temporarily locked")
+		return apperr.AccountLocked(lockedUntil.Time, s.now())
 	}
 	return nil
 }

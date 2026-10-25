@@ -7101,6 +7101,12 @@ components:
                   request_id: req_123
     RateLimited:
       description: Request was rate-limited or the account is temporarily locked.
+      headers:
+        Retry-After:
+          description: Remaining seconds before retrying, when known.
+          schema:
+            type: integer
+            minimum: 1
       content:
         application/json:
           schema:
@@ -7112,6 +7118,15 @@ components:
                   code: RATE_LIMITED
                   message: sms code requested too frequently
                   request_id: req_123
+            locked:
+              value:
+                error:
+                  code: RATE_LIMITED
+                  message: account is temporarily locked
+                  details:
+                    reason: ACCOUNT_LOCKED
+                    retry_after_seconds: 900
+                    locked_until: "2026-10-25T10:00:00Z"
     DataSourceError:
       description: Device data source connection or query failed.
       content:
@@ -7218,6 +7233,19 @@ components:
           type: string
         request_id:
           type: string
+        details:
+          type: object
+          description: Public actionable error context; never contains credentials or internal diagnostics.
+          properties:
+            reason:
+              type: string
+              example: ACCOUNT_LOCKED
+            retry_after_seconds:
+              type: integer
+              minimum: 1
+            locked_until:
+              type: string
+              format: date-time
     ErrorCode:
       type: string
       enum:

@@ -3,6 +3,8 @@ package apperr
 import (
 	"errors"
 	"fmt"
+	"math"
+	"time"
 )
 
 type Kind string
@@ -22,6 +24,7 @@ type Error struct {
 	Kind    Kind
 	Message string
 	Err     error
+	Details map[string]any
 }
 
 func New(kind Kind, message string) error {
@@ -67,4 +70,23 @@ func MessageOf(err error) string {
 	}
 
 	return "internal error"
+}
+
+// AccountLocked carries only public retry information, never credentials.
+func AccountLocked(until, now time.Time) error {
+	seconds := int(math.Ceil(until.Sub(now).Seconds()))
+	if seconds < 1 {
+		seconds = 1
+	}
+	return &Error{Kind: KindRateLimited, Message: "account is temporarily locked", Details: map[string]any{
+		"reason": "ACCOUNT_LOCKED", "retry_after_seconds": seconds, "locked_until": until.UTC().Format(time.RFC3339),
+	}}
+}
+
+func DetailsOf(err error) map[string]any {
+	var appErr *Error
+	if errors.As(err, &appErr) {
+		return appErr.Details
+	}
+	return nil
 }

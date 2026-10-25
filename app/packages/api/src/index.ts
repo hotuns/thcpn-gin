@@ -1,3 +1,4 @@
+import { publicErrorMessages } from "./error-messages";
 import type { components } from "./openapi";
 export * from "./display-labels";
 export * from "./sampling-profile";
@@ -476,28 +477,46 @@ export const formatApiError = (error: unknown) => {
       unauthorized: { zh: "登录状态已失效", en: "Your session has expired" },
       permission_denied: { zh: "没有执行此操作的权限", en: "You do not have permission for this action" },
       not_found: { zh: "请求的资源不存在", en: "The requested resource was not found" },
-      conflict: { zh: "数据已经发生变化，请刷新后重试", en: "The data has changed. Refresh and try again" },
+      conflict: { zh: "当前状态不允许此操作，请刷新查看最新状态", en: "This action is unavailable in the current state. Refresh and check the latest status" },
       rate_limited: { zh: "操作过于频繁，请稍后重试", en: "Too many requests. Try again later" },
-      data_source: { zh: "数据源暂时不可用", en: "The data source is temporarily unavailable" },
-      internal: { zh: "服务暂时不可用", en: "The service is temporarily unavailable" },
+      data_source_error: { zh: "数据源暂时不可用，请稍后重试；如持续失败，请联系系统管理员检查连接", en: "The data source is temporarily unavailable. Try again later or ask an administrator to check the connection" },
+      internal: { zh: "服务暂时不可用，请稍后重试；如持续失败，请提供请求编号联系管理员", en: "The service is temporarily unavailable. Try again later or contact support with the request ID" },
+      service_unavailable: { zh: "服务暂时不可用，请稍后重试", en: "The service is temporarily unavailable. Try again later" },
+      export_too_large: { zh: "导出范围过大，请缩短时间范围或减少设备数量", en: "The export is too large. Select fewer devices or a shorter time range" },
     };
     const normalizedCode = error.code?.toLowerCase();
     const localized = normalizedCode ? messages[normalizedCode] : undefined;
     const english = typeof document !== "undefined" && document.documentElement.lang === "en-US";
+    const envelope = error.details as { error?: { details?: { reason?: string; retry_after_seconds?: number; locked_until?: string } } } | undefined;
+    const detail = envelope?.error?.details;
+    const known = publicErrorMessages[error.message];
+    const locked = detail?.reason === "ACCOUNT_LOCKED" || ["account is temporarily locked", "administrator account is temporarily locked"].includes(error.message);
+    const seconds = detail?.retry_after_seconds;
+    let message = localized?.[english ? "en" : "zh"] ?? (english ? "The request failed. Try again or contact support with the request ID" : "操作未完成，请重试；如持续失败，请提供请求编号联系管理员");
+    if (error.status < 500) {
+      if (known) message = english ? error.message : known;
+      else if (normalizedCode === "invalid_argument" || /[\u3400-\u9fff]/.test(error.message)) message = error.message;
+      else if (!normalizedCode) message = error.message;
+      if (locked) {
+        const minutes = typeof seconds === "number" && Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds / 60) : undefined;
+        message = english
+          ? `Account temporarily locked.${minutes ? ` Try again in ${minutes} minute(s).` : " Please try again later."}`
+          : `账号暂时锁定，${minutes ? `请在约 ${minutes} 分钟后重试` : "请稍后重试"}；如忘记密码，请重置密码或联系管理员`;
+      }
+    }
     return {
-      message:
-        normalizedCode === "invalid_argument" && error.message
-          ? error.message
-          : localized
-            ? localized[english ? "en" : "zh"]
-            : error.message,
+      message,
       code: error.code,
       requestId: error.requestId,
       status: error.status,
     };
   }
   return {
-    message: error instanceof Error ? error.message : "网络连接失败",
+    message: error instanceof Error && !/failed to fetch|fetch failed|networkerror|network request failed|load failed/i.test(error.message)
+      ? error.message
+      : typeof document !== "undefined" && document.documentElement.lang === "en-US"
+        ? "Unable to connect. Check your network and try again"
+        : "网络连接失败，请检查网络后重试",
     code: undefined,
     requestId: undefined,
     status: 0,

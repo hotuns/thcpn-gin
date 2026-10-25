@@ -40,7 +40,7 @@ func TestWriteAppErrorHidesPlainError(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	context, _ := gin.CreateTestContext(recorder)
 	WriteAppError(context, errors.New("secret database detail"))
-	if recorder.Code != http.StatusInternalServerError || recorder.Body.String() != `{"error":{"code":"INTERNAL","message":"internal error"}}` {
+	if recorder.Code != http.StatusInternalServerError || recorder.Body.String() != `{"error":{"code":"INTERNAL","message":"service temporarily unavailable"}}` {
 		t.Fatalf("unexpected internal error response: %d %s", recorder.Code, recorder.Body.String())
 	}
 }

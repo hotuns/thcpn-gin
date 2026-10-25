@@ -37,7 +37,7 @@ describe("API authentication and errors", () => {
   it("preserves backend messages and request IDs", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(503, { error: { message: "service unavailable" }, request_id: "req-123" })));
     try { await api.ready(); throw new Error("expected request to fail"); }
-    catch (error) { expect(formatApiError(error)).toEqual({ message: "service unavailable", requestId: "req-123", status: 503 }); }
+    catch (error) { expect(formatApiError(error)).toEqual({ message: "操作未完成，请重试；如持续失败，请提供请求编号联系管理员", requestId: "req-123", status: 503 }); }
   });
 
   it("localizes uppercase backend error codes", () => {
