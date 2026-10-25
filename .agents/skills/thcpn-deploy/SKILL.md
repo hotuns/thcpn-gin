@@ -14,6 +14,7 @@ description: 提交并部署 thcpn-gin 原位生态云项目到既有 Docker Com
 - 服务器目录不是 Git checkout，不能直接 git pull。
 - Compose 文件：docker-compose.yml + .deploy/docker-compose.prebuilt.yml。
 - 若存在 .deploy/docker-compose.release.yml，后续 build/run/up/ps/回滚均追加该 overlay；它维护 Worker 导出临时卷和预构建前端，不能在后续发布中意外移除。
+- 切换前核对运行中 Worker 的 EXPORT_* 配置和挂载。release overlay 的默认导出并发可能覆盖原 prebuilt overlay 的值；未要求调参时，按运行事实显式传入 EXPORT_MAX_CONCURRENT_JOBS，保留既有并发，不因部署顺便调整。
 - 后端使用 .deploy/Dockerfile.prebuilt，COPY .deploy/api、worker、adminctl。
 - 服务器 x86_64；本地交叉编译 CGO_ENABLED=0 GOOS=linux GOARCH=amd64。
 - 用户端和后台 Docker 镜像由 app/Dockerfile 的 platform/admin target 构建。
