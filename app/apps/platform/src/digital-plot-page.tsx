@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useLocale } from "@thcpn/i18n";
 import {
@@ -32,18 +32,16 @@ import {
 } from "recharts";
 import {
   Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
   Input,
   SelectInput,
   Switch,
 } from "./platform-ui";
 import { AtlasClock } from "./atlas-clock";
-import { ObservatoryFrame, ObservatoryMasthead, ObservatoryPanelFrame, ObservatoryTitle } from "./observatory-decoration";
+import { ObservatoryAutoScroll, ObservatoryMotionToggle, useObservatoryMotion } from "./observatory-motion";
+import { ObservatoryMasthead, ObservatoryPanelFrame, ObservatoryTitle } from "./observatory-decoration";
+import { hongliulin } from "./digital-plot-imagery";
 import { demoStations } from "./digital-plot-field";
+import { applyParcelOverrides, parseParcelOverrides, parcelStorageKey, type ParcelOverrides } from "./map-tools-model";
 import {
   advanceFrame,
   dateFrame,
@@ -67,6 +65,7 @@ import "./observatory-decoration.css";
 const DigitalPlotMap = lazy(() =>
   import("./digital-plot-map").then((m) => ({ default: m.DigitalPlotMap })),
 );
+const DigitalPlotWorkbench = lazy(() => import("./digital-plot-workbench").then(m => ({ default: m.DigitalPlotWorkbench })));
 function Range({
   label,
   value,
@@ -96,6 +95,15 @@ function Range({
   );
 }
 export function DigitalPlotPage() {
+  const [overrides, setOverrides] = useState<ParcelOverrides>(() => { try { return parseParcelOverrides(localStorage.getItem(parcelStorageKey)); } catch { return {}; } });
+  const [editBoundary, setEditBoundary] = useState(false);
+  const [columns, setColumns] = useState(true);
+  const [models, setModels] = useState(true);
+  const [links, setLinks] = useState(true);
+  const [tour, setTour] = useState(false);
+  const [storageError, setStorageError] = useState("");
+  const parcels = useMemo(() => applyParcelOverrides(overrides), [overrides]);
+  const motion = useObservatoryMotion();
   const { t, locale } = useLocale();
   const d = (key: string) => t(`digitalPlot.${key}`);
   const shell = useRef<HTMLDivElement>(null);
@@ -109,18 +117,15 @@ export function DigitalPlotPage() {
     boundaries: true,
     stations: true,
     heat: true,
-    aerial: false,
+    aerial: true,
   });
-  const [opacity, setOpacity] = useState(52);
+  const [opacity, setOpacity] = useState(32);
   const [reset, setReset] = useState(0);
   const [flightId, setFlightId] = useState("auto");
   const [compare, setCompare] = useState(false);
-  const [split, setSplit] = useState(50);
-  const [before, setBefore] = useState<string>(flights[0].id);
-  const [after, setAfter] = useState<string>(flights[2].id);
   const [fullscreen, setFullscreen] = useState(false);
   const [screenError, setScreenError] = useState(false);
-  const plot = plots.find((p) => p.id === selected)!;
+  const plot = parcels.find((p) => p.id === selected)!;
   const spec = metricSpecs[metric];
   const flight =
     flightId === "auto"
@@ -182,19 +187,13 @@ export function DigitalPlotPage() {
       filter: `saturate(${1 + f.saturation}) brightness(${f.brightness})`,
     };
   };
-  const moveSplit = (element: HTMLDivElement, clientX: number) => {
-    const rect = element.getBoundingClientRect();
-    setSplit(
-      Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100)),
-    );
-  };
   return (
     <div
       ref={shell}
       className={`digital-plot ${fullscreen ? "is-fullscreen" : ""}`}
-      data-screen-label="Digital forest"
+      data-screen-label="Hongliulin digital plot"
+      data-observatory-motion={motion.enabled ? "running" : "paused"}
     >
-      <ObservatoryFrame />
       <header className="dp-header">
         <ObservatoryMasthead />
         <Link to="/atlas" className="dp-back" title={d("back")}>
@@ -206,6 +205,7 @@ export function DigitalPlotPage() {
         <div className="dp-header-tools">
           <span className="dp-demo">{d("demo")}</span>
           <AtlasClock />
+          <ObservatoryMotionToggle motion={motion} />
           <Button
             variant="ghost"
             onClick={() => void toggleFullscreen()}
@@ -228,8 +228,8 @@ export function DigitalPlotPage() {
             <h2>{d("directory")}</h2>
             <span>08</span>
           </header>
-          <div className="dp-plot-list">
-            {plots.map((p) => (
+          <ObservatoryAutoScroll className="dp-plot-list" label={d("directory")} paused={!motion.enabled}>
+            {parcels.map((p) => (
               <Button
                 variant="ghost"
                 key={p.id}
@@ -247,12 +247,23 @@ export function DigitalPlotPage() {
                 />
                 <b>{p.id}</b>
                 <span>{d(`p${p.index}`)}</span>
-                <small>{p.area} ha</small>
+                <small>{p.area.toFixed(2)} ha</small>
                 <ChevronRight size={13} />
               </Button>
             ))}
-          </div>
+          </ObservatoryAutoScroll>
           <section className="dp-layer-list">
+            <h3>样地工作台</h3>
+            <Button variant="secondary" onClick={() => setEditBoundary(true)}>编辑 {selected} 边界 / 测量</Button>
+            <Button variant="secondary" onClick={() => setCompare(true)}>多期影像卷帘对比</Button>
+            {Object.keys(overrides).length > 0 && <Button variant="ghost" onClick={() => { try { localStorage.removeItem(parcelStorageKey); setOverrides({}); setStorageError(""); } catch { setStorageError("无法重置本机演示边界"); } }}>恢复默认演示边界</Button>}
+            {storageError && <p role="alert">{storageError}</p>}
+            <small>自定义边界只保存到本机；非测绘数据。</small>
+            <h3>三维数据场景</h3>
+            <label><Switch checked={models} onCheckedChange={setModels} aria-label="三维站点模型" /><span>三维站点模型</span></label>
+            <label><Switch checked={columns} onCheckedChange={setColumns} aria-label="指标立体柱" /><span>指标立体柱</span></label>
+            <label><Switch checked={links} onCheckedChange={setLinks} aria-label="站点数据流光" /><span>站点数据流光</span></label>
+            <label><Switch checked={tour} onCheckedChange={setTour} aria-label="自动巡航" /><span>自动巡航（操作地图时暂停）</span></label>
             <h2>
               <Layers3 size={15} />
               {d("layers")}
@@ -296,6 +307,12 @@ export function DigitalPlotPage() {
             fallback={<div className="dp-map-message">{d("loading")}</div>}
           >
             <DigitalPlotMap
+              parcels={parcels}
+              columns={columns}
+              models={models}
+              links={links}
+              tour={tour}
+              motionPaused={!motion.enabled}
               selected={selected}
               frame={frame}
               metric={metric}
@@ -310,7 +327,7 @@ export function DigitalPlotPage() {
           <div className="dp-map-top">
             <div className="dp-statistics">
               {[
-                ["area", "128.6", "ha"],
+                ["area", parcels.reduce((sum, parcel) => sum + parcel.area, 0).toFixed(1), "ha"],
                 ["parcels", "08", ""],
                 ["stations", "06", ""],
                 ["archive", "03", ""],
@@ -386,7 +403,7 @@ export function DigitalPlotPage() {
                 {selected} · {d(`p${plot.index}`)}
               </h2>
               <small>
-                {plot.area} ha <span>/</span>{" "}
+                {plot.area.toFixed(2)} ha <span>/</span>{" "}
                 {plot.station
                   ? `${d("station")} ${demoStations.find((s) => s.plot.id === plot.id)?.id}`
                   : d("noStation")}
@@ -482,7 +499,7 @@ export function DigitalPlotPage() {
                 />
               )}
               <span>
-                {flight ? `RGB · ${flight.resolution} cm/px*` : d("noFlight")}
+                {flight ? d("imageHint") : d("noFlight")}
               </span>
             </div>
             <small>{d("resolutionHint")}</small>
@@ -631,83 +648,14 @@ export function DigitalPlotPage() {
       <footer className="dp-footer">
         <span>{d("disclaimer")}</span>
         <a
-          href="https://openaerialmap.org/about/"
+          href={hongliulin.catalog}
           target="_blank"
           rel="noreferrer"
         >
-          BSU / Open Imagery Network · CC BY 4.0
+          {d("sourceCredit")}
         </a>
       </footer>
-      <Dialog open={compare} onOpenChange={setCompare}>
-        <DialogContent className="dp-compare-dialog">
-          <DialogHeader>
-            <DialogTitle>{d("compareTitle")}</DialogTitle>
-            <DialogDescription>{d("compareHint")}</DialogDescription>
-          </DialogHeader>
-          <div className="dp-compare-selectors">
-            <SelectInput
-              value={before}
-              aria-label={d("before")}
-              onValueChange={setBefore}
-            >
-              {flights.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.date} · A
-                </option>
-              ))}
-            </SelectInput>
-            <SelectInput
-              value={after}
-              aria-label={d("after")}
-              onValueChange={setAfter}
-            >
-              {flights.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.date} · B
-                </option>
-              ))}
-            </SelectInput>
-          </div>
-          <div
-            className="dp-compare-stage"
-            onPointerDown={(e) => {
-              e.currentTarget.setPointerCapture(e.pointerId);
-              moveSplit(e.currentTarget, e.clientX);
-            }}
-            onPointerMove={(e) => {
-              if (e.currentTarget.hasPointerCapture(e.pointerId))
-                moveSplit(e.currentTarget, e.clientX);
-            }}
-          >
-            <img
-              draggable={false}
-              src={orthophoto}
-              alt={d("after")}
-              style={flightStyle(after)}
-            />
-            <img
-              draggable={false}
-              src={orthophoto}
-              alt={d("before")}
-              style={{
-                ...flightStyle(before),
-                clipPath: `inset(0 ${100 - split}% 0 0)`,
-              }}
-            />
-            <div className="dp-compare-line" style={{ left: `${split}%` }}>
-              <span>↔</span>
-            </div>
-            <span className="dp-compare-a">
-              A · {flights.find((f) => f.id === before)?.date}
-            </span>
-            <span className="dp-compare-b">
-              B · {flights.find((f) => f.id === after)?.date}
-            </span>
-          </div>
-          <Range label={d("split")} value={split} onChange={setSplit} />
-          <small>{d("sourceDate")}</small>
-        </DialogContent>
-      </Dialog>
+      {(compare || editBoundary) && <Suspense fallback={<div role="status">正在载入地理工作台…</div>}><DigitalPlotWorkbench mode={editBoundary ? "edit" : "compare"} parcels={parcels} selected={selected} onClose={() => { setCompare(false); setEditBoundary(false); }} onSave={(id, ring) => { const next = { ...overrides, [id]: ring }; localStorage.setItem(parcelStorageKey, JSON.stringify(next)); setOverrides(next); }} /></Suspense>}
     </div>
   );
 }

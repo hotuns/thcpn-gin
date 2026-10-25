@@ -1,4 +1,9 @@
 .device-map-canvas { width: 100%; min-height: 320px; overflow: hidden; background: #263b36; }
+.device-map-host { position: relative; width: 100%; }
+.device-map-accessible-list { position: absolute; left: 12px; bottom: 12px; z-index: 4; }
+.device-map-accessible-list button:not(:focus-visible) { position: absolute; clip-path: inset(50%); width: 1px; height: 1px; overflow: hidden; padding: 0; border: 0; }
+.device-map-accessible-list button:focus-visible { background: #092638; color: white; padding: 10px 16px; border: 2px solid #75eaff; }
+.device-map-symbol-error { position: absolute; left: 20px; top: 20px; background: #5b241e; color: white; padding: 10px; }
 .device-map-marker { display: grid; place-items: center; box-sizing: border-box; padding: 0; border: 2px solid rgba(255,255,255,.96); border-radius: 50%; color: #fff; font: 700 11px/1 system-ui,sans-serif; cursor: pointer; box-shadow: 0 3px 12px rgba(5,20,16,.38); transition: filter .16s ease; }
 .device-map-cluster { width: 38px; height: 38px; background: #176f58; }
 .device-map-point { --pin-color: #697872; width: 36px; height: 48px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
@@ -20,4 +25,29 @@
 .device-map-popup strong { font-size: 13px; }
 .device-map-popup span,.device-map-popup small { color: #647383; }
 .maplibregl-popup-content { border-radius: 6px; box-shadow: 0 10px 28px rgba(18,38,56,.18); }
+/* Set both colors here: Atlas uses light text, while MapLibre defaults to a white popup. */
+.device-map-hover-popup { pointer-events: none; }
+.device-map-hover-popup .maplibregl-popup-content {
+  background: #0b2538;
+  color: #f1f8ff;
+  border: 1px solid #547b94;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.55;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  box-shadow: 0 6px 22px rgba(0, 8, 18, .4);
+}
+.device-map-hover-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.device-map-hover-popup.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.device-map-hover-popup.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip { border-top-color: #0b2538; }
+.device-map-hover-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.device-map-hover-popup.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.device-map-hover-popup.maplibregl-popup-anchor-top-right .maplibregl-popup-tip { border-bottom-color: #0b2538; }
+.device-map-hover-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: #0b2538; }
+.device-map-hover-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: #0b2538; }
 .location-picker-canvas { min-height: 220px; border: 1px solid #cad4dc; border-radius: 6px; cursor: crosshair; }

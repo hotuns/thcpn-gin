@@ -1,0 +1,22 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "新建导出简化交互": {
+      "versions": [
+        {
+          "path": "index.html",
+          "createdAt": "2026-10-20T03:16:55.030Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 1380,
+            "height": 954
+          }
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-10-20T03:16:55.031Z",
+  "updatedAt": "2026-10-20T03:26:51.838Z"
+}

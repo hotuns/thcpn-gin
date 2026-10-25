@@ -1,4 +1,10 @@
 export const atlasZh = {
+  globe: "地球视图",
+  returnMap: "返回地图",
+  globeHint: "切换卫星地球与区域地图，保留设备点位",
+  motionPause: "暂停装饰与自动滚动",
+  motionPlay: "播放装饰与自动滚动",
+  motionReduced: "系统已启用减少动态效果",
   terrain3d: "立体地形",
   terrain2d: "平面地图",
   terrainHint: "切换立体地形与平面地图",
@@ -144,6 +150,12 @@ export const atlasZh = {
   readOnly: "当前账号无视图管理权限",
 };
 export const atlasEn: Record<keyof typeof atlasZh, string> = {
+  globe: "Earth view",
+  returnMap: "Return to map",
+  globeHint: "Switch between satellite globe and regional map, keeping device locations",
+  motionPause: "Pause decorations and automatic scrolling",
+  motionPlay: "Play decorations and automatic scrolling",
+  motionReduced: "Reduced motion is enabled in system settings",
   reportingOverview: "Device reporting",
   reportingWindow: "Last 24 hours",
   reporting_total: "Total devices",

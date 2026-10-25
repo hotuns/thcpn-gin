@@ -1,7 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap, StyleSpecification } from "maplibre-gl";
-import Supercluster from "supercluster";
+import { NativeDeviceLayer } from "./native-device-layer";
+export * from "./device-symbols";
+export { NativeDeviceLayer } from "./native-device-layer";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./styles.css";
 
@@ -39,102 +41,45 @@ function defaultStyle(): StyleSpecification {
   };
 }
 
-export function DeviceMap({ points, onSelect, selectedDeviceId, height = 520, styleUrl, mapStyle, showNavigation = true }: { points: DeviceMapPoint[]; onSelect?: (id: string) => void; selectedDeviceId?: string; height?: number | string; styleUrl?: string; mapStyle?: StyleSpecification; showNavigation?: boolean }) {
+export function DeviceMap({ points, onSelect, selectedDeviceId, height = 520, styleUrl, mapStyle, showNavigation = true, onMapReady }: { points: DeviceMapPoint[]; onSelect?: (id: string) => void; selectedDeviceId?: string; height?: number | string; styleUrl?: string; mapStyle?: StyleSpecification; showNavigation?: boolean; onMapReady?: (map: MapLibreMap | null) => void }) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
-  const markers = useRef<maplibregl.Marker[]>([]);
-  const latestPoints = useRef(points);
-  const latestSelected = useRef(selectedDeviceId);
+  const layer = useRef<NativeDeviceLayer | null>(null);
+  const current = useRef({ points, selectedDeviceId, onSelect, onMapReady });
+  current.current = { points, selectedDeviceId, onSelect, onMapReady };
   const cameraState = useRef<{ map: MapLibreMap; locations: string; selected?: string } | null>(null);
-  latestPoints.current = points;
-  latestSelected.current = selectedDeviceId;
+  const [error, setError] = useState("");
   useEffect(() => {
-    if (!container.current || map.current) return;
-    const instance = new maplibregl.Map({ container: container.current, style: mapStyle || styleUrl || defaultStyle(), center: [104, 35], zoom: 3, attributionControl: {} });
+    if (!container.current) return;
+    setError("");
+    const instance = new maplibregl.Map({ container: container.current, style: mapStyle || styleUrl || defaultStyle(), center: [104, 35], zoom: 3, attributionControl: {}, canvasContextAttributes: { preserveDrawingBuffer: true } });
     map.current = instance;
+    layer.current = new NativeDeviceLayer(instance, id => current.current.onSelect?.(id), setError);
+    layer.current.update(current.current.points, current.current.selectedDeviceId);
+    instance.on("load", () => current.current.onMapReady?.(instance));
     if (showNavigation) instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
-    const startDragging = () => instance.getContainer().classList.add("is-dragging");
-    const stopDragging = () => instance.getContainer().classList.remove("is-dragging");
-    instance.on("dragstart", startDragging);
-    instance.on("dragend", stopDragging);
-    fit(instance, latestPoints.current);
+    fit(instance, current.current.points);
     const observer = new ResizeObserver(() => instance.resize());
     observer.observe(container.current);
-    return () => { observer.disconnect(); instance.off("dragstart", startDragging); instance.off("dragend", stopDragging); markers.current.forEach((marker) => marker.remove()); markers.current = []; instance.remove(); map.current = null; };
+    return () => { observer.disconnect(); current.current.onMapReady?.(null); layer.current?.dispose(); layer.current = null; instance.remove(); map.current = null; };
   }, [styleUrl, mapStyle, showNavigation]);
   useEffect(() => {
-    let attempts = 0;
-    let retry: ReturnType<typeof setInterval> | undefined;
-    let renderMarkers: (() => void) | undefined;
-    const applyPoints = () => {
-      const instance = map.current;
-      if (!instance) return false;
-      const index = new Supercluster<DeviceMarkerProperties, Supercluster.AnyProps>({ radius: 46, maxZoom: 13 });
-      index.load(deviceFeatureCollection(points).features);
-      renderMarkers = () => {
-        markers.current.forEach((marker) => marker.remove());
-        const bounds = instance.getBounds();
-        const clusters = index.getClusters([bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()], Math.round(instance.getZoom()));
-        markers.current = clusters.map((feature) => {
-          const element = document.createElement("button");
-          element.type = "button";
-          const properties = feature.properties;
-          if ("cluster" in properties && properties.cluster) {
-            element.className = "device-map-marker device-map-cluster";
-            element.textContent = String(properties.point_count_abbreviated);
-            element.title = `${properties.point_count} 台设备`;
-            element.addEventListener("click", () => instance.easeTo({ center: feature.geometry.coordinates as [number, number], zoom: index.getClusterExpansionZoom(properties.cluster_id) }));
-          } else {
-            element.className = `device-map-marker device-map-point ${properties.status === "active" ? "is-active" : ""} ${properties.device_id === latestSelected.current ? "is-selected" : ""}`;
-            const iconUrl = iconifyIconUrl(properties.category_icon, "#ffffff");
-            if (iconUrl) {
-              element.classList.add("has-category-icon");
-              const image = document.createElement("img");
-              image.src = iconUrl;
-              image.alt = "";
-              element.append(image);
-            }
-            const locationDot = document.createElement("span");
-            locationDot.className = "device-map-location-dot";
-            locationDot.setAttribute("aria-hidden", "true");
-            element.append(locationDot);
-            element.title = properties.name;
-            element.addEventListener("click", () => onSelect?.(properties.device_id));
-          }
-          element.setAttribute("aria-label", element.title);
-          return new maplibregl.Marker({ element, anchor: "cluster" in properties && properties.cluster ? "center" : "bottom" }).setLngLat(feature.geometry.coordinates as [number, number]).addTo(instance);
-        });
-      };
-      instance.on("moveend", renderMarkers);
-      renderMarkers();
-      const located = locatedPoints(points);
-      const locations = JSON.stringify(located.map(point => [point.device_id, point.longitude, point.latitude]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
-      const previous = cameraState.current;
-      const selected = located.find(point => point.device_id === selectedDeviceId);
-      if (selected && (previous?.map !== instance || previous.selected !== selectedDeviceId || previous.locations !== locations)) {
-        instance.easeTo({ center: [selected.longitude!, selected.latitude!] });
-      } else if (!selectedDeviceId && (previous?.map !== instance || previous.locations !== locations)) {
-        fit(instance, points);
-      }
-      cameraState.current = { map: instance, locations, selected: selectedDeviceId };
-      return true;
-    };
-    if (!applyPoints()) {
-      retry = setInterval(() => {
-        attempts++;
-        if (applyPoints() || attempts >= 200) {
-          if (retry !== undefined) clearInterval(retry);
-        }
-      }, 50);
-    }
-    return () => {
-      if (retry !== undefined) clearInterval(retry);
-      if (renderMarkers && map.current) map.current.off("moveend", renderMarkers);
-      markers.current.forEach((marker) => marker.remove());
-      markers.current = [];
-    };
-  }, [points, selectedDeviceId, styleUrl, mapStyle]);
-  return <div ref={container} className="device-map-canvas" style={{ height }} />;
+    const instance = map.current;
+    if (!instance) return;
+    layer.current?.update(points, selectedDeviceId);
+    const located = locatedPoints(points);
+    const locations = JSON.stringify(located.map(p => [p.device_id, p.longitude, p.latitude]).sort((a,b) => String(a[0]).localeCompare(String(b[0]))));
+    const previous = cameraState.current;
+    const selected = located.find(p => p.device_id === selectedDeviceId);
+    if (selected && (previous?.map !== instance || previous.selected !== selectedDeviceId || previous.locations !== locations)) instance.easeTo({ center: [selected.longitude!, selected.latitude!] });
+    else if (!selectedDeviceId && (previous?.map !== instance || previous.locations !== locations)) fit(instance, points);
+    cameraState.current = { map: instance, locations, selected: selectedDeviceId };
+  }, [points, selectedDeviceId, styleUrl, mapStyle, showNavigation]);
+  return <div className="device-map-host" style={{ height }}>
+    <div ref={container} className="device-map-canvas" style={{ height: "100%" }} />
+    {error && <div className="device-map-symbol-error" role="alert">{error}</div>}
+    <div className="device-map-accessible-list" aria-label="地图设备列表">{locatedPoints(points).map(p => <button key={p.device_id} aria-pressed={selectedDeviceId === p.device_id} onFocus={() => map.current?.easeTo({ center: [p.longitude!, p.latitude!] })} onClick={() => onSelect?.(p.device_id)}>{p.name}</button>)}</div>
+  </div>;
 }
 
 export function LocationPicker({ latitude, longitude, onChange, height = 280, styleUrl }: { latitude?: number; longitude?: number; onChange: (location: { latitude: number; longitude: number }) => void; height?: number; styleUrl?: string }) {
@@ -166,37 +111,6 @@ export function LocationPicker({ latitude, longitude, onChange, height = 280, st
     else marker.current.setLngLat([longitude, latitude]);
   }, [latitude, longitude, onChange]);
   return <div ref={container} className="device-map-canvas location-picker-canvas" style={{ height }} aria-label="设备位置地图" />;
-}
-
-type DeviceMarkerProperties = {
-  device_id: string;
-  name: string;
-  device_type: string;
-  status: string;
-  child_count: number;
-  ecosystem: string;
-  category_icon: string;
-  purposes: string;
-};
-
-function deviceFeatureCollection(points: DeviceMapPoint[]) {
-  return {
-    type: "FeatureCollection" as const,
-    features: locatedPoints(points).map((point) => ({
-      type: "Feature" as const,
-      geometry: { type: "Point" as const, coordinates: [point.longitude!, point.latitude!] },
-      properties: {
-        device_id: point.device_id,
-        name: point.name,
-        device_type: point.device_type,
-        status: point.status,
-        child_count: point.child_count ?? 0,
-        ecosystem: point.ecosystem ?? "",
-        category_icon: point.category_icon ?? "",
-        purposes: (point.purposes ?? []).join("、"),
-      },
-    })),
-  };
 }
 
 function locatedPoints(points: DeviceMapPoint[]) {

@@ -1,0 +1,22 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "DataV 一张图组件重构": {
+      "versions": [
+        {
+          "path": "index.html",
+          "createdAt": "2026-10-18T04:59:20.228Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          }
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-10-18T04:59:20.229Z",
+  "updatedAt": "2026-10-18T05:16:35.186Z"
+}

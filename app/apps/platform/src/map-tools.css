@@ -1,0 +1,24 @@
+.map-tools { position: absolute; top: 84px; right: 10px; z-index: 4; color: #dff5ff; }
+.map-tools > button { background: #092638ed; color: #b9f3ff; border: 1px solid #4b8294; }
+.atlas-template-panorama .map-tools { right: calc(clamp(350px, 30%, 440px) + 36px); top: 90px; }
+.map-tools-panel { position: absolute; right: 0; top: 42px; width: 300px; max-height: min(620px, 70dvh); overflow: auto; padding: 16px; display: grid; gap: 12px; border: 1px solid #34596f; background: #071e2ef5; box-shadow: 0 18px 40px #00101955; border-radius: 8px; font-size: 12px; }
+.map-tools-panel header, .map-tools-layer label, .map-tools-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.map-tools-panel h3 { margin: 8px 0 0; color: #93cddd; font-size: 11px; letter-spacing: .08em; }
+.map-tools-layer { display: grid; gap: 8px; }
+.map-tools-layer label span { overflow: hidden; text-overflow: ellipsis; }
+.map-tools-panel small { color: #a6c0cb; line-height: 1.7; }
+.map-tools-panel output { color: #7de9da; }
+.map-symbol-dialog.shadcn-dialog-content { width: min(960px,90vw); max-width: none; }
+.map-symbol-gallery, .map-symbol-status { display: flex; flex-wrap: wrap; justify-content: center; gap: 22px; padding: 22px; border-radius: 8px; background: #092333; color: #dff5ff; }
+.map-symbol-status { margin-top: 12px; background: #0d3042; }
+.map-symbol-gallery > div,.map-symbol-status > div { display: grid; justify-items: center; gap: 10px; font-size: 12px; }
+.map-symbol-gallery img,.map-symbol-status img { width: 52px; height: 65px; }
+.geo-workbench-dialog.shadcn-dialog-content { width: 88vw; max-width: none; height: 86dvh; display: flex; flex-direction: column; }
+.geo-workbench-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.geo-workbench-map { flex: 1; min-height: 0; position: relative; background: #092333; border: 1px solid #325266; overflow: hidden; }
+.geo-workbench-map > .geo-map { position: absolute; inset: 0; }
+.geo-workbench-dialog footer { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.geo-workbench-dialog output { font-size: 12px; color: #218a72; }
+.geo-workbench-note { font-size: 12px; color: var(--muted); }
+.geo-flight-label { position: absolute; z-index: 3; top: 12px; padding: 8px 12px; background: #092333dc; color: #e0f5ff; border: 1px solid #4e7d8c; pointer-events: none; }
+.geo-flight-label.is-before { left: 12px; }.geo-flight-label.is-after { right: 12px; }

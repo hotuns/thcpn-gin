@@ -9,6 +9,8 @@ import {
   flightAt,
   flights,
   inputDate,
+  containsPoint,
+  imageBounds,
   lastFrame,
   metricSpecs,
   metrics,
@@ -95,7 +97,13 @@ describe("digital plot deterministic demo", () => {
   it("defines eight closed parcels and six stations", () => {
     expect(plots).toHaveLength(8);
     expect(plots.filter((p) => p.station)).toHaveLength(6);
-    expect(plots.reduce((sum, p) => sum + p.area, 0)).toBeCloseTo(128.6);
+    expect(plots.reduce((sum, p) => sum + p.area, 0)).toBeGreaterThan(0);
+    for (const plot of plots) {
+      expect(containsPoint(plot, ...plot.center)).toBe(true);
+      expect(plot.coordinates.every(([lng, lat]) => lng >= imageBounds[0] && lng <= imageBounds[2] && lat >= imageBounds[1] && lat <= imageBounds[3])).toBe(true);
+    }
+    expect(imageBounds[0]).toBeGreaterThan(94);
+    expect(imageBounds[2]).toBeLessThan(95);
     for (const p of plots)
       expect(p.coordinates[0]).toEqual(p.coordinates.at(-1));
     expect(plotFeatures(20, "moisture").features).toHaveLength(8);

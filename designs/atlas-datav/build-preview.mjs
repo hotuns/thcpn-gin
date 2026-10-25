@@ -1,0 +1,13 @@
+import fs from "node:fs";
+import path from "node:path";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+const here = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(here, "../..");
+const require = createRequire(path.join(root, "app/package.json"));
+const { build } = await import(require.resolve("vite"));
+const { default: react } = await import(require.resolve("@vitejs/plugin-react"));
+await build({ configFile: false, root: path.join(root, "app/apps/platform"), plugins: [react()], resolve: { dedupe: ["react", "react-dom"] }, define: { "process.env.NODE_ENV": '"production"' }, build: { outDir: here, emptyOutDir: false, lib: { entry: path.join(here, "preview.tsx"), name: "AtlasDataVPreview", formats: ["iife"], fileName: () => "preview.js", cssFileName: "bundle" } } });
+const script = fs.readFileSync(path.join(here, "preview.js"), "utf8").replaceAll("</script", "<\\/script");
+const css = fs.readFileSync(path.join(here, "bundle.css"), "utf8");
+fs.writeFileSync(path.join(here, "index.html"), `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DataV 一张图组件预览</title><style>${css}</style><div id="root"></div><script>${script}</script></html>`);

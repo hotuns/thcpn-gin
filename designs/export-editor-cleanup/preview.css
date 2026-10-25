@@ -1,0 +1,4 @@
+body { margin: 0; }
+.preview-note { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 28px; border-bottom: 1px solid var(--line); background: var(--panel); font-size: 12px; color: var(--muted); }
+.preview-note .language-switcher { width: auto; flex: none; }
+.preview-export { max-width: 1200px; padding: 32px; margin: 0 auto; }

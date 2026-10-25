@@ -4,11 +4,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DigitalPlotMap } from "./digital-plot-map";
 import type { DigitalPlotMapProps } from "./digital-plot-scene";
+import { plots } from "./digital-plot-model";
 
 const mock = vi.hoisted(() => ({ create: vi.fn(), update: vi.fn(), dispose: vi.fn(), fail: false }));
 vi.mock("./digital-plot-scene", () => ({ DigitalPlotScene: class {
-  constructor(host: HTMLElement, state: unknown, callbacks: { ready: () => void }) {
-    mock.create(host, state);
+  constructor(host: HTMLElement, state: unknown, callbacks: { ready: () => void; imageError: () => void; imageFallback: () => void }) {
+    mock.create(host, state, callbacks);
     if (mock.fail) throw new Error("WebGL test unavailable");
     callbacks.ready();
   }
@@ -30,18 +31,37 @@ afterEach(() => {
   vi.clearAllMocks(); mock.fail = false;
 });
 describe("Three.js map integration lifecycle", () => {
+  it("updates models, data columns and orbit without rebuilding, rebuilding only edited geometry", async () => {
+    await mount();
+    await act(async () => root!.render(<DigitalPlotMap {...props} models={false} columns tour links={false} />));
+    expect(mock.create).toHaveBeenCalledTimes(1);
+    expect(mock.update).toHaveBeenLastCalledWith(expect.objectContaining({ models: false, columns: true, tour: true, links: false }));
+    await act(async () => root!.render(<DigitalPlotMap {...props} parcels={plots} />));
+    expect(mock.create).toHaveBeenCalledTimes(2); expect(mock.dispose).toHaveBeenCalledOnce();
+  });
   it("updates history and view in-place, disposing exactly once on exit", async () => {
     await mount();
     expect(mock.create).toHaveBeenCalledTimes(1);
     await act(async () => root!.render(<DigitalPlotMap {...props} frame={24} metric="temperature" />));
     expect(mock.create).toHaveBeenCalledTimes(1);
     expect(mock.update).toHaveBeenLastCalledWith(expect.objectContaining({ frame: 24, metric: "temperature" }));
+    await act(async () => root!.render(<DigitalPlotMap {...props} motionPaused />));
+    expect(mock.update).toHaveBeenLastCalledWith(expect.objectContaining({ motionPaused: true }));
     const toggle = container.querySelector<HTMLButtonElement>("button[aria-pressed]")!;
     await act(async () => toggle.click());
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(mock.update).toHaveBeenLastCalledWith(expect.objectContaining({ tilted: false }));
     act(() => root!.unmount()); root = undefined;
     expect(mock.dispose).toHaveBeenCalledTimes(1);
+  });
+  it("distinguishes a usable local preview from total imagery failure", async () => {
+    await mount();
+    const callbacks = mock.create.mock.calls[0][2];
+    await act(async () => callbacks.imageFallback());
+    expect(container.querySelector(".dp-map-warning")?.textContent).toBe("digitalPlot.aerialUnavailable");
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    await act(async () => callbacks.imageError());
+    expect(container.querySelector(".dp-map-warning")?.textContent).toBe("digitalPlot.threeImageError");
   });
   it("reports a concrete renderer error and supports a fresh retry", async () => {
     mock.fail = true; await mount();

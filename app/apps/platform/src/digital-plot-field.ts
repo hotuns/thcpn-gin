@@ -1,5 +1,6 @@
 import {
   containsPoint,
+  imageBounds,
   metricRGB,
   plots,
   reading,
@@ -13,7 +14,7 @@ export const demoStations = plots
   .map((p, i) => ({
     id: `S${String(i + 1).padStart(2, "0")}`,
     plot: p,
-    coordinate: [p.center[0] - 0.0011, p.center[1] + 0.0007] as [
+    coordinate: [p.center[0] - (imageBounds[2] - imageBounds[0]) * .008, p.center[1] + (imageBounds[3] - imageBounds[1]) * .008] as [
       number,
       number,
     ],

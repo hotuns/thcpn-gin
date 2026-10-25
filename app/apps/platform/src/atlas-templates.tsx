@@ -5,6 +5,7 @@ import { Button } from "./platform-ui";
 
 export type AtlasPresentation = NonNullable<AtlasConfig["presentation"]>;
 type AtlasSlots = {
+  summary?: ReactNode;
   directory: ReactNode;
   map: ReactNode;
   inspector: ReactNode;
@@ -20,10 +21,10 @@ type AtlasTemplate = {
 
 // Layouts own composition only. Queries, permissions and device selection stay
 // in the workspace, so a new template cannot accidentally fork data behavior.
-function TechnologyLayout({ directory, map, inspector, analysis }: AtlasSlots) {
+function TechnologyLayout({ summary, directory, map, inspector, analysis }: AtlasSlots) {
   return (
     <div className="atlas-workbench">
-      {directory}
+      <div className="atlas-directory-column">{summary}{directory}</div>
       <div className="atlas-map-stack">
         {map}
         {analysis}

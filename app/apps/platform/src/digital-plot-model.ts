@@ -1,3 +1,5 @@
+import area from "@turf/area";
+import { hongliulin, hongliulinBounds } from "./digital-plot-imagery";
 // A deliberately isolated fixture model: never mixed with workspace telemetry.
 export type PlotMetric = "moisture" | "temperature" | "rainfall" | "ndvi";
 export const metricSpecs: Record<
@@ -12,16 +14,14 @@ export const metricSpecs: Record<
 export const metrics = Object.keys(metricSpecs) as PlotMetric[];
 export const firstHour = Date.parse("2026-10-02T00:00:00+08:00");
 export const lastFrame = 6 * 24 + 14;
-export const imageBounds = [24.98673, 53.869271, 25.012059, 53.888894] as const;
-export const orthophoto = "/digital-plot/forest-orthophoto.png";
-export const aerialTiles =
-  "https://titiler.hotosm.org/cog/tiles/WebMercatorQuad/{z}/{x}/{y}@1x?url=https://oin-hotosm-temp.s3.us-east-1.amazonaws.com/5ff2fc9a9ef28c00068659a4/0/5ff2fc9a9ef28c00068659a5.tif";
+export const imageBounds = hongliulinBounds;
+export const orthophoto = hongliulin.preview;
+export const aerialTiles = hongliulin.tiles;
 export const flights = [
   {
     id: "flight-1",
     frame: 10,
     date: "2026-10-02",
-    resolution: 6.2,
     saturation: -0.35,
     brightness: 0.76,
   },
@@ -29,7 +29,6 @@ export const flights = [
     id: "flight-2",
     frame: 34,
     date: "2026-10-03",
-    resolution: 6.2,
     saturation: -0.12,
     brightness: 0.86,
   },
@@ -37,7 +36,6 @@ export const flights = [
     id: "flight-3",
     frame: 106,
     date: "2026-10-06",
-    resolution: 6.2,
     saturation: 0.12,
     brightness: 1,
   },
@@ -68,7 +66,7 @@ export function advanceFrame(frame: number) {
 export function coordinate(x: number, y: number): [number, number] {
   return [
     imageBounds[0] +
-      ((50 + (x - 50) * 1.65) / 100) * (imageBounds[2] - imageBounds[0]),
+      (x / 100) * (imageBounds[2] - imageBounds[0]),
     imageBounds[3] - (y / 100) * (imageBounds[3] - imageBounds[1]),
   ];
 }
@@ -139,17 +137,21 @@ const rings = [
     [66, 68],
   ],
 ];
-export const plots = rings.map((ring, i) => ({
-  id: `P0${i + 1}`,
-  index: i,
-  area: [18.4, 15.2, 16.8, 12.6, 14.9, 17.5, 19.1, 14.1][i],
-  station: ![4, 7].includes(i),
-  center: coordinate(
-    ring.reduce((n, p) => n + p[0], 0) / ring.length,
-    ring.reduce((n, p) => n + p[1], 0) / ring.length,
-  ),
-  coordinates: [...ring, ring[0]].map(([x, y]) => coordinate(x, y)),
-}));
+export const plots = rings.map((ring, i) => {
+  const coordinates = [...ring, ring[0]].map(([x, y]) => coordinate(x, y));
+  return {
+    id: `P0${i + 1}`,
+    index: i,
+    // A geodesic area of a fictional boundary, not a surveyed area.
+    area: area({ type: "Polygon", coordinates: [coordinates] }) / 10000,
+    station: ![4, 7].includes(i),
+    center: coordinate(
+      ring.reduce((n, p) => n + p[0], 0) / ring.length,
+      ring.reduce((n, p) => n + p[1], 0) / ring.length,
+    ),
+    coordinates,
+  };
+});
 export type Plot = (typeof plots)[number];
 export function containsPoint(plot: Plot, lng: number, lat: number) {
   let inside = false;

@@ -1,0 +1,131 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>一张图 · 装饰组件预览</title><style>/* Original vector trim inspired by the reference's layered metalwork, not its bitmap assets.
+   All effects are static, scalable and pointer-transparent; no fixed-resolution canvas. */
+:is(.atlas-shell, .digital-plot) {
+  --obs-metal: #16395d;
+  --obs-metal-light: #80bded;
+  --obs-gold: #d3b56d;
+  --obs-rule: #366789;
+  --obs-heading-white: #edf8ff;
+}
+.obs-masthead { position: absolute; inset: 0 0 auto; height: 94px; pointer-events: none; z-index: 0; }
+.obs-masthead svg { width: 100%; height: 100%; overflow: visible; }
+.obs-masthead-metal { fill: #254f7c55; }
+.obs-masthead-edge { fill: none; stroke: var(--obs-metal-light, #80bded); stroke-width: 1.2; }
+.obs-masthead-inner { fill: none; stroke: #5284b26b; stroke-width: 1; }
+.obs-masthead-ticks { fill: none; stroke: #7aabdb; stroke-width: 5; opacity: .6; }
+.obs-masthead-gold { fill: none; stroke: var(--obs-gold, #d3b56d); stroke-width: 2; }
+.obs-title { position: relative; min-width: 0; min-height: 88px; text-align: center; isolation: isolate; }
+.obs-title-plate { position: absolute; inset: 0; height: 100%; width: 100%; z-index: -1; pointer-events: none; }
+.obs-title-body { fill: #102c49eb; stroke: #638bb144; stroke-width: 1; }
+.obs-title-outline { fill: none; stroke: #79add2; stroke-width: 1; }
+.obs-title-base { fill: none; stroke: #98e4ff; stroke-width: 2; }
+.obs-title-notch { fill: none; stroke: var(--obs-gold, #d3b56d); stroke-width: 1.5; }
+.obs-title-copy { position: relative; display: grid; justify-items: center; align-content: center; gap: 5px; min-width: 0; padding: 13px 34px 25px; }
+.obs-title-eyebrow { color: #8db2cf; font-size: 8px; letter-spacing: .26em; line-height: 1.3; }
+.obs-title-copy h1 { margin: 0; max-width: 100%; color: var(--obs-heading-white, #edf8ff); font-size: clamp(20px, 2vw, 30px); font-weight: 700; line-height: 1.35; letter-spacing: .12em; text-shadow: 0 2px 0 #020a18, 0 0 20px #6cc6ff35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.obs-title-copy p { margin: 0; max-width: 100%; color: #9cbad0; font-size: 10px; line-height: 1.4; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.obs-screen-frame { position: absolute; inset: 0; z-index: 5; pointer-events: none; overflow: hidden; }
+.obs-screen-frame > i { position: absolute; top: 126px; bottom: 58px; width: 9px; background: linear-gradient(90deg, #1e4b7a44, #8dc3eea6, #152f4f55); clip-path: polygon(0 0, 100% 5%, 70% 40%, 100% 48%, 70% 56%, 100% 95%, 0 100%, 30% 54%, 0 48%, 30% 42%); }
+.obs-screen-frame > i:first-of-type { left: 2px; }
+.obs-screen-frame > i:last-of-type { right: 2px; transform: scaleX(-1); }
+.obs-screen-frame > b { position: absolute; bottom: 7px; height: 6px; width: 21%; border-bottom: 1px solid #5d84ac88; background: repeating-linear-gradient(120deg, #c1daed 0 3px, transparent 3px 9px) left bottom / 18px 5px no-repeat; }
+.obs-screen-frame > b:first-of-type { left: 17px; }
+.obs-screen-frame > b:last-of-type { right: 17px; transform: scaleX(-1); }
+
+/* Clear the earlier simple trapezoid treatment; SVG owns the plate geometry. */
+.atlas-shell .atlas-header { min-width: 0; }
+.atlas-shell .atlas-title.obs-title, .digital-plot .dp-title.obs-title {
+  display: block; background: none; clip-path: none; padding: 0; width: 100%; max-width: none; min-width: 0; margin: 0;
+}
+.atlas-shell .atlas-title.obs-title::before, .atlas-shell .atlas-title.obs-title::after,
+.atlas-shell .atlas-header::before, .atlas-shell .atlas-header::after,
+.atlas-shell .atlas-topbar::after, .digital-plot .dp-header::before, .digital-plot .dp-header::after { content: none; }
+.atlas-shell .atlas-title.obs-title h1, .digital-plot .dp-title.obs-title h1 { font-size: clamp(20px, 2vw, 30px); letter-spacing: .12em; }
+.atlas-shell { position: relative; padding-inline: 20px; background-image: radial-gradient(ellipse at 50% -20%, #1c416a70, transparent 65%); }
+.atlas-shell:not(.atlas-template-panorama) > .atlas-topbar {
+  position: relative; grid-template-columns: minmax(220px, 1fr) minmax(320px, 1.5fr) minmax(220px, 1fr); gap: 16px; min-height: 100px; border: 0; padding: 0 12px; margin-bottom: 12px; align-items: center;
+}
+.atlas-shell:not(.atlas-template-panorama) > .atlas-topbar > .atlas-header { grid-column: 2; grid-row: 1; display: block; z-index: 1; margin: 0; }
+.atlas-shell:not(.atlas-template-panorama) > .atlas-topbar > .atlas-health { grid-column: 1; grid-row: 1; border: 0; padding: 8px 0; z-index: 1; }
+.atlas-shell:not(.atlas-template-panorama) > .atlas-topbar > .atlas-header-actions { grid-column: 3; grid-row: 1; justify-self: end; z-index: 1; }
+.atlas-shell:not(.atlas-template-panorama) > .atlas-topbar > .obs-masthead { top: -10px; height: 84px; }
+.atlas-shell:not(.atlas-template-panorama) .atlas-health > header strong { font-size: 11px; }
+.atlas-shell:not(.atlas-template-panorama) .atlas-health > header small { font-size: 9px; }
+.atlas-shell:not(.atlas-template-panorama) .atlas-health-grid { gap: 8px; }
+.atlas-shell:not(.atlas-template-panorama) .atlas-health-count { grid-template-columns: 1fr; gap: 4px; }
+.atlas-shell:not(.atlas-template-panorama) .atlas-health-count > svg { display: none; }
+.atlas-shell:not(.atlas-template-panorama) .atlas-health-count > span, .atlas-shell:not(.atlas-template-panorama) .atlas-health-count > strong { grid-column: 1; }
+.atlas-shell:not(.atlas-template-panorama) .atlas-health-count > strong { font-size: 23px; }
+.atlas-shell .atlas-clock { border-right: 1px solid #45688a; padding-right: 14px; }
+.atlas-shell .atlas-clock > strong { color: #d7eaff; font-family: "Bahnschrift", "DIN Alternate", monospace; letter-spacing: .08em; }
+
+.atlas-shell.atlas-template-panorama { padding: 0; }
+.atlas-template-panorama .atlas-header { display: block; height: 100px; padding-top: 3px; }
+.atlas-template-panorama .atlas-header .obs-title { width: min(620px, 53%); margin: 0 auto; }
+.atlas-template-panorama > .atlas-topbar > .atlas-header-actions { top: 19px; right: 26px; }
+.atlas-template-panorama .atlas-topbar > .obs-masthead { top: 4px; z-index: 2; }
+.atlas-shell.atlas-template-panorama .atlas-summary { top: 116px; }
+.atlas-shell .atlas-panorama-workbench > .atlas-inspector { top: 116px; }
+.atlas-shell .atlas-panorama-workbench > .atlas-directory { top: 368px; }
+
+.atlas-shell :is(.atlas-directory, .atlas-inspector, .atlas-analysis-host),
+.atlas-shell.atlas-template-panorama .atlas-summary, .digital-plot .dp-panel {
+  border-radius: 0; border-color: #365b7e; background:
+    linear-gradient(90deg, #91c3e8, #91c3e8) left top / 24px 2px no-repeat,
+    linear-gradient(#91c3e8, #91c3e8) left top / 2px 16px no-repeat,
+    linear-gradient(90deg, #648bb2, #648bb2) right bottom / 24px 2px no-repeat,
+    linear-gradient(#648bb2, #648bb2) right bottom / 2px 16px no-repeat,
+    linear-gradient(125deg, #0d2946ed, #040f20e8);
+  box-shadow: inset 0 0 26px #1b416326, 0 8px 24px #0003;
+}
+.atlas-shell .atlas-directory > header, .digital-plot .dp-panel > header, .atlas-shell .atlas-analysis-title {
+  position: relative; background: linear-gradient(90deg, #285580a8, #122b4880 68%, transparent); border-bottom: 1px solid #416487; padding-block: 12px;
+}
+.atlas-shell .atlas-directory > header::before, .digital-plot .dp-panel > header::before, .atlas-shell .atlas-analysis-title::before {
+  content: ""; position: absolute; top: 13px; left: 0; height: 11px; width: 3px; background: var(--obs-gold); transform: skewY(-30deg); pointer-events: none;
+}
+.atlas-shell .atlas-detail-heading, .digital-plot .dp-inspector > header { background: linear-gradient(110deg, #234c7070, transparent 85%); border-bottom-color: #416487; }
+.atlas-shell .atlas-analysis-title { padding: 9px 10px; }
+
+.digital-plot { position: relative; }
+.digital-plot .dp-header { position: relative; height: 104px; min-height: 104px; grid-template-columns: minmax(170px, 1fr) minmax(300px, 1.6fr) minmax(170px, 1fr); padding: 0 26px; gap: 12px; background: #061326; border: 0; }
+.digital-plot .dp-header > :not(.obs-masthead) { position: relative; z-index: 1; }
+.digital-plot .dp-header .obs-title { align-self: center; }
+.digital-plot .dp-header-tools { gap: 12px; }
+.digital-plot .dp-back > svg:nth-child(2) { color: #88b6df; }
+.digital-plot .dp-demo { color: var(--obs-gold); border-color: #746341; }
+
+@media (max-width: 1150px) {
+  .atlas-shell:not(.atlas-template-panorama) > .atlas-topbar { grid-template-columns: minmax(0, 1fr) auto; padding: 0; gap: 6px 12px; }
+  .atlas-shell:not(.atlas-template-panorama) > .atlas-topbar > .atlas-header { grid-column: 1; }
+  .atlas-shell:not(.atlas-template-panorama) > .atlas-topbar > .atlas-header-actions { grid-column: 2; }
+  .atlas-shell:not(.atlas-template-panorama) > .atlas-topbar > .atlas-health { grid-column: 1 / -1; grid-row: 2; border-top: 1px solid #355576; padding: 10px 0; }
+  .atlas-shell:not(.atlas-template-panorama) .atlas-health { grid-template-columns: minmax(120px, .5fr) 2fr; align-items: center; }
+  .atlas-shell:not(.atlas-template-panorama) .atlas-health > footer { grid-column: 1 / -1; }
+  .digital-plot .dp-header { grid-template-columns: auto minmax(240px, 1fr) auto; padding-inline: 16px; }
+  .digital-plot .dp-back > span, .digital-plot .dp-demo { display: none; }
+}
+@media (max-width: 900px) {
+  .atlas-template-panorama .atlas-topbar { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+  .atlas-template-panorama .atlas-header { height: auto; padding: 0; }
+  .atlas-template-panorama .atlas-header .obs-title { width: 100%; }
+  .atlas-template-panorama > .atlas-topbar > .atlas-header-actions { position: static; }
+  .atlas-shell.atlas-template-panorama .atlas-summary { inset: auto; }
+  .atlas-shell .atlas-panorama-workbench > .atlas-directory, .atlas-shell .atlas-panorama-workbench > .atlas-inspector { inset: auto; }
+  .obs-masthead-ticks { display: none; }
+  .obs-screen-frame { display: none; }
+}
+@media (max-width: 600px) {
+  .atlas-shell { padding-inline: 12px; }
+  .obs-title-copy { padding: 12px 20px 23px; gap: 4px; }
+  .obs-title-eyebrow { font-size: 6px; letter-spacing: .14em; }
+  .atlas-shell .atlas-title.obs-title h1, .digital-plot .dp-title.obs-title h1 { font-size: 18px; letter-spacing: .04em; }
+  .atlas-shell:not(.atlas-template-panorama) .atlas-health { display: grid; grid-template-columns: 1fr; }
+  .atlas-shell .atlas-clock { padding-right: 6px; }
+  .digital-plot .dp-header { grid-template-columns: 28px minmax(0, 1fr) 28px; padding-inline: 12px; min-height: 92px; height: 92px; gap: 4px; }
+  .digital-plot .dp-back > svg:nth-child(2) { display: none; }
+  .digital-plot .dp-header-tools .atlas-clock { display: none; }
+}
+
+*{box-sizing:border-box}body{margin:0;padding:32px;background:#030a15;color:#dceeff;font-family:system-ui,sans-serif}body>header{max-width:1440px;margin:0 auto 24px}body>header p{color:#7c9bb8;font-size:13px}.preview{max-width:1440px;margin:24px auto;position:relative;min-height:320px;background:radial-gradient(ellipse at 50% 70%,#103d55,#061326 65%);border:1px solid #233e5c;padding:0 24px 24px}.preview>.obs-title{width:min(620px,55%);margin:auto}.panels{display:grid;grid-template-columns:1fr 1.5fr 1fr;gap:24px;margin-top:28px}.atlas-directory{min-height:150px;border:1px solid #365b7e}.atlas-directory header{padding:12px 16px;font-size:13px}.panel-copy{padding:20px 16px;font-size:12px;color:#80a4bf;line-height:1.8}.center{display:grid;place-content:center;text-align:center;color:#507795;font-size:12px;letter-spacing:3px;border:1px dashed #335574}footer{max-width:1440px;margin:auto;color:#7490a9;font-size:12px}@media(max-width:700px){body{padding:12px}.preview>.obs-title{width:100%}.panels{grid-template-columns:1fr}.center{min-height:120px}.preview{padding-inline:12px}}
+</style><header><h2>一张图 / 装饰系统</h2><p>生产组件的独立预览 · 无业务数据 · 参考蓝色金属折线风格，采用原创 SVG / CSS</p></header><section class="preview atlas-shell"><div class="obs-screen-frame" aria-hidden="true"><i></i><i></i><b></b><b></b></div><div class="obs-masthead" aria-hidden="true"><svg viewBox="0 0 1440 90" preserveAspectRatio="none" focusable="false"><path class="obs-masthead-metal" d="M0 6H338L364 18H438L474 52H572L586 62H854L868 52H966L1002 18H1076L1102 6H1440V22H1110L1080 32H1010L974 66H876L860 76H580L564 66H466L430 32H360L330 22H0Z"></path><path class="obs-masthead-edge" d="M0 5H338L364 17H440L476 51H570M870 51H964L1000 17H1076L1102 5H1440"></path><path class="obs-masthead-inner" d="M16 32H326L354 42H418L454 76H548M892 76H986L1022 42H1086L1114 32H1424"></path><path class="obs-masthead-ticks" d="M346 24l12 12m4-12 12 12m4-12 12 12m4-12 12 12m4-12 12 12m672-12-12 12m-4-12-12 12m-4-12-12 12m-4-12-12 12m-4-12-12 12"></path><path class="obs-masthead-gold" d="M434 22l24 23h16M1006 22l-24 23h-16"></path></svg></div><div class="obs-title "><svg class="obs-title-plate" viewBox="0 0 600 86" preserveAspectRatio="none" aria-hidden="true" focusable="false"><path class="obs-title-body" d="M1 1H599L579 49L549 70H51L21 49Z"></path><path class="obs-title-outline" d="M2 1H598M22 48l30 21h496l30-21M69 76h462"></path><path class="obs-title-base" d="M174 69h252M245 77h110"></path><path class="obs-title-notch" d="M43 46l14 10h24M557 46l-14 10h-24"></path></svg><div class="obs-title-copy"><span class="obs-title-eyebrow">IN-SITU ECOCLOUD / OBSERVATION NETWORK</span><h1 title="生态观测一张图">生态观测一张图</h1></div></div><div class="panels"><section class="atlas-directory"><header>设备运行概况</header><div class="panel-copy">蓝银角标 / 金色刻线<br>面板标题条与正文分层</div></section><div class="center">生态观测一张图<br>地图区域</div><section class="atlas-directory"><header>观测数据</header><div class="panel-copy">贯穿式翼板 / 中央标题铭牌<br>装饰不拦截地图和控件操作</div></section></div></section><section class="preview atlas-shell"><div class="obs-screen-frame" aria-hidden="true"><i></i><i></i><b></b><b></b></div><div class="obs-masthead" aria-hidden="true"><svg viewBox="0 0 1440 90" preserveAspectRatio="none" focusable="false"><path class="obs-masthead-metal" d="M0 6H338L364 18H438L474 52H572L586 62H854L868 52H966L1002 18H1076L1102 6H1440V22H1110L1080 32H1010L974 66H876L860 76H580L564 66H466L430 32H360L330 22H0Z"></path><path class="obs-masthead-edge" d="M0 5H338L364 17H440L476 51H570M870 51H964L1000 17H1076L1102 5H1440"></path><path class="obs-masthead-inner" d="M16 32H326L354 42H418L454 76H548M892 76H986L1022 42H1086L1114 32H1424"></path><path class="obs-masthead-ticks" d="M346 24l12 12m4-12 12 12m4-12 12 12m4-12 12 12m4-12 12 12m672-12-12 12m-4-12-12 12m-4-12-12 12m-4-12-12 12m-4-12-12 12"></path><path class="obs-masthead-gold" d="M434 22l24 23h16M1006 22l-24 23h-16"></path></svg></div><div class="obs-title "><svg class="obs-title-plate" viewBox="0 0 600 86" preserveAspectRatio="none" aria-hidden="true" focusable="false"><path class="obs-title-body" d="M1 1H599L579 49L549 70H51L21 49Z"></path><path class="obs-title-outline" d="M2 1H598M22 48l30 21h496l30-21M69 76h462"></path><path class="obs-title-base" d="M174 69h252M245 77h110"></path><path class="obs-title-notch" d="M43 46l14 10h24M557 46l-14 10h-24"></path></svg><div class="obs-title-copy"><span class="obs-title-eyebrow">IN-SITU ECOCLOUD / OBSERVATION NETWORK</span><h1 title="数字样地">数字样地</h1></div></div><div class="panels"><section class="atlas-directory"><header>设备运行概况</header><div class="panel-copy">蓝银角标 / 金色刻线<br>面板标题条与正文分层</div></section><div class="center">数字样地<br>地图区域</div><section class="atlas-directory"><header>观测数据</header><div class="panel-copy">贯穿式翼板 / 中央标题铭牌<br>装饰不拦截地图和控件操作</div></section></div></section><footer>仅审阅装饰组件；设备、地图、指标与影像仍由现有业务页面展示。</footer></html>

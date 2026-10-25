@@ -1,22 +1,21 @@
 /*! DataV-React components: Copyright (c) 2019-present DataV-Team, MIT. See /licenses/DataV-React.txt. */
 /* Geometry lives in the attributed upstream components. */
-:is(.atlas-shell, .digital-plot) { --obs-heading-white: #edf8ff; --obs-gold: #e6be73; }
+:is(.atlas-shell, .digital-plot) { --obs-heading-white: #edf8ff; --obs-gold: #e6be73; --obs-header-height: 64px; --obs-title-height: 60px; border: 0; box-shadow: none; }
 :is(.dv-border-box-12, .dv-border-box-13, .dv-decoration-5, .dv-decoration-8, .dv-decoration-11) { position: relative; width: 100%; height: 100%; }
 :is(.dv-border-box-12, .dv-border-box-13, .dv-decoration-11) > svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 :is(.dv-border-box-12, .dv-border-box-13) > .border-box-content,
 .dv-decoration-11 > .decoration-content { position: relative; width: 100%; height: 100%; }
-.obs-masthead { position: absolute; inset: 0 0 auto; height: 102px; pointer-events: none; z-index: 0; }
-.obs-masthead .obs-wing { position: absolute; top: 7px; width: 29%; height: 39px; opacity: .9; }
+.obs-masthead { position: absolute; inset: 0 0 auto; height: var(--obs-header-height); pointer-events: none; z-index: 0; }
+.obs-masthead .obs-wing { position: absolute; top: 0; width: 29%; height: 22px; opacity: .9; }
 .obs-wing-left { left: 0; }
 .obs-wing-right { right: 0; }
-.obs-masthead .obs-masthead-base { position: absolute; top: 108px; left: 25%; width: 50%; height: 20px; opacity: .85; }
-.obs-title { position: relative; min-width: 0; min-height: 88px; text-align: center; }
-.obs-title .obs-title-frame { height: 88px; }
+.obs-masthead .obs-masthead-base { position: absolute; top: 49px; left: 25%; width: 50%; height: 14px; opacity: .85; }
+.obs-title { position: relative; min-width: 0; min-height: var(--obs-title-height); text-align: center; }
+.obs-title .obs-title-frame { height: var(--obs-title-height); }
 .obs-title-frame > svg > polygon { fill: #082138ed; }
-.obs-title-copy { position: relative; display: grid; justify-items: center; align-content: center; height: 100%; min-width: 0; gap: 4px; padding: 13px 35px; }
+.obs-title-copy { position: relative; display: grid; justify-items: center; align-content: center; height: 100%; min-width: 0; gap: 2px; padding: 4px 35px; }
 .obs-title-eyebrow { max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #8fb8d4; font-size: 10px; letter-spacing: .15em; line-height: 1.4; }
 .obs-title-copy h1 { margin: 0; max-width: 100%; color: var(--obs-heading-white); font-size: clamp(20px, 2vw, 30px); font-weight: 700; line-height: 1.35; letter-spacing: .12em; text-shadow: 0 0 20px #46beff55; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.obs-screen-frame { position: absolute; inset: 0; z-index: 4; pointer-events: none; overflow: hidden; }
 .obs-panel-frame { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
 /* DataV title replaces the earlier hand-drawn trapezoid. */
 .atlas-shell .atlas-header { min-width: 0; }
@@ -26,15 +25,19 @@
 .atlas-shell .atlas-title.obs-title::before, .atlas-shell .atlas-title.obs-title::after,
 .atlas-shell .atlas-header::before, .atlas-shell .atlas-header::after,
 .atlas-shell .atlas-topbar::after, .digital-plot .dp-header::before, .digital-plot .dp-header::after { content: none; }
-.atlas-shell .atlas-title.obs-title h1, .digital-plot .dp-title.obs-title h1 { font-size: clamp(20px, 2vw, 30px); letter-spacing: .12em; }
+.atlas-shell .atlas-title.obs-title h1, .digital-plot .dp-title.obs-title h1 { font-size: clamp(20px, 1.8vw, 28px); line-height: 1.2; letter-spacing: .12em; }
 .atlas-shell { position: relative; padding-inline: 20px; background-image: radial-gradient(ellipse at 50% -20%, #1c416a70, transparent 65%); }
 .atlas-shell:not(.atlas-template-panorama) > .atlas-topbar {
-  position: relative; grid-template-columns: minmax(220px, 1fr) minmax(320px, 1.5fr) minmax(220px, 1fr); gap: 16px; min-height: 100px; border: 0; padding: 0 12px; margin-bottom: 12px; align-items: center;
+  position: relative; display: block; min-height: var(--obs-header-height); border: 0; padding: 0 12px; margin-bottom: 8px;
 }
-.atlas-shell:not(.atlas-template-panorama) > .atlas-topbar > .atlas-header { grid-column: 2; grid-row: 1; display: block; z-index: 1; margin: 0; }
-.atlas-shell:not(.atlas-template-panorama) > .atlas-topbar > .atlas-health { grid-column: 1; grid-row: 1; border: 0; padding: 8px 0; z-index: 1; }
-.atlas-shell:not(.atlas-template-panorama) > .atlas-topbar > .atlas-header-actions { grid-column: 3; grid-row: 1; justify-self: end; z-index: 1; }
-.atlas-shell:not(.atlas-template-panorama) > .atlas-topbar > .obs-masthead { top: -18px; height: 102px; }
+.atlas-shell:not(.atlas-template-panorama) > .atlas-topbar > .atlas-header { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: min(620px, 54%); display: block; z-index: 1; margin: 0; }
+.atlas-shell:not(.atlas-template-panorama) > .atlas-topbar > .atlas-header-actions { position: absolute; top: 10px; right: 12px; z-index: 1; }
+.atlas-directory-column { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
+.atlas-directory-column > .atlas-directory { flex: 1; min-height: 0; }
+.atlas-shell .atlas-directory-column > .atlas-health { position: relative; flex: none; grid-template-columns: 1fr; gap: 10px; margin: 0; padding: 16px; border: 0; border-radius: 0; background: linear-gradient(125deg, #08243deb, #030e1fe8); }
+.atlas-directory-column > .atlas-health > header { display: flex; align-items: center; justify-content: space-between; }
+.atlas-shell .atlas-directory-column .atlas-health-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 12px; }
+.atlas-shell:not(.atlas-template-panorama) > .atlas-topbar > .obs-masthead { top: 0; height: var(--obs-header-height); }
 .atlas-shell:not(.atlas-template-panorama) .atlas-health > header strong { font-size: 11px; }
 .atlas-shell:not(.atlas-template-panorama) .atlas-health > header small { font-size: 9px; }
 .atlas-shell:not(.atlas-template-panorama) .atlas-health-grid { gap: 8px; }
@@ -46,14 +49,15 @@
 .atlas-shell .atlas-clock > strong { color: #d7eaff; font-family: "Bahnschrift", "DIN Alternate", monospace; letter-spacing: .08em; }
 
 .atlas-shell.atlas-template-panorama { padding: 0; }
-.atlas-template-panorama .atlas-header { display: block; height: 100px; padding-top: 3px; }
+.atlas-template-panorama .atlas-header { display: block; height: var(--obs-header-height); padding-top: 0; }
 .atlas-template-panorama .atlas-header .obs-title { width: min(620px, 53%); margin: 0 auto; }
-.atlas-template-panorama > .atlas-topbar > .atlas-header-actions { top: 19px; right: 26px; }
-.atlas-template-panorama .atlas-topbar > .obs-masthead { top: 4px; z-index: 2; }
-.atlas-template-panorama .obs-masthead .obs-masthead-base { top: 80px; height: 25px; }
-.atlas-shell.atlas-template-panorama .atlas-summary { top: 116px; }
-.atlas-shell .atlas-panorama-workbench > .atlas-inspector { top: 116px; }
-.atlas-shell .atlas-panorama-workbench > .atlas-directory { top: 368px; }
+.atlas-template-panorama > .atlas-topbar > .atlas-header-actions { top: 10px; right: 26px; }
+.atlas-template-panorama .atlas-topbar > .obs-masthead { top: 0; z-index: 2; }
+.atlas-template-panorama .obs-masthead .obs-masthead-base { top: 49px; height: 14px; }
+.atlas-shell.atlas-template-panorama .atlas-summary { top: calc(var(--obs-header-height) + 14px); }
+.atlas-shell .atlas-panorama-workbench > .atlas-inspector { top: calc(var(--obs-header-height) + 14px); }
+.atlas-shell .atlas-panorama-workbench > .atlas-directory { top: calc(var(--obs-header-height) + 266px); }
+.atlas-shell .atlas-panorama-workbench > .atlas-map-region { border: 0; border-radius: 0; box-shadow: none; }
 
 .atlas-shell :is(.atlas-directory, .atlas-inspector, .atlas-analysis-host),
 .atlas-shell.atlas-template-panorama .atlas-summary, .digital-plot .dp-panel {
@@ -83,11 +87,11 @@
 :is(.atlas-shell, .digital-plot) .maplibregl-ctrl-attrib { display: none; }
 
 .digital-plot { position: relative; }
-.digital-plot .dp-header { position: relative; height: 104px; min-height: 104px; grid-template-columns: minmax(170px, 1fr) minmax(300px, 1.6fr) minmax(170px, 1fr); padding: 0 26px; gap: 12px; background: #061326; border: 0; }
+.digital-plot .dp-header { position: relative; height: var(--obs-header-height); min-height: var(--obs-header-height); grid-template-columns: minmax(170px, 1fr) minmax(300px, 1.6fr) minmax(170px, 1fr); padding: 0 26px; gap: 12px; background: #061326; border: 0; }
 .digital-plot .dp-header > :not(.obs-masthead) { position: relative; z-index: 1; }
 .digital-plot .dp-header .obs-title { align-self: center; }
 .digital-plot .dp-header-tools { gap: 12px; }
-.digital-plot .obs-masthead .obs-masthead-base { top: 82px; height: 22px; }
+.digital-plot .obs-masthead .obs-masthead-base { top: 49px; height: 14px; }
 .digital-plot .dp-back > svg:nth-child(2) { color: #88b6df; }
 .digital-plot .dp-demo { color: var(--obs-gold); border-color: #746341; }
 
@@ -142,3 +146,88 @@
 }
 .digital-plot .dp-panel { padding: 12px; }
 .digital-plot .dp-readings > div:nth-child(even) { padding-left: 40px; }
+
+/* Ambient loops are deliberately slower than interaction transitions. */
+:is(.atlas-shell, .digital-plot) {
+  --obs-scan-duration: 10s;
+  --obs-breathe-duration: 4s;
+  --shimmer-dur: 8000ms;
+  --shimmer-base: #edf8ff;
+  --shimmer-highlight: #9cefff;
+}
+.obs-title-copy h1 > .t-shimmer { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.obs-scan-track { position: absolute; top: 27px; left: 7%; right: 7%; height: 2px; overflow: hidden; }
+.obs-scan-track::after { content: ""; display: block; width: 18%; height: 100%; background: linear-gradient(90deg, transparent, #80eaff, transparent); transform: translateX(-100%); animation: obs-scan var(--obs-scan-duration) linear infinite; will-change: transform; }
+.obs-masthead .obs-masthead-base { animation: obs-breathe var(--obs-breathe-duration) ease-in-out infinite; }
+.atlas-health-count.is-normal > strong { animation: obs-breathe var(--obs-breathe-duration) ease-in-out infinite; }
+.obs-auto-scroll:focus-visible { outline: 1px solid #7bdfff; outline-offset: -2px; }
+.digital-plot .dp-plot-list.obs-auto-scroll { overflow: auto; max-height: clamp(180px, 35dvh, 330px); scrollbar-width: thin; }
+:is(.atlas-shell, .digital-plot) .obs-motion-toggle { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; min-height: 32px; padding: 0; border: 1px solid #22516a; background: #082234; color: #99d5ee; }
+[data-observatory-motion="paused"] :is(.obs-masthead-base, .atlas-health-count.is-normal > strong),
+[data-observatory-motion="paused"] .obs-scan-track::after,
+[data-observatory-motion="paused"] .t-shimmer::before { animation-play-state: paused; }
+@keyframes obs-scan { to { transform: translateX(660%); } }
+@keyframes obs-breathe { 0%, 100% { opacity: .65; } 50% { opacity: 1; } }
+/* Screen owns the height; overflowing content belongs to its module, never
+   to the page. These rules follow the older responsive layout overrides. */
+.atlas-shell.atlas-layout-balanced,
+.atlas-shell.atlas-layout-map,
+.atlas-shell.atlas-layout-data,
+.digital-plot {
+  box-sizing: border-box;
+  height: calc(100dvh - 66px);
+  min-height: 0;
+  overflow: hidden;
+}
+.atlas-shell.is-presenting,
+.digital-plot.is-fullscreen { height: 100dvh; min-height: 0; overflow: hidden; }
+.atlas-shell:not(.atlas-template-panorama) { display: flex; flex-direction: column; padding-top: 8px; padding-bottom: 8px; }
+.atlas-shell .atlas-workbench { height: auto; min-height: 0; flex: 1; overflow: hidden; }
+.atlas-shell .atlas-map-stack { min-height: 0; overflow: hidden; }
+.atlas-shell .atlas-map-stack > .atlas-map-region { min-height: 0; flex: 1 1 56%; }
+.atlas-shell .atlas-analysis-host { min-height: 0; flex: 1 1 44%; }
+.atlas-shell .atlas-directory-column { overflow: hidden; }
+.atlas-shell .atlas-directory-column > .atlas-health { max-height: 38%; overflow: auto; }
+.atlas-shell .atlas-device-list { min-height: 0; flex: 1; overflow: auto; }
+.atlas-shell .atlas-inspector { min-height: 0; max-height: none; }
+.atlas-shell .atlas-footer { padding-block: 5px; }
+.digital-plot .dp-header { flex: 0 0 var(--obs-header-height); }
+.digital-plot .dp-scene { min-height: 0; flex: 1 1 0; overflow: hidden; }
+.digital-plot :is(.dp-directory, .dp-inspector) { min-height: 0; overflow: auto; }
+.digital-plot .dp-playback { flex: 0 0 auto; margin-block: 0; }
+.digital-plot .dp-footer { flex: 0 0 auto; }
+
+/* Moving blue/cyan light sits behind the title rather than washing out text. */
+.obs-title-frame { isolation: isolate; }
+.obs-title-frame::before {
+  content: ""; position: absolute; inset: 2px 3%; z-index: -1;
+  clip-path: polygon(3% 0, 97% 0, 100% 50%, 97% 100%, 3% 100%, 0 50%);
+  background: linear-gradient(105deg, #052139 0%, #145080 28%, #077386 50%, #163d77 72%, #052139 100%);
+  background-size: 220% 100%; animation: obs-title-aura 9s ease-in-out infinite alternate;
+}
+.obs-title-frame > svg > polygon { fill: #061d3545; }
+.obs-title-copy { background: radial-gradient(ellipse at 50% 110%, #53daff22, transparent 70%); }
+.obs-signal-bars { position: absolute; left: 3%; top: 42px; display: flex; align-items: end; gap: 4px; height: 14px; }
+.obs-signal-bars i { width: 3px; height: 100%; background: #69dfff; box-shadow: 0 0 8px #3fbfff80; transform-origin: bottom; animation: obs-signal 1.6s ease-in-out infinite alternate; }
+.obs-signal-bars i:nth-child(2) { animation-delay: -.6s; }
+.obs-signal-bars i:nth-child(3) { animation-delay: -.2s; }
+.obs-signal-bars i:nth-child(4) { animation-delay: -.9s; }
+.obs-signal-bars i:nth-child(5) { animation-delay: -.4s; }
+.obs-panel-current { position: absolute; top: 0; left: 12%; width: 24%; height: 1px; background: linear-gradient(90deg, transparent, #90f1ff, transparent); box-shadow: 0 0 7px #4bd8ff; animation: obs-panel-current 6s ease-in-out infinite alternate; }
+.observatory-map.is-globe { background: radial-gradient(ellipse at 50% 45%, #122f47, #020711 72%); }
+.observatory-map.is-globe .observatory-map-canvas { background: transparent; }
+.observatory-map.is-globe::before { content: ""; position: absolute; inset: 0; pointer-events: none; background-image: radial-gradient(circle at 13% 22%, #bdeaff 0 1px, transparent 1.5px), radial-gradient(circle at 78% 38%, #81bfff 0 1px, transparent 1.5px), radial-gradient(circle at 38% 75%, #bdeaff 0 1px, transparent 1.5px); background-size: 163px 197px, 281px 241px, 211px 313px; animation: obs-breathe 5s ease-in-out infinite alternate; }
+.atlas-shell .atlas-map-actions .shadcn-button[aria-pressed="true"] { background: #126080; border-color: #75dfff; color: #e8fcff; box-shadow: inset 0 0 12px #4bcfff25; }
+[data-observatory-motion="paused"] .observatory-map.is-globe::before,
+[data-observatory-motion="paused"] :is(.obs-signal-bars i, .obs-panel-current),
+[data-observatory-motion="paused"] .obs-title-frame::before { animation-play-state: paused; }
+@keyframes obs-title-aura { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
+@keyframes obs-signal { from { transform: scaleY(.25); opacity: .45; } to { transform: scaleY(1); opacity: 1; } }
+@keyframes obs-panel-current { from { transform: translateX(0); opacity: .4; } to { transform: translateX(230%); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .obs-title-frame::before, .obs-signal-bars i, .obs-panel-current, .observatory-map.is-globe::before { animation: none; }
+  .obs-masthead .obs-masthead-base,
+  .atlas-health-count.is-normal > strong,
+  .obs-scan-track::after { animation: none; }
+  .obs-scan-track { display: none; }
+}

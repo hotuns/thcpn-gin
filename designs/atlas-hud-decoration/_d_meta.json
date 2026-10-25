@@ -1,0 +1,35 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "一张图装饰组件": {
+      "versions": [
+        {
+          "path": "index.html",
+          "createdAt": "2026-10-18T04:40:45.889Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          }
+        }
+      ]
+    },
+    "三套模板顶部布局校验": {
+      "versions": [
+        {
+          "path": "layouts.html",
+          "createdAt": "2026-10-18T04:42:08.336Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 1280,
+            "height": 720
+          }
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-10-18T04:40:45.889Z",
+  "updatedAt": "2026-10-18T04:42:08.336Z"
+}

@@ -5,7 +5,7 @@ import {
   fieldPixels,
   fieldValue,
 } from "./digital-plot-field";
-import { metricRGB, reading } from "./digital-plot-model";
+import { containsPoint, metricRGB, reading } from "./digital-plot-model";
 
 describe("synthetic spatial field", () => {
   it("uses only the six labelled demo stations and reproduces their readings", () => {
@@ -19,6 +19,7 @@ describe("synthetic spatial field", () => {
       "S06",
     ]);
     for (const station of demoStations) {
+      expect(containsPoint(station.plot, ...station.coordinate)).toBe(true);
       expect(fieldValue(...station.coordinate, 24, "moisture")).toBe(
         reading(station.plot.index, 24, "moisture"),
       );

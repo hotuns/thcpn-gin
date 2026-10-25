@@ -1,0 +1,10 @@
+* { box-sizing: border-box; }
+body { margin: 0; background: #030d1b; color: #dcefff; font-family: -apple-system, "PingFang SC", sans-serif; }
+button { color: #bdddf3; background: #0c2c43; border: 1px solid #335d7e; padding: 8px 12px; cursor: pointer; }
+button[aria-pressed="true"] { color: white; border-color: #6acfff; background: #174563; }
+.preview-nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 20px; border-bottom: 1px solid #284961; font-size: 13px; }
+.preview-nav > div { display: flex; gap: 8px; }
+.preview-panel-note { padding: 24px 12px; font-size: 12px; color: #7798b1; line-height: 1.9; }
+.preview-map { display: grid; place-content: center; color: #6e9cba; letter-spacing: .2em; font-size: 12px; background: radial-gradient(ellipse, #103d51, #040f1f 70%); }
+.preview-provenance { padding: 10px 20px; color: #7496b0; font-size: 11px; }
+@media(max-width:700px) { .preview-nav { align-items: start; flex-direction: column; } .preview-nav > div { flex-wrap: wrap; } }

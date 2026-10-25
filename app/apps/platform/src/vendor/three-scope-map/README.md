@@ -12,8 +12,7 @@ and CITATION. This is not an official release by the original author.
 React lifecycle, raycasting, resource cleanup, fixture projection and historical
 overlay updates are integrated with this application's existing isolated demo.
 No China/province GeoJSON, unrelated terrain texture or Earth intro is copied.
-The eight parcels and six stations remain fictional. The image is the existing
-georeferenced OAM public orthophoto; mesh extrusion is illustrative, not DEM.
+The eight parcels and six stations remain fictional. The image is a georeferenced mosaic of user-supplied Hongliulin XYZ tiles; mesh extrusion is illustrative, not DEM.
 
 This is a React terminal parcel adaptation, not the complete Vue/Earth template.
 The upstream strict checker assumes Vue, administrative scope drilldown and an

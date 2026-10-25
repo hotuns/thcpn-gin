@@ -1,4 +1,3 @@
-import BorderBox12 from "./vendor/datav/border-box-12";
 import BorderBox13 from "./vendor/datav/border-box-13";
 import Decoration5 from "./vendor/datav/decoration-5";
 import Decoration8 from "./vendor/datav/decoration-8";
@@ -13,6 +12,8 @@ export function ObservatoryMasthead() {
     <Decoration8 className="obs-wing obs-wing-left" color={steel} reverse />
     <Decoration8 className="obs-wing obs-wing-right" color={steel} />
     <Decoration5 className="obs-masthead-base" color={accent} />
+    <span className="obs-scan-track" />
+    <span className="obs-signal-bars"><i /><i /><i /><i /><i /></span>
   </div>;
 }
 
@@ -24,16 +25,12 @@ export function ObservatoryTitle({ title, description, className = "" }: {
     <Decoration11 className="obs-title-frame" color={accent}>
       <div className="obs-title-copy">
         {subtitle && <span className="obs-title-eyebrow" title={subtitle}>{subtitle}</span>}
-        <h1 title={title}>{title}</h1>
+        <h1 title={title} aria-label={title}><span className="t-shimmer" data-text={title} aria-hidden="true">{title}</span></h1>
       </div>
     </Decoration11>
   </div>;
 }
 
-export function ObservatoryFrame() {
-  return <div className="obs-screen-frame" aria-hidden="true"><BorderBox12 color={steel} /></div>;
-}
-
 export function ObservatoryPanelFrame() {
-  return <div className="obs-panel-frame" aria-hidden="true"><BorderBox13 color={steel} /></div>;
+  return <div className="obs-panel-frame" aria-hidden="true"><BorderBox13 color={steel} /><span className="obs-panel-current" /></div>;
 }

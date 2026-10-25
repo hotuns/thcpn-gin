@@ -8,8 +8,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { hongliulin } from "./digital-plot-imagery";
 import { AtlasClock } from "./atlas-clock";
-import { ObservatoryFrame, ObservatoryMasthead, ObservatoryPanelFrame, ObservatoryTitle } from "./observatory-decoration";
+import { ObservatoryAutoScroll, ObservatoryMotionToggle, useObservatoryMotion } from "./observatory-motion";
+import { ObservatoryMasthead, ObservatoryPanelFrame, ObservatoryTitle } from "./observatory-decoration";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -159,7 +161,7 @@ function AtlasHome({ workspaceId }: { workspaceId: string }) {
       </header>
       <section className="atlas-custom-showcase" aria-labelledby="atlas-custom-title">
         <div><span id="atlas-custom-title">{t("digitalPlot.category")}</span><h2>{t("digitalPlot.title")}</h2><p>{t("digitalPlot.description")}</p><Button onClick={() => navigate("/atlas/topics/digital-plot")}>{t("digitalPlot.enter")} ↗</Button></div>
-        <img src="/digital-plot/forest-orthophoto.png" alt="" />
+        <img src={hongliulin.preview} alt="" />
         <span className="atlas-custom-badge">{t("digitalPlot.demo")}</span>
       </section>
       <ol className="atlas-creation-steps" aria-label={a("creationSteps")}>
@@ -328,6 +330,7 @@ function AtlasWorkspace({
   workspaceName: string;
   id?: string;
 }) {
+  const motion = useObservatoryMotion();
   const { t } = useLocale();
   const a = (key: string) => t(`atlas.${key}`);
   const navigate = useNavigate();
@@ -439,21 +442,22 @@ function AtlasWorkspace({
   return (
     <div
       className={`atlas-shell ${present ? "is-presenting" : ""} atlas-layout-${config.layout} atlas-template-${template.id}`}
+      data-observatory-motion={motion.enabled ? "running" : "paused"}
     >
-      <ObservatoryFrame />
       <div className="atlas-topbar">
       <ObservatoryMasthead />
       <header className="atlas-header">
         <ObservatoryTitle className="atlas-title" title={board.data?.name ?? a("defaultName")} description={config.description} />
       </header>
-      <AtlasHealth
-        framed={template.id === "panorama"}
+      {template.id === "panorama" && <AtlasHealth
+        framed
         workspaceId={workspaceId}
         deviceIds={scoped.map((device) => device.device_id)}
         loading={devices.isLoading}
-      />
+      />}
         <div className="atlas-header-actions">
           <AtlasClock />
+          <ObservatoryMotionToggle motion={motion} />
           <Button
             className="atlas-fullscreen-button"
             variant="ghost"
@@ -481,6 +485,7 @@ function AtlasWorkspace({
         </div>
       )}
       <Layout
+        summary={template.id !== "panorama" ? <AtlasHealth framed workspaceId={workspaceId} deviceIds={scoped.map(device => device.device_id)} loading={devices.isLoading} /> : undefined}
         analysis={config.show_trends !== false && selected ? <div className="atlas-analysis-host" ref={setAnalysisHost}><ObservatoryPanelFrame /></div> : undefined}
         directory={
           <aside className="atlas-directory">
@@ -515,7 +520,7 @@ function AtlasWorkspace({
                 ))}
               </SelectInput>
             </div>
-            <div className="atlas-device-list">
+            <ObservatoryAutoScroll className="atlas-device-list" label={a("deviceList")} paused={!motion.enabled} resetKey={visible.map(device => device.device_id).join(",")}>
               {devices.isLoading ? (
                 <AtlasEmpty text={a("loading")} />
               ) : !visible.length ? (
@@ -545,7 +550,7 @@ function AtlasWorkspace({
                   </Button>
                 ))
               )}
-            </div>
+            </ObservatoryAutoScroll>
             <footer>
               <Compass size={13} />
               {a("mapNote")}

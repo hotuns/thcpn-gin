@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Map, Marker, LngLatBounds, ScaleControl } from "maplibre-gl";
-import { tiandituImageryStyle } from "@thcpn/device-map";
+import { Map, LngLatBounds, ScaleControl } from "maplibre-gl";
+import { NativeDeviceLayer, tiandituImageryStyle } from "@thcpn/device-map";
 import type { DeviceMapItem } from "@thcpn/api";
 import { useLocale } from "@thcpn/i18n";
-import { Crosshair, Mountain, Map as MapIcon } from "lucide-react";
+import { Crosshair, Globe2, Mountain, Map as MapIcon } from "lucide-react";
 import { Button } from "./platform-ui";
 import { located } from "./atlas-model";
+import { MapTools } from "./map-tools";
 import {
   motionDuration,
   satelliteStyle,
@@ -22,20 +23,22 @@ type Props = {
   panorama?: boolean;
 };
 
-export function AtlasMapActions({ ready, terrain, terrainError, onReset, onTerrain }: {
+export function AtlasMapActions({ ready, terrain, terrainError, onReset, onTerrain, globe = false, onGlobe }: {
   ready: boolean; terrain: boolean; terrainError: boolean;
   onReset: () => void; onTerrain: () => void;
+  globe?: boolean; onGlobe?: () => void;
 }) {
   const { t } = useLocale();
   return <div className="observatory-view-controls atlas-map-actions" role="group" aria-label={t("atlas.overview")}>
     <Button variant="ghost" onClick={onReset}>
       <Crosshair size={15} />{t("atlas.resetMap")}
     </Button>
-    <Button variant="ghost" aria-pressed={terrain} disabled={!ready || terrainError} onClick={onTerrain} title={t("atlas.terrainHint")}>
+    <Button variant="ghost" aria-pressed={terrain && !globe} disabled={!ready || terrainError || globe} onClick={onTerrain} title={t("atlas.terrainHint")}>
       {terrain ? <Mountain size={14} /> : <MapIcon size={14} />}
       {t(terrain ? "atlas.terrain3d" : "atlas.terrain2d")}
     </Button>
-    {terrainError && <small role="status">{t("atlas.terrainUnavailable")}</small>}
+    {onGlobe && <Button variant="ghost" aria-pressed={globe} disabled={!ready} onClick={onGlobe} title={t("atlas.globeHint")}><Globe2 size={15} />{t(globe ? "atlas.returnMap" : "atlas.globe")}</Button>}
+    {terrainError && !globe && <small role="status">{t("atlas.terrainUnavailable")}</small>}
   </div>;
 }
 export function AtlasMap(props: Props) {
@@ -47,9 +50,13 @@ export function AtlasMap(props: Props) {
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
   const [terrain, setTerrain] = useState(true);
+  const [globe, setGlobe] = useState(false);
+  const globeRef = useRef(false);
+  globeRef.current = globe;
+  const savedCamera = useRef<{ center: [number, number]; zoom: number; bearing: number } | null>(null);
   const [terrainError, setTerrainError] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  const markers = useRef<Marker[]>([]);
+  const deviceLayer = useRef<NativeDeviceLayer | null>(null);
   const padding = (map: Map) => {
     const width = map.getContainer().clientWidth;
     return current.current.panorama && width > 900
@@ -62,6 +69,10 @@ export function AtlasMap(props: Props) {
       : { top: 65, bottom: 55, left: 55, right: 55 };
   };
   const fit = (map: Map) => {
+    if (globeRef.current) {
+      map.easeTo({ zoom: 1.1, pitch: 0, bearing: 0, padding: padding(map), duration: motionDuration() });
+      return;
+    }
     const points = current.current.points.filter(located);
     if (!points.length) return;
     const bounds = new LngLatBounds();
@@ -90,6 +101,7 @@ export function AtlasMap(props: Props) {
         center: [104, 35],
         zoom: 3,
         maxPitch: 65,
+        canvasContextAttributes: { preserveDrawingBuffer: true },
         attributionControl: { compact: true },
       });
     } catch {
@@ -121,8 +133,8 @@ export function AtlasMap(props: Props) {
     return () => {
       clearTimeout(timer);
       observer.disconnect();
-      markers.current.forEach((m) => m.remove());
-      markers.current = [];
+      deviceLayer.current?.dispose();
+      deviceLayer.current = null;
       map.remove();
       instance.current = null;
     };
@@ -131,16 +143,32 @@ export function AtlasMap(props: Props) {
     const map = instance.current;
     if (!map || !ready) return;
     try {
-      setSceneTerrain(map, terrain);
+      setSceneTerrain(map, terrain && !globe);
     } catch {
       setTerrain(false);
       setTerrainError(true);
     }
     map.easeTo({
-      pitch: terrain ? (props.panorama ? 48 : 30) : 0,
+      pitch: terrain && !globe ? (props.panorama ? 48 : 30) : 0,
       duration: motionDuration(),
     });
-  }, [ready, terrain, props.panorama]);
+  }, [ready, terrain, globe, props.panorama]);
+  useEffect(() => {
+    const map = instance.current;
+    if (!map || !ready) return;
+    if (globe) {
+      const center = map.getCenter();
+      savedCamera.current = { center: [center.lng, center.lat], zoom: map.getZoom(), bearing: map.getBearing() };
+      map.setProjection({ type: "globe" });
+      map.easeTo({ center: [center.lng, Math.max(-55, Math.min(55, center.lat))], zoom: 1.1, pitch: 0, bearing: 0, padding: padding(map), duration: motionDuration() });
+    } else {
+      map.setProjection({ type: "mercator" });
+      if (savedCamera.current) {
+        map.easeTo({ ...savedCamera.current, pitch: terrain ? (props.panorama ? 48 : 30) : 0, duration: motionDuration() });
+        savedCamera.current = null;
+      }
+    }
+  }, [ready, globe]);
   const locations = JSON.stringify(
     props.points
       .filter(located)
@@ -153,27 +181,8 @@ export function AtlasMap(props: Props) {
   useEffect(() => {
     const map = instance.current;
     if (!map || !ready) return;
-    markers.current.forEach((m) => m.remove());
-    markers.current = props.points.filter(located).map((p) => {
-      const el = document.createElement("button");
-      el.type = "button";
-      el.className =
-        "observatory-marker" +
-        (p.device_id === props.selectedId ? " is-selected" : "");
-      el.setAttribute("aria-label", p.name);
-      el.setAttribute("aria-pressed", String(p.device_id === props.selectedId));
-      const pin = document.createElement("span");
-      pin.className = "observatory-pin";
-      pin.setAttribute("aria-hidden", "true");
-      const label = document.createElement("span");
-      label.className = "observatory-marker-name";
-      label.textContent = p.name;
-      el.append(pin, label);
-      el.onclick = () => current.current.onSelect(p.device_id);
-      return new Marker({ element: el, anchor: "bottom" })
-        .setLngLat([p.longitude!, p.latitude!])
-        .addTo(map);
-    });
+    if (!deviceLayer.current) deviceLayer.current = new NativeDeviceLayer(map, id => current.current.onSelect(id));
+    deviceLayer.current.update(props.points, props.selectedId);
   }, [ready, props.points, props.selectedId]);
   useEffect(() => {
     const map = instance.current;
@@ -184,18 +193,19 @@ export function AtlasMap(props: Props) {
     map.easeTo({
       center: [selected.longitude!, selected.latitude!],
       padding: padding(map),
-      pitch: terrain ? (props.panorama ? 48 : 30) : 0,
+      pitch: terrain && !globeRef.current ? (props.panorama ? 48 : 30) : 0,
       duration: motionDuration(),
     });
   }, [ready, props.selectedId, locations]);
   return (
-    <div className="observatory-map">
+    <div className={`observatory-map${globe ? " is-globe" : ""}`}>
       <div
         ref={host}
         className="observatory-map-canvas"
         aria-label={t("atlas.overview")}
       />
-      <AtlasMapActions ready={ready} terrain={terrain} terrainError={terrainError} onReset={props.onReset} onTerrain={() => setTerrain(value => !value)} />
+      <AtlasMapActions ready={ready} terrain={terrain} terrainError={terrainError} globe={globe} onGlobe={() => setGlobe(value => !value)} onReset={props.onReset} onTerrain={() => setTerrain(value => !value)} />
+      <MapTools map={ready ? instance.current : null} />
       {(!ready || failed) && (
         <div
           className="observatory-map-status"

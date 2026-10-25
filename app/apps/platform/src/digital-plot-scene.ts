@@ -6,14 +6,18 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 import { mapTheme } from "./vendor/three-scope-map/mapTheme";
 import { createChaseLight, createFlyLine, createSideGradientMaterial } from "./vendor/three-scope-map/effects";
+import { loadHongliulinMosaic } from "./digital-plot-imagery";
 import { demoStations, fieldPixels } from "./digital-plot-field";
-import { metricSpecs, orthophoto, plots, reading, type Flight, type PlotMetric } from "./digital-plot-model";
+import { metricColor, metricSpecs, orthophoto, plots, reading, type Flight, type Plot, type PlotMetric } from "./digital-plot-model";
+import { weatherStationModel } from "./digital-plot-station-model";
 import { parcelBottom, parcelGeometry, parcelOuterContour, parcelTop, projectParcel, shapeForRing } from "./digital-plot-geometry";
 
 export type DigitalPlotMapProps = {
   selected: string; frame: number; metric: PlotMetric; heatmap: boolean;
   boundaries: boolean; stations: boolean; heat: boolean; aerial: boolean;
   opacity: number; flight?: Flight; reset: number; onSelect: (id: string) => void;
+  motionPaused?: boolean;
+  parcels?: Plot[]; models?: boolean; columns?: boolean; links?: boolean; tour?: boolean;
 };
 type SceneState = DigitalPlotMapProps & { tilted: boolean; names: string[]; stationLabel: string };
 type Feature = {
@@ -21,7 +25,7 @@ type Feature = {
   material: THREE.MeshStandardMaterial; edgeMaterial: THREE.LineBasicMaterial;
   label: HTMLButtonElement; value: HTMLElement;
 };
-type Callbacks = { ready: () => void; imageError: () => void; contextLost: () => void };
+type Callbacks = { ready: () => void; imageError: () => void; imageFallback?: () => void; contextLost: () => void };
 
 /** Owns one WebGL context. Prop updates never rebuild its geometry or camera. */
 export class DigitalPlotScene {
@@ -44,6 +48,7 @@ export class DigitalPlotScene {
   private heatTexture?: THREE.DataTexture;
   private imageTexture?: THREE.Texture;
   private imageLoaded = false;
+  private imageryAbort = new AbortController();
   private animation = 0;
   private disposed = false;
   private hovered = "";
@@ -53,7 +58,11 @@ export class DigitalPlotScene {
   private reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
   private firstFrame = false;
   private lastFrame = 0;
-  private startTime = performance.now();
+  private ambientTime = 0;
+  private modelObjects: THREE.Group[] = [];
+  private turbines: THREE.Group[] = [];
+  private columns = new Map<string, THREE.Mesh<THREE.BoxGeometry, THREE.MeshStandardMaterial>>();
+  private tourResumeAt = 0;
 
   constructor(private host: HTMLDivElement, initial: SceneState, private callbacks: Callbacks) {
     this.state = initial;
@@ -71,6 +80,8 @@ export class DigitalPlotScene {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = .08;
+    this.controls.addEventListener("start", this.pauseTour);
+    this.controls.addEventListener("end", this.pauseTour);
     this.controls.minDistance = 360;
     this.controls.maxDistance = 1800;
     this.controls.maxPolarAngle = Math.PI * .43;
@@ -80,7 +91,7 @@ export class DigitalPlotScene {
     light.position.set(120, -240, 420);
     this.scene.add(light);
 
-    for (const plot of plots) {
+    for (const plot of initial.parcels ?? plots) {
       const geometry = parcelGeometry(plot);
       const group = new THREE.Group();
       const material = new THREE.MeshStandardMaterial({ color: mapTheme.surfaceBase, roughness: .87, metalness: .12, emissive: mapTheme.surfaceEmissive, emissiveIntensity: .35, side: THREE.DoubleSide });
@@ -104,6 +115,9 @@ export class DigitalPlotScene {
       const labelObject = new CSS2DObject(label);
       labelObject.position.copy(projectParcel(plot.center, parcelTop + 6));
       group.add(top, side, overlay, edge, labelObject);
+      const column = new THREE.Mesh(new THREE.BoxGeometry(7, 7, 1), new THREE.MeshStandardMaterial({ color: mapTheme.accent, emissive: mapTheme.accent, emissiveIntensity: .7, transparent: true, opacity: .7 }));
+      column.position.copy(projectParcel(plot.center, parcelTop)); column.position.x += 20;
+      group.add(column); this.columns.set(plot.id, column);
       this.features.set(plot.id, { group, top, overlay, edge, material, edgeMaterial, label, value });
       this.scene.add(group);
     }
@@ -119,13 +133,28 @@ export class DigitalPlotScene {
     this.createStations();
     this.scene.add(this.stationObjects, this.flyLines, this.ringDecor);
 
-    this.imageTexture = new THREE.TextureLoader().load(orthophoto, texture => {
+    const useTexture = (texture: THREE.Texture) => {
       if (this.disposed) { texture.dispose(); return; }
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.anisotropy = Math.min(this.renderer.capabilities.getMaxAnisotropy(), 8);
+      this.imageTexture = texture;
       this.imageLoaded = true;
       this.updateImage();
-    }, undefined, () => { if (!this.disposed) callbacks.imageError(); });
+    };
+    void loadHongliulinMosaic(this.imageryAbort.signal).then(canvas => {
+      useTexture(new THREE.CanvasTexture(canvas));
+      this.host.dataset.imagery = "hongliulin-tiles";
+    }).catch(() => {
+      if (this.disposed) return;
+      this.imageryAbort.abort();
+      this.host.dataset.imagery = "hongliulin-preview-loading";
+      this.imageTexture = new THREE.TextureLoader().load(orthophoto, texture => {
+        useTexture(texture);
+        if (!this.disposed) { this.host.dataset.imagery = "hongliulin-preview"; callbacks.imageFallback?.(); }
+      }, undefined, () => {
+        if (!this.disposed) { this.host.dataset.imagery = "unavailable"; callbacks.imageError(); }
+      });
+    });
     this.renderer.domElement.addEventListener("pointermove", this.onPointerMove);
     this.renderer.domElement.addEventListener("pointerdown", this.onPointerDown);
     this.renderer.domElement.addEventListener("pointerup", this.onPointerUp);
@@ -175,15 +204,8 @@ export class DigitalPlotScene {
       const stationGroup = new THREE.Group();
       stationGroup.userData.plotId = station.plot.id;
       stationGroup.position.copy(projectParcel(station.coordinate, parcelTop + 1));
-      const metal = new THREE.MeshStandardMaterial({ color: mapTheme.labelText, metalness: .5, roughness: .4 });
-      const mast = new THREE.Mesh(new THREE.CylinderGeometry(.7, .85, 19, 8), metal);
-      mast.rotation.x = Math.PI / 2;
-      mast.position.z = 9.5;
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(8, 5, .7), new THREE.MeshStandardMaterial({ color: mapTheme.accent, metalness: .35, roughness: .5 }));
-      panel.position.set(0, 0, 12);
-      panel.rotation.x = .3;
-      const sensor = new THREE.Mesh(new THREE.SphereGeometry(1.7, 12, 8), new THREE.MeshBasicMaterial({ color: mapTheme.flyHead }));
-      sensor.position.z = 20;
+      const model = weatherStationModel();
+      this.modelObjects.push(model.group); this.turbines.push(model.turbine);
       const ripple = new THREE.Mesh(new THREE.RingGeometry(3, 3.7, 48), new THREE.MeshBasicMaterial({ color: mapTheme.accent, transparent: true, opacity: .65, side: THREE.DoubleSide, depthWrite: false }));
       ripple.position.z = .8;
       ripple.userData.phase = index / demoStations.length;
@@ -196,8 +218,8 @@ export class DigitalPlotScene {
       element.dataset.station = station.id;
       element.setAttribute("aria-label", `${this.state.stationLabel} ${station.id} · ${station.plot.id}`);
       const label = new CSS2DObject(element);
-      label.position.set(0, 0, 26);
-      stationGroup.add(mast, panel, sensor, ripple, label);
+      label.position.set(0, 0, 36);
+      stationGroup.add(model.group, ripple, label);
       this.stationObjects.add(stationGroup);
       if (index !== 2) {
         const { line, material } = createFlyLine(source, projectParcel(station.coordinate, 68), index * .047);
@@ -243,7 +265,7 @@ export class DigitalPlotScene {
     }
     this.heatMaterial.opacity = state.opacity / 100 * .8;
     const spec = metricSpecs[state.metric];
-    plots.forEach(plot => {
+    (state.parcels ?? plots).forEach(plot => {
       const feature = this.features.get(plot.id)!;
       feature.overlay.visible = state.heat;
       feature.edge.visible = state.boundaries || state.selected === plot.id;
@@ -252,9 +274,16 @@ export class DigitalPlotScene {
       feature.label.title = `${plot.id} · ${state.names[plot.index]}`;
       feature.value.textContent = `${reading(plot.index, state.frame, state.metric).toFixed(spec.digits)}${spec.unit}`;
       feature.label.classList.toggle("is-selected", state.selected === plot.id);
+      const column = this.columns.get(plot.id)!;
+      const value = reading(plot.index, state.frame, state.metric);
+      const height = 5 + Math.max(0, Math.min(1, (value - spec.min) / (spec.max - spec.min))) * 70;
+      column.scale.z = height; column.position.z = parcelTop + height / 2;
+      column.material.color.set(metricColor(value, state.metric)); column.material.emissive.copy(column.material.color);
+      column.visible = state.columns === true && state.heat;
     });
     this.stationObjects.visible = state.stations;
-    this.flyLines.visible = state.stations;
+    this.flyLines.visible = state.stations && state.links !== false;
+    this.modelObjects.forEach(model => { model.visible = state.models !== false; });
     this.stationObjects.traverse(object => {
       if (!(object instanceof CSS2DObject)) return;
       const element = object.element;
@@ -295,7 +324,8 @@ export class DigitalPlotScene {
     this.hovered = this.pick(event) ?? "";
     this.renderer.domElement.style.cursor = this.hovered ? "pointer" : "grab";
   };
-  private onPointerDown = (event: PointerEvent) => { this.pointerDown = { x: event.clientX, y: event.clientY }; };
+  private pauseTour = () => { this.tourResumeAt = performance.now() + 8000; };
+  private onPointerDown = (event: PointerEvent) => { this.pauseTour(); this.pointerDown = { x: event.clientX, y: event.clientY }; };
   private onPointerUp = (event: PointerEvent) => {
     if (this.pointerDown && Math.hypot(event.clientX - this.pointerDown.x, event.clientY - this.pointerDown.y) < 5) {
       const id = this.pick(event);
@@ -313,8 +343,13 @@ export class DigitalPlotScene {
     if (this.disposed || document.hidden) return;
     this.animation = requestAnimationFrame(this.animate);
     if (now - this.lastFrame < 1000 / 30) return;
+    const delta = this.lastFrame ? Math.min((now - this.lastFrame) / 1000, .1) : 0;
     this.lastFrame = now;
-    const time = this.reducedMotion ? 0 : (now - this.startTime) / 1000;
+    if (!this.reducedMotion && !this.state.motionPaused) this.ambientTime += delta;
+    const time = this.ambientTime;
+    this.turbines.forEach((turbine, index) => { turbine.rotation.z = time * (1.1 + index * .1); });
+    this.controls.autoRotate = this.state.tour === true && !this.state.motionPaused && now > this.tourResumeAt;
+    this.controls.autoRotateSpeed = .6;
     for (const [id, feature] of this.features) {
       const active = id === this.state.selected || id === this.hovered;
       feature.group.position.z = this.reducedMotion ? (active ? 7 : 0) : THREE.MathUtils.lerp(feature.group.position.z, active ? 7 : 0, .2);
@@ -347,9 +382,31 @@ export class DigitalPlotScene {
     }
   };
 
+  snapshot() {
+    this.renderer.render(this.scene, this.camera);
+    const canvas = document.createElement("canvas");
+    canvas.width = this.renderer.domElement.width; canvas.height = this.renderer.domElement.height;
+    const ctx = canvas.getContext("2d"); if (!ctx) throw new Error("Snapshot canvas unavailable");
+    ctx.fillStyle = "#03070b"; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.drawImage(this.renderer.domElement, 0,0);
+    const scale = canvas.width / this.host.clientWidth;
+    for (const [id, feature] of this.features) {
+      const object = feature.group.children.find(child => child instanceof CSS2DObject);
+      if (!object) continue;
+      const point = object.getWorldPosition(new THREE.Vector3()).project(this.camera);
+      if (point.z < -1 || point.z > 1) continue;
+      const x = (point.x + 1) / 2 * canvas.width, y = (1 - point.y) / 2 * canvas.height;
+      ctx.fillStyle = "#071b2bea"; ctx.fillRect(x-36*scale,y-20*scale,72*scale,40*scale);
+      ctx.strokeStyle = id === this.state.selected ? mapTheme.accent : mapTheme.accentSoft; ctx.strokeRect(x-36*scale,y-20*scale,72*scale,40*scale);
+      ctx.fillStyle = mapTheme.labelText; ctx.font = `${11*scale}px system-ui`; ctx.textAlign = "center";
+      ctx.fillText(id,x,y-4*scale); ctx.fillText(feature.value.textContent ?? "",x,y+11*scale);
+    }
+    return canvas;
+  }
+
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    this.imageryAbort.abort();
     cancelAnimationFrame(this.animation);
     this.observer?.disconnect();
     document.removeEventListener("visibilitychange", this.onVisibility);
@@ -361,6 +418,8 @@ export class DigitalPlotScene {
     canvas.removeEventListener("pointerleave", this.onPointerLeave);
     canvas.removeEventListener("webglcontextlost", this.onContextLost);
     }
+    this.controls?.removeEventListener("start", this.pauseTour);
+    this.controls?.removeEventListener("end", this.pauseTour);
     this.controls?.dispose();
     const geometries = new Set<THREE.BufferGeometry>(), materials = new Set<THREE.Material>();
     this.scene.traverse(object => {

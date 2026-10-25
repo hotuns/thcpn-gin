@@ -8,8 +8,9 @@ import { fieldBounds } from "./digital-plot-field";
 export const parcelTop = 44;
 export const parcelBottom = 24;
 const origin = [(imageBounds[0] + imageBounds[2]) / 2, (imageBounds[1] + imageBounds[3]) / 2];
+const projectionScale = 500 / ((imageBounds[2] - imageBounds[0]) * Math.cos(origin[1] * Math.PI / 180));
 export function projectParcel([lng, lat]: readonly number[], z = parcelTop) {
-  return new THREE.Vector3((lng - origin[0]) * Math.cos(origin[1] * Math.PI / 180) * 20000, (lat - origin[1]) * 20000, z);
+  return new THREE.Vector3((lng - origin[0]) * Math.cos(origin[1] * Math.PI / 180) * projectionScale, (lat - origin[1]) * projectionScale, z);
 }
 export function shapeForRing(ring: readonly (readonly number[])[]) {
   const shape = new THREE.Shape();

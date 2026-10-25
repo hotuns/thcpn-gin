@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -185,6 +186,15 @@ describe("atlas model", () => {
     ]);
     expect(atlasTemplate("unknown").id).toBe("technology");
   });
+  it("places the technology health summary above the device list in the left column", () => {
+    const Layout=atlasTemplate("technology").Layout;
+    const html=renderToStaticMarkup(<Layout summary={<section data-health/>} directory={<aside data-directory/>} map={<div data-map/>} inspector={<aside data-inspector/>}/>);
+    const host=document.createElement("div");host.innerHTML=html;
+    const column=host.querySelector(".atlas-directory-column")!;
+    expect(column.children[0].hasAttribute("data-health")).toBe(true);
+    expect(column.children[1].hasAttribute("data-directory")).toBe(true);
+    expect(host.querySelector("[data-map]")?.closest(".atlas-directory-column")).toBeNull();
+  });
   it("keeps unlocated devices searchable and treats zero coordinates as valid", () => {
     expect(located(device)).toBe(false);
     expect(located({ latitude: 0, longitude: 0 })).toBe(true);
@@ -284,7 +294,7 @@ describe("atlas interactions", () => {
     expect(create).not.toHaveBeenCalled();
     expect(
       container.querySelectorAll(".atlas-header-actions button"),
-    ).toHaveLength(1);
+    ).toHaveLength(2); // Fullscreen plus ambient-motion pause; no management controls.
     expect(container.querySelector(".atlas-template-bar")).toBeNull();
     expect(container.querySelector(".atlas-title")?.textContent).not.toContain(
       "Test workspace",
@@ -555,7 +565,7 @@ describe("atlas interactions", () => {
     await settle();
     expect(
       container.querySelectorAll(".atlas-header-actions button"),
-    ).toHaveLength(1); // fullscreen only
+    ).toHaveLength(2); // Fullscreen plus ambient-motion pause, not editing.
     expect(
       container.querySelector(".atlas-device-list")?.textContent,
     ).toContain("Forest station");

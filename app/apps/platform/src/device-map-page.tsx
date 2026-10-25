@@ -6,8 +6,11 @@ import { DeviceMap, iconifyIconUrl, tiandituImageryStyle } from "@thcpn/device-m
 import { Button, StateView, Switch } from "./platform-ui";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { DEVICE_LIST_STALE_TIME, DEVICE_MAP_STALE_TIME } from "./device-list-cache";
+import type { Map as LibreMap } from "maplibre-gl";
+import { MapTools } from "./map-tools";
 
 export function DeviceMapPage() {
+  const [mapInstance, setMapInstance] = useState<LibreMap | null>(null);
   const { currentId, current } = useWorkspace();
   const [includeChildren, setIncludeChildren] = useState(false);
   const [ecosystem, setEcosystem] = useState("");
@@ -48,6 +51,7 @@ export function DeviceMapPage() {
   return (
     <div className="immersive-device-map" data-onboarding="map-canvas">
       <DeviceMap
+        onMapReady={setMapInstance}
         height="100%"
         styleUrl={token ? undefined : import.meta.env.VITE_MAP_STYLE_URL}
         mapStyle={mapStyle}
@@ -55,6 +59,7 @@ export function DeviceMapPage() {
         selectedDeviceId={selectedId}
         onSelect={setSelectedId}
       />
+      <MapTools map={mapInstance} />
 
       <section className={`device-map-console t-resize ${consoleCollapsed ? "is-collapsed" : ""}`} aria-label="地图筛选">
         {consoleCollapsed ? (
@@ -129,7 +134,7 @@ function DeviceMapDetail({ item, onClose }: { item: DeviceMapItem; onClose: () =
   return (
     <aside className="device-map-detail" aria-label="设备信息">
       <button type="button" className="device-map-detail-close" onClick={onClose} aria-label="关闭设备信息"><X size={16} /></button>
-      <span className={`device-map-detail-status ${item.status === "active" ? "is-active" : ""}`}>{item.status === "active" ? "在线资产" : item.status}</span>
+      <span className={`device-map-detail-status ${item.status === "active" ? "is-active" : ""}`}>{item.status === "active" ? "已启用资产" : item.status}</span>
       <h2>{item.name}</h2>
       <p className="mono">SN {item.serial_no}</p>
       <dl>
