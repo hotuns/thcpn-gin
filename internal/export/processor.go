@@ -664,6 +664,9 @@ func (p *Processor) renderDeviceBatchZIP(ctx context.Context, job Job, cfg batch
 			}
 		}
 	}
+	if err := validateBatchReadResults(quality); err != nil {
+		return err
+	}
 	deviceWriter.Flush()
 	if err := deviceWriter.Error(); err != nil {
 		return err
@@ -708,32 +711,15 @@ func (p *Processor) queryTelemetryStreamFull(ctx context.Context, stream sqlc.Da
 	if err != nil {
 		return telemetrySeries{}, err
 	}
-	limit := p.cfg.MaxRows
-	if limit <= 0 {
-		limit = 100000
-	}
-	var result platform.TelemetryResult
-	for attempt := 0; attempt < 8; attempt++ {
-		result, err = p.runtime.QueryTelemetry(ctx, source, platform.TelemetryQuery{Binding: binding, Start: start, End: end, Limit: limit})
-		if err != nil {
-			return telemetrySeries{}, err
-		}
-		if result.Complete {
-			break
-		}
-		if limit >= 10_000_000 {
-			return telemetrySeries{}, apperr.New(apperr.KindDataSource, "telemetry export exceeds the supported size without pagination")
-		}
-		limit *= 2
-	}
-	if !result.Complete {
-		return telemetrySeries{}, apperr.New(apperr.KindDataSource, "telemetry export is incomplete")
+	points, err := p.queryExportTelemetry(ctx, source, platform.TelemetryQuery{Binding: binding, Start: start, End: end, Limit: p.cfg.MaxRows})
+	if err != nil {
+		return telemetrySeries{}, err
 	}
 	unit := ""
 	if stream.Unit != nil {
 		unit = *stream.Unit
 	}
-	return telemetrySeries{DataStreamID: stream.ID, DeviceID: stream.DeviceID, Code: stream.Code, Name: stream.Name, Unit: unit, Points: result.Points}, nil
+	return telemetrySeries{DataStreamID: stream.ID, DeviceID: stream.DeviceID, Code: stream.Code, Name: stream.Name, Unit: unit, Points: points}, nil
 }
 
 func (p *Processor) renderDatasetZIP(ctx context.Context, job Job, output io.Writer) error {
@@ -1048,25 +1034,16 @@ func (p *Processor) queryDeviceMediaAll(ctx context.Context, deviceID uuid.UUID,
 		if err != nil {
 			return nil, err
 		}
-		page := 1
-		streamCount := 0
-		for {
-			result, err := p.runtime.QueryMedia(ctx, source, platform.MediaQuery{Binding: binding, Start: start, End: end, Page: page, PageSize: pageSize, MediaType: stream.Type})
-			if err != nil {
-				return nil, err
+		records, err := p.queryExportMedia(ctx, source, platform.MediaQuery{Binding: binding, Start: start, End: end, PageSize: pageSize, MediaType: stream.Type})
+		if err != nil {
+			return nil, err
+		}
+		for _, record := range records {
+			thumbnail := ""
+			if record.ThumbnailObjectKey != nil {
+				thumbnail = *record.ThumbnailObjectKey
 			}
-			for _, record := range result.Items {
-				thumbnail := ""
-				if record.ThumbnailObjectKey != nil {
-					thumbnail = *record.ThumbnailObjectKey
-				}
-				items = append(items, mediaExportItem{DataStreamID: stream.ID, DeviceID: stream.DeviceID, MediaID: record.ID, MediaType: record.MediaType, CameraName: stream.Name, CapturedAt: record.CapturedAt, ObjectKey: record.ObjectKey, ThumbnailObjectKey: thumbnail})
-				streamCount++
-			}
-			if len(result.Items) == 0 || streamCount >= result.Total || len(result.Items) < pageSize {
-				break
-			}
-			page++
+			items = append(items, mediaExportItem{DataStreamID: stream.ID, DeviceID: stream.DeviceID, MediaID: record.ID, MediaType: record.MediaType, CameraName: stream.Name, CapturedAt: record.CapturedAt, ObjectKey: record.ObjectKey, ThumbnailObjectKey: thumbnail})
 		}
 	}
 	return items, nil
