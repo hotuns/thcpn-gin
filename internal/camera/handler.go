@@ -212,6 +212,9 @@ func (h *Handler) CreateLiveSession(c *gin.Context) {
 }
 
 func (h *Handler) authorize(c *gin.Context, actorID uuid.UUID, deviceID uuid.UUID, action string) bool {
+	if actor, ok := auth.ActorFromContext(c); ok && actor.IsSystemAdmin {
+		return true
+	}
 	if h.checker == nil {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInternal, "permission checker is not configured"))
 		return false
@@ -232,6 +235,9 @@ func (h *Handler) authorize(c *gin.Context, actorID uuid.UUID, deviceID uuid.UUI
 }
 
 func (h *Handler) record(c *gin.Context, input audit.RecordInput) {
+	if actor, ok := auth.ActorFromContext(c); ok && actor.IsSystemAdmin {
+		input.ActorType = audit.ActorSystemAdmin
+	}
 	if h.audit == nil {
 		return
 	}

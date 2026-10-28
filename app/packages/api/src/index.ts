@@ -1290,6 +1290,7 @@ export const api = {
     nodeTimeConfigDetail: (id: string, index: number, configId: number) => request<LoRaWANV2TimeConfig>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes/${index}/time-configs/${configId}`),
     lorawanInfo: (id: string) => request<LoRaWANV2GatewayInfo | null>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/info`),
     deviceNodes: (id: string) => request<Schema<"GatewayNodeList">>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes`),
+    nodeRuntime: (id:string) => request<{items:NodeRuntime[];refreshed_at:string}>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes/runtime`),
     reconcileDeviceConfig: (id: string) => jsonRequest<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/config/resync`, "POST", {}),
     startSourceSync: (id: string) => request<SourceOperation>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/sync`, { method: "POST" }),
     deviceSourceConfig: (id: string, kind: "gateway" | "sensor", input: JsonRecord = {}) => request<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/source-config/${kind}${queryString(input as Record<string, string | number | boolean>)}`),
@@ -1299,6 +1300,35 @@ export const api = {
     deviceContext: (id: string) => request<DeviceInteractionContext>(`/api/v1/admin/devices/${encodeURIComponent(id)}/context`),
     deviceTelemetry: (id: string, input: {startTime:string;endTime:string;dataStreamIds:string[];targetPoints?:number}) => request<TelemetryQueryResponse>(`/api/v1/admin/devices/${encodeURIComponent(id)}/telemetry${queryString({start_time:input.startTime,end_time:input.endTime,data_stream_ids:input.dataStreamIds.join(","),adaptive:true,target_points:input.targetPoints ?? 2,limit:500})}`),
     deviceEarliestTelemetry: (id: string) => request<EarliestDeviceData>(`/api/v1/admin/devices/${encodeURIComponent(id)}/telemetry/earliest`),
+    queryDeviceTelemetry: (id: string, input: {startTime:string;endTime:string;dataStreamIds?:string[];limit?:number}) => request<TelemetryQueryResponse>(`/api/v1/admin/devices/${encodeURIComponent(id)}/telemetry${queryString({start_time:input.startTime,end_time:input.endTime,data_stream_ids:input.dataStreamIds?.join(","),adaptive:false,limit:input.limit ?? 5000})}`),
+    deviceMedia: (id: string, input: Record<string,string|number>) => request<MediaListResponse>(`/api/v1/admin/devices/${encodeURIComponent(id)}/media${queryString(input)}`),
+    downloadMedia: (url: string) => {
+      if (!url.startsWith("/api/v1/admin/media/download?")) throw new Error("Invalid administrator media URL");
+      return request<{url:string}>(url);
+    },
+    deleteMedia: (url: string) => {
+      if (!url.startsWith("/api/v1/admin/media?")) throw new Error("Invalid administrator media URL");
+      return request<void>(url,{method:"DELETE"});
+    },
+    exportJobs: (deviceId?:string) => request<ListResponse<ExportJob>>(`/api/v1/admin/export-jobs${queryString({device_id:deviceId,limit:200})}`),
+    createExport: (payload:JsonRecord) => jsonRequest<ExportJob>("/api/v1/admin/export-jobs","POST",payload),
+    exportDownload: (id:string) => request<{url:string}>(`/api/v1/admin/export-jobs/${encodeURIComponent(id)}/download`),
+    deviceProfile: (id:string) => request<DeviceProfile>(`/api/v1/admin/devices/${encodeURIComponent(id)}/profile`),
+    updateDeviceProfile: (id:string,payload:JsonRecord) => jsonRequest<DeviceProfile>(`/api/v1/admin/devices/${encodeURIComponent(id)}/profile`,"PATCH",payload),
+    setDeviceLocation: (id:string,location:{latitude:number|null;longitude:number|null}) => jsonRequest<DeviceProfile>(`/api/v1/admin/devices/${encodeURIComponent(id)}/profile/location`,"PATCH",location),
+    uploadDeviceImages: (id:string,files:File[]) => {
+      const body=new FormData(); files.forEach(file=>body.append("files",file));
+      return request<ListResponse<DeviceProfileImage>>(`/api/v1/admin/devices/${encodeURIComponent(id)}/profile/images`,{method:"POST",body});
+    },
+    updateDeviceImage: (id:string,imageId:string,payload:JsonRecord) => jsonRequest<DeviceProfileImage>(`/api/v1/admin/devices/${encodeURIComponent(id)}/profile/images/${encodeURIComponent(imageId)}`,"PATCH",payload),
+    deleteDeviceImage: (id:string,imageId:string) => request<void>(`/api/v1/admin/devices/${encodeURIComponent(id)}/profile/images/${encodeURIComponent(imageId)}`,{method:"DELETE"}),
+    reorderDeviceImages: (id:string,ids:string[]) => jsonRequest(`/api/v1/admin/devices/${encodeURIComponent(id)}/profile/images/order`,"PUT",{image_ids:ids}),
+    samplingProfile: (id:string) => request<SamplingProfile>(`/api/v1/admin/devices/${encodeURIComponent(id)}/sampling-profile`),
+    updateSamplingProfile: (id:string,payload:JsonRecord) => jsonRequest<SamplingProfile>(`/api/v1/admin/devices/${encodeURIComponent(id)}/sampling-profile`,"PATCH",payload),
+    carbonFlux: (id:string,input:Record<string,string|number>) => request<CarbonFluxResponse>(`/api/v1/admin/devices/${encodeURIComponent(id)}/carbon/flux${queryString(input)}`),
+    carbonPeriods: (id:string,input:Record<string,string|number>) => request<ListResponse<CarbonPeriodSummary>>(`/api/v1/admin/devices/${encodeURIComponent(id)}/carbon/periods${queryString(input)}`),
+    carbonPeriod: (id:string,period:string,input:Record<string,string|number>) => request<CarbonPeriodDetail>(`/api/v1/admin/devices/${encodeURIComponent(id)}/carbon/periods/${encodeURIComponent(period)}${queryString(input)}`),
+    cameraLive: (id:string) => jsonRequest<CameraLiveSession>(`/api/v1/admin/devices/${encodeURIComponent(id)}/camera/live-session`,"POST",{}),
     deviceLoRaWANV2Context: (id: string) =>
       request<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/context`),
     loraWANV2NodeData: (id: string, sn: string, node: number, input: JsonRecord = {}) =>

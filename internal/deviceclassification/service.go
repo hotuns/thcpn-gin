@@ -357,14 +357,15 @@ func (s *Service) UpdateSite(ctx context.Context, input UpdateSiteInput) (SiteEn
 }
 
 const deviceMapQuery = `SELECT d.id,d.name,d.serial_no,d.device_type,d.status,COALESCE(own.workspace_id,parent_assignment.workspace_id),COALESCE(own.site_id,parent_assignment.site_id),
-	st.latitude,
-	st.longitude,
-	CASE WHEN st.latitude IS NOT NULL AND st.longitude IS NOT NULL THEN 'site' ELSE 'none' END,
+	COALESCE(dp.latitude,st.latitude),
+	COALESCE(dp.longitude,st.longitude),
+	CASE WHEN dp.latitude IS NOT NULL AND dp.longitude IS NOT NULL THEN 'device' WHEN st.latitude IS NOT NULL AND st.longitude IS NOT NULL THEN 'site' ELSE 'none' END,
 	(SELECT count(*) FROM device_relations cr WHERE cr.parent_device_id=d.id AND cr.relation_type='gateway_node' AND cr.status='active')
 	FROM devices d
 	LEFT JOIN device_relations rel ON rel.child_device_id=d.id AND rel.relation_type='gateway_node' AND rel.status='active'
 	LEFT JOIN device_assignments own ON own.device_id=d.id AND own.status='active'
 	LEFT JOIN device_assignments parent_assignment ON parent_assignment.device_id=rel.parent_device_id AND parent_assignment.status='active'
+	LEFT JOIN device_profiles dp ON dp.device_id=d.id
 	LEFT JOIN sites st ON st.id=COALESCE(own.site_id,parent_assignment.site_id)
 	WHERE ($1::uuid IS NULL OR COALESCE(own.workspace_id,parent_assignment.workspace_id)=$1) AND ($2 OR d.device_type <> 'gateway_node')
 	ORDER BY d.name,d.id`
@@ -394,8 +395,14 @@ func (s *Service) Map(ctx context.Context, workspaceID *uuid.UUID, includeChildr
 		return MapResult{}, err
 	}
 	rows.Close()
-	if s.locationLoader != nil {
-		locations, err := s.locationLoader(ctx, deviceIDs)
+	sourceDeviceIDs := make([]uuid.UUID, 0, len(deviceIDs))
+	for _, item := range result.Items {
+		if item.LocationSource != "device" {
+			sourceDeviceIDs = append(sourceDeviceIDs, item.DeviceID)
+		}
+	}
+	if s.locationLoader != nil && len(sourceDeviceIDs) > 0 {
+		locations, err := s.locationLoader(ctx, sourceDeviceIDs)
 		if err != nil {
 			return MapResult{}, err
 		}
@@ -404,7 +411,7 @@ func (s *Service) Map(ctx context.Context, workspaceID *uuid.UUID, includeChildr
 			if !ok {
 				continue
 			}
-			if location.Latitude != nil && location.Longitude != nil {
+			if location.Latitude != nil && location.Longitude != nil && result.Items[index].LocationSource != "device" {
 				result.Items[index].Latitude = location.Latitude
 				result.Items[index].Longitude = location.Longitude
 				result.Items[index].LocationSource = "source"

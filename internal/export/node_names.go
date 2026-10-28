@@ -26,6 +26,15 @@ func (s *Service) snapshotNodeNames(ctx context.Context, resourceType string, id
 	}
 	delete(cfg, "node_names")
 	delete(cfg, "node_indices")
+	if resourceType == "device_batch" {
+		if rawID, ok := cfg["gateway_id"].(string); ok && rawID != "" {
+			gatewayID, parseErr := uuid.Parse(rawID)
+			if parseErr != nil {
+				return nil, apperr.New(apperr.KindInvalidArgument, "invalid gateway_id")
+			}
+			id = gatewayID
+		}
+	}
 	asset, err := s.devices.GetAsset(ctx, id)
 	if err != nil {
 		return nil, err

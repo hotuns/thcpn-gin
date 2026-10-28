@@ -53,6 +53,11 @@ func (h *Handler) Get(c *gin.Context) {
 		httpx.WriteAppError(c, err)
 		return
 	}
+	if actor.IsSystemAdmin {
+		result.CanConfigure, result.CanManagePlacement = true, true
+		c.JSON(http.StatusOK, result)
+		return
+	}
 	configure, checkErr := h.checker.Can(c.Request.Context(), permission.Actor{UserID: actor.UserID}, "device.configure", permission.ResourceRef{Type: "device", ID: deviceID})
 	if checkErr != nil {
 		httpx.WriteAppError(c, checkErr)
@@ -73,7 +78,7 @@ func (h *Handler) Update(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
-	result, err := h.service.Update(c.Request.Context(), UpdateProfileInput{DeviceID: deviceID, Description: req.Description, LocationText: req.LocationText, ActorUserID: actor.UserID})
+	result, err := h.service.Update(c.Request.Context(), UpdateProfileInput{DeviceID: deviceID, Description: req.Description, LocationText: req.LocationText, ActorUserID: actor.UserID, Administrator: actor.IsSystemAdmin})
 	if err != nil {
 		h.record(c, actor.UserID, deviceID, "device.profile.update", audit.ResultFailure, apperr.MessageOf(err))
 		httpx.WriteAppError(c, err)
@@ -82,6 +87,39 @@ func (h *Handler) Update(c *gin.Context) {
 	if !h.record(c, actor.UserID, deviceID, "device.profile.update", audit.ResultSuccess, "") {
 		return
 	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminLocation(c *gin.Context) {
+	id, actor, ok := h.authorize(c, "device.configure")
+	if !ok {
+		return
+	}
+	if !actor.IsSystemAdmin {
+		httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "administrator required"))
+		return
+	}
+	var req map[string]*float64
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid coordinates"))
+		return
+	}
+	latitude, hasLatitude := req["latitude"]
+	longitude, hasLongitude := req["longitude"]
+	if !hasLatitude || !hasLongitude {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "latitude and longitude fields are required; use null to clear both"))
+		return
+	}
+	result, err := h.service.SetLocation(c.Request.Context(), id, latitude, longitude)
+	if err != nil {
+		h.record(c, actor.UserID, id, "device.location.update", audit.ResultFailure, apperr.MessageOf(err))
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, actor.UserID, id, "device.location.update", audit.ResultSuccess, "") {
+		return
+	}
+	result.CanConfigure, result.CanManagePlacement = true, true
 	c.JSON(http.StatusOK, result)
 }
 
@@ -122,7 +160,11 @@ func (h *Handler) Upload(c *gin.Context) {
 		}
 		inputs = append(inputs, UploadImageInput{Filename: header.Filename, ContentType: contentType, Data: bytes.Clone(data)})
 	}
-	result, err := h.service.Upload(c.Request.Context(), deviceID, actor.UserID, inputs)
+	uploadedBy := actor.UserID
+	if actor.IsSystemAdmin {
+		uploadedBy = uuid.Nil
+	}
+	result, err := h.service.Upload(c.Request.Context(), deviceID, uploadedBy, inputs)
 	if err != nil {
 		h.record(c, actor.UserID, deviceID, "device.profile_image.upload", audit.ResultFailure, apperr.MessageOf(err))
 		httpx.WriteAppError(c, err)
@@ -221,6 +263,9 @@ func (h *Handler) authorize(c *gin.Context, action string) (uuid.UUID, auth.Acto
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid device_id"))
 		return uuid.Nil, auth.Actor{}, false
 	}
+	if actor.IsSystemAdmin {
+		return deviceID, actor, true
+	}
 	decision, err := h.checker.Can(c.Request.Context(), permission.Actor{UserID: actor.UserID}, action, permission.ResourceRef{Type: "device", ID: deviceID})
 	if err != nil {
 		httpx.WriteAppError(c, err)
@@ -238,6 +283,9 @@ func (h *Handler) record(c *gin.Context, actorID, deviceID uuid.UUID, action, re
 		return true
 	}
 	input := audit.RecordInput{ActorType: audit.ActorUser, ActorID: audit.UserActorID(actorID), Action: action, ResourceType: "device", ResourceID: audit.ResourceID(deviceID), Result: result}
+	if actor, ok := auth.ActorFromContext(c); ok && actor.IsSystemAdmin {
+		input.ActorType = audit.ActorSystemAdmin
+	}
 	if strings.TrimSpace(reason) != "" {
 		input.Reason = reason
 	}

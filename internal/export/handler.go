@@ -172,6 +172,10 @@ func (h *Handler) Get(c *gin.Context) {
 		httpx.WriteAppError(c, err)
 		return
 	}
+	if job.RequestedByAdmin != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "permission denied"))
+		return
+	}
 	resolved, err := h.service.Resolve(c.Request.Context(), job.ResourceType, job.ResourceID, job.ExportType)
 	if err != nil {
 		httpx.WriteAppError(c, err)
@@ -201,6 +205,10 @@ func (h *Handler) Download(c *gin.Context) {
 	job, err := h.service.Get(c.Request.Context(), jobID)
 	if err != nil {
 		httpx.WriteAppError(c, err)
+		return
+	}
+	if job.RequestedByAdmin != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "permission denied"))
 		return
 	}
 	resolved, err := h.service.Resolve(c.Request.Context(), job.ResourceType, job.ResourceID, job.ExportType)
@@ -335,6 +343,9 @@ func stringValue(value any) string {
 }
 
 func (h *Handler) canAccessJob(c *gin.Context, actor auth.Actor, job Job, resolved ResolvedResource) (bool, bool) {
+	if job.RequestedByAdmin != nil {
+		return false, true
+	}
 	if job.RequestedBy == actor.UserID {
 		return true, true
 	}

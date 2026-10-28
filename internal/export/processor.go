@@ -545,7 +545,7 @@ func (p *Processor) renderDeviceBatchZIP(ctx context.Context, job Job, cfg batch
 	if err != nil {
 		return err
 	}
-	if err := validator.validateDeviceBatch(ctx, job.RequestedBy, job.WorkspaceID, job.ResourceID, job.ExportType, raw); err != nil {
+	if err := validator.validateDeviceBatch(ctx, job.RequestedBy, job.WorkspaceID, job.ResourceID, job.ExportType, raw, job.RequestedByAdmin != nil); err != nil {
 		return err
 	}
 
@@ -1664,6 +1664,9 @@ func exportObjectKey(job Job, ext string) string {
 	ext = strings.TrimPrefix(strings.TrimSpace(ext), ".")
 	if ext == "" {
 		ext = "bin"
+	}
+	if job.RequestedByAdmin != nil {
+		return path.Join("exports", "admin", job.RequestedByAdmin.String(), fmt.Sprintf("%s.%s", job.ID.String(), ext))
 	}
 	return path.Join("exports", job.WorkspaceID.String(), fmt.Sprintf("%s.%s", job.ID.String(), ext))
 }

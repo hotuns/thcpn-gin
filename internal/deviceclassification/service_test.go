@@ -6,11 +6,16 @@ import (
 	"testing"
 )
 
-func TestDeviceMapQueryDoesNotUseRemovedRuntimeColumns(t *testing.T) {
-	for _, removed := range []string{"device_profiles", "dp.latitude", "dp.longitude", "parent_dp"} {
+func TestDeviceMapUsesExplicitInstallationLocation(t *testing.T) {
+	// Profiles contain explicit installation coordinates, never cached source
+	// runtime positions. Children do not silently inherit a parent's override.
+	for _, removed := range []string{"parent_dp", "device_runtime"} {
 		if strings.Contains(deviceMapQuery, removed) {
 			t.Fatalf("device map query references removed source-owned storage %q", removed)
 		}
+	}
+	if !strings.Contains(deviceMapQuery, "COALESCE(dp.latitude,st.latitude)") || !strings.Contains(deviceMapQuery, "THEN 'device'") {
+		t.Fatal("manual installation coordinates must take precedence over site coordinates")
 	}
 }
 

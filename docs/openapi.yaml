@@ -6909,6 +6909,684 @@ paths:
       security: [{ bearerAuth: [] }, { devUserHeader: [] }]
       responses:
         "200": { description: Alert acknowledged, content: { application/json: { schema: { $ref: "#/components/schemas/AlertEvent" } } } }
+  /api/v1/admin/devices/{device_id}/telemetry:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags:
+        - Telemetry
+      operationId: adminOpsQueryDeviceTelemetry
+      summary: Query telemetry series for a device
+      description: Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: start_time
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Timestamp"
+        - name: end_time
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Timestamp"
+        - name: data_stream_ids
+          in: query
+          required: false
+          description: Comma-separated telemetry DataStream UUIDs. When omitted, all active telemetry streams on the device are queried.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Maximum raw points returned per series before adaptive sampling is used.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5000
+            default: 5000
+        - name: adaptive
+          in: query
+          required: false
+          description: Scan the complete time range and return raw points when within the limit, otherwise return time-bucket extrema.
+          schema:
+            type: boolean
+            default: false
+        - name: target_points
+          in: query
+          required: false
+          description: Approximate maximum chart points per series in adaptive mode.
+          schema:
+            type: integer
+            minimum: 2
+            maximum: 5000
+            default: 1000
+      responses:
+        "200":
+          description: Telemetry series for active telemetry data streams on the device.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelemetryQueryResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/DataSourceError"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/devices/{device_id}/media:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags:
+        - Media
+      operationId: adminOpsListDeviceMedia
+      summary: List archived media for a device
+      description: Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: start_time
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Timestamp"
+        - name: end_time
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Timestamp"
+        - name: media_type
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/MediaType"
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 100
+      responses:
+        "200":
+          description: Media records for active media data streams on the device.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/DataSourceError"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/media/download:
+    get:
+      tags:
+        - Media
+      operationId: adminOpsPrepareMediaDownload
+      summary: Prepare a media download URL
+      description: Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Temporary object download URL.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaDownloadResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/media:
+    delete:
+      tags:
+        - Media
+      operationId: adminOpsDeleteMediaObject
+      summary: Delete a media object
+      description: Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Media object deleted from object storage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaDeleteResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/devices/{device_id}/profile:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags: [Devices]
+      operationId: adminOpsGetDeviceProfile
+      summary: Get device-owned profile and asset gallery
+      description: Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Device profile with effective location and signed image previews.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceProfile"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
+    patch:
+      tags: [Devices]
+      operationId: adminOpsUpdateDeviceProfile
+      summary: Update device-owned profile
+      description: Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDeviceProfileRequest"
+      responses:
+        "200":
+          description: Updated device profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceProfile"
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/admin/devices/{device_id}/profile/images:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    post:
+      tags: [Devices]
+      operationId: adminOpsUploadDeviceProfileImages
+      summary: Upload device asset images
+      description: Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [files]
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        "201":
+          description: Uploaded images.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceProfileImageListResponse"
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/admin/devices/{device_id}/profile/images/order:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    put:
+      tags: [Devices]
+      operationId: adminOpsReorderDeviceProfileImages
+      summary: Reorder all device asset images
+      description: Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [image_ids]
+              properties:
+                image_ids:
+                  type: array
+                  items: { $ref: "#/components/schemas/UUID" }
+      responses:
+        "200":
+          description: Reordered images.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceProfileImageListResponse" }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/admin/devices/{device_id}/profile/images/{image_id}:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+      - name: image_id
+        in: path
+        required: true
+        schema: { $ref: "#/components/schemas/UUID" }
+    patch:
+      tags: [Devices]
+      operationId: adminOpsUpdateDeviceProfileImage
+      summary: Update image caption or cover state
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                caption: { type: string, nullable: true }
+                is_cover: { type: boolean }
+      responses:
+        "200":
+          description: Updated image.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceProfileImage" }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
+    delete:
+      tags: [Devices]
+      operationId: adminOpsDeleteDeviceProfileImage
+      summary: Delete a device asset image
+      security:
+        - bearerAuth: []
+      responses:
+        "204": { description: Image deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/admin/devices/{device_id}/sampling-profile:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags: [Devices]
+      operationId: adminOpsGetDeviceSamplingProfile
+      summary: Get the user-facing THCPN sampling profile
+      description: Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current sampling profile.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SamplingProfileResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
+    patch:
+      tags: [Devices]
+      operationId: adminOpsUpdateDeviceSamplingProfile
+      summary: Update only the THCPN sampling and upload schedule
+      description: Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSamplingProfileRequest" }
+      responses:
+        "200":
+          description: New config version dispatched.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SamplingProfileResponse" }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /api/v1/admin/devices/{device_id}/camera/live-session:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    post:
+      tags:
+        - Devices
+      operationId: adminOpsCreateCameraLiveSession
+      summary: Create a camera live preview session
+      description: Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Camera live session created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CameraLiveSessionResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/devices/{device_id}/nodes/runtime:
+    get:
+      tags: [Devices]
+      summary: Read latest gateway node diagnostics within the last three days
+      parameters:
+        - in: path
+          name: device_id
+          required: true
+          schema: { $ref: "#/components/schemas/UUID" }
+      responses:
+        "200":
+          description: Node failures are isolated; absent readings are omitted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, refreshed_at]
+                properties:
+                  refreshed_at: { type: string, format: date-time }
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/NodeRuntime" }
+  /api/v1/admin/export-jobs/{export_job_id}:
+    parameters:
+      - $ref: "#/components/parameters/ExportJobID"
+    get:
+      tags:
+        - ExportJobs
+      operationId: adminOpsGetExportJob
+      summary: Get export job status
+      description: Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Export job detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportJob"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/export-jobs/{export_job_id}/download:
+    parameters:
+      - $ref: "#/components/parameters/ExportJobID"
+    get:
+      tags:
+        - ExportJobs
+      operationId: adminOpsPrepareExportDownload
+      summary: Prepare an export file download URL
+      description: Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Temporary object download URL for the generated export file.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportDownloadResponse"
+        "400":
+          $ref: "#/components/responses/InvalidArgument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/admin/devices/{device_id}/profile/location:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    patch:
+      tags: [Admin]
+      operationId: adminSetInstallationLocation
+      summary: Set or clear a manual WGS84 installation position
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [latitude, longitude]
+              properties:
+                latitude: {type: number, nullable: true, minimum: -90, maximum: 90}
+                longitude: {type: number, nullable: true, minimum: -180, maximum: 180}
+      responses:
+        "200":
+          description: Profile with effective installation position.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DeviceProfile"}
+        "400": {$ref: "#/components/responses/InvalidArgument"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/admin/export-jobs:
+    get:
+      tags: [Admin]
+      operationId: adminListOperationsExports
+      summary: List user and administrator exports across all devices
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: query
+          name: device_id
+          schema: {$ref: "#/components/schemas/UUID"}
+        - in: query
+          name: limit
+          schema: {type: integer, minimum: 1, maximum: 500, default: 100}
+      responses:
+        "200":
+          description: Export jobs matching the optional device filter.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExportJobListResponse"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+    post:
+      tags: [Admin]
+      operationId: adminCreateOperationsExport
+      summary: Export data without workspace assignment or user subscription requirements
+      description: Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateExportJobRequest"}
+      responses:
+        "201":
+          description: Administrator export queued for worker processing.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExportJob"}
+        "202":
+          description: Task persisted; queue delivery deferred to the Worker database scanner.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExportJob"}
+        "400": {$ref: "#/components/responses/InvalidArgument"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/admin/devices/{device_id}/carbon/flux:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags: [Admin]
+      operationId: adminCarbonFlux
+      summary: Query carbon flux as administrator
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: query
+          name: node_id
+          required: true
+          schema: {type: integer, minimum: 1}
+        - in: query
+          name: field
+          required: true
+          schema: {type: string}
+        - in: query
+          name: start
+          schema: {type: string, format: date-time}
+        - in: query
+          name: end
+          schema: {type: string, format: date-time}
+      responses:
+        "200":
+          description: Carbon readings; period details include the raw light and dark phase samples.
+          content:
+            application/json:
+              schema: {type: object, additionalProperties: true}
+        "400": {$ref: "#/components/responses/InvalidArgument"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/admin/devices/{device_id}/carbon/periods:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags: [Admin]
+      operationId: adminCarbonPeriods
+      summary: Query carbon periods as administrator
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: query
+          name: node_id
+          required: true
+          schema: {type: integer, minimum: 1}
+        - in: query
+          name: field
+          required: false
+          schema: {type: string}
+        - in: query
+          name: start
+          schema: {type: string, format: date-time}
+        - in: query
+          name: end
+          schema: {type: string, format: date-time}
+      responses:
+        "200":
+          description: Carbon readings; period details include the raw light and dark phase samples.
+          content:
+            application/json:
+              schema: {type: object, additionalProperties: true}
+        "400": {$ref: "#/components/responses/InvalidArgument"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/admin/devices/{device_id}/carbon/periods/{period}:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags: [Admin]
+      operationId: adminCarbonPeriod
+      summary: Query carbon periods/{period} as administrator
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: query
+          name: node_id
+          required: true
+          schema: {type: integer, minimum: 1}
+        - in: query
+          name: field
+          required: true
+          schema: {type: string}
+        - in: query
+          name: start
+          schema: {type: string, format: date-time}
+        - in: query
+          name: end
+          schema: {type: string, format: date-time}
+        - in: path
+          name: period
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: Carbon readings; period details include the raw light and dark phase samples.
+          content:
+            application/json:
+              schema: {type: object, additionalProperties: true}
+        "400": {$ref: "#/components/responses/InvalidArgument"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+
 components:
   securitySchemes:
     bearerAuth:
@@ -9170,12 +9848,15 @@ components:
         device_id: { $ref: "#/components/schemas/UUID" }
         description: { type: string }
         location_text: { type: string }
+        manual_latitude: { type: number, format: double }
+        manual_longitude: { type: number, format: double }
         latitude: { type: number, format: double }
         longitude: { type: number, format: double }
         effective_location: { $ref: "#/components/schemas/DeviceProfileLocation" }
+        location_warning: { type: string }
         location_source:
           type: string
-          enum: [device, site, none]
+          enum: [device, source, site, none]
         site: { $ref: "#/components/schemas/DeviceProfileSiteSummary" }
         images:
           type: array
@@ -11457,6 +12138,9 @@ components:
           $ref: "#/components/schemas/UUID"
         requested_by:
           $ref: "#/components/schemas/UUID"
+        requested_by_admin:
+          $ref: "#/components/schemas/UUID"
+          description: Administrator requester. Operations jobs have no workspace or user owner; workspace_id and requested_by are zero UUIDs in responses.
         resource_type:
           $ref: "#/components/schemas/ExportResourceType"
         resource_id:

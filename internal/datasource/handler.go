@@ -310,7 +310,9 @@ func (h *Handler) GetSamplingProfile(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if h.checker != nil {
+	if actor.IsSystemAdmin {
+		result.CanEdit = true
+	} else if h.checker != nil {
 		decision, checkErr := h.checker.Can(c.Request.Context(), permission.Actor{UserID: actor.UserID}, bindingManageAction, permission.ResourceRef{Type: "device", ID: deviceID})
 		if checkErr != nil {
 			httpx.WriteAppError(c, checkErr)
@@ -1140,6 +1142,9 @@ func (h *Handler) authorize(c *gin.Context, resourceType string, resourceID uuid
 	if !ok {
 		return false
 	}
+	if actor.IsSystemAdmin {
+		return true
+	}
 	if h.checker == nil {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInternal, "permission checker is not configured"))
 		return false
@@ -1272,6 +1277,9 @@ func uuidValue(value *uuid.UUID) uuid.UUID {
 	return *value
 }
 func (h *Handler) record(c *gin.Context, input audit.RecordInput) bool {
+	if actor, ok := auth.ActorFromContext(c); ok && actor.IsSystemAdmin {
+		input.ActorType = audit.ActorSystemAdmin
+	}
 	if h.audit == nil {
 		return true
 	}

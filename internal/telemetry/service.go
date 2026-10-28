@@ -116,6 +116,14 @@ func NewService(db *pgxpool.Pool, dataSources *datasource.Service, runtime Telem
 }
 
 func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, error) {
+	return s.query(ctx, input, false)
+}
+
+func (s *Service) QueryAdmin(ctx context.Context, input QueryInput) (QueryResult, error) {
+	return s.query(ctx, input, true)
+}
+
+func (s *Service) query(ctx context.Context, input QueryInput, administrator bool) (QueryResult, error) {
 	if input.DeviceID == nil && input.DataStreamID == nil {
 		return QueryResult{}, apperr.New(apperr.KindInvalidArgument, "device_id or data_stream_id is required")
 	}
@@ -130,7 +138,7 @@ func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, err
 	if err := validateTimeRange(input.StartTime, input.EndTime, s.limits); err != nil {
 		return QueryResult{}, err
 	}
-	if err := s.validateHistoryWindow(ctx, input); err != nil {
+	if err := s.validateHistoryWindowForQuery(ctx, input, administrator); err != nil {
 		return QueryResult{}, err
 	}
 
@@ -138,6 +146,13 @@ func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, err
 		return s.queryDataStream(ctx, *input.DataStreamID, input.DeviceID, input.StartTime, input.EndTime, limit, input.Adaptive, targetPoints)
 	}
 	return s.queryDevice(ctx, *input.DeviceID, input.DataStreamIDs, input.StartTime, input.EndTime, limit, input.Adaptive, targetPoints)
+}
+
+func (s *Service) validateHistoryWindowForQuery(ctx context.Context, input QueryInput, administrator bool) error {
+	if administrator {
+		return nil
+	}
+	return s.validateHistoryWindow(ctx, input)
 }
 
 func (s *Service) validateHistoryWindow(ctx context.Context, input QueryInput) error {

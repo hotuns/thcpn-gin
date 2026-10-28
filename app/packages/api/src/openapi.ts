@@ -5455,6 +5455,426 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/devices/{device_id}/telemetry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Query telemetry series for a device
+         * @description Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+         */
+        get: operations["adminOpsQueryDeviceTelemetry"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List archived media for a device
+         * @description Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+         */
+        get: operations["adminOpsListDeviceMedia"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/media/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Prepare a media download URL
+         * @description Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+         */
+        get: operations["adminOpsPrepareMediaDownload"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a media object
+         * @description Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+         */
+        delete: operations["adminOpsDeleteMediaObject"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get device-owned profile and asset gallery
+         * @description Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+         */
+        get: operations["adminOpsGetDeviceProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update device-owned profile
+         * @description Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+         */
+        patch: operations["adminOpsUpdateDeviceProfile"];
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/profile/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload device asset images
+         * @description Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+         */
+        post: operations["adminOpsUploadDeviceProfileImages"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/profile/images/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder all device asset images
+         * @description Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+         */
+        put: operations["adminOpsReorderDeviceProfileImages"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/profile/images/{image_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+                image_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a device asset image */
+        delete: operations["adminOpsDeleteDeviceProfileImage"];
+        options?: never;
+        head?: never;
+        /** Update image caption or cover state */
+        patch: operations["adminOpsUpdateDeviceProfileImage"];
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/sampling-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get the user-facing THCPN sampling profile
+         * @description Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+         */
+        get: operations["adminOpsGetDeviceSamplingProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update only the THCPN sampling and upload schedule
+         * @description Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+         */
+        patch: operations["adminOpsUpdateDeviceSamplingProfile"];
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/camera/live-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a camera live preview session
+         * @description Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+         */
+        post: operations["adminOpsCreateCameraLiveSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/nodes/runtime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read latest gateway node diagnostics within the last three days */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    device_id: components["schemas"]["UUID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Node failures are isolated; absent readings are omitted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: date-time */
+                            refreshed_at: string;
+                            items: components["schemas"]["NodeRuntime"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/export-jobs/{export_job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Export job UUID. */
+                export_job_id: components["parameters"]["ExportJobID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get export job status
+         * @description Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+         */
+        get: operations["adminOpsGetExportJob"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/export-jobs/{export_job_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Export job UUID. */
+                export_job_id: components["parameters"]["ExportJobID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Prepare an export file download URL
+         * @description Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+         */
+        get: operations["adminOpsPrepareExportDownload"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/profile/location": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set or clear a manual WGS84 installation position */
+        patch: operations["adminSetInstallationLocation"];
+        trace?: never;
+    };
+    "/api/v1/admin/export-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List user and administrator exports across all devices */
+        get: operations["adminListOperationsExports"];
+        put?: never;
+        /**
+         * Export data without workspace assignment or user subscription requirements
+         * @description Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+         */
+        post: operations["adminCreateOperationsExport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/carbon/flux": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /** Query carbon flux as administrator */
+        get: operations["adminCarbonFlux"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/carbon/periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /** Query carbon periods as administrator */
+        get: operations["adminCarbonPeriods"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/carbon/periods/{period}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /** Query carbon periods/{period} as administrator */
+        get: operations["adminCarbonPeriod"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -6635,12 +7055,17 @@ export interface components {
             description?: string;
             location_text?: string;
             /** Format: double */
+            manual_latitude?: number;
+            /** Format: double */
+            manual_longitude?: number;
+            /** Format: double */
             latitude?: number;
             /** Format: double */
             longitude?: number;
             effective_location?: components["schemas"]["DeviceProfileLocation"];
+            location_warning?: string;
             /** @enum {string} */
-            location_source: "device" | "site" | "none";
+            location_source: "device" | "source" | "site" | "none";
             site?: components["schemas"]["DeviceProfileSiteSummary"];
             images: components["schemas"]["DeviceProfileImage"][];
             can_configure: boolean;
@@ -7836,6 +8261,8 @@ export interface components {
             id: components["schemas"]["UUID"];
             workspace_id: components["schemas"]["UUID"];
             requested_by: components["schemas"]["UUID"];
+            /** @description Administrator requester. Operations jobs have no workspace or user owner; workspace_id and requested_by are zero UUIDs in responses. */
+            requested_by_admin?: components["schemas"]["UUID"];
             resource_type: components["schemas"]["ExportResourceType"];
             resource_id: components["schemas"]["UUID"];
             export_type: components["schemas"]["ExportType"];
@@ -16123,6 +16550,660 @@ export interface operations {
                     "application/json": components["schemas"]["AlertEvent"];
                 };
             };
+        };
+    };
+    adminOpsQueryDeviceTelemetry: {
+        parameters: {
+            query: {
+                start_time: components["schemas"]["Timestamp"];
+                end_time: components["schemas"]["Timestamp"];
+                /** @description Comma-separated telemetry DataStream UUIDs. When omitted, all active telemetry streams on the device are queried. */
+                data_stream_ids?: string;
+                /** @description Maximum raw points returned per series before adaptive sampling is used. */
+                limit?: number;
+                /** @description Scan the complete time range and return raw points when within the limit, otherwise return time-bucket extrema. */
+                adaptive?: boolean;
+                /** @description Approximate maximum chart points per series in adaptive mode. */
+                target_points?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Telemetry series for active telemetry data streams on the device. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelemetryQueryResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+            502: components["responses"]["DataSourceError"];
+        };
+    };
+    adminOpsListDeviceMedia: {
+        parameters: {
+            query: {
+                start_time: components["schemas"]["Timestamp"];
+                end_time: components["schemas"]["Timestamp"];
+                media_type?: components["schemas"]["MediaType"];
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Media records for active media data streams on the device. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaListResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+            502: components["responses"]["DataSourceError"];
+        };
+    };
+    adminOpsPrepareMediaDownload: {
+        parameters: {
+            query: {
+                token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Temporary object download URL. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaDownloadResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminOpsDeleteMediaObject: {
+        parameters: {
+            query: {
+                token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Media object deleted from object storage. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaDeleteResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminOpsGetDeviceProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device profile with effective location and signed image previews. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceProfile"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminOpsUpdateDeviceProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDeviceProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated device profile. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceProfile"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminOpsUploadDeviceProfileImages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    files: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Uploaded images. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceProfileImageListResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminOpsReorderDeviceProfileImages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    image_ids: components["schemas"]["UUID"][];
+                };
+            };
+        };
+        responses: {
+            /** @description Reordered images. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceProfileImageListResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminOpsDeleteDeviceProfileImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+                image_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Image deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminOpsUpdateDeviceProfileImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+                image_id: components["schemas"]["UUID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    caption?: string | null;
+                    is_cover?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated image. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceProfileImage"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminOpsGetDeviceSamplingProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current sampling profile. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SamplingProfileResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminOpsUpdateDeviceSamplingProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSamplingProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description New config version dispatched. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SamplingProfileResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminOpsCreateCameraLiveSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Camera live session created. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraLiveSessionResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminOpsGetExportJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Export job UUID. */
+                export_job_id: components["parameters"]["ExportJobID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Export job detail. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportJob"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminOpsPrepareExportDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Export job UUID. */
+                export_job_id: components["parameters"]["ExportJobID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Temporary object download URL for the generated export file. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportDownloadResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["Internal"];
+        };
+    };
+    adminSetInstallationLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    latitude: number | null;
+                    longitude: number | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Profile with effective installation position. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceProfile"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminListOperationsExports: {
+        parameters: {
+            query?: {
+                device_id?: components["schemas"]["UUID"];
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Export jobs matching the optional device filter. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportJobListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    adminCreateOperationsExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateExportJobRequest"];
+            };
+        };
+        responses: {
+            /** @description Administrator export queued for worker processing. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportJob"];
+                };
+            };
+            /** @description Task persisted; queue delivery deferred to the Worker database scanner. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportJob"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminCarbonFlux: {
+        parameters: {
+            query: {
+                node_id: number;
+                field: string;
+                start?: string;
+                end?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Carbon readings; period details include the raw light and dark phase samples. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminCarbonPeriods: {
+        parameters: {
+            query: {
+                node_id: number;
+                field?: string;
+                start?: string;
+                end?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Carbon readings; period details include the raw light and dark phase samples. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminCarbonPeriod: {
+        parameters: {
+            query: {
+                node_id: number;
+                field: string;
+                start?: string;
+                end?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+                period: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Carbon readings; period details include the raw light and dark phase samples. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
 }

@@ -41,23 +41,24 @@ type Service struct {
 func (s *Service) SetBilling(service *billing.Service) { s.billing = service }
 
 type Job struct {
-	ID            uuid.UUID       `json:"id"`
-	WorkspaceID   uuid.UUID       `json:"workspace_id"`
-	RequestedBy   uuid.UUID       `json:"requested_by"`
-	ResourceType  string          `json:"resource_type"`
-	ResourceID    uuid.UUID       `json:"resource_id"`
-	ExportType    string          `json:"export_type"`
-	RequestConfig json.RawMessage `json:"request_config"`
-	Progress      json.RawMessage `json:"progress"`
-	Status        string          `json:"status"`
-	FileObjectKey *string         `json:"file_object_key,omitempty"`
-	FileSizeBytes *int64          `json:"file_size_bytes,omitempty"`
-	ErrorMessage  *string         `json:"error_message,omitempty"`
-	CreatedAt     time.Time       `json:"created_at"`
-	UpdatedAt     time.Time       `json:"updated_at"`
-	StartedAt     *time.Time      `json:"started_at,omitempty"`
-	FinishedAt    *time.Time      `json:"finished_at,omitempty"`
-	ExpiresAt     time.Time       `json:"expires_at"`
+	ID               uuid.UUID       `json:"id"`
+	WorkspaceID      uuid.UUID       `json:"workspace_id"`
+	RequestedBy      uuid.UUID       `json:"requested_by"`
+	RequestedByAdmin *uuid.UUID      `json:"requested_by_admin,omitempty"`
+	ResourceType     string          `json:"resource_type"`
+	ResourceID       uuid.UUID       `json:"resource_id"`
+	ExportType       string          `json:"export_type"`
+	RequestConfig    json.RawMessage `json:"request_config"`
+	Progress         json.RawMessage `json:"progress"`
+	Status           string          `json:"status"`
+	FileObjectKey    *string         `json:"file_object_key,omitempty"`
+	FileSizeBytes    *int64          `json:"file_size_bytes,omitempty"`
+	ErrorMessage     *string         `json:"error_message,omitempty"`
+	CreatedAt        time.Time       `json:"created_at"`
+	UpdatedAt        time.Time       `json:"updated_at"`
+	StartedAt        *time.Time      `json:"started_at,omitempty"`
+	FinishedAt       *time.Time      `json:"finished_at,omitempty"`
+	ExpiresAt        time.Time       `json:"expires_at"`
 }
 
 type CreateInput struct {
@@ -226,8 +227,8 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Job, ResolvedR
 	}
 
 	row, err := s.queries.CreateExportJob(ctx, sqlc.CreateExportJobParams{
-		WorkspaceID:       resolved.WorkspaceID,
-		RequestedBy:       input.RequestedBy,
+		WorkspaceID:       &resolved.WorkspaceID,
+		RequestedBy:       &input.RequestedBy,
 		ResourceType:      resolved.ResourceType,
 		ResourceID:        resolved.ResourceID,
 		ExportType:        resolved.ExportType,
@@ -312,13 +313,13 @@ func (s *Service) List(ctx context.Context, input ListInput) ([]Job, error) {
 	if input.RequestedBy != nil {
 		if input.WorkspaceID != uuid.Nil {
 			rows, err = s.queries.ListExportJobsByRequesterAndWorkspace(ctx, sqlc.ListExportJobsByRequesterAndWorkspaceParams{
-				WorkspaceID: input.WorkspaceID,
-				RequestedBy: *input.RequestedBy,
+				WorkspaceID: &input.WorkspaceID,
+				RequestedBy: input.RequestedBy,
 				Limit:       limit,
 			})
 		} else {
 			rows, err = s.queries.ListExportJobsByRequester(ctx, sqlc.ListExportJobsByRequesterParams{
-				RequestedBy: *input.RequestedBy,
+				RequestedBy: input.RequestedBy,
 				Limit:       limit,
 			})
 		}
@@ -327,7 +328,7 @@ func (s *Service) List(ctx context.Context, input ListInput) ([]Job, error) {
 			return nil, apperr.New(apperr.KindInvalidArgument, "workspace id is required")
 		}
 		rows, err = s.queries.ListExportJobsByWorkspace(ctx, sqlc.ListExportJobsByWorkspaceParams{
-			WorkspaceID: input.WorkspaceID,
+			WorkspaceID: &input.WorkspaceID,
 			Limit:       limit,
 		})
 	}
@@ -374,7 +375,7 @@ func (s *Service) prepareDownload(ctx context.Context, jobID uuid.UUID, expected
 	if job.FileObjectKey == nil || strings.TrimSpace(*job.FileObjectKey) == "" {
 		return DownloadResult{}, apperr.New(apperr.KindConflict, "export file is not available")
 	}
-	if s.billing != nil && job.FileSizeBytes != nil && *job.FileSizeBytes > 0 {
+	if sourceType != "admin_export" && s.billing != nil && job.FileSizeBytes != nil && *job.FileSizeBytes > 0 {
 		summary, summaryErr := s.billing.Summary(ctx, job.WorkspaceID)
 		if summaryErr != nil {
 			return DownloadResult{}, summaryErr
@@ -466,7 +467,8 @@ func validateCarbonStationConfig(raw []byte) error {
 	return nil
 }
 
-func (s *Service) validateDeviceBatch(ctx context.Context, requestedBy, workspaceID, anchorID uuid.UUID, exportType string, raw []byte) error {
+func (s *Service) validateDeviceBatch(ctx context.Context, requestedBy, workspaceID, anchorID uuid.UUID, exportType string, raw []byte, administrative ...bool) error {
+	isAdmin := len(administrative) > 0 && administrative[0]
 	config, err := parseBatchExportConfig(raw)
 	if err != nil {
 		return err
@@ -531,6 +533,9 @@ func (s *Service) validateDeviceBatch(ctx context.Context, requestedBy, workspac
 			actions = append(actions, ActionMediaDownload)
 		}
 		for _, action := range actions {
+			if isAdmin {
+				continue
+			}
 			decision, err := permission.NewChecker(s.queries).Can(ctx, permission.Actor{UserID: requestedBy}, action, permission.ResourceRef{Type: "device", ID: id})
 			if err != nil {
 				return err
@@ -546,12 +551,14 @@ func (s *Service) validateDeviceBatch(ctx context.Context, requestedBy, workspac
 		if device.DeviceType != wantType {
 			return apperr.New(apperr.KindInvalidArgument, "batch export cannot mix device systems")
 		}
-		deviceContext, err := s.queries.GetWorkspaceDeviceContext(ctx, requestedBy, id)
-		if err != nil {
-			return mapNotFoundOrInternal(err, "device workspace context not found")
-		}
-		if deviceContext.WorkspaceID != workspaceID {
-			return apperr.New(apperr.KindPermissionDenied, "batch device is outside the current workspace")
+		if !isAdmin {
+			deviceContext, err := s.queries.GetWorkspaceDeviceContext(ctx, requestedBy, id)
+			if err != nil {
+				return mapNotFoundOrInternal(err, "device workspace context not found")
+			}
+			if deviceContext.WorkspaceID != workspaceID {
+				return apperr.New(apperr.KindPermissionDenied, "batch device is outside the current workspace")
+			}
 		}
 		if index == 0 && id != anchorID {
 			return apperr.New(apperr.KindInvalidArgument, "resource_id must match the first device_id")
@@ -562,24 +569,32 @@ func (s *Service) validateDeviceBatch(ctx context.Context, requestedBy, workspac
 
 func jobFromSQL(model sqlc.ExportJob) Job {
 	return Job{
-		ID:            model.ID,
-		WorkspaceID:   model.WorkspaceID,
-		RequestedBy:   model.RequestedBy,
-		ResourceType:  model.ResourceType,
-		ResourceID:    model.ResourceID,
-		ExportType:    model.ExportType,
-		RequestConfig: json.RawMessage(model.RequestConfigJson),
-		Progress:      json.RawMessage(model.ProgressJson),
-		Status:        model.Status,
-		FileObjectKey: model.FileObjectKey,
-		FileSizeBytes: pgInt8Ptr(model.FileSizeBytes),
-		ErrorMessage:  model.ErrorMessage,
-		CreatedAt:     pgTimeValue(model.CreatedAt),
-		UpdatedAt:     pgTimeValue(model.UpdatedAt),
-		StartedAt:     pgTimePtr(model.StartedAt),
-		FinishedAt:    pgTimePtr(model.FinishedAt),
-		ExpiresAt:     pgTimeValue(model.ExpiresAt),
+		ID:               model.ID,
+		WorkspaceID:      uuidValue(model.WorkspaceID),
+		RequestedBy:      uuidValue(model.RequestedBy),
+		RequestedByAdmin: model.RequestedByAdmin,
+		ResourceType:     model.ResourceType,
+		ResourceID:       model.ResourceID,
+		ExportType:       model.ExportType,
+		RequestConfig:    json.RawMessage(model.RequestConfigJson),
+		Progress:         json.RawMessage(model.ProgressJson),
+		Status:           model.Status,
+		FileObjectKey:    model.FileObjectKey,
+		FileSizeBytes:    pgInt8Ptr(model.FileSizeBytes),
+		ErrorMessage:     model.ErrorMessage,
+		CreatedAt:        pgTimeValue(model.CreatedAt),
+		UpdatedAt:        pgTimeValue(model.UpdatedAt),
+		StartedAt:        pgTimePtr(model.StartedAt),
+		FinishedAt:       pgTimePtr(model.FinishedAt),
+		ExpiresAt:        pgTimeValue(model.ExpiresAt),
 	}
+}
+
+func uuidValue(id *uuid.UUID) uuid.UUID {
+	if id != nil {
+		return *id
+	}
+	return uuid.Nil
 }
 
 func pgInt8Ptr(value pgtype.Int8) *int64 {

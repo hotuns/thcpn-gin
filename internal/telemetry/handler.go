@@ -109,7 +109,7 @@ func (h *Handler) AdminQueryDataStream(c *gin.Context) {
 		return
 	}
 	input.DataStreamID = &dataStreamID
-	result, err := h.service.Query(c.Request.Context(), input)
+	result, err := h.service.QueryAdmin(c.Request.Context(), input)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -246,7 +246,7 @@ func (h *Handler) AdminQueryDevice(c *gin.Context) {
 		httpx.WriteAppError(c, err)
 		return
 	}
-	result, err := h.service.Query(c.Request.Context(), input)
+	result, err := h.service.QueryAdmin(c.Request.Context(), input)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return

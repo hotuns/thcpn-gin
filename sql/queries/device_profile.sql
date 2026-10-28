@@ -1,5 +1,5 @@
 -- name: GetDeviceProfile :one
-SELECT device_id, description, location_text, updated_by, created_at, updated_at
+SELECT device_id, description, location_text, updated_by, created_at, updated_at, latitude, longitude
 FROM device_profiles
 WHERE device_id = $1;
 
@@ -11,7 +11,7 @@ SET description = EXCLUDED.description,
     location_text = EXCLUDED.location_text,
     updated_by = EXCLUDED.updated_by,
     updated_at = now()
-RETURNING device_id, description, location_text, updated_by, created_at, updated_at;
+RETURNING device_id, description, location_text, updated_by, created_at, updated_at, latitude, longitude;
 
 -- name: GetDeviceProfileSite :one
 SELECT s.id, s.name, s.location_text, s.latitude, s.longitude
@@ -86,3 +86,9 @@ WHERE id = (
     ORDER BY dpi.sort_order, dpi.created_at, dpi.id
     LIMIT 1
 );
+
+-- name: SetDeviceProfileLocation :one
+INSERT INTO device_profiles (device_id, latitude, longitude)
+VALUES ($1, $2, $3)
+ON CONFLICT (device_id) DO UPDATE SET latitude=EXCLUDED.latitude, longitude=EXCLUDED.longitude, updated_at=now()
+RETURNING device_id, description, location_text, updated_by, created_at, updated_at, latitude, longitude;

@@ -48,8 +48,11 @@ type Profile struct {
 	LocationText       *string        `json:"location_text,omitempty"`
 	Latitude           *float64       `json:"latitude,omitempty"`
 	Longitude          *float64       `json:"longitude,omitempty"`
+	ManualLatitude     *float64       `json:"manual_latitude,omitempty"`
+	ManualLongitude    *float64       `json:"manual_longitude,omitempty"`
 	EffectiveLocation  *Location      `json:"effective_location,omitempty"`
 	LocationSource     string         `json:"location_source"`
+	LocationWarning    string         `json:"location_warning,omitempty"`
 	Site               *SiteSummary   `json:"site,omitempty"`
 	Images             []ProfileImage `json:"images"`
 	CanConfigure       bool           `json:"can_configure"`
@@ -89,10 +92,11 @@ type ProfileImage struct {
 }
 
 type UpdateProfileInput struct {
-	DeviceID     uuid.UUID
-	Description  *string
-	LocationText *string
-	ActorUserID  uuid.UUID
+	DeviceID      uuid.UUID
+	Description   *string
+	LocationText  *string
+	ActorUserID   uuid.UUID
+	Administrator bool
 }
 
 type UploadImageInput struct {
@@ -131,6 +135,29 @@ func (s *Service) Get(ctx context.Context, deviceID uuid.UUID) (Profile, error) 
 	return s.buildProfile(ctx, q, deviceID, model)
 }
 
+func (s *Service) SetLocation(ctx context.Context, deviceID uuid.UUID, latitude, longitude *float64) (Profile, error) {
+	if (latitude == nil) != (longitude == nil) {
+		return Profile{}, apperr.New(apperr.KindInvalidArgument, "latitude and longitude must be provided together")
+	}
+	if latitude != nil && (*latitude < -90 || *latitude > 90 || *longitude < -180 || *longitude > 180) {
+		return Profile{}, apperr.New(apperr.KindInvalidArgument, "invalid WGS84 coordinates")
+	}
+	q := sqlc.New(s.db)
+	lat, lng := pgtype.Float8{}, pgtype.Float8{}
+	if latitude != nil {
+		lat = pgtype.Float8{Float64: *latitude, Valid: true}
+		lng = pgtype.Float8{Float64: *longitude, Valid: true}
+	}
+	if _, err := q.GetDevice(ctx, deviceID); err != nil {
+		return Profile{}, mapNotFound(err, "device not found")
+	}
+	row, err := q.SetDeviceProfileLocation(ctx, sqlc.SetDeviceProfileLocationParams{DeviceID: deviceID, Latitude: lat, Longitude: lng})
+	if err != nil {
+		return Profile{}, apperr.Wrap(apperr.KindInternal, "save device location", err)
+	}
+	return s.buildProfile(ctx, q, deviceID, &row)
+}
+
 func (s *Service) GetDemo(ctx context.Context, userID, deviceID uuid.UUID) (Profile, error) {
 	result, err := s.Get(ctx, deviceID)
 	if err != nil {
@@ -164,7 +191,7 @@ func (s *Service) GetDemo(ctx context.Context, userID, deviceID uuid.UUID) (Prof
 }
 
 func (s *Service) Update(ctx context.Context, input UpdateProfileInput) (Profile, error) {
-	if input.DeviceID == uuid.Nil || input.ActorUserID == uuid.Nil {
+	if input.DeviceID == uuid.Nil || (!input.Administrator && input.ActorUserID == uuid.Nil) {
 		return Profile{}, apperr.New(apperr.KindInvalidArgument, "device id and actor user id are required")
 	}
 	q := sqlc.New(s.db)
@@ -173,9 +200,13 @@ func (s *Service) Update(ctx context.Context, input UpdateProfileInput) (Profile
 	}
 	description := cleanOptional(input.Description)
 	locationText := cleanOptional(input.LocationText)
+	var userID *uuid.UUID
+	if !input.Administrator {
+		userID = &input.ActorUserID
+	}
 	row, err := q.UpsertDeviceProfile(ctx, sqlc.UpsertDeviceProfileParams{
 		DeviceID: input.DeviceID, Description: description, LocationText: locationText,
-		UpdatedBy: &input.ActorUserID,
+		UpdatedBy: userID,
 	})
 	if err != nil {
 		return Profile{}, apperr.Wrap(apperr.KindInternal, "update device profile", err)
@@ -184,6 +215,10 @@ func (s *Service) Update(ctx context.Context, input UpdateProfileInput) (Profile
 }
 
 func (s *Service) Upload(ctx context.Context, deviceID, actorUserID uuid.UUID, inputs []UploadImageInput) ([]ProfileImage, error) {
+	var userID *uuid.UUID
+	if actorUserID != uuid.Nil {
+		userID = &actorUserID
+	}
 	if len(inputs) == 0 {
 		return nil, apperr.New(apperr.KindInvalidArgument, "at least one image is required")
 	}
@@ -231,7 +266,7 @@ func (s *Service) Upload(ctx context.Context, deviceID, actorUserID uuid.UUID, i
 		row, err := tq.CreateDeviceProfileImage(ctx, sqlc.CreateDeviceProfileImageParams{
 			DeviceID: deviceID, ObjectKey: key, OriginalFilename: filepath.Base(strings.TrimSpace(input.Filename)),
 			ContentType: input.ContentType, SizeBytes: int64(len(input.Data)), Width: width, Height: height,
-			SortOrder: int32(count) + int32(index), IsCover: count == 0 && index == 0, UploadedBy: &actorUserID,
+			SortOrder: int32(count) + int32(index), IsCover: count == 0 && index == 0, UploadedBy: userID,
 		})
 		if err != nil {
 			cleanup()
@@ -364,13 +399,19 @@ func (s *Service) buildProfile(ctx context.Context, q *sqlc.Queries, deviceID uu
 		result.UpdatedBy = model.UpdatedBy
 		result.CreatedAt = timePtr(model.CreatedAt)
 		result.UpdatedAt = timePtr(model.UpdatedAt)
+		result.ManualLatitude, result.ManualLongitude = float64Ptr(model.Latitude), float64Ptr(model.Longitude)
+		if result.ManualLatitude != nil && result.ManualLongitude != nil {
+			result.Latitude, result.Longitude = result.ManualLatitude, result.ManualLongitude
+			result.LocationSource = "device"
+			result.EffectiveLocation = &Location{LocationText: result.LocationText, Latitude: result.ManualLatitude, Longitude: result.ManualLongitude}
+		}
 	}
-	if s.locationLoader != nil {
+	if s.locationLoader != nil && result.EffectiveLocation == nil {
 		location, found, err := s.locationLoader(ctx, deviceID)
 		if err != nil {
-			return Profile{}, err
+			result.LocationWarning = "设备源位置暂不可读取，可登记人工安装坐标或使用关联站点位置"
 		}
-		if found && location.Latitude != nil && location.Longitude != nil {
+		if err == nil && found && location.Latitude != nil && location.Longitude != nil {
 			result.Latitude, result.Longitude = location.Latitude, location.Longitude
 			result.LocationSource = "source"
 			result.EffectiveLocation = &Location{LocationText: result.LocationText, Latitude: location.Latitude, Longitude: location.Longitude}

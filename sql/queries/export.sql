@@ -9,32 +9,35 @@ INSERT INTO export_jobs (
     expires_at
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json;
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin;
 
 -- name: GetExportJob :one
-SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json
+SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin
 FROM export_jobs
 WHERE id = $1;
 
 -- name: ListExportJobsByWorkspace :many
-SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json
+SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin
 FROM export_jobs
 WHERE workspace_id = $1
+  AND requested_by_admin IS NULL
 ORDER BY created_at DESC, id DESC
 LIMIT $2;
 
 -- name: ListExportJobsByRequester :many
-SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json
+SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin
 FROM export_jobs
 WHERE requested_by = $1
+  AND requested_by_admin IS NULL
 ORDER BY created_at DESC, id DESC
 LIMIT $2;
 
 -- name: ListExportJobsByRequesterAndWorkspace :many
-SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json
+SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin
 FROM export_jobs
 WHERE workspace_id = $1
   AND requested_by = $2
+  AND requested_by_admin IS NULL
 ORDER BY created_at DESC, id DESC
 LIMIT $3;
 
@@ -53,7 +56,7 @@ SET status = 'running',
     started_at = COALESCE(started_at, now()),
     updated_at = now()
 WHERE id IN (SELECT id FROM next_job)
-RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json;
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin;
 
 -- name: ExpireExportJobs :execrows
 UPDATE export_jobs
@@ -64,7 +67,7 @@ WHERE status IN ('pending', 'running')
   AND expires_at <= now();
 
 -- name: ListExpiredExportFiles :many
-SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json
+SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin
 FROM export_jobs
 WHERE status = 'success'
   AND expires_at <= now()
@@ -80,7 +83,7 @@ SET status = 'expired',
     finished_at = COALESCE(finished_at, now())
 WHERE id = $1
   AND status = 'success'
-RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json;
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin;
 
 -- name: MarkExportJobRunning :one
 UPDATE export_jobs
@@ -89,7 +92,7 @@ SET status = 'running',
     updated_at = now()
 WHERE id = $1
   AND status = 'pending'
-RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json;
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin;
 
 -- name: MarkExportJobSuccess :one
 UPDATE export_jobs
@@ -101,7 +104,7 @@ SET status = 'success',
     updated_at = now()
 WHERE id = $1
   AND status IN ('pending', 'running')
-RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json;
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin;
 
 -- name: MarkExportJobFailed :one
 UPDATE export_jobs
@@ -111,7 +114,7 @@ SET status = 'failed',
     updated_at = now()
 WHERE id = $1
   AND status IN ('pending', 'running')
-RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json;
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin;
 
 -- name: HeartbeatExportJob :execrows
 UPDATE export_jobs SET updated_at = now(), progress_json = $2
@@ -125,3 +128,18 @@ WHERE id = $1 AND status = 'pending';
 UPDATE export_jobs
 SET status = 'failed', error_message = '导出执行中断或心跳超时，请重新创建任务', finished_at = now(), updated_at = now()
 WHERE status = 'running' AND updated_at < now() - interval '5 minutes';
+
+-- name: CreateAdminExportJob :one
+INSERT INTO export_jobs (requested_by_admin, resource_type, resource_id, export_type, request_config_json, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin;
+
+-- name: ListAdminExportJobs :many
+SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin
+FROM export_jobs
+WHERE (sqlc.narg('device_id')::uuid IS NULL
+  OR resource_id = sqlc.narg('device_id')::uuid
+  OR request_config_json->>'gateway_id' = sqlc.narg('device_id')::uuid::text
+  OR request_config_json->'device_ids' ? sqlc.narg('device_id')::uuid::text)
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg('max_jobs');

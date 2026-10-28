@@ -27,7 +27,7 @@ SET status = 'running',
     started_at = COALESCE(started_at, now()),
     updated_at = now()
 WHERE id IN (SELECT id FROM next_job)
-RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin
 `
 
 func (q *Queries) ClaimNextPendingExportJob(ctx context.Context) (ExportJob, error) {
@@ -51,6 +51,55 @@ func (q *Queries) ClaimNextPendingExportJob(ctx context.Context) (ExportJob, err
 		&i.RequestConfigJson,
 		&i.FileSizeBytes,
 		&i.ProgressJson,
+		&i.RequestedByAdmin,
+	)
+	return i, err
+}
+
+const createAdminExportJob = `-- name: CreateAdminExportJob :one
+INSERT INTO export_jobs (requested_by_admin, resource_type, resource_id, export_type, request_config_json, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin
+`
+
+type CreateAdminExportJobParams struct {
+	RequestedByAdmin  *uuid.UUID         `json:"requested_by_admin"`
+	ResourceType      string             `json:"resource_type"`
+	ResourceID        uuid.UUID          `json:"resource_id"`
+	ExportType        string             `json:"export_type"`
+	RequestConfigJson []byte             `json:"request_config_json"`
+	ExpiresAt         pgtype.Timestamptz `json:"expires_at"`
+}
+
+func (q *Queries) CreateAdminExportJob(ctx context.Context, arg CreateAdminExportJobParams) (ExportJob, error) {
+	row := q.db.QueryRow(ctx, createAdminExportJob,
+		arg.RequestedByAdmin,
+		arg.ResourceType,
+		arg.ResourceID,
+		arg.ExportType,
+		arg.RequestConfigJson,
+		arg.ExpiresAt,
+	)
+	var i ExportJob
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.RequestedBy,
+		&i.ResourceType,
+		&i.ResourceID,
+		&i.ExportType,
+		&i.Status,
+		&i.FileObjectKey,
+		&i.ErrorMessage,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.ExpiresAt,
+		&i.RequestConfigJson,
+		&i.FileSizeBytes,
+		&i.ProgressJson,
+		&i.RequestedByAdmin,
 	)
 	return i, err
 }
@@ -66,12 +115,12 @@ INSERT INTO export_jobs (
     expires_at
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin
 `
 
 type CreateExportJobParams struct {
-	WorkspaceID       uuid.UUID          `json:"workspace_id"`
-	RequestedBy       uuid.UUID          `json:"requested_by"`
+	WorkspaceID       *uuid.UUID         `json:"workspace_id"`
+	RequestedBy       *uuid.UUID         `json:"requested_by"`
 	ResourceType      string             `json:"resource_type"`
 	ResourceID        uuid.UUID          `json:"resource_id"`
 	ExportType        string             `json:"export_type"`
@@ -108,6 +157,7 @@ func (q *Queries) CreateExportJob(ctx context.Context, arg CreateExportJobParams
 		&i.RequestConfigJson,
 		&i.FileSizeBytes,
 		&i.ProgressJson,
+		&i.RequestedByAdmin,
 	)
 	return i, err
 }
@@ -157,7 +207,7 @@ func (q *Queries) FailWaitingExportJob(ctx context.Context, id uuid.UUID) (int64
 }
 
 const getExportJob = `-- name: GetExportJob :one
-SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json
+SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin
 FROM export_jobs
 WHERE id = $1
 `
@@ -183,6 +233,7 @@ func (q *Queries) GetExportJob(ctx context.Context, id uuid.UUID) (ExportJob, er
 		&i.RequestConfigJson,
 		&i.FileSizeBytes,
 		&i.ProgressJson,
+		&i.RequestedByAdmin,
 	)
 	return i, err
 }
@@ -205,8 +256,63 @@ func (q *Queries) HeartbeatExportJob(ctx context.Context, arg HeartbeatExportJob
 	return result.RowsAffected(), nil
 }
 
+const listAdminExportJobs = `-- name: ListAdminExportJobs :many
+SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin
+FROM export_jobs
+WHERE ($1::uuid IS NULL
+  OR resource_id = $1::uuid
+  OR request_config_json->>'gateway_id' = $1::uuid::text
+  OR request_config_json->'device_ids' ? $1::uuid::text)
+ORDER BY created_at DESC, id DESC
+LIMIT $2
+`
+
+type ListAdminExportJobsParams struct {
+	DeviceID *uuid.UUID `json:"device_id"`
+	MaxJobs  int32      `json:"max_jobs"`
+}
+
+func (q *Queries) ListAdminExportJobs(ctx context.Context, arg ListAdminExportJobsParams) ([]ExportJob, error) {
+	rows, err := q.db.Query(ctx, listAdminExportJobs, arg.DeviceID, arg.MaxJobs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExportJob{}
+	for rows.Next() {
+		var i ExportJob
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.RequestedBy,
+			&i.ResourceType,
+			&i.ResourceID,
+			&i.ExportType,
+			&i.Status,
+			&i.FileObjectKey,
+			&i.ErrorMessage,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.ExpiresAt,
+			&i.RequestConfigJson,
+			&i.FileSizeBytes,
+			&i.ProgressJson,
+			&i.RequestedByAdmin,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listExpiredExportFiles = `-- name: ListExpiredExportFiles :many
-SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json
+SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin
 FROM export_jobs
 WHERE status = 'success'
   AND expires_at <= now()
@@ -242,6 +348,7 @@ func (q *Queries) ListExpiredExportFiles(ctx context.Context, limit int32) ([]Ex
 			&i.RequestConfigJson,
 			&i.FileSizeBytes,
 			&i.ProgressJson,
+			&i.RequestedByAdmin,
 		); err != nil {
 			return nil, err
 		}
@@ -254,16 +361,17 @@ func (q *Queries) ListExpiredExportFiles(ctx context.Context, limit int32) ([]Ex
 }
 
 const listExportJobsByRequester = `-- name: ListExportJobsByRequester :many
-SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json
+SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin
 FROM export_jobs
 WHERE requested_by = $1
+  AND requested_by_admin IS NULL
 ORDER BY created_at DESC, id DESC
 LIMIT $2
 `
 
 type ListExportJobsByRequesterParams struct {
-	RequestedBy uuid.UUID `json:"requested_by"`
-	Limit       int32     `json:"limit"`
+	RequestedBy *uuid.UUID `json:"requested_by"`
+	Limit       int32      `json:"limit"`
 }
 
 func (q *Queries) ListExportJobsByRequester(ctx context.Context, arg ListExportJobsByRequesterParams) ([]ExportJob, error) {
@@ -293,6 +401,7 @@ func (q *Queries) ListExportJobsByRequester(ctx context.Context, arg ListExportJ
 			&i.RequestConfigJson,
 			&i.FileSizeBytes,
 			&i.ProgressJson,
+			&i.RequestedByAdmin,
 		); err != nil {
 			return nil, err
 		}
@@ -305,18 +414,19 @@ func (q *Queries) ListExportJobsByRequester(ctx context.Context, arg ListExportJ
 }
 
 const listExportJobsByRequesterAndWorkspace = `-- name: ListExportJobsByRequesterAndWorkspace :many
-SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json
+SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin
 FROM export_jobs
 WHERE workspace_id = $1
   AND requested_by = $2
+  AND requested_by_admin IS NULL
 ORDER BY created_at DESC, id DESC
 LIMIT $3
 `
 
 type ListExportJobsByRequesterAndWorkspaceParams struct {
-	WorkspaceID uuid.UUID `json:"workspace_id"`
-	RequestedBy uuid.UUID `json:"requested_by"`
-	Limit       int32     `json:"limit"`
+	WorkspaceID *uuid.UUID `json:"workspace_id"`
+	RequestedBy *uuid.UUID `json:"requested_by"`
+	Limit       int32      `json:"limit"`
 }
 
 func (q *Queries) ListExportJobsByRequesterAndWorkspace(ctx context.Context, arg ListExportJobsByRequesterAndWorkspaceParams) ([]ExportJob, error) {
@@ -346,6 +456,7 @@ func (q *Queries) ListExportJobsByRequesterAndWorkspace(ctx context.Context, arg
 			&i.RequestConfigJson,
 			&i.FileSizeBytes,
 			&i.ProgressJson,
+			&i.RequestedByAdmin,
 		); err != nil {
 			return nil, err
 		}
@@ -358,16 +469,17 @@ func (q *Queries) ListExportJobsByRequesterAndWorkspace(ctx context.Context, arg
 }
 
 const listExportJobsByWorkspace = `-- name: ListExportJobsByWorkspace :many
-SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json
+SELECT id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin
 FROM export_jobs
 WHERE workspace_id = $1
+  AND requested_by_admin IS NULL
 ORDER BY created_at DESC, id DESC
 LIMIT $2
 `
 
 type ListExportJobsByWorkspaceParams struct {
-	WorkspaceID uuid.UUID `json:"workspace_id"`
-	Limit       int32     `json:"limit"`
+	WorkspaceID *uuid.UUID `json:"workspace_id"`
+	Limit       int32      `json:"limit"`
 }
 
 func (q *Queries) ListExportJobsByWorkspace(ctx context.Context, arg ListExportJobsByWorkspaceParams) ([]ExportJob, error) {
@@ -397,6 +509,7 @@ func (q *Queries) ListExportJobsByWorkspace(ctx context.Context, arg ListExportJ
 			&i.RequestConfigJson,
 			&i.FileSizeBytes,
 			&i.ProgressJson,
+			&i.RequestedByAdmin,
 		); err != nil {
 			return nil, err
 		}
@@ -416,7 +529,7 @@ SET status = 'expired',
     finished_at = COALESCE(finished_at, now())
 WHERE id = $1
   AND status = 'success'
-RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin
 `
 
 func (q *Queries) MarkExportJobExpired(ctx context.Context, id uuid.UUID) (ExportJob, error) {
@@ -440,6 +553,7 @@ func (q *Queries) MarkExportJobExpired(ctx context.Context, id uuid.UUID) (Expor
 		&i.RequestConfigJson,
 		&i.FileSizeBytes,
 		&i.ProgressJson,
+		&i.RequestedByAdmin,
 	)
 	return i, err
 }
@@ -452,7 +566,7 @@ SET status = 'failed',
     updated_at = now()
 WHERE id = $1
   AND status IN ('pending', 'running')
-RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin
 `
 
 type MarkExportJobFailedParams struct {
@@ -481,6 +595,7 @@ func (q *Queries) MarkExportJobFailed(ctx context.Context, arg MarkExportJobFail
 		&i.RequestConfigJson,
 		&i.FileSizeBytes,
 		&i.ProgressJson,
+		&i.RequestedByAdmin,
 	)
 	return i, err
 }
@@ -492,7 +607,7 @@ SET status = 'running',
     updated_at = now()
 WHERE id = $1
   AND status = 'pending'
-RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin
 `
 
 func (q *Queries) MarkExportJobRunning(ctx context.Context, id uuid.UUID) (ExportJob, error) {
@@ -516,6 +631,7 @@ func (q *Queries) MarkExportJobRunning(ctx context.Context, id uuid.UUID) (Expor
 		&i.RequestConfigJson,
 		&i.FileSizeBytes,
 		&i.ProgressJson,
+		&i.RequestedByAdmin,
 	)
 	return i, err
 }
@@ -530,7 +646,7 @@ SET status = 'success',
     updated_at = now()
 WHERE id = $1
   AND status IN ('pending', 'running')
-RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json
+RETURNING id, workspace_id, requested_by, resource_type, resource_id, export_type, status, file_object_key, error_message, created_at, updated_at, started_at, finished_at, expires_at, request_config_json, file_size_bytes, progress_json, requested_by_admin
 `
 
 type MarkExportJobSuccessParams struct {
@@ -560,6 +676,7 @@ func (q *Queries) MarkExportJobSuccess(ctx context.Context, arg MarkExportJobSuc
 		&i.RequestConfigJson,
 		&i.FileSizeBytes,
 		&i.ProgressJson,
+		&i.RequestedByAdmin,
 	)
 	return i, err
 }

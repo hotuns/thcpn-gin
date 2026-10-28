@@ -3,6 +3,7 @@ package media
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -44,6 +45,14 @@ func (h *Handler) ListDeviceImages(c *gin.Context) {
 }
 
 func (h *Handler) AdminListDeviceImages(c *gin.Context) {
+	h.adminListDevice(c, "image")
+}
+
+func (h *Handler) AdminListDeviceMedia(c *gin.Context) {
+	h.adminListDevice(c, c.Query("media_type"))
+}
+
+func (h *Handler) adminListDevice(c *gin.Context, mediaType string) {
 	deviceID, ok := parseUUIDParam(c, "device_id")
 	if !ok {
 		return
@@ -53,11 +62,77 @@ func (h *Handler) AdminListDeviceImages(c *gin.Context) {
 		return
 	}
 	input.DeviceID = &deviceID
-	input.MediaType = "image"
+	input.MediaType = mediaType
 	input.AllowUnassigned = true
+	input.Administrative = true
+	input.DownloadAllowed = true
+	input.DeleteAllowed = true
+	if raw := c.Query("data_stream_id"); raw != "" {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid data_stream_id"))
+			return
+		}
+		input.DataStreamID = &id
+	}
 	result, err := h.service.List(c.Request.Context(), input)
 	if err != nil {
 		httpx.WriteAppError(c, err)
+		return
+	}
+	for i := range result.Items {
+		if result.Items[i].DownloadURL != nil {
+			result.Items[i].DownloadURL = stringPtr(strings.Replace(*result.Items[i].DownloadURL, "/api/v1/media", "/api/v1/admin/media", 1))
+		}
+		if result.Items[i].DeleteURL != nil {
+			result.Items[i].DeleteURL = stringPtr(strings.Replace(*result.Items[i].DeleteURL, "/api/v1/media", "/api/v1/admin/media", 1))
+		}
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func stringPtr(value string) *string { return &value }
+
+func (h *Handler) AdminDownload(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	if !actor.IsSystemAdmin {
+		httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "administrator required"))
+		return
+	}
+	result, err := h.service.PrepareAdminDownload(c.Request.Context(), c.Query("token"))
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{ActorType: audit.ActorSystemAdmin, ActorID: audit.UserActorID(actor.UserID), Action: mediaDownloadAction, ResourceType: "device", ResourceID: audit.ResourceID(result.DeviceID), Result: audit.ResultSuccess}) {
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminDelete(c *gin.Context) {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	if !actor.IsSystemAdmin {
+		httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "administrator required"))
+		return
+	}
+	target, err := h.service.ResolveMediaToken(c.Request.Context(), c.Query("token"), true)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	result, err := h.service.DeleteMediaObject(c.Request.Context(), target)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	if !h.record(c, audit.RecordInput{ActorType: audit.ActorSystemAdmin, ActorID: audit.UserActorID(actor.UserID), Action: mediaDeleteAction, ResourceType: "device", ResourceID: audit.ResourceID(target.DeviceID), Result: audit.ResultSuccess}) {
 		return
 	}
 	c.JSON(http.StatusOK, result)

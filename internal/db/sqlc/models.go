@@ -447,7 +447,7 @@ type DeviceOperation struct {
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 }
 
-// 平台维护的设备业务资料，目前保存描述和文字地址，不保存实时经纬度。
+// 平台安装资料与人工登记的静态 WGS84 安装位置；不保存设备实时上报位置。
 type DeviceProfile struct {
 	DeviceID     uuid.UUID          `json:"device_id"`
 	Description  *string            `json:"description"`
@@ -455,6 +455,8 @@ type DeviceProfile struct {
 	UpdatedBy    *uuid.UUID         `json:"updated_by"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	Latitude     pgtype.Float8      `json:"latitude"`
+	Longitude    pgtype.Float8      `json:"longitude"`
 }
 
 // 设备资料图片元数据，图片二进制存储在对象存储。
@@ -542,10 +544,10 @@ type DeviceTaxonomyTerm struct {
 
 // 异步数据导出任务及结果对象、状态、错误和下载有效期。
 type ExportJob struct {
-	ID           uuid.UUID `json:"id"`
-	WorkspaceID  uuid.UUID `json:"workspace_id"`
-	RequestedBy  uuid.UUID `json:"requested_by"`
-	ResourceType string    `json:"resource_type"`
+	ID           uuid.UUID  `json:"id"`
+	WorkspaceID  *uuid.UUID `json:"workspace_id"`
+	RequestedBy  *uuid.UUID `json:"requested_by"`
+	ResourceType string     `json:"resource_type"`
 	// 单资源导出使用目标资源；device_batch 导出使用首个设备作为权限锚点，完整设备列表保存在 request_config_json.device_ids。
 	ResourceID        uuid.UUID          `json:"resource_id"`
 	ExportType        string             `json:"export_type"`
@@ -560,6 +562,7 @@ type ExportJob struct {
 	RequestConfigJson []byte             `json:"request_config_json"`
 	FileSizeBytes     pgtype.Int8        `json:"file_size_bytes"`
 	ProgressJson      []byte             `json:"progress_json"`
+	RequestedByAdmin  *uuid.UUID         `json:"requested_by_admin"`
 }
 
 type FirmwareArtifact struct {

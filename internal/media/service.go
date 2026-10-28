@@ -55,6 +55,7 @@ type QueryInput struct {
 	DownloadAllowed bool
 	DeleteAllowed   bool
 	AllowUnassigned bool
+	Administrative  bool
 }
 
 type ListResult struct {
@@ -139,24 +140,32 @@ func (s *Service) List(ctx context.Context, input QueryInput) (ListResult, error
 		return ListResult{}, err
 	}
 	if input.DataStreamID != nil {
-		return s.listDataStream(ctx, *input.DataStreamID, input.DeviceID, input.MediaType, input.StartTime, input.EndTime, page, pageSize, input.DownloadAllowed, input.DeleteAllowed, input.AllowUnassigned)
+		return s.listDataStream(ctx, *input.DataStreamID, input.DeviceID, input.MediaType, input.StartTime, input.EndTime, page, pageSize, input.DownloadAllowed, input.DeleteAllowed, input.AllowUnassigned, input.Administrative)
 	}
-	return s.listDevice(ctx, *input.DeviceID, input.MediaType, input.StartTime, input.EndTime, page, pageSize, input.DownloadAllowed, input.DeleteAllowed, input.AllowUnassigned)
+	return s.listDevice(ctx, *input.DeviceID, input.MediaType, input.StartTime, input.EndTime, page, pageSize, input.DownloadAllowed, input.DeleteAllowed, input.AllowUnassigned, input.Administrative)
 }
 
 func (s *Service) PrepareDownload(ctx context.Context, token string, actorIDs ...uuid.UUID) (DownloadResult, error) {
+	return s.prepareDownload(ctx, token, false, actorIDs...)
+}
+
+func (s *Service) PrepareAdminDownload(ctx context.Context, token string) (DownloadResult, error) {
+	return s.prepareDownload(ctx, token, true)
+}
+
+func (s *Service) prepareDownload(ctx context.Context, token string, administrator bool, actorIDs ...uuid.UUID) (DownloadResult, error) {
 	actorID := uuid.Nil
 	if len(actorIDs) > 0 {
 		actorID = actorIDs[0]
 	}
-	target, err := s.ResolveMediaToken(ctx, token)
+	target, err := s.ResolveMediaToken(ctx, token, administrator)
 	if err != nil {
 		return DownloadResult{}, err
 	}
 	if s.signer == nil {
 		return DownloadResult{}, apperr.New(apperr.KindInternal, "object store signer is not configured")
 	}
-	if s.billing != nil {
+	if !administrator && s.billing != nil {
 		if err := s.billing.RequireProfessional(ctx, target.WorkspaceID); err != nil {
 			return DownloadResult{}, err
 		}
@@ -200,7 +209,7 @@ func (s *Service) PrepareDownload(ctx context.Context, token string, actorIDs ..
 	}, nil
 }
 
-func (s *Service) ResolveMediaToken(ctx context.Context, token string) (MediaTarget, error) {
+func (s *Service) ResolveMediaToken(ctx context.Context, token string, administrative ...bool) (MediaTarget, error) {
 	if s.signer == nil {
 		return MediaTarget{}, apperr.New(apperr.KindInternal, "object store signer is not configured")
 	}
@@ -215,14 +224,19 @@ func (s *Service) ResolveMediaToken(ctx context.Context, token string) (MediaTar
 	if stream.DeviceID != claims.DeviceID {
 		return MediaTarget{}, apperr.New(apperr.KindInvalidArgument, "media token does not match data stream")
 	}
-	assignment, err := s.queries.GetActiveDeviceAssignmentByDataStream(ctx, stream.ID)
-	if err != nil {
-		return MediaTarget{}, mapNotFoundOrInternal(err, "active device assignment not found")
+	var workspaceID uuid.UUID
+	if len(administrative) == 0 || !administrative[0] {
+		assignment, err := s.queries.GetActiveDeviceAssignmentByDataStream(ctx, stream.ID)
+		if err != nil {
+			return MediaTarget{}, mapNotFoundOrInternal(err, "active device assignment not found")
+		}
+		workspaceID = assignment.WorkspaceID
 	}
+
 	return MediaTarget{
 		DataStreamID: claims.DataStreamID,
 		DeviceID:     claims.DeviceID,
-		WorkspaceID:  assignment.WorkspaceID,
+		WorkspaceID:  workspaceID,
 		MediaID:      claims.MediaID,
 		MediaType:    claims.MediaType,
 		ObjectKey:    claims.ObjectKey,
@@ -249,7 +263,7 @@ func (s *Service) DeleteMediaObject(ctx context.Context, target MediaTarget) (De
 	}, nil
 }
 
-func (s *Service) listDevice(ctx context.Context, deviceID uuid.UUID, mediaType string, start time.Time, end time.Time, page int, pageSize int, downloadAllowed bool, deleteAllowed bool, allowUnassigned bool) (ListResult, error) {
+func (s *Service) listDevice(ctx context.Context, deviceID uuid.UUID, mediaType string, start time.Time, end time.Time, page int, pageSize int, downloadAllowed bool, deleteAllowed bool, allowUnassigned bool, administrative ...bool) (ListResult, error) {
 	if deviceID == uuid.Nil {
 		return ListResult{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
 	}
@@ -258,18 +272,20 @@ func (s *Service) listDevice(ctx context.Context, deviceID uuid.UUID, mediaType 
 		return ListResult{}, mapNotFoundOrInternal(err, "device not found")
 	}
 	_ = device
-	assignment, err := s.queries.GetActiveDeviceAssignment(ctx, deviceID)
-	if err != nil {
-		if allowUnassigned && errors.Is(err, pgx.ErrNoRows) {
-			downloadAllowed = false
-			deleteAllowed = false
-		} else {
-			return ListResult{}, mapNotFoundOrInternal(err, "active device assignment not found")
-		}
-	} else {
-		downloadAllowed, err = s.professionalDownloadAllowed(ctx, assignment.WorkspaceID, downloadAllowed)
+	if len(administrative) == 0 || !administrative[0] {
+		assignment, err := s.queries.GetActiveDeviceAssignment(ctx, deviceID)
 		if err != nil {
-			return ListResult{}, err
+			if allowUnassigned && errors.Is(err, pgx.ErrNoRows) {
+				downloadAllowed = false
+				deleteAllowed = false
+			} else {
+				return ListResult{}, mapNotFoundOrInternal(err, "active device assignment not found")
+			}
+		} else {
+			downloadAllowed, err = s.professionalDownloadAllowed(ctx, assignment.WorkspaceID, downloadAllowed)
+			if err != nil {
+				return ListResult{}, err
+			}
 		}
 	}
 	streams, err := s.queries.ListDataStreamsByDevice(ctx, deviceID)
@@ -309,7 +325,7 @@ func (s *Service) listDevice(ctx context.Context, deviceID uuid.UUID, mediaType 
 	return ListResult{Items: items, Page: page, PageSize: pageSize, Total: total}, nil
 }
 
-func (s *Service) listDataStream(ctx context.Context, dataStreamID uuid.UUID, deviceID *uuid.UUID, mediaType string, start time.Time, end time.Time, page int, pageSize int, downloadAllowed bool, deleteAllowed bool, allowUnassigned bool) (ListResult, error) {
+func (s *Service) listDataStream(ctx context.Context, dataStreamID uuid.UUID, deviceID *uuid.UUID, mediaType string, start time.Time, end time.Time, page int, pageSize int, downloadAllowed bool, deleteAllowed bool, allowUnassigned bool, administrative ...bool) (ListResult, error) {
 	if dataStreamID == uuid.Nil {
 		return ListResult{}, apperr.New(apperr.KindInvalidArgument, "data stream id is required")
 	}
@@ -329,18 +345,20 @@ func (s *Service) listDataStream(ctx context.Context, dataStreamID uuid.UUID, de
 	if stream.Status != "active" {
 		return ListResult{}, apperr.New(apperr.KindInvalidArgument, "data stream is not active")
 	}
-	assignment, err := s.queries.GetActiveDeviceAssignmentByDataStream(ctx, dataStreamID)
-	if err != nil {
-		if allowUnassigned && errors.Is(err, pgx.ErrNoRows) {
-			downloadAllowed = false
-			deleteAllowed = false
-		} else {
-			return ListResult{}, mapNotFoundOrInternal(err, "active device assignment not found")
-		}
-	} else {
-		downloadAllowed, err = s.professionalDownloadAllowed(ctx, assignment.WorkspaceID, downloadAllowed)
+	if len(administrative) == 0 || !administrative[0] {
+		assignment, err := s.queries.GetActiveDeviceAssignmentByDataStream(ctx, dataStreamID)
 		if err != nil {
-			return ListResult{}, err
+			if allowUnassigned && errors.Is(err, pgx.ErrNoRows) {
+				downloadAllowed = false
+				deleteAllowed = false
+			} else {
+				return ListResult{}, mapNotFoundOrInternal(err, "active device assignment not found")
+			}
+		} else {
+			downloadAllowed, err = s.professionalDownloadAllowed(ctx, assignment.WorkspaceID, downloadAllowed)
+			if err != nil {
+				return ListResult{}, err
+			}
 		}
 	}
 	return s.queryStream(ctx, stream, start, end, page, pageSize, downloadAllowed, deleteAllowed)

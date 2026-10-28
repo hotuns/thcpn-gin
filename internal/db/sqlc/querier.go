@@ -27,6 +27,7 @@ type Querier interface {
 	CountDeviceProfileImages(ctx context.Context, deviceID uuid.UUID) (int64, error)
 	CountPermissionsByCodes(ctx context.Context, dollar_1 []string) (int64, error)
 	CreateAccessGrant(ctx context.Context, arg CreateAccessGrantParams) (AccessGrant, error)
+	CreateAdminExportJob(ctx context.Context, arg CreateAdminExportJobParams) (ExportJob, error)
 	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) (AuditLog, error)
 	CreateCameraDevice(ctx context.Context, arg CreateCameraDeviceParams) (Device, error)
 	CreateDataSource(ctx context.Context, arg CreateDataSourceParams) (DataSource, error)
@@ -115,6 +116,7 @@ type Querier interface {
 	ListAccessGrantsForUser(ctx context.Context, subjectID uuid.UUID) ([]ListAccessGrantsForUserRow, error)
 	ListActiveDeviceChildren(ctx context.Context, parentDeviceID uuid.UUID) ([]ListActiveDeviceChildrenRow, error)
 	ListActiveRefreshSessionsByUser(ctx context.Context, userID uuid.UUID) ([]AuthRefreshSession, error)
+	ListAdminExportJobs(ctx context.Context, arg ListAdminExportJobsParams) ([]ExportJob, error)
 	ListAuditLogsByWorkspace(ctx context.Context, arg ListAuditLogsByWorkspaceParams) ([]AuditLog, error)
 	ListCameraBindingsByDevices(ctx context.Context, dollar_1 []uuid.UUID) ([]CameraBinding, error)
 	ListDataSources(ctx context.Context) ([]DataSource, error)
@@ -171,6 +173,7 @@ type Querier interface {
 	RevokeRefreshSessionForUser(ctx context.Context, arg RevokeRefreshSessionForUserParams) (int64, error)
 	RotateRefreshSession(ctx context.Context, arg RotateRefreshSessionParams) (AuthRefreshSession, error)
 	SetDeviceProfileImageOrder(ctx context.Context, arg SetDeviceProfileImageOrderParams) error
+	SetDeviceProfileLocation(ctx context.Context, arg SetDeviceProfileLocationParams) (DeviceProfile, error)
 	UpdateCameraBindingStatus(ctx context.Context, arg UpdateCameraBindingStatusParams) (CameraBinding, error)
 	UpdateDataSource(ctx context.Context, arg UpdateDataSourceParams) (DataSource, error)
 	UpdateDataStream(ctx context.Context, arg UpdateDataStreamParams) (DataStream, error)

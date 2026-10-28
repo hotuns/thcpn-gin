@@ -132,7 +132,7 @@ func (q *Queries) DeleteDeviceProfileImage(ctx context.Context, arg DeleteDevice
 }
 
 const getDeviceProfile = `-- name: GetDeviceProfile :one
-SELECT device_id, description, location_text, updated_by, created_at, updated_at
+SELECT device_id, description, location_text, updated_by, created_at, updated_at, latitude, longitude
 FROM device_profiles
 WHERE device_id = $1
 `
@@ -147,6 +147,8 @@ func (q *Queries) GetDeviceProfile(ctx context.Context, deviceID uuid.UUID) (Dev
 		&i.UpdatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Latitude,
+		&i.Longitude,
 	)
 	return i, err
 }
@@ -306,6 +308,35 @@ func (q *Queries) SetDeviceProfileImageOrder(ctx context.Context, arg SetDeviceP
 	return err
 }
 
+const setDeviceProfileLocation = `-- name: SetDeviceProfileLocation :one
+INSERT INTO device_profiles (device_id, latitude, longitude)
+VALUES ($1, $2, $3)
+ON CONFLICT (device_id) DO UPDATE SET latitude=EXCLUDED.latitude, longitude=EXCLUDED.longitude, updated_at=now()
+RETURNING device_id, description, location_text, updated_by, created_at, updated_at, latitude, longitude
+`
+
+type SetDeviceProfileLocationParams struct {
+	DeviceID  uuid.UUID     `json:"device_id"`
+	Latitude  pgtype.Float8 `json:"latitude"`
+	Longitude pgtype.Float8 `json:"longitude"`
+}
+
+func (q *Queries) SetDeviceProfileLocation(ctx context.Context, arg SetDeviceProfileLocationParams) (DeviceProfile, error) {
+	row := q.db.QueryRow(ctx, setDeviceProfileLocation, arg.DeviceID, arg.Latitude, arg.Longitude)
+	var i DeviceProfile
+	err := row.Scan(
+		&i.DeviceID,
+		&i.Description,
+		&i.LocationText,
+		&i.UpdatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Latitude,
+		&i.Longitude,
+	)
+	return i, err
+}
+
 const updateDeviceProfileImage = `-- name: UpdateDeviceProfileImage :one
 UPDATE device_profile_images
 SET caption = $3,
@@ -358,7 +389,7 @@ SET description = EXCLUDED.description,
     location_text = EXCLUDED.location_text,
     updated_by = EXCLUDED.updated_by,
     updated_at = now()
-RETURNING device_id, description, location_text, updated_by, created_at, updated_at
+RETURNING device_id, description, location_text, updated_by, created_at, updated_at, latitude, longitude
 `
 
 type UpsertDeviceProfileParams struct {
@@ -383,6 +414,8 @@ func (q *Queries) UpsertDeviceProfile(ctx context.Context, arg UpsertDeviceProfi
 		&i.UpdatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Latitude,
+		&i.Longitude,
 	)
 	return i, err
 }
