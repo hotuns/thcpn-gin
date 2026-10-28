@@ -3,13 +3,15 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { FormInstance } from "antd";
-import { Activity, Battery, Copy, FileJson, GitBranch, Pencil, Printer, Radio, RefreshCw, Search, Settings2, Trash2 } from "lucide-react";
+import dayjs, { type Dayjs } from "dayjs";
+import { Battery, GitBranch, Radio, Search, Settings2, Trash2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Alert,
   Button,
   Descriptions,
   Drawer,
+  DatePicker,
   Empty,
   Form,
   Input,
@@ -136,6 +138,7 @@ export function AdminDevicesPage() {
   const [bulkLifecycleOpen, setBulkLifecycleOpen] = useState(false);
   const [bulkLifecycleStatus, setBulkLifecycleStatus] = useState("");
   const [bulkLifecycleNote, setBulkLifecycleNote] = useState("");
+  const [bulkLifecycleAt, setBulkLifecycleAt] = useState<Dayjs | null>(dayjs());
   const [selected, setSelected] = useState<JsonRecord | null>(null);
   const [mode, setMode] = useState<Mode>(null);
   const sourceQuery = useQuery({
@@ -144,6 +147,8 @@ export function AdminDevicesPage() {
     enabled: mode === "create-device",
   });
   const [busy, setBusy] = useState(false);
+  const [earliestLoading, setEarliestLoading] = useState(false);
+  const [earliestFeedback, setEarliestFeedback] = useState("");
   const [feedback, setFeedback] = useState("");
   const [createdSourceDevice, setCreatedSourceDevice] = useState<JsonRecord | null>(null);
   const [detail, setDetail] = useState<unknown>(null);
@@ -262,7 +267,7 @@ export function AdminDevicesPage() {
   };
 
   const runBatchLifecycle = async () => {
-    if (!bulkLifecycleStatus || !selectedRows.length) return;
+    if (!bulkLifecycleStatus || !bulkLifecycleAt || !selectedRows.length) return;
     setBusy(true);
     setFeedback("");
     try {
@@ -271,6 +276,7 @@ export function AdminDevicesPage() {
           api.admin.updateLifecycle(value(item.id, ""), {
             lifecycle_status: bulkLifecycleStatus,
             note: bulkLifecycleNote,
+            ...(bulkLifecycleAt ? { occurred_at: bulkLifecycleAt.toISOString() } : {}),
           }),
         ),
       );
@@ -320,8 +326,10 @@ export function AdminDevicesPage() {
     if (next === "lifecycle") {
       form.setFieldsValue({
         lifecycle_status: record.lifecycle_status,
+        occurred_at: dayjs(),
         note: "",
       });
+      setEarliestFeedback("");
       void loadDetail("lifecycle", record);
     }
     if (next === "capabilities")
@@ -365,6 +373,32 @@ export function AdminDevicesPage() {
           });
         })
         .catch(showError);
+    }
+  };
+  const getEarliestDeviceData = async () => {
+    if (!selected) return;
+    setEarliestLoading(true);
+    setEarliestFeedback("");
+    try {
+      const result = await api.admin.deviceEarliestTelemetry(value(selected.id, ""));
+      if (!result.found || !result.timestamp) {
+        setEarliestFeedback("没有找到该设备的历史数据。");
+        return;
+      }
+      const timestamp = dayjs(result.timestamp);
+      form.setFieldValue("occurred_at", timestamp);
+      const timeText = new Intl.DateTimeFormat("zh-CN", {
+        dateStyle: "medium",
+        timeStyle: "medium",
+        timeZone: "Asia/Shanghai",
+      }).format(timestamp.toDate());
+      const stream = result.data_stream_name || result.data_stream_code || "设备数据";
+      const valueText = result.value === undefined ? "" : ` · ${result.value}${result.unit ? ` ${result.unit}` : ""}`;
+      setEarliestFeedback(`已找到最早数据：${stream}${valueText} · ${timeText}（北京时间）`);
+    } catch (error) {
+      setEarliestFeedback(formatApiError(error).message);
+    } finally {
+      setEarliestLoading(false);
     }
   };
   const openDeviceCreate = () => {
@@ -434,7 +468,14 @@ export function AdminDevicesPage() {
             : {}),
         });
       if (mode === "child") await api.admin.addDeviceChild(id, fields);
-      if (mode === "lifecycle") await api.admin.updateLifecycle(id, fields);
+      if (mode === "lifecycle") {
+        const occurredAt = fields.occurred_at?.toISOString?.();
+        await api.admin.updateLifecycle(id, {
+          lifecycle_status: fields.lifecycle_status,
+          note: fields.note,
+          ...(occurredAt ? { occurred_at: occurredAt } : {}),
+        });
+      }
       if (mode === "capabilities")
         await api.admin.updateCapabilities(id, {
           capabilities: fields.capabilities ?? [],
@@ -630,7 +671,7 @@ export function AdminDevicesPage() {
       {configResult ? <ConfigApplyResult result={configResult} onClose={() => setConfigResult(null)} /> : null}
       <Drawer title={drawerTitle(mode, selected)} open={Boolean(mode)} onClose={close} size={mode === "config" ? 1180 : 620} extra={mode === "attributes" ? <Button onClick={close}>关闭</Button> : <Space><Button onClick={close}>取消</Button><Button type="primary" danger={mode === "config"} loading={busy} onClick={() => void (mode === "create-device" && createdSourceDevice?.sync_error ? retryCreatedSourceDevice() : submit())}>{mode === "create-device" && createdSourceDevice?.sync_error ? (createdSourceDevice.source_kind === "lorawan_v2" ? "重试默认配置" : "重试同步") : mode === "create-device" ? "创建设备" : "保存"}</Button></Space>}>
         {mode === "config" && configConflict ? <Alert className="config-conflict-alert" type="warning" showIcon title="源配置已变化，当前草稿尚未保存" description="复制草稿后重新加载最新配置；系统不会强制覆盖其他操作写入的版本。" action={<Space orientation="vertical"><Button size="small" onClick={() => void navigator.clipboard.writeText(JSON.stringify(parseDeviceConfig(form.getFieldsValue() as DeviceConfigFields), null, 2))}>复制草稿</Button><Button size="small" type="primary" onClick={() => { setConfigConflict(false); void loadDetail("config", selected); }}>重新加载</Button></Space>} /> : null}
-        <Form form={form} layout="vertical">{mode === "create-device" ? <DeviceCreateForm form={form} sources={sourceQuery.data?.items ?? []} sourcesLoading={sourceQuery.isLoading} /> : <DeviceForm mode={mode} form={form} devices={allRows} deviceId={id} busy={busy} />}</Form>
+        <Form form={form} layout="vertical">{mode === "create-device" ? <DeviceCreateForm form={form} sources={sourceQuery.data?.items ?? []} sourcesLoading={sourceQuery.isLoading} /> : <DeviceForm mode={mode} form={form} devices={allRows} deviceId={id} busy={busy} onGetEarliestData={() => void getEarliestDeviceData()} earliestLoading={earliestLoading} earliestFeedback={earliestFeedback} />}</Form>
         {mode === "create-device" && createdSourceDevice?.sync_error ? <Alert type="warning" showIcon title={createdSourceDevice.source_kind === "lorawan_v2" ? "网关已创建，默认配置写入失败" : "源库设备已创建，但平台同步失败"} description={<div>SN {value(createdSourceDevice.sn)}<br />{value(createdSourceDevice.sync_error)}</div>} /> : null}
         <StructuredDetail mode={mode} detail={detail} busy={busy} onRemove={(childId) => selected && void removeChild(value(selected.id, ""), childId)} />
         {mode === "config" && detail ? <ConfigContext detail={detail as JsonRecord} /> : null}
@@ -646,7 +687,7 @@ export function AdminDevicesPage() {
     if (!device) return <StateView type="empty" title="设备不存在" description="该设备可能已被删除或尚未同步。" action={<Button><Link to="/admin/devices">返回设备列表</Link></Button>} />;
     const isCamera = categoryOf(device) === "camera";
     const refreshDetail = () => void Promise.all([query.refetch(), detailLifecycleQuery.refetch(), ...(isCarbonDetail ? [detailCarbonQuery.refetch()] : [detailAttributesQuery.refetch(), detailChildrenQuery.refetch(), detailConfigQuery.refetch()])]);
-    return <><PageHeader eyebrow="System / devices / detail" title={value(device.name, "未命名设备")} description={`${value(device.serial_no, device.id)} · ${deviceModelLabel(device)}`} actions={<Space><Button><Link to="/admin/devices">返回列表</Link></Button><Button type="primary" icon={<Pencil size={14} />} onClick={() => open("edit", device)}>编辑资料</Button><Button icon={<RefreshCw size={14} />} onClick={refreshDetail}>刷新</Button></Space>} />{feedback && <div className="admin-feedback section-gap">{feedback}</div>}<DeviceDetailPanel device={device} isCamera={isCamera} isCarbon={isCarbonDetail} carbonData={detailCarbonQuery.data as unknown as JsonRecord | undefined} carbonLoading={detailCarbonQuery.isLoading} carbonError={detailCarbonQuery.error} attributes={detailAttributesQuery.data as unknown as JsonRecord | undefined} attributesLoading={detailAttributesQuery.isLoading} attributesError={detailAttributesQuery.error} childrenData={detailChildrenQuery.data as unknown as JsonRecord | undefined} childrenLoading={detailChildrenQuery.isLoading} childrenError={detailChildrenQuery.error} lifecycleData={detailLifecycleQuery.data as JsonRecord | undefined} lifecycleLoading={detailLifecycleQuery.isLoading} lifecycleError={detailLifecycleQuery.error} configData={detailConfigQuery.data as JsonRecord | undefined} configLoading={detailConfigQuery.isLoading} configError={detailConfigQuery.error} onOpen={(next) => open(next, device)} onUnassign={() => void unassign(device)} />{managementOverlays}</>;
+    return <><PageHeader eyebrow="System / devices / detail" title={value(device.name, "未命名设备")} description={`${value(device.serial_no, device.id)} · ${deviceModelLabel(device)}`} actions={<Space><Button><Link to="/admin/devices">返回列表</Link></Button><Button type="primary" onClick={() => open("edit", device)}>编辑资料</Button><Button onClick={refreshDetail}>刷新</Button></Space>} />{feedback && <div className="admin-feedback section-gap">{feedback}</div>}<DeviceDetailPanel device={device} isCamera={isCamera} isCarbon={isCarbonDetail} carbonData={detailCarbonQuery.data as unknown as JsonRecord | undefined} carbonLoading={detailCarbonQuery.isLoading} carbonError={detailCarbonQuery.error} attributes={detailAttributesQuery.data as unknown as JsonRecord | undefined} attributesLoading={detailAttributesQuery.isLoading} attributesError={detailAttributesQuery.error} childrenData={detailChildrenQuery.data as unknown as JsonRecord | undefined} childrenLoading={detailChildrenQuery.isLoading} childrenError={detailChildrenQuery.error} lifecycleData={detailLifecycleQuery.data as JsonRecord | undefined} lifecycleLoading={detailLifecycleQuery.isLoading} lifecycleError={detailLifecycleQuery.error} configData={detailConfigQuery.data as JsonRecord | undefined} configLoading={detailConfigQuery.isLoading} configError={detailConfigQuery.error} onOpen={(next) => open(next, device)} onUnassign={() => void unassign(device)} />{managementOverlays}</>;
   }
 
   return (
@@ -655,7 +696,7 @@ export function AdminDevicesPage() {
         eyebrow="System / devices"
         title="设备列表"
         description="统一管理标准站、组网站、碳汇站和监控站。"
-        actions={<Space><Button type="primary" onClick={openDeviceCreate}>创建设备</Button><Button icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>刷新</Button></Space>}
+        actions={<Space><Button type="primary" onClick={openDeviceCreate}>创建设备</Button><Button onClick={() => void query.refetch()}>刷新</Button></Space>}
       />
       <Panel>
         <div className="admin-device-filters">
@@ -719,7 +760,7 @@ export function AdminDevicesPage() {
             <Space wrap>
               <Button loading={busy} onClick={() => void runBatch("activate")}>批量启用</Button>
               <Button danger loading={busy} onClick={() => void runBatch("disable")}>批量停用</Button>
-              <Button loading={busy} onClick={() => { setBulkLifecycleStatus(""); setBulkLifecycleNote(""); setBulkLifecycleOpen(true); }}>批量设置生命周期</Button>
+              <Button loading={busy} onClick={() => { setBulkLifecycleStatus(""); setBulkLifecycleNote(""); setBulkLifecycleAt(dayjs()); setBulkLifecycleOpen(true); }}>批量设置生命周期</Button>
               <Button loading={busy} onClick={() => void runBatch("unassign")}>解除分配</Button>
               <Button type="text" disabled={busy} onClick={() => setSelectedRowKeys([])}>清空选择</Button>
             </Space>
@@ -800,7 +841,7 @@ export function AdminDevicesPage() {
         onOk={() => void runBatchLifecycle()}
         okText="确认设置"
         confirmLoading={busy}
-        okButtonProps={{ disabled: !bulkLifecycleStatus }}
+        okButtonProps={{ disabled: !bulkLifecycleStatus || !bulkLifecycleAt }}
       >
         <Form layout="vertical">
           <Form.Item label="新生命周期" required>
@@ -809,6 +850,9 @@ export function AdminDevicesPage() {
               onChange={setBulkLifecycleStatus}
               options={deviceLifecycleOptions.map((item) => ({ value: item.value, label: deviceLifecycleLabel(item.value) }))}
             />
+          </Form.Item>
+          <Form.Item label="状态生效时间" required>
+            <DatePicker showTime value={bulkLifecycleAt} onChange={setBulkLifecycleAt} style={{ width: "100%" }} />
           </Form.Item>
           <Form.Item label="变更说明">
             <Input.TextArea rows={4} value={bulkLifecycleNote} onChange={(event) => setBulkLifecycleNote(event.target.value)} placeholder="记录本次状态变化的原因" />
@@ -905,7 +949,7 @@ function DeviceDetailPanel({
   const queryLoading = ({ loading, data, error }: DetailQueryProps) => loading && !data && !error;
   const overview = <div className="admin-device-detail-content">
     <section className="admin-detail-section">
-      <div className="admin-detail-section-head"><div><h2>设备资料</h2><span>设备身份与资产状态</span></div><Button icon={<Pencil size={14} />} onClick={() => onOpen("edit")}>编辑</Button></div>
+      <div className="admin-detail-section-head"><div><h2>设备资料</h2><span>设备身份与资产状态</span></div><Button onClick={() => onOpen("edit")}>编辑</Button></div>
       <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }} items={[
         { key: "serial", label: "平台序列号", children: <Tooltip title="平台生成的资产编号，用于认领和查找设备，不一定等于厂家 SN。"><span className="mono">{value(device.serial_no)}</span></Tooltip> },
         { key: "iccid", label: device.source_family==="lorawan_v2" ? "人工登记 ICCID" : "物联卡 ICCID", children: <span className="mono">{value(device.iccid, "未记录")}</span> },
@@ -931,7 +975,7 @@ function DeviceDetailPanel({
       ]} />
     </section>
     <section className="admin-detail-section">
-      <div className="admin-detail-section-head"><div><h2>生命周期</h2><span>当前阶段与最近一次状态变更</span></div><Button icon={<Activity size={14} />} onClick={() => onOpen("lifecycle")}>更新状态</Button></div>
+      <div className="admin-detail-section-head"><div><h2>生命周期</h2><span>当前阶段与最近一次状态变更</span></div><Button onClick={() => onOpen("lifecycle")}>更新状态</Button></div>
       {inlineError(lifecycleError, "生命周期历史加载失败")}
       <Descriptions bordered size="small" column={{ xs: 1, sm: 3 }} items={[
         { key: "lifecycle", label: "当前阶段", children: <Tag color="blue">{deviceLifecycleLabel(value(device.lifecycle_status, ""))}</Tag> },
@@ -954,7 +998,7 @@ function DeviceDetailPanel({
   </div>;
   const topology = <div className="admin-device-detail-content">
     <section className="admin-detail-section">
-      <div className="admin-detail-section-head"><div><h2>拓扑关系</h2><span>{deviceTopologyRoleLabel(value(device.topology_role, ""))} · {children.length} 个子节点</span></div><Button icon={<GitBranch size={14} />} onClick={() => onOpen("child")}>管理拓扑</Button></div>
+      <div className="admin-detail-section-head"><div><h2>拓扑关系</h2><span>{deviceTopologyRoleLabel(value(device.topology_role, ""))} · {children.length} 个子节点</span></div><Button onClick={() => onOpen("child")}>管理拓扑</Button></div>
       {inlineError(childrenError, "拓扑信息加载失败")}
       {queryLoading({ loading: childrenLoading, data: childrenData, error: childrenError }) ? <div className="admin-inline-loading">正在加载拓扑…</div> : children.length ? <Table rowKey={(item) => value(((item.device ?? item) as JsonRecord).id)} size="small" pagination={false} dataSource={children} columns={[
         { title: "节点", render: (_, item) => { const child = (item.device ?? item) as JsonRecord; return <div><strong>{value(child.name, "未命名节点")}</strong><NodeNameEditor name={value(child.name, "")} allowEmpty={false} onSave={async name => {await api.admin.updateDevice(String(child.id), {name}); await invalidateNodeNames(nodeQueryClient);}}/><div className="cell-sub mono">{value(child.serial_no, child.id)}</div></div>; } },
@@ -969,7 +1013,7 @@ function DeviceDetailPanel({
   </div>;
   const configuration = <div className="admin-device-detail-content">
     <section className="admin-detail-section">
-      <div className="admin-detail-section-head"><div><h2>{isCarbon ? "碳汇设备配置" : "THCPN 配置"}</h2><span>{isCarbon ? "Carbon 源库最新配置" : "源库最新配置与平台同步快照"}</span></div><Button type="primary" icon={<FileJson size={14} />} onClick={() => onOpen("config")}>编辑完整配置</Button></div>
+      <div className="admin-detail-section-head"><div><h2>{isCarbon ? "碳汇设备配置" : "THCPN 配置"}</h2><span>{isCarbon ? "Carbon 源库最新配置" : "源库最新配置与平台同步快照"}</span></div><Button type="primary" onClick={() => onOpen("config")}>编辑完整配置</Button></div>
       {inlineError(configError, "设备配置加载失败")}
       {queryLoading({ loading: configLoading, data: configData, error: configError }) ? <div className="admin-inline-loading">正在加载配置…</div> : configData ? <><Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 4 }} items={[
         { key: "external", label: "外部设备 ID", children: value(configData.external_device_id) },
@@ -1164,7 +1208,7 @@ function ClaimCredentialSection({ device, date }: { device: JsonRecord; date: (i
     await query.refetch();
   };
   return <section className="admin-detail-section">
-    <div className="admin-detail-section-head"><div><h2>永久认领铭牌</h2><span>二维码和手动认领码永久有效，可在设备解绑后重复使用</span></div>{credential ? <Space><Button icon={<Copy size={14} />} onClick={() => void navigator.clipboard.writeText(`${claimUrl}\nSN: ${credential.serial_no}\n认领码: ${credential.manual_code}`)}>复制</Button><Button type="primary" icon={<Printer size={14} />} onClick={() => void print()}>打印铭牌</Button></Space> : null}</div>
+    <div className="admin-detail-section-head"><div><h2>永久认领铭牌</h2><span>二维码和手动认领码永久有效，可在设备解绑后重复使用</span></div>{credential ? <Space><Button onClick={() => void navigator.clipboard.writeText(`${claimUrl}\nSN: ${credential.serial_no}\n认领码: ${credential.manual_code}`)}>复制</Button><Button type="primary" onClick={() => void print()}>打印铭牌</Button></Space> : null}</div>
     {query.isLoading ? <div className="admin-inline-loading">正在加载永久铭牌…</div> : query.error ? <Alert type="warning" showIcon title="永久铭牌加载失败" description={formatApiError(query.error).message} /> : credential ? <div className="admin-claim-credential">
       <QRCodeSVG id={`claim-qr-${deviceId}`} value={claimUrl} size={148} level="M" marginSize={2} />
       <Descriptions bordered size="small" column={1} items={[
@@ -1258,12 +1302,18 @@ function DeviceForm({
   devices,
   deviceId,
   busy,
+  onGetEarliestData,
+  earliestLoading,
+  earliestFeedback,
 }: {
   mode: Mode;
   form: FormInstance<any>;
   devices: JsonRecord[];
   deviceId: string;
   busy: boolean;
+  onGetEarliestData: () => void;
+  earliestLoading: boolean;
+  earliestFeedback: string;
 }) {
   const configVersion = Form.useWatch("expected_config_id", { form, preserve: true });
   const workspaceId = Form.useWatch("target_workspace_id", form);
@@ -1429,6 +1479,17 @@ function DeviceForm({
             options={deviceLifecycleOptions.map((item) => ({ value: item.value, label: deviceLifecycleLabel(item.value) }))}
           />
         </Form.Item>
+        <Form.Item
+          name="occurred_at"
+          label="状态生效时间"
+          rules={[{ required: true, message: "请选择状态生效时间" }]}
+        >
+          <DatePicker showTime style={{ width: "100%" }} />
+        </Form.Item>
+        <Space direction="vertical" style={{ width: "100%", marginBottom: 16 }}>
+          <Button loading={earliestLoading} onClick={onGetEarliestData}>获取设备最早一条数据</Button>
+          {earliestFeedback ? <div className="drawer-note">{earliestFeedback}</div> : null}
+        </Space>
         <Form.Item name="note" label="变更说明">
           <Input.TextArea rows={4} placeholder="记录本次状态变化的原因" />
         </Form.Item>

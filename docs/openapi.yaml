@@ -3445,6 +3445,29 @@ paths:
       responses:
         "204": { description: Deleted. }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/admin/devices/{device_id}/telemetry/earliest:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags: [Admin]
+      operationId: adminGetEarliestDeviceTelemetry
+      summary: Get the earliest telemetry point for a system device
+      description: Requires administrator access. Searches the device's available history and returns its first valid telemetry point.
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        "200":
+          description: Earliest point across the device's data streams, if any.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EarliestDeviceTelemetryResponse"
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
   /api/v1/admin/devices/{device_id}/lifecycle:
     parameters:
       - $ref: "#/components/parameters/DeviceID"
@@ -9355,6 +9378,29 @@ components:
           $ref: "#/components/schemas/Timestamp"
         note:
           type: string
+    EarliestDeviceTelemetryResponse:
+      type: object
+      required:
+        - device_id
+        - found
+      properties:
+        device_id:
+          $ref: "#/components/schemas/UUID"
+        found:
+          type: boolean
+        data_stream_id:
+          $ref: "#/components/schemas/UUID"
+        data_stream_name:
+          type: string
+        data_stream_code:
+          type: string
+        unit:
+          type: string
+        timestamp:
+          $ref: "#/components/schemas/Timestamp"
+        value:
+          type: number
+          format: double
     DeviceCapabilitiesResponse:
       type: object
       required:

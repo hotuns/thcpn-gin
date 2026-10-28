@@ -77,6 +77,7 @@ export type ComputedDataStream = {
 export type TelemetryPoint = Schema<"TelemetryPoint">;
 export type TelemetrySeries = Schema<"TelemetrySeries">;
 export type TelemetryQueryResponse = Schema<"TelemetryQueryResponse">;
+export type EarliestDeviceData = Schema<"EarliestDeviceTelemetryResponse">;
 export type MediaItem = Schema<"MediaItem">;
 export type MediaListResponse = Schema<"MediaListResponse">;
 export type CameraLiveSession = Schema<"CameraLiveSessionResponse">;
@@ -1297,6 +1298,7 @@ export const api = {
     sourceOperation: (id: string) => request<SourceOperation>(`/api/v1/admin/source-operations/${encodeURIComponent(id)}`),
     deviceContext: (id: string) => request<DeviceInteractionContext>(`/api/v1/admin/devices/${encodeURIComponent(id)}/context`),
     deviceTelemetry: (id: string, input: {startTime:string;endTime:string;dataStreamIds:string[];targetPoints?:number}) => request<TelemetryQueryResponse>(`/api/v1/admin/devices/${encodeURIComponent(id)}/telemetry${queryString({start_time:input.startTime,end_time:input.endTime,data_stream_ids:input.dataStreamIds.join(","),adaptive:true,target_points:input.targetPoints ?? 2,limit:500})}`),
+    deviceEarliestTelemetry: (id: string) => request<EarliestDeviceData>(`/api/v1/admin/devices/${encodeURIComponent(id)}/telemetry/earliest`),
     deviceLoRaWANV2Context: (id: string) =>
       request<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/context`),
     loraWANV2NodeData: (id: string, sn: string, node: number, input: JsonRecord = {}) =>

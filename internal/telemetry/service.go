@@ -78,6 +78,17 @@ type Point struct {
 	Quality   string    `json:"quality"`
 }
 
+type EarliestDeviceData struct {
+	DeviceID       uuid.UUID  `json:"device_id"`
+	Found          bool       `json:"found"`
+	DataStreamID   *uuid.UUID `json:"data_stream_id,omitempty"`
+	DataStreamName string     `json:"data_stream_name,omitempty"`
+	DataStreamCode string     `json:"data_stream_code,omitempty"`
+	Unit           *string    `json:"unit,omitempty"`
+	Timestamp      *time.Time `json:"timestamp,omitempty"`
+	Value          *float64   `json:"value,omitempty"`
+}
+
 type Warning struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
@@ -170,9 +181,58 @@ func (s *Service) QueryInternal(ctx context.Context, input QueryInput) (QueryRes
 		return QueryResult{}, apperr.New(apperr.KindInvalidArgument, "valid start_time and end_time are required")
 	}
 	if input.DataStreamID != nil {
-		return s.queryDataStream(ctx, *input.DataStreamID, input.DeviceID, input.StartTime, input.EndTime, input.Limit, false, 0)
+		return s.queryDataStream(ctx, *input.DataStreamID, input.DeviceID, input.StartTime, input.EndTime, input.Limit, input.Adaptive, input.TargetPoints)
 	}
-	return s.queryDevice(ctx, *input.DeviceID, input.DataStreamIDs, input.StartTime, input.EndTime, input.Limit, false, 0)
+	return s.queryDevice(ctx, *input.DeviceID, input.DataStreamIDs, input.StartTime, input.EndTime, input.Limit, input.Adaptive, input.TargetPoints)
+}
+
+// EarliestDeviceData finds the oldest valid telemetry point across a device's
+// active streams. The query is administrator-only and intentionally bypasses
+// workspace history windows; adapters return only a small result while
+// locating the first point.
+func (s *Service) EarliestDeviceData(ctx context.Context, deviceID uuid.UUID) (EarliestDeviceData, error) {
+	if deviceID == uuid.Nil {
+		return EarliestDeviceData{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
+	}
+	end := time.Now().UTC()
+	result, err := s.QueryInternal(ctx, QueryInput{
+		DeviceID:     &deviceID,
+		StartTime:    time.Unix(0, 0).UTC(),
+		EndTime:      end,
+		Limit:        2,
+		Adaptive:     true,
+		TargetPoints: 2,
+	})
+	if err != nil {
+		return EarliestDeviceData{}, err
+	}
+	earliest := EarliestDeviceData{DeviceID: deviceID}
+	var earliestPoint *Point
+	for _, series := range result.Series {
+		if series.Error != "" {
+			return EarliestDeviceData{}, apperr.New(apperr.KindDataSource, "earliest device data could not be determined because a data stream could not be read")
+		}
+		if len(series.Points) == 0 {
+			continue
+		}
+		point := series.Points[0]
+		if earliestPoint != nil && !point.Timestamp.Before(earliestPoint.Timestamp) {
+			continue
+		}
+		pointCopy := point
+		earliestPoint = &pointCopy
+		earliest.Found = true
+		streamID := series.DataStreamID
+		earliest.DataStreamID = &streamID
+		earliest.DataStreamName = series.Name
+		earliest.DataStreamCode = series.Code
+		earliest.Unit = series.Unit
+	}
+	if earliestPoint != nil {
+		earliest.Timestamp = &earliestPoint.Timestamp
+		earliest.Value = &earliestPoint.Value
+	}
+	return earliest, nil
 }
 
 func (s *Service) queryDevice(ctx context.Context, deviceID uuid.UUID, requestedIDs []uuid.UUID, start time.Time, end time.Time, limit int, adaptive bool, targetPoints int) (QueryResult, error) {

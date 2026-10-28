@@ -3292,6 +3292,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/devices/{device_id}/telemetry/earliest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get the earliest telemetry point for a system device
+         * @description Requires administrator access. Searches the device's available history and returns its first valid telemetry point.
+         */
+        get: operations["adminGetEarliestDeviceTelemetry"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/devices/{device_id}/lifecycle": {
         parameters: {
             query?: never;
@@ -6709,6 +6732,17 @@ export interface components {
             lifecycle_status: components["schemas"]["DeviceLifecycleStatus"];
             occurred_at?: components["schemas"]["Timestamp"];
             note?: string;
+        };
+        EarliestDeviceTelemetryResponse: {
+            device_id: components["schemas"]["UUID"];
+            found: boolean;
+            data_stream_id?: components["schemas"]["UUID"];
+            data_stream_name?: string;
+            data_stream_code?: string;
+            unit?: string;
+            timestamp?: components["schemas"]["Timestamp"];
+            /** Format: double */
+            value?: number;
         };
         DeviceCapabilitiesResponse: {
             capabilities: components["schemas"]["DeviceCapabilityCode"][];
@@ -12289,6 +12323,34 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    adminGetEarliestDeviceTelemetry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Earliest point across the device's data streams, if any. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EarliestDeviceTelemetryResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
         };
     };
     adminGetDeviceLifecycle: {

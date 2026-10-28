@@ -253,3 +253,16 @@ func (h *Handler) AdminQueryDevice(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, result)
 }
+
+func (h *Handler) AdminEarliestDeviceData(c *gin.Context) {
+	id, ok := parseUUIDParam(c, "device_id")
+	if !ok {
+		return
+	}
+	result, err := h.service.EarliestDeviceData(c.Request.Context(), id)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}

@@ -468,6 +468,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.GET("/data-streams", dataStreamHandler.AdminList)
 	admin.GET("/data-streams/:data_stream_id/telemetry", telemetryHandler.AdminQueryDataStream)
 	admin.GET("/devices/:device_id/telemetry", telemetryHandler.AdminQueryDevice)
+	admin.GET("/devices/:device_id/telemetry/earliest", telemetryHandler.AdminEarliestDeviceData)
 	admin.GET("/devices/:device_id/media/images", mediaHandler.AdminListDeviceImages)
 	admin.GET("/devices/runtime", dataSourceHandler.AdminTHCPNDeviceRuntime)
 	admin.GET("/devices/:device_id/logs", dataSourceHandler.AdminListTHCPNDeviceLogs)
