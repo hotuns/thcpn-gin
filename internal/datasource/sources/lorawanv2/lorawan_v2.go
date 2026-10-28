@@ -347,8 +347,22 @@ func loraWANV2Timestamp(raw json.RawMessage) (time.Time, error) {
 		if parsed, err := time.Parse(time.RFC3339Nano, value); err == nil {
 			return parsed.UTC(), nil
 		}
-		if millis, err := strconv.ParseInt(value, 10, 64); err == nil {
-			return time.UnixMilli(millis).UTC(), nil
+		if timestamp, err := strconv.ParseInt(value, 10, 64); err == nil {
+			if timestamp > 100000000000 {
+				return time.UnixMilli(timestamp).UTC(), nil
+			}
+			return time.Unix(timestamp, 0).UTC(), nil
+		}
+	}
+	var extended struct {
+		Date json.RawMessage `json:"$date"`
+	}
+	if json.Unmarshal(raw, &extended) == nil && len(extended.Date) > 0 {
+		var date string
+		if json.Unmarshal(extended.Date, &date) == nil {
+			if parsed, err := time.Parse(time.RFC3339Nano, date); err == nil {
+				return parsed.UTC(), nil
+			}
 		}
 	}
 	var mongo struct {

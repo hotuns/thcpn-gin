@@ -67,8 +67,8 @@ paths:
   /api/v1/devices/{device_id}/lorawan-v2/info:
     get: &loraDeviceInfo
       tags: [Devices]
-      summary: Read latest reported LoRaWAN V2 gateway information within 90 days
-      description: Reads bounded /infos rather than the upstream /info endpoint with a known collection mismatch. Reported ICCID is independent from the manually recorded asset ICCID.
+      summary: Read latest reported LoRaWAN V2 gateway information
+      description: Reads the dedicated upstream /info endpoint without a historical time window. Null means no saved report, while source failures remain errors. Reported ICCID is independent from the manually recorded asset ICCID.
       parameters:
         - {in: path, name: device_id, required: true, schema: {$ref: "#/components/schemas/UUID"}}
       responses:
@@ -320,6 +320,62 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DeviceInteractionContext" }
+  /api/v1/admin/devices/{device_id}/lorawan-v2/node-count:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    patch:
+      tags: [Admin]
+      operationId: adminUpdateLoRaWANV2NodeCount
+      summary: Increase LoRaWAN V2 gateway node count and project new diagnostic streams
+      description: Administrator only. Reads the upstream count, rejects decreases, writes the absolute total and verifies it by readback. Equal counts only retry platform projection. Source acceptance does not confirm hardware application. A partial response requires retrying the same total to synchronize the platform; existing node configurations are preserved.
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [node_count]
+              properties:
+                node_count: {type: integer, minimum: 1, maximum: 254}
+      responses:
+        "200":
+          description: Source accepted; inspect write_state and warnings for platform projection outcome.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [gateway, status, write_state, warnings]
+                properties:
+                  gateway:
+                    type: object
+                    required: [sn, node_count]
+                    properties:
+                      sn: {type: string}
+                      node_count: {type: integer, minimum: 1, maximum: 254}
+                  status: {type: string, enum: [completed, partial]}
+                  write_state:
+                    type: object
+                    required: [operation_id, source, platform, device]
+                    properties:
+                      operation_id: {$ref: "#/components/schemas/UUID"}
+                      source: {type: string, enum: [accepted]}
+                      platform: {type: string, enum: [synced, failed]}
+                      device: {type: string, enum: [unknown]}
+                  warnings:
+                    type: array
+                    items:
+                      type: object
+                      required: [code, message]
+                      properties:
+                        code: {type: string}
+                        message: {type: string}
+        "400": {$ref: "#/components/responses/InvalidArgument"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+        "502": {description: Source write result unknown; read upstream before retrying. Error includes the operation ID.}
   /api/v1/admin/devices/{device_id}/nodes:
     get:
       tags: [Admin]
@@ -368,7 +424,8 @@ paths:
   /api/v1/devices/{device_id}/nodes/runtime:
     get:
       tags: [Devices]
-      summary: Read latest gateway node diagnostics within the last three days
+      summary: Read latest gateway node diagnostics
+      description: LoRaWAN V2 reads the dedicated /node/{node_index}/latest endpoint without a history window and retains the original sampled_at time. THCPN keeps its existing three-day diagnostics policy. Missing readings are omitted; individual source failures remain per-node errors.
       parameters:
         - in: path
           name: device_id
@@ -7337,7 +7394,8 @@ paths:
   /api/v1/admin/devices/{device_id}/nodes/runtime:
     get:
       tags: [Devices]
-      summary: Read latest gateway node diagnostics within the last three days
+      summary: Read latest gateway node diagnostics
+      description: LoRaWAN V2 reads the dedicated /node/{node_index}/latest endpoint without a history window and retains the original sampled_at time. THCPN keeps its existing three-day diagnostics policy. Missing readings are omitted; individual source failures remain per-node errors.
       parameters:
         - in: path
           name: device_id

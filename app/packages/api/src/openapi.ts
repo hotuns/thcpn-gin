@@ -12,8 +12,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Read latest reported LoRaWAN V2 gateway information within 90 days
-         * @description Reads bounded /infos rather than the upstream /info endpoint with a known collection mismatch. Reported ICCID is independent from the manually recorded asset ICCID.
+         * Read latest reported LoRaWAN V2 gateway information
+         * @description Reads the dedicated upstream /info endpoint without a historical time window. Null means no saved report, while source failures remain errors. Reported ICCID is independent from the manually recorded asset ICCID.
          */
         get: {
             parameters: {
@@ -53,8 +53,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Read latest reported LoRaWAN V2 gateway information within 90 days
-         * @description Reads bounded /infos rather than the upstream /info endpoint with a known collection mismatch. Reported ICCID is independent from the manually recorded asset ICCID.
+         * Read latest reported LoRaWAN V2 gateway information
+         * @description Reads the dedicated upstream /info endpoint without a historical time window. Null means no saved report, while source failures remain errors. Reported ICCID is independent from the manually recorded asset ICCID.
          */
         get: {
             parameters: {
@@ -689,6 +689,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/devices/{device_id}/lorawan-v2/node-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Increase LoRaWAN V2 gateway node count and project new diagnostic streams
+         * @description Administrator only. Reads the upstream count, rejects decreases, writes the absolute total and verifies it by readback. Equal counts only retry platform projection. Source acceptance does not confirm hardware application. A partial response requires retrying the same total to synchronize the platform; existing node configurations are preserved.
+         */
+        patch: operations["adminUpdateLoRaWANV2NodeCount"];
+        trace?: never;
+    };
     "/api/v1/admin/devices/{device_id}/nodes": {
         parameters: {
             query?: never;
@@ -810,7 +833,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read latest gateway node diagnostics within the last three days */
+        /**
+         * Read latest gateway node diagnostics
+         * @description LoRaWAN V2 reads the dedicated /node/{node_index}/latest endpoint without a history window and retains the original sampled_at time. THCPN keeps its existing three-day diagnostics policy. Missing readings are omitted; individual source failures remain per-node errors.
+         */
         get: {
             parameters: {
                 query?: never;
@@ -5693,7 +5719,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read latest gateway node diagnostics within the last three days */
+        /**
+         * Read latest gateway node diagnostics
+         * @description LoRaWAN V2 reads the dedicated /node/{node_index}/latest endpoint without a history window and retains the original sampled_at time. THCPN keeps its existing three-day diagnostics policy. Missing readings are omitted; individual source failures remain per-node errors.
+         */
         get: {
             parameters: {
                 query?: never;
@@ -8850,6 +8879,67 @@ export interface operations {
         responses: {
             /** @description Archived */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminUpdateLoRaWANV2NodeCount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    node_count: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Source accepted; inspect write_state and warnings for platform projection outcome. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        gateway: {
+                            sn: string;
+                            node_count: number;
+                        };
+                        /** @enum {string} */
+                        status: "completed" | "partial";
+                        write_state: {
+                            operation_id: components["schemas"]["UUID"];
+                            /** @enum {string} */
+                            source: "accepted";
+                            /** @enum {string} */
+                            platform: "synced" | "failed";
+                            /** @enum {string} */
+                            device: "unknown";
+                        };
+                        warnings: {
+                            code: string;
+                            message: string;
+                        }[];
+                    };
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["Internal"];
+            /** @description Source write result unknown; read upstream before retrying. Error includes the operation ID. */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

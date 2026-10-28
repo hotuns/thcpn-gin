@@ -7,6 +7,7 @@ import { AdminNodeLocationEditor } from "./node-location-editor";
 import { AdminNodeNameEditor } from "./node-name-editor";
 import { invalidateNodeNames } from "@thcpn/workspace";
 import { opsTime } from "./admin-device-ops-model";
+import { GatewayNodeCount } from "./gateway-node-count";
 
 export function AdminDeviceInstallation({device}:{device:JsonRecord}) {
   const id=String(device.id);
@@ -74,7 +75,7 @@ export function AdminDeviceNodes({device,onData,onTopology}:{device:JsonRecord;o
   const nodes=useQuery({queryKey:["admin","device",id,"nodes","operations"],queryFn:()=>api.admin.deviceNodes(id)});
   const runtime=useQuery({queryKey:["admin","device",id,"nodes","runtime"],queryFn:()=>api.admin.nodeRuntime(id),enabled:readRuntime});
   return (
-    <Card title="节点管理" extra={<Space>{onTopology&&<Button onClick={onTopology}>管理拓扑</Button>}<Button loading={runtime.isFetching} onClick={()=>{setReadRuntime(true);if(readRuntime)void runtime.refetch();}}>读取节点最新状态</Button></Space>}>
+    <Card title="节点管理" extra={<Space>{device.source_family==="lorawan_v2"&&<GatewayNodeCount deviceId={id}/>}{onTopology&&<Button onClick={onTopology}>管理拓扑</Button>}<Button loading={runtime.isFetching} onClick={()=>{setReadRuntime(true);if(readRuntime)void runtime.refetch();}}>读取节点最新状态</Button></Space>}>
       {(nodes.error||runtime.error)&&<Alert type="error" title="节点读取失败" description={formatApiError(nodes.error||runtime.error).message}/>}
       <Table rowKey="key" size="small" loading={nodes.isLoading} dataSource={nodes.data?.items??[]} pagination={{pageSize:20,showSizeChanger:true}} scroll={{x:1000}} columns={[
         {title:"节点",render:(_,node)=><Space><Typography.Text strong>{node.name}</Typography.Text><AdminNodeNameEditor name={node.custom_name} allowEmpty={node.target.kind!=="device"} onSave={async name=>{if(node.target.kind==="gateway_node")await api.admin.renameNode(id,node.target.node_index,name);else await api.admin.updateDevice(node.target.device_id,{name});await invalidateNodeNames(client);}}/></Space>},

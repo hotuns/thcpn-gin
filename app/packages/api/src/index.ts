@@ -1329,6 +1329,7 @@ export const api = {
     carbonPeriods: (id:string,input:Record<string,string|number>) => request<ListResponse<CarbonPeriodSummary>>(`/api/v1/admin/devices/${encodeURIComponent(id)}/carbon/periods${queryString(input)}`),
     carbonPeriod: (id:string,period:string,input:Record<string,string|number>) => request<CarbonPeriodDetail>(`/api/v1/admin/devices/${encodeURIComponent(id)}/carbon/periods/${encodeURIComponent(period)}${queryString(input)}`),
     cameraLive: (id:string) => jsonRequest<CameraLiveSession>(`/api/v1/admin/devices/${encodeURIComponent(id)}/camera/live-session`,"POST",{}),
+    updateLoRaWANV2NodeCount: (id: string, nodeCount: number) => jsonRequest<{gateway:{sn:string;node_count:number};status:"completed"|"partial";write_state:{operation_id:string;source:string;platform:string;device:string};warnings:Array<{code:string;message:string}>}>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/node-count`,"PATCH",{node_count:nodeCount}),
     deviceLoRaWANV2Context: (id: string) =>
       request<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/context`),
     loraWANV2NodeData: (id: string, sn: string, node: number, input: JsonRecord = {}) =>

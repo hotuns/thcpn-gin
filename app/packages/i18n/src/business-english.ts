@@ -71,7 +71,7 @@ export const businessEnglish: Record<string, string> = {
 "时间配置读取失败": "Unable to read timing configuration",
 "暂无时间配置": "No timing configuration",
 "更新时间：": "Updated at:",
-"最近 90 天暂无网关上报信息": "No gateway information reported in the last 90 days",
+"暂无网关上报信息": "No gateway information reported",
 "未上报": "Not reported",
 "正在读取时间配置": "Loading timing configuration",
 "正在读取源端保存的节点时间配置。": "Loading the node timing configuration saved by the source service.",

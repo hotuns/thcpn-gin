@@ -12,7 +12,6 @@ import (
 	lorawanv2 "thcpn-gin/internal/datasource/sources/lorawanv2"
 	"thcpn-gin/internal/device"
 	"thcpn-gin/internal/httpx"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -90,27 +89,6 @@ func (h *Handler) deviceLoRaWANV2Info(c *gin.Context, admin bool) {
 	writeLoRaWANV2Payload(c, http.StatusOK, payload)
 }
 
-// /info is known to read the wrong collection in the supplied upstream version.
-// Read the bounded, descending /infos collection instead; never overwrite manual ICCID.
 func (s *Service) latestLoRaWANV2Info(ctx context.Context, id uuid.UUID) (json.RawMessage, error) {
-	ref, err := s.LoRaWAN.LoRaWANV2GatewayForDevice(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	end := time.Now().UTC()
-	query := url.Values{"start_at": {strconv.FormatInt(end.AddDate(0, 0, -90).Unix(), 10)}, "end_at": {strconv.FormatInt(end.Unix(), 10)}, "page": {"1"}, "page_size": {"1"}}
-	payload, err := s.LoRaWAN.LoRaWANV2Request(ctx, ref.DataSourceID, http.MethodGet, "/device/"+url.PathEscape(ref.GatewaySN)+"/infos", query, nil)
-	if err != nil {
-		return nil, err
-	}
-	var result struct {
-		Data []json.RawMessage `json:"data"`
-	}
-	if json.Unmarshal(payload, &result) != nil {
-		return nil, apperr.New(apperr.KindDataSource, "invalid gateway information")
-	}
-	if len(result.Data) == 0 {
-		return json.RawMessage("null"), nil
-	}
-	return result.Data[0], nil
+	return s.LoRaWAN.ReadLatestGatewayInfo(ctx, id)
 }

@@ -64,11 +64,11 @@ func TestLoRaWANV2MetadataReadPermissionsAndContracts(t *testing.T) {
 	must(`INSERT INTO workspace_members(workspace_id,user_id,role_id,scope_id,template_code) SELECT $1,$2,id,$1,'owner' FROM roles WHERE code='owner' AND workspace_id IS NULL LIMIT 1`, workspace, owner)
 	must(`INSERT INTO workspace_member_permissions(member_id,permission_id) SELECT wm.id,rp.permission_id FROM workspace_members wm JOIN role_permissions rp ON rp.role_id=wm.role_id WHERE wm.workspace_id=$1`, workspace)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/device/GW/infos" {
-			if r.URL.Query().Get("page_size") != "1" || len(r.URL.Query().Get("start_at")) != 10 {
-				t.Error("unbounded or non-second info request")
+		if r.URL.Path == "/device/GW/info" {
+			if r.URL.RawQuery != "" {
+				t.Error("latest info request must not use history pagination or a time window")
 			}
-			fmt.Fprint(w, `{"success":true,"payload":{"data":[{"iccid":"00123456789012345678","firmware_version":"5.2.1"}]}}`)
+			fmt.Fprint(w, `{"success":true,"payload":{"iccid":"00123456789012345678","firmware_version":"5.2.1","ts":{"$date":{"$numberLong":"1700000000000"}}}}`)
 			return
 		}
 		if r.URL.Path != "/device/GW/node/2/time_config/latest" {
@@ -99,12 +99,12 @@ func TestLoRaWANV2MetadataReadPermissionsAndContracts(t *testing.T) {
 		actor  uuid.UUID
 		path   string
 		status int
-	}{{owner, prefix + "/nodes/2/time-config", 200}, {outsider, prefix + "/nodes/2/time-config", 403}, {owner, prefix + "/nodes/3/time-config", 400}, {owner, prefix + "/lorawan-v2/info", 200}} {
+	}{{owner, prefix + "/nodes/2/time-config", 200}, {outsider, prefix + "/nodes/2/time-config", 403}, {owner, prefix + "/nodes/3/time-config", 400}, {owner, prefix + "/lorawan-v2/info", 200}, {outsider, prefix + "/lorawan-v2/info", 403}} {
 		response := call(fixture.actor, fixture.path)
 		if response.Code != fixture.status {
 			t.Fatalf("%s: got %d want %d: %s", fixture.path, response.Code, fixture.status, response.Body.String())
 		}
-		if strings.HasSuffix(fixture.path, "/info") && !strings.Contains(response.Body.String(), "00123456789012345678") {
+		if fixture.status == 200 && strings.HasSuffix(fixture.path, "/info") && !strings.Contains(response.Body.String(), "00123456789012345678") {
 			t.Fatal("reported ICCID lost leading zeros")
 		}
 	}

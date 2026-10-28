@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func (s *Service) ReadNodeRuntime(ctx context.Context, id uuid.UUID, index int, key string, now time.Time) (platform.NodeRuntime, error) {
+func (s *Service) ReadNodeRuntime(ctx context.Context, id uuid.UUID, index int, key string, _ time.Time) (platform.NodeRuntime, error) {
 	result := platform.NodeRuntime{Key: key}
 	ref, err := s.LoRaWANV2GatewayForDevice(ctx, id)
 	if err != nil {
@@ -26,19 +26,19 @@ func (s *Service) ReadNodeRuntime(ctx context.Context, id uuid.UUID, index int, 
 	if index < 1 || index > count {
 		return result, apperr.New(apperr.KindInvalidArgument, "node_index is outside gateway node range")
 	}
-	q := url.Values{"page": {"1"}, "page_size": {"1"}, "start_at": {strconv.FormatInt(now.Add(-72*time.Hour).Unix(), 10)}, "end_at": {strconv.FormatInt(now.Unix(), 10)}}
-	payload, err := s.LoRaWANV2Request(ctx, ref.DataSourceID, http.MethodGet, "/device/"+url.PathEscape(ref.GatewaySN)+"/node/"+strconv.Itoa(index)+"/data", q, nil)
+	payload, err := s.LoRaWANV2Request(ctx, ref.DataSourceID, http.MethodGet, "/device/"+url.PathEscape(ref.GatewaySN)+"/node/"+strconv.Itoa(index)+"/latest", nil, nil)
 	if err != nil {
 		return result, err
 	}
-	var data struct {
-		Data []map[string]json.RawMessage `json:"data"`
-	}
+	var data map[string]json.RawMessage
 	if err := json.Unmarshal(payload, &data); err != nil {
 		return result, apperr.Wrap(apperr.KindDataSource, "invalid node runtime response", err)
 	}
-	if len(data.Data) == 0 {
+	if data == nil {
 		return result, nil
 	}
-	return ParseNodeRuntime(key, data.Data[0]), nil
+	if _, err := loraWANV2Timestamp(data["ts"]); err != nil {
+		return result, apperr.New(apperr.KindDataSource, "invalid latest node timestamp")
+	}
+	return ParseNodeRuntime(key, data), nil
 }
