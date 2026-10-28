@@ -1,7 +1,7 @@
 import { invalidateNodeNames } from "@thcpn/workspace";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { FormInstance } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import { Battery, GitBranch, Radio, Search, Settings2, Trash2 } from "lucide-react";
@@ -51,6 +51,12 @@ import { LoRaWANV2LogsPanel } from "./lorawan-v2-logs-panel";
 import { LoRaWANV2ConfigPanel } from "./lorawan-v2-config-panel";
 import { DeviceFirmwareDialog } from "./device-firmware-dialog";
 import { ConfigCopyPicker } from "./config-copy-picker";
+import { AdminDeviceData } from "./admin-device-data";
+import { AdminDeviceInstallation, AdminDeviceNodes } from "./admin-device-installation";
+import { AdminDeviceCarbon } from "./admin-device-carbon";
+import { AdminDeviceCamera } from "./admin-device-camera";
+import { AdminSamplingEditor } from "./admin-sampling-editor";
+import { AdminExportsPage } from "./admin-exports";
 
 type Mode =
   | "edit"
@@ -85,6 +91,7 @@ export function AdminDevicesPage() {
   const [firmwareDevice, setFirmwareDevice] = useState<JsonRecord | null>(null);
   const { deviceId } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["admin", "devices"],
     queryFn: api.admin.devices,
@@ -100,16 +107,12 @@ export function AdminDevicesPage() {
   const allRows = query.data?.items ?? [];
   const detailDevice = allRows.find((item) => value(item.id, "") === deviceId);
   const isCarbonDetail = categoryOf(detailDevice ?? {}) === "carbon_sink";
+  const isCameraDetail = categoryOf(detailDevice ?? {}) === "camera";
   const isLoRaV2Detail = value(detailDevice?.source_family, "") === "lorawan_v2";
   const detailAttributesQuery = useQuery({
     queryKey: ["admin", "device", deviceId, "attributes"],
     queryFn: () => api.admin.deviceAttributes(deviceId!),
-    enabled: Boolean(detailDevice) && !isCarbonDetail && !isLoRaV2Detail,
-  });
-  const detailChildrenQuery = useQuery({
-    queryKey: ["admin", "device", deviceId, "children"],
-    queryFn: () => api.admin.deviceChildren(deviceId!),
-    enabled: Boolean(detailDevice) && !isCarbonDetail && !isLoRaV2Detail,
+    enabled: Boolean(detailDevice) && !isCarbonDetail && !isLoRaV2Detail && !isCameraDetail,
   });
   const detailLifecycleQuery = useQuery({
     queryKey: ["admin", "device", deviceId, "lifecycle"],
@@ -119,7 +122,7 @@ export function AdminDevicesPage() {
   const detailConfigQuery = useQuery({
     queryKey: ["admin", "device", deviceId, "config"],
     queryFn: () => api.admin.deviceConfig(deviceId!),
-    enabled: Boolean(detailDevice) && !isLoRaV2Detail,
+    enabled: Boolean(detailDevice) && !isLoRaV2Detail && !isCameraDetail,
   });
   const detailCarbonQuery = useQuery({
     queryKey: ["admin", "device", deviceId, "carbon-overview"],
@@ -686,8 +689,8 @@ export function AdminDevicesPage() {
     if (query.error) return <StateView type="error" title="设备详情加载失败" description={formatApiError(query.error).message} requestId={formatApiError(query.error).requestId} />;
     if (!device) return <StateView type="empty" title="设备不存在" description="该设备可能已被删除或尚未同步。" action={<Button><Link to="/admin/devices">返回设备列表</Link></Button>} />;
     const isCamera = categoryOf(device) === "camera";
-    const refreshDetail = () => void Promise.all([query.refetch(), detailLifecycleQuery.refetch(), ...(isCarbonDetail ? [detailCarbonQuery.refetch()] : [detailAttributesQuery.refetch(), detailChildrenQuery.refetch(), detailConfigQuery.refetch()])]);
-    return <><PageHeader eyebrow="System / devices / detail" title={value(device.name, "未命名设备")} description={`${value(device.serial_no, device.id)} · ${deviceModelLabel(device)}`} actions={<Space><Button><Link to="/admin/devices">返回列表</Link></Button><Button type="primary" onClick={() => open("edit", device)}>编辑资料</Button><Button onClick={refreshDetail}>刷新</Button></Space>} />{feedback && <div className="admin-feedback section-gap">{feedback}</div>}<DeviceDetailPanel device={device} isCamera={isCamera} isCarbon={isCarbonDetail} carbonData={detailCarbonQuery.data as unknown as JsonRecord | undefined} carbonLoading={detailCarbonQuery.isLoading} carbonError={detailCarbonQuery.error} attributes={detailAttributesQuery.data as unknown as JsonRecord | undefined} attributesLoading={detailAttributesQuery.isLoading} attributesError={detailAttributesQuery.error} childrenData={detailChildrenQuery.data as unknown as JsonRecord | undefined} childrenLoading={detailChildrenQuery.isLoading} childrenError={detailChildrenQuery.error} lifecycleData={detailLifecycleQuery.data as JsonRecord | undefined} lifecycleLoading={detailLifecycleQuery.isLoading} lifecycleError={detailLifecycleQuery.error} configData={detailConfigQuery.data as JsonRecord | undefined} configLoading={detailConfigQuery.isLoading} configError={detailConfigQuery.error} onOpen={(next) => open(next, device)} onUnassign={() => void unassign(device)} />{managementOverlays}</>;
+    const refreshDetail = () => void Promise.all([query.refetch(),queryClient.invalidateQueries({predicate:query=>query.queryKey.includes("admin")&&query.queryKey.includes(deviceId)})]);
+    return <><PageHeader eyebrow="System / devices / detail" title={value(device.name, "未命名设备")} description={`${value(device.serial_no, device.id)} · ${deviceModelLabel(device)}`} actions={<Space><Button><Link to="/admin/devices">返回列表</Link></Button><Button onClick={refreshDetail}>刷新</Button></Space>} />{feedback && <div className="admin-feedback section-gap">{feedback}</div>}<DeviceDetailPanel key={String(device.id)} device={device} isCamera={isCamera} isCarbon={isCarbonDetail} carbonData={detailCarbonQuery.data as unknown as JsonRecord | undefined} carbonLoading={detailCarbonQuery.isLoading} carbonError={detailCarbonQuery.error} attributes={detailAttributesQuery.data as unknown as JsonRecord | undefined} attributesLoading={detailAttributesQuery.isLoading} attributesError={detailAttributesQuery.error} lifecycleData={detailLifecycleQuery.data as JsonRecord | undefined} lifecycleLoading={detailLifecycleQuery.isLoading} lifecycleError={detailLifecycleQuery.error} configData={detailConfigQuery.data as JsonRecord | undefined} configLoading={detailConfigQuery.isLoading} configError={detailConfigQuery.error} onOpen={(next) => open(next, device)} onUnassign={() => void unassign(device)} />{managementOverlays}</>;
   }
 
   return (
@@ -898,9 +901,6 @@ function DeviceDetailPanel({
   attributes,
   attributesLoading,
   attributesError,
-  childrenData,
-  childrenLoading,
-  childrenError,
   lifecycleData,
   lifecycleLoading,
   lifecycleError,
@@ -919,9 +919,6 @@ function DeviceDetailPanel({
   attributes?: JsonRecord;
   attributesLoading: boolean;
   attributesError: unknown;
-  childrenData?: JsonRecord;
-  childrenLoading: boolean;
-  childrenError: unknown;
   lifecycleData?: JsonRecord;
   lifecycleLoading: boolean;
   lifecycleError: unknown;
@@ -931,7 +928,9 @@ function DeviceDetailPanel({
   onOpen: (mode: Exclude<Mode, null>) => void;
   onUnassign: () => void;
 }) {
-  const children = (childrenData?.items as JsonRecord[] | undefined) ?? [];
+  const [activeTab,setActiveTab]=useState("overview");
+  const [dataNodeKey,setDataNodeKey]=useState("");
+  const openData=(key:string)=>{setDataNodeKey(key);setActiveTab("data");};
   const reportedInfo=useQuery({queryKey:["admin",String(device.id),"lorawan-info"],queryFn:()=>api.admin.lorawanInfo(String(device.id)),enabled:device.source_family==="lorawan_v2",staleTime:60000,retry:false});
   const events = (lifecycleData?.events as JsonRecord[] | undefined) ?? [];
   const capabilities = Array.isArray(device.capabilities) ? device.capabilities.map(String) : [];
@@ -963,6 +962,8 @@ function DeviceDetailPanel({
         { key: "activated", label: "激活时间", children: date(device.activated_at) },
       ]} />
     </section>
+  </div>;
+  const assets = <div className="admin-device-detail-content">
     {(device.device_type === "gateway" || device.device_type === "standalone" || device.device_type === "carbon_sink") ? <ClaimCredentialSection device={device} date={date} /> : null}
     <section className="admin-detail-section">
       <div className="admin-detail-section-head"><div><h2>分配关系</h2><span>设备当前所属的工作区与资源位置</span></div><Space><Button onClick={() => onOpen("assign")}>调整分配</Button>{Boolean(device.workspace_id) && <Popconfirm title="解除工作区分配？" description="设备将不再对该工作区可见。" onConfirm={onUnassign}><Button danger>解除分配</Button></Popconfirm>}</Space></div>
@@ -984,34 +985,26 @@ function DeviceDetailPanel({
       ]} />
       {events.length ? <div className="admin-latest-event"><strong>{events[0].from_status ? `${deviceLifecycleLabel(value(events[0].from_status, ""))} → ` : ""}{deviceLifecycleLabel(value(events[0].to_status, ""))}</strong><span>{date(events[0].occurred_at)}{events[0].note ? ` · ${value(events[0].note)}` : ""}</span></div> : null}
     </section>
+  </div>;
+  const deviceControls = <div className="admin-device-detail-content">
     {isCamera ? <section className="admin-detail-section"><div className="admin-detail-section-head"><div><h2>监控站视频绑定</h2><span>管理当前监控站的萤石云通道和清晰度</span></div><Button onClick={() => onOpen("camera-edit")}>编辑绑定</Button></div></section> : null}
-    <section className="admin-detail-section">
+    {!isCamera&&<section className="admin-detail-section">
       <div className="admin-detail-section-head">
-        <div><h2>设备操作</h2><span>校准、固件升级与工作区转移仅由系统管理员执行</span></div>
+        <div><h2>设备维护</h2><span>配置、校准与固件升级</span></div>
         <Space>
+          {!isCamera&&<Button onClick={()=>Modal.confirm({title:"同步平台配置？",content:"读取源端最新配置并更新平台数据指标，不重新向设备下发配置。",onOk:async()=>{await api.admin.reconcileDeviceConfig(String(device.id));await nodeQueryClient.invalidateQueries({predicate:query=>query.queryKey.includes("admin")&&query.queryKey.includes(String(device.id))});}})}>同步平台配置</Button>}
           {capabilities.includes("calibratable") ? <Button onClick={() => onOpen("calibration")}>设备校准</Button> : null}
           {capabilities.includes("firmware_update") ? <Button onClick={() => onOpen("firmware")}>固件升级</Button> : null}
-          <Button onClick={() => onOpen("assign")}>转移设备</Button>
         </Space>
       </div>
-    </section>
-  </div>;
-  const topology = <div className="admin-device-detail-content">
-    <section className="admin-detail-section">
-      <div className="admin-detail-section-head"><div><h2>拓扑关系</h2><span>{deviceTopologyRoleLabel(value(device.topology_role, ""))} · {children.length} 个子节点</span></div><Button onClick={() => onOpen("child")}>管理拓扑</Button></div>
-      {inlineError(childrenError, "拓扑信息加载失败")}
-      {queryLoading({ loading: childrenLoading, data: childrenData, error: childrenError }) ? <div className="admin-inline-loading">正在加载拓扑…</div> : children.length ? <Table rowKey={(item) => value(((item.device ?? item) as JsonRecord).id)} size="small" pagination={false} dataSource={children} columns={[
-        { title: "节点", render: (_, item) => { const child = (item.device ?? item) as JsonRecord; return <div><strong>{value(child.name, "未命名节点")}</strong><NodeNameEditor name={value(child.name, "")} allowEmpty={false} onSave={async name => {await api.admin.updateDevice(String(child.id), {name}); await invalidateNodeNames(nodeQueryClient);}}/><div className="cell-sub mono">{value(child.serial_no, child.id)}</div></div>; } },
-        { title: "状态", width: 110, render: (_, item) => { const child = (item.device ?? item) as JsonRecord; return <Tag color={child.status === "active" ? "green" : "default"}>{deviceStatusLabel(value(child.status, ""))}</Tag>; } },
-        { title: "分配", width: 110, render: (_, item) => { const child = (item.device ?? item) as JsonRecord; return child.workspace_id ? <Tag color="blue">已分配</Tag> : <Tag>未分配</Tag>; } },
-      ]} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前设备没有子节点" />}
-    </section>
+    </section>}
     <section className="admin-detail-section">
       <div className="admin-detail-section-head"><div><h2>设备能力</h2><span>能力决定平台可提供的数据与控制功能</span></div><Button onClick={() => onOpen("capabilities")}>编辑能力</Button></div>
       <div className="admin-capability-list">{capabilities.length ? capabilities.map((capability) => <Tag key={capability} color="blue">{capabilityNames.get(capability) ?? capability}</Tag>) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未配置设备能力" />}</div>
     </section>
   </div>;
   const configuration = <div className="admin-device-detail-content">
+    {!isCamera&&<AdminSamplingEditor deviceId={String(device.id)} carbon={isCarbon}/>}
     <section className="admin-detail-section">
       <div className="admin-detail-section-head"><div><h2>{isCarbon ? "碳汇设备配置" : "THCPN 配置"}</h2><span>{isCarbon ? "Carbon 源库最新配置" : "源库最新配置与平台同步快照"}</span></div><Button type="primary" onClick={() => onOpen("config")}>编辑完整配置</Button></div>
       {inlineError(configError, "设备配置加载失败")}
@@ -1025,6 +1018,8 @@ function DeviceDetailPanel({
         { key: "sampling", label: "采集策略", span: 2, children: describeSamplingControl(latestConfig.control_json) },
       ]} />{!isCarbon && latestConfig.id && snapshot.external_config_id && String(latestConfig.id) !== String(snapshot.external_config_id) ? <Alert className="admin-config-warning" type="warning" showIcon title="源配置与平台快照不一致" description="源数据库配置已变化，平台数据流和绑定可能尚未同步。" /> : null}</> : null}
     </section>
+  </div>;
+  const runtime = <div className="admin-device-detail-content">
     {!isCarbon && <>
     <section className="admin-detail-section">
       <div className="admin-detail-section-head"><div><h2>源设备实时状态</h2><span>直接读取 THCPN devices 表，不写入平台业务库</span></div></div>
@@ -1070,119 +1065,18 @@ function DeviceDetailPanel({
         { title: "最新通量", render: (_, item) => date(item.latest_flux_at) },
       ]} /> : !carbonLoading && !carbonError ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无节点数据" /> : null}
     </section>
-    <section className="admin-detail-section">
-      <div className="admin-detail-section-head"><div><h2>设备能力</h2><span>管理碳汇站在平台中可使用的功能</span></div><Button onClick={() => onOpen("capabilities")}>编辑能力</Button></div>
-      <div className="admin-capability-list">{capabilities.length ? capabilities.map((capability) => <Tag key={capability} color="blue">{capabilityNames.get(capability) ?? capability}</Tag>) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未配置设备能力" />}</div>
-    </section>
   </div>;
-  return <Panel className="admin-device-detail"><div className="admin-device-detail-summary"><div><span>设备 ID</span><strong className="mono">{value(device.id)}</strong></div><div><span>生命周期</span><Tag color="blue">{deviceLifecycleLabel(value(device.lifecycle_status, ""))}</Tag></div><div><span>分配状态</span><strong>{device.workspace_id ? "已分配" : "未分配"}</strong></div><div><span>资产状态</span><Tag color={device.status === "active" ? "green" : "default"}>{deviceStatusLabel(value(device.status, ""))}</Tag></div></div><Tabs className="admin-device-detail-tabs" items={[
-    { key: "overview", label: "设备信息", children: overview },
-    { key: "data", label: "设备数据", children: <AdminDeviceDataPanel device={device} /> },
-    ...(value(device.source_family, "") === "lorawan_v2" ? [
-      { key: "configuration", label: "LoRa 配置", children: <LoRaWANV2ConfigPanel deviceId={value(device.id, "")} /> },
-      { key: "logs", label: "网关日志", children: <LoRaWANV2LogsPanel deviceId={value(device.id, "")} deviceName={value(device.name, "未命名设备")} /> },
-    ] : isCarbon ? [{ key: "carbon", label: "碳汇数据", children: carbonManagement }, { key: "configuration", label: "设备配置", children: configuration }] : [
-      { key: "topology", label: "拓扑与能力", children: topology },
-      { key: "configuration", label: "配置与属性", children: configuration },
-      { key: "logs", label: "设备日志", children: <DeviceLogsPanel deviceId={value(device.id, "")} deviceName={value(device.name, "未命名设备")} /> },
-    ]),
+  return <Panel className="admin-device-detail"><Tabs className="admin-device-detail-tabs" activeKey={activeTab} onChange={setActiveTab} items={[
+    { key: "overview", label: "设备信息", children: <>{overview}{!isCamera&&device.source_family!=="lorawan_v2"&&!isCarbon&&runtime}</> },
+    { key: "installation", label: "安装资料", children: <AdminDeviceInstallation device={device}/> },
+    ...(device.device_type==="gateway" ? [{ key:"nodes",label:"节点管理",children:<AdminDeviceNodes device={device} onData={openData} onTopology={device.source_family!=="lorawan_v2"?()=>onOpen("child"):undefined}/> }] : []),
+    ...(isCarbon ? [{key:"carbon",label:"节点与状态",children:carbonManagement}] : []),
+    { key: "data", destroyOnHidden:isCamera, label: isCamera?"视频预览":"数据与图片", children: isCamera?<AdminDeviceCamera deviceId={String(device.id)} onEdit={()=>onOpen("camera-edit")}/>:isCarbon?<AdminDeviceCarbon deviceId={String(device.id)} onExport={()=>setActiveTab("exports")}/>:<AdminDeviceData device={device} nodeKey={dataNodeKey} onNodeChange={setDataNodeKey} onExport={()=>setActiveTab("exports")}/> },
+    {key:"configuration",label:"设备配置",children:<>{deviceControls}{device.source_family==="lorawan_v2"?<LoRaWANV2ConfigPanel deviceId={String(device.id)}/>:!isCamera?configuration:null}</>},
+    ...(!isCamera?[{ key:"exports", label:"下载任务", children:<AdminExportsPage device={device}/> }]:[]),
+    {key:"assets",label:"资产管理",children:assets},
+    ...(!isCamera?[{key:"logs",label:device.source_family==="lorawan_v2"?"网关日志":"设备日志",children:device.source_family==="lorawan_v2"?<LoRaWANV2LogsPanel deviceId={String(device.id)} deviceName={value(device.name,"未命名设备")}/>:<DeviceLogsPanel deviceId={String(device.id)} deviceName={value(device.name,"未命名设备")}/>}]:[]),
   ]} /></Panel>;
-}
-
-function AdminDeviceDataPanel({ device }: { device: JsonRecord }) {
-  const deviceId = value(device.id, "");
-  const childGateway = categoryOf(device) === "gateway";
-  const range = useMemo(() => {
-    const end = new Date();
-    return {
-      startTime: new Date(end.getTime() - 24 * 60 * 60 * 1000).toISOString(),
-      endTime: end.toISOString(),
-    };
-  }, [deviceId]);
-  const children = useQuery({
-    queryKey: ["admin", "device", deviceId, "data-children"],
-    queryFn: () => api.admin.deviceNodes(deviceId),
-    enabled: childGateway,
-  });
-  const dataDevices = childGateway
-    ? ((children.data?.items ?? []).map((item) => ({id:item.target.kind === "device" ? item.target.device_id : item.target.gateway_device_id,name:item.name}) as JsonRecord))
-    : [device];
-  const streamQueries = useQueries({
-    queries: dataDevices.map((item) => ({
-      queryKey: ["admin", "device", value(item.id, ""), "data-streams"],
-      queryFn: () => api.admin.deviceDataStreams(value(item.id, "")),
- enabled: !childGateway,
-    })),
-  });
-  const activeStreams = childGateway
-    ? (children.data?.items ?? []).flatMap((node) => node.streams.map((stream) => ({stream,owner:{name:node.name,id:stream.device_id} as JsonRecord})))
-    : dataDevices.flatMap((owner,index) => (streamQueries[index]?.data?.items ?? []).filter((stream) => stream.type === "telemetry" && stream.status === "active").map((stream) => ({stream,owner})));
-  const telemetryGroups = [...new Set(activeStreams.map(({stream}) => stream.device_id))].map((id) => ({id,streams:activeStreams.filter(({stream}) => stream.device_id === id).map(({stream}) => stream.id)}));
-  const telemetry = useQueries({ queries: telemetryGroups.map((group) => ({
-    queryKey:["admin","device",group.id,"recent-telemetry",group.streams.join(","),range.startTime,range.endTime],
-    queryFn:() => api.admin.deviceTelemetry(group.id,{...range,dataStreamIds:group.streams,targetPoints:2}),
-  })) });
-  const imageRangeStart = useMemo(
-    () => new Date(Date.parse(range.endTime) - 7 * 24 * 60 * 60 * 1000).toISOString(),
-    [range.endTime],
-  );
-  const imageQueries = useQueries({
-    queries: dataDevices.filter(() => value(device.source_family, "") !== "lorawan_v2").map((item) => ({
-      queryKey: ["admin", "device", value(item.id, ""), "recent-images", imageRangeStart, range.endTime],
-      queryFn: () => api.admin.deviceImages(value(item.id, ""), {
-        start_time: imageRangeStart,
-        end_time: range.endTime,
-        page: 1,
-        page_size: 24,
-      }),
-    })),
-  });
-  const images = dataDevices.flatMap((owner, index) =>
-    (imageQueries[index]?.data?.items ?? [])
-      .filter((item) => item.preview_url)
-      .map((item) => ({ ...item, ownerName: value(owner.name, owner.serial_no) })),
-  );
-  const date = (input?: string) => input
-    ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", {
-        dateStyle: "medium",
-        timeStyle: "medium",
-      }).format(new Date(input))
-    : "—";
-  const rows = activeStreams.map(({ stream, owner }, index) => {
-    const query = telemetry[telemetryGroups.findIndex((group) => group.id === stream.device_id)];
-    const series = query?.data?.series.find((item) => item.data_stream_id === stream.id);
-    const point = series?.points.at(-1);
-    return {
-      key: stream.id,
-      node: childGateway ? value(owner.name, owner.serial_no) : "设备",
-      name: stream.name,
-      code: stream.code,
-      unit: stream.unit,
-      value: point?.value,
-      time: point?.ts,
-      count: series?.source_count ?? 0,
-      complete: series?.complete,
-      loading: query?.isLoading,
-      error: query?.error ?? series?.error,
-    };
-  });
-  return <div className="admin-device-detail-content"><section className="admin-detail-section">
-    <div className="admin-detail-section-head"><div><h2>最近设备数据</h2><span>最近 24 小时 · 只读状态检查</span></div><Tag color="blue">{activeStreams.length} 个指标</Tag></div>
-    {children.error || streamQueries.find((query) => query.error)?.error ? <Alert type="warning" showIcon title="数据流加载失败" description={formatApiError(children.error ?? streamQueries.find((query) => query.error)?.error).message} /> : null}
-    {children.isLoading || streamQueries.some((query) => query.isLoading) ? <div className="admin-inline-loading">正在读取设备数据流…</div> : rows.length ? <Table rowKey="key" size="small" pagination={{ pageSize: 20 }} dataSource={rows} columns={[
-      { title: "节点", width: 150, render: (_, item) => item.node },
-      { title: "数据指标", render: (_, item) => <div><strong>{item.name}</strong><div className="cell-sub mono">{item.code}</div></div> },
-      { title: "最新值", width: 160, render: (_, item) => item.loading ? "读取中…" : item.error ? <Tag color="red">读取失败</Tag> : item.value === undefined ? "—" : <span className="mono">{item.value.toLocaleString(undefined, { maximumFractionDigits: 4 })}{item.unit ? ` ${item.unit}` : ""}</span> },
-      { title: "最近上报", width: 190, render: (_, item) => date(item.time) },
-      { title: "24 小时数据", width: 140, render: (_, item) => item.error ? formatApiError(item.error).message : `${item.count} 条${item.complete === false ? "（未完整扫描）" : ""}` },
-    ]} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={categoryOf(device) === "camera" ? "监控站没有数值数据流，请在配置中检查视频绑定" : "当前设备没有可读取的数值数据流"} />}
-  </section>
-  {imageQueries.some((query) => query.isLoading) || images.length || imageQueries.find((query) => query.error) ? <section className="admin-detail-section">
-    <div className="admin-detail-section-head"><div><h2>最近图片</h2><span>最近 7 天 · 只读预览</span></div><Tag color="blue">{images.length} 张</Tag></div>
-    {imageQueries.find((query) => query.error)?.error ? <Alert type="warning" showIcon title="图片加载失败" description={formatApiError(imageQueries.find((query) => query.error)?.error).message} /> : null}
-    {imageQueries.some((query) => query.isLoading) ? <div className="admin-inline-loading">正在读取设备图片…</div> : <div className="admin-device-image-grid">{images.map((item) => <a key={`${item.data_stream_id}-${item.id}`} href={item.preview_url} target="_blank" rel="noreferrer"><img src={item.thumbnail_url || item.preview_url} alt={`${item.ownerName} ${date(item.captured_at)}`} loading="lazy"/><span>{item.ownerName}</span><small>{date(item.captured_at)}</small></a>)}</div>}
-  </section> : null}
-  </div>;
 }
 
 function ClaimCredentialSection({ device, date }: { device: JsonRecord; date: (input: unknown) => string }) {

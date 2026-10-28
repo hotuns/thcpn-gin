@@ -17,12 +17,18 @@
     "@thcpn/device-map": "*",
     "@thcpn/i18n": "*",
     "@thcpn/ui": "*",
+    "@thcpn/workspace": "*",
     "antd": "^6.5.0",
+    "dayjs": "1.11.21",
+    "ezuikit-js": "9.0.12",
     "lucide-react": "^0.468.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.1",
-    "@thcpn/workspace": "*"
+    "recharts": "^3.9.2"
+  },
+  "devDependencies": {
+    "vite-plugin-static-copy": "^3.4.0"
   }
 }

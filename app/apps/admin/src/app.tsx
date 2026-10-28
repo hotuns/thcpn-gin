@@ -79,6 +79,7 @@ const AdminDevicesPage = lazy(() =>
   })),
 );
 const AdminFirmwarePage = lazy(() => import("./admin-firmware").then((module) => ({ default: module.AdminFirmwarePage })));
+const AdminExportsPage = lazy(() => import("./admin-exports").then(module=>({default:module.AdminExportsPage})));
 const AdminLogsPage = lazy(() =>
   import("./admin-logs").then((module) => ({
     default: module.AdminLogsPage,
@@ -122,25 +123,32 @@ const AdminSettingsPage = lazy(() =>
 const AdminProcessingPlansPage = lazy(() => import("./admin-processing-plans").then((module) => ({ default: module.AdminProcessingPlansPage })));
 const SystemAdminsPage = lazy(() => import("./system-admins").then((module) => ({ default: module.SystemAdminsPage })));
 
+const adminNavGroups = [
+  { key: "operations", icon: Boxes },
+  { key: "configuration", icon: Database },
+  { key: "accounts", icon: UsersRound },
+  { key: "system", icon: Settings },
+] as const;
 const adminNav = [
   { to: "/admin", key: "overview", icon: Home, group: "overview" },
-  { to: "/admin/sources", key: "sources", icon: Database, group: "assets" },
-  { to: "/admin/devices", key: "devices", icon: Boxes, group: "assets" },
-  { to: "/admin/firmware", key: "firmware", icon: HardDriveUpload, group: "assets" },
-  { to: "/admin/sensors", key: "sensors", icon: Cpu, group: "assets" },
-  { to: "/admin/sensors-v2", key: "sensorsV2", icon: Cpu, group: "assets" },
-  { to: "/admin/device-map", key: "deviceMap", icon: MapPinned, group: "assets" },
-  { to: "/admin/workspaces", key: "workspaces", icon: Network, group: "platform" },
+  { to: "/admin/devices", key: "devices", icon: Boxes, group: "operations" },
+  { to: "/admin/device-map", key: "deviceMap", icon: MapPinned, group: "operations" },
+  { to: "/admin/exports", key: "exports", icon: FileText, group: "operations" },
+  { to: "/admin/firmware", key: "firmware", icon: HardDriveUpload, group: "operations" },
+  { to: "/admin/sources", key: "sources", icon: Database, group: "configuration" },
+  { to: "/admin/sensors", key: "sensors", icon: Cpu, group: "configuration" },
+  { to: "/admin/sensors-v2", key: "sensorsV2", icon: Cpu, group: "configuration" },
+  { to: "/admin/metadata", key: "metadata", icon: TableProperties, group: "configuration" },
+  { to: "/admin/processing-plans", key: "processingPlans", icon: Workflow, group: "configuration" },
+  { to: "/admin/users", key: "users", icon: UserRound, group: "accounts" },
+  { to: "/admin/workspaces", key: "workspaces", icon: Network, group: "accounts" },
+  { to: "/admin/demo-accounts", key: "demoAccounts", icon: MonitorUp, group: "accounts" },
+  { to: "/admin/announcements", key: "announcements", icon: Megaphone, group: "accounts" },
   ...(billingEnabled
-    ? [{ to: "/admin/billing", key: "billing", icon: CreditCard, group: "platform" } as const]
+    ? [{ to: "/admin/billing", key: "billing", icon: CreditCard, group: "accounts" } as const]
     : []),
-  { to: "/admin/announcements", key: "announcements", icon: Megaphone, group: "platform" },
   { to: "/admin/logs", key: "logs", icon: FileText, group: "system" },
-  { to: "/admin/users", key: "users", icon: UserRound, group: "platform" },
-	{ to: "/admin/demo-accounts", key: "demoAccounts", icon: MonitorUp, group: "platform" },
-	{ to: "/admin/administrators", key: "administrators", icon: UsersRound, group: "system" },
-  { to: "/admin/metadata", key: "metadata", icon: TableProperties, group: "platform" },
-  { to: "/admin/processing-plans", key: "processingPlans", icon: Workflow, group: "platform" },
+  { to: "/admin/administrators", key: "administrators", icon: UsersRound, group: "system" },
   { to: "/admin/settings", key: "settings", icon: Settings, group: "system" },
 ] as const;
 const platformUrl =
@@ -176,27 +184,21 @@ function AdminShell() {
       : location.pathname === item.to || location.pathname.startsWith(`${item.to}/`),
   );
   const selectedKey = selectedNav?.to ?? "";
+  const selectedGroup = selectedNav?.group;
+  const [openGroups, setOpenGroups] = useState<string[]>(() => [selectedGroup && selectedGroup !== "overview" ? selectedGroup : "operations"]);
+  useEffect(() => {
+    if (selectedGroup && selectedGroup !== "overview") setOpenGroups([selectedGroup]);
+  }, [selectedGroup]);
+  const navigationItem = (item: typeof adminNav[number]) => ({ key: item.to, icon: <item.icon size={16} />, label: t(`admin:navigation.${item.key}`) });
   const groupedItems: MenuProps["items"] = [
-    {
-      type: "group",
-      label: t("admin:navigationGroups.overview"),
-      children: adminNav.filter((item) => item.group === "overview").map((item) => ({ key: item.to, icon: <item.icon size={16} />, label: t(`admin:navigation.${item.key}`) })),
-    },
-    {
-      type: "group",
-      label: t("admin:navigationGroups.assets"),
-      children: adminNav.filter((item) => item.group === "assets").map((item) => ({ key: item.to, icon: <item.icon size={16} />, label: t(`admin:navigation.${item.key}`) })),
-    },
-    {
-      type: "group",
-      label: t("admin:navigationGroups.platform"),
-      children: adminNav.filter((item) => item.group === "platform").map((item) => ({ key: item.to, icon: <item.icon size={16} />, label: t(`admin:navigation.${item.key}`) })),
-    },
-    {
-      type: "group",
-      label: t("admin:navigationGroups.system"),
-      children: adminNav.filter((item) => item.group === "system").map((item) => ({ key: item.to, icon: <item.icon size={16} />, label: t(`admin:navigation.${item.key}`) })),
-    },
+    ...adminNav.filter(item => item.group === "overview").map(navigationItem),
+    { type: "divider" },
+    ...adminNavGroups.map(group => ({
+      key: group.key,
+      icon: <group.icon size={17} />,
+      label: t(`admin:navigationGroups.${group.key}`),
+      children: adminNav.filter(item => item.group === group.key).map(navigationItem),
+    })),
   ];
   const accountItems: MenuProps["items"] = [
     { key: "identity", label: <div className="admin-account-identity"><strong>{user?.name ?? t("admin:administrator")}</strong><span>{user?.email ?? t("admin:administrator")}</span></div>, disabled: true },
@@ -287,6 +289,11 @@ function AdminShell() {
           mode="inline"
           items={groupedItems}
           selectedKeys={selectedKey ? [selectedKey] : []}
+          openKeys={openGroups}
+          onOpenChange={keys => {
+            const newlyOpened = keys.find(key => !openGroups.includes(key));
+            setOpenGroups(newlyOpened ? [newlyOpened] : []);
+          }}
           onClick={({ key }) => {
             navigate(key);
             setMobileOpen(false);
@@ -416,7 +423,7 @@ function AdminLoginPage() {
     catch (reason) { setError(formatApiError(reason).message); }
     finally { setBusy(false); }
   };
-  return <main className="admin-auth-page"><div className="admin-auth-actions"><LanguageSwitcher compact /><Tooltip title={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")}><IconButton label={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")} onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>{resolvedTheme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</IconButton></Tooltip></div><section className="admin-auth-panel"><div className="brand-mark"><img src="/brand/insitu-ecocloud-logo.png" alt="" /></div><div className="eyebrow">IN-SITU ECOCLOUD / SYSTEM CONTROL</div><h1>{t("admin:auth.title")}</h1><p>{t("admin:auth.copy")}</p><form onSubmit={submit}><label>{t("admin:auth.email")}<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required /></label><label>{t("admin:auth.password")}<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></label>{error && <div className="admin-login-error">{error}</div>}<Button type="primary" htmlType="submit" size="large" block loading={busy} disabled={busy}>{busy ? t("admin:auth.signingIn") : t("admin:auth.submit")}</Button></form><a href={`${platformUrl}/login`}>{t("admin:auth.back")}</a></section></main>;
+  return <main className="admin-auth-page"><div className="admin-auth-actions"><LanguageSwitcher compact /><Tooltip title={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")}><IconButton label={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")} onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>{resolvedTheme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</IconButton></Tooltip></div><section className="admin-auth-panel"><div className="brand-mark"><img src="/admin/brand/insitu-ecocloud-logo.png" alt="" /></div><div className="eyebrow">IN-SITU ECOCLOUD / SYSTEM CONTROL</div><h1>{t("admin:auth.title")}</h1><p>{t("admin:auth.copy")}</p><form onSubmit={submit}><label>{t("admin:auth.email")}<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required /></label><label>{t("admin:auth.password")}<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></label>{error && <div className="admin-login-error">{error}</div>}<Button type="primary" htmlType="submit" size="large" block loading={busy} disabled={busy}>{busy ? t("admin:auth.signingIn") : t("admin:auth.submit")}</Button></form><a href={`${platformUrl}/login`}>{t("admin:auth.back")}</a></section></main>;
 }
 
 const overviewText = (input: unknown, fallback = "—") =>
@@ -592,6 +599,7 @@ function AdminRoot() {
         <Route path="devices" element={<AdminDevicesPage />} />
         <Route path="devices/:deviceId" element={<AdminDevicesPage />} />
         <Route path="firmware" element={<AdminFirmwarePage />} />
+        <Route path="exports" element={<AdminExportsPage />} />
         <Route path="sensors" element={<AdminSensorsPage key="v1" version="v1" />} />
         <Route path="sensors-v2" element={<AdminSensorsPage key="v2" version="v2" />} />
         <Route path="device-map" element={<AdminDeviceInsightsPage />} />

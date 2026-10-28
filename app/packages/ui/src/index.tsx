@@ -487,7 +487,7 @@ export function Brand({ admin = false }: { admin?: boolean }) {
   return (
     <div className="brand">
       <div className="brand-mark">
-        <img src="/brand/insitu-ecocloud-logo.png" alt="" />
+        <img src={admin ? "/admin/brand/insitu-ecocloud-logo.png" : "/brand/insitu-ecocloud-logo.png"} alt="" />
       </div>
       <div>
         <div className="brand-name">In-situ EcoCloud</div>
