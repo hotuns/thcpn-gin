@@ -38,6 +38,7 @@ import {
 import { DataRangeFields, validDataRange } from "./data-builder";
 import { ExportDevicePicker, ExportContents, ExportContentToggle as ChoiceCard } from "./export-device-picker";
 import { useLocale } from "@thcpn/i18n";
+import { resolveExportTargets } from "./export-targets";
 
 type ResourceType = "device" | "data_stream" | "dataset" | "media";
 type ExportDraft = {
@@ -148,6 +149,7 @@ export function buildBatchExportPayload(
 }
 
 export function ExportsPage({ creating = false }: { creating?: boolean }) {
+  const { t } = useLocale();
   const navigate = useNavigate();
   const location = useLocation();
   const { currentId } = useWorkspace();
@@ -177,7 +179,7 @@ export function ExportsPage({ creating = false }: { creating?: boolean }) {
   const devices = useQuery({
     queryKey: workspaceQueryKey(currentId, "devices"),
     queryFn: () => api.devices.list(currentId!),
-    enabled: Boolean(currentId) && creating,
+    enabled: Boolean(currentId),
   });
   const deviceMap = useQuery({
     queryKey: workspaceQueryKey(currentId, "device-map", "true"),
@@ -422,12 +424,18 @@ export function ExportsPage({ creating = false }: { creating?: boolean }) {
                 {jobs.map((job) => {
                   const expanded = detailId === job.id;
                   const config = (job.request_config ?? {}) as JsonRecord;
+                  const targets = resolveExportTargets(job, devices.data?.items ?? []);
                   return (
                     <Fragment key={job.id}>
                       <tr>
                         <td className="mono">{job.id.slice(0, 12)}</td>
                         <td>{exportResourceLabel(job)}</td>
-                        <td>{targetSummary(job, config)}</td>
+                        <td className="export-target-cell">
+                          {targets.station && <><strong>{targets.station.name}</strong><div className="cell-sub mono">{targets.station.description}</div></>}
+                          <div className="cell-sub">{targets.countLabel}</div>
+                          {targets.items.slice(0, 2).map(target => <div className="export-target-preview" key={target.key}><span>{target.name}</span>{!targets.station && <div className="cell-sub mono">{target.description}</div>}</div>)}
+                          {targets.items.length > 2 && <div className="cell-sub">{t("exportEditor.moreTargets", { count: targets.items.length - 2 })}</div>}
+                        </td>
                         <td>
                           {displayTime(String(config.start_time ?? ""))}
                           <div className="cell-sub">
@@ -451,7 +459,7 @@ export function ExportsPage({ creating = false }: { creating?: boolean }) {
                       {expanded && (
                         <tr className="export-detail-row">
                           <td colSpan={7} id={`export-detail-${job.id}`}>
-                            <ExportDetail job={job} />
+                            <ExportDetail job={job} devices={devices.data?.items ?? []} />
                           </td>
                         </tr>
                       )}
@@ -997,12 +1005,6 @@ function CarbonExportForm({
   );
 }
 
-function targetSummary(job: ExportJob, config: JsonRecord) {
-  if (job.export_type === "carbon_station_zip")
-    return `${Array.isArray(config.node_ids) ? config.node_ids.length : 0} 个 Node · ${Array.isArray(config.fields) ? config.fields.length : 0} 个地块`;
-  if (job.resource_type === "dataset") return "1 个数据集";
-  return `${Array.isArray(config.device_ids) ? config.device_ids.length : 1} 台设备`;
-}
 export function ExportProgress({job}:{job:ExportJob}) {
   const {t}=useLocale();
   const progress=job.progress;
@@ -1042,8 +1044,9 @@ function ExportStatus({ status }: { status: string }) {
             : "已过期";
   return <Badge tone={tone}>{label}</Badge>;
 }
-function ExportDetail({ job }: { job: ExportJob }) {
-  const config = (job.request_config ?? {}) as JsonRecord;
+function ExportDetail({ job, devices }: { job: ExportJob; devices: JsonRecord[] }) {
+  const { t } = useLocale();
+  const targets = resolveExportTargets(job, devices);
   return (
     <div className="export-detail">
       <div className="export-detail-grid">
@@ -1053,7 +1056,7 @@ function ExportDetail({ job }: { job: ExportJob }) {
         </div>
         <div>
           <span>目标</span>
-          <strong>{targetSummary(job, config)}</strong>
+          <strong>{targets.countLabel}</strong>
         </div>
         <div>
           <span>创建时间</span>
@@ -1068,6 +1071,11 @@ function ExportDetail({ job }: { job: ExportJob }) {
           <strong>{displayTime(job.expires_at)}</strong>
         </div>
       </div>
+      <section className="export-target-details">
+        <h3>导出目标{targets.station ? ` · ${targets.station.name}（${targets.station.description}）` : ""}</h3>
+        <ul>{targets.items.map(target => <li key={target.key}><strong>{target.name}</strong><span className="cell-sub mono">{target.description}</span></li>)}</ul>
+        {targets.fields.length > 0 && <p className="cell-sub">{t("exportEditor.plotNames", { names: targets.fields.join("、") })}</p>}
+      </section>
       {job.error_message && (
         <div className="form-error">{job.error_message}</div>
       )}

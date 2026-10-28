@@ -1,4 +1,5 @@
 export const exportEditorZh = {
+  moreTargets: "另 {{count}} 个，展开详情查看", plotNames: "地块：{{names}}",
   packingProgress: "正在打包 · {{count}} 张 · {{size}}", uploadingProgress: "正在上传 · 已打包 {{count}} 张 · {{size}}", retry: "重新导出",
   selected: "已选 {{count}} 台", selectAll: "全选", clear: "清空", noMatch: "没有匹配的设备", noDevices: "暂无可导出的设备",
   ready: "配置完成后，创建导出任务", missing: "请先选择导出目标", invalidRange: "请检查时间范围", invalidSettings: "请检查导出内容和设备数据", creating: "正在创建任务…",
@@ -6,6 +7,7 @@ export const exportEditorZh = {
   content: "打包内容", imagesOnly: "图片", nothingSelected: "未选择", dataDescription: "设备指标与数据说明", imageDescription: "采集图片与拍摄时间索引", imagesUnavailable: "此类节点暂不支持图片导出", chooseContent: "至少选择数据或图片中的一项",
 };
 export const exportEditorEn = {
+  moreTargets: "{{count}} more — expand details to view all", plotNames: "Plots: {{names}}",
   packingProgress: "Packing · {{count}} images · {{size}}", uploadingProgress: "Uploading · {{count}} images packed · {{size}}", retry: "Export again",
   selected: "{{count}} selected", selectAll: "Select all", clear: "Clear", noMatch: "No matching devices", noDevices: "No devices available for export",
   ready: "Create the task when your settings are ready", missing: "Select an export target first", invalidRange: "Check the time range", invalidSettings: "Check export content and device data", creating: "Creating task…",

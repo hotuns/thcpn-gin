@@ -5415,6 +5415,14 @@ body::-webkit-scrollbar-corner,
   margin: 14px 16px;
 }
 .export-detail > .form-error { margin-top: 16px; }
+.export-target-cell { min-width: 160px; max-width: 260px; overflow-wrap: anywhere; }
+.export-target-cell > strong { font-weight: 600; }
+.export-target-preview { margin-top: 5px; }
+.export-target-details { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--soft-line); }
+.export-target-details h3 { margin: 0 0 12px; font-size: var(--font-size-small); overflow-wrap: anywhere; }
+.export-target-details ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px 24px; max-height: 280px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.export-target-details li { display: grid; align-content: start; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.export-target-details li strong { font-size: var(--font-size-small); }
 .export-config {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
