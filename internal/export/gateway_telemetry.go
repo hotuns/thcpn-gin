@@ -2,6 +2,7 @@ package export
 
 import (
 	"context"
+	"thcpn-gin/internal/device"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,6 +22,7 @@ func (p *Processor) queryGatewayTelemetry(ctx context.Context, id uuid.UUID, sta
 	}
 	ids := []uuid.UUID{}
 	labels := map[uuid.UUID]string{}
+	targets := map[uuid.UUID]device.GatewayNode{}
 	add := func(streamID uuid.UUID, label string) {
 		if _, exists := labels[streamID]; !exists {
 			ids = append(ids, streamID)
@@ -35,6 +37,7 @@ func (p *Processor) queryGatewayTelemetry(ctx context.Context, id uuid.UUID, sta
 	for _, node := range nodes {
 		for _, stream := range node.Streams {
 			add(stream.ID, node.Name+" · "+stream.Name)
+			targets[stream.ID] = node
 		}
 	}
 	if len(ids) == 0 {
@@ -49,6 +52,14 @@ func (p *Processor) queryGatewayTelemetry(ctx context.Context, id uuid.UUID, sta
 		item, err := p.queryTelemetryStreamFull(ctx, stream, start, end)
 		if err != nil {
 			return nil, err
+		}
+		item.MetricName = stream.Name
+		item.NodeKey = "gateway:" + id.String()
+		item.NodeName = "网关"
+		if node, ok := targets[streamID]; ok {
+			item.NodeKey = node.Key
+			item.NodeName = node.Name
+			item.NodeIndex = node.Target.NodeIndex
 		}
 		item.Name = labels[streamID]
 		result = append(result, item)

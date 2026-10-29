@@ -38,37 +38,7 @@ func renderTelemetryXLSX(series []telemetrySeries) ([]byte, error) {
 }
 
 func xlsxTelemetrySheetXML(series []telemetrySeries) string {
-	var buf bytes.Buffer
-	buf.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`)
-	buf.WriteString(`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>`)
-	writeXLSXRow(&buf, 1, []xlsxCell{
-		stringCell("data_stream_id"),
-		stringCell("device_id"),
-		stringCell("code"),
-		stringCell("name"),
-		stringCell("unit"),
-		stringCell("ts"),
-		stringCell("value"),
-		stringCell("quality"),
-	})
-	row := 2
-	for _, item := range series {
-		for _, point := range item.Points {
-			writeXLSXRow(&buf, row, []xlsxCell{
-				stringCell(item.DataStreamID.String()),
-				stringCell(item.DeviceID.String()),
-				stringCell(item.Code),
-				stringCell(item.Name),
-				stringCell(item.Unit),
-				stringCell(exportTime(point.Timestamp)),
-				numberCell(point.Value),
-				stringCell(point.Quality),
-			})
-			row++
-		}
-	}
-	buf.WriteString(`</sheetData></worksheet>`)
-	return buf.String()
+	return xlsxGatewayWideSheet(series)
 }
 
 type xlsxCell struct {

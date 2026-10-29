@@ -98,8 +98,8 @@ func TestRenderTelemetryCSV(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render csv: %v", err)
 	}
-	expectedPrefix := "data_stream_id,device_id,code,name,unit,ts,value,quality\n" +
-		streamID.String() + "," + deviceID.String() + ",soil_moisture_10,Soil moisture 10cm,%,2026-06-01 08:00:00,21.5,valid\n"
+	expectedPrefix := "设备名称,设备ID,节点序号,时间（北京时间）,Soil moisture 10cm [soil_moisture_10] (%),Soil moisture 10cm [soil_moisture_10] 质量\n" +
+		"," + deviceID.String() + ",,2026-06-01 08:00:00,21.5,valid\n"
 	if string(body) != expectedPrefix {
 		t.Fatalf("unexpected csv:\n%s", body)
 	}
@@ -142,16 +142,16 @@ func TestRenderTelemetryXLSX(t *testing.T) {
 		t.Fatalf("open xlsx zip: %v", err)
 	}
 	sheet := readZipFile(t, reader, "xl/worksheets/sheet1.xml")
-	if !strings.Contains(sheet, `<t>data_stream_id</t>`) {
+	if !strings.Contains(sheet, `<t>设备ID</t>`) {
 		t.Fatalf("expected telemetry header in sheet xml:\n%s", sheet)
 	}
-	if !strings.Contains(sheet, `<t>`+streamID.String()+`</t>`) {
+	if !strings.Contains(sheet, `<t>`+deviceID.String()+`</t>`) {
 		t.Fatalf("expected stream id in sheet xml:\n%s", sheet)
 	}
-	if !strings.Contains(sheet, `<t>Soil &amp; &lt;moisture&gt;</t>`) {
+	if !strings.Contains(sheet, `<t>Soil &amp; &lt;moisture&gt; [soil_moisture_10] (%)</t>`) {
 		t.Fatalf("expected escaped stream name in sheet xml:\n%s", sheet)
 	}
-	if !strings.Contains(sheet, `<c r="G2"><v>21.5</v></c>`) {
+	if !strings.Contains(sheet, `<c r="E2"><v>21.5</v></c>`) {
 		t.Fatalf("expected numeric value cell in sheet xml:\n%s", sheet)
 	}
 	if workbook := readZipFile(t, reader, "xl/workbook.xml"); !strings.Contains(workbook, `name="telemetry"`) {

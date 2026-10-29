@@ -116,6 +116,10 @@ type qualityReportRow struct {
 }
 
 type telemetrySeries struct {
+	NodeKey      string
+	NodeName     string
+	NodeIndex    *int
+	MetricName   string
 	DataStreamID uuid.UUID
 	DeviceID     uuid.UUID
 	Code         string
@@ -1234,32 +1238,7 @@ func remainingLimit(limit int, used int) int {
 }
 
 func renderTelemetryCSV(series []telemetrySeries) ([]byte, error) {
-	var buf bytes.Buffer
-	writer := csv.NewWriter(&buf)
-	if err := writer.Write([]string{"data_stream_id", "device_id", "code", "name", "unit", "ts", "value", "quality"}); err != nil {
-		return nil, apperr.Wrap(apperr.KindInternal, "write telemetry csv header", err)
-	}
-	for _, item := range series {
-		for _, point := range item.Points {
-			if err := writer.Write([]string{
-				item.DataStreamID.String(),
-				item.DeviceID.String(),
-				item.Code,
-				item.Name,
-				item.Unit,
-				exportTime(point.Timestamp),
-				strconv.FormatFloat(point.Value, 'f', -1, 64),
-				point.Quality,
-			}); err != nil {
-				return nil, apperr.Wrap(apperr.KindInternal, "write telemetry csv row", err)
-			}
-		}
-	}
-	writer.Flush()
-	if err := writer.Error(); err != nil {
-		return nil, apperr.Wrap(apperr.KindInternal, "flush telemetry csv", err)
-	}
-	return buf.Bytes(), nil
+	return renderGatewayWideCSV(series)
 }
 
 type telemetryMetadataRow struct {
