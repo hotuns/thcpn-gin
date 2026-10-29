@@ -131,7 +131,7 @@ func (h *Handler) AdminListDeviceLoRaWANV2GatewayLogs(c *gin.Context) {
 		httpx.WriteAppError(c, err)
 		return
 	}
-	writeLoRaWANV2Payload(c, http.StatusOK, payload)
+	h.writeLoRaWANV2Logs(c, payload)
 }
 func (h *Handler) AdminGetDeviceLoRaWANV2Context(c *gin.Context) {
 	deviceID, ok := parseUUIDParam(c, "device_id")
@@ -210,6 +210,10 @@ func (h *Handler) adminLoRaWANV2Get(c *gin.Context, path string, query url.Value
 		httpx.WriteAppError(c, err)
 		return
 	}
+	if strings.HasSuffix(path, "/logs") {
+		h.writeLoRaWANV2Logs(c, payload)
+		return
+	}
 	writeLoRaWANV2Payload(c, http.StatusOK, payload)
 }
 func (h *Handler) adminLoRaWANV2Write(c *gin.Context, method, path string, body any, action string, status int) {
@@ -273,4 +277,13 @@ func loraWANV2FirmwareQuery(c *gin.Context) url.Values {
 		query.Set("device_sn", sn)
 	}
 	return query
+}
+
+func (h *Handler) writeLoRaWANV2Logs(c *gin.Context, payload json.RawMessage) {
+	resolved, err := lorawanv2.ResolveLogURLs(payload, h.loraLogSigner)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	writeLoRaWANV2Payload(c, http.StatusOK, resolved)
 }

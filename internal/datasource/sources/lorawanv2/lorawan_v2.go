@@ -638,10 +638,9 @@ func (s *Service) persistLoRaWANV2Gateway(ctx context.Context, source sqlc.DataS
 	if lookupErr == nil {
 		device, err = q.GetDevice(ctx, ref.DeviceID)
 		if err == nil {
-			device, err = q.UpdateDevice(ctx, sqlc.UpdateDeviceParams{ID: device.ID, ProductID: nil, Name: name, Status: device.Status})
-			if err == nil {
-				_, err = tx.Exec(ctx, `UPDATE devices SET serial_no=$2,updated_at=now() WHERE id=$1`, device.ID, gateway.SN)
-			}
+			// The display name is owned by the platform. Discovery supplies the
+			// default only on creation; synchronization must preserve user edits.
+			_, err = tx.Exec(ctx, `UPDATE devices SET serial_no=$2,updated_at=now() WHERE id=$1`, device.ID, gateway.SN)
 			if err == nil {
 				device, err = q.GetDevice(ctx, device.ID)
 			}

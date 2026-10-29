@@ -2639,7 +2639,10 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** List gateway logs */
+        /**
+         * List gateway logs
+         * @description Log records retain the source file object key and include file_url resolved using LoRaWAN V2 storage configuration. Unavailable addresses omit file_url and include file_url_error; never navigate to file as a relative URL.
+         */
         get: operations["adminListLoRaWANV2GatewayLogs"];
         put?: never;
         post?: never;
@@ -3032,7 +3035,10 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** List LoRaWAN V2 gateway logs for a platform device */
+        /**
+         * List LoRaWAN V2 gateway logs for a platform device
+         * @description Log records retain the source file object key and include file_url resolved using LoRaWAN V2 storage configuration. Unavailable addresses omit file_url and include file_url_error; refresh the list to renew expiring URLs.
+         */
         get: operations["adminListDeviceLoRaWANV2GatewayLogs"];
         put?: never;
         post?: never;

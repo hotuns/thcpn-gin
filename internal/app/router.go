@@ -260,6 +260,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	deviceClaimHandler := deviceclaim.NewHandler(deviceClaimService, permissionChecker, auditService)
 	dataSourceHandler.SetClaimCredentialEnsurer(deviceClaimService)
 	dataSourceHandler.SetTHCPNLogSigner(thcpnLogSigner)
+	dataSourceHandler.SetLoRaWANV2LogSigner(objectstore.NewSigner(cfg.LoRaWANV2ObjectStore, cfg.Auth.JWTSecret))
 	telemetryHandler := telemetry.NewHandler(telemetryService, permissionChecker)
 	openAPIHandler := openapiaccess.NewHandler(openAPIService, telemetryService, exportService, dataSourceService, mediaService, permissionChecker, auditService)
 	mediaHandler := media.NewHandler(mediaService, permissionChecker, auditService)

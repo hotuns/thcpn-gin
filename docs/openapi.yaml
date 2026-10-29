@@ -2506,6 +2506,7 @@ paths:
       tags: [Admin]
       operationId: adminListLoRaWANV2GatewayLogs
       summary: List gateway logs
+      description: Log records retain the source file object key and include file_url resolved using LoRaWAN V2 storage configuration. Unavailable addresses omit file_url and include file_url_error; never navigate to file as a relative URL.
       security: [{bearerAuth: []}, {devUserHeader: []}]
       parameters: [{name: start_at, in: query, schema: {type: string, format: date}}, {name: end_at, in: query, schema: {type: string, format: date}}, {$ref: "#/components/parameters/Page"}, {$ref: "#/components/parameters/PageSize"}]
       responses: {"200": {description: Gateway log list, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
@@ -2997,6 +2998,7 @@ paths:
         - Admin
       operationId: adminListDeviceLoRaWANV2GatewayLogs
       summary: List LoRaWAN V2 gateway logs for a platform device
+      description: Log records retain the source file object key and include file_url resolved using LoRaWAN V2 storage configuration. Unavailable addresses omit file_url and include file_url_error; refresh the list to renew expiring URLs.
       security:
         - bearerAuth: []
       parameters:

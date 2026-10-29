@@ -32,11 +32,12 @@ const (
 )
 
 type Handler struct {
-	service      *Service
-	checker      *permission.Checker
-	audit        *audit.Service
-	logSigner    *objectstore.Signer
-	claimEnsurer interface {
+	service       *Service
+	checker       *permission.Checker
+	audit         *audit.Service
+	logSigner     *objectstore.Signer
+	loraLogSigner *objectstore.Signer
+	claimEnsurer  interface {
 		EnsureEligible(context.Context) (int64, error)
 	}
 }
@@ -145,6 +146,7 @@ func NewHandler(service *Service, checker *permission.Checker, auditServices ...
 	}
 	return &Handler{service: service, checker: checker, audit: auditService}
 }
+func (h *Handler) SetLoRaWANV2LogSigner(signer *objectstore.Signer) { h.loraLogSigner = signer }
 func (h *Handler) SetTHCPNLogSigner(signer *objectstore.Signer) {
 	h.logSigner = signer
 }

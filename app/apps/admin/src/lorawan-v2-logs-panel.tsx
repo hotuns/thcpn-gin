@@ -31,7 +31,7 @@ export function LoRaWANV2LogsPanel({ deviceId, deviceName }: { deviceId: string;
       { title: "日志日期", dataIndex: "log_date", width: 130 },
       { title: "创建时间", dataIndex: "created_at", width: 190, render: time },
       { title: "更新时间", dataIndex: "updated_at", width: 190, render: time },
-      { title: "日志文件", dataIndex: "file", render: (file) => file ? <a href={text(file)} target="_blank" rel="noreferrer">打开日志 <ExternalLink size={13} /></a> : "—" },
+      { title: "日志文件", dataIndex: "file", render: (file, item) => typeof item.file_url === "string" && /^https?:\/\//i.test(item.file_url) ? <a href={item.file_url} target="_blank" rel="noopener noreferrer">打开日志 <ExternalLink size={13} /></a> : file ? <span title={text(item.file_url_error, "请刷新日志列表后重试")}>文件地址不可用</span> : "—" },
     ]} /></>}
   </section></div>;
 }
