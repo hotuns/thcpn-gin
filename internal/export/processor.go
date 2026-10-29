@@ -1059,6 +1059,15 @@ func (p *Processor) queryTelemetry(ctx context.Context, resourceType string, res
 	if limit <= 0 || limit > p.cfg.MaxRows {
 		limit = p.cfg.MaxRows
 	}
+	if resourceType == "device" {
+		target, err := p.queries.GetDevice(ctx, resourceID)
+		if err != nil {
+			return nil, mapNotFoundOrInternal(err, "device not found")
+		}
+		if target.DeviceType == "gateway" {
+			return p.queryGatewayTelemetry(ctx, resourceID, start, end)
+		}
+	}
 	if p.telemetry != nil && (resourceType == "device" || resourceType == "data_stream") {
 		input := telemetrysvc.QueryInput{StartTime: start, EndTime: end, Limit: limit}
 		if resourceType == "device" {
