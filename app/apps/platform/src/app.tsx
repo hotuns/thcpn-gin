@@ -150,6 +150,7 @@ const navGroups = simplifiedEnabled ? [
   { key: "operations", items: [
     { to: "/atlas", key: "wallboards", icon: MapPinned },
     { to: "/devices", key: "devices", icon: Boxes },
+    { to: "/device-map", key: "deviceMap", icon: MapPinned },
     { to: "/exports", key: "exports", icon: Download },
     { to: "/settings", key: "settings", icon: SlidersHorizontal },
   ] },

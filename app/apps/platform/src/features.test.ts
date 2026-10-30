@@ -27,13 +27,13 @@ describe("platform edition", () => {
     const simple = await edition("true", "true");
     expect(simple.platformHomePath).toBe("/atlas");
     expect(simple.billingEnabled).toBe(false);
-    for (const path of ["/login", "/atlas", "/atlas/board-1", "/devices", "/devices/device-1?tab=data", "/exports/", "/exports/new?device_id=1", "/settings?tab=access", "/account?tab=security"])
+    for (const path of ["/login", "/device-map", "/atlas", "/atlas/board-1", "/devices", "/devices/device-1?tab=data", "/exports/", "/exports/new?device_id=1", "/settings?tab=access", "/account?tab=security"])
       expect(simple.platformPathAvailable(path), path).toBe(true);
   });
 
   it("rejects direct links to omitted pages and unknown descendants", async () => {
     const simple = await edition("true");
-    for (const path of ["/", "/dashboard", "/device-map", "/alerts", "/claim/secret", "/data-compare", "/datasets", "/datasets/new", "/processing/task-1", "/workspaces", "/subscription", "/notifications", "/register", "/demo-login", "/public/devices/demo", "/atlas/topics/digital-plot", "/devices/device-1/edit", "/exports/unknown", "/unknown"])
+    for (const path of ["/", "/dashboard", "/alerts", "/claim/secret", "/data-compare", "/datasets", "/datasets/new", "/processing/task-1", "/workspaces", "/subscription", "/notifications", "/register", "/demo-login", "/public/devices/demo", "/atlas/topics/digital-plot", "/devices/device-1/edit", "/exports/unknown", "/unknown"])
       expect(simple.platformPathAvailable(path), path).toBe(false);
   });
 });

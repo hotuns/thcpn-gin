@@ -205,8 +205,8 @@ System
 
 `VITE_SIMPLIFIED_ENABLED` 为构建时开关，默认关闭；关闭时维持本文档的完整版功能契约。开启后：
 
-- 登录成功及默认入口进入 `/atlas`；侧栏按一张图、设备、数据导出、设置排序。
-- 保留 `/login`、`/atlas`、`/atlas/:id`、`/devices`、`/devices/:deviceId`、`/exports`、`/exports/new`、`/settings` 和 `/account`。
+- 登录成功及默认入口进入 `/atlas`；侧栏按一张图、设备、设备地图、数据导出、设置排序。
+- 保留 `/login`、`/atlas`、`/atlas/:id`、`/devices`、`/device-map`、`/devices/:deviceId`、`/exports`、`/exports/new`、`/settings` 和 `/account`。
 - 其他页面及未知路径在加载业务页面之前返回一张图；未登录用户继续经过正常认证。
 - 一张图保留真实设备视图的创建、编辑、归档和展示，隐藏数字样地专题演示入口。
 - 设备保留概览、观测数据、视频、资料和记录；隐藏认领、配置、分享及创建预警入口。直接请求被隐藏的设备页签回退到该设备的默认页签。
