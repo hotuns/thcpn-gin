@@ -813,7 +813,7 @@ export const deviceDetailTab = (
     : carbon
       ? ["overview", "data", "profile", "config", "sharing", "activity"]
       : ["overview", "data", "profile", "config", "sharing", "activity"];
-  return requested && allowed.includes(requested as DeviceTab) && (!simplifiedEnabled || !["config", "sharing"].includes(requested))
+  return requested && allowed.includes(requested as DeviceTab) && (!simplifiedEnabled || requested !== "sharing")
     ? (requested as DeviceTab)
     : camera
       ? "video"
@@ -1025,7 +1025,7 @@ export function DeviceCenterDetailPage() {
           </Link>
         </div>
       </div>
-      <DeviceDetailTabs tabs={simplifiedEnabled ? tabs.filter((item) => !["config", "sharing"].includes(item.id)) : tabs} activeTab={tab} onChange={(nextTab) => setParams((current) => { const next = new URLSearchParams(current); next.set("tab", nextTab); return next; })} />
+      <DeviceDetailTabs tabs={simplifiedEnabled ? tabs.filter((item) => item.id !== "sharing") : tabs} activeTab={tab} onChange={(nextTab) => setParams((current) => { const next = new URLSearchParams(current); next.set("tab", nextTab); return next; })} />
       {feedback && (
         <div className="command-note device-feedback">{feedback}</div>
       )}

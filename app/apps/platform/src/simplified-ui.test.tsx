@@ -41,12 +41,13 @@ describe("simplified page entry points", () => {
     const html = settings("resources");
     expect(html).toContain("基础资料");
     expect(html).toContain("审计日志");
+    expect(html).toContain('href="/admin/"');
   });
 
   it("normalizes direct links to hidden device tabs while keeping data and media", () => {
-    expect(deviceDetailTab("config", false)).toBe("overview");
+    expect(deviceDetailTab("config", false)).toBe("config");
     expect(deviceDetailTab("sharing", false)).toBe("overview");
-    expect(deviceDetailTab("config", false, true)).toBe("overview");
+    expect(deviceDetailTab("config", false, true)).toBe("config");
     expect(deviceDetailTab("data", false)).toBe("data");
     expect(deviceDetailTab("video", true)).toBe("video");
     expect(deviceDetailTab("profile", false)).toBe("profile");

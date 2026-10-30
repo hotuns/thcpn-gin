@@ -37,7 +37,9 @@ export function SettingsPage() {
         eyebrow="组织 / 设置"
         title="组织设置"
         description="管理当前组织的基础资料、协作关系和审计记录。"
-        actions={!simplifiedEnabled &&
+        actions={simplifiedEnabled ? (
+          <Button variant="secondary" asChild><a href="/admin/">系统后台</a></Button>
+        ) :
           <div className="header-actions">
             <Button variant="secondary" onClick={() => navigate("/workspaces")}><ArrowLeft size={14} />返回组织</Button>
             <Button variant="secondary" onClick={() => navigate("/workspaces?action=create")}><Plus size={14} />新建组织</Button>

@@ -3,6 +3,7 @@ import { businessDynamicEnglish } from "./business-dynamic-english";
 
 export const legacyEnglish: Record<string, string> = {
   ...businessEnglish,
+  "系统后台": "System administration",
   "成员管理": "Member management",
   "账号由管理员提供": "Contact your administrator for an account",
   ...businessDynamicEnglish,
