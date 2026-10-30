@@ -38,7 +38,7 @@ export function SettingsPage() {
         title="组织设置"
         description="管理当前组织的基础资料、协作关系和审计记录。"
         actions={simplifiedEnabled ? (
-          <Button variant="secondary" asChild><a href="/admin/">系统后台</a></Button>
+          <a href="/admin/"><Button variant="secondary">系统后台</Button></a>
         ) :
           <div className="header-actions">
             <Button variant="secondary" onClick={() => navigate("/workspaces")}><ArrowLeft size={14} />返回组织</Button>
