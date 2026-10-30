@@ -1,3 +1,4 @@
+import { simplifiedEnabled } from "./features";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -70,20 +71,22 @@ export function AccessControlTab() {
   const grants = useQuery({
     queryKey: workspaceQueryKey(currentId, "access-grants"),
     queryFn: () => api.accessGrants.list(currentId!),
-    enabled: Boolean(currentId),
+    enabled: !simplifiedEnabled && Boolean(currentId),
   });
   const myGrants = useQuery({
     queryKey: ["access-grants", "mine"],
     queryFn: api.accessGrants.mine,
+    enabled: !simplifiedEnabled,
   });
   const invitations = useQuery({
     queryKey: workspaceQueryKey(currentId, "invitations"),
     queryFn: () => api.invitations.list(currentId!),
-    enabled: Boolean(currentId),
+    enabled: !simplifiedEnabled && Boolean(currentId),
   });
   const mine = useQuery({
     queryKey: ["invitations", "mine"],
     queryFn: api.invitations.mine,
+    enabled: !simplifiedEnabled,
   });
   const catalog = useQuery({
     queryKey: ["permissions", "catalog"],
@@ -107,15 +110,12 @@ export function AccessControlTab() {
   const datasets = useQuery({
     queryKey: workspaceQueryKey(currentId, "datasets"),
     queryFn: () => api.datasets.list(currentId!),
-    enabled: Boolean(currentId),
+    enabled: !simplifiedEnabled && Boolean(currentId),
   });
   const refresh = async () => {
     await Promise.all([
       members.refetch(),
-      grants.refetch(),
-      myGrants.refetch(),
-      invitations.refetch(),
-      mine.refetch(),
+      ...(!simplifiedEnabled ? [grants.refetch(), myGrants.refetch(), invitations.refetch(), mine.refetch()] : []),
     ]);
     await client.invalidateQueries({ queryKey: ["workspaces"] });
   };
@@ -140,7 +140,7 @@ export function AccessControlTab() {
     setFeedback("");
   };
   useEffect(() => {
-    if (!currentId || params.get("action") !== "invite") return;
+    if (simplifiedEnabled || !currentId || params.get("action") !== "invite") return;
     open("invitation");
     const next = new URLSearchParams(params);
     next.delete("action");
@@ -180,7 +180,7 @@ export function AccessControlTab() {
         : (query.data?.items.length ?? 0);
   return (
     <>
-      <Panel className="access-guide" data-onboarding="organization-access">
+      {!simplifiedEnabled && <Panel className="access-guide" data-onboarding="organization-access">
         <div className="access-guide-heading">
           <div>
             <h2 className="panel-title">先选择访问方式</h2>
@@ -205,8 +205,8 @@ export function AccessControlTab() {
             <span>适合首次邀请外部用户</span>
           </div>
         </div>
-      </Panel>
-      <div className="access-summary">
+      </Panel>}
+      {!simplifiedEnabled && <div className="access-summary">
         <div>
           <strong>{summaryCount(members)}</strong>
           <span>组织成员</span>
@@ -229,9 +229,9 @@ export function AccessControlTab() {
           </strong>
           <span>待接受邀请</span>
         </div>
-      </div>
+      </div>}
       {feedback && <div className="command-note section-gap">{feedback}</div>}
-      <div className="access-layout section-gap">
+      <div className={simplifiedEnabled ? "section-gap" : "access-layout section-gap"}>
         <AccessPanel
           title="组织成员"
           subtitle="长期协作关系，按成员角色访问"
@@ -259,7 +259,7 @@ export function AccessControlTab() {
             }
           />
         </AccessPanel>
-        <AccessPanel
+        {!simplifiedEnabled && <><AccessPanel
           title="单项授权"
           subtitle="不加入组织，只开放指定资源"
           icon={<ShieldCheck size={16} />}
@@ -318,9 +318,9 @@ export function AccessControlTab() {
               void run(() => api.invitations.accept(text(row.id)), "邀请已接受")
             }
           />
-        </AccessPanel>
+        </AccessPanel></>}
       </div>
-      <div className="section-gap">
+      {!simplifiedEnabled && <div className="section-gap">
         <AccessPanel
           title="我收到的访问"
           subtitle="其他组织分享给当前账号的资源"
@@ -329,7 +329,7 @@ export function AccessControlTab() {
         >
           <GrantRows rows={myGrants.data?.items ?? []} resources={resources} />
         </AccessPanel>
-      </div>
+      </div>}
       {formMode && (
         <AccessForm
           key={`${formMode}-${text(editing?.id, "new")}`}
@@ -672,9 +672,8 @@ function AccessForm({
     "service_engineer",
   ];
   const availableTemplates = templates.filter((item) =>
-    (external ? externalTemplateCodes : internalTemplateCodes).includes(
-      item.code,
-    ),
+    (external ? externalTemplateCodes : internalTemplateCodes).includes(item.code)
+      && (!simplifiedEnabled || item.code !== "custom" || template === "custom"),
   );
   const availablePermissions = permissions.filter(
     (item) => !external || externalPermission(item.code),
@@ -846,7 +845,7 @@ function AccessForm({
                     disabled={template === "owner"}
                     onChange={(event) => changeScope(event.target.value)}
                   >
-                    {["workspace", "project", "site", "device", "dataset"]
+                    {["workspace", "project", "site", "device", ...(!simplifiedEnabled || scopeType === "dataset" ? ["dataset"] : [])]
                       .filter(
                         (item) =>
                           template !== "service_engineer" ||
@@ -877,7 +876,7 @@ function AccessForm({
                 </label>
               </div>
             </div>
-            <details className="form-section access-advanced">
+            {!simplifiedEnabled && <details className="form-section access-advanced">
               <summary>
                 <span>高级：调整具体操作权限</span>
                 <strong>{selectedPermissions.length} 项已选择</strong>
@@ -901,7 +900,7 @@ function AccessForm({
                   </label>
                 ))}
               </div>
-            </details>
+            </details>}
             {external && (
               <div className="form-section">
                 <h3>有效期与附加能力</h3>

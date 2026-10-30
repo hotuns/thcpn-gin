@@ -6,6 +6,7 @@ import { api, ApiError, formatApiError } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
 import { Brand, Button, Input, Switch } from "./platform-ui";
 import { LanguageSwitcher, useLocale } from "@thcpn/i18n";
+import { platformHomePath, simplifiedEnabled } from "./features";
 import { LoginVisualCarousel } from "./login-visual-carousel";
 
 export const validPassword = (value: string) =>
@@ -22,7 +23,7 @@ export const platformNextPath = (value: string | null) =>
     ? value
     : null;
 export const demoModeFromSearch = (search: string) =>
-  new URLSearchParams(search).get("demo") === "1";
+  !simplifiedEnabled && new URLSearchParams(search).get("demo") === "1";
 
 export function AuthPage({ register = false }: { register?: boolean }) {
   const { t } = useLocale();
@@ -58,7 +59,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
   const next = platformNextPath(
     new URLSearchParams(location.search).get("next"),
   );
-  if (user) return <Navigate to={next ?? "/dashboard"} replace />;
+  if (user) return <Navigate to={next ?? platformHomePath} replace />;
   const finish = (result: Awaited<ReturnType<typeof api.auth.login>>) => {
     if (result.password_change_required && result.password_change_token) {
       setInitialPasswordToken(result.password_change_token);
@@ -70,7 +71,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
     }
     signIn(result);
     if (next) navigate(next, { replace: true });
-    else navigate("/dashboard", { replace: true });
+    else navigate(platformHomePath, { replace: true });
   };
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -449,9 +450,9 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             )}
           </form>
           {forgotPassword ? <div className="auth-form-footer"><button type="button" className="link" onClick={() => { setForgotPassword(false); setMessage(""); }}>{t("platform:auth.backLogin")}</button></div> : <div className="auth-form-footer">
-            <span>{register ? t("platform:auth.hasAccount") : t("platform:auth.noAccount")}</span>
-            <Link className="link" to={register ? "/login" : "/register"}>{register ? t("platform:auth.backLogin") : t("platform:auth.register")}</Link>
-            {!register && <label className="demo-mode-toggle"><span>演示模式</span><Switch checked={demoMode} onCheckedChange={switchDemoMode} /></label>}
+            <span>{simplifiedEnabled ? "账号由管理员提供" : register ? t("platform:auth.hasAccount") : t("platform:auth.noAccount")}</span>
+            {!simplifiedEnabled && <Link className="link" to={register ? "/login" : "/register"}>{register ? t("platform:auth.backLogin") : t("platform:auth.register")}</Link>}
+            {!simplifiedEnabled && !register && <label className="demo-mode-toggle"><span>演示模式</span><Switch checked={demoMode} onCheckedChange={switchDemoMode} /></label>}
           </div>}
         </div>
       </section>

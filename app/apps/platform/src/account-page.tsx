@@ -1,6 +1,7 @@
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useState, type FormEvent } from "react";
 import { ArrowLeft, Check, Mail, Moon, Palette, Pencil, Phone, Sun, UserRound } from "lucide-react";
+import { platformHomePath, simplifiedEnabled } from "./features";
 import { api, commonStatusLabel, formatApiError } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
 import { Badge, Button, CopyId, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, PageHeader, Panel, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsContent, TabsList, TabsTrigger } from "./platform-ui";
@@ -27,7 +28,7 @@ export function AccountPage() {
         eyebrow={t("platform:navigation.account")}
         title={t("platform:navigation.account")}
         description={t("preferences")}
-        actions={<Button variant="secondary" onClick={() => navigate("/dashboard")}><ArrowLeft size={14} />{t("backToOverview")}</Button>}
+        actions={<Button variant="secondary" onClick={() => navigate(platformHomePath)}><ArrowLeft size={14} />{simplifiedEnabled ? t("platform:navigation.wallboards") : t("backToOverview")}</Button>}
       />
       <Tabs value={tab} onValueChange={(value) => setParams({ tab: value })}>
         <TabsList className="account-tabs">

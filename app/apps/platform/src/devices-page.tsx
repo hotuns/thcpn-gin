@@ -92,6 +92,7 @@ import { CarbonDeviceOverview } from "./carbon-device-page";
 import { CarbonDevicePage } from "./carbon-device-page";
 import { SamplingProfilePanel } from "./sampling-profile";
 import { DeviceCombobox } from "./device-combobox";
+import { simplifiedEnabled } from "./features";
 import { ComputedStreamsPanel, DeviceMetadataPanel } from "./device-computed-data";
 import { GatewayNodeData } from "./gateway-node-data";
 import { NodeVitals, useNodeRuntime } from "./node-vitals";
@@ -454,7 +455,7 @@ export function DevicesPage() {
                 <RefreshCw size={14} />
                 刷新
               </Button>
-              {!user?.is_demo && <Button data-onboarding="claim-entry" onClick={() => navigate("/claim")}>
+              {!simplifiedEnabled && !user?.is_demo && <Button data-onboarding="claim-entry" onClick={() => navigate("/claim")}>
                 <ScanLine size={14} />
                 添加设备
               </Button>}
@@ -812,7 +813,7 @@ export const deviceDetailTab = (
     : carbon
       ? ["overview", "data", "profile", "config", "sharing", "activity"]
       : ["overview", "data", "profile", "config", "sharing", "activity"];
-  return requested && allowed.includes(requested as DeviceTab)
+  return requested && allowed.includes(requested as DeviceTab) && (!simplifiedEnabled || !["config", "sharing"].includes(requested))
     ? (requested as DeviceTab)
     : camera
       ? "video"
@@ -1013,9 +1014,9 @@ export function DeviceCenterDetailPage() {
               onSwitch={switchDevice}
             />
           )}
-          <Link to={`/alerts?new=1&device=${device.id}`}>
+          {!simplifiedEnabled && <Link to={`/alerts?new=1&device=${device.id}`}>
             <Button variant="secondary"><BellRing size={14}/>创建预警</Button>
-          </Link>
+          </Link>}
           <Link to="/devices">
             <Button variant="secondary">
               <ArrowLeft size={14} />
@@ -1024,7 +1025,7 @@ export function DeviceCenterDetailPage() {
           </Link>
         </div>
       </div>
-      <DeviceDetailTabs tabs={tabs} activeTab={tab} onChange={(nextTab) => setParams((current) => { const next = new URLSearchParams(current); next.set("tab", nextTab); return next; })} />
+      <DeviceDetailTabs tabs={simplifiedEnabled ? tabs.filter((item) => !["config", "sharing"].includes(item.id)) : tabs} activeTab={tab} onChange={(nextTab) => setParams((current) => { const next = new URLSearchParams(current); next.set("tab", nextTab); return next; })} />
       {feedback && (
         <div className="command-note device-feedback">{feedback}</div>
       )}

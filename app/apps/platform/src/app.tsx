@@ -29,7 +29,8 @@ import {
   Table2,
   Workflow,
 } from "lucide-react";
-import { billingEnabled } from "./features";
+import { billingEnabled, platformHomePath, simplifiedEnabled } from "./features";
+import { EditionRoute } from "./edition-route";
 import {
   api,
   commonStatusLabel,
@@ -145,7 +146,14 @@ const PublicDevicePage = lazy(() =>
   import("./public-device-page").then((module) => ({ default: module.PublicDevicePage })),
 );
 
-const navGroups = [
+const navGroups = simplifiedEnabled ? [
+  { key: "operations", items: [
+    { to: "/atlas", key: "wallboards", icon: MapPinned },
+    { to: "/devices", key: "devices", icon: Boxes },
+    { to: "/exports", key: "exports", icon: Download },
+    { to: "/settings", key: "settings", icon: SlidersHorizontal },
+  ] },
+] : [
   {
     key: "operations",
     items: [
@@ -211,7 +219,7 @@ function Shell() {
       const [notices, announcements] = await Promise.all([api.notifications.list(workspace.currentId ?? undefined, 20), api.notifications.announcements(workspace.currentId ?? undefined)]);
       return Number(notices.unread_count ?? 0) + Number(announcements.unread_count ?? 0);
     },
-    enabled: Boolean(workspace.currentId),
+    enabled: !simplifiedEnabled && Boolean(workspace.currentId),
     refetchInterval: 60_000,
   });
   const sidebarContent = (
@@ -323,20 +331,20 @@ function Shell() {
           </div>
           <div className="topbar-actions">
             <LanguageSwitcher compact />
-            <IconButton label={t("openGuide")} onClick={() => setOnboardingSession((current) => current + 1)}>
+            {!simplifiedEnabled && <><IconButton label={t("openGuide")} onClick={() => setOnboardingSession((current) => current + 1)}>
               <HelpCircle size={18} />
             </IconButton>
             <Link className="topbar-notification" to="/notifications" aria-label={t("platform:navigation.notifications")}>
               <Bell size={18} />
               {(notificationSummary.data ?? 0) > 0 && <span>{Math.min(notificationSummary.data ?? 0, 99)}</span>}
-            </Link>
+            </Link></>}
           </div>
         </header>
         <main id="main-content" className="page" tabIndex={-1}>
           <Outlet />
         </main>
       </div>
-      {user?.id ? <OnboardingTour key={onboardingSession} userId={user.id} startOpen={onboardingSession > 0} /> : null}
+      {!simplifiedEnabled && user?.id ? <OnboardingTour key={onboardingSession} userId={user.id} startOpen={onboardingSession > 0} /> : null}
       <RequestErrorToasts />
     </div>
     </Sheet>
@@ -548,13 +556,14 @@ function RootRedirect() {
   const { user, loading } = useAuth();
   if (loading) return <div className="app-loading t-shimmer" data-text="正在恢复会话…">正在恢复会话…</div>;
   if (!user) return <Navigate to="/login" replace />;
-  return <Navigate to="/dashboard" replace />;
+  return <Navigate to={platformHomePath} replace />;
 }
 
 export function PlatformApp() {
   return (
     <Suspense fallback={<div className="app-loading t-shimmer" data-text="正在加载页面…">正在加载页面…</div>}>
       <Routes>
+        <Route element={<EditionRoute />}>
         <Route path="/login" element={<AuthPage />} />
         <Route path="/demo-login" element={<Navigate to="/login?demo=1" replace />} />
         <Route path="/register" element={<AuthPage register />} />
@@ -599,6 +608,7 @@ export function PlatformApp() {
             <Route path="/account" element={<AccountPage />} />
             <Route path="*" element={<RootRedirect />} />
           </Route>
+        </Route>
         </Route>
       </Routes>
     </Suspense>

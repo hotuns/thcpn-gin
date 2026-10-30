@@ -1,3 +1,4 @@
+import { simplifiedEnabled } from "./features";
 import { Link } from "react-router-dom";
 import {
   Check,
@@ -128,7 +129,7 @@ export function WorkspaceMenu({
               <Button variant="ghost" asChild>
                 <Link to="/settings?tab=access" onClick={onNavigate}>
                   <UserPlus size={15} aria-hidden="true" />
-                  {t("platform:workspace.invite")}
+                  {simplifiedEnabled ? "成员管理" : t("platform:workspace.invite")}
                 </Link>
               </Button>
             </div>

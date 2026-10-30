@@ -1,8 +1,14 @@
+import { simplifiedEnabled } from "./features";
+
 export type PlatformBreadcrumb = { key: string; to?: string };
 
-const root: PlatformBreadcrumb = { key: "overview", to: "/dashboard" };
+const root: PlatformBreadcrumb = simplifiedEnabled
+  ? { key: "wallboards", to: "/atlas" }
+  : { key: "overview", to: "/dashboard" };
 
 export function platformBreadcrumbs(pathname: string): PlatformBreadcrumb[] {
+  if (simplifiedEnabled && pathname === "/atlas") return [{ key: "wallboards" }];
+  if (simplifiedEnabled && pathname === "/settings") return [root, { key: "settings" }];
   if (pathname === "/dashboard") return [{ key: "overview" }];
   if (pathname === "/devices") return [root, { key: "devices" }];
   if (pathname.startsWith("/devices/")) return [root, { key: "devices", to: "/devices" }, { key: "deviceDetails" }];
