@@ -142,13 +142,13 @@ function ResourcesTab() {
   return (
     <>
       <div className="workspace-resource-layout" data-onboarding="organization-resources">
-      {current && <Panel className="workspace-settings-summary"><div className="workspace-setting-row"><div><strong>组织名称</strong><small>名称会显示在组织切换器和相关页面中</small></div><div className="workspace-setting-value"><span title={current.name}>{current.name}</span><Button variant="secondary" onClick={() => setEditingWorkspace(true)}><Pencil size={13} />编辑</Button></div></div></Panel>}
+      {current && <Panel className="workspace-settings-summary"><div className="workspace-setting-row"><div><strong>组织名称</strong></div><div className="workspace-setting-value"><span title={current.name}>{current.name}</span><Button variant="secondary" onClick={() => setEditingWorkspace(true)}><Pencil size={13} />编辑</Button></div></div></Panel>}
       <div className="grid grid-2 workspace-resource-grid">
         <Panel>
           <div className="panel-header">
             <div>
               <h2 className="panel-title">项目</h2>
-              <div className="panel-kicker">组织下的研究项目</div>
+
             </div>
             <div className="resource-panel-actions">
               <Badge tone="info">{projects.data?.items.length ?? 0}</Badge>
@@ -175,7 +175,7 @@ function ResourcesTab() {
           <div className="panel-header">
             <div>
               <h2 className="panel-title">样地</h2>
-              <div className="panel-kicker">项目下的现场样地</div>
+
             </div>
             <div className="resource-panel-actions">
               <Badge tone="info">{sites.data?.items.length ?? 0}</Badge>
@@ -626,7 +626,7 @@ function AuditTab() {
       <div className="panel-header">
         <div>
           <h2 className="panel-title">审计事件</h2>
-          <div className="panel-kicker">敏感操作和访问记录</div>
+
         </div>
         <label className="compact-control">
           返回数量{" "}

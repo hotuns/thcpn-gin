@@ -5,7 +5,7 @@ import { Check, GripVertical, Search } from "lucide-react";
 import { api, formatApiError, type Device, type GatewayNode, type TelemetrySeries } from "@thcpn/api";
 import { fullTelemetry } from "./full-telemetry";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Alert, AlertDescription, AlertTitle, Badge, Button, Panel, SelectInput, StateView } from "./platform-ui";
+import { Alert, AlertDescription, AlertTitle, Badge, Button, Panel, SelectInput, StateView, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./platform-ui";
 import { TelemetryTable } from "./telemetry-table";
 import { TelemetryCharts } from "./telemetry-charts";
 import { TelemetryLoading } from "./telemetry-loading";
@@ -25,6 +25,8 @@ export function GatewayNodeData({ gateway, workspaceId }: { gateway: Device; wor
   const requestedNode = params.get("node") ?? "";
   const selectedNode = nodes.some((node) => node.key === requestedNode) ? requestedNode : nodes[0]?.key ?? "";
   const currentNode = nodes.find(node=>node.key===selectedNode);
+  const indexed = gateway.source_family === "lorawan_v2";
+  const [scheduleOpen,setScheduleOpen]=useState(false);
   const [mode, setMode] = useState<"node" | "compare">("node");
   const [range, setRange] = useState(() => initialQueryRange(gateway.source_family === "lorawan_v2" ? 6 : 168));
   const draggedMetric = useRef<string | null>(null);
@@ -108,14 +110,14 @@ export function GatewayNodeData({ gateway, workspaceId }: { gateway: Device; wor
   const points = series.flatMap((item) => item.points.map((point) => ({ ...point, series: item })));
 
   return <div className="device-data-layout"><div className="device-data-content gateway-node-data">
-    {gateway.source_family==="lorawan_v2" && mode==="node" && currentNode?.target.kind==="gateway_node" ? <LoRaWANNodeTimeConfig deviceId={gateway.id} workspaceId={workspaceId} nodeIndex={currentNode.target.node_index}/> : null}
+    {indexed&&currentNode?.target.kind==="gateway_node"&&<Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}><DialogContent><DialogHeader><DialogTitle>采集位置时间配置</DialogTitle><DialogDescription>{currentNode.name}</DialogDescription></DialogHeader>{scheduleOpen&&<LoRaWANNodeTimeConfig deviceId={gateway.id} workspaceId={workspaceId} nodeIndex={currentNode.target.node_index}/>}</DialogContent></Dialog>}
     <Panel className="gateway-node-query">
-      <div className="panel-header"><div><h2 className="panel-title">节点数据查询</h2><div className="panel-kicker">选择节点与指标，查看趋势或对比节点</div></div><div className="header-actions">{dirty && <Badge tone="warning">条件未应用</Badge>}<Button disabled={invalid || !selected.length || loading || !selectedNode} onClick={search}><Search size={14}/>{loading ? "查询中…" : dirty ? "查询" : "刷新"}</Button></div></div>
+      <div className="panel-header"><div><h2 className="panel-title">{indexed ? "采集位置数据" : "节点数据查询"}</h2></div><div className="header-actions">{indexed&&mode==="node"&&currentNode&&<Button variant="secondary" onClick={()=>setScheduleOpen(true)}>查看采集时间</Button>}{dirty && <Badge tone="warning">条件未应用</Badge>}<Button disabled={invalid || !selected.length || loading || !selectedNode} onClick={search}><Search size={14}/>{loading ? "查询中…" : dirty ? "查询" : "刷新"}</Button></div></div>
       {nodesQuery.error && <StateView type="error" title="节点加载失败" description={formatApiError(nodesQuery.error).message} />}
       {nodesQuery.isLoading ? <StateView type="loading" title="正在加载节点" description="正在读取节点与指标。" /> : <>
         <div className="gateway-node-query-fields">
           <label className="field"><span className="field-label">查询方式</span><SelectInput value={mode} onChange={(event) => setMode(event.target.value as "node" | "compare")}><option value="node">节点数据</option><option value="compare">节点对比</option></SelectInput></label>
-          {mode === "node" && <label className="field"><span className="field-label">节点</span><SelectInput value={selectedNode} onChange={(event) => selectNode(event.target.value)} disabled={!nodes.length}>{nodes.map((node) => <option key={node.key} value={node.key}>{node.name}</option>)}</SelectInput></label>}
+          {mode === "node" && <label className="field"><span className="field-label">{indexed ? "采集位置" : "节点"}</span><SelectInput value={selectedNode} onChange={(event) => selectNode(event.target.value)} disabled={!nodes.length}>{nodes.map((node) => <option key={node.key} value={node.key}>{node.name}</option>)}</SelectInput></label>}
         </div>
         <DeviceQueryToolbar range={range} onChange={setRange}/>
         {mode === "compare" ? <label className="field gateway-node-compare-field"><span className="field-label">对比指标</span><SelectInput value={selected[0] ?? ""} onChange={(event) => setSelected([event.target.value])}>{metrics.map((metric) => <option key={metric.key} value={metric.key}>{metric.name}{metric.unit ? ` · ${metric.unit}` : ""} · {metric.count} 个节点</option>)}</SelectInput></label> : <fieldset className="gateway-node-metric-field"><legend className="field-label">指标 · 拖动已选项可调整图表顺序</legend><div className="gateway-node-metric-checks">{[...metrics].sort((a,b) => (selected.includes(a.key) ? selected.indexOf(a.key) : metrics.length) - (selected.includes(b.key) ? selected.indexOf(b.key) : metrics.length)).map((metric) => {
@@ -127,6 +129,7 @@ export function GatewayNodeData({ gateway, workspaceId }: { gateway: Device; wor
       </>}
     </Panel>
     <Panel className="section-gap gateway-node-chart-panel">
+      {indexed && currentNode && <Alert className="section-gap"><AlertTitle>当前位置 · {currentNode.name}</AlertTitle><AlertDescription>{currentNode.node_sn ? `当前安装 SN：${currentNode.node_sn}` : "当前未绑定物理节点，可继续查看位置历史。"} 本页包含该采集位置的历史，不代表全部数据由当前硬件采集。</AlertDescription></Alert>}
       <div className="panel-header"><h2 className="panel-title">{applied?.mode === "compare" ? "节点对比" : "数据结果"}</h2><div className="header-actions"><Link className="button button-secondary" to={`/exports?${new URLSearchParams({system:"group",gateway:gateway.id,nodes:mode === "node" ? selectedNode : nodes.map((node) => node.key).join(","),start:range.start,end:range.end})}`}>导出</Link><Button variant="secondary" onClick={() => setView(view === "chart" ? "table" : "chart")}>{view === "chart" ? "查看表格" : "查看曲线"}</Button></div></div>
       {failures.map((failure) => <Alert key={failure.label} variant="destructive" className="request-error-inline"><AlertTitle>{failure.label}读取失败</AlertTitle><AlertDescription><p>{formatApiError(failure.error).message}</p></AlertDescription></Alert>)}
       {series.filter((item) => item.error).map((item) => <Alert key={item.data_stream_id} variant="destructive" className="request-error-inline"><AlertTitle>{item.name}读取失败</AlertTitle><AlertDescription><p>{item.error}</p></AlertDescription></Alert>)}

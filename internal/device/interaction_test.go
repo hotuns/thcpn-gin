@@ -1,6 +1,7 @@
 package device
 
 import (
+	"fmt"
 	"github.com/google/uuid"
 	"testing"
 	"thcpn-gin/internal/testdb"
@@ -22,6 +23,11 @@ func TestGatewayNodeTargetsKeepIdentityWithoutTelemetry(t *testing.T) {
 		must(`INSERT INTO devices(id,name,device_type,product_id) VALUES ($1,'Gateway','gateway','unrelated_product')`, id)
 		must(`INSERT INTO device_source_refs(device_id,data_source_id,adapter_code,external_key) VALUES ($1,$2,'lorawan_v2',$3)`, id, source, id.String())
 		must(`INSERT INTO device_metadata(device_id,key,name,value_type,value_json,created_by,updated_by) VALUES ($1,'lorawan_v2_nodes_count','Nodes','number','2',$2,$2)`, id, admin)
+	}
+	for gi, gid := range []uuid.UUID{gateway, secondGateway} {
+		for index := 1; index <= 2; index++ {
+			must(`INSERT INTO lorawan_physical_nodes(data_source_id,external_id,sn,gateway_device_id,node_index) VALUES($1,$2,$3,$4,$5)`, source, gi*2+index, gid.String()+fmt.Sprint(index), gid, index)
+		}
 	}
 	streamID := uuid.New()
 	must(`INSERT INTO data_streams(id,device_id,code,name,type,unit,created_by,created_by_type) VALUES($1,$2,'lora_node_1_diams','径向生长','telemetry','mm',$3,'system_admin')`, streamID, gateway, admin)

@@ -99,7 +99,7 @@ func TestLoRaWANV2MetadataReadPermissionsAndContracts(t *testing.T) {
 		actor  uuid.UUID
 		path   string
 		status int
-	}{{owner, prefix + "/nodes/2/time-config", 200}, {outsider, prefix + "/nodes/2/time-config", 403}, {owner, prefix + "/nodes/3/time-config", 400}, {owner, prefix + "/lorawan-v2/info", 200}, {outsider, prefix + "/lorawan-v2/info", 403}} {
+	}{{owner, prefix + "/nodes/2/time-config", 200}, {outsider, prefix + "/nodes/2/time-config", 403}, {owner, prefix + "/nodes/255/time-config", 400}, {owner, prefix + "/lorawan-v2/info", 200}, {outsider, prefix + "/lorawan-v2/info", 403}} {
 		response := call(fixture.actor, fixture.path)
 		if response.Code != fixture.status {
 			t.Fatalf("%s: got %d want %d: %s", fixture.path, response.Code, fixture.status, response.Body.String())

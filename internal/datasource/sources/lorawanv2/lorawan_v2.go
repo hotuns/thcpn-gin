@@ -433,8 +433,8 @@ func (s *Service) LoRaWANV2Request(ctx context.Context, dataSourceID uuid.UUID, 
 func (s *Service) ListLoRaWANV2Gateways(ctx context.Context, dataSourceID uuid.UUID, page, pageSize int) (json.RawMessage, error) {
 	return s.LoRaWANV2Request(ctx, dataSourceID, http.MethodGet, "/devices", LoraWANV2PageQuery(page, pageSize), nil)
 }
-func (s *Service) CreateLoRaWANV2Gateway(ctx context.Context, dataSourceID uuid.UUID, sn string, nodeCount int, actorID uuid.UUID) (LoRaWANV2CreateGatewayResult, error) {
-	if actorID == uuid.Nil || strings.TrimSpace(sn) == "" || nodeCount < 1 || nodeCount > 254 {
+func (s *Service) CreateLoRaWANV2Gateway(ctx context.Context, dataSourceID uuid.UUID, sn string, _ int, actorID uuid.UUID) (LoRaWANV2CreateGatewayResult, error) {
+	if actorID == uuid.Nil || strings.TrimSpace(sn) == "" {
 		return LoRaWANV2CreateGatewayResult{}, apperr.New(apperr.KindInvalidArgument, "gateway sn, node_count and actor are required")
 	}
 	source, err := s.loadLoRaWANV2DataSource(ctx, dataSourceID)
@@ -454,7 +454,7 @@ func (s *Service) CreateLoRaWANV2Gateway(ctx context.Context, dataSourceID uuid.
 	gateway, err := client.getGateway(ctx, sn)
 	created := false
 	if errors.Is(err, errLoRaWANV2GatewayNotFound) {
-		payload, createErr := client.Request(ctx, http.MethodPost, "/device", url.Values{}, map[string]any{"sn": sn, "node_count": nodeCount})
+		payload, createErr := client.Request(ctx, http.MethodPost, "/device", url.Values{}, map[string]any{"sn": sn, "node_count": 254})
 		if createErr != nil {
 			return LoRaWANV2CreateGatewayResult{}, createErr
 		}
@@ -464,12 +464,11 @@ func (s *Service) CreateLoRaWANV2Gateway(ctx context.Context, dataSourceID uuid.
 		created = true
 	} else if err != nil {
 		return LoRaWANV2CreateGatewayResult{}, err
-	} else if gateway.NodeCount != nodeCount {
-		return LoRaWANV2CreateGatewayResult{}, apperr.New(apperr.KindConflict, "gateway already exists with a different node_count")
+
 	}
 	result := LoRaWANV2CreateGatewayResult{Gateway: gateway}
 	specs, catalogErr := loraWANV2DiscoverStreams(ctx, client, gateway)
-	synced, err := s.persistLoRaWANV2Gateway(ctx, source, gateway, specs, catalogErr == nil, actorID)
+	synced, err := s.persistLoRaWANV2Gateway(ctx, source, gateway, specs, false, actorID)
 	if err != nil {
 		return LoRaWANV2CreateGatewayResult{}, err
 	}
@@ -497,7 +496,8 @@ func (s *Service) CreateLoRaWANV2Gateway(ctx context.Context, dataSourceID uuid.
 	if catalogErr != nil {
 		result.CatalogWarning = apperr.MessageOf(catalogErr)
 	}
-	return result, nil
+	_, err = s.SyncPhysicalNodes(ctx, result.Sync.Device.ID)
+	return result, err
 }
 func (s *Service) SyncLoRaWANV2Gateway(ctx context.Context, input SyncLoRaWANV2GatewayInput) (LoRaWANV2GatewaySyncResult, error) {
 	if input.DataSourceID == uuid.Nil || input.ActorUserID == uuid.Nil || strings.TrimSpace(input.GatewaySN) == "" {
@@ -605,7 +605,12 @@ func (s *Service) syncLoRaWANV2Gateway(ctx context.Context, source sqlc.DataSour
 	// unmanaged and therefore keep their raw metric keys.
 	var existingDeviceID uuid.UUID
 	if lookupErr := s.DB.QueryRow(ctx, `SELECT device_id FROM device_source_refs WHERE data_source_id=$1 AND external_key=$2 AND adapter_code='lorawan_v2'`, source.ID, gateway.SN).Scan(&existingDeviceID); lookupErr == nil {
-		for index := 1; index <= gateway.NodeCount; index++ {
+		registry, registryErr := readPhysicalNodes(ctx, client, gateway.SN)
+		if registryErr != nil {
+			return LoRaWANV2GatewaySyncResult{}, registryErr
+		}
+		for _, physical := range registry.Data {
+			index := *physical.NodeIndex
 			payload, readErr := client.Request(ctx, http.MethodGet, "/device/"+url.PathEscape(gateway.SN)+"/node/"+strconv.Itoa(index)+"/sensor_config/latest", url.Values{}, nil)
 			if readErr == nil {
 				_, _ = s.describeLoRaWANV2NodeConfig(ctx, existingDeviceID, index, payload)
@@ -617,7 +622,11 @@ func (s *Service) syncLoRaWANV2Gateway(ctx context.Context, source sqlc.DataSour
 		return LoRaWANV2GatewaySyncResult{}, err
 	}
 
-	return s.persistLoRaWANV2Gateway(ctx, source, gateway, specs, true, actorID)
+	result, err := s.persistLoRaWANV2Gateway(ctx, source, gateway, specs, false, actorID)
+	if err == nil {
+		_, err = s.SyncPhysicalNodes(ctx, result.Device.ID)
+	}
+	return result, err
 }
 func (s *Service) persistLoRaWANV2Gateway(ctx context.Context, source sqlc.DataSource, gateway LoRaWANV2Gateway, specs []loraWANV2StreamSpec, catalogComplete bool, actorID uuid.UUID, nodeScope ...int) (LoRaWANV2GatewaySyncResult, error) {
 	tx, err := s.DB.BeginTx(ctx, pgx.TxOptions{})
@@ -669,7 +678,11 @@ func (s *Service) persistLoRaWANV2Gateway(ctx context.Context, source sqlc.DataS
 	if _, err := tx.Exec(ctx, `INSERT INTO device_capabilities(device_id,capability_code) VALUES($1,'firmware_update') ON CONFLICT (device_id,capability_code) DO NOTHING`, device.ID); err != nil {
 		return LoRaWANV2GatewaySyncResult{}, platform.MapWriteError(err, "enable lorawan_v2 firmware updates")
 	}
-	if err := q.UpsertLoRaWANV2Metadata(ctx, sqlc.UpsertLoRaWANV2MetadataParams{DeviceID: device.ID, Key: "lorawan_v2_nodes_count", Name: "LoRa 节点数", ValueType: "number", Column5: []byte(strconv.Itoa(gateway.NodeCount)), CreatedBy: actorID}); err != nil {
+	var boundCount int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM lorawan_physical_nodes WHERE gateway_device_id=$1`, device.ID).Scan(&boundCount); err != nil {
+		return LoRaWANV2GatewaySyncResult{}, err
+	}
+	if err := q.UpsertLoRaWANV2Metadata(ctx, sqlc.UpsertLoRaWANV2MetadataParams{DeviceID: device.ID, Key: "lorawan_v2_nodes_count", Name: "已绑定节点数", ValueType: "number", Column5: []byte(strconv.Itoa(boundCount)), CreatedBy: actorID}); err != nil {
 		return LoRaWANV2GatewaySyncResult{}, platform.MapWriteError(err, "upsert lorawan_v2 node count")
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO device_source_refs (device_id, data_source_id, adapter_code, external_key, status, synced_at) VALUES ($1,$2,'lorawan_v2',$3,'active',now()) ON CONFLICT (data_source_id, adapter_code, external_key) DO UPDATE SET device_id=EXCLUDED.device_id,status='active',synced_at=now(),updated_at=now()`, device.ID, source.ID, gateway.SN); err != nil {
@@ -750,7 +763,7 @@ func loraWANV2DiscoverStreams(ctx context.Context, client *LoraWANV2Client, gate
 		}
 		return nil
 	}
-	if len(nodeScope) > 0 && (nodeScope[0] < 1 || nodeScope[0] > gateway.NodeCount) {
+	if len(nodeScope) > 0 && (nodeScope[0] < 1 || nodeScope[0] > 254) {
 		return nil, apperr.New(apperr.KindInvalidArgument, "node_index is outside gateway node range")
 	}
 	if len(nodeScope) == 0 {
@@ -773,10 +786,19 @@ func loraWANV2DiscoverStreams(ctx context.Context, client *LoraWANV2Client, gate
 			return nil, err
 		}
 	}
-	for index := 1; index <= gateway.NodeCount; index++ {
-		if len(nodeScope) > 0 && index != nodeScope[0] {
-			continue
+	indices := []int{}
+	if len(nodeScope) > 0 {
+		indices = append(indices, nodeScope[0])
+	} else {
+		nodes, err := readPhysicalNodes(ctx, client, gateway.SN)
+		if err != nil {
+			return nil, err
 		}
+		for _, node := range nodes.Data {
+			indices = append(indices, *node.NodeIndex)
+		}
+	}
+	for _, index := range indices {
 		units, configHash, err := loraWANV2NodeMetricCatalog(ctx, client, gateway.SN, index)
 		if err != nil {
 			return nil, apperr.Wrap(apperr.KindDataSource, "read node "+strconv.Itoa(index)+" sensor configuration", err)

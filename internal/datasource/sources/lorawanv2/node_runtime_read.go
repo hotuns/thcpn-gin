@@ -19,12 +19,8 @@ func (s *Service) ReadNodeRuntime(ctx context.Context, id uuid.UUID, index int, 
 	if err != nil {
 		return result, err
 	}
-	var count int
-	if err := s.DB.QueryRow(ctx, `SELECT COALESCE((SELECT value_json::text::int FROM device_metadata WHERE device_id=$1 AND key='lorawan_v2_nodes_count'),0)`, id).Scan(&count); err != nil {
-		return result, err
-	}
-	if index < 1 || index > count {
-		return result, apperr.New(apperr.KindInvalidArgument, "node_index is outside gateway node range")
+	if index < 1 || index > 254 {
+		return result, apperr.New(apperr.KindInvalidArgument, "node_index must be between 1 and 254")
 	}
 	payload, err := s.LoRaWANV2Request(ctx, ref.DataSourceID, http.MethodGet, "/device/"+url.PathEscape(ref.GatewaySN)+"/node/"+strconv.Itoa(index)+"/latest", nil, nil)
 	if err != nil {

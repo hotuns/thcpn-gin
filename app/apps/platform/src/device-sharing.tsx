@@ -79,7 +79,7 @@ export function DeviceSharingTab({ workspaceId, device }: { workspaceId: string;
         <Panel>
           {directMine.length ? (
             <>
-              <div className="panel-header compact-panel-header"><div><h2 className="panel-title">我的设备授权</h2><div className="panel-kicker">当前账号只能查看自己的授权信息</div></div></div>
+              <div className="panel-header compact-panel-header"><div><h2 className="panel-title">我的设备授权</h2></div></div>
               <ShareRows rows={directMine} />
             </>
           ) : (
@@ -94,7 +94,7 @@ export function DeviceSharingTab({ workspaceId, device }: { workspaceId: string;
         <div className="device-sharing-grid">
           <Panel>
             <div className="panel-header compact-panel-header">
-              <div><h2 className="panel-title">直接授权</h2><div className="panel-kicker">已注册用户的设备级访问</div></div>
+              <div><h2 className="panel-title">直接授权</h2></div>
               <Button onClick={() => setMode("grant")}><Plus size={14} />创建授权</Button>
             </div>
             <ShareRows
@@ -104,7 +104,7 @@ export function DeviceSharingTab({ workspaceId, device }: { workspaceId: string;
           </Panel>
           <Panel>
             <div className="panel-header compact-panel-header">
-              <div><h2 className="panel-title">待接受邀请</h2><div className="panel-kicker">通过邮箱或手机号邀请</div></div>
+              <div><h2 className="panel-title">待接受邀请</h2></div>
               <Button variant="secondary" onClick={() => setMode("invitation")}><Send size={14} />发送邀请</Button>
             </div>
             <InvitationRows

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
 import {
   Link,
@@ -297,6 +297,7 @@ function DeviceFilterSelect({ label, value, options, onChange }: { label: string
 }
 
 export function DevicesPage() {
+  const queryClient = useQueryClient();
   const { currentId } = useWorkspace();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -449,6 +450,7 @@ export function DevicesPage() {
             <div className="device-filter-actions">
               <Button variant="secondary" onClick={() => {
                 void query.refetch();
+                void queryClient.invalidateQueries({ predicate: query => query.queryKey.includes("lorawan-info") });
                 void mapQuery.refetch();
                 if (runtimeDeviceIDs.length) void runtime.refetch();
               }}>
@@ -638,6 +640,14 @@ function DeviceRows({
 }) {
   const gateway = deviceCategory(device) === "gateway";
   const camera = deviceCategory(device) === "camera";
+  const lora = device.source_family === "lorawan_v2";
+  const gatewayInfo = useQuery({
+    queryKey: workspaceQueryKey(workspaceId, "device", device.id, "lorawan-info"),
+    queryFn: () => api.devices.lorawanInfo(device.id),
+    enabled: lora && gateway,
+    staleTime: DEVICE_RUNTIME_STALE_TIME,
+    retry: false,
+  });
   return (
     <>
       <tr className={expanded ? "selected-row" : ""}>
@@ -681,7 +691,7 @@ function DeviceRows({
           </div>
         </td>
         <td>
-          {!camera?<DeviceVitalIndicators attributes={runtime?.attributes} loading={runtimeLoading} csq={deviceCategory(device) === "standalone"} lithiumVoltage={device.source_family === "thcpn" && ["gateway", "gateway_node"].includes(deviceCategory(device))}/>:<span className="cell-sub">不适用</span>}
+          {!camera?<DeviceVitalIndicators attributes={runtime?.attributes} batteryValue={lora ? gatewayInfo.data?.battery ?? null : undefined} signalValue={lora ? gatewayInfo.data?.cell ?? null : undefined} loading={lora ? gatewayInfo.isLoading : runtimeLoading} csq={deviceCategory(device) === "standalone"} signalCsq={lora || deviceCategory(device) === "standalone"} lithiumVoltage={device.source_family === "lorawan_v2" || (device.source_family === "thcpn" && ["gateway", "gateway_node"].includes(deviceCategory(device)))}/>:<span className="cell-sub">不适用</span>}
         </td>
         <td>
           {!camera?<div className="device-last-report" title={overviewTime(runtime?.source_device.updated_at)}><Clock3 size={13}/><span>{runtime?.source_device.updated_at?relativeTime(runtime.source_device.updated_at):"暂无上报"}</span></div>:<span className="cell-sub">视频设备</span>}
@@ -749,23 +759,29 @@ function DeviceVitalIndicators({
   loading = false,
   csq = false,
   lithiumVoltage = false,
+  signalCsq = csq,
+  batteryValue,
+  signalValue,
 }: {
   attributes?: THCPNLatestAttributesResponse["attributes"];
   loading?: boolean;
   csq?: boolean;
   lithiumVoltage?: boolean;
+  signalCsq?: boolean;
+  batteryValue?: number | null;
+  signalValue?: number | null;
 }) {
   const battery = inferBatteryReading(
-    loading ? null : numericAttributeValue(attributes?.battery),
+    loading ? null : batteryValue !== undefined ? batteryValue : numericAttributeValue(attributes?.battery),
     csq,
     lithiumVoltage,
   );
   const signal = inferSignalReading(
-    loading ? null : numericAttributeValue(attributes?.signal),
-    csq,
+    loading ? null : signalValue !== undefined ? signalValue : numericAttributeValue(attributes?.signal),
+    signalCsq,
   );
-  const bars = csqSignalBars(loading ? null : numericAttributeValue(attributes?.signal));
-  const SignalIcon = csq ? [SignalZero, SignalLow, SignalMedium, SignalHigh, Signal][bars ?? 0] : Signal;
+  const bars = csqSignalBars(loading ? null : signalValue !== undefined ? signalValue : numericAttributeValue(attributes?.signal));
+  const SignalIcon = signalCsq ? [SignalZero, SignalLow, SignalMedium, SignalHigh, Signal][bars ?? 0] : Signal;
   const BatteryIcon = csq ? ({ unknown: Battery, critical: BatteryWarning, low: BatteryLow, fair: BatteryMedium, good: BatteryFull })[battery.level] : Battery;
   return (
     <TooltipProvider delayDuration={200}><div className={`device-vitals device-vitals-refined ${loading ? "loading" : ""}`}>
@@ -786,7 +802,7 @@ function DeviceVitalIndicators({
         aria-label={loading ? "正在读取信号" : signal.description}
       >
         <SignalIcon size={20} aria-hidden="true" />
-        {(!csq || bars === null) && <small>{loading ? "…" : signal.valueLabel}</small>}
+        {(!signalCsq || bars === null) && <small>{loading ? "…" : signal.valueLabel}</small>}
       </span></TooltipTrigger><TooltipContent className="device-vital-tooltip">
         <div><strong>信号</strong><b>{loading ? "…" : signal.valueLabel}</b></div>
         <p>{loading ? "正在读取信号" : signal.description}</p>
@@ -844,7 +860,7 @@ function DeviceQuickSwitcher({
   return (
     <div className="device-quick-switch">
       <span>快捷切换设备</span>
-      <DeviceCombobox devices={devices} value={device.id} onChange={onSwitch} ariaLabel="搜索并切换设备" />
+      <DeviceCombobox devices={devices} value={device.id} onChange={onSwitch} includeNodes={false} ariaLabel="搜索并切换设备" />
     </div>
   );
 }
@@ -982,7 +998,7 @@ export function DeviceCenterDetailPage() {
         ]
       : [
           { id: "overview" as DeviceTab, label: "概览" },
-          { id: "data", label: deviceCategory(device) === "gateway" ? "节点数据" : "数据" },
+          { id: "data", label: "数据" },
           { id: "profile", label: "资料" },
           { id: "config", label: "配置" },
           { id: "sharing", label: "分享" },
@@ -1181,7 +1197,7 @@ function StandardDeviceOverview({
               <div className="panel-header compact-panel-header">
                 <div>
                   <h2 className="panel-title">最近数据</h2>
-                  <div className="panel-kicker">最近两天 · 全部指标</div>
+
                 </div>
                 <Button variant="secondary" onClick={onOpenData}>
                   查看全部
@@ -1298,9 +1314,7 @@ function DeviceActivity({
       <div className="panel-header">
         <div>
           <h2 className="panel-title">设备操作记录</h2>
-          <div className="panel-kicker">
-            最近 500 条组织审计中的设备相关事件
-          </div>
+
         </div>
         <Badge tone="neutral">{rows.length}</Badge>
       </div>
@@ -1402,9 +1416,7 @@ function DeviceConfig({
         <div className="panel-header">
           <div>
             <h2 className="panel-title">危险操作</h2>
-            <div className="panel-kicker">
-              解绑后设备资产保留，但不再属于当前组织
-            </div>
+
           </div>
           <Button
             variant="danger"
@@ -1490,9 +1502,7 @@ function SystemDeviceConfig({
       <div className="panel-header">
         <div>
           <h2 className="panel-title">系统配置</h2>
-          <div className="panel-kicker">
-            仅系统管理员可见，所有修改调用平台级管理接口
-          </div>
+
         </div>
         <Badge tone="info">SYSTEM ADMIN</Badge>
       </div>
@@ -1932,7 +1942,7 @@ function DeviceDetail({
       <div className="panel-header">
         <div>
           <h3 className="panel-title">数据流</h3>
-          <div className="panel-kicker">只读通道，不展示数据库绑定信息</div>
+
         </div>
         <Badge tone="neutral">{streams.data?.items.length ?? 0}</Badge>
       </div>

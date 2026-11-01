@@ -996,7 +996,7 @@ function DatasetForm({
                 <Tabs value={streamKind} onValueChange={value => setStreamKind(value as "telemetry" | "image")}><TabsList aria-label="数据类型"><TabsTrigger value="telemetry">设备数据</TabsTrigger><TabsTrigger value="image">图片</TabsTrigger></TabsList></Tabs>
                 <SearchInput value={streamSearch} onChange={event => setStreamSearch(event.target.value)} placeholder="搜索指标名称或编码" />
               </div>
-              <p className="data-builder-hint">勾选即加入数据集，取消勾选即可移除</p>
+
               {!deviceId ? (
                 <div className="dataset-stream-empty">请先选择设备</div>
               ) : streams.isLoading ? (
@@ -1207,9 +1207,7 @@ function DatasetPreview({
             <h2 className="panel-title">数据预览</h2>
             <span className="dataset-panel-context">已保存范围</span>
           </div>
-          <div className="panel-kicker">
-            按数据集定义的时间范围展示趋势和明细；如需调整，请进入编辑
-          </div>
+
         </div>
       </div>
       <div className="dataset-preview-meta">
@@ -1302,7 +1300,7 @@ function DatasetPreview({
           <div className="panel-header dataset-detail-header">
             <div>
               <h3 className="panel-title">数据明细</h3>
-              <div className="panel-kicker">每行一个采集时间，每列一个数据指标</div>
+
             </div>
             <Badge tone="neutral">{points.length} 条</Badge>
           </div>

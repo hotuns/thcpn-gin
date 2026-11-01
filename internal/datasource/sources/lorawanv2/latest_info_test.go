@@ -82,7 +82,7 @@ func TestLatestEndpointsKeepOldRecordsAndNullWithoutHistoryFallback(t *testing.T
 		t.Fatalf("gateway record changed: %s %v", info, err)
 	}
 	before := calls.Load()
-	if _, err = s.ReadNodeRuntime(t.Context(), id, 3, "invalid", time.Now()); apperr.KindOf(err) != apperr.KindInvalidArgument || calls.Load() != before {
+	if _, err = s.ReadNodeRuntime(t.Context(), id, 255, "invalid", time.Now()); apperr.KindOf(err) != apperr.KindInvalidArgument || calls.Load() != before {
 		t.Fatal("invalid target reached upstream")
 	}
 	mode.Store(1)

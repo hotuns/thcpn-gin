@@ -63,7 +63,7 @@ func TestDeviceConfigPathsAndPartialSnapshotFailure(t *testing.T) {
 		t.Fatalf("time write: %+v %v", result, err)
 	}
 	before := requests.Load()
-	request.NodeIndex = 2
+	request.NodeIndex = 255
 	if _, err := s.ConfigureDevice(ctx, request); err == nil || requests.Load() != before {
 		t.Fatal("out-of-range node reached source API")
 	}

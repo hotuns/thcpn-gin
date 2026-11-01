@@ -184,7 +184,7 @@ export function AccessControlTab() {
         <div className="access-guide-heading">
           <div>
             <h2 className="panel-title">先选择访问方式</h2>
-            <div className="panel-kicker">三种方式对应三种不同的协作关系</div>
+
           </div>
           <ShieldCheck size={18} />
         </div>

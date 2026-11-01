@@ -7,6 +7,7 @@ import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "@thcpn/auth";
 import { WorkspaceProvider } from "@thcpn/workspace";
 import { I18nProvider } from "@thcpn/i18n";
+import "./reset.css";
 import "@thcpn/ui/styles.css";
 import "./platform.css";
 import "./shadcn.css";

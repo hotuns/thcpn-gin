@@ -53,12 +53,21 @@ func gatewayWideRows(series []telemetrySeries) [][]xlsxCell {
 			}
 		}
 	}
-	header := []xlsxCell{stringCell("节点名称"), stringCell("节点ID"), stringCell("节点序号"), stringCell("时间（北京时间）")}
+	header := []xlsxCell{stringCell("节点名称"), stringCell("采集位置ID"), stringCell("节点序号"), stringCell("时间（北京时间）")}
 	if !gateway {
 		header = []xlsxCell{stringCell("设备名称"), stringCell("设备ID"), stringCell("节点序号"), stringCell("时间（北京时间）")}
 	}
+	hasPhysical := false
+	for _, s := range series {
+		if s.CurrentNodeSN != "" {
+			hasPhysical = true
+		}
+	}
 	for _, c := range columns {
 		header = append(header, stringCell(c))
+	}
+	if hasPhysical {
+		header = append(header, stringCell("当前安装节点SN（非历史归属）"))
 	}
 	type rowKey struct {
 		node      string
@@ -84,6 +93,9 @@ func gatewayWideRows(series []telemetrySeries) [][]xlsxCell {
 			row[4+columnIndex[metricKey(s)]] = numberCell(p.Value)
 			if idx, ok := qualityIndex[metricKey(s)]; ok {
 				row[4+idx] = stringCell(p.Quality)
+			}
+			if hasPhysical {
+				row[len(header)-1] = stringCell(s.CurrentNodeSN)
 			}
 			rows[key] = row
 		}

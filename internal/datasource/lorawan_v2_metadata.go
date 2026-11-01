@@ -34,12 +34,12 @@ func (h *Handler) deviceLoRaWANV2TimeConfig(c *gin.Context, admin bool) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid node index"))
 		return
 	}
-	asset, err := device.NewService(h.service.DB).GetAsset(c.Request.Context(), id)
+	_, err = device.NewService(h.service.DB).GetAsset(c.Request.Context(), id)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
-	if int64(index) > asset.ChildCount {
+	if index > 254 {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "node index outside gateway range"))
 		return
 	}

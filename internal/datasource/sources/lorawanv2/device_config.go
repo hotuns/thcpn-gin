@@ -56,7 +56,7 @@ func (s *Service) ConfigureDevice(ctx context.Context, request ConfigRequest) (r
 		}
 	case "sensor", "time":
 		index := request.NodeIndex
-		if index < 1 || index > int(item.ChildCount) {
+		if index < 1 || index > 254 {
 			return response, apperr.New(apperr.KindInvalidArgument, "node_index is outside gateway node range")
 		}
 		path += "/node/" + strconv.Itoa(index)

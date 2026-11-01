@@ -58,6 +58,7 @@ export function DeviceCombobox({
   ariaLabel = "搜索并选择设备",
   placeholder = "搜索设备名称、序列号或 ID",
   className = "",
+  includeNodes = true,
 }: {
   devices: Device[];
   value: string;
@@ -65,6 +66,7 @@ export function DeviceCombobox({
   ariaLabel?: string;
   placeholder?: string;
   className?: string;
+  includeNodes?: boolean;
 }) {
   const { currentId } = useWorkspace();
   const [open, setOpen] = useState(false);
@@ -84,7 +86,7 @@ export function DeviceCombobox({
     [devices],
   );
   const childQueries = useQueries({
-    queries: gateways.map((gateway) => ({
+    queries: (includeNodes ? gateways : []).map((gateway) => ({
       queryKey: ["device-combobox", gateway.id, "children"],
       queryFn: () => api.devices.children(gateway.id),
       enabled: open,
@@ -94,9 +96,9 @@ export function DeviceCombobox({
   const childrenByGateway = useMemo(
     () => new Map(gateways.map((gateway, index) => [
       gateway.id,
-      (childQueries[index]?.data?.items ?? []).map((item) => item.device),
+      (includeNodes ? childQueries[index]?.data?.items ?? [] : []).map((item) => item.device),
     ])),
-    [childQueries, gateways],
+    [childQueries, gateways, includeNodes],
   );
   const childDevices = useMemo(
     () => Array.from(childrenByGateway.values()).flat(),
@@ -205,7 +207,7 @@ export function DeviceCombobox({
                       <DeviceCommandItem
                         device={gateway}
                         selected={gateway.id === value}
-                        detail={`SN ${gateway.serial_no} · ${children.length} 个节点`}
+                        detail={includeNodes ? `SN ${gateway.serial_no} · ${children.length} 个节点` : `SN ${gateway.serial_no}`}
                         onSelect={selectDevice}
                       />
                       {children.map((child) => (

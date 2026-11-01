@@ -689,7 +689,195 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/devices/{device_id}/lorawan-v2/node-count": {
+    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/nodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+            };
+            cookie?: never;
+        };
+        /** List physical nodes independently of gateway context */
+        get: {
+            parameters: {
+                query?: {
+                    page?: components["parameters"]["Page"];
+                    page_size?: components["parameters"]["PageSize"];
+                    /** @description Exact SN match */
+                    sn?: string;
+                    bound?: boolean;
+                    gateway_sn?: string;
+                };
+                header?: never;
+                path: {
+                    /** @description Data source UUID. */
+                    data_source_id: components["parameters"]["DataSourceID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Source inventory with data and pagination */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LoRaWANV2Payload"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                /** @description Source query failed */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Create a new physical node and optionally install it
+         * @description Always creates a new SN; existing nodes are not reused or moved. An occupied position is rejected. Creating and binding are separate upstream operations; partial may leave a newly created unbound node. Metrics are synchronized once after CSV import, not once per row. This operation does not send hardware instructions.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Data source UUID. */
+                    data_source_id: components["parameters"]["DataSourceID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        sn: string;
+                        gateway_device_id?: components["schemas"]["UUID"];
+                        node_index?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Inspect status completed/partial/unknown and created/bound flags; do not repeat creation after partial success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LoRaWANV2Payload"];
+                    };
+                };
+                400: components["responses"]["InvalidArgument"];
+                401: components["responses"]["Unauthorized"];
+                409: components["responses"]["Conflict"];
+                /** @description Source result unconfirmed; inspect inventory before retry */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/node-gateways": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Data source UUID. */
+                data_source_id: components["parameters"]["DataSourceID"];
+            };
+            cookie?: never;
+        };
+        /** List managed active gateways belonging to this source */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Data source UUID. */
+                    data_source_id: components["parameters"]["DataSourceID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Gateway choices with platform id */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LoRaWANV2Payload"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/lorawan-v2/nodes/csv-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate two-column SN and node index CSV without writes */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        csv: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Parsed rows with line */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LoRaWANV2Payload"];
+                    };
+                };
+                400: components["responses"]["InvalidArgument"];
+                401: components["responses"]["Unauthorized"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/lorawan-v2/physical-nodes": {
         parameters: {
             query?: never;
             header?: never;
@@ -699,17 +887,95 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
+        /** Refresh bound physical nodes or query source inventory */
+        get: {
+            parameters: {
+                query?: {
+                    inventory?: boolean;
+                    bound?: boolean;
+                    sn?: string;
+                    page?: components["parameters"]["Page"];
+                    page_size?: components["parameters"]["PageSize"];
+                };
+                header?: never;
+                path: {
+                    /** @description Device UUID. */
+                    device_id: components["parameters"]["DeviceID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Physical node inventory; binding refresh preserves position data and profiles */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LoRaWANV2Payload"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                /** @description Upstream query failed */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         put?: never;
-        post?: never;
+        /**
+         * Register, bind, unbind or replace a physical node
+         * @description Administrator only. Registration and binding do not send firmware instructions. Data and configuration stay with gateway plus index. Unknown writes must be checked before retry; partial means source accepted but platform needs synchronization.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Device UUID. */
+                    device_id: components["parameters"]["DeviceID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        action: "register" | "bind" | "unbind" | "replace" | "reconcile";
+                        sn?: string;
+                        node_index?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Source accepted; inspect status completed or partial and message */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LoRaWANV2Payload"];
+                    };
+                };
+                400: components["responses"]["InvalidArgument"];
+                401: components["responses"]["Unauthorized"];
+                409: components["responses"]["Conflict"];
+                /** @description Source result unknown; read inventory before retry */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
-        /**
-         * Increase LoRaWAN V2 gateway node count and project new diagnostic streams
-         * @description Administrator only. Reads the upstream count, rejects decreases, writes the absolute total and verifies it by readback. Equal counts only retry platform projection. Source acceptance does not confirm hardware application. A partial response requires retrying the same total to synchronize the platform; existing node configurations are preserved.
-         */
-        patch: operations["adminUpdateLoRaWANV2NodeCount"];
+        patch?: never;
         trace?: never;
     };
     "/api/v1/admin/devices/{device_id}/nodes": {
@@ -7337,6 +7603,10 @@ export interface components {
             longitude: number | null;
         };
         GatewayNode: {
+            /** @description Current physical node only; does not attribute historical samples */
+            node_sn?: string;
+            physical_node_id?: components["schemas"]["UUID"];
+            bound?: boolean;
             /** Format: double */
             latitude?: number;
             /** Format: double */
@@ -7724,7 +7994,11 @@ export interface components {
         LoRaWANV2CreateGatewayRequest: {
             /** @description Client-generated request key. The backend generates a stable gateway SN for retries. */
             idempotency_key: components["schemas"]["UUID"];
-            node_count: number;
+            /**
+             * @deprecated
+             * @description Ignored legacy field; protocol limit is fixed at 254
+             */
+            node_count?: number;
         };
         CreateSourceDeviceRequest: {
             /** @enum {string} */
@@ -8885,67 +9159,6 @@ export interface operations {
         responses: {
             /** @description Archived */
             204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    adminUpdateLoRaWANV2NodeCount: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Device UUID. */
-                device_id: components["parameters"]["DeviceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    node_count: number;
-                };
-            };
-        };
-        responses: {
-            /** @description Source accepted; inspect write_state and warnings for platform projection outcome. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        gateway: {
-                            sn: string;
-                            node_count: number;
-                        };
-                        /** @enum {string} */
-                        status: "completed" | "partial";
-                        write_state: {
-                            operation_id: components["schemas"]["UUID"];
-                            /** @enum {string} */
-                            source: "accepted";
-                            /** @enum {string} */
-                            platform: "synced" | "failed";
-                            /** @enum {string} */
-                            device: "unknown";
-                        };
-                        warnings: {
-                            code: string;
-                            message: string;
-                        }[];
-                    };
-                };
-            };
-            400: components["responses"]["InvalidArgument"];
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            500: components["responses"]["Internal"];
-            /** @description Source write result unknown; read upstream before retrying. Error includes the operation ID. */
-            502: {
                 headers: {
                     [name: string]: unknown;
                 };

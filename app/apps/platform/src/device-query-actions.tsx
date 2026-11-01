@@ -169,7 +169,7 @@ export function DeviceQueryActions({
       <div className="panel-header">
         <div>
           <h2 className="panel-title">查询条件</h2>
-          <div className="panel-kicker">设置时间范围、数据指标和图片类型后统一搜索</div>
+
         </div>
         <div className="header-actions">
           {dirty && <Badge tone="warning">条件未应用</Badge>}
@@ -183,7 +183,7 @@ export function DeviceQueryActions({
       <div className="query-metric-heading">
         <div>
           <strong>数据指标</strong>
-          <small>拖动已选指标可调整下方图表顺序</small>
+
         </div>
         <div className="header-actions">
           <Badge tone="info">已选 {selected.length}</Badge>
@@ -265,7 +265,7 @@ export function DeviceQueryActions({
       <div className="query-metric-heading query-image-heading">
         <div>
           <strong>图片</strong>
-          <small>选择要在下方加载的图片类型</small>
+
         </div>
         <div className="header-actions">
           <Badge tone="info">已选 {selectedImages.length}</Badge>

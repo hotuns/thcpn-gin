@@ -46,7 +46,7 @@ export function SubscriptionPage() {
         <Panel><span>流量扩展包</span><strong>{bytes(value.traffic_pack_balance_bytes)}</strong><small>长期有效，专业版期间使用</small></Panel>
         <Panel><span>专业版有效期</span><strong>{professional ? `${value.days_until_expiry ?? 0} 天` : "未开通"}</strong><small>{professional ? date(value.professional_expires_at) : "线下合同开通"}</small></Panel>
       </div>
-      <Panel className="subscription-usage"><div className="panel-header"><div><h2 className="panel-title">下载流量</h2><div className="panel-kicker">原图、数据文件、导出包和 API 文件合并计算</div></div><strong>{percent.toFixed(1)}%</strong></div><div className="billing-usage-track"><span style={{ width: `${percent}%` }} /></div><div className="billing-usage-meta"><span>{bytes(used)} 已使用</span><span>{professional ? `${bytes(limit)} 套餐额度` : "专业版包含每月 100 GB"}</span></div></Panel>
+      <Panel className="subscription-usage"><div className="panel-header"><div><h2 className="panel-title">下载流量</h2></div><strong>{percent.toFixed(1)}%</strong></div><div className="billing-usage-track"><span style={{ width: `${percent}%` }} /></div><div className="billing-usage-meta"><span>{bytes(used)} 已使用</span><span>{professional ? `${bytes(limit)} 套餐额度` : "专业版包含每月 100 GB"}</span></div></Panel>
       <section className="pricing-section">
         <div className="pricing-heading"><span>套餐权益</span><h2>基础能力永久免费，按需开通专业数据服务</h2><p>套餐归属于组织，全部成员共享权益，不按设备数量收费。</p></div>
         <div className="pricing-grid">
@@ -81,7 +81,7 @@ export function SubscriptionPage() {
         </div>
         <div className="pricing-footnote"><strong>需要私有部署、定制算法或大额下载流量？</strong><span>企业服务按实际范围通过线下合同单独报价。</span></div>
       </section>
-      <Panel><div className="panel-header"><div><h2 className="panel-title">开放 API</h2><div className="panel-kicker">API Key 归属于组织，普通 JSON 查询不消耗下载额度</div></div><div className="api-key-heading-actions"><a href="/api/v1/open/docs" target="_blank" rel="noreferrer"><Button variant="secondary"><ExternalLink size={14} />API 文档</Button></a><Badge tone={professional ? "success" : "neutral"}>{professional ? "可用" : "专业版功能"}</Badge></div></div>
+      <Panel><div className="panel-header"><div><h2 className="panel-title">开放 API</h2></div><div className="api-key-heading-actions"><a href="/api/v1/open/docs" target="_blank" rel="noreferrer"><Button variant="secondary"><ExternalLink size={14} />API 文档</Button></a><Badge tone={professional ? "success" : "neutral"}>{professional ? "可用" : "专业版功能"}</Badge></div></div>
         {createdSecret && <div className="api-key-secret"><div><strong>请立即保存此密钥</strong><span>关闭后将无法再次查看完整值</span></div><code>{createdSecret}</code><Button variant="secondary" onClick={() => void navigator.clipboard.writeText(createdSecret)}><Copy size={14} />复制</Button></div>}
         {professional && <div className="api-key-create"><Input value={keyName} maxLength={100} placeholder="输入密钥名称，例如：实验室数据服务" onChange={(event) => setKeyName(event.target.value)} /><Button onClick={() => void createKey()} disabled={!keyName.trim()}><KeyRound size={14} />创建密钥</Button></div>}
         {message && <div className="notice warning">{message}</div>}

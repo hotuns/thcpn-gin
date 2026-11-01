@@ -237,7 +237,7 @@ export function DeviceProfileTab({
           <div className="panel-header compact-panel-header">
             <div>
               <h2 className="panel-title">资产图片</h2>
-              <div className="panel-kicker">设备外观、铭牌与安装环境</div>
+
             </div>
             <div className="header-actions">
               <Badge tone="info">已上传 {images.length} 张图片</Badge>
@@ -570,7 +570,7 @@ function ProfileEditor({ section, profile, environment, terms, tagOptions, busy,
       <SheetContent className="access-editor device-profile-editor">
         <Panel className="access-editor-panel">
           <div className="panel-header">
-            <div><SheetTitle className="panel-title">{section === "basic" ? "编辑基本信息" : "编辑观测资料"}</SheetTitle><p className="device-editor-subtitle">{section === "basic" ? "补充设备描述和安装位置" : "设置设备分类、观测对象及研究标签"}</p></div>
+            <div><SheetTitle className="panel-title">{section === "basic" ? "编辑基本信息" : "编辑观测资料"}</SheetTitle></div>
             <Button variant="secondary" onClick={onClose}><X size={14} />关闭</Button>
           </div>
           <form className="access-form" onSubmit={submit}>

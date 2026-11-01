@@ -98,7 +98,7 @@
 .shadcn-select-indicator { position: absolute; left: 9px; display: grid; place-items: center; }
 .shadcn-select-scroll { display: grid; place-items: center; height: 24px; flex-shrink: 0; color: var(--muted-foreground); }
 
-.shadcn-checkbox { display: inline-grid; place-items: center; width: 17px; height: 17px; flex: 0 0 auto; color: var(--primary-foreground); background: var(--card); border: 1px solid var(--input); border-radius: 4px; cursor: pointer; }
+.shadcn-checkbox { display: inline-grid; place-items: center; width: 17px; height: 17px; box-sizing: border-box; padding: 0; flex: 0 0 auto; color: var(--primary-foreground); background: var(--card); border: 1px solid var(--input); border-radius: 4px; cursor: pointer; }
 .shadcn-checkbox[data-state="checked"] { background: var(--primary); border-color: var(--primary); }
 .shadcn-checkbox:focus-visible { outline: 3px solid color-mix(in srgb, var(--ring) 20%, transparent); outline-offset: 2px; }
 .shadcn-checkbox-indicator { display: grid; place-items: center; }

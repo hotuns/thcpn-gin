@@ -1,3 +1,4 @@
+import { useSearchParams } from "react-router-dom";
 import { invalidateNodeNames } from "@thcpn/workspace";
 import { validateSensorWaitTime } from "./sensor-config-wait-time";
 import { useLocale } from "@thcpn/i18n";
@@ -75,7 +76,10 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
     queryKey: ["admin", "device", deviceId, "nodes"],
     queryFn: () => api.admin.deviceNodes(deviceId),
   });
-  const [node, setNode] = useState(1);
+  const [params,setParams] = useSearchParams();
+  const [node, setNode] = useState(()=>Number(params.get("node_index"))||1);
+ const selectNode=(index:number)=>{setNode(index);setParams(previous=>{const next=new URLSearchParams(previous);next.set("node_index",String(index));next.set("node",`gateway:${deviceId}:node:${index}`);return next;},{replace:true});};
+ useEffect(()=>{const requested=Number(params.get("node_index"));if(requested>=1&&requested<=254)setNode(requested);},[params]);
   useEffect(() => {
     if (!nodes.data) return;
     const valid = nodes.data.items.filter(item => item.target.kind === "gateway_node");
@@ -307,7 +311,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
         <div className="admin-detail-section-head">
           <div>
             <h2>LoRa V2 配置</h2>
-            <span>配置提交到 LoRa V2 服务后，设备是否应用仍需等待设备回报。</span>
+            <span>配置属于采集位置；未绑定位置只保存、不下发。绑定或更换节点不会自动发送配置，硬件是否应用仍需设备回报。</span>
           </div>
           <Space>
             <Tag color="cyan">LoRa V2</Tag>
@@ -334,6 +338,8 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
           />
         ) : null}
         <Tabs
+          activeKey={["gateway","sensor","time"].includes(params.get("config_tab")??"")?params.get("config_tab")!:"gateway"}
+          onChange={key=>setParams(previous=>{const next=new URLSearchParams(previous);next.set("config_tab",key);return next;},{replace:true})}
           items={[
             {
               key: "gateway",
@@ -388,7 +394,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                           )
                         )
                           return;
-                        setNode(next);
+                        selectNode(next);
                         loadedSensorConfig.current = "";
                         setSensorJSON("[]");
                         setSensorMetricsJSON("[]");
@@ -533,7 +539,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                           )
                         )
                           return;
-                        setNode(next);
+                        selectNode(next);
                         loadedSensorConfig.current = "";
                         setSensorJSON("[]");
 

@@ -135,6 +135,9 @@ func (s *Service) RenameNode(ctx context.Context, id uuid.UUID, index int, raw s
 		if err = tx.QueryRow(ctx, "SELECT COALESCE((SELECT (value_json::text)::numeric::int FROM device_metadata WHERE device_id=$1 AND key=$2),$3)", id, key, fallback).Scan(&count); err != nil {
 			return "", err
 		}
+		if asset.SourceFamily == "lorawan_v2" {
+			count = 254
+		}
 		if index > count {
 			return "", apperr.New(apperr.KindInvalidArgument, "node index is outside device range")
 		}

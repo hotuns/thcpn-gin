@@ -144,7 +144,7 @@ export function CarbonDevicePage({ device }: { device: Device }) {
     <div className="carbon-device-page">
       <Panel className="carbon-flux-panel">
         <div className="panel-header">
-          <div><h2 className="panel-title">碳汇数据查询</h2><div className="panel-kicker">选择节点、地块和时间范围查看 NEE、ER、GPP</div></div>
+          <div><h2 className="panel-title">碳汇数据查询</h2></div>
           <div className="header-actions"><Button variant="secondary" onClick={refresh}><RefreshCw size={14} />刷新</Button><Button disabled={invalidRange || !field || flux.isFetching} onClick={applyRange}><Search size={14} />{flux.isFetching ? "查询中…" : "查询"}</Button></div>
         </div>
         {overview.error && <Alert variant="destructive" className="request-error-inline carbon-overview-error"><AlertTitle>节点信息读取失败</AlertTitle><AlertDescription><p>{formatApiError(overview.error).message}</p></AlertDescription></Alert>}
@@ -168,7 +168,7 @@ export function CarbonDevicePage({ device }: { device: Device }) {
       {selectedSummary && <div ref={periodDetailRef} className="carbon-period-detail-anchor"><CarbonPeriodDetail nodeName={overview.data?.nodes.find(node => node.node_id === nodeId)?.name} detail={detail.data} loading={detail.isLoading} error={detail.error} /></div>}
 
       <Panel className="carbon-period-panel section-gap">
-        <div className="panel-header"><div><h2 className="panel-title">周期与原始采样</h2><div className="panel-kicker">点击一个周期查看 light / black 两个气室的原始曲线</div></div><Download size={17} /></div>
+        <div className="panel-header"><div><h2 className="panel-title">周期与原始采样</h2></div><Download size={17} /></div>
         {periods.isLoading ? <StateView type="loading" title="正在读取周期" description="" /> : periods.error ? <StateView type="error" title="周期读取失败" description={formatApiError(periods.error).message} /> : !periods.data?.items.length ? <StateView type="empty" title="暂无采样周期" description="当前时间范围内没有原始采样记录。" /> : <div className="carbon-period-list">{periods.data.items.map((item) => <button type="button" key={item.period} className={`carbon-period-row ${item.period === selectedPeriod ? "selected" : ""}`} onClick={() => setSelectedPeriod(item.period)}><span><strong>{formatDateTime(item.period_at)}</strong><small className="mono">{item.period}</small></span><span>{item.fields.join("、") || "—"}</span><span>{item.flux_fields.length ? `通量：${item.flux_fields.join("、")}` : "暂无通量"}</span></button>)}</div>}
       </Panel>
     </div>
@@ -234,7 +234,7 @@ function CarbonRawChart({ data, title, unit, lines }: { data: Array<Record<strin
 
 export function CarbonDeviceOverview({ device }: { device: Device }) {
   const overview = useQuery({ queryKey: ["carbon", device.id, "overview"], queryFn: () => api.carbon.overview(device.id) });
-  return <Panel><div className="panel-header"><div><h2 className="panel-title">碳汇站概览</h2><div className="panel-kicker">采样与通量计算情况</div></div><Button variant="secondary" onClick={() => void overview.refetch()}>刷新</Button></div>
+  return <Panel><div className="panel-header"><div><h2 className="panel-title">碳汇站概览</h2></div><Button variant="secondary" onClick={() => void overview.refetch()}>刷新</Button></div>
     {overview.isLoading ? <StateView type="loading" title="正在读取概览" description="正在读取采样与通量状态。"/> : overview.error ? <StateView type="error" title="概览读取失败" description={formatApiError(overview.error).message}/> : <><div className="gateway-overview-kpis"><div><span>观测节点</span><strong>{overview.data?.nodes_count ?? 0}</strong></div><div><span>最近采样</span><strong>{formatDateTime(overview.data?.latest_sample_at)}</strong></div><div><span>最近通量</span><strong>{formatDateTime(overview.data?.latest_flux_at)}</strong></div></div><div className="carbon-node-grid">{overview.data?.nodes.map((node) => <div className="carbon-node-card" key={node.node_id}><strong>{node.name}</strong><Badge tone={node.status === "has_data" ? "success" : "neutral"}>{node.status === "has_data" ? "有近期数据" : "无近期数据"}</Badge><small>采样 {formatDateTime(node.latest_sample_at)}</small><small>通量 {formatDateTime(node.latest_flux_at)}</small></div>)}</div></>}
   </Panel>;
 }

@@ -31,14 +31,17 @@ func (t NodeTarget) Key() string {
 }
 
 type GatewayNode struct {
-	Latitude   *float64                `json:"latitude,omitempty"`
-	Longitude  *float64                `json:"longitude,omitempty"`
-	CustomName string                  `json:"custom_name"`
-	CanRename  bool                    `json:"can_rename"`
-	Key        string                  `json:"key"`
-	Name       string                  `json:"name"`
-	Target     NodeTarget              `json:"target"`
-	Streams    []datastream.DataStream `json:"streams"`
+	PhysicalNodeID *uuid.UUID              `json:"physical_node_id,omitempty"`
+	NodeSN         string                  `json:"node_sn,omitempty"`
+	Bound          bool                    `json:"bound"`
+	Latitude       *float64                `json:"latitude,omitempty"`
+	Longitude      *float64                `json:"longitude,omitempty"`
+	CustomName     string                  `json:"custom_name"`
+	CanRename      bool                    `json:"can_rename"`
+	Key            string                  `json:"key"`
+	Name           string                  `json:"name"`
+	Target         NodeTarget              `json:"target"`
+	Streams        []datastream.DataStream `json:"streams"`
 }
 
 func (s *Service) withInteraction(ctx context.Context, item Device) (Device, error) {
@@ -61,7 +64,7 @@ func (s *Service) withInteractions(ctx context.Context, items []Device) ([]Devic
 	}
 	rows, err := s.db.Query(ctx, `SELECT d.id, COALESCE(src.source_family,''), COALESCE(src.status,''),
         COALESCE(ref.external_key,''), COALESCE(ref.adapter_code,''),
-        CASE WHEN src.source_family='lorawan_v2' THEN COALESCE((SELECT value_json::text::int FROM device_metadata WHERE device_id=d.id AND key='lorawan_v2_nodes_count'),0)
+        CASE WHEN src.source_family='lorawan_v2' THEN (SELECT count(*) FROM lorawan_physical_nodes WHERE gateway_device_id=d.id)
              ELSE (SELECT count(*) FROM device_relations WHERE parent_device_id=d.id AND relation_type='gateway_node' AND status='active') END,
         EXISTS (SELECT 1 FROM data_streams WHERE device_id=d.id AND status='active' AND type='telemetry'),
         EXISTS (SELECT 1 FROM data_streams WHERE device_id=d.id AND status='active' AND type='image'), d.iccid
@@ -189,9 +192,56 @@ func (s *Service) listIndexedNodes(ctx context.Context, gateway Device) ([]Gatew
 	if locationErr != nil {
 		return nil, locationErr
 	}
-	for index := 1; index <= int(gateway.ChildCount); index++ {
+	registry, err := s.db.Query(ctx, `SELECT id,sn,node_index FROM lorawan_physical_nodes WHERE gateway_device_id=$1 ORDER BY node_index`, gateway.ID)
+	if err != nil {
+		return nil, err
+	}
+	bound := map[int]GatewayNode{}
+	for registry.Next() {
+		var id uuid.UUID
+		var sn string
+		var index int
+		if err := registry.Scan(&id, &sn, &index); err != nil {
+			registry.Close()
+			return nil, err
+		}
+		bound[index] = GatewayNode{PhysicalNodeID: &id, NodeSN: sn, Bound: true}
+	}
+	registryErr := registry.Err()
+	registry.Close()
+	if registryErr != nil {
+		return nil, registryErr
+	}
+	slots, err := s.db.Query(ctx, `SELECT node_index FROM lorawan_physical_nodes WHERE gateway_device_id=$1 UNION SELECT node_index FROM node_profiles WHERE device_id=$1 UNION SELECT (b.adapter_config_json->>'node_index')::int FROM data_streams ds JOIN data_stream_bindings b ON b.data_stream_id=ds.id WHERE ds.device_id=$1 AND b.adapter_code='lorawan_v2' AND b.adapter_config_json ? 'node_index' ORDER BY 1`, gateway.ID)
+	if err != nil {
+		return nil, err
+	}
+	byIndex := map[int]int{}
+	for slots.Next() {
+		var index int
+		if err := slots.Scan(&index); err != nil {
+			slots.Close()
+			return nil, err
+		}
+		if index < 1 || index > 254 {
+			continue
+		}
 		target := NodeTarget{Kind: "gateway_node", GatewayDeviceID: &gateway.ID, NodeIndex: &index}
-		nodes = append(nodes, GatewayNode{Latitude: positions[index][0], Longitude: positions[index][1], Key: target.Key(), Name: nodeprofile.Label(names[index], index), CustomName: names[index], Target: target, Streams: []datastream.DataStream{}})
+		node := bound[index]
+		node.Latitude = positions[index][0]
+		node.Longitude = positions[index][1]
+		node.Key = target.Key()
+		node.Name = nodeprofile.Label(names[index], index)
+		node.CustomName = names[index]
+		node.Target = target
+		node.Streams = []datastream.DataStream{}
+		byIndex[index] = len(nodes)
+		nodes = append(nodes, node)
+	}
+	slotsErr := slots.Err()
+	slots.Close()
+	if slotsErr != nil {
+		return nil, slotsErr
 	}
 	rows, err := s.db.Query(ctx, `SELECT ds.id, ds.device_id, ds.code, ds.name, ds.type, ds.unit, ds.status, ds.created_by, ds.created_at, ds.updated_at, b.adapter_config_json
         FROM data_streams ds JOIN data_stream_bindings b ON b.data_stream_id=ds.id AND b.status='active' AND b.adapter_code='lorawan_v2'
@@ -218,13 +268,14 @@ func (s *Service) listIndexedNodes(ctx context.Context, gateway Device) ([]Gatew
 		if cfg.NodeIndex == nil {
 			continue
 		}
-		if *cfg.NodeIndex < 1 || *cfg.NodeIndex > len(nodes) {
+		position, exists := byIndex[*cfg.NodeIndex]
+		if !exists {
 			continue
 		}
 		// The source metric key remains the stable selection identity, while the
 		// DataStream name carries the platform-managed display semantics.
 		stream.Code = cfg.Metric
-		nodes[*cfg.NodeIndex-1].Streams = append(nodes[*cfg.NodeIndex-1].Streams, stream)
+		nodes[position].Streams = append(nodes[position].Streams, stream)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

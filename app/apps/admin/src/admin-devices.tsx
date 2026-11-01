@@ -1,13 +1,16 @@
+import { AdminDeviceBulkEdit } from "./admin-device-bulk-edit";
 import { invalidateNodeNames } from "@thcpn/workspace";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { FormInstance } from "antd";
+import { Typography } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import { Battery, GitBranch, Radio, Search, Settings2, Trash2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Alert,
+  Card,
   Button,
   Descriptions,
   Drawer,
@@ -36,7 +39,7 @@ import {
   formatApiError,
   type JsonRecord,
 } from "@thcpn/api";
-import { Badge, PageHeader, Panel, StateView } from "@thcpn/ui";
+import { Badge, StateView } from "@thcpn/ui";
 import { AdminNodeNameEditor as NodeNameEditor } from "./node-name-editor";
 import {
   configFieldsFromDetail,
@@ -87,18 +90,30 @@ const deviceModelLabel = (item: JsonRecord) =>
 const deviceModelOf = (item: JsonRecord) =>
   value(item.source_family, "") === "lorawan_v2" ? "lorawan_v2" : categoryOf(item);
 
+import { adminDeviceCategories, matchesAdminDeviceCategory } from "./admin-device-category-model";
+import { LoRaWANNodeInventory } from "./lorawan-node-inventory";
+
+function PageHeader({title,description,actions}:{eyebrow?:string;title:string;description?:string;actions?:React.ReactNode}) {
+ return <Space wrap style={{width:"100%",justifyContent:"space-between",marginBottom:20}}><div><Typography.Title level={2} style={{marginBottom:4}}>{title}</Typography.Title>{description&&<Typography.Text type="secondary">{description}</Typography.Text>}</div>{actions}</Space>;
+}
+
 export function AdminDevicesPage() {
   const [firmwareDevice, setFirmwareDevice] = useState<JsonRecord | null>(null);
   const { deviceId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [listParams,setListParams]=useSearchParams();
+  const category=listParams.get("kind")||"standalone";
+  const setCategory=(key:string)=>{setListParams({kind:key},{replace:true});setDeviceModel("");setSelectedRowKeys([]);};
   const query = useQuery({
     queryKey: ["admin", "devices"],
     queryFn: api.admin.devices,
+    enabled:!!deviceId||category!=="node_v2",
   });
   const mapQuery = useQuery({
     queryKey: ["admin", "device-map", false],
     queryFn: () => api.admin.deviceMap(false),
+    enabled:!deviceId&&category!=="node_v2",
   });
   const tagsByDevice = useMemo(
     () => new Map((mapQuery.data?.items ?? []).map((item) => [item.device_id, item.environment.research_tags])),
@@ -134,7 +149,6 @@ export function AdminDevicesPage() {
   const [status, setStatus] = useState("");
   const [lifecycle, setLifecycle] = useState("");
   const [assignment, setAssignment] = useState("");
-  const [category, setCategory] = useState("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -169,7 +183,8 @@ export function AdminDevicesPage() {
   const counts = useMemo(
     () => ({
       all: topLevelRows.length,
-      gateway: topLevelRows.filter((item) => categoryOf(item) === "gateway").length,
+      gateway: topLevelRows.filter((item) => categoryOf(item) === "gateway" && item.source_family!=="lorawan_v2").length,
+      lorawan_v2: topLevelRows.filter(item=>item.source_family==="lorawan_v2"&&categoryOf(item)==="gateway").length,
       camera: topLevelRows.filter((item) => categoryOf(item) === "camera").length,
       carbon_sink: topLevelRows.filter((item) => categoryOf(item) === "carbon_sink").length,
       standalone: topLevelRows.filter((item) => categoryOf(item) === "standalone")
@@ -193,7 +208,7 @@ export function AdminDevicesPage() {
             (assignment === "assigned"
               ? Boolean(item.workspace_id)
               : !item.workspace_id)) &&
-          (category === "all" || categoryOf(item) === category)
+          matchesAdminDeviceCategory(item,category,categoryOf(item))
         );
       }),
     [topLevelRows, keyword, deviceModel, status, lifecycle, assignment, category, tagsByDevice],
@@ -519,7 +534,7 @@ export function AdminDevicesPage() {
         if (sourceKind === "lorawan_v2") {
           const created = await api.admin.createLoRaWANV2Gateway(dataSourceID, {
             idempotency_key: form.getFieldValue("idempotency_key") ?? crypto.randomUUID(),
-            node_count: Number(fields.node_count),
+            node_count: 254,
           });
           const projection = (created.sync ?? {}) as JsonRecord;
           const createdDevice = (projection.device ?? {}) as JsonRecord;
@@ -683,6 +698,8 @@ export function AdminDevicesPage() {
     </>
   );
 
+  const categoryTabs=<Tabs activeKey={category} onChange={setCategory} items={adminDeviceCategories.map(item=>({key:item.key,label:<Space size={8}><span>{item.label}</span>{item.key!=="node_v2"&&query.data&&<Tag color={category===item.key?"blue":undefined}>{counts[item.key as keyof typeof counts]}</Tag>}</Space>}))}/>;
+  if(!deviceId&&category==="node_v2")return <><PageHeader eyebrow="System / devices" title="设备列表" description="按设备体系分类维护资产与节点。"/><Card>{categoryTabs}<LoRaWANNodeInventory/></Card></>;
   if (deviceId) {
     const device = allRows.find((item) => value(item.id, "") === deviceId);
     if (query.isLoading) return <StateView type="loading" title="正在加载设备详情" description="正在读取设备资料。" />;
@@ -690,7 +707,7 @@ export function AdminDevicesPage() {
     if (!device) return <StateView type="empty" title="设备不存在" description="该设备可能已被删除或尚未同步。" action={<Button><Link to="/admin/devices">返回设备列表</Link></Button>} />;
     const isCamera = categoryOf(device) === "camera";
     const refreshDetail = () => void Promise.all([query.refetch(),queryClient.invalidateQueries({predicate:query=>query.queryKey.includes("admin")&&query.queryKey.includes(deviceId)})]);
-    return <><PageHeader eyebrow="System / devices / detail" title={value(device.name, "未命名设备")} description={`${value(device.serial_no, device.id)} · ${deviceModelLabel(device)}`} actions={<Space><Button><Link to="/admin/devices">返回列表</Link></Button><Button onClick={refreshDetail}>刷新</Button></Space>} />{feedback && <div className="admin-feedback section-gap">{feedback}</div>}<DeviceDetailPanel key={String(device.id)} device={device} isCamera={isCamera} isCarbon={isCarbonDetail} carbonData={detailCarbonQuery.data as unknown as JsonRecord | undefined} carbonLoading={detailCarbonQuery.isLoading} carbonError={detailCarbonQuery.error} attributes={detailAttributesQuery.data as unknown as JsonRecord | undefined} attributesLoading={detailAttributesQuery.isLoading} attributesError={detailAttributesQuery.error} lifecycleData={detailLifecycleQuery.data as JsonRecord | undefined} lifecycleLoading={detailLifecycleQuery.isLoading} lifecycleError={detailLifecycleQuery.error} configData={detailConfigQuery.data as JsonRecord | undefined} configLoading={detailConfigQuery.isLoading} configError={detailConfigQuery.error} onOpen={(next) => open(next, device)} onUnassign={() => void unassign(device)} />{managementOverlays}</>;
+    return <><PageHeader eyebrow="System / devices / detail" title={value(device.name, "未命名设备")} description={`${value(device.serial_no, device.id)} · ${deviceModelLabel(device)}`} actions={<Space><Button><Link to={`/admin/devices?kind=${device.source_family==="lorawan_v2"?"lorawan_v2":categoryOf(device)}`}>返回列表</Link></Button><Button onClick={refreshDetail}>刷新</Button></Space>} />{feedback && <div className="admin-feedback section-gap">{feedback}</div>}<DeviceDetailPanel key={String(device.id)} device={device} isCamera={isCamera} isCarbon={isCarbonDetail} carbonData={detailCarbonQuery.data as unknown as JsonRecord | undefined} carbonLoading={detailCarbonQuery.isLoading} carbonError={detailCarbonQuery.error} attributes={detailAttributesQuery.data as unknown as JsonRecord | undefined} attributesLoading={detailAttributesQuery.isLoading} attributesError={detailAttributesQuery.error} lifecycleData={detailLifecycleQuery.data as JsonRecord | undefined} lifecycleLoading={detailLifecycleQuery.isLoading} lifecycleError={detailLifecycleQuery.error} configData={detailConfigQuery.data as JsonRecord | undefined} configLoading={detailConfigQuery.isLoading} configError={detailConfigQuery.error} onOpen={(next) => open(next, device)} onUnassign={() => void unassign(device)} />{managementOverlays}</>;
   }
 
   return (
@@ -698,19 +715,13 @@ export function AdminDevicesPage() {
       <PageHeader
         eyebrow="System / devices"
         title="设备列表"
-        description="统一管理标准站、组网站、碳汇站和监控站。"
+        description="按设备体系分类维护资产与节点。"
         actions={<Space><Button type="primary" onClick={openDeviceCreate}>创建设备</Button><Button onClick={() => void query.refetch()}>刷新</Button></Space>}
       />
-      <Panel>
+      <Card>
+        {categoryTabs}
         <div className="admin-device-filters">
-          <div className="admin-search">
-            <Search size={15} />
-            <input
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-              placeholder="搜索设备名称、序列号、ID 或标签"
-            />
-          </div>
+          <Input.Search value={keyword} onChange={event=>setKeyword(event.target.value)} placeholder="搜索设备名称、序列号、ID 或标签" allowClear style={{width:320}} />
           <Select
             allowClear
             placeholder="设备类型"
@@ -750,17 +761,11 @@ export function AdminDevicesPage() {
           />
           <Badge tone="info">{rows.length} 台设备</Badge>
         </div>
-        <div className="admin-device-categories">
-          <Tabs activeKey={category} onChange={setCategory} items={[
-            { key: "all", label: "全部" }, { key: "standalone", label: "标准站" },
-            { key: "gateway", label: "组网站" }, { key: "carbon_sink", label: "碳汇站" },
-            { key: "camera", label: "监控站" },
-          ].map(item => ({ key: item.key, label: <Space size={8}><span>{item.label}</span><Tag color={category === item.key ? "blue" : undefined}>{counts[item.key as keyof typeof counts]}</Tag></Space> }))}/>
-        </div>
         {selectedRowKeys.length ? (
           <div className="admin-device-batch-toolbar">
             <strong>已选择 {selectedRowKeys.length} 台</strong>
             <Space wrap>
+              <AdminDeviceBulkEdit devices={selectedRows} disabled={busy} onSaved={async failedIds => { setSelectedRowKeys(failedIds); await query.refetch(); }} />
               <Button loading={busy} onClick={() => void runBatch("activate")}>批量启用</Button>
               <Button danger loading={busy} onClick={() => void runBatch("disable")}>批量停用</Button>
               <Button loading={busy} onClick={() => { setBulkLifecycleStatus(""); setBulkLifecycleNote(""); setBulkLifecycleAt(dayjs()); setBulkLifecycleOpen(true); }}>批量设置生命周期</Button>
@@ -799,8 +804,10 @@ export function AdminDevicesPage() {
             expandable={{
               rowExpandable: (record) => categoryOf(record) === "gateway",
               onExpand: (expanded, record) =>
-                expanded && void loadChildren(record),
-              expandedRowRender: (record) => (
+                expanded && record.source_family!=="lorawan_v2" && void loadChildren(record),
+              expandedRowRender: (record) => record.source_family==="lorawan_v2" ? <AdminDeviceNodes compact device={record}
+                onData={node=>navigate(`/admin/devices/${record.id}?${new URLSearchParams({tab:"data",node})}`)}
+                onConfig={(index,kind)=>navigate(`/admin/devices/${record.id}?${new URLSearchParams({tab:"configuration",node_index:String(index),config_tab:kind??"sensor",node:`gateway:${record.id}:node:${index}`})}`)}/>: (
                 <ChildList
                   items={children[value(record.id, "")] ?? []}
                   loading={!children[value(record.id, "")]}
@@ -830,13 +837,13 @@ export function AdminDevicesPage() {
             type="empty"
             title="没有匹配的设备"
             description={
-              keyword || status || lifecycle || assignment || category !== "all"
+              keyword || status || lifecycle || assignment || category !== "standalone"
                 ? "请调整搜索或筛选条件。"
                 : "请先从数据源同步设备资产。"
             }
           />
         )}
-      </Panel>
+      </Card>
       <Modal
         title={`批量设置生命周期 · ${selectedRows.length} 台`}
         open={bulkLifecycleOpen}
@@ -928,9 +935,12 @@ function DeviceDetailPanel({
   onOpen: (mode: Exclude<Mode, null>) => void;
   onUnassign: () => void;
 }) {
-  const [activeTab,setActiveTab]=useState("overview");
-  const [dataNodeKey,setDataNodeKey]=useState("");
-  const openData=(key:string)=>{setDataNodeKey(key);setActiveTab("data");};
+  const [detailParams,setDetailParams]=useSearchParams();
+  const activeTab=detailParams.get("tab")||"overview";
+  const dataNodeKey=detailParams.get("node")||"";
+  const setActiveTab=(tab:string)=>setDetailParams(previous=>{const next=new URLSearchParams(previous);next.set("tab",tab);return next;},{replace:true});
+  const setDataNodeKey=(node:string)=>setDetailParams(previous=>{const next=new URLSearchParams(previous);next.set("node",node);return next;},{replace:true});
+  const openData=(node:string)=>setDetailParams(previous=>{const next=new URLSearchParams(previous);next.set("tab","data");next.set("node",node);return next;});
   const reportedInfo=useQuery({queryKey:["admin",String(device.id),"lorawan-info"],queryFn:()=>api.admin.lorawanInfo(String(device.id)),enabled:device.source_family==="lorawan_v2",staleTime:60000,retry:false});
   const events = (lifecycleData?.events as JsonRecord[] | undefined) ?? [];
   const capabilities = Array.isArray(device.capabilities) ? device.capabilities.map(String) : [];
@@ -1066,17 +1076,17 @@ function DeviceDetailPanel({
       ]} /> : !carbonLoading && !carbonError ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无节点数据" /> : null}
     </section>
   </div>;
-  return <Panel className="admin-device-detail"><Tabs className="admin-device-detail-tabs" activeKey={activeTab} onChange={setActiveTab} items={[
+  return <Card className="admin-device-detail"><Tabs className="admin-device-detail-tabs" activeKey={activeTab} onChange={setActiveTab} items={[
     { key: "overview", label: "设备信息", children: <>{overview}{!isCamera&&device.source_family!=="lorawan_v2"&&!isCarbon&&runtime}</> },
     { key: "installation", label: "安装资料", children: <AdminDeviceInstallation device={device}/> },
-    ...(device.device_type==="gateway" ? [{ key:"nodes",label:"节点管理",children:<AdminDeviceNodes device={device} onData={openData} onTopology={device.source_family!=="lorawan_v2"?()=>onOpen("child"):undefined}/> }] : []),
+    ...(device.device_type==="gateway" ? [{ key:"nodes",label:"节点管理",children:<AdminDeviceNodes device={device} onData={openData} onConfig={(index,kind)=>setDetailParams({tab:"configuration",node_index:String(index),config_tab:kind??"sensor",node:`gateway:${device.id}:node:${index}`})} onTopology={device.source_family!=="lorawan_v2"?()=>onOpen("child"):undefined}/> }] : []),
     ...(isCarbon ? [{key:"carbon",label:"节点与状态",children:carbonManagement}] : []),
-    { key: "data", destroyOnHidden:isCamera, label: isCamera?"视频预览":"数据与图片", children: isCamera?<AdminDeviceCamera deviceId={String(device.id)} onEdit={()=>onOpen("camera-edit")}/>:isCarbon?<AdminDeviceCarbon deviceId={String(device.id)} onExport={()=>setActiveTab("exports")}/>:<AdminDeviceData device={device} nodeKey={dataNodeKey} onNodeChange={setDataNodeKey} onExport={()=>setActiveTab("exports")}/> },
+    { key: "data", destroyOnHidden:isCamera, label: isCamera?"视频预览":"数据查看", children: isCamera?<AdminDeviceCamera deviceId={String(device.id)} onEdit={()=>onOpen("camera-edit")}/>:isCarbon?<AdminDeviceCarbon deviceId={String(device.id)} onExport={()=>setActiveTab("exports")}/>:<AdminDeviceData device={device} nodeKey={dataNodeKey} onNodeChange={setDataNodeKey} onExport={()=>setActiveTab("exports")}/> },
     {key:"configuration",label:"设备配置",children:<>{deviceControls}{device.source_family==="lorawan_v2"?<LoRaWANV2ConfigPanel deviceId={String(device.id)}/>:!isCamera?configuration:null}</>},
     ...(!isCamera?[{ key:"exports", label:"下载任务", children:<AdminExportsPage device={device}/> }]:[]),
     {key:"assets",label:"资产管理",children:assets},
     ...(!isCamera?[{key:"logs",label:device.source_family==="lorawan_v2"?"网关日志":"设备日志",children:device.source_family==="lorawan_v2"?<LoRaWANV2LogsPanel deviceId={String(device.id)} deviceName={value(device.name,"未命名设备")}/>:<DeviceLogsPanel deviceId={String(device.id)} deviceName={value(device.name,"未命名设备")}/>}]:[]),
-  ]} /></Panel>;
+  ]} /></Card>;
 }
 
 function ClaimCredentialSection({ device, date }: { device: JsonRecord; date: (input: unknown) => string }) {
@@ -1676,7 +1686,7 @@ function ConfigApplyResult({
     : [];
   const config = (response.config ?? {}) as JsonRecord;
   return (
-    <Panel className="section-gap sync-result">
+    <Card className="section-gap sync-result">
       <div className="panel-header">
         <div>
           <h2 className="panel-title">配置应用结果 · {result.deviceName}</h2>
@@ -1724,7 +1734,7 @@ function ConfigApplyResult({
           ))}
         </div>
       ) : null}
-    </Panel>
+    </Card>
   );
 }
 
@@ -1782,7 +1792,7 @@ function DeviceCreateForm({
       version: kind.startsWith("thcpn_") ? "2.0" : undefined,
       nodes_count: kind === "carbon" ? 16 : undefined,
 	  sn: "",
-	  node_count: kind === "lorawan_v2" ? 1 : undefined,
+	  node_count: kind === "lorawan_v2" ? 254 : undefined,
       device_serial: "",
       channel_no: kind === "camera" ? 1 : undefined,
       default_quality: kind === "camera" ? "standard" : undefined,
@@ -1870,9 +1880,7 @@ function DeviceCreateForm({
       {sourceKind === "lorawan_v2" ? (
         <>
           <Alert type="info" showIcon message="网关 SN 将自动生成" description="创建后自动写入默认网关配置，可在设备信息中查看 SN。" style={{marginBottom:16}} />
-          <Form.Item name="node_count" label="节点数" rules={[{ required: true, message: "请输入节点数" }]}>
-            <InputNumber min={1} max={254} precision={0} style={{ width: "100%" }} />
-          </Form.Item>
+
         </>
       ) : null}
       {sourceKind === "camera" ? <CameraCreateFields form={form} /> : null}

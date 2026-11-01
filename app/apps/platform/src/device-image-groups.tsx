@@ -99,7 +99,7 @@ export function DeviceMedia({
         <div className="panel-header">
           <div>
             <h2 className="panel-title">设备图片</h2>
-            <div className="panel-kicker">按图片类型独立加载当前时间范围内的采集图片</div>
+
           </div>
           <div className="header-actions">
             <Badge tone="info">

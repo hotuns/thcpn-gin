@@ -256,6 +256,7 @@
 .workspace-resource-layout {
   display: grid;
   gap: 18px;
+  margin-top: 18px;
   padding: 0 0 20px;
 }
 .workspace-setting-row {
@@ -12618,3 +12619,18 @@ body::-webkit-scrollbar-corner,
 @keyframes shadcn-sheet-from-top { from { transform:translateY(-100%); } }
 @keyframes shadcn-sheet-from-bottom { from { transform:translateY(100%); } }
 @media(max-width:640px){.shadcn-sheet-right,.shadcn-sheet-left{width:100vw}}
+
+/* Gateway navigation shares controls; source-specific identity remains explicit. */
+.gateway-node-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:16px; padding:16px 20px; border-bottom:1px solid var(--line); }
+.gateway-node-toolbar-search { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+.gateway-node-toolbar-search .ui-input { min-width:240px; }
+.gateway-node-grid-scroll { overflow-x:auto; }
+.gateway-node-grid-scroll table { min-width:920px; }
+.gateway-node-grid-scroll .shadcn-table-cell { padding:16px 20px; }
+.gateway-node-cell { display:flex; flex-direction:column; align-items:flex-start; gap:6px; }
+.gateway-node-cell small { color:var(--muted); overflow-wrap:anywhere; }
+.gateway-node-detail-body { min-height:0; flex:1; overflow:auto; padding:24px; }
+.gateway-node-facts { margin:24px 0; }
+.gateway-node-facts > div { padding:16px 0; border-bottom:1px solid var(--line); }
+.gateway-node-facts dt { color:var(--muted); font-size:12px; margin-bottom:8px; }
+.gateway-node-facts dd { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:0; overflow-wrap:anywhere; }

@@ -19,6 +19,8 @@ func TestCreateLoRaWANV2GatewayUsesUpstreamSNAndSurvivesCatalogFailure(t *testin
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
+		case r.Method == "GET" && r.URL.Path == "/device/"+sn+"/nodes":
+			fmt.Fprintf(w, `{"success":true,"payload":{"gateway_sn":%q,"bound_node_count":0,"data":[]}}`, sn)
 		case r.Method == http.MethodGet && r.URL.Path == "/device/"+sn:
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"success":false,"error_code":"0x10010201","error_message":"not found"}`))
@@ -86,6 +88,8 @@ func TestGatewayDefaultConfigurationRetryDoesNotCreateDuplicateDevice(t *testing
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
+		case r.Method == "GET" && r.URL.Path == "/device/"+sn+"/nodes":
+			fmt.Fprintf(w, `{"success":true,"payload":{"gateway_sn":%q,"bound_node_count":0,"data":[]}}`, sn)
 		case r.Method == "GET" && r.URL.Path == "/device/"+sn:
 			if !exists {
 				w.WriteHeader(404)

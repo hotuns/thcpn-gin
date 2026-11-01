@@ -59,6 +59,7 @@ func (p *Processor) queryGatewayTelemetry(ctx context.Context, id uuid.UUID, sta
 		if node, ok := targets[streamID]; ok {
 			item.NodeKey = node.Key
 			item.NodeName = node.Name
+			item.CurrentNodeSN = node.NodeSN
 			item.NodeIndex = node.Target.NodeIndex
 		}
 		item.Name = labels[streamID]

@@ -1329,7 +1329,12 @@ export const api = {
     carbonPeriods: (id:string,input:Record<string,string|number>) => request<ListResponse<CarbonPeriodSummary>>(`/api/v1/admin/devices/${encodeURIComponent(id)}/carbon/periods${queryString(input)}`),
     carbonPeriod: (id:string,period:string,input:Record<string,string|number>) => request<CarbonPeriodDetail>(`/api/v1/admin/devices/${encodeURIComponent(id)}/carbon/periods/${encodeURIComponent(period)}${queryString(input)}`),
     cameraLive: (id:string) => jsonRequest<CameraLiveSession>(`/api/v1/admin/devices/${encodeURIComponent(id)}/camera/live-session`,"POST",{}),
-    updateLoRaWANV2NodeCount: (id: string, nodeCount: number) => jsonRequest<{gateway:{sn:string;node_count:number};status:"completed"|"partial";write_state:{operation_id:string;source:string;platform:string;device:string};warnings:Array<{code:string;message:string}>}>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/node-count`,"PATCH",{node_count:nodeCount}),
+    sourcePhysicalNodes: (sourceId:string,input:JsonRecord={}) => request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(sourceId)}/lorawan-v2/nodes${queryString(input as Record<string,string|number|boolean>)}`),
+    registerPhysicalNode: (sourceId:string,input:JsonRecord) => jsonRequest<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(sourceId)}/lorawan-v2/nodes`,"POST",input),
+    physicalNodeGateways: (sourceId:string) => request<{items:Array<{id:string;name:string;sn:string}>}>(`/api/v1/admin/data-sources/${encodeURIComponent(sourceId)}/lorawan-v2/node-gateways`),
+    previewPhysicalNodeCSV: (csv:string) => jsonRequest<{items:Array<{line:number;sn:string;node_index:number;error?:string}>}>("/api/v1/admin/lorawan-v2/nodes/csv-preview","POST",{csv}),
+    physicalNodes: (id:string, input:JsonRecord={}) => request<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/physical-nodes${queryString(input as Record<string,string|number|boolean>)}`),
+    changePhysicalNode: (id:string, input:JsonRecord) => jsonRequest<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/physical-nodes`,"POST",input),
     deviceLoRaWANV2Context: (id: string) =>
       request<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/context`),
     loraWANV2NodeData: (id: string, sn: string, node: number, input: JsonRecord = {}) =>

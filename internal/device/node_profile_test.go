@@ -62,6 +62,9 @@ func TestNodeNamingPermissionsPersistenceAndMigration(t *testing.T) {
 	must(`INSERT INTO device_relations(parent_device_id,child_device_id,relation_type,data_source_id,external_parent_device_id,external_child_device_id) VALUES($1,$2,'gateway_node',$3,1,2)`, gateway, node, source)
 	must(`INSERT INTO device_source_refs(device_id,data_source_id,adapter_code,external_key) VALUES($1,$2,'lorawan_v2','TEST-SN')`, gateway, source)
 	must(`INSERT INTO device_metadata(device_id,key,name,value_type,value_json,created_by,updated_by) VALUES($1,'lorawan_v2_nodes_count','Nodes','number','4',$2,$2)`, gateway, admin)
+	for index := 1; index <= 2; index++ {
+		must(`INSERT INTO lorawan_physical_nodes(data_source_id,external_id,sn,gateway_device_id,node_index) VALUES($1,$2,$3,$4,$5)`, source, index, fmt.Sprint(index), gateway, index)
+	}
 	svc := NewService(db)
 	h := NewHandler(svc, permission.NewChecker(sqlc.New(db)))
 	call := func(id uuid.UUID, index string, name string, actor auth.Actor, adminRoute bool) *httptest.ResponseRecorder {
@@ -119,7 +122,7 @@ func TestNodeNamingPermissionsPersistenceAndMigration(t *testing.T) {
 	}
 	expect(locationCall(auth.Actor{UserID: viewer}, gateway, 1, `{"latitude":30,"longitude":120}`), 403)
 	expect(locationCall(auth.Actor{UserID: outsider}, gateway, 1, `{"latitude":30,"longitude":120}`), 403)
-	expect(locationCall(user, gateway, 5, `{"latitude":30,"longitude":120}`), 400)
+	expect(locationCall(user, gateway, 255, `{"latitude":30,"longitude":120}`), 400)
 	expect(locationCall(user, carbon, 1, `{"latitude":30,"longitude":120}`), 400)
 	expect(locationCall(user, gateway, 1, `{"latitude":30,"longitude":120}`), 200)
 	expect(call(gateway, "1", "地块节点", user, false), 200)
@@ -190,7 +193,7 @@ func TestNodeNamingPermissionsPersistenceAndMigration(t *testing.T) {
 	}
 	expect(call(gateway, "3", "  林下  ", user, false), 200)
 	expect(call(gateway, "4", "林下", sys, true), 200) // duplicate names are intentional
-	for _, index := range []string{"0", "-1", "5"} {
+	for _, index := range []string{"0", "-1", "255"} {
 		expect(call(gateway, index, "Bad", user, false), 400)
 	}
 	expect(call(carbon, "1", "碳汇样地", user, false), 200)
@@ -208,10 +211,10 @@ func TestNodeNamingPermissionsPersistenceAndMigration(t *testing.T) {
 	}
 	must(`UPDATE device_metadata SET value_json='2' WHERE device_id=$1 AND key='lorawan_v2_nodes_count'`, gateway)
 	nodes, err = svc.ListGatewayNodes(ctx, gateway)
-	if err != nil || len(nodes) != 2 {
+	if err != nil || len(nodes) != 4 {
 		t.Fatalf("reduced nodes: %v %v", nodes, err)
 	}
-	expect(call(gateway, "3", "Hidden", sys, true), 400)
+	expect(call(gateway, "255", "Hidden", sys, true), 400)
 	must(`UPDATE device_metadata SET value_json='4' WHERE device_id=$1 AND key='lorawan_v2_nodes_count'`, gateway)
 	nodes, err = svc.ListGatewayNodes(ctx, gateway)
 	if err != nil || nodes[2].Key != stable || nodes[2].CustomName != "林下" {

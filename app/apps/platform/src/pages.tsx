@@ -434,9 +434,7 @@ export function DeviceDataPage({
             <div className="panel-header">
               <div>
                 <h2 className="panel-title">数据趋势</h2>
-                <div className="panel-kicker">
-                  各指标独立量程，共享所选时间范围
-                </div>
+
               </div>
               <div className="header-actions data-workflow-actions">
                 {selectedDevice && !isCameraDevice(selectedDevice) && (
@@ -540,7 +538,7 @@ export function DeviceDataPage({
               <summary>
                 <div>
                   <h2 className="panel-title">数据明细</h2>
-                  <div className="panel-kicker">展开后加载原始宽表数据</div>
+
                 </div>
                 <Badge tone="neutral">
                   {detailOpen ? `${points.length} 条` : "按需加载"}

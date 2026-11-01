@@ -437,8 +437,8 @@ func (s *Service) appendIndexedNodeLocations(ctx context.Context, result *MapRes
 	}
 	rows, err := s.db.Query(ctx, `SELECT DISTINCT p.device_id,p.node_index,p.name,p.latitude,p.longitude FROM node_profiles p
  JOIN device_source_refs r ON r.device_id=p.device_id AND r.adapter_code='lorawan_v2' AND r.status='active'
- JOIN device_metadata m ON m.device_id=p.device_id AND m.key='lorawan_v2_nodes_count'
- WHERE p.device_id=ANY($1::uuid[]) AND p.latitude IS NOT NULL AND p.longitude IS NOT NULL AND p.node_index<=m.value_json::text::int ORDER BY p.device_id,p.node_index`, ids)
+
+ WHERE p.device_id=ANY($1::uuid[]) AND p.latitude IS NOT NULL AND p.longitude IS NOT NULL AND p.node_index BETWEEN 1 AND 254 ORDER BY p.device_id,p.node_index`, ids)
 	if err != nil {
 		return err
 	}

@@ -1,5 +1,6 @@
+import { ExpandOutlined } from "@ant-design/icons";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Button, Card, Col, Empty, Modal, Pagination, Row, Space, Spin, Typography, theme } from "antd";
+import { Alert, Button, Card, Col, Empty, Modal, Pagination, Row, Space, Spin, Typography, Tooltip as AntTooltip, theme } from "antd";
 import { Bar, Brush, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Scatter, Tooltip, XAxis, YAxis } from "recharts";
 import { adminChartNumber, adminChartTime, prepareAdminCurve, type AdminChartSeries } from "./admin-chart-model";
 import { opsTime } from "./admin-device-ops-model";
@@ -17,7 +18,7 @@ export function AdminDataCharts({ series, loading = false }: { series: AdminChar
       <Typography.Text type="secondary">展示当前查询返回的原始数据，不重新采样。拖动图表底部滑块可缩放时间范围，悬停查看北京时间与数值。</Typography.Text>
       {!series.length ? <Empty description={loading ? "正在读取指标" : "请选择数据指标"} /> : <Row gutter={[16, 16]}>
         {series.slice((currentPage - 1) * 6, currentPage * 6).map((item, index) => <Col key={item.id} xs={24} xl={12}>
-          <Card size="small" title={<Typography.Text ellipsis title={item.name}>{item.name}{item.unit ? ` (${item.unit})` : ""}</Typography.Text>} extra={<Button size="small" onClick={() => setExpandedId(item.id)}>放大查看</Button>}>
+          <Card size="small" title={<Typography.Text ellipsis title={item.name}>{item.name}{item.unit ? ` (${item.unit})` : ""}</Typography.Text>} extra={<AntTooltip title="放大查看"><Button size="small" aria-label={`放大查看${item.name}`} icon={<ExpandOutlined />} onClick={() => setExpandedId(item.id)} /></AntTooltip>}>
             <Curve series={item} colorIndex={index} />
           </Card>
         </Col>)}

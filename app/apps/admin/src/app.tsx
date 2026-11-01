@@ -85,6 +85,7 @@ const AdminLogsPage = lazy(() =>
     default: module.AdminLogsPage,
   })),
 );
+const AdminGatewayNodesPage = lazy(() => import("./admin-gateway-nodes").then(module => ({default:module.AdminGatewayNodesPage})));
 const AdminDeviceInsightsPage = lazy(() => import("./admin-device-insights").then((module) => ({ default: module.AdminDeviceInsightsPage })));
 const AdminWorkspacesPage = lazy(() =>
   import("./admin-control").then((module) => ({
@@ -598,6 +599,7 @@ function AdminRoot() {
         <Route path="sources" element={<AdminSourcesPage />} />
         <Route path="devices" element={<AdminDevicesPage />} />
         <Route path="devices/:deviceId" element={<AdminDevicesPage />} />
+        <Route path="devices/:deviceId/nodes" element={<AdminGatewayNodesPage />} />
         <Route path="firmware" element={<AdminFirmwarePage />} />
         <Route path="exports" element={<AdminExportsPage />} />
         <Route path="sensors" element={<AdminSensorsPage key="v1" version="v1" />} />

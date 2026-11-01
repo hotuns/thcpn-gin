@@ -489,6 +489,10 @@ func TestLoRaWANV2AdaptiveReadsWholeRangeAndSparseMetrics(t *testing.T) {
 }
 func TestLoRaWANV2DiscoveryUsesConfigurationWithoutRecentNodeData(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/device/GW/nodes" {
+			_, _ = w.Write([]byte(`{"success":true,"payload":{"gateway_sn":"GW","bound_node_count":1,"data":[{"id":1,"sn":"N1","gateway_sn":"GW","node_index":1}]}}`))
+			return
+		}
 		if r.URL.Path == "/device/GW/infos" {
 			_, _ = w.Write([]byte(`{"success":true,"payload":{"data":[],"pagination":{"total_page":1}}}`))
 			return
@@ -555,6 +559,8 @@ func TestLoRaWANV2DiscoveryHandlesMissingAndSDIConfigurations(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
+				case "/device/GW/nodes":
+					_, _ = w.Write([]byte(`{"success":true,"payload":{"gateway_sn":"GW","bound_node_count":1,"data":[{"id":1,"sn":"N1","gateway_sn":"GW","node_index":1}]}}`))
 				case "/device/GW/infos":
 					_, _ = w.Write([]byte(`{"success":true,"payload":{"data":[],"pagination":{"total_page":1}}}`))
 				case "/device/GW/node/1/sensor_config/latest":

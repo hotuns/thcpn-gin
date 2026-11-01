@@ -620,7 +620,7 @@ function StandardExportForm({
           </span>
           <div>
             <h2 className="panel-title">标准站导出</h2>
-            <div className="panel-kicker">选择一台或多台独立标准站</div>
+
           </div>
         </div>
       </div>
@@ -721,7 +721,7 @@ function GroupExportForm({
           </span>
           <div>
             <h2 className="panel-title">组网站导出</h2>
-            <div className="panel-kicker">一次选择一个组网站，再选择其节点</div>
+
           </div>
         </div>
       </div>
@@ -883,9 +883,7 @@ function CarbonExportForm({
           </span>
           <div>
             <h2 className="panel-title">碳汇站导出</h2>
-            <div className="panel-kicker">
-              组合选择 Node 与地块，生成一份 ZIP
-            </div>
+
           </div>
         </div>
       </div>

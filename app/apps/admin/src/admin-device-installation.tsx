@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Alert, App, Button, Card, Descriptions, Form, Image, Input, InputNumber, Modal, Select, Space, Table, Tabs, Tag, Typography, Upload } from "antd";
-import { api, formatApiError, type DeviceProfileImage, type JsonRecord } from "@thcpn/api";
+import { Alert, App, Button, Card, Checkbox, Col, Row, Descriptions, Drawer, Form, Image, Input, InputNumber, Modal, Select, Space, Table, Tabs, Tag, Typography, Upload } from "antd";
+import { api, formatApiError, type DeviceProfileImage, type GatewayNode, type JsonRecord } from "@thcpn/api";
 import { AdminNodeLocationEditor } from "./node-location-editor";
 import { AdminNodeNameEditor } from "./node-name-editor";
+import { GatewayNodeActions } from "./gateway-node-actions";
 import { invalidateNodeNames } from "@thcpn/workspace";
 import { opsTime } from "./admin-device-ops-model";
-import { GatewayNodeCount } from "./gateway-node-count";
+
 
 export function AdminDeviceInstallation({device}:{device:JsonRecord}) {
   const id=String(device.id);
@@ -68,24 +69,50 @@ export function AdminDeviceInstallation({device}:{device:JsonRecord}) {
   </Space>;
 }
 
-export function AdminDeviceNodes({device,onData,onTopology}:{device:JsonRecord;onData:(key:string)=>void;onTopology?:()=>void}) {
-  const id=String(device.id);
+export function AdminDeviceNodes({device,onData,onTopology,onConfig,compact=false}:{device:JsonRecord;onData:(key:string)=>void;onTopology?:()=>void;onConfig?:(index:number,kind?:"sensor"|"time")=>void;compact?:boolean}) {
+  const id=String(device.id), lora=device.source_family==="lorawan_v2";
   const client=useQueryClient();
   const [readRuntime,setReadRuntime]=useState(false);
-  const nodes=useQuery({queryKey:["admin","device",id,"nodes","operations"],queryFn:()=>api.admin.deviceNodes(id)});
+  const [filter,setFilter]=useState("all");
+  const [search,setSearch]=useState("");
+  const [detailKey,setDetailKey]=useState<string|null>(null);
+  const nodes=useQuery({queryKey:["admin","device",id,"nodes","operations"],queryFn:async()=>{if(lora)await api.admin.physicalNodes(id);return api.admin.deviceNodes(id);}});
   const runtime=useQuery({queryKey:["admin","device",id,"nodes","runtime"],queryFn:()=>api.admin.nodeRuntime(id),enabled:readRuntime});
-  return (
-    <Card title="节点管理" extra={<Space>{device.source_family==="lorawan_v2"&&<GatewayNodeCount deviceId={id}/>}{onTopology&&<Button onClick={onTopology}>管理拓扑</Button>}<Button loading={runtime.isFetching} onClick={()=>{setReadRuntime(true);if(readRuntime)void runtime.refetch();}}>读取节点最新状态</Button></Space>}>
-      {(nodes.error||runtime.error)&&<Alert type="error" title="节点读取失败" description={formatApiError(nodes.error||runtime.error).message}/>}
-      <Table rowKey="key" size="small" loading={nodes.isLoading} dataSource={nodes.data?.items??[]} pagination={{pageSize:20,showSizeChanger:true}} scroll={{x:1000}} columns={[
-        {title:"节点",render:(_,node)=><Space><Typography.Text strong>{node.name}</Typography.Text><AdminNodeNameEditor name={node.custom_name} allowEmpty={node.target.kind!=="device"} onSave={async name=>{if(node.target.kind==="gateway_node")await api.admin.renameNode(id,node.target.node_index,name);else await api.admin.updateDevice(node.target.device_id,{name});await invalidateNodeNames(client);}}/></Space>},
-        {title:"指标",width:75,render:(_,node)=>node.streams.length},
-        {title:"最新状态",render:(_,node)=>{const state=runtime.data?.items.find(item=>item.key===node.key);return state?.error?<Tag color="red">{state.error}</Tag>:state?<Space orientation="vertical" size={0}><span>电压 {state.battery??"—"} V · 信号 {state.rssi??"—"}</span><Typography.Text type="secondary">{opsTime(state.sampled_at)}</Typography.Text></Space>:"点击读取最新状态";}},
-        {title:"位置",render:(_,node)=>node.longitude!=null?`${node.longitude}, ${node.latitude}`:"未登记"},
-        {title:"操作",render:(_,node)=><Space><Button size="small" onClick={()=>onData(node.key)}>查看数据</Button>{node.target.kind==="gateway_node"?<AdminNodeLocationEditor deviceId={id} node={node}/>:<Button size="small"><Link to={`/admin/devices/${node.target.device_id}`}>节点资料</Link></Button>}</Space>},
-      ]}/>
-    </Card>
-  );
+  const rows=nodes.data?.items??[];
+  const detail=rows.find(node=>node.key===detailKey);
+  const visible=rows.filter(n=>(filter==="all"||(filter==="bound"?n.bound:!n.bound))&&[n.name,n.node_sn,n.key].some(v=>v?.toLowerCase().includes(search.toLowerCase())));
+  const positions=<Space orientation="vertical" size="middle" style={{width:"100%"}}>
+    <Space wrap style={{justifyContent:"space-between",width:"100%"}}>
+      <Space><Input.Search aria-label="搜索节点或位置" placeholder={lora?"名称、节点 SN 或位置标识":"搜索节点名称"} allowClear value={search} onChange={e=>setSearch(e.target.value)} style={{width:280}}/>
+        {lora&&<Select aria-label="采集位置范围" value={filter} onChange={setFilter} style={{width:150}} options={[{value:"all",label:"全部采集位置"},{value:"bound",label:"有当前安装节点"},{value:"history",label:"未绑定／历史位置"}]}/>}</Space>
+      <Button loading={runtime.isFetching} onClick={()=>{setReadRuntime(true);if(readRuntime)void runtime.refetch();}}>读取电量与信号</Button>
+    </Space>
+    {lora&&<Typography.Text type="secondary">配置、名称、经纬度和数据归属于采集位置；未绑定的位置保留历史，不能据此判断硬件在线状态。</Typography.Text>}
+    {(nodes.error||runtime.error)&&<Alert type="error" title="节点读取失败" description={formatApiError(nodes.error||runtime.error).message}/>}
+    <Table<GatewayNode> rowKey="key" size="middle" loading={nodes.isLoading} dataSource={visible} pagination={{pageSize:20,showSizeChanger:true}} scroll={{x:1000}} locale={{emptyText:lora?"暂无采集位置。安装真实节点并同步平台指标后显示；已有位置历史不会因解绑删除。":"暂无关联节点，请管理网关拓扑。"}} columns={[
+      {title:lora?"采集位置":"节点设备",render:(_,node)=><Space orientation="vertical" size={0}><Typography.Text strong>{node.name}</Typography.Text>{node.target.kind==="gateway_node"&&<Typography.Text type="secondary">序号 {node.target.node_index}</Typography.Text>}</Space>},
+      ...(lora?[{title:"物理节点",render:(_:unknown,node:GatewayNode)=><Space orientation="vertical" size={0}><Tag color={node.bound?"blue":"default"}>{node.bound?"已安装":"未绑定"}</Tag><Typography.Text code={!!node.node_sn}>{node.node_sn||"仅保留位置历史"}</Typography.Text></Space>}]:[]),
+      {title:"指标",width:75,render:(_,node)=>node.streams.length},
+      {title:"电量 / 信号",render:(_,node)=>{const state=runtime.data?.items.find(item=>item.key===node.key);return state?.error?<Tag color="red">读取失败</Tag>:state?<Space orientation="vertical" size={0}><span>{state.battery??"—"} V · {state.rssi??"—"}</span><Typography.Text type="secondary">{opsTime(state.sampled_at)}</Typography.Text></Space>:"尚未读取";}},
+      {title:"位置",render:(_,node)=>node.longitude!=null?`${node.longitude}, ${node.latitude}`:"未设置"},
+      {title:"操作",render:(_,node)=><Space wrap><Button size="small" onClick={()=>onData(node.key)}>查看数据</Button>{node.target.kind==="gateway_node"?<GatewayNodeActions deviceId={id} node={node} onDetails={()=>setDetailKey(node.key)} onConfig={onConfig?(index,kind)=>onConfig(index,kind):undefined}/>:<Button size="small"><Link to={`/admin/devices/${node.target.device_id}`}>设备资料</Link></Button>}</Space>},
+    ]}/>
+  </Space>;
+  const toolbar=<Space wrap>{lora&&<><GatewayNodeActions deviceId={id}/><Button onClick={()=>void nodes.refetch()} loading={nodes.isFetching}>刷新节点</Button><Button><Link to={`/admin/devices?kind=node_v2&gateway=${id}`}>节点v2库存</Link></Button></>}{onTopology&&<Button onClick={onTopology}>管理拓扑</Button>}</Space>;
+  return <Space orientation="vertical" size="middle" style={{width:"100%"}}>
+    {compact?<><Space wrap style={{justifyContent:"space-between",width:"100%"}}><Typography.Text strong>节点管理 · {rows.length} 个采集位置</Typography.Text>{toolbar}</Space>{positions}</>:<Card title={lora?"节点管理":"THCPN · 组网节点"} extra={toolbar}>{positions}</Card>}
+    <Drawer title="采集位置资料" open={!!detail} onClose={()=>setDetailKey(null)} size={560}>
+      {detail&&<Space orientation="vertical" size="large" style={{width:"100%"}}><Descriptions column={1} bordered items={[
+        {key:"name",label:"位置名称",children:<Space>{detail.name}<AdminNodeNameEditor name={detail.custom_name} allowEmpty onSave={async name=>{if(detail.target.kind==="gateway_node")await api.admin.renameNode(id,detail.target.node_index,name);await invalidateNodeNames(client);setDetailKey(null);}}/></Space>},
+        {key:"index",label:"序号",children:detail.target.kind==="gateway_node"?detail.target.node_index:"—"},
+        {key:"sn",label:"当前节点 SN",children:detail.node_sn||"未绑定"},
+        {key:"key",label:"位置标识",children:<Typography.Text copyable>{detail.key}</Typography.Text>},
+        {key:"location",label:"安装坐标",children:<Space>{detail.longitude!=null?`${detail.longitude}, ${detail.latitude}`:"未设置"}<AdminNodeLocationEditor deviceId={id} node={detail}/></Space>},
+      ]}/><Alert type="info" title="资料与历史随采集位置保留" description="更换或移除物理节点不会清空这里的名称、坐标、配置与历史数据。"/>
+        <Space><Button type="primary" onClick={()=>{onData(detail.key);setDetailKey(null);}}>查看位置数据</Button>{onConfig&&detail.target.kind==="gateway_node"&&<Button onClick={()=>{if(detail.target.kind==="gateway_node")onConfig(detail.target.node_index);setDetailKey(null);}}>编辑采集配置</Button>}</Space>
+      </Space>}
+    </Drawer>
+  </Space>;
 }
 
 function AdminDeviceClassification({deviceId}:{deviceId:string}) {
@@ -100,16 +127,25 @@ function AdminDeviceClassification({deviceId}:{deviceId:string}) {
   const options=(kind:string)=>(catalog.data?.items??[]).filter(term=>term.kind===kind&&term.status==="active").map(term=>({value:term.id,label:term.name_zh}));
   return <Card title="观测资料与分类" loading={data.isLoading||catalog.isLoading}>
     {(data.error||catalog.error)?<Alert type="error" title="分类读取失败" description={formatApiError(data.error||catalog.error).message}/>:<Form form={form} layout="vertical" onFinish={async values=>{setBusy(true);try{await api.admin.updateDeviceEnvironment(deviceId,{...values,ecosystem_term_id:values.ecosystem_term_id??null,management_term_id:values.management_term_id??null,deployment_term_id:values.deployment_term_id??null,commissioned_year:values.commissioned_year??null,observation_object_ids:values.observation_object_ids??[],purpose_ids:values.purpose_ids??[],research_tags:values.research_tags??[],overridden_fields:values.overridden_fields??[]});await data.refetch();void message.success("观测资料已保存");}catch(error){void message.error(formatApiError(error).message);}finally{setBusy(false);}}}>
-      <Form.Item name="overridden_fields" label="为此设备单独设置的字段" extra="未选字段沿用网关或站点的观测资料。"><Select mode="multiple" options={fields}/></Form.Item>
-      <Space align="start" wrap style={{width:"100%"}}>
-        <Form.Item name="ecosystem_term_id" label="设备类型"><Select disabled={!overridden?.includes("ecosystem")} allowClear style={{width:200}} options={options("ecosystem")}/></Form.Item>
-        <Form.Item name="observation_object_ids" label="观测对象"><Select disabled={!overridden?.includes("observation_objects")} mode="multiple" style={{width:260}} options={options("observation_object")}/></Form.Item>
-        <Form.Item name="purpose_ids" label="观测用途"><Select disabled={!overridden?.includes("purposes")} mode="multiple" style={{width:260}} options={options("purpose")}/></Form.Item>
-        <Form.Item name="management_term_id" label="管理方式"><Select disabled={!overridden?.includes("management")} allowClear style={{width:200}} options={options("management")}/></Form.Item>
-        <Form.Item name="deployment_term_id" label="部署方式"><Select disabled={!overridden?.includes("deployment")} allowClear style={{width:200}} options={options("deployment")}/></Form.Item>
-        <Form.Item name="commissioned_year" label="投运年份"><InputNumber disabled={!overridden?.includes("commissioned_year")} min={1900} max={2100}/></Form.Item>
-      </Space>
-      <Form.Item name="research_tags" label="研究标签"><Select mode="tags" disabled={!overridden?.includes("research_tags")}/></Form.Item>
+      <Typography.Paragraph type="secondary">勾选后为此设备单独设置；未勾选的项目沿用网关或站点资料。</Typography.Paragraph>
+      <Form.Item name="overridden_fields">
+        <Checkbox.Group style={{width:"100%"}}>
+          <Space orientation="vertical" size="middle" style={{width:"100%"}}>
+            {fields.map(field=>{
+              const disabled=!overridden?.includes(field.value);
+              const common={disabled,allowClear:true,style:{width:"100%"},"aria-label":field.label};
+              const definitions:Record<string,{name:string;kind:string;multiple?:boolean}>={ecosystem:{name:"ecosystem_term_id",kind:"ecosystem"},observation_objects:{name:"observation_object_ids",kind:"observation_object",multiple:true},purposes:{name:"purpose_ids",kind:"purpose",multiple:true},management:{name:"management_term_id",kind:"management"},deployment:{name:"deployment_term_id",kind:"deployment"}};
+              const definition=definitions[field.value];
+              return <Row key={field.value} gutter={[16,8]} align="middle" style={{width:"100%",margin:0}}>
+                <Col xs={24} sm={6}><Checkbox value={field.value}>{field.label}</Checkbox></Col>
+                <Col xs={24} sm={18}>
+                  {definition?<Form.Item name={definition.name} style={{marginBottom:0}}><Select {...common} showSearch optionFilterProp="label" mode={definition.multiple?"multiple":undefined} options={options(definition.kind)} placeholder={`请选择${field.label}`}/></Form.Item>:field.value==="commissioned_year"?<Form.Item name="commissioned_year" style={{marginBottom:0}}><Select {...common} showSearch optionFilterProp="label" placeholder="请选择投运年份" options={Array.from({length:201},(_,i)=>({value:2100-i,label:String(2100-i)}))}/></Form.Item>:<Form.Item name="research_tags" style={{marginBottom:0}}><Select {...common} mode="tags" placeholder="选择或输入研究标签"/></Form.Item>}
+                </Col>
+              </Row>;
+            })}
+          </Space>
+        </Checkbox.Group>
+      </Form.Item>
       <Button type="primary" htmlType="submit" loading={busy}>保存观测资料</Button>
     </Form>}
   </Card>;

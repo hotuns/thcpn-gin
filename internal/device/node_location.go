@@ -70,7 +70,7 @@ func (s *Service) UpdateNodeLocation(ctx context.Context, id uuid.UUID, index in
 	if err != nil {
 		return err
 	}
-	if asset.SourceFamily != "lorawan_v2" || asset.DeviceType != "gateway" || int64(index) > asset.ChildCount {
+	if asset.SourceFamily != "lorawan_v2" || asset.DeviceType != "gateway" || index > 254 {
 		return apperr.New(apperr.KindInvalidArgument, "invalid LoRaWAN V2 node")
 	}
 	tx, err := s.db.Begin(ctx)

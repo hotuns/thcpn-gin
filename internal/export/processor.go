@@ -116,16 +116,17 @@ type qualityReportRow struct {
 }
 
 type telemetrySeries struct {
-	NodeKey      string
-	NodeName     string
-	NodeIndex    *int
-	MetricName   string
-	DataStreamID uuid.UUID
-	DeviceID     uuid.UUID
-	Code         string
-	Name         string
-	Unit         string
-	Points       []platform.TelemetryPoint
+	CurrentNodeSN string
+	NodeKey       string
+	NodeName      string
+	NodeIndex     *int
+	MetricName    string
+	DataStreamID  uuid.UUID
+	DeviceID      uuid.UUID
+	Code          string
+	Name          string
+	Unit          string
+	Points        []platform.TelemetryPoint
 }
 
 type renderedExport struct {

@@ -1,0 +1,4 @@
+/* Official Tailwind reset used by shadcn/ui. Keep it below application styles
+   in the cascade so existing component and third-party styles take precedence. */
+@layer base;
+@import "tailwindcss/preflight.css" layer(base);

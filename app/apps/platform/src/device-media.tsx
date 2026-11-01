@@ -184,7 +184,7 @@ export function RecentDeviceImages({
         <div className="panel-header compact-panel-header">
           <div>
             <h2 className="panel-title">最近图片</h2>
-            <div className="panel-kicker">最近 7 天采集的图片</div>
+
           </div>
           <div className="header-actions">
             <Badge tone="info">{query.data?.total ?? 0} 张</Badge>
@@ -396,9 +396,7 @@ export function LegacyDeviceMedia({
         <div className="panel-header">
           <div>
             <h2 className="panel-title">设备图片</h2>
-            <div className="panel-kicker">
-              当前时间范围内采集的媒体图片
-            </div>
+
           </div>
           <div className="header-actions">
             <Badge tone="info">{total} 张</Badge>
@@ -619,9 +617,7 @@ export function CameraLive({ device }: { device: Device }) {
       <div className="panel-header">
         <div>
           <h2 className="panel-title">监控站实时画面</h2>
-          <div className="panel-kicker">
-            短期会话只在当前页面内使用，切换设备后自动销毁播放器
-          </div>
+
         </div>
         <Button disabled={busy} onClick={() => void create()}>
           <Camera size={14} />
