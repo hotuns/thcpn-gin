@@ -2,9 +2,11 @@ package deviceprofile
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"thcpn-gin/internal/systemsettings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -128,17 +130,22 @@ func (h *Handler) Upload(c *gin.Context) {
 	if !ok {
 		return
 	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, int64(MaxImages*MaxImageSize)+1024*1024)
-	if err := c.Request.ParseMultipartForm(int64(MaxImages * MaxImageSize)); err != nil {
-		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid multipart upload"))
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, int64(systemsettings.Int(c.Request.Context(), "profile_images", MaxImages))*int64(systemsettings.Int(c.Request.Context(), "image_mb", 10))*1024*1024+1024*1024)
+	if err := c.Request.ParseMultipartForm(32 * 1024 * 1024); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, fmt.Sprintf("上传失败：单次最多 %d 张照片，每张最多 %d MB；请检查文件格式、减少数量或压缩后重新上传", systemsettings.Int(c.Request.Context(), "profile_images", MaxImages), systemsettings.Int(c.Request.Context(), "image_mb", 10))))
 		return
 	}
+	defer c.Request.MultipartForm.RemoveAll()
 	files := c.Request.MultipartForm.File["files"]
 	if len(files) == 0 {
 		files = c.Request.MultipartForm.File["file"]
 	}
-	if len(files) == 0 || len(files) > MaxImages {
-		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "upload between 1 and 12 images"))
+	if len(files) == 0 {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "at least one image is required"))
+		return
+	}
+	if len(files) > systemsettings.Int(c.Request.Context(), "profile_images", MaxImages) {
+		httpx.WriteAppError(c, apperr.LimitExceeded("profile_images", int64(systemsettings.Int(c.Request.Context(), "profile_images", MaxImages)), int64(len(files)), "images"))
 		return
 	}
 	inputs := make([]UploadImageInput, 0, len(files))
@@ -148,10 +155,14 @@ func (h *Handler) Upload(c *gin.Context) {
 			httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "open uploaded image"))
 			return
 		}
-		data, err := io.ReadAll(io.LimitReader(file, MaxImageSize+1))
+		data, err := io.ReadAll(io.LimitReader(file, int64(systemsettings.Int(c.Request.Context(), "image_mb", 10))*1024*1024+1))
 		_ = file.Close()
-		if err != nil || len(data) > MaxImageSize {
-			httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "image exceeds 10 MB"))
+		if err != nil {
+			httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "could not read uploaded image"))
+			return
+		}
+		if len(data) > systemsettings.Int(c.Request.Context(), "image_mb", 10)*1024*1024 {
+			httpx.WriteAppError(c, apperr.LimitExceeded("image_bytes", int64(systemsettings.Int(c.Request.Context(), "image_mb", 10))*1024*1024, header.Size, "bytes"))
 			return
 		}
 		contentType := http.DetectContentType(data)

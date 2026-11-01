@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/google/uuid"
@@ -387,6 +388,9 @@ func (s *Service) PrepareResultDownload(ctx context.Context, workspaceID, result
 
 func (s *Service) CreateTask(ctx context.Context, input CreateInput) (Task, error) {
 	input.Name = strings.TrimSpace(input.Name)
+	if len([]rune(input.Name)) > systemsettings.Int(ctx, "processing_name", 128) {
+		return Task{}, apperr.LimitExceeded("processing_name", int64(systemsettings.Int(ctx, "processing_name", 128)), int64(len([]rune(input.Name))), "characters")
+	}
 	if input.Name == "" || input.TargetID == uuid.Nil || input.WorkspaceID == uuid.Nil {
 		return Task{}, apperr.New(apperr.KindInvalidArgument, "name, workspace_id and target_id are required")
 	}

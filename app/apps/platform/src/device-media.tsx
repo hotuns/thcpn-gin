@@ -1,3 +1,4 @@
+import { policyLimit } from "./system-policy";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { PhotoSlider } from "react-photo-view";
@@ -160,7 +161,7 @@ export function RecentDeviceImages({
         start_time: startTime,
         end_time: endTime,
         page: 1,
-        page_size: 24,
+        page_size: Math.min(24,policyLimit("media_page_size",100)),
       }),
   });
   const streams = useQuery({
@@ -306,7 +307,7 @@ export function LegacyDeviceMedia({
         start_time: new Date(startTime).toISOString(),
         end_time: new Date(endTime).toISOString(),
         page: pageParam,
-        page_size: 24,
+        page_size: Math.min(24,policyLimit("media_page_size",100)),
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>

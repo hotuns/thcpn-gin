@@ -1,3 +1,4 @@
+import { policyLimit } from "./system-policy";
 import { api } from "@thcpn/api";
 
 export async function queryNodeStatus(id: string, input: Parameters<typeof api.telemetry.device>[1]) {
@@ -6,5 +7,5 @@ export async function queryNodeStatus(id: string, input: Parameters<typeof api.t
   if (recent.series.some(series => series.points.length) || recent.series.every(series => series.complete || series.error)) return recent;
   // Sparse/changed metrics must not be reported as absent just because the
   // newest record lacks their keys. Only that node falls back to history.
-  return api.telemetry.device(id, { ...input, adaptive: true, targetPoints: 2, limit: 500 });
+  return api.telemetry.device(id, { ...input, adaptive: true, targetPoints: 2, limit: Math.min(500,policyLimit("query_points",5000)) });
 }

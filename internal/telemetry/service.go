@@ -3,7 +3,9 @@ package telemetry
 import (
 	"context"
 	"errors"
-	"fmt"
+	"math"
+	"thcpn-gin/internal/observation"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/google/uuid"
@@ -120,6 +122,7 @@ func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, err
 }
 
 func (s *Service) QueryAdmin(ctx context.Context, input QueryInput) (QueryResult, error) {
+	ctx = observation.AdminContext(ctx)
 	return s.query(ctx, input, true)
 }
 
@@ -127,15 +130,15 @@ func (s *Service) query(ctx context.Context, input QueryInput, administrator boo
 	if input.DeviceID == nil && input.DataStreamID == nil {
 		return QueryResult{}, apperr.New(apperr.KindInvalidArgument, "device_id or data_stream_id is required")
 	}
-	limit, err := normalizeLimit(input.Limit, s.limits)
+	limit, err := normalizeLimit(input.Limit, systemsettings.Query(ctx, s.limits, "query_days"))
 	if err != nil {
 		return QueryResult{}, err
 	}
-	targetPoints, err := normalizeTargetPoints(input.TargetPoints, input.Adaptive, s.limits)
+	targetPoints, err := normalizeTargetPoints(input.TargetPoints, input.Adaptive, systemsettings.Query(ctx, s.limits, "query_days"))
 	if err != nil {
 		return QueryResult{}, err
 	}
-	if err := validateTimeRange(input.StartTime, input.EndTime, s.limits); err != nil {
+	if err := validateTimeRange(input.StartTime, input.EndTime, systemsettings.Query(ctx, s.limits, "query_days")); err != nil {
 		return QueryResult{}, err
 	}
 	if err := s.validateHistoryWindowForQuery(ctx, input, administrator); err != nil {
@@ -177,8 +180,8 @@ func (s *Service) validateHistoryWindow(ctx context.Context, input QueryInput) e
 	if err != nil {
 		return err
 	}
-	if summary.Plan == billing.PlanBase && input.StartTime.Before(time.Now().UTC().AddDate(0, 0, -s.billing.BaseHistoryDays())) {
-		return apperr.New(apperr.KindPermissionDenied, "base plan online history is outside the configured window")
+	if summary.Plan == billing.PlanBase && input.StartTime.Before(time.Now().UTC().AddDate(0, 0, -s.billing.BaseHistoryDays(ctx))) {
+		return apperr.PlanHistoryLimit("base_history_days", s.billing.BaseHistoryDays(ctx))
 	}
 	return nil
 }
@@ -206,6 +209,7 @@ func (s *Service) QueryInternal(ctx context.Context, input QueryInput) (QueryRes
 // workspace history windows; adapters return only a small result while
 // locating the first point.
 func (s *Service) EarliestDeviceData(ctx context.Context, deviceID uuid.UUID) (EarliestDeviceData, error) {
+	ctx = observation.WithPhase(ctx, observation.All)
 	if deviceID == uuid.Nil {
 		return EarliestDeviceData{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
 	}
@@ -642,7 +646,7 @@ func normalizeLimit(limit int, limits config.QueryLimitsConfig) (int, error) {
 		return 0, apperr.New(apperr.KindInvalidArgument, "limit must be greater than 0")
 	}
 	if limit > limits.MaxPoints {
-		return 0, apperr.New(apperr.KindInvalidArgument, "limit exceeds max_points")
+		return 0, apperr.LimitExceeded("query_points", int64(limits.MaxPoints), int64(limit), "points")
 	}
 	return limit, nil
 }
@@ -653,13 +657,13 @@ func normalizeTargetPoints(targetPoints int, adaptive bool, limits config.QueryL
 	}
 	limits = normalizeLimits(limits)
 	if targetPoints == 0 {
-		return 1000, nil
+		return min(1000, limits.MaxPoints), nil
 	}
 	if targetPoints < 2 {
 		return 0, apperr.New(apperr.KindInvalidArgument, "target_points must be at least 2")
 	}
 	if targetPoints > limits.MaxPoints {
-		return 0, apperr.New(apperr.KindInvalidArgument, "target_points exceeds max_points")
+		return 0, apperr.LimitExceeded("target_points", int64(limits.MaxPoints), int64(targetPoints), "points")
 	}
 	return targetPoints, nil
 }
@@ -677,10 +681,7 @@ func validateTimeRange(start time.Time, end time.Time, limits config.QueryLimits
 	}
 	maxRange := time.Duration(limits.MaxHistoryDays) * 24 * time.Hour
 	if end.Sub(start) > maxRange {
-		return apperr.New(
-			apperr.KindInvalidArgument,
-			fmt.Sprintf("time range cannot exceed %d days", limits.MaxHistoryDays),
-		)
+		return apperr.LimitExceeded("query_days", int64(limits.MaxHistoryDays), int64(math.Ceil(end.Sub(start).Hours()/24)), "days")
 	}
 	return nil
 }

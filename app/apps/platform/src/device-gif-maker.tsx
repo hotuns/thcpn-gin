@@ -1,3 +1,4 @@
+import { policyLimit } from "./system-policy";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { CalendarDays, Check, Clock3, Download, Film, HardDrive, Images, Maximize2, Timer, X } from "lucide-react";
@@ -127,7 +128,7 @@ export function DeviceGifMaker({ device, stream, startTime, endTime, onClose }: 
         let hasMore = false;
         do {
           const result = await api.media.dataStream(stream.id, {
-            start_time: new Date(startTime).toISOString(), end_time: new Date(endTime).toISOString(), page, page_size: 100,
+            start_time: new Date(startTime).toISOString(), end_time: new Date(endTime).toISOString(), page, page_size: Math.min(100,policyLimit("media_page_size",100)),
           });
           loaded.push(...result.items.filter((item) => item.media_type === "image" && item.preview_url));
           hasMore = result.page * result.page_size < result.total;

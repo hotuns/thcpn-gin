@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"strings"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/google/uuid"
@@ -64,7 +65,7 @@ func (s *Service) CompleteInitialPassword(ctx context.Context, input CompleteIni
 	if strings.TrimSpace(input.Token) == "" {
 		return LoginResult{}, apperr.New(apperr.KindInvalidArgument, "password_change_token is required")
 	}
-	if err := ValidatePassword(input.Password, s.authCfg.Password); err != nil {
+	if err := ValidatePassword(input.Password, systemsettings.Password(ctx, s.authCfg.Password)); err != nil {
 		return LoginResult{}, err
 	}
 	passwordHash, err := HashPassword(input.Password)

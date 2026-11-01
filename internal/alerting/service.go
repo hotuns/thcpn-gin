@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/google/uuid"
@@ -309,8 +310,11 @@ func (s *Service) getRule(ctx context.Context, workspaceID, ruleID uuid.UUID) (R
 
 func (s *Service) validateRule(ctx context.Context, workspaceID uuid.UUID, in *RuleInput) error {
 	in.Name = strings.TrimSpace(in.Name)
-	if in.Name == "" || len([]rune(in.Name)) > 120 {
-		return apperr.New(apperr.KindInvalidArgument, "alert rule name is required and must not exceed 120 characters")
+	if in.Name == "" {
+		return apperr.New(apperr.KindInvalidArgument, "alert rule name is required")
+	}
+	if len([]rune(in.Name)) > systemsettings.Int(ctx, "alert_name", 120) {
+		return apperr.LimitExceeded("alert_name", int64(systemsettings.Int(ctx, "alert_name", 120)), int64(len([]rune(in.Name))), "characters")
 	}
 	if in.Type != TypeThreshold && in.Type != TypeOffline {
 		return apperr.New(apperr.KindInvalidArgument, "invalid alert rule type")
@@ -318,8 +322,8 @@ func (s *Service) validateRule(ctx context.Context, workspaceID uuid.UUID, in *R
 	if in.Severity != "warning" && in.Severity != "critical" {
 		return apperr.New(apperr.KindInvalidArgument, "invalid alert severity")
 	}
-	if in.DurationSeconds < 0 || in.DurationSeconds > 2592000 {
-		return apperr.New(apperr.KindInvalidArgument, "invalid duration_seconds")
+	if in.DurationSeconds < 0 || in.DurationSeconds > systemsettings.Int(ctx, "alert_duration_seconds", 2592000) {
+		return apperr.New(apperr.KindInvalidArgument, fmt.Sprintf("预警持续时间须为 0 至 %d 秒", systemsettings.Int(ctx, "alert_duration_seconds", 2592000)))
 	}
 	if in.RecoveryDelta < 0 {
 		return apperr.New(apperr.KindInvalidArgument, "recovery_delta must not be negative")

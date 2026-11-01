@@ -7,8 +7,10 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/google/uuid"
@@ -77,8 +79,11 @@ func hashSecret(secret string) string {
 
 func (s *Service) Create(ctx context.Context, workspaceID, userID uuid.UUID, name string, expiresAt *time.Time) (CreatedAPIKey, error) {
 	name = strings.TrimSpace(name)
-	if name == "" || len([]rune(name)) > 100 {
+	if name == "" {
 		return CreatedAPIKey{}, apperr.New(apperr.KindInvalidArgument, "api key name is required")
+	}
+	if len([]rune(name)) > systemsettings.Int(ctx, "api_key_name", 100) {
+		return CreatedAPIKey{}, apperr.LimitExceeded("api_key_name", int64(systemsettings.Int(ctx, "api_key_name", 100)), int64(len([]rune(name))), "characters")
 	}
 	if expiresAt != nil && !expiresAt.After(time.Now().UTC()) {
 		return CreatedAPIKey{}, apperr.New(apperr.KindInvalidArgument, "expires_at must be in the future")
@@ -151,14 +156,14 @@ func (s *Service) Authenticate(ctx context.Context, secret string) (APIKey, erro
 			return APIKey{}, apperr.New(apperr.KindPermissionDenied, "workspace professional plan is inactive")
 		}
 	}
-	if !s.allow(item.ID, now) {
-		return APIKey{}, apperr.New(apperr.KindRateLimited, "api key rate limit exceeded")
+	if !s.allow(item.ID, now, ctx) {
+		return APIKey{}, apperr.New(apperr.KindRateLimited, fmt.Sprintf("每个 API 密钥每分钟最多调用 %d 次，请稍后重试", systemsettings.Int(ctx, "api_per_minute", 600)))
 	}
 	_, _ = s.db.Exec(ctx, `UPDATE workspace_api_keys SET last_used_at=now(),updated_at=now() WHERE id=$1`, item.ID)
 	_, _ = s.db.Exec(ctx, `INSERT INTO workspace_api_usage_daily(api_key_id,usage_date,request_count,last_used_at) VALUES($1,CURRENT_DATE,1,now()) ON CONFLICT(api_key_id,usage_date) DO UPDATE SET request_count=workspace_api_usage_daily.request_count+1,last_used_at=now()`, item.ID)
 	return item, nil
 }
-func (s *Service) allow(id uuid.UUID, now time.Time) bool {
+func (s *Service) allow(id uuid.UUID, now time.Time, contexts ...context.Context) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	minute := now.Truncate(time.Minute)
@@ -166,7 +171,7 @@ func (s *Service) allow(id uuid.UUID, now time.Time) bool {
 	if !current.minute.Equal(minute) {
 		current = rateWindow{minute: minute}
 	}
-	if current.count >= 600 {
+	if current.count >= systemsettings.Int(systemsettings.Context(contexts...), "api_per_minute", 600) {
 		return false
 	}
 	current.count++

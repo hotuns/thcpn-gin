@@ -9,6 +9,7 @@ import (
 	platform "thcpn-gin/internal/datasource/platform"
 	"thcpn-gin/internal/device"
 	"thcpn-gin/internal/httpx"
+	"thcpn-gin/internal/observation"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -44,6 +45,27 @@ func (h *Handler) NodeRuntime(c *gin.Context) {
 		wg.Add(1)
 		go func(i int, node device.GatewayNode) {
 			defer wg.Done()
+			defer func() {
+				if result[i].SampledAt == nil || observation.Phase(ctx) != observation.Formal {
+					return
+				}
+				target, index := id, 0
+				if node.Target.DeviceID != nil {
+					target = *node.Target.DeviceID
+				} else if node.Target.NodeIndex != nil {
+					index = *node.Target.NodeIndex
+				}
+				cutoff, e := (observation.Service{DB: h.service.DB}).DeviceStart(ctx, target, index)
+				if e != nil {
+					result[i].Error = "观测分界读取失败"
+					result[i].SampledAt = nil
+					return
+				}
+				if cutoff != nil && result[i].SampledAt.Before(*cutoff) {
+					result[i].SampledAt = nil
+				}
+			}()
+
 			result[i].Key = node.Key
 			select {
 			case slots <- struct{}{}:

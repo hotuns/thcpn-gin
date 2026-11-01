@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/google/uuid"
@@ -184,8 +185,8 @@ func (s *Service) UpdateName(ctx context.Context, input UpdateNameInput) (Worksp
 	if name == "" {
 		return WorkspaceWithMembership{}, apperr.New(apperr.KindInvalidArgument, "workspace name is required")
 	}
-	if len([]rune(name)) > 120 {
-		return WorkspaceWithMembership{}, apperr.New(apperr.KindInvalidArgument, "workspace name is too long")
+	if len([]rune(name)) > systemsettings.Int(ctx, "workspace_name", 120) {
+		return WorkspaceWithMembership{}, apperr.LimitExceeded("workspace_name", int64(systemsettings.Int(ctx, "workspace_name", 120)), int64(len([]rune(name))), "characters")
 	}
 	result, err := s.db.Exec(ctx, `UPDATE workspaces SET name = $2, updated_at = now() WHERE id = $1 AND status = 'active'`, input.WorkspaceID, name)
 	if err != nil {

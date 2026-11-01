@@ -1,7 +1,9 @@
 package telemetry
 
 import (
+	"github.com/google/uuid"
 	"testing"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"thcpn-gin/internal/apperr"
@@ -51,5 +53,41 @@ func TestNormalizeTargetPoints(t *testing.T) {
 	}
 	if _, err := normalizeTargetPoints(5001, true, limits); apperr.KindOf(err) != apperr.KindInvalidArgument {
 		t.Fatalf("expected target point limit error, got %v", err)
+	}
+}
+
+func TestConfiguredQueryLimitDetails(t *testing.T) {
+	limits := config.QueryLimitsConfig{MaxHistoryDays: 3, MaxPoints: 17}
+	start := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	if err := validateTimeRange(start, start.Add(72*time.Hour), limits); err != nil {
+		t.Fatal(err)
+	}
+	err := validateTimeRange(start, start.Add(72*time.Hour+time.Second), limits)
+	details := apperr.DetailsOf(err)
+	if details["field"] != "query_days" || details["maximum"] != int64(3) || details["actual"] != int64(4) {
+		t.Fatalf("must report actual configured window: %v", details)
+	}
+	_, err = normalizeLimit(18, limits)
+	if d := apperr.DetailsOf(err); d["maximum"] != int64(17) || d["actual"] != int64(18) {
+		t.Fatalf("wrong point limit: %v", d)
+	}
+	_, err = normalizeTargetPoints(18, true, limits)
+	if d := apperr.DetailsOf(err); d["field"] != "target_points" || d["maximum"] != int64(17) {
+		t.Fatalf("wrong target limit: %v", d)
+	}
+}
+
+func TestRequestPolicyIsEnforcedBeforeReadingSource(t *testing.T) {
+	ctx := systemsettings.With(t.Context(), systemsettings.Values{"query_days": 2, "query_points": 37})
+	service := NewService(nil, nil, nil, config.Default().QueryLimits)
+	id := uuid.New()
+	start := time.Now().Add(-72 * time.Hour)
+	_, err := service.Query(ctx, QueryInput{DeviceID: &id, StartTime: start, EndTime: time.Now(), Limit: 38})
+	if d := apperr.DetailsOf(err); d["field"] != "query_points" || d["maximum"] != int64(37) {
+		t.Fatalf("policy ignored: %v %v", err, d)
+	}
+	_, err = service.Query(ctx, QueryInput{DeviceID: &id, StartTime: start, EndTime: time.Now(), Limit: 2})
+	if d := apperr.DetailsOf(err); d["field"] != "query_days" || d["maximum"] != int64(2) {
+		t.Fatalf("range policy ignored: %v %v", err, d)
 	}
 }

@@ -22,7 +22,7 @@ func (s *Service) RegisterFirmware(ctx context.Context, input platform.SourceFir
 	if err != nil {
 		return 0, err
 	}
-	result, err := db.ExecContext(ctx, `INSERT INTO firmwares(device_id,input.Version,build_id,path,created_at,updated_at) VALUES(?,?,?,?,NOW(),NOW())`, input.ExternalDeviceID, input.Version, *input.BuildID, input.ObjectKey)
+	result, err := db.ExecContext(ctx, `INSERT INTO firmwares(device_id,version,build_id,path,created_at,updated_at) VALUES(?,?,?,?,NOW(),NOW())`, input.ExternalDeviceID, input.Version, *input.BuildID, input.ObjectKey)
 	if err != nil {
 		return 0, apperr.Wrap(apperr.KindDataSource, "insert carbon firmware record", err)
 	}

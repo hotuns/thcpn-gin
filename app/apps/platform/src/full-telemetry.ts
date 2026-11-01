@@ -1,12 +1,14 @@
+import { policyLimit } from "./system-policy";
 import { api } from "@thcpn/api";
 
 // Split capped responses instead of sampling or silently truncating a chart.
 export async function fullTelemetry(deviceId: string, input: Parameters<typeof api.telemetry.device>[1], client = api.telemetry): Promise<Awaited<ReturnType<typeof api.telemetry.device>>> {
-  const result = await client.device(deviceId, { ...input, adaptive: false, limit: 5000 });
+  const limit = policyLimit("query_points", 5000);
+  const result = await client.device(deviceId, { ...input, adaptive: false, limit });
   if (!result.series.some(series => series.complete === false && !series.error)) return result;
   const start = Date.parse(input.startTime);
   const end = Date.parse(input.endTime);
-  if (end - start <= 2000) throw new Error("数据量超过单次读取上限，无法完整读取此时间段，请缩小查询范围。");
+  if (end - start <= 2000) throw new Error(`已将查询拆分至 2 秒以内，仍无法完整读取数据（每次请求每个指标最多 ${limit.toLocaleString("zh-CN")} 条）。请使用数据导出；若数据量未达上限，请联系管理员检查数据源返回的完整性标记。`);
   const middle = new Date(Math.floor((start + end) / 2000) * 1000).toISOString();
   const left = await fullTelemetry(deviceId, { ...input, endTime: middle }, client);
   const right = await fullTelemetry(deviceId, { ...input, startTime: middle }, client);

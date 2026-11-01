@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -43,6 +44,7 @@ import (
 	"thcpn-gin/internal/member"
 	"thcpn-gin/internal/notification"
 	"thcpn-gin/internal/objectstore"
+	"thcpn-gin/internal/observation"
 	"thcpn-gin/internal/openapiaccess"
 	"thcpn-gin/internal/permission"
 	"thcpn-gin/internal/platformlog"
@@ -104,23 +106,22 @@ func NewRouter(deps Dependencies) (*gin.Engine, error) {
 }
 
 func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) error {
+	settingsService := systemsettings.New(deps.Postgres, cfg)
 	userService := user.NewService(deps.Postgres)
 	workspaceService := workspace.NewService(deps.Postgres)
 	const bytesPerGB int64 = 1024 * 1024 * 1024
-	var billingService *billing.Service
-	if cfg.Billing.Enabled {
-		billingService = billing.NewService(deps.Postgres, billing.Policy{
-			ProfessionalAnnualPriceCents:    cfg.Billing.ProfessionalAnnualPriceCents,
-			ProfessionalDefaultMonths:       cfg.Billing.ProfessionalDefaultMonths,
-			BaseHistoryDays:                 cfg.Billing.BaseHistoryDays,
-			BaseExportDays:                  cfg.Billing.BaseExportDays,
-			MonthlyDownloadLimitBytes:       cfg.Billing.MonthlyDownloadLimitGB * bytesPerGB,
-			TrafficPackSizeBytes:            cfg.Billing.TrafficPackSizeGB * bytesPerGB,
-			TrafficPackPriceCents:           cfg.Billing.TrafficPackPriceCents,
-			ExpiryNoticeDays:                cfg.Billing.ExpiryNoticeDays,
-			DownloadUsageWarningPercentages: cfg.Billing.DownloadUsageWarningPercentages,
-		})
-	}
+	billingService := billing.NewService(deps.Postgres, billing.Policy{
+		ProfessionalAnnualPriceCents:    cfg.Billing.ProfessionalAnnualPriceCents,
+		ProfessionalDefaultMonths:       cfg.Billing.ProfessionalDefaultMonths,
+		BaseHistoryDays:                 cfg.Billing.BaseHistoryDays,
+		BaseExportDays:                  cfg.Billing.BaseExportDays,
+		MonthlyDownloadLimitBytes:       cfg.Billing.MonthlyDownloadLimitGB * bytesPerGB,
+		TrafficPackSizeBytes:            cfg.Billing.TrafficPackSizeGB * bytesPerGB,
+		TrafficPackPriceCents:           cfg.Billing.TrafficPackPriceCents,
+		ExpiryNoticeDays:                cfg.Billing.ExpiryNoticeDays,
+		DownloadUsageWarningPercentages: cfg.Billing.DownloadUsageWarningPercentages,
+	})
+	billingService.SetSettings(settingsService, cfg.Billing.Enabled)
 	permissionChecker := permission.NewChecker(sqlc.New(deps.Postgres))
 	permissionCatalogService := permission.NewCatalogService(deps.Postgres)
 	auditService := audit.NewService(deps.Postgres)
@@ -152,14 +153,14 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	if billingService != nil {
 		dataSourceService.SetBilling(billingService)
 	}
-	telemetryService := telemetry.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil), cfg.QueryLimits, computedStreamService)
+	telemetryService := telemetry.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil, deps.Postgres), cfg.QueryLimits, computedStreamService)
 	if billingService != nil {
 		telemetryService.SetBilling(billingService)
 	}
 	openAPIService := openapiaccess.NewService(deps.Postgres, billingService)
 	datasetService := dataset.NewService(deps.Postgres, dataset.QueryDependencies{
 		DataSources: dataSourceService,
-		Runtime:     datasource.NewRuntime(nil),
+		Runtime:     datasource.NewRuntime(nil, deps.Postgres),
 		Limits:      cfg.QueryLimits,
 		Telemetry:   telemetryService,
 	})
@@ -185,7 +186,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 		}
 		return result, nil
 	})
-	mediaService := media.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil), objectSigner, cfg.QueryLimits, objectStore)
+	mediaService := media.NewService(deps.Postgres, dataSourceService, datasource.NewRuntime(nil, deps.Postgres), objectSigner, cfg.QueryLimits, objectStore)
 	if billingService != nil {
 		mediaService.SetBilling(billingService)
 	}
@@ -281,6 +282,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	})
 
 	api := router.Group("/api/v1")
+	api.Use(settingsMiddleware(settingsService))
 	api.GET("/objects/download", objectHandler.Download)
 	api.POST("/auth/sms/send", authHandler.SendSMS)
 	api.GET("/auth/login-visuals", loginVisualHandler.List)
@@ -364,6 +366,16 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.GET("/wallboard-templates/:code/preview", wallboardHandler.Preview)
 	admin := api.Group("/admin")
 	admin.Use(adminauth.Middleware(adminTokenManager, adminAuthService))
+	registerSystemSettings(api, admin, settingsService, auditService)
+	admin.Use(func(c *gin.Context) {
+		phase := c.DefaultQuery("data_phase", observation.All)
+		if phase != observation.All && phase != observation.Formal && phase != observation.Testing {
+			c.AbortWithStatusJSON(400, gin.H{"error": "invalid data_phase"})
+			return
+		}
+		c.Request = c.Request.WithContext(observation.WithPhase(c.Request.Context(), phase))
+		c.Next()
+	})
 	admin.GET("/me", adminAuthHandler.Me)
 	admin.GET("/announcements", notificationHandler.AdminListAnnouncements)
 	admin.POST("/announcements", notificationHandler.AdminCreateAnnouncement)
@@ -444,6 +456,10 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.GET("/devices/:device_id/config", dataSourceHandler.AdminGetDeviceConfig)
 	admin.POST("/devices/:device_id/config/resync", dataSourceHandler.AdminReconcileDeviceConfig)
 	admin.GET("/devices/:device_id/source-config/:config_kind", dataSourceHandler.AdminDeviceSourceConfig)
+	admin.GET("/devices/:device_id/lorawan-v2/connection", dataSourceHandler.AdminLoRaWANV2Connection)
+	admin.GET("/devices/:device_id/lorawan-v2/activity", dataSourceHandler.AdminLoRaWANV2Activity)
+	authed.GET("/devices/:device_id/lorawan-v2/connection", dataSourceHandler.DeviceLoRaWANV2Connection)
+	authed.GET("/devices/:device_id/lorawan-v2/activity", dataSourceHandler.DeviceLoRaWANV2Activity)
 	admin.GET("/devices/:device_id/lorawan-v2/info", dataSourceHandler.AdminDeviceLoRaWANV2Info)
 	authed.GET("/devices/:device_id/lorawan-v2/info", dataSourceHandler.DeviceLoRaWANV2Info)
 	admin.GET("/devices/:device_id/nodes/:node_index/time-config", dataSourceHandler.AdminDeviceLoRaWANV2TimeConfig)
@@ -478,6 +494,12 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.POST("/export-jobs", exportHandler.AdminCreate)
 	admin.GET("/export-jobs/:export_job_id", exportHandler.AdminGet)
 	admin.GET("/export-jobs/:export_job_id/download", exportHandler.AdminDownload)
+	admin.GET("/devices/:device_id/gateway-details", deviceProfileHandler.GatewayDetails)
+	admin.PUT("/devices/:device_id/gateway-details", deviceProfileHandler.SaveGatewayDetails)
+	admin.GET("/devices/:device_id/observation-start", deviceProfileHandler.ObservationStarts)
+	admin.PUT("/devices/:device_id/observation-start", deviceProfileHandler.SaveObservationStart)
+	admin.GET("/devices/:device_id/installation", deviceProfileHandler.Installation)
+	admin.PUT("/devices/:device_id/installation", deviceProfileHandler.SaveInstallation)
 	admin.GET("/devices/:device_id/profile", deviceProfileHandler.Get)
 	admin.PATCH("/devices/:device_id/profile", deviceProfileHandler.Update)
 	admin.PATCH("/devices/:device_id/profile/location", deviceProfileHandler.AdminLocation)
@@ -651,6 +673,11 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.POST("/devices/:device_id/unbind", deviceHandler.Unbind)
 	authed.GET("/devices/:device_id", deviceHandler.Get)
 	authed.PATCH("/devices/:device_id", deviceHandler.Update)
+	authed.GET("/devices/:device_id/gateway-details", deviceProfileHandler.GatewayDetails)
+	authed.GET("/devices/:device_id/observation-start", deviceProfileHandler.ObservationStarts)
+	authed.GET("/devices/:device_id/installation", deviceProfileHandler.Installation)
+	authed.GET("/devices/:device_id/tags", deviceProfileHandler.Tags)
+	authed.PUT("/devices/:device_id/tags", deviceProfileHandler.Tags)
 	authed.GET("/devices/:device_id/profile", deviceProfileHandler.Get)
 	authed.GET("/devices/:device_id/environment", deviceClassificationHandler.Get)
 	authed.PATCH("/devices/:device_id/environment", deviceClassificationHandler.Update)

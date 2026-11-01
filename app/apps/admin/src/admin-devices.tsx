@@ -1,3 +1,6 @@
+import { LoRaGatewayStatus } from "./lorawan-gateway-status";
+import { confirmManualSync } from "./manual-sync-confirm";
+import { LoRaWANGatewayDetailsEditor } from "./lorawan-gateway-details";
 import { AdminDeviceBulkEdit } from "./admin-device-bulk-edit";
 import { invalidateNodeNames } from "@thcpn/workspace";
 import { useEffect, useMemo, useState } from "react";
@@ -196,7 +199,7 @@ export function AdminDevicesPage() {
     () =>
       topLevelRows.filter((item) => {
         const searchable =
-          `${value(item.name)} ${value(item.serial_no)} ${value(item.id)} ${(tagsByDevice.get(value(item.id, "")) ?? []).join(" ")}`
+          `${value(item.name)} ${value(item.serial_no)} ${value(item.id)} ${(Array.isArray(item.ops_tags) ? item.ops_tags : []).join(" ")}`
             .toLowerCase()
             .includes(keyword.toLowerCase());
         return (
@@ -523,7 +526,7 @@ export function AdminDevicesPage() {
           const created = await api.admin.createCamera(cameraFields);
           const cameraDevice = (created.device ?? {}) as JsonRecord;
           const createdDeviceID = String(cameraDevice.id ?? "").trim();
-          if (!createdDeviceID) throw new Error("监控站已创建，但未返回平台设备 ID");
+          if (!createdDeviceID) throw new Error("视频站已创建，但未返回平台设备 ID");
           close();
           await query.refetch();
           navigate(`/admin/devices/${encodeURIComponent(createdDeviceID)}`);
@@ -594,6 +597,7 @@ export function AdminDevicesPage() {
   const retryCreatedSourceDevice = async () => {
     if (busy || !createdSourceDevice) return;
     if (createdSourceDevice.source_kind === "lorawan_v2") { await submit(); return; }
+    if (!await confirmManualSync({reason:"recovery",title:"重试设备同步？",scope:"设备已在源端创建，本次只重新同步至平台，不重复创建设备。"})) return;
     const dataSourceID = String(createdSourceDevice.data_source_id ?? "").trim();
     const sourceDeviceID = Number(createdSourceDevice.source_device_id);
     const sourceKind = String(createdSourceDevice.source_kind ?? "").trim();
@@ -698,7 +702,13 @@ export function AdminDevicesPage() {
     </>
   );
 
-  const categoryTabs=<Tabs activeKey={category} onChange={setCategory} items={adminDeviceCategories.map(item=>({key:item.key,label:<Space size={8}><span>{item.label}</span>{item.key!=="node_v2"&&query.data&&<Tag color={category===item.key?"blue":undefined}>{counts[item.key as keyof typeof counts]}</Tag>}</Space>}))}/>;
+  const network = ["gateway","lorawan_v2","node_v2"].includes(category);
+  const categoryTabs=<><Tabs activeKey={network?"network":category} onChange={key=>setCategory(key==="network"?"gateway":key)} items={[
+    {key:"standalone",label:"标准站"},{key:"network",label:"组网站"},{key:"carbon_sink",label:"碳汇站"},{key:"camera",label:"视频站"},
+  ]}/>{network&&<Tabs size="small" activeKey={category} onChange={setCategory} items={[
+    {key:"gateway",label:"THCPN 组网"},{key:"lorawan_v2",label:"LoRaWAN V2 网关"},{key:"node_v2",label:"LoRaWAN V2 节点"},
+  ]}/>}</>;
+
   if(!deviceId&&category==="node_v2")return <><PageHeader eyebrow="System / devices" title="设备列表" description="按设备体系分类维护资产与节点。"/><Card>{categoryTabs}<LoRaWANNodeInventory/></Card></>;
   if (deviceId) {
     const device = allRows.find((item) => value(item.id, "") === deviceId);
@@ -732,7 +742,7 @@ export function AdminDevicesPage() {
               { value: "gateway", label: "THCPN 组网站网关" },
               { value: "lorawan_v2", label: "LoRa V2 网关" },
               { value: "carbon_sink", label: "碳汇站" },
-              { value: "camera", label: "监控站" },
+              { value: "camera", label: "视频站" },
             ]}
           />
           <Select
@@ -997,12 +1007,12 @@ function DeviceDetailPanel({
     </section>
   </div>;
   const deviceControls = <div className="admin-device-detail-content">
-    {isCamera ? <section className="admin-detail-section"><div className="admin-detail-section-head"><div><h2>监控站视频绑定</h2><span>管理当前监控站的萤石云通道和清晰度</span></div><Button onClick={() => onOpen("camera-edit")}>编辑绑定</Button></div></section> : null}
+    {isCamera ? <section className="admin-detail-section"><div className="admin-detail-section-head"><div><h2>视频站视频绑定</h2><span>管理当前视频站的萤石云通道和清晰度</span></div><Button onClick={() => onOpen("camera-edit")}>编辑绑定</Button></div></section> : null}
     {!isCamera&&<section className="admin-detail-section">
       <div className="admin-detail-section-head">
         <div><h2>设备维护</h2><span>配置、校准与固件升级</span></div>
         <Space>
-          {!isCamera&&<Button onClick={()=>Modal.confirm({title:"同步平台配置？",content:"读取源端最新配置并更新平台数据指标，不重新向设备下发配置。",onOk:async()=>{await api.admin.reconcileDeviceConfig(String(device.id));await nodeQueryClient.invalidateQueries({predicate:query=>query.queryKey.includes("admin")&&query.queryKey.includes(String(device.id))});}})}>同步平台配置</Button>}
+          {!isCamera&&<Button onClick={async()=>{if(!await confirmManualSync({title:"同步平台配置？",scope:"读取源端最新配置并更新平台数据指标，不重新向设备下发配置。"}))return;try{await api.admin.reconcileDeviceConfig(String(device.id));await nodeQueryClient.invalidateQueries({predicate:query=>query.queryKey.includes("admin")&&query.queryKey.includes(String(device.id))});}catch(error){Modal.error({title:"同步失败",content:formatApiError(error).message});}}}>同步平台配置</Button>}
           {capabilities.includes("calibratable") ? <Button onClick={() => onOpen("calibration")}>设备校准</Button> : null}
           {capabilities.includes("firmware_update") ? <Button onClick={() => onOpen("firmware")}>固件升级</Button> : null}
         </Space>
@@ -1077,8 +1087,8 @@ function DeviceDetailPanel({
     </section>
   </div>;
   return <Card className="admin-device-detail"><Tabs className="admin-device-detail-tabs" activeKey={activeTab} onChange={setActiveTab} items={[
-    { key: "overview", label: "设备信息", children: <>{overview}{!isCamera&&device.source_family!=="lorawan_v2"&&!isCarbon&&runtime}</> },
-    { key: "installation", label: "安装资料", children: <AdminDeviceInstallation device={device}/> },
+    { key: "overview", label: "设备信息", children: <>{device.source_family==="lorawan_v2"&&device.device_type==="gateway"&&<LoRaGatewayStatus deviceId={String(device.id)}/>} {overview}{device.source_family==="lorawan_v2"&&device.device_type==="gateway"&&<LoRaWANGatewayDetailsEditor deviceId={String(device.id)}/>}{!isCamera&&device.source_family!=="lorawan_v2"&&!isCarbon&&runtime}</> },
+    { key: "installation", label: "安装档案", children: <AdminDeviceInstallation device={device}/> },
     ...(device.device_type==="gateway" ? [{ key:"nodes",label:"节点管理",children:<AdminDeviceNodes device={device} onData={openData} onConfig={(index,kind)=>setDetailParams({tab:"configuration",node_index:String(index),config_tab:kind??"sensor",node:`gateway:${device.id}:node:${index}`})} onTopology={device.source_family!=="lorawan_v2"?()=>onOpen("child"):undefined}/> }] : []),
     ...(isCarbon ? [{key:"carbon",label:"节点与状态",children:carbonManagement}] : []),
     { key: "data", destroyOnHidden:isCamera, label: isCamera?"视频预览":"数据查看", children: isCamera?<AdminDeviceCamera deviceId={String(device.id)} onEdit={()=>onOpen("camera-edit")}/>:isCarbon?<AdminDeviceCarbon deviceId={String(device.id)} onExport={()=>setActiveTab("exports")}/>:<AdminDeviceData device={device} nodeKey={dataNodeKey} onNodeChange={setDataNodeKey} onExport={()=>setActiveTab("exports")}/> },
@@ -1137,11 +1147,12 @@ function columns() {
           <div className="cell-sub mono">
             {value(row.serial_no, value(row.id))}
           </div>
+          {Array.isArray(row.ops_tags)&&<Space size={[4,4]} wrap>{row.ops_tags.map((tag:string)=><Tag key={tag}>{tag}</Tag>)}</Space>}
         </div>
       ),
     },
     {
-      title: "类型 / 拓扑",
+      title: "产品 / 接入",
       width: 130,
       render: (_: unknown, row: JsonRecord) => (
         <div>
@@ -1264,7 +1275,7 @@ function DeviceForm({
           <Input maxLength={20} placeholder="请输入物联卡 ICCID" />
         </Form.Item>
         <div className="drawer-grid">
-          <Form.Item name="device_type" label="设备类型">
+          <Form.Item name="device_type" label="产品分类">
             <Select
               options={["standalone", "gateway", "gateway_node", "camera", "carbon_sink"].map(
                 (item) => ({
@@ -1673,6 +1684,7 @@ function ConfigApplyResult({
   const writeState = response.write_state as JsonRecord | undefined;
   const needsRecovery = Boolean(writeState && writeState.platform !== "synced" && !recovered);
   const recover = async () => {
+    if (!await confirmManualSync({reason:"recovery",title:"恢复平台同步？",scope:"重新读取源端配置并恢复平台指标绑定，不重复下发配置。"})) return;
     setRecovering(true);
     setRecoveryError("");
     try { await api.admin.reconcileDeviceConfig(String(response.device_id)); setRecovered(true); }
@@ -1823,7 +1835,7 @@ function DeviceCreateForm({
             { value: "thcpn_node", label: "节点" },
             { value: "carbon", label: "碳汇站" },
             { value: "lorawan_v2", label: "LoRa V2 网关" },
-            { value: "camera", label: "监控站" },
+            { value: "camera", label: "视频站" },
           ]}
         />
       </Form.Item>
@@ -1919,7 +1931,7 @@ function CameraCreateFields({ form }: { form: FormInstance<any> }) {
   }));
   return (
     <>
-      <Form.Item name="name" label="监控站名称" rules={[{ required: true }]}>
+      <Form.Item name="name" label="视频站名称" rules={[{ required: true }]}>
         <Input />
       </Form.Item>
       <Form.Item
@@ -2016,7 +2028,7 @@ function CameraBindingFields({ editing = false }: { editing?: boolean }) {
 
 function drawerTitle(mode: Mode, selected: JsonRecord | null) {
   if (mode === "create-device") return "创建设备";
-  if (mode === "camera" && !selected) return "创建监控站";
+  if (mode === "camera" && !selected) return "创建视频站";
   const name = value(selected?.name, "设备");
   return (
     (
@@ -2029,8 +2041,8 @@ function drawerTitle(mode: Mode, selected: JsonRecord | null) {
         config: "设备完整配置",
         calibration: "设备校准",
         firmware: "固件升级",
-        camera: "创建监控站",
-        "camera-edit": "编辑监控站视频绑定",
+        camera: "创建视频站",
+        "camera-edit": "编辑视频站视频绑定",
       } as Record<string, string>
     )[mode ?? ""] + ` · ${name}`
   );

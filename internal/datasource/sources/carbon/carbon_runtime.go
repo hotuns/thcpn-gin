@@ -11,6 +11,7 @@ import (
 	"thcpn-gin/internal/apperr"
 	platform "thcpn-gin/internal/datasource/platform"
 	"thcpn-gin/internal/nodeprofile"
+	"thcpn-gin/internal/observation"
 	"time"
 
 	"github.com/google/uuid"
@@ -151,6 +152,20 @@ func (s *Service) CarbonOverview(ctx context.Context, deviceID uuid.UUID) (Carbo
 	for nodeID := 1; nodeID <= nodesCount; nodeID++ {
 		sample := latestSamples[nodeID]
 		flux := latestFlux[nodeID]
+		if observation.Phase(ctx) == observation.Formal {
+			cutoff, e := (observation.Service{DB: s.DB}).DeviceStart(ctx, deviceID, nodeID)
+			if e != nil {
+				return CarbonOverview{}, e
+			}
+			if cutoff != nil {
+				if sample != nil && sample.Before(*cutoff) {
+					sample = nil
+				}
+				if flux != nil && flux.Before(*cutoff) {
+					flux = nil
+				}
+			}
+		}
 		status := carbonNodeDataStatus(sample)
 		nodes = append(nodes, CarbonNodeStatus{Name: nodeprofile.Label(names[nodeID], nodeID), CustomName: names[nodeID], NodeID: nodeID, Status: status, LatestSampleAt: sample, LatestFluxAt: flux})
 		overallSample = laterCarbonTime(overallSample, sample)
@@ -171,6 +186,9 @@ func carbonOverallStatus(nodes []CarbonNodeStatus) string {
 	return "no_data"
 }
 func (s *Service) CarbonFlux(ctx context.Context, deviceID uuid.UUID, nodeID int, field string, start, end time.Time) (CarbonFluxResponse, error) {
+	if !end.After(start) {
+		return CarbonFluxResponse{}, apperr.New(apperr.KindInvalidArgument, "end must be after start")
+	}
 	if nodeID <= 0 || strings.TrimSpace(field) == "" {
 		return CarbonFluxResponse{}, apperr.New(apperr.KindInvalidArgument, "node_id and field are required")
 	}
@@ -179,6 +197,15 @@ func (s *Service) CarbonFlux(ctx context.Context, deviceID uuid.UUID, nodeID int
 	}
 	if err := s.ValidateDeviceHistory(ctx, deviceID, start); err != nil {
 		return CarbonFluxResponse{}, err
+	}
+	var windowErr error
+	var include bool
+	start, end, include, windowErr = (observation.Service{DB: s.DB}).DeviceWindow(ctx, deviceID, nodeID, start, end)
+	if windowErr != nil {
+		return CarbonFluxResponse{}, windowErr
+	}
+	if !include {
+		return CarbonFluxResponse{DeviceID: deviceID, NodeID: nodeID, Field: field, Start: start, End: end, Points: []CarbonFluxPoint{}}, nil
 	}
 	ref, db, err := s.openCarbonDeviceSource(ctx, deviceID)
 	if err != nil {
@@ -195,11 +222,23 @@ func (s *Service) CarbonFlux(ctx context.Context, deviceID uuid.UUID, nodeID int
 	return CarbonFluxResponse{DeviceID: deviceID, NodeID: nodeID, Field: field, Start: start, End: end, Points: points}, nil
 }
 func (s *Service) CarbonPeriods(ctx context.Context, deviceID uuid.UUID, nodeID int, start, end time.Time) ([]CarbonPeriodSummary, error) {
+	if !end.After(start) || nodeID <= 0 {
+		return nil, apperr.New(apperr.KindInvalidArgument, "node_id and valid time range are required")
+	}
 	if err := s.ValidateDeviceHistory(ctx, deviceID, start); err != nil {
 		return nil, err
 	}
 	if nodeID <= 0 || !end.After(start) {
 		return nil, apperr.New(apperr.KindInvalidArgument, "node_id and valid time range are required")
+	}
+	var windowErr error
+	var include bool
+	start, end, include, windowErr = (observation.Service{DB: s.DB}).DeviceWindow(ctx, deviceID, nodeID, start, end)
+	if windowErr != nil {
+		return nil, windowErr
+	}
+	if !include {
+		return []CarbonPeriodSummary{}, nil
 	}
 	ref, db, err := s.openCarbonDeviceSource(ctx, deviceID)
 	if err != nil {
@@ -240,6 +279,11 @@ func (s *Service) CarbonPeriod(ctx context.Context, deviceID uuid.UUID, nodeID i
 	}
 	if err := s.ValidateDeviceHistory(ctx, deviceID, periodAt); err != nil {
 		return CarbonPeriodDetail{}, err
+	}
+	if _, _, ok, e := (observation.Service{DB: s.DB}).DeviceWindow(ctx, deviceID, nodeID, periodAt, periodAt.Add(time.Nanosecond)); e != nil {
+		return CarbonPeriodDetail{}, e
+	} else if !ok {
+		return CarbonPeriodDetail{}, apperr.New(apperr.KindNotFound, "period is outside the selected observation phase")
 	}
 	months := carbonMonthNames(periodAt.AddDate(0, -1, 0), periodAt.AddDate(0, 1, 0))
 	dataTables, err := carbonExistingTables(ctx, db, "device_data_next", months)

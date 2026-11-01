@@ -3,9 +3,12 @@ package media
 import (
 	"context"
 	"errors"
+	"math"
 	"net/url"
 	"sort"
 	"strings"
+	"thcpn-gin/internal/observation"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/google/uuid"
@@ -129,14 +132,17 @@ func NewService(db *pgxpool.Pool, dataSources *datasource.Service, runtime Runti
 }
 
 func (s *Service) List(ctx context.Context, input QueryInput) (ListResult, error) {
+	if input.Administrative {
+		ctx = observation.AdminContext(ctx)
+	}
 	if input.DeviceID == nil && input.DataStreamID == nil {
 		return ListResult{}, apperr.New(apperr.KindInvalidArgument, "device_id or data_stream_id is required")
 	}
-	page, pageSize, err := normalizePage(input.Page, input.PageSize, s.limits)
+	page, pageSize, err := normalizePage(input.Page, input.PageSize, systemsettings.Query(ctx, s.limits, "media_days"))
 	if err != nil {
 		return ListResult{}, err
 	}
-	if err := validateTimeRange(input.StartTime, input.EndTime, s.limits); err != nil {
+	if err := validateTimeRange(input.StartTime, input.EndTime, systemsettings.Query(ctx, s.limits, "media_days")); err != nil {
 		return ListResult{}, err
 	}
 	if input.DataStreamID != nil {
@@ -302,7 +308,7 @@ func (s *Service) listDevice(ctx context.Context, deviceID uuid.UUID, mediaType 
 		if mediaType != "" && stream.Type != mediaType {
 			continue
 		}
-		result, err := s.queryStream(ctx, stream, start, end, 1, s.limits.MaxMediaPageSize, downloadAllowed, deleteAllowed)
+		result, err := s.queryStream(ctx, stream, start, end, 1, systemsettings.Int(ctx, "media_page_size", s.limits.MaxMediaPageSize), downloadAllowed, deleteAllowed)
 		if err != nil {
 			return ListResult{}, err
 		}
@@ -558,7 +564,7 @@ func normalizePage(page int, pageSize int, limits config.QueryLimitsConfig) (int
 		return 0, 0, apperr.New(apperr.KindInvalidArgument, "page_size must be greater than 0")
 	}
 	if pageSize > limits.MaxMediaPageSize {
-		return 0, 0, apperr.New(apperr.KindInvalidArgument, "page_size exceeds max_media_page_size")
+		return 0, 0, apperr.LimitExceeded("media_page_size", int64(limits.MaxMediaPageSize), int64(pageSize), "images")
 	}
 	return page, pageSize, nil
 }
@@ -576,7 +582,7 @@ func validateTimeRange(start time.Time, end time.Time, limits config.QueryLimits
 	}
 	maxRange := time.Duration(limits.MaxHistoryDays) * 24 * time.Hour
 	if end.Sub(start) > maxRange {
-		return apperr.New(apperr.KindInvalidArgument, "time range exceeds max_history_days")
+		return apperr.LimitExceeded("media_days", int64(limits.MaxHistoryDays), int64(math.Ceil(end.Sub(start).Hours()/24)), "days")
 	}
 	return nil
 }

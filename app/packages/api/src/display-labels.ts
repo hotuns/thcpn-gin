@@ -11,11 +11,8 @@ export const deviceStatusOptions = [
 ] as const;
 
 export const deviceLifecycleOptions = [
-  { value: "inbound", label: "待入库" },
-  { value: "installed", label: "已安装" },
-  { value: "online", label: "在线运行" },
-  { value: "maintenance", label: "维护中" },
-  { value: "repairing", label: "维修中" },
+  { value: "inbound", label: "待安装" },
+  { value: "online", label: "运行中" },
   { value: "retired", label: "已退役" },
 ] as const;
 
@@ -23,7 +20,7 @@ const topologyRoleLabels = {
   standalone: { zh: "标准站", en: "Station" },
   gateway: { zh: "网关", en: "Gateway" },
   gateway_node: { zh: "网关节点", en: "Gateway node" },
-  camera: { zh: "监控站", en: "Monitoring station" },
+  camera: { zh: "视频站", en: "Video station" },
   carbon_sink: { zh: "碳汇站", en: "Carbon sink station" },
 };
 
@@ -75,7 +72,7 @@ export const deviceStatusLabel = (value?: string) =>
   label({ active: { zh: "启用", en: "Enabled" }, disabled: { zh: "停用", en: "Disabled" }, retired: { zh: "已退役", en: "Retired" } }, value);
 
 export const deviceLifecycleLabel = (value?: string) =>
-  label({ inbound: { zh: "待入库", en: "Pending intake" }, installed: { zh: "已安装", en: "Installed" }, online: { zh: "在线运行", en: "Online" }, maintenance: { zh: "维护中", en: "Maintenance" }, repairing: { zh: "维修中", en: "Repairing" }, retired: { zh: "已退役", en: "Retired" } }, value);
+  label({ inbound: { zh: "待安装", en: "Pending installation" }, installed: { zh: "已安装", en: "Installed" }, online: { zh: "运行中", en: "In service" }, maintenance: { zh: "维护中", en: "Maintenance" }, repairing: { zh: "维修中", en: "Repairing" }, retired: { zh: "已退役", en: "Retired" } }, value);
 
 export const deviceTopologyRoleLabel = (value?: string) =>
   label(topologyRoleLabels, value);

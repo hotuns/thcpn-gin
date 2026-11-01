@@ -1,3 +1,4 @@
+import { policyLimit } from "./system-policy";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useInfiniteQuery,
@@ -195,7 +196,7 @@ function DeviceImageGroup({
         start_time: new Date(startTime).toISOString(),
         end_time: new Date(endTime).toISOString(),
         page: pageParam,
-        page_size: 24,
+        page_size: Math.min(24,policyLimit("media_page_size",100)),
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>

@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"thcpn-gin/internal/accessgrant"
@@ -85,12 +86,10 @@ func run() int {
 	dataSourceService := datasource.NewService(pg, objectstore.NewStore(cfg.ObjectStore))
 	dataSourceService.SetSyncClaimEnsurer(deviceclaim.NewService(pg, cfg.Auth.JWTSecret))
 	computedStreamService := computedstream.NewService(pg)
-	telemetryService := telemetry.NewService(pg, dataSourceService, datasource.NewRuntime(nil), cfg.QueryLimits, computedStreamService)
-	var billingService *billing.Service
-	if cfg.Billing.Enabled {
-		const gb int64 = 1024 * 1024 * 1024
-		billingService = billing.NewService(pg, billing.Policy{ProfessionalAnnualPriceCents: cfg.Billing.ProfessionalAnnualPriceCents, ProfessionalDefaultMonths: cfg.Billing.ProfessionalDefaultMonths, BaseHistoryDays: cfg.Billing.BaseHistoryDays, BaseExportDays: cfg.Billing.BaseExportDays, MonthlyDownloadLimitBytes: cfg.Billing.MonthlyDownloadLimitGB * gb, TrafficPackSizeBytes: cfg.Billing.TrafficPackSizeGB * gb, TrafficPackPriceCents: cfg.Billing.TrafficPackPriceCents, ExpiryNoticeDays: cfg.Billing.ExpiryNoticeDays, DownloadUsageWarningPercentages: cfg.Billing.DownloadUsageWarningPercentages})
-	}
+	telemetryService := telemetry.NewService(pg, dataSourceService, datasource.NewRuntime(nil, pg), cfg.QueryLimits, computedStreamService)
+	const gb int64 = 1024 * 1024 * 1024
+	billingService := billing.NewService(pg, billing.Policy{ProfessionalAnnualPriceCents: cfg.Billing.ProfessionalAnnualPriceCents, ProfessionalDefaultMonths: cfg.Billing.ProfessionalDefaultMonths, BaseHistoryDays: cfg.Billing.BaseHistoryDays, BaseExportDays: cfg.Billing.BaseExportDays, MonthlyDownloadLimitBytes: cfg.Billing.MonthlyDownloadLimitGB * gb, TrafficPackSizeBytes: cfg.Billing.TrafficPackSizeGB * gb, TrafficPackPriceCents: cfg.Billing.TrafficPackPriceCents, ExpiryNoticeDays: cfg.Billing.ExpiryNoticeDays, DownloadUsageWarningPercentages: cfg.Billing.DownloadUsageWarningPercentages})
+	billingService.SetSettings(systemsettings.New(pg, cfg), cfg.Billing.Enabled)
 	var alertGate alerting.ProfessionalGate
 	if billingService != nil {
 		alertGate = billingService
@@ -99,15 +98,16 @@ func run() int {
 	processor := export.NewProcessor(
 		pg,
 		dataSourceService,
-		datasource.NewRuntime(nil),
+		datasource.NewRuntime(nil, pg),
 		objectstore.NewStore(cfg.ObjectStore),
 		cfg.Export,
 		log,
 		telemetryService,
 	)
+	processor.SetSettings(systemsettings.New(pg, cfg))
 	accessGrantService := accessgrant.NewService(pg)
 	processorClient := processing.NewClient(cfg.Processing.ProcessorURL)
-	processingEngine := processing.NewEngine(pg, processorClient, media.NewService(pg, dataSourceService, datasource.NewRuntime(nil), objectstore.NewSigner(cfg.ObjectStore, cfg.Auth.JWTSecret), cfg.QueryLimits, objectstore.NewStore(cfg.ObjectStore)), objectstore.NewStore(cfg.ObjectStore))
+	processingEngine := processing.NewEngine(pg, processorClient, media.NewService(pg, dataSourceService, datasource.NewRuntime(nil, pg), objectstore.NewSigner(cfg.ObjectStore, cfg.Auth.JWTSecret), cfg.QueryLimits, objectstore.NewStore(cfg.ObjectStore)), objectstore.NewStore(cfg.ObjectStore))
 
 	if envBool("WORKER_RUN_ONCE") {
 		if err := processor.RecoverInterrupted(ctx); err != nil {

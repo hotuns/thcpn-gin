@@ -1,3 +1,4 @@
+import { useSystemPolicy, policyLimit } from "./system-policy";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
@@ -7,7 +8,7 @@ import { useAuth } from "@thcpn/auth";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, CheckboxInput, Input, PageHeader, Panel, SelectInput, StateView, Table, Tabs, TabsList, TabsTrigger } from "./platform-ui";
 import { AccessControlTab } from "./access-control";
-import { billingEnabled, simplifiedEnabled } from "./features";
+import { simplifiedEnabled } from "./features";
 
 const text = (value: unknown, fallback = "—") =>
   value === undefined || value === null || value === ""
@@ -16,6 +17,7 @@ const text = (value: unknown, fallback = "—") =>
 const resourceKindLabel = (kind: "Project" | "Site") =>
   kind === "Project" ? "项目" : "样地";
 export function SettingsPage() {
+ const billingEnabled=!simplifiedEnabled&&useSystemPolicy().data?.billing_enabled;
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const tab = params.get("tab") ?? "resources";
@@ -222,7 +224,7 @@ function WorkspaceNameDialog({ name: initialName, onClose, onSave }: { name: str
   const [busy, setBusy] = useState(false);
   useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === "Escape" && !busy) onClose(); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [busy, onClose]);
   const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await onSave(name.trim()); } finally { setBusy(false); } };
-  return <div className="resource-dialog-layer"><button type="button" className="resource-dialog-backdrop" aria-label="关闭组织名称编辑" onClick={() => !busy && onClose()} /><div className="resource-dialog-shell" role="dialog" aria-modal="true"><Panel className="resource-dialog"><div className="panel-header"><h2 className="panel-title">编辑组织名称</h2><Button variant="secondary" onClick={onClose} disabled={busy}><X size={14} />关闭</Button></div><form className="resource-dialog-form" onSubmit={submit}><label className="field"><span className="field-label">名称</span><Input autoFocus required maxLength={120} value={name} onChange={(event) => setName(event.target.value)} /></label><div className="form-actions"><Button type="button" variant="secondary" onClick={onClose}>取消</Button><Button type="submit" disabled={busy || !name.trim()}>{busy ? "保存中…" : "保存"}</Button></div></form></Panel></div></div>;
+  return <div className="resource-dialog-layer"><button type="button" className="resource-dialog-backdrop" aria-label="关闭组织名称编辑" onClick={() => !busy && onClose()} /><div className="resource-dialog-shell" role="dialog" aria-modal="true"><Panel className="resource-dialog"><div className="panel-header"><h2 className="panel-title">编辑组织名称</h2><Button variant="secondary" onClick={onClose} disabled={busy}><X size={14} />关闭</Button></div><form className="resource-dialog-form" onSubmit={submit}><label className="field"><span className="field-label">名称</span><Input autoFocus required maxLength={policyLimit("workspace_name",120)} value={name} onChange={(event) => setName(event.target.value)} /></label><div className="form-actions"><Button type="button" variant="secondary" onClick={onClose}>取消</Button><Button type="submit" disabled={busy || !name.trim()}>{busy ? "保存中…" : "保存"}</Button></div></form></Panel></div></div>;
 }
 
 function ResourceRows({

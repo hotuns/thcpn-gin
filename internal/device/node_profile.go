@@ -92,7 +92,7 @@ func (h *Handler) saveNodeName(c *gin.Context, id uuid.UUID, index int, name str
 // RenameNode writes only platform metadata. Index zero denotes an existing THCPN
 // node device; positive indexes identify LoRa or carbon nodes, never devices.
 func (s *Service) RenameNode(ctx context.Context, id uuid.UUID, index int, raw string, entry audit.RecordInput) (string, error) {
-	name, err := nodeprofile.Normalize(raw)
+	name, err := nodeprofile.Normalize(raw, ctx)
 	if err != nil {
 		return "", err
 	}

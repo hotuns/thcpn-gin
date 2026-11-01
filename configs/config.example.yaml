@@ -30,7 +30,7 @@ auth:
   dev_register_enabled: true
   password:
     min_length: 8
-    max_length: 128
+    max_length: 72
     failed_attempt_limit: 5
     lock_minutes: 15
 

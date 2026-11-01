@@ -25,6 +25,7 @@ type Service struct {
 }
 
 type Device struct {
+	Tags                []string   `json:"tags,omitempty"`
 	ICCID               *string    `json:"iccid,omitempty"`
 	SourceFamily        string     `json:"source_family,omitempty"`
 	SourceStatus        string     `json:"source_status,omitempty"`
@@ -240,6 +241,7 @@ type UnbindInput struct {
 }
 
 type UpdateLifecycleInput struct {
+	Administrator   bool
 	DeviceID        uuid.UUID
 	LifecycleStatus string
 	OccurredAt      *time.Time
@@ -647,15 +649,24 @@ func (s *Service) UpdateLifecycle(ctx context.Context, input UpdateLifecycleInpu
 	if err != nil {
 		return DeviceLifecycle{}, mapWriteError(err, "update device lifecycle")
 	}
+	var actorUserID *uuid.UUID
+	if !input.Administrator {
+		actorUserID = &input.ActorUserID
+	}
 	if _, err := q.CreateDeviceLifecycleEvent(ctx, sqlc.CreateDeviceLifecycleEventParams{
 		DeviceID:    input.DeviceID,
 		FromStatus:  nullableTrimmedString(fromStatus),
 		ToStatus:    lifecycleStatus,
 		OccurredAt:  pgtype.Timestamptz{Time: occurredAt, Valid: true},
 		Note:        nullableTrimmedString(input.Note),
-		ActorUserID: &input.ActorUserID,
+		ActorUserID: actorUserID,
 	}); err != nil {
 		return DeviceLifecycle{}, mapWriteError(err, "create device lifecycle event")
+	}
+	if lifecycleStatus == "retired" {
+		if _, err := tx.Exec(ctx, `INSERT INTO device_installation_records(device_id,retired_on,retirement_reason) VALUES($1,$2,$3) ON CONFLICT(device_id) DO UPDATE SET retired_on=EXCLUDED.retired_on,retirement_reason=EXCLUDED.retirement_reason,updated_at=now()`, input.DeviceID, occurredAt.In(time.FixedZone("Asia/Shanghai", 8*60*60)).Format("2006-01-02"), input.Note); err != nil {
+			return DeviceLifecycle{}, err
+		}
 	}
 	capabilities, err := q.ListDeviceCapabilities(ctx, input.DeviceID)
 	if err != nil {
@@ -1114,7 +1125,7 @@ func (s *Service) AdminUpdate(ctx context.Context, input AdminUpdateInput) (Devi
 	if input.Name != nil {
 		name = strings.TrimSpace(*input.Name)
 		if current.DeviceType == "gateway_node" {
-			name, err = nodeprofile.Normalize(*input.Name)
+			name, err = nodeprofile.Normalize(*input.Name, ctx)
 			if err != nil {
 				return Device{}, err
 			}
@@ -1587,7 +1598,7 @@ func isValidDeviceType(value string) bool {
 
 func isValidDeviceLifecycleStatus(status string) bool {
 	switch status {
-	case "inbound", "installed", "online", "maintenance", "repairing", "retired":
+	case "inbound", "online", "retired":
 		return true
 	default:
 		return false

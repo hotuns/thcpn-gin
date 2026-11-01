@@ -16,6 +16,7 @@ export function AdminExportsPage({ device }: {device?:JsonRecord}) {
   const [range,setRange]=useState<[Dayjs,Dayjs]|null>(recentRange);
   const [format,setFormat]=useState<OpsExportOptions["format"]>("zip");
   const [includeData,setIncludeData]=useState(true);
+  const [phase,setPhase]=useState("all");
   const [includeImages,setIncludeImages]=useState(true);
   const [nodeKeys,setNodeKeys]=useState<string[]|null>(null);
   const [carbonNodes,setCarbonNodes]=useState<number[]|null>(null);
@@ -53,7 +54,7 @@ export function AdminExportsPage({ device }: {device?:JsonRecord}) {
     try {
       if(!selected||!range) throw new Error("请选择设备和时间范围");
       const payload=operationsExportPayload(selected,{start:range[0].toISOString(),end:range[1].toISOString(),format,data:includeData,images:includeImages,nodes:nodeOptions.filter(node=>keys.includes(node.key)),carbonNodes:selectedCarbon,fields});
-      await api.admin.createExport(payload);setOpen(false);void message.success("导出任务已创建，可在后台下载");await jobs.refetch();
+      await api.admin.createExport({...payload,request_config:{...(payload.request_config as JsonRecord),data_phase:phase}});setOpen(false);void message.success("导出任务已创建，可在后台下载");await jobs.refetch();
     }catch(err){setError(formatApiError(err).message);}finally{setBusy(false);}
   };
   const download=async(job:ExportJob)=>{
@@ -74,6 +75,7 @@ export function AdminExportsPage({ device }: {device?:JsonRecord}) {
       <Form layout="vertical">
         <Alert type="info" title="仅后台可见" description="本任务不归属用户或工作区，用户端无法查看或下载。" style={{marginBottom:16}}/>
         {error&&<Alert type="error" title={error} style={{marginBottom:16}}/>}
+        <Form.Item label="数据阶段"><Select value={phase} onChange={setPhase} options={[{value:"all",label:"全部数据"},{value:"formal",label:"正式观测数据"},{value:"testing",label:"调试数据"}]}/></Form.Item>
         <Form.Item label="设备" required><Select showSearch optionFilterProp="label" value={deviceId||undefined} disabled={!!device} onChange={setDeviceId} options={(devices.data?.items??(device?[device]:[])).map(item=>({value:String(item.id),label:`${item.name} · ${item.serial_no}`}))}/></Form.Item>
         <Form.Item label="时间范围（北京时间）" required><DatePicker.RangePicker showTime value={range} onChange={value=>setRange(value&&value[0]&&value[1]?[value[0],value[1]]:null)} style={{width:"100%"}} presets={[{label:"最近 6 小时",value:[dayjs().subtract(6,"hour"),dayjs()]},{label:"最近 3 天",value:[dayjs().subtract(3,"day"),dayjs()]},{label:"最近 7 天",value:recentRange()}]}/></Form.Item>
         {!carbon&&<Form.Item label="文件类型"><Radio.Group value={format} onChange={event=>setFormat(event.target.value)} options={[...(["standalone","gateway"].includes(String(selected?.device_type))?[{value:"zip",label:"设备数据 / 图片 ZIP"}]:[]),{value:"telemetry_excel",label:"全部指标 Excel"},{value:"telemetry_csv",label:"全部指标 CSV"},...(!lora?[{value:"media_zip",label:"图片 ZIP"}]:[])]}/></Form.Item>}

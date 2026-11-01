@@ -1,3 +1,4 @@
+import { policyLimit } from "./system-policy";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useQueries, useQuery } from "@tanstack/react-query";
@@ -153,8 +154,8 @@ export function AtlasDevice({
           startTime: range.start,
           endTime: range.end,
           adaptive: true,
-          targetPoints: 300,
-          limit: 5000,
+          targetPoints: Math.min(300,policyLimit("query_points",5000)),
+          limit: Math.min(5000,policyLimit("query_points",5000)),
         }),
       staleTime: 60000,
       retry: false,

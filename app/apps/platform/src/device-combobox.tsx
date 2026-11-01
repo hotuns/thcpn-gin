@@ -22,7 +22,7 @@ const categories: Array<{ id: DeviceOptionCategory; label: string }> = [
   { id: "standalone", label: "标准站" },
   { id: "gateway", label: "组网站" },
   { id: "carbon_sink", label: "碳汇站" },
-  { id: "camera", label: "监控站" },
+  { id: "camera", label: "视频站" },
 ];
 
 const categoryOrder = categories.slice(1).map((item) => item.id);
@@ -72,14 +72,9 @@ export function DeviceCombobox({
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [category, setCategory] = useState<DeviceOptionCategory>("all");
-  const mapQuery = useQuery({
-    queryKey: workspaceQueryKey(currentId, "device-map", "true"),
-    queryFn: () => api.devices.map(currentId!, true),
-    enabled: Boolean(currentId && open),
-  });
   const tagsByDevice = useMemo(
-    () => new Map((mapQuery.data?.items ?? []).map((item) => [item.device_id, item.environment.research_tags])),
-    [mapQuery.data?.items],
+    () => new Map(devices.map((item) => [item.id, item.tags ?? []])),
+    [devices],
   );
   const gateways = useMemo(
     () => devices.filter((item) => deviceOptionCategory(item) === "gateway"),

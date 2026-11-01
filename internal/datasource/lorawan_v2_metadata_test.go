@@ -64,6 +64,14 @@ func TestLoRaWANV2MetadataReadPermissionsAndContracts(t *testing.T) {
 	must(`INSERT INTO workspace_members(workspace_id,user_id,role_id,scope_id,template_code) SELECT $1,$2,id,$1,'owner' FROM roles WHERE code='owner' AND workspace_id IS NULL LIMIT 1`, workspace, owner)
 	must(`INSERT INTO workspace_member_permissions(member_id,permission_id) SELECT wm.id,rp.permission_id FROM workspace_members wm JOIN role_permissions rp ON rp.role_id=wm.role_id WHERE wm.workspace_id=$1`, workspace)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/device/GW/connection" {
+			fmt.Fprint(w, `{"success":true,"payload":{"gateway_sn":"GW","state":"online","checked_at":"2026-11-01T08:00:00Z","provider":"aliyun","client_id":"GW","last_received_at":null,"last_collected_at":null}}`)
+			return
+		}
+		if r.URL.Path == "/device/GW/activity" {
+			fmt.Fprint(w, `{"success":true,"payload":{"gateway_sn":"GW","last_received_at":null,"last_collected_at":null}}`)
+			return
+		}
 		if r.URL.Path == "/device/GW/info" {
 			if r.URL.RawQuery != "" {
 				t.Error("latest info request must not use history pagination or a time window")
@@ -90,6 +98,8 @@ func TestLoRaWANV2MetadataReadPermissionsAndContracts(t *testing.T) {
 		r.Use(func(c *gin.Context) { auth.SetActorContext(c, auth.Actor{UserID: actor}); c.Next() })
 		r.GET("/devices/:device_id/nodes/:node_index/time-config", h.DeviceLoRaWANV2TimeConfig)
 		r.GET("/devices/:device_id/lorawan-v2/info", h.DeviceLoRaWANV2Info)
+		r.GET("/devices/:device_id/lorawan-v2/connection", h.DeviceLoRaWANV2Connection)
+		r.GET("/devices/:device_id/lorawan-v2/activity", h.DeviceLoRaWANV2Activity)
 		response := httptest.NewRecorder()
 		r.ServeHTTP(response, httptest.NewRequest("GET", path, bytes.NewReader(nil)))
 		return response
@@ -99,7 +109,7 @@ func TestLoRaWANV2MetadataReadPermissionsAndContracts(t *testing.T) {
 		actor  uuid.UUID
 		path   string
 		status int
-	}{{owner, prefix + "/nodes/2/time-config", 200}, {outsider, prefix + "/nodes/2/time-config", 403}, {owner, prefix + "/nodes/255/time-config", 400}, {owner, prefix + "/lorawan-v2/info", 200}, {outsider, prefix + "/lorawan-v2/info", 403}} {
+	}{{owner, prefix + "/lorawan-v2/connection", 200}, {outsider, prefix + "/lorawan-v2/connection", 403}, {owner, prefix + "/lorawan-v2/activity", 200}, {outsider, prefix + "/lorawan-v2/activity", 403}, {owner, prefix + "/nodes/2/time-config", 200}, {outsider, prefix + "/nodes/2/time-config", 403}, {owner, prefix + "/nodes/255/time-config", 400}, {owner, prefix + "/lorawan-v2/info", 200}, {outsider, prefix + "/lorawan-v2/info", 403}} {
 		response := call(fixture.actor, fixture.path)
 		if response.Code != fixture.status {
 			t.Fatalf("%s: got %d want %d: %s", fixture.path, response.Code, fixture.status, response.Body.String())

@@ -208,7 +208,7 @@ export const resources = {
         temporaryNotice: "这是一次性临时密码，请先设置新密码。",
         temporaryHelp:
           "临时密码只用于进入首次设置流程，设置完成后旧密码和旧会话都会失效。",
-        passwordRule: "密码需要 8-128 位，并同时包含字母和数字",
+        passwordRule: "密码需为 8–72 字节，并同时包含字母和数字；英文和数字各占 1 字节，中文通常占 3 字节",
         passwordMismatch: "两次输入的密码不一致",
         contactRequired: "请填写姓名和手机号",
         mfaRequired: "请输入身份验证器中的 6 位动态验证码",
@@ -359,7 +359,7 @@ export const resources = {
     },
     public: {
       readOnly: "公开只读页面",
-      recentData: "最近三天公开数据",
+      recentData: "公开设备数据",
       updatedAt: "更新于 {{time}}",
       telemetry: "数据趋势",
       metricCount: "{{count}} 项指标",
@@ -373,7 +373,7 @@ export const resources = {
       loadingMore: "正在加载更多…",
       loadMoreHint: "继续向下加载",
       allLoaded: "已加载全部",
-      noImages: "最近三天没有图片",
+      noImages: "当前公开范围内没有图片",
       footer: "In-situ EcoCloud · 原位生态云 · 数据范围为最近 72 小时",
       passwordRequired: "需要访问密码",
       password: "访问密码",
@@ -598,7 +598,7 @@ export const resources = {
         temporaryHelp:
           "The temporary password only enters this initial setup. After completion, the old password and sessions are invalidated.",
         passwordRule:
-          "Use 8–128 characters with at least one letter and one number",
+          "Use 8–72 bytes with at least one letter and one number. ASCII uses 1 byte; Chinese characters usually use 3.",
         passwordMismatch: "The passwords do not match",
         contactRequired: "Enter your name and phone number",
         mfaRequired: "Enter the 6-digit code from your authenticator",

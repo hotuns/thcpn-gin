@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/google/uuid"
@@ -186,8 +187,8 @@ func (s *Service) UpdateProfile(ctx context.Context, input UpdateProfileInput) (
 	if name == "" {
 		return User{}, apperr.New(apperr.KindInvalidArgument, "name is required")
 	}
-	if len([]rune(name)) > 100 {
-		return User{}, apperr.New(apperr.KindInvalidArgument, "name is too long")
+	if len([]rune(name)) > systemsettings.Int(ctx, "user_name", 100) {
+		return User{}, apperr.LimitExceeded("user_name", int64(systemsettings.Int(ctx, "user_name", 100)), int64(len([]rune(name))), "characters")
 	}
 	result, err := s.db.Exec(ctx, `UPDATE users SET name = $2, updated_at = now() WHERE id = $1 AND status = 'active'`, input.UserID, name)
 	if err != nil {

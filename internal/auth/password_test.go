@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"strings"
 	"testing"
 
 	"thcpn-gin/internal/apperr"
@@ -55,5 +56,23 @@ func TestHashAndCheckPassword(t *testing.T) {
 	}
 	if CheckPassword("", "Str0ngPassword!") {
 		t.Fatal("expected empty hash to fail")
+	}
+}
+
+func TestPasswordLengthRespectsBcryptBytesAndConfiguredPolicy(t *testing.T) {
+	cfg := config.PasswordConfig{MinLength: 8, MaxLength: 128}
+	if err := ValidatePassword(strings.Repeat("a", 71)+"1", cfg); err != nil {
+		t.Fatal(err)
+	}
+	for _, password := range []string{strings.Repeat("a", 72) + "1", strings.Repeat("中", 24) + "A1", "A1"} {
+		err := ValidatePassword(password, cfg)
+		details := apperr.DetailsOf(err)
+		if details["reason"] != "PASSWORD_LENGTH" || details["minimum"] != 8 || details["maximum"] != 72 {
+			t.Fatalf("expected byte limit, got %v", details)
+		}
+	}
+	cfg.MaxLength = 20
+	if d := apperr.DetailsOf(ValidatePassword(strings.Repeat("a", 20)+"1", cfg)); d["maximum"] != 20 {
+		t.Fatalf("configured maximum ignored: %v", d)
 	}
 }

@@ -1,0 +1,2 @@
+DROP TABLE device_observation_start_events;
+DROP TABLE device_observation_starts;

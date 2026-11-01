@@ -126,3 +126,16 @@ func TestDeleteMediaObjectDeletesObject(t *testing.T) {
 		t.Fatal("expected deleted object to be missing")
 	}
 }
+
+func TestConfiguredMediaLimitDetails(t *testing.T) {
+	limits := config.QueryLimitsConfig{MaxHistoryDays: 2, MaxMediaPageSize: 7}
+	_, _, err := normalizePage(1, 8, limits)
+	if d := apperr.DetailsOf(err); d["field"] != "media_page_size" || d["maximum"] != int64(7) {
+		t.Fatalf("wrong page limit: %v", d)
+	}
+	start := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	err = validateTimeRange(start, start.Add(49*time.Hour), limits)
+	if d := apperr.DetailsOf(err); d["field"] != "media_days" || d["maximum"] != int64(2) {
+		t.Fatalf("wrong time limit: %v", d)
+	}
+}

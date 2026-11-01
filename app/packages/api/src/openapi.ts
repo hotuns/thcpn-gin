@@ -5755,7 +5755,10 @@ export interface paths {
     };
     "/api/v1/admin/devices/{device_id}/telemetry": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Administrator data phase. Formal starts inclusively at the effective observation boundary; testing is before it. Without a boundary, existing data remains unclassified and testing is empty. */
+                data_phase?: components["parameters"]["AdminDataPhase"];
+            };
             header?: never;
             path: {
                 /** @description Device UUID. */
@@ -5778,7 +5781,10 @@ export interface paths {
     };
     "/api/v1/admin/devices/{device_id}/media": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Administrator data phase. Formal starts inclusively at the effective observation boundary; testing is before it. Without a boundary, existing data remains unclassified and testing is empty. */
+                data_phase?: components["parameters"]["AdminDataPhase"];
+            };
             header?: never;
             path: {
                 /** @description Device UUID. */
@@ -6118,7 +6124,10 @@ export interface paths {
     };
     "/api/v1/admin/devices/{device_id}/carbon/flux": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Administrator data phase. Formal starts inclusively at the effective observation boundary; testing is before it. Without a boundary, existing data remains unclassified and testing is empty. */
+                data_phase?: components["parameters"]["AdminDataPhase"];
+            };
             header?: never;
             path: {
                 /** @description Device UUID. */
@@ -6138,7 +6147,10 @@ export interface paths {
     };
     "/api/v1/admin/devices/{device_id}/carbon/periods": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Administrator data phase. Formal starts inclusively at the effective observation boundary; testing is before it. Without a boundary, existing data remains unclassified and testing is empty. */
+                data_phase?: components["parameters"]["AdminDataPhase"];
+            };
             header?: never;
             path: {
                 /** @description Device UUID. */
@@ -6158,7 +6170,10 @@ export interface paths {
     };
     "/api/v1/admin/devices/{device_id}/carbon/periods/{period}": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Administrator data phase. Formal starts inclusively at the effective observation boundary; testing is before it. Without a boundary, existing data remains unclassified and testing is empty. */
+                data_phase?: components["parameters"]["AdminDataPhase"];
+            };
             header?: never;
             path: {
                 /** @description Device UUID. */
@@ -6176,10 +6191,408 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/devices/{device_id}/installation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["adminGetDeviceInstallation"];
+        /** @description Save installation date, contacts, project name and operations tags. Installer is assigned from the authenticated administrator when an installation date is first saved. complete_installation atomically changes lifecycle to online. */
+        put: operations["adminSaveDeviceInstallation"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/installation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getDeviceInstallationSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/tags": {
+        parameters: {
+            query: {
+                workspace_id: string;
+            };
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getWorkspaceDeviceTags"];
+        /** @description Requires workspace membership and device.configure; does not alter operations tags or another workspace's tags. */
+        put: operations["saveWorkspaceDeviceTags"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/gateway-details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["adminGetLoRaWANGatewayDetails"];
+        /** @description Administrator registration only; does not modify firmware or dispatch configuration. Empty strings clear a field. */
+        put: operations["adminSaveLoRaWANGatewayDetails"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/gateway-details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Read-only gateway registration available to users with device.view. */
+        get: operations["getLoRaWANGatewayDetails"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/observation-start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["adminGetObservationStarts"];
+        put: operations["adminSetObservationStart"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/observation-start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getObservationStarts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/lorawan-v2/connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Queries live MQTT Broker connection state. Unknown or failures must not be interpreted as offline. */
+        get: operations["getLoRaWANV2GatewayConnection"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/lorawan-v2/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Reads source database activity without querying the Broker. Null timestamps remain null. */
+        get: operations["getLoRaWANV2GatewayActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/lorawan-v2/connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Queries live MQTT Broker connection state. Unknown or failures must not be interpreted as offline. */
+        get: operations["adminLoRaWANV2GatewayConnection"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/lorawan-v2/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Reads source database activity without querying the Broker. Null timestamps remain null. */
+        get: operations["adminLoRaWANV2GatewayActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 获取用户端公开业务限制
+         * @description 无需登录；只返回公开参数，不包含基础设施、密钥或内部运维参数。客户端应以当前响应作为输入与分页上限。
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 当前公开策略 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SystemPolicy"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取系统业务配置与可编辑字段 */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 需要系统管理员身份 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SystemSettings"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+            };
+        };
+        /**
+         * 修改系统业务配置
+         * @description 按字段更新；整数值由服务端统一校验。与配置历史、审计日志一起提交事务。新请求和新任务使用新配置，已执行任务不变。
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        values: {
+                            [key: string]: number;
+                        };
+                        reason: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description 更新后的完整配置 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SystemSettings"];
+                    };
+                };
+                400: components["responses"]["InvalidArgument"];
+                401: components["responses"]["Unauthorized"];
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/settings/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取最近 50 次系统配置修改 */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 修改记录 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["SystemSettingsChange"][];
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        SystemPolicy: {
+            values: {
+                [key: string]: number;
+            };
+            /** Format: int64 */
+            version: number;
+            billing_enabled: boolean;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        SystemSettingField: {
+            key: string;
+            group: string;
+            label: string;
+            default: number;
+            min: number;
+            max: number;
+            unit: string;
+            /** @enum {string} */
+            kind?: "switch";
+        };
+        SystemSettings: components["schemas"]["SystemPolicy"] & {
+            defaults: {
+                [key: string]: number;
+            };
+            fields: components["schemas"]["SystemSettingField"][];
+        };
+        SystemSettingsChange: {
+            /** Format: int64 */
+            id: number;
+            actor_name: string;
+            before: {
+                [key: string]: number;
+            };
+            after: {
+                [key: string]: number;
+            };
+            reason: string;
+            /** Format: date-time */
+            created_at: string;
+        };
         NodeRuntime: {
             key: string;
             /** Format: date-time */
@@ -6287,7 +6700,7 @@ export interface components {
         /** @enum {string} */
         DeviceStatus: "active" | "disabled" | "retired";
         /** @enum {string} */
-        DeviceLifecycleStatus: "inbound" | "installed" | "online" | "maintenance" | "repairing" | "retired";
+        DeviceLifecycleStatus: "inbound" | "online" | "retired";
         /** @enum {string} */
         DeviceTopologyRole: "standalone" | "gateway" | "gateway_node" | "camera";
         DeviceCapabilityCode: string;
@@ -7153,6 +7566,8 @@ export interface components {
         };
         /** @description System-level device asset view. Assignment fields are present only when the device has an active Workspace assignment. */
         Device: {
+            /** @description Custom tags in the requested workspace */
+            tags?: string[];
             /** @description Administrator-maintained SIM card ICCID. */
             iccid?: string;
             id: components["schemas"]["UUID"];
@@ -7351,6 +7766,56 @@ export interface components {
             unlocated: number;
             unclassified: number;
         };
+        LoRaWANGatewayDetails: {
+            app_key: string;
+            eui: string;
+            wifi_name: string;
+        };
+        ObservationStarts: {
+            /** Format: date-time */
+            effective_start_at: string | null;
+            items: {
+                node_index: number;
+                /** Format: date-time */
+                starts_at: string;
+                /** Format: date-time */
+                updated_at: string;
+            }[];
+            history: {
+                node_index: number;
+                /** Format: date-time */
+                previous_start: string | null;
+                /** Format: date-time */
+                starts_at: string | null;
+                reason: string;
+                actor: string;
+                /** Format: date-time */
+                created_at: string;
+            }[];
+        };
+        DeviceInstallationSummary: {
+            /** Format: uuid */
+            device_id: string;
+            /** Format: date */
+            installed_on: string | null;
+            project_name: string;
+            /** Format: date */
+            retired_on?: string;
+        };
+        AdminDeviceInstallation: components["schemas"]["DeviceInstallationSummary"] & {
+            /** Format: uuid */
+            installer_id?: string;
+            installer_name?: string;
+            contact_name?: string;
+            contact_phone?: string;
+            organization?: string;
+            retirement_reason?: string;
+            ops_tags?: string[];
+            /** Format: uuid */
+            updated_by?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
         DeviceProfile: {
             device_id: components["schemas"]["UUID"];
             description?: string;
@@ -7443,8 +7908,10 @@ export interface components {
         DeviceLifecycleEvent: {
             id: components["schemas"]["UUID"];
             device_id: components["schemas"]["UUID"];
-            from_status?: components["schemas"]["DeviceLifecycleStatus"];
-            to_status: components["schemas"]["DeviceLifecycleStatus"];
+            /** @description Historical lifecycle value, including legacy stages */
+            from_status?: string;
+            /** @description Historical lifecycle value, including legacy stages */
+            to_status: string;
             occurred_at: components["schemas"]["Timestamp"];
             note?: string;
             actor_user_id?: components["schemas"]["UUID"];
@@ -7630,6 +8097,31 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at?: string | null;
+        };
+        LoRaWANV2GatewayActivity: {
+            gateway_sn: string;
+            /**
+             * Format: date-time
+             * @description Last valid message received from the MQTT event stream; not an online timestamp.
+             */
+            last_received_at: string | null;
+            /**
+             * Format: date-time
+             * @description Largest node collection timestamp observed; not a persistence guarantee.
+             */
+            last_collected_at: string | null;
+        };
+        LoRaWANV2GatewayConnection: components["schemas"]["LoRaWANV2GatewayActivity"] & {
+            /** @enum {string} */
+            state: "online" | "offline" | "unknown";
+            /**
+             * Format: date-time
+             * @description Broker query time
+             */
+            checked_at: string;
+            /** @enum {string} */
+            provider: "aliyun" | "emqx";
+            client_id: string;
         };
         LoRaWANV2ReportedInfo: {
             /** @description BSON extended JSON date in milliseconds */
@@ -9003,6 +9495,8 @@ export interface components {
         };
     };
     parameters: {
+        /** @description Administrator data phase. Formal starts inclusively at the effective observation boundary; testing is before it. Without a boundary, existing data remains unclassified and testing is empty. */
+        AdminDataPhase: "all" | "formal" | "testing";
         /** @description Reason recorded in the audit log for this system administrator operation. */
         AdminReason: string;
         /** @description Workspace UUID. */
@@ -16864,6 +17358,8 @@ export interface operations {
     adminOpsQueryDeviceTelemetry: {
         parameters: {
             query: {
+                /** @description Administrator data phase. Formal starts inclusively at the effective observation boundary; testing is before it. Without a boundary, existing data remains unclassified and testing is empty. */
+                data_phase?: components["parameters"]["AdminDataPhase"];
                 start_time: components["schemas"]["Timestamp"];
                 end_time: components["schemas"]["Timestamp"];
                 /** @description Comma-separated telemetry DataStream UUIDs. When omitted, all active telemetry streams on the device are queried. */
@@ -16904,6 +17400,8 @@ export interface operations {
     adminOpsListDeviceMedia: {
         parameters: {
             query: {
+                /** @description Administrator data phase. Formal starts inclusively at the effective observation boundary; testing is before it. Without a boundary, existing data remains unclassified and testing is empty. */
+                data_phase?: components["parameters"]["AdminDataPhase"];
                 start_time: components["schemas"]["Timestamp"];
                 end_time: components["schemas"]["Timestamp"];
                 media_type?: components["schemas"]["MediaType"];
@@ -17418,6 +17916,8 @@ export interface operations {
     adminCarbonFlux: {
         parameters: {
             query: {
+                /** @description Administrator data phase. Formal starts inclusively at the effective observation boundary; testing is before it. Without a boundary, existing data remains unclassified and testing is empty. */
+                data_phase?: components["parameters"]["AdminDataPhase"];
                 node_id: number;
                 field: string;
                 start?: string;
@@ -17451,6 +17951,8 @@ export interface operations {
     adminCarbonPeriods: {
         parameters: {
             query: {
+                /** @description Administrator data phase. Formal starts inclusively at the effective observation boundary; testing is before it. Without a boundary, existing data remains unclassified and testing is empty. */
+                data_phase?: components["parameters"]["AdminDataPhase"];
                 node_id: number;
                 field?: string;
                 start?: string;
@@ -17484,6 +17986,8 @@ export interface operations {
     adminCarbonPeriod: {
         parameters: {
             query: {
+                /** @description Administrator data phase. Formal starts inclusively at the effective observation boundary; testing is before it. Without a boundary, existing data remains unclassified and testing is empty. */
+                data_phase?: components["parameters"]["AdminDataPhase"];
                 node_id: number;
                 field: string;
                 start?: string;
@@ -17513,6 +18017,388 @@ export interface operations {
             400: components["responses"]["InvalidArgument"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    adminGetDeviceInstallation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Administrator installation dossier */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminDeviceInstallation"];
+                };
+            };
+        };
+    };
+    adminSaveDeviceInstallation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date */
+                    installed_on?: string | null;
+                    contact_name?: string;
+                    contact_phone?: string;
+                    organization?: string;
+                    project_name?: string;
+                    ops_tags?: string[];
+                    complete_installation?: boolean;
+                    /**
+                     * Format: date-time
+                     * @description Optional formal observation start when completing installation; if omitted the current boundary is preserved or current time is recorded.
+                     */
+                    observation_start_at?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Saved installation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminDeviceInstallation"];
+                };
+            };
+        };
+    };
+    getDeviceInstallationSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Public device installation summary without contacts or operations tags */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceInstallationSummary"];
+                };
+            };
+        };
+    };
+    getWorkspaceDeviceTags: {
+        parameters: {
+            query: {
+                workspace_id: string;
+            };
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workspace-specific user tags */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tags?: string[];
+                    };
+                };
+            };
+        };
+    };
+    saveWorkspaceDeviceTags: {
+        parameters: {
+            query: {
+                workspace_id: string;
+            };
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    tags: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Saved tags */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminGetLoRaWANGatewayDetails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Manually registered LoRaWAN V2 gateway information */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANGatewayDetails"];
+                };
+            };
+        };
+    };
+    adminSaveLoRaWANGatewayDetails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoRaWANGatewayDetails"];
+            };
+        };
+        responses: {
+            /** @description Saved gateway information */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANGatewayDetails"];
+                };
+            };
+        };
+    };
+    getLoRaWANGatewayDetails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gateway information */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANGatewayDetails"];
+                };
+            };
+        };
+    };
+    adminGetObservationStarts: {
+        parameters: {
+            query?: {
+                node_index?: number;
+            };
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Explicit boundaries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationStarts"];
+                };
+            };
+        };
+    };
+    adminSetObservationStart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * @description Zero sets the device default; positive indexes override a gateway collection position or carbon node. THCPN child devices use their own device ID.
+                     * @default 0
+                     */
+                    node_index?: number;
+                    /**
+                     * Format: date-time
+                     * @description Null clears the explicit boundary and restores inherited/default behavior.
+                     */
+                    starts_at: string | null;
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Saved boundary and change history */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationStarts"];
+                };
+            };
+        };
+    };
+    getObservationStarts: {
+        parameters: {
+            query?: {
+                node_index?: number;
+            };
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Read-only boundaries without operator history. User telemetry */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationStarts"];
+                };
+            };
+        };
+    };
+    getLoRaWANV2GatewayConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Latest gateway connection */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2GatewayConnection"];
+                };
+            };
+        };
+    };
+    getLoRaWANV2GatewayActivity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Latest gateway activity */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2GatewayActivity"];
+                };
+            };
+        };
+    };
+    adminLoRaWANV2GatewayConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Latest gateway connection */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2GatewayConnection"];
+                };
+            };
+        };
+    };
+    adminLoRaWANV2GatewayActivity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Latest gateway activity */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoRaWANV2GatewayActivity"];
+                };
+            };
         };
     };
 }

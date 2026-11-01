@@ -1,3 +1,5 @@
+import { AdminObservationStart } from "./admin-observation-start";
+import { AdminDeviceDossier, AdminDeviceScenes } from "./admin-device-dossier";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -35,6 +37,8 @@ export function AdminDeviceInstallation({device}:{device:JsonRecord}) {
     void execute(()=>api.admin.reorderDeviceImages(id,ids),"图片顺序已保存");
   };
   return <Space orientation="vertical" size="middle" style={{width:"100%"}}>
+    <AdminDeviceDossier deviceId={id}/>
+    <AdminObservationStart device={device}/>
     {profile.error?<Alert type="error" title="安装资料读取失败" description={formatApiError(profile.error).message}/>:<>
       {profile.data?.location_warning&&<Alert type="warning" title={profile.data.location_warning}/>}
       <Tabs items={[{key:"location",label:"位置与说明",children:<Space orientation="vertical" style={{width:"100%"}}>
@@ -57,7 +61,7 @@ export function AdminDeviceInstallation({device}:{device:JsonRecord}) {
         </Form>
         <Typography.Paragraph type="secondary" style={{marginTop:12,marginBottom:0}}>人工安装坐标优先用于平台地图，不改变设备上报的原始位置。</Typography.Paragraph>
       </Card>
-      </Space>},{key:"classification",label:"观测资料",children:<AdminDeviceClassification deviceId={id}/>},{key:"photos",label:`安装照片（${profile.data?.images.length??0}）`,children:<Card title={`安装照片 · ${profile.data?.images.length??0} / 12`} extra={<Upload multiple showUploadList={false} accept="image/jpeg,image/png,image/webp" disabled={busy} beforeUpload={file=>{if(!["image/jpeg","image/png","image/webp"].includes(file.type)||file.size>10*1024*1024){void message.error("请选择不超过 10 MB 的 JPEG、PNG 或 WebP 图片");return Upload.LIST_IGNORE;}return true;}} customRequest={options=>{void api.admin.uploadDeviceImages(id,[options.file as File]).then(async response=>{options.onSuccess?.(response);await refresh();}).catch(error=>{options.onError?.(error);void message.error(formatApiError(error).message);});}}><Button>上传安装照片</Button></Upload>}>
+      </Space>},{key:"classification",label:"应用场景",children:<AdminDeviceScenes deviceId={id}/>},{key:"photos",label:`安装照片（${profile.data?.images.length??0}）`,children:<Card title={`安装照片 · ${profile.data?.images.length??0} / 12`} extra={<Upload multiple showUploadList={false} accept="image/jpeg,image/png,image/webp" disabled={busy} beforeUpload={file=>{if(!["image/jpeg","image/png","image/webp"].includes(file.type)||file.size>10*1024*1024){void message.error("请选择不超过 10 MB 的 JPEG、PNG 或 WebP 图片");return Upload.LIST_IGNORE;}return true;}} customRequest={options=>{void api.admin.uploadDeviceImages(id,[options.file as File]).then(async response=>{options.onSuccess?.(response);await refresh();}).catch(error=>{options.onError?.(error);void message.error(formatApiError(error).message);});}}><Button>上传安装照片</Button></Upload>}>
         <Image.PreviewGroup><Table rowKey="id" size="small" dataSource={profile.data?.images??[]} pagination={false} columns={[
           {title:"图片",width:150,render:(_,item)=><Image width={120} height={80} style={{objectFit:"cover"}} src={item.preview_url}/>},
           {title:"说明",render:(_,item)=><>{item.is_cover&&<Tag color="blue">封面</Tag>}{item.caption||item.original_filename}</>},
@@ -113,40 +117,4 @@ export function AdminDeviceNodes({device,onData,onTopology,onConfig,compact=fals
       </Space>}
     </Drawer>
   </Space>;
-}
-
-function AdminDeviceClassification({deviceId}:{deviceId:string}) {
-  const {message}=App.useApp();
-  const [form]=Form.useForm();
-  const [busy,setBusy]=useState(false);
-  const data=useQuery({queryKey:["admin","device",deviceId,"environment"],queryFn:()=>api.admin.deviceEnvironment(deviceId)});
-  const catalog=useQuery({queryKey:["admin","device-taxonomy"],queryFn:api.admin.deviceTaxonomy});
-  const fields=[{value:"ecosystem",label:"设备类型"},{value:"observation_objects",label:"观测对象"},{value:"purposes",label:"观测用途"},{value:"management",label:"管理方式"},{value:"deployment",label:"部署方式"},{value:"commissioned_year",label:"投运年份"},{value:"research_tags",label:"研究标签"}];
-  const overridden=Form.useWatch("overridden_fields",form) as string[]|undefined;
-  useEffect(()=>{if(data.data){const direct=data.data.direct;form.setFieldsValue({overridden_fields:data.data.overridden_fields,ecosystem_term_id:direct.ecosystem?.id,observation_object_ids:direct.observation_objects.map(term=>term.id),purpose_ids:direct.purposes.map(term=>term.id),management_term_id:direct.management?.id,deployment_term_id:direct.deployment?.id,commissioned_year:direct.commissioned_year,research_tags:direct.research_tags});}},[data.data,form]);
-  const options=(kind:string)=>(catalog.data?.items??[]).filter(term=>term.kind===kind&&term.status==="active").map(term=>({value:term.id,label:term.name_zh}));
-  return <Card title="观测资料与分类" loading={data.isLoading||catalog.isLoading}>
-    {(data.error||catalog.error)?<Alert type="error" title="分类读取失败" description={formatApiError(data.error||catalog.error).message}/>:<Form form={form} layout="vertical" onFinish={async values=>{setBusy(true);try{await api.admin.updateDeviceEnvironment(deviceId,{...values,ecosystem_term_id:values.ecosystem_term_id??null,management_term_id:values.management_term_id??null,deployment_term_id:values.deployment_term_id??null,commissioned_year:values.commissioned_year??null,observation_object_ids:values.observation_object_ids??[],purpose_ids:values.purpose_ids??[],research_tags:values.research_tags??[],overridden_fields:values.overridden_fields??[]});await data.refetch();void message.success("观测资料已保存");}catch(error){void message.error(formatApiError(error).message);}finally{setBusy(false);}}}>
-      <Typography.Paragraph type="secondary">勾选后为此设备单独设置；未勾选的项目沿用网关或站点资料。</Typography.Paragraph>
-      <Form.Item name="overridden_fields">
-        <Checkbox.Group style={{width:"100%"}}>
-          <Space orientation="vertical" size="middle" style={{width:"100%"}}>
-            {fields.map(field=>{
-              const disabled=!overridden?.includes(field.value);
-              const common={disabled,allowClear:true,style:{width:"100%"},"aria-label":field.label};
-              const definitions:Record<string,{name:string;kind:string;multiple?:boolean}>={ecosystem:{name:"ecosystem_term_id",kind:"ecosystem"},observation_objects:{name:"observation_object_ids",kind:"observation_object",multiple:true},purposes:{name:"purpose_ids",kind:"purpose",multiple:true},management:{name:"management_term_id",kind:"management"},deployment:{name:"deployment_term_id",kind:"deployment"}};
-              const definition=definitions[field.value];
-              return <Row key={field.value} gutter={[16,8]} align="middle" style={{width:"100%",margin:0}}>
-                <Col xs={24} sm={6}><Checkbox value={field.value}>{field.label}</Checkbox></Col>
-                <Col xs={24} sm={18}>
-                  {definition?<Form.Item name={definition.name} style={{marginBottom:0}}><Select {...common} showSearch optionFilterProp="label" mode={definition.multiple?"multiple":undefined} options={options(definition.kind)} placeholder={`请选择${field.label}`}/></Form.Item>:field.value==="commissioned_year"?<Form.Item name="commissioned_year" style={{marginBottom:0}}><Select {...common} showSearch optionFilterProp="label" placeholder="请选择投运年份" options={Array.from({length:201},(_,i)=>({value:2100-i,label:String(2100-i)}))}/></Form.Item>:<Form.Item name="research_tags" style={{marginBottom:0}}><Select {...common} mode="tags" placeholder="选择或输入研究标签"/></Form.Item>}
-                </Col>
-              </Row>;
-            })}
-          </Space>
-        </Checkbox.Group>
-      </Form.Item>
-      <Button type="primary" htmlType="submit" loading={busy}>保存观测资料</Button>
-    </Form>}
-  </Card>;
 }

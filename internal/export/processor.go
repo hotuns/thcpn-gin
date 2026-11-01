@@ -19,6 +19,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"thcpn-gin/internal/observation"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 	"unicode"
 
@@ -61,6 +63,7 @@ type Runtime interface {
 }
 
 type Processor struct {
+	settings    *systemsettings.Service
 	devices     *device.Service
 	queries     *sqlc.Queries
 	dataSources *datasource.Service
@@ -183,6 +186,13 @@ func NewProcessor(db *pgxpool.Pool, dataSources *datasource.Service, runtime Run
 }
 
 func (p *Processor) ProcessNext(ctx context.Context) (bool, error) {
+	if p.settings != nil {
+		var err error
+		ctx, err = p.settings.Context(ctx)
+		if err != nil {
+			return false, err
+		}
+	}
 	if err := p.validate(); err != nil {
 		return false, err
 	}
@@ -210,6 +220,13 @@ func (p *Processor) ProcessNext(ctx context.Context) (bool, error) {
 }
 
 func (p *Processor) ProcessJob(ctx context.Context, jobID uuid.UUID) (bool, error) {
+	if p.settings != nil {
+		var err error
+		ctx, err = p.settings.Context(ctx)
+		if err != nil {
+			return false, err
+		}
+	}
 	if err := p.validate(); err != nil {
 		return false, err
 	}
@@ -303,7 +320,22 @@ func (p *Processor) skipUnavailableJob(ctx context.Context, jobID uuid.UUID) (bo
 	}
 }
 
+func observationContextForJob(ctx context.Context, job Job) context.Context {
+	if job.RequestedByAdmin != nil {
+		phase := observation.All
+		var config struct {
+			DataPhase string `json:"data_phase"`
+		}
+		if json.Unmarshal(job.RequestConfig, &config) == nil && (config.DataPhase == observation.Formal || config.DataPhase == observation.Testing) {
+			phase = config.DataPhase
+		}
+		return observation.WithPhase(ctx, phase)
+	}
+	return observation.WithPhase(ctx, observation.Formal)
+}
+
 func (p *Processor) processClaimed(ctx context.Context, job Job) (err error) {
+	ctx = observationContextForJob(ctx, job)
 	ctx, cancel := context.WithTimeout(ctx, 6*time.Hour)
 	defer cancel()
 	progress := &exportProgress{}
@@ -333,12 +365,12 @@ func (p *Processor) processClaimed(ctx context.Context, job Job) (err error) {
 		}
 	}()
 
-	file, err := p.newTempFile(job.ID)
+	file, err := p.newTempFile(job.ID, ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = file.Close(); _ = os.Remove(file.Name()) }()
-	output := &archiveFileWriter{ctx: ctx, file: file, progress: progress, reserve: p.minFreeBytes()}
+	output := &archiveFileWriter{ctx: ctx, file: file, progress: progress, reserve: p.minFreeBytes(ctx)}
 	rendered, err := p.render(ctx, job, output)
 	if err != nil {
 		status = "failed"
@@ -1743,3 +1775,5 @@ func (p *Processor) renderIndexedNodeZIP(ctx context.Context, cfg batchExportCon
 	}
 	return nil
 }
+
+func (p *Processor) SetSettings(service *systemsettings.Service) { p.settings = service }

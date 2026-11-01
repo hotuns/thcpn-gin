@@ -1,3 +1,4 @@
+import { confirmManualSync } from "./manual-sync-confirm";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -17,6 +18,7 @@ export function GatewayNodeActions({ deviceId, node, onDetails, onConfig }: { de
   const refresh = () => client.invalidateQueries({ predicate: q => q.queryKey[0] === "admin" && (q.queryKey.includes(deviceId) || q.queryKey.includes("devices") || q.queryKey.includes("node-inventory")) });
   const open = (next: Action) => { setFeedback(null); form.resetFields(); form.setFieldsValue({ node_index: index }); setAction(next); };
   const execute = async (input: JsonRecord, create = false) => {
+    if(input.action === "reconcile" && !await confirmManualSync({scope:"重新读取本网关节点安装关系、配置和指标，更新平台记录。"})) return;
     setBusy(true); setFeedback(null);
     try {
       const result = create ? await api.admin.registerPhysicalNode(String(context.data?.data_source_id), { sn: input.sn, node_index: input.node_index, gateway_device_id: deviceId }) : await api.admin.changePhysicalNode(deviceId, input);

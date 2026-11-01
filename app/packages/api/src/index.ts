@@ -1,3 +1,4 @@
+import { formatLimitError } from "./limit-errors";
 import { publicErrorMessages } from "./error-messages";
 import type { components } from "./openapi";
 export * from "./display-labels";
@@ -40,6 +41,15 @@ export type DeviceMapResult = { items: DeviceMapItem[]; total: number; located: 
 export type SourceOperation = Schema<"SourceOperation">;
 export type GatewayNode = Schema<"GatewayNode">;
 export type LoRaWANV2TimeConfig = Schema<"LoRaWANV2TimeConfig">;
+export type LoRaWANGatewayDetails = Schema<"LoRaWANGatewayDetails">;
+export type ObservationStarts = Schema<"ObservationStarts">;
+export type DeviceInstallation = {
+ device_id: string; installed_on: string | null; installer_id?: string; installer_name?: string;
+ contact_name?: string; contact_phone?: string; organization?: string; project_name: string;
+ retired_on?: string; retirement_reason?: string; ops_tags?: string[]; updated_by?: string; updated_at?: string;
+};
+export type LoRaWANGatewayConnection = Schema<"LoRaWANV2GatewayConnection">;
+export type LoRaWANGatewayActivity = Schema<"LoRaWANV2GatewayActivity">;
 export type LoRaWANV2GatewayInfo = Schema<"LoRaWANV2ReportedInfo">;
 export type DeviceNodeTarget = Schema<"DeviceNodeTarget">;
 export type DeviceInteractionContext = Schema<"DeviceInteractionContext">;
@@ -488,9 +498,10 @@ export const formatApiError = (error: unknown) => {
     const normalizedCode = error.code?.toLowerCase();
     const localized = normalizedCode ? messages[normalizedCode] : undefined;
     const english = typeof document !== "undefined" && document.documentElement.lang === "en-US";
-    const envelope = error.details as { error?: { details?: { reason?: string; retry_after_seconds?: number; locked_until?: string } } } | undefined;
+    const envelope = error.details as { error?: { details?: { reason?: string; retry_after_seconds?: number; locked_until?: string; field?: string; maximum?: number; actual?: number; unit?: string } } } | undefined;
     const detail = envelope?.error?.details;
     const known = publicErrorMessages[error.message];
+    const limitMessage = formatLimitError(detail, english);
     const locked = detail?.reason === "ACCOUNT_LOCKED" || ["account is temporarily locked", "administrator account is temporarily locked"].includes(error.message);
     const seconds = detail?.retry_after_seconds;
     let message = localized?.[english ? "en" : "zh"] ?? (english ? "The request failed. Try again or contact support with the request ID" : "操作未完成，请重试；如持续失败，请提供请求编号联系管理员");
@@ -498,6 +509,7 @@ export const formatApiError = (error: unknown) => {
       if (known) message = english ? error.message : known;
       else if (normalizedCode === "invalid_argument" || /[\u3400-\u9fff]/.test(error.message)) message = error.message;
       else if (!normalizedCode) message = error.message;
+      if (limitMessage) message = limitMessage;
       if (locked) {
         const minutes = typeof seconds === "number" && Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds / 60) : undefined;
         message = english
@@ -524,7 +536,13 @@ export const formatApiError = (error: unknown) => {
   };
 };
 
+export type SystemSettingField = {key:string;group:string;label:string;default:number;min:number;max:number;unit:string;kind?:"switch"};
+export type SystemPolicy = {values:Record<string,number>;version:number;billing_enabled:boolean;updated_at?:string};
+export type SystemSettings = SystemPolicy & {defaults:Record<string,number>;fields:SystemSettingField[]};
+export type SystemSettingsChange = {id:number;actor_name:string;before:Record<string,number>;after:Record<string,number>;reason:string;created_at:string};
+
 export const api = {
+ systemPolicy: () => request<SystemPolicy>("/api/v1/system/policy", {}, false),
   health: () => request<{ status: string }>("/healthz", {}, false),
   ready: () => request<{ status: string }>("/readyz", {}, false),
   metrics: () => request<string>("/metrics", {}, false),
@@ -752,6 +770,11 @@ export const api = {
     },
     get: (id: string) =>
       request<Device>(`/api/v1/devices/${encodeURIComponent(id)}`),
+    gatewayDetails: (id:string) => request<LoRaWANGatewayDetails>(`/api/v1/devices/${encodeURIComponent(id)}/gateway-details`),
+    observationStarts: (id:string,nodeIndex=0) => request<ObservationStarts>(`/api/v1/devices/${encodeURIComponent(id)}/observation-start?node_index=${nodeIndex}`),
+    installation: (id: string) => request<DeviceInstallation>(`/api/v1/devices/${encodeURIComponent(id)}/installation`),
+    tags: (id: string, workspace: string) => request<{tags:string[]}>(`/api/v1/devices/${encodeURIComponent(id)}/tags?${new URLSearchParams({workspace_id:workspace})}`),
+    setTags: (id: string, workspace: string, tags: string[]) => jsonRequest<{tags:string[]}>(`/api/v1/devices/${encodeURIComponent(id)}/tags?${new URLSearchParams({workspace_id:workspace})}`,"PUT",{tags}),
     latestAttributes: (id: string) =>
       request<THCPNLatestAttributesResponse>(
         `/api/v1/devices/${encodeURIComponent(id)}/attributes/latest`,
@@ -895,6 +918,8 @@ export const api = {
     nodeTimeConfig: (id: string, index: number) => request<LoRaWANV2TimeConfig | null>(`/api/v1/devices/${encodeURIComponent(id)}/nodes/${index}/time-config`),
     nodeTimeConfigs: (id: string, index: number) => request<LoRaWANV2TimeConfig[]>(`/api/v1/devices/${encodeURIComponent(id)}/nodes/${index}/time-configs`),
     nodeTimeConfigDetail: (id: string, index: number, configId: number) => request<LoRaWANV2TimeConfig>(`/api/v1/devices/${encodeURIComponent(id)}/nodes/${index}/time-configs/${configId}`),
+    lorawanConnection: (id:string) => request<LoRaWANGatewayConnection>(`/api/v1/devices/${encodeURIComponent(id)}/lorawan-v2/connection`),
+    lorawanActivity: (id:string) => request<LoRaWANGatewayActivity>(`/api/v1/devices/${encodeURIComponent(id)}/lorawan-v2/activity`),
     lorawanInfo: (id: string) => request<LoRaWANV2GatewayInfo | null>(`/api/v1/devices/${encodeURIComponent(id)}/lorawan-v2/info`),
     nodes: (id: string) => request<Schema<"GatewayNodeList">>(`/api/v1/devices/${encodeURIComponent(id)}/nodes`),
     nodeRuntime: (id: string) => request<{ items: NodeRuntime[]; refreshed_at: string }>(`/api/v1/devices/${encodeURIComponent(id)}/nodes/runtime`),
@@ -1163,6 +1188,11 @@ export const api = {
       ),
   },
     admin: {
+    settings: {
+      get: () => request<SystemSettings>("/api/v1/admin/settings"),
+      update: (values:Record<string,number>, reason:string) => jsonRequest<SystemSettings>("/api/v1/admin/settings","PUT",{values,reason}),
+      history: () => request<ListResponse<SystemSettingsChange>>("/api/v1/admin/settings/history"),
+    },
     workspaces: {
       list: (filters: JsonRecord = {}) => request<ListResponse<JsonRecord>>(`/api/v1/admin/workspaces${queryString(filters as Record<string, string | number | boolean>)}`),
       get: (id: string) => request<JsonRecord>(`/api/v1/admin/workspaces/${encodeURIComponent(id)}`),
@@ -1288,6 +1318,8 @@ export const api = {
     nodeTimeConfig: (id: string, index: number) => request<LoRaWANV2TimeConfig | null>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes/${index}/time-config`),
     nodeTimeConfigs: (id: string, index: number) => request<LoRaWANV2TimeConfig[]>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes/${index}/time-configs`),
     nodeTimeConfigDetail: (id: string, index: number, configId: number) => request<LoRaWANV2TimeConfig>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes/${index}/time-configs/${configId}`),
+    lorawanConnection: (id:string) => request<LoRaWANGatewayConnection>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/connection`),
+    lorawanActivity: (id:string) => request<LoRaWANGatewayActivity>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/activity`),
     lorawanInfo: (id: string) => request<LoRaWANV2GatewayInfo | null>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/info`),
     deviceNodes: (id: string) => request<Schema<"GatewayNodeList">>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes`),
     nodeRuntime: (id:string) => request<{items:NodeRuntime[];refreshed_at:string}>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes/runtime`),
@@ -1300,7 +1332,7 @@ export const api = {
     deviceContext: (id: string) => request<DeviceInteractionContext>(`/api/v1/admin/devices/${encodeURIComponent(id)}/context`),
     deviceTelemetry: (id: string, input: {startTime:string;endTime:string;dataStreamIds:string[];targetPoints?:number}) => request<TelemetryQueryResponse>(`/api/v1/admin/devices/${encodeURIComponent(id)}/telemetry${queryString({start_time:input.startTime,end_time:input.endTime,data_stream_ids:input.dataStreamIds.join(","),adaptive:true,target_points:input.targetPoints ?? 2,limit:500})}`),
     deviceEarliestTelemetry: (id: string) => request<EarliestDeviceData>(`/api/v1/admin/devices/${encodeURIComponent(id)}/telemetry/earliest`),
-    queryDeviceTelemetry: (id: string, input: {startTime:string;endTime:string;dataStreamIds?:string[];limit?:number}) => request<TelemetryQueryResponse>(`/api/v1/admin/devices/${encodeURIComponent(id)}/telemetry${queryString({start_time:input.startTime,end_time:input.endTime,data_stream_ids:input.dataStreamIds?.join(","),adaptive:false,limit:input.limit ?? 5000})}`),
+    queryDeviceTelemetry: (id: string, input: {startTime:string;endTime:string;dataStreamIds?:string[];limit?:number;dataPhase?:string}) => request<TelemetryQueryResponse>(`/api/v1/admin/devices/${encodeURIComponent(id)}/telemetry${queryString({start_time:input.startTime,end_time:input.endTime,data_stream_ids:input.dataStreamIds?.join(","),adaptive:false,limit:input.limit ?? 5000,data_phase:input.dataPhase})}`),
     deviceMedia: (id: string, input: Record<string,string|number>) => request<MediaListResponse>(`/api/v1/admin/devices/${encodeURIComponent(id)}/media${queryString(input)}`),
     downloadMedia: (url: string) => {
       if (!url.startsWith("/api/v1/admin/media/download?")) throw new Error("Invalid administrator media URL");
@@ -1314,6 +1346,12 @@ export const api = {
     createExport: (payload:JsonRecord) => jsonRequest<ExportJob>("/api/v1/admin/export-jobs","POST",payload),
     exportDownload: (id:string) => request<{url:string}>(`/api/v1/admin/export-jobs/${encodeURIComponent(id)}/download`),
     deviceProfile: (id:string) => request<DeviceProfile>(`/api/v1/admin/devices/${encodeURIComponent(id)}/profile`),
+    gatewayDetails: (id:string) => request<LoRaWANGatewayDetails>(`/api/v1/admin/devices/${encodeURIComponent(id)}/gateway-details`),
+    saveGatewayDetails: (id:string,payload:LoRaWANGatewayDetails) => jsonRequest<LoRaWANGatewayDetails>(`/api/v1/admin/devices/${encodeURIComponent(id)}/gateway-details`,"PUT",payload),
+    observationStarts: (id:string,nodeIndex=0) => request<ObservationStarts>(`/api/v1/admin/devices/${encodeURIComponent(id)}/observation-start?node_index=${nodeIndex}`),
+    setObservationStart: (id:string,payload:{node_index:number;starts_at:string|null;reason:string}) => jsonRequest<ObservationStarts>(`/api/v1/admin/devices/${encodeURIComponent(id)}/observation-start`,"PUT",payload),
+    deviceInstallation: (id:string) => request<DeviceInstallation>(`/api/v1/admin/devices/${encodeURIComponent(id)}/installation`),
+    saveDeviceInstallation: (id:string,payload:JsonRecord) => jsonRequest<DeviceInstallation>(`/api/v1/admin/devices/${encodeURIComponent(id)}/installation`,"PUT",payload),
     updateDeviceProfile: (id:string,payload:JsonRecord) => jsonRequest<DeviceProfile>(`/api/v1/admin/devices/${encodeURIComponent(id)}/profile`,"PATCH",payload),
     setDeviceLocation: (id:string,location:{latitude:number|null;longitude:number|null}) => jsonRequest<DeviceProfile>(`/api/v1/admin/devices/${encodeURIComponent(id)}/profile/location`,"PATCH",location),
     uploadDeviceImages: (id:string,files:File[]) => {

@@ -1,3 +1,4 @@
+import { policyLimit } from "./system-policy";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PhotoSlider } from "react-photo-view";
@@ -62,13 +63,13 @@ function MediaBrowser({
             start_time: range.start,
             end_time: range.end,
             page,
-            page_size: pageSize,
+            page_size: Math.min(pageSize,policyLimit("media_page_size",100)),
           })
         : api.media.dataStream(stream, {
             start_time: range.start,
             end_time: range.end,
             page,
-            page_size: pageSize,
+            page_size: Math.min(pageSize,policyLimit("media_page_size",100)),
           }),
     enabled: !asset,
     staleTime: 60000,

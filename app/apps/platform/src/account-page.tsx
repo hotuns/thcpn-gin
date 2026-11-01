@@ -1,3 +1,4 @@
+import { policyLimit } from "./system-policy";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useState, type FormEvent } from "react";
 import { ArrowLeft, Check, Mail, Moon, Palette, Pencil, Phone, Sun, UserRound } from "lucide-react";
@@ -134,7 +135,7 @@ function AccountProfile() {
           <form className="security-form shadcn-dialog-form" onSubmit={save}>
             <label className="field">
               <span className="field-label">{t("platform:account.name")}</span>
-              <Input autoFocus required maxLength={100} value={name} onChange={(event) => setName(event.target.value)} />
+              <Input autoFocus required maxLength={policyLimit("user_name",100)} value={name} onChange={(event) => setName(event.target.value)} />
             </label>
             <DialogFooter>
               <Button type="button" variant="secondary" onClick={() => setEditing(false)}>{t("cancel")}</Button>

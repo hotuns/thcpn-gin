@@ -1,3 +1,4 @@
+import { policyLimit } from "./system-policy";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -1191,7 +1192,7 @@ function DatasetPreview({
       api.telemetry.dataset(dataset.id, {
         startTime: queryStart,
         endTime: queryEnd,
-        limit: 500,
+        limit: Math.min(500,policyLimit("query_points",5000)),
       }),
     enabled: previewable && validDatasetRange,
   });

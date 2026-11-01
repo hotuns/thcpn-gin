@@ -180,6 +180,12 @@ func (h *Handler) List(c *gin.Context) {
 		}
 	}
 
+	if !actor.IsDemo {
+		if err := h.service.workspaceDeviceTags(c.Request.Context(), workspaceID, filtered); err != nil {
+			httpx.WriteAppError(c, err)
+			return
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{"items": filtered})
 }
 
@@ -189,7 +195,12 @@ func (h *Handler) AdminListSystemAssets(c *gin.Context) {
 		httpx.WriteAppError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": items})
+	assets, err := h.service.adminAssetTags(c.Request.Context(), items)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": assets})
 }
 
 func (h *Handler) AdminUpdate(c *gin.Context) {
@@ -277,7 +288,12 @@ func (h *Handler) AdminUpdateLifecycle(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
+	actorType := audit.ActorUser
+	if actor.IsSystemAdmin {
+		actorType = audit.ActorSystemAdmin
+	}
 	result, err := h.service.UpdateLifecycle(c.Request.Context(), UpdateLifecycleInput{
+		Administrator:   actor.IsSystemAdmin,
 		DeviceID:        deviceID,
 		LifecycleStatus: req.LifecycleStatus,
 		OccurredAt:      req.OccurredAt,
@@ -286,7 +302,7 @@ func (h *Handler) AdminUpdateLifecycle(c *gin.Context) {
 	})
 	if err != nil {
 		if !h.record(c, audit.RecordInput{
-			ActorType:    audit.ActorUser,
+			ActorType:    actorType,
 			ActorID:      audit.UserActorID(actor.UserID),
 			Action:       "device.lifecycle.update",
 			ResourceType: "device",
@@ -300,7 +316,7 @@ func (h *Handler) AdminUpdateLifecycle(c *gin.Context) {
 		return
 	}
 	if !h.record(c, audit.RecordInput{
-		ActorType:    audit.ActorUser,
+		ActorType:    actorType,
 		ActorID:      audit.UserActorID(actor.UserID),
 		Action:       "device.lifecycle.update",
 		ResourceType: "device",

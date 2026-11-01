@@ -41,6 +41,7 @@ func (EnvSecretResolver) Resolve(_ context.Context, ref string) (string, error) 
 }
 
 type Runtime struct {
+	Window           func(context.Context, uuid.UUID, time.Time, time.Time) (time.Time, time.Time, bool, error)
 	TelemetryReaders map[string]func(context.Context, DataSource, TelemetryQuery) (TelemetryResult, error)
 	BatchReaders     map[string]func(context.Context, DataSource, TelemetryBatchQuery) (TelemetryBatchResult, error)
 	MediaReaders     map[string]func(context.Context, DataSource, MediaQuery) (MediaResult, error)
@@ -98,6 +99,16 @@ type queryPlan struct {
 }
 
 func (r *Runtime) QueryTelemetry(ctx context.Context, source DataSource, req TelemetryQuery) (result TelemetryResult, err error) {
+	if r.Window != nil {
+		var ok bool
+		req.Start, req.End, ok, err = r.Window(ctx, req.Binding.DataStreamID, req.Start, req.End)
+		if err != nil {
+			return result, err
+		}
+		if !ok {
+			return TelemetryResult{Points: []TelemetryPoint{}, Complete: true}, nil
+		}
+	}
 	start := time.Now()
 	ctx, span := tracing.Start(ctx, "datasource.telemetry",
 		attribute.String("datasource.type", source.Type),
@@ -162,17 +173,41 @@ func (r *Runtime) QueryTelemetryBatch(ctx context.Context, source DataSource, re
 		return result, apperr.New(apperr.KindDataSource, "data source is not active")
 	}
 
-	groups := map[string][]DataStreamBinding{}
+	type windowGroup struct {
+		adapter    string
+		start, end time.Time
+		bindings   []DataStreamBinding
+	}
+	groups := map[string]*windowGroup{}
 	for _, binding := range req.Bindings {
 		if binding.Status != "active" {
 			return result, apperr.New(apperr.KindDataSource, "data stream binding is not active")
 		}
-		groups[binding.AdapterCode] = append(groups[binding.AdapterCode], binding)
+		start, end := req.Start, req.End
+		if r.Window != nil {
+			var ok bool
+			var e error
+			start, end, ok, e = r.Window(ctx, binding.DataStreamID, start, end)
+			if e != nil {
+				return result, e
+			}
+			if !ok {
+				result.Series[binding.DataStreamID] = TelemetryResult{Points: []TelemetryPoint{}, Complete: true}
+				continue
+			}
+		}
+		key := binding.AdapterCode + "@" + start.Format(time.RFC3339Nano) + "@" + end.Format(time.RFC3339Nano)
+		if groups[key] == nil {
+			groups[key] = &windowGroup{adapter: binding.AdapterCode, start: start, end: end}
+		}
+		groups[key].bindings = append(groups[key].bindings, binding)
 	}
-	for adapter, bindings := range groups {
+	for _, group := range groups {
+		adapter, bindings := group.adapter, group.bindings
 		if read := r.BatchReaders[adapter]; read != nil {
 			batchReq := req
 			batchReq.Bindings = bindings
+			batchReq.Start, batchReq.End = group.start, group.end
 			batch, batchErr := read(ctx, source, batchReq)
 			if batchErr != nil {
 				return result, batchErr
@@ -188,7 +223,7 @@ func (r *Runtime) QueryTelemetryBatch(ctx context.Context, source DataSource, re
 			continue
 		}
 		for _, binding := range bindings {
-			item, queryErr := r.QueryTelemetry(ctx, source, TelemetryQuery{Binding: binding, Start: req.Start, End: req.End, Limit: req.Limit, Adaptive: req.Adaptive, TargetPoints: req.TargetPoints})
+			item, queryErr := r.QueryTelemetry(ctx, source, TelemetryQuery{Binding: binding, Start: group.start, End: group.end, Limit: req.Limit, Adaptive: req.Adaptive, TargetPoints: req.TargetPoints})
 			if queryErr != nil {
 				result.Errors[binding.DataStreamID] = apperr.MessageOf(queryErr)
 				continue
@@ -213,6 +248,17 @@ func (r *Runtime) queryGenericColumnsTelemetry(ctx context.Context, source DataS
 	}
 }
 func (r *Runtime) QueryMedia(ctx context.Context, source DataSource, req MediaQuery) (result MediaResult, err error) {
+	if r.Window != nil {
+		var ok bool
+		req.Start, req.End, ok, err = r.Window(ctx, req.Binding.DataStreamID, req.Start, req.End)
+		if err != nil {
+			return result, err
+		}
+		if !ok {
+			return MediaResult{Items: []MediaRecord{}}, nil
+		}
+	}
+
 	start := time.Now()
 	ctx, span := tracing.Start(ctx, "datasource.media",
 		attribute.String("datasource.type", source.Type),

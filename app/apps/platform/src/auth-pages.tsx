@@ -1,3 +1,4 @@
+import { policyLimit } from "./system-policy";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -9,11 +10,10 @@ import { LanguageSwitcher, useLocale } from "@thcpn/i18n";
 import { platformHomePath, simplifiedEnabled } from "./features";
 import { LoginVisualCarousel } from "./login-visual-carousel";
 
-export const validPassword = (value: string) =>
-  value.length >= 8 &&
-  value.length <= 128 &&
-  /[A-Za-z]/.test(value) &&
-  /\d/.test(value);
+export const validPassword = (value: string) => {
+  const bytes = new TextEncoder().encode(value).length;
+  return bytes >= policyLimit("password_min_bytes",8) && bytes <= policyLimit("password_max_bytes",72) && /\p{L}/u.test(value) && /\p{Nd}/u.test(value);
+};
 export const mfaRequiredMessage = (message: string) =>
   /mfa|totp|two.?factor|动态验证码/i.test(message);
 export const platformNextPath = (value: string | null) =>
@@ -79,7 +79,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
     setSuccess(false);
     if (initialPasswordToken) {
       if (!validPassword(initialPassword)) {
-        setMessage(t("platform:auth.passwordRule"));
+        setMessage(`密码需为 ${policyLimit("password_min_bytes",8)}–${policyLimit("password_max_bytes",72)} 字节，并同时包含字母和数字；英文和数字各占 1 字节，中文通常各占 3 字节。`);
         return;
       }
       if (initialPassword !== initialPasswordConfirm) {
@@ -100,7 +100,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
     }
     if (forgotPassword) {
       if (!validPassword(password)) {
-        setMessage(t("platform:auth.passwordRule"));
+        setMessage(`密码需为 ${policyLimit("password_min_bytes",8)}–${policyLimit("password_max_bytes",72)} 字节，并同时包含字母和数字；英文和数字各占 1 字节，中文通常各占 3 字节。`);
         return;
       }
       if (password !== initialPasswordConfirm) {
@@ -277,14 +277,14 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             {initialPasswordToken ? (
               <>
                 <div className="command-note">{t("platform:auth.temporaryHelp")}</div>
-                <label className="field"><span className="field-label">{t("platform:auth.newPassword")}</span><Input autoFocus required minLength={8} maxLength={128} type="password" value={initialPassword} onChange={(event) => setInitialPassword(event.target.value)} /></label>
+                <label className="field"><span className="field-label">{t("platform:auth.newPassword")}</span><Input autoFocus required maxLength={policyLimit("password_max_bytes",72)} type="password" value={initialPassword} onChange={(event) => setInitialPassword(event.target.value)} /></label>
                 <label className="field"><span className="field-label">{t("platform:auth.confirmNewPassword")}</span><Input required type="password" value={initialPasswordConfirm} onChange={(event) => setInitialPasswordConfirm(event.target.value)} /></label>
               </>
             ) : forgotPassword ? (
               <>
                 <label className="field"><span className="field-label">{t("platform:auth.phone")}</span><Input required type="tel" inputMode="tel" value={phone} onChange={(event) => setPhone(event.target.value)} /></label>
                 <div className="sms-row"><label className="field"><span className="field-label">{t("platform:auth.smsCode")}</span><Input required inputMode="numeric" maxLength={6} value={smsCode} onChange={(event) => setSmsCode(event.target.value.replace(/\D/g, ""))} /></label><Button type="button" variant="secondary" disabled={!phone.trim() || busy || cooldown > 0} onClick={() => void sendSms()}><MessageSquareText size={14} />{cooldown > 0 ? `${cooldown}s` : t("platform:auth.send")}</Button></div>
-                <label className="field"><span className="field-label">{t("platform:auth.newPassword")}</span><Input required minLength={8} maxLength={128} type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+                <label className="field"><span className="field-label">{t("platform:auth.newPassword")}</span><Input required maxLength={policyLimit("password_max_bytes",72)} type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
                 <label className="field"><span className="field-label">{t("platform:auth.confirmNewPassword")}</span><Input required type="password" value={initialPasswordConfirm} onChange={(event) => setInitialPasswordConfirm(event.target.value)} /></label>
               </>
             ) : <>
@@ -388,7 +388,6 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                 <span className="field-label">{t("platform:auth.password")}</span>
                 <Input
                   required
-                  minLength={8}
                   maxLength={128}
                   type="password"
                   value={password}

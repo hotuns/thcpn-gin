@@ -91,7 +91,7 @@ func TestDeviceTypeValidationIncludesCamera(t *testing.T) {
 }
 
 func TestDeviceLifecycleStatusValidation(t *testing.T) {
-	for _, status := range []string{"inbound", "installed", "online", "maintenance", "repairing", "retired"} {
+	for _, status := range []string{"inbound", "online", "retired"} {
 		if !isValidDeviceLifecycleStatus(status) {
 			t.Fatalf("expected %q to be valid", status)
 		}

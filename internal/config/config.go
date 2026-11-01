@@ -205,7 +205,7 @@ func Default() Config {
 			DevRegisterEnabled:    true,
 			Password: PasswordConfig{
 				MinLength:          8,
-				MaxLength:          128,
+				MaxLength:          72,
 				FailedAttemptLimit: 5,
 				LockMinutes:        15,
 			},

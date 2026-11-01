@@ -1,3 +1,4 @@
+import { confirmManualSync, manualSyncNotice } from "./manual-sync-confirm";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -9,6 +10,7 @@ import {
   Search,
 } from "lucide-react";
 import {
+  Alert,
   Button,
   Drawer,
   Form,
@@ -209,6 +211,7 @@ export function AdminSourcesPage() {
         return;
       }
     }
+    if (!await confirmManualSync({title: syncAction === "full" ? "确认全量同步？" : "确认单设备同步？",reason:"import",scope: syncAction === "full" ? "将读取此数据源全部设备，更新平台设备资料、配置、数据流和拓扑。" : "将读取所选设备的源端资料与配置并更新平台。"})) return;
     const startedAt = Date.now();
     setSyncBusy(true);
     setSyncFeedback("");
@@ -385,6 +388,7 @@ export function AdminSourcesPage() {
         extra={<Space><Button onClick={closeSync}>关闭</Button><Button type="primary" loading={syncBusy} onClick={() => void runSync()}>开始同步</Button></Space>}
       >
         <Form form={syncForm} layout="vertical">
+          <Alert type="info" title={manualSyncNotice} style={{marginBottom:16}}/>
           <Form.Item label="同步方式">
             <Select
               value={syncAction}
@@ -495,6 +499,7 @@ function LoRaWANV2Drawer({ source, onClose }: { source: JsonRecord | null; onClo
   const requiresFirmwareID = ["get_firmware", "delete_firmware"].includes(operation);
   const requiresPayload = ["create_firmware", "create_gateway_config", "create_node_config", "create_time_config"].includes(operation);
   const syncAllGateways = async () => {
+    if (!await confirmManualSync({title:"同步全部网关？",reason:"import",scope:"将同步此数据源下的全部 LoRaWAN V2 网关及节点资料，任务可能需要较长时间。"})) return;
     setSyncBusy(true); setFeedback(""); setResult(null);
     try {
       const response = await api.admin.startSourceSync(sourceID);

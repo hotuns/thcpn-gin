@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"strings"
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/systemsettings"
 	"unicode"
 	"unicode/utf8"
 )
@@ -15,15 +16,16 @@ type Reader interface {
 	Query(context.Context, string, ...any) (pgx.Rows, error)
 }
 
-func Normalize(name string) (string, error) {
+func Normalize(name string, contexts ...context.Context) (string, error) {
+	ctx := systemsettings.Context(contexts...)
 	for _, r := range name {
 		if unicode.IsControl(r) || r == '\u2028' || r == '\u2029' {
 			return "", apperr.New(apperr.KindInvalidArgument, "node name must not contain control characters or line breaks")
 		}
 	}
 	name = strings.TrimSpace(name)
-	if utf8.RuneCountInString(name) > 50 {
-		return "", apperr.New(apperr.KindInvalidArgument, "node name must not exceed 50 characters")
+	if utf8.RuneCountInString(name) > systemsettings.Int(ctx, "node_name", 50) {
+		return "", apperr.LimitExceeded("node_name", int64(systemsettings.Int(ctx, "node_name", 50)), int64(utf8.RuneCountInString(name)), "characters")
 	}
 	return name, nil
 }

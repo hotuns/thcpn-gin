@@ -10,6 +10,7 @@ import (
 	_ "image/png"
 	"path/filepath"
 	"strings"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/google/uuid"
@@ -199,6 +200,9 @@ func (s *Service) Update(ctx context.Context, input UpdateProfileInput) (Profile
 		return Profile{}, mapNotFound(err, "device not found")
 	}
 	description := cleanOptional(input.Description)
+	if !input.Administrator && description != nil && len([]rune(*description)) > systemsettings.Int(ctx, "device_description", 500) {
+		return Profile{}, apperr.LimitExceeded("device_description", int64(systemsettings.Int(ctx, "device_description", 500)), int64(len([]rune(*description))), "characters")
+	}
 	locationText := cleanOptional(input.LocationText)
 	var userID *uuid.UUID
 	if !input.Administrator {
@@ -236,8 +240,8 @@ func (s *Service) Upload(ctx context.Context, deviceID, actorUserID uuid.UUID, i
 	if err != nil {
 		return nil, apperr.Wrap(apperr.KindInternal, "count device profile images", err)
 	}
-	if count+int64(len(inputs)) > MaxImages {
-		return nil, apperr.New(apperr.KindInvalidArgument, fmt.Sprintf("a device can have at most %d profile images", MaxImages))
+	if count+int64(len(inputs)) > int64(systemsettings.Int(ctx, "profile_images", MaxImages)) {
+		return nil, apperr.LimitExceeded("profile_images", int64(systemsettings.Int(ctx, "profile_images", MaxImages)), count+int64(len(inputs)), "images")
 	}
 	uploadedKeys := make([]string, 0, len(inputs))
 	cleanup := func() {
@@ -247,9 +251,13 @@ func (s *Service) Upload(ctx context.Context, deviceID, actorUserID uuid.UUID, i
 	}
 	created := make([]sqlc.DeviceProfileImage, 0, len(inputs))
 	for index, input := range inputs {
-		if len(input.Data) == 0 || len(input.Data) > MaxImageSize {
+		if len(input.Data) == 0 {
 			cleanup()
-			return nil, apperr.New(apperr.KindInvalidArgument, "image size must be between 1 byte and 10 MB")
+			return nil, apperr.New(apperr.KindInvalidArgument, "image file is empty")
+		}
+		if len(input.Data) > systemsettings.Int(ctx, "image_mb", MaxImageSize/(1024*1024))*1024*1024 {
+			cleanup()
+			return nil, apperr.LimitExceeded("image_bytes", int64(systemsettings.Int(ctx, "image_mb", MaxImageSize/(1024*1024)))*1024*1024, int64(len(input.Data)), "bytes")
 		}
 		if !allowedContentType(input.ContentType) {
 			cleanup()

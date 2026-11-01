@@ -1,3 +1,5 @@
+import { LoRaGatewayStatus } from "./lorawan-gateway-status";
+import { confirmManualSync } from "./manual-sync-confirm";
 import { useSearchParams } from "react-router-dom";
 import { invalidateNodeNames } from "@thcpn/workspace";
 import { validateSensorWaitTime } from "./sensor-config-wait-time";
@@ -205,6 +207,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
     setSensorDirty(false);
   }, [latest.data, node, sensorDirty]);
   const refreshPlatformCatalog = async () => {
+    if (!await confirmManualSync({reason:needsRecovery?"recovery":"external",title:"重新读取节点配置？",scope:"读取网关及全部节点的源端配置，刷新平台指标目录，不重新下发配置。"})) return;
     setBusy("recover");
     setFeedback("");
     try {
@@ -306,6 +309,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
     : null;
   return (
     <div className="admin-device-detail-content">
+      <LoRaGatewayStatus deviceId={deviceId}/>
       <Alert type="info" showIcon message="设备上报信息" description={reportedInfo.isLoading ? "正在读取设备上报信息" : reportedInfo.error ? formatApiError(reportedInfo.error).message : `设备上报 ICCID：${reportedInfo.data?.iccid || "未上报"} · 固件版本：${reportedInfo.data?.firmware_version || "未上报"}`} />
       <section className="admin-detail-section">
         <div className="admin-detail-section-head">

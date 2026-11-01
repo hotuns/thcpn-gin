@@ -1,3 +1,4 @@
+import { usePolicyLimit } from "./system-policy";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -29,7 +30,6 @@ import {
 } from "./data-workflow";
 
 const colors = ["#1769e0", "#16845b", "#d36b12", "#b13e4a", "#6a5ab5", "#00859b", "#9a6b18", "#6b7280"];
-const MAX_COMPARISONS = 8;
 
 export type ComparisonDraft = {
   id: string;
@@ -147,6 +147,7 @@ export function comparisonStatistic(series?: TelemetrySeries): ComparisonStatist
 }
 
 export function DataComparisonPage() {
+ const MAX_COMPARISONS=usePolicyLimit("comparison_items",8);
   const { currentId } = useWorkspace();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();

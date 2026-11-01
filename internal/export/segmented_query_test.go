@@ -3,7 +3,9 @@ package export
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	platform "thcpn-gin/internal/datasource/platform"
@@ -134,5 +136,22 @@ func TestSegmentedTelemetryRefusesSampledOrTruncatedData(t *testing.T) {
 	_, err := p.queryExportTelemetry(t.Context(), platform.DataSource{}, platform.TelemetryQuery{Start: time.Now(), End: time.Now().Add(time.Hour), Limit: maxExportTelemetryPoints})
 	if err == nil {
 		t.Fatal("accepted sampled data as a full export")
+	}
+}
+
+func TestConfiguredExportWindowAndPointCap(t *testing.T) {
+	ctx := systemsettings.With(t.Context(), systemsettings.Values{"export_window_days": 1, "export_points": 3})
+	start := time.Now()
+	calls := 0
+	p := &Processor{runtime: segmentedRuntime{telemetry: func(q platform.TelemetryQuery) (platform.TelemetryResult, error) {
+		calls++
+		if q.End.Sub(q.Start) > 24*time.Hour || q.Limit > 3 {
+			t.Fatalf("settings ignored: %+v", q)
+		}
+		return platform.TelemetryResult{Complete: true, Points: []platform.TelemetryPoint{{Timestamp: q.Start, Value: 1}, {Timestamp: q.End, Value: 1}}}, nil
+	}}}
+	_, err := p.queryExportTelemetry(ctx, platform.DataSource{}, platform.TelemetryQuery{Start: start, End: start.Add(3 * 24 * time.Hour), Limit: 100})
+	if err == nil || !strings.Contains(err.Error(), "3 条") || calls < 2 {
+		t.Fatalf("expected configured per-metric limit: %d %v", calls, err)
 	}
 }

@@ -4,13 +4,9 @@ import { Alert, Button, Dropdown, Form, Input, InputNumber, Modal, Select, Space
 import { api, formatApiError, type JsonRecord } from "@thcpn/api";
 
 const fields = [
-  { key: "ecosystem", name: "ecosystem_term_id", label: "设备类型", kind: "ecosystem" },
+  { key: "ecosystem", name: "ecosystem_term_id", label: "生态分类", kind: "ecosystem" },
   { key: "observation_objects", name: "observation_object_ids", label: "观测对象", kind: "observation_object", multiple: true },
-  { key: "purposes", name: "purpose_ids", label: "观测用途", kind: "purpose", multiple: true },
-  { key: "management", name: "management_term_id", label: "管理方式", kind: "management" },
-  { key: "deployment", name: "deployment_term_id", label: "部署方式", kind: "deployment" },
-  { key: "commissioned_year", name: "commissioned_year", label: "投运年份" },
-  { key: "research_tags", name: "research_tags", label: "研究标签", multiple: true },
+  { key: "purposes", name: "purpose_ids", label: "应用场景", kind: "purpose", multiple: true },
 ];
 type Result = { id: string; name: string; error?: string };
 
@@ -34,7 +30,7 @@ export function AdminDeviceBulkEdit({ devices, disabled, onSaved }: {
   const projects = useQuery({ queryKey: ["admin", "projects", workspace], queryFn: () => api.projects.adminList(workspace!), enabled: mode === "assign" && !!workspace });
   const sites = useQuery({ queryKey: ["admin", "sites", workspace, project], queryFn: () => api.sites.adminList(workspace!, project), enabled: mode === "assign" && !!workspace });
   const options = (items: JsonRecord[] = []) => items.map(item => ({ value: String(item.id), label: String(item.name) }));
-  const label = definition?.label ?? (mode === "assign" ? "分配工作区与项目／站点" : "安装资料");
+  const label = definition?.label ?? (mode === "assign" ? "分配工作区与项目／站点" : mode === "ops_tags" ? "运维标签" : "安装资料");
   const open = (key: string) => { setMode(key); setTargets([...devices]); setResults([]); setProgress(0); setConfirmed(false); form.resetFields(); form.setFieldsValue({ operation: "set" }); };
   const save = async () => {
     const values = await form.validateFields();
@@ -63,10 +59,14 @@ export function AdminDeviceBulkEdit({ devices, disabled, onSaved }: {
               };
               if (values.operation !== "inherit") payload[definition.name] = values.operation === "clear" ? (definition.multiple ? [] : null) : values.value;
               await api.admin.updateDeviceEnvironment(id, payload);
+            } else if (mode === "ops_tags") {
+              const existing = await api.admin.deviceInstallation(id);
+              await api.admin.saveDeviceInstallation(id, {...existing,ops_tags:values.tags??[]});
             } else if (mode === "assign") {
               await api.admin.assignDevice(id, { target_workspace_id: values.target_workspace_id, project_id: values.project_id ?? null, site_id: values.site_id ?? null });
             } else {
-              await api.admin.updateDeviceProfile(id, { [values.field]: values.content ?? "" });
+              const existing = await api.admin.deviceProfile(id);
+              await api.admin.updateDeviceProfile(id, {description:existing.description??null,location_text:existing.location_text??null,[values.field]: values.content ?? "" });
             }
             output.push({ id, name: String(device.name ?? id) });
           } catch (error) { output.push({ id, name: String(device.name ?? id), error: formatApiError(error).message }); }
@@ -88,7 +88,8 @@ export function AdminDeviceBulkEdit({ devices, disabled, onSaved }: {
   const errors = definition ? terms.error : mode === "assign" ? workspaces.error || projects.error || sites.error : null;
   return <>
     <Dropdown disabled={disabled || !devices.length} menu={{ items: [
-      { key: "classification", label: "批量修改观测资料", children: fields.map(field => ({ key: field.key, label: field.label })) },
+      { key: "classification", label: "批量修改场景与分类", children: fields.map(field => ({ key: field.key, label: field.label })) },
+      { key: "ops_tags", label: "批量设置运维标签" },
       { key: "assign", label: "批量分配工作区／项目／站点" },
       { key: "profile", label: "批量修改安装资料" },
     ], onClick: ({ key }) => open(key) }}><Button disabled={disabled}>批量编辑</Button></Dropdown>
@@ -102,7 +103,7 @@ export function AdminDeviceBulkEdit({ devices, disabled, onSaved }: {
             {operation === "set" && <Form.Item name="value" label={definition.label} rules={[{ required: true, message: `请填写${definition.label}` }]}>
               {definition.key === "commissioned_year" ? <InputNumber min={1900} max={2100} precision={0} style={{ width: "100%" }} /> : <Select showSearch optionFilterProp="label" mode={definition.key === "research_tags" ? "tags" : definition.multiple ? "multiple" : undefined} loading={terms.isLoading} options={(terms.data?.items ?? []).filter(term => term.kind === definition.kind && term.status === "active").map(term => ({ value: term.id, label: term.name_zh }))} />}
             </Form.Item>}
-          </> : mode === "assign" ? <>
+          </> : mode === "ops_tags" ? <Form.Item name="tags" label="运维标签"><Select mode="tags" maxCount={30} tokenSeparators={[",","，"]}/></Form.Item> : mode === "assign" ? <>
             <Form.Item name="target_workspace_id" label="工作区" rules={[{ required: true }]}><Select showSearch optionFilterProp="label" loading={workspaces.isLoading} options={options(workspaces.data?.items)} onChange={() => form.setFieldsValue({ project_id: undefined, site_id: undefined })} /></Form.Item>
             <Form.Item name="project_id" label="项目"><Select allowClear showSearch optionFilterProp="label" disabled={!workspace} loading={projects.isLoading} options={options(projects.data?.items)} onChange={() => form.setFieldValue("site_id", undefined)} /></Form.Item>
             <Form.Item name="site_id" label="站点"><Select allowClear showSearch optionFilterProp="label" disabled={!workspace} loading={sites.isLoading} options={options(sites.data?.items)} /></Form.Item>

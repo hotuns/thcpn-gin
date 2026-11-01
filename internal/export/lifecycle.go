@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/google/uuid"
@@ -46,8 +47,8 @@ func (p *Processor) tempDir() string {
 	}
 	return filepath.Join(os.TempDir(), "thcpn-exports")
 }
-func (p *Processor) minFreeBytes() uint64 {
-	n := p.cfg.MinFreeMB
+func (p *Processor) minFreeBytes(contexts ...context.Context) uint64 {
+	n := systemsettings.Int(systemsettings.Context(contexts...), "export_min_free_mb", p.cfg.MinFreeMB)
 	if n <= 0 {
 		n = 256
 	}
@@ -63,12 +64,12 @@ func checkDisk(dir string, reserve uint64) error {
 	}
 	return nil
 }
-func (p *Processor) newTempFile(id uuid.UUID) (*os.File, error) {
+func (p *Processor) newTempFile(id uuid.UUID, contexts ...context.Context) (*os.File, error) {
 	dir := p.tempDir()
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
-	if err := checkDisk(dir, p.minFreeBytes()); err != nil {
+	if err := checkDisk(dir, p.minFreeBytes(contexts...)); err != nil {
 		return nil, err
 	}
 	return os.CreateTemp(dir, id.String()+"-*.tmp")

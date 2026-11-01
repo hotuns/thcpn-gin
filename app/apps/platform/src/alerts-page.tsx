@@ -1,3 +1,4 @@
+import { policyLimit } from "./system-policy";
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
@@ -52,7 +53,7 @@ export function CreateRuleDialog({open,workspaceId,initialDeviceId,onClose,onSav
       const condition:JsonRecord={mode,duration_seconds:Number(durationMinutes)*60,recovery_delta:mode==="outside"?Math.abs(Number(upper)-Number(lower))*.02:Math.abs(Number(mode==="below"?lower:upper))*.02};
       if(mode!=="above")condition.lower=Number(lower);
       if(mode!=="below")condition.upper=Number(upper);
-      await api.alerts.createRule(workspaceId,{name:Array.from(summary).slice(0,120).join(""),type,severity,device_id:deviceId,data_stream_id:type==="telemetry_threshold"?streamId:undefined,condition:type==="telemetry_threshold"?condition:undefined,offline_after_seconds:type==="device_offline"?Number(offlineMinutes)*60:undefined,recipient_user_ids:recipients,channels:email?["in_app","email"]:["in_app"],enabled:true});
+      await api.alerts.createRule(workspaceId,{name:Array.from(summary).slice(0,policyLimit("alert_name",120)).join(""),type,severity,device_id:deviceId,data_stream_id:type==="telemetry_threshold"?streamId:undefined,condition:type==="telemetry_threshold"?condition:undefined,offline_after_seconds:type==="device_offline"?Number(offlineMinutes)*60:undefined,recipient_user_ids:recipients,channels:email?["in_app","email"]:["in_app"],enabled:true});
       onSaved();
     }catch(e){setError(formatApiError(e).message)}finally{setBusy(false)}
   };

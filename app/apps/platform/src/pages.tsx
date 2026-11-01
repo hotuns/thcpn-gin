@@ -1,3 +1,4 @@
+import { policyLimit } from "./system-policy";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -261,7 +262,7 @@ export function DeviceDataPage({
             return api.telemetry.dataStream(series.data_stream_id, {
               startTime: cursor,
               endTime: new Date(appliedEndTime).toISOString(),
-              limit: 500,
+              limit: Math.min(500,policyLimit("query_points",5000)),
             });
           }),
         );

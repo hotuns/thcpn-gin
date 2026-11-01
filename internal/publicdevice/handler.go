@@ -1,10 +1,13 @@
 package publicdevice
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -128,8 +131,8 @@ func (h *Handler) Unlock(c *gin.Context) {
 		Password string `json:"password"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || !publication.PasswordEnabled || !h.service.CheckPassword(publication, req.Password) {
-		if !h.limiter.allow(c.Request.Context(), passwordLimitKey(publication.PublicSlug, c.ClientIP()), 5, 15*time.Minute) {
-			httpx.WriteAppError(c, apperr.New(apperr.KindRateLimited, "too many password attempts"))
+		if !h.limiter.allow(c.Request.Context(), passwordLimitKey(publication.PublicSlug, c.ClientIP()), int64(systemsettings.Int(c.Request.Context(), "public_password_attempts", 5)), time.Duration(systemsettings.Int(c.Request.Context(), "public_password_window_minutes", 15))*time.Minute) {
+			httpx.WriteAppError(c, apperr.New(apperr.KindRateLimited, fmt.Sprintf("公开访问密码在 %d 分钟内最多尝试 %d 次，请稍后重试", systemsettings.Int(c.Request.Context(), "public_password_window_minutes", 15), systemsettings.Int(c.Request.Context(), "public_password_attempts", 5))))
 			return
 		}
 		httpx.WriteAppError(c, apperr.New(apperr.KindUnauthorized, "invalid public access password"))
@@ -149,13 +152,13 @@ func (h *Handler) Telemetry(c *gin.Context) {
 	if !ok {
 		return
 	}
-	start, end := Window(time.Now())
-	cacheKey := publication.PublicSlug + ":" + strconv.Itoa(publication.AccessVersion)
+	start, end := Window(time.Now(), c.Request.Context())
+	cacheKey := publication.PublicSlug + ":" + strconv.Itoa(publication.AccessVersion) + ":" + strconv.Itoa(systemsettings.Int(c.Request.Context(), "public_history_hours", 72)) + ":" + strconv.Itoa(systemsettings.Int(c.Request.Context(), "query_points", 5000))
 	if value, cached := h.getTelemetryCache(cacheKey); cached {
 		c.JSON(http.StatusOK, value)
 		return
 	}
-	result, err := h.telemetry.Query(c.Request.Context(), telemetry.QueryInput{DeviceID: &publication.DeviceID, StartTime: start, EndTime: end, Limit: 5000, Adaptive: true, TargetPoints: 600})
+	result, err := h.telemetry.Query(c.Request.Context(), telemetry.QueryInput{DeviceID: &publication.DeviceID, StartTime: start, EndTime: end, Limit: systemsettings.Int(c.Request.Context(), "query_points", 5000), Adaptive: true, TargetPoints: min(600, systemsettings.Int(c.Request.Context(), "query_points", 5000))})
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -194,15 +197,15 @@ func (h *Handler) Images(c *gin.Context) {
 	}
 	page := optionalPositiveInt(c.Query("page"), 1)
 	pageSize := optionalPositiveInt(c.Query("page_size"), 24)
-	if pageSize > 100 {
-		pageSize = 100
+	if pageSize > systemsettings.Int(c.Request.Context(), "media_page_size", 100) {
+		pageSize = systemsettings.Int(c.Request.Context(), "media_page_size", 100)
 	}
-	cacheKey := publication.PublicSlug + ":" + strconv.Itoa(publication.AccessVersion) + ":" + streamID.String() + ":" + strconv.Itoa(page) + ":" + strconv.Itoa(pageSize)
+	cacheKey := publication.PublicSlug + ":" + strconv.Itoa(publication.AccessVersion) + ":" + strconv.Itoa(systemsettings.Int(c.Request.Context(), "public_history_hours", 72)) + ":" + strconv.Itoa(systemsettings.Int(c.Request.Context(), "query_points", 5000)) + ":" + streamID.String() + ":" + strconv.Itoa(page) + ":" + strconv.Itoa(pageSize)
 	if value, cached := h.getImageCache(cacheKey); cached {
 		c.JSON(http.StatusOK, value)
 		return
 	}
-	start, end := Window(time.Now())
+	start, end := Window(time.Now(), c.Request.Context())
 	result, err := h.media.List(c.Request.Context(), media.QueryInput{DataStreamID: &streamID, StartTime: start, EndTime: end, Page: page, PageSize: pageSize})
 	if err != nil {
 		httpx.WriteAppError(c, err)
@@ -250,9 +253,11 @@ func (h *Handler) resolveAuthorized(c *gin.Context) (Publication, PublicDevice, 
 
 func (h *Handler) resolvePublic(c *gin.Context) (Publication, PublicDevice, bool) {
 	slug := strings.TrimSpace(c.Param("public_slug"))
-	bucket, maximum := publicRequestLimit(c.FullPath())
+	bucket, maximum := publicRequestLimit(c.FullPath(), c.Request.Context())
 	if slug == "" || !h.limiter.allow(c.Request.Context(), requestLimitKey(slug, c.ClientIP(), bucket), maximum, time.Minute) {
-		httpx.WriteAppError(c, apperr.New(apperr.KindRateLimited, "public device request limit exceeded"))
+		httpx.WriteAppError(c, &apperr.Error{Kind: apperr.KindRateLimited, Message: "public device request limit exceeded", Details: map[string]any{
+			"reason": "PUBLIC_REQUEST_RATE", "maximum": maximum, "window_seconds": 60,
+		}})
 		return Publication{}, PublicDevice{}, false
 	}
 	publication, device, err := h.service.Resolve(c.Request.Context(), slug)
@@ -263,16 +268,17 @@ func (h *Handler) resolvePublic(c *gin.Context) (Publication, PublicDevice, bool
 	return publication, device, true
 }
 
-func publicRequestLimit(route string) (string, int64) {
+func publicRequestLimit(route string, contexts ...context.Context) (string, int64) {
+	ctx := systemsettings.Context(contexts...)
 	switch route {
 	case "/api/v1/public/devices/:public_slug/telemetry":
-		return "telemetry", 60
+		return "telemetry", int64(systemsettings.Int(ctx, "public_telemetry_per_minute", 60))
 	case "/api/v1/public/devices/:public_slug/images":
-		return "images", 240
+		return "images", int64(systemsettings.Int(ctx, "public_images_per_minute", 240))
 	case "/api/v1/public/devices/:public_slug/unlock":
-		return "unlock", 60
+		return "unlock", int64(systemsettings.Int(ctx, "public_unlock_per_minute", 60))
 	default:
-		return "metadata", 120
+		return "metadata", int64(systemsettings.Int(ctx, "public_other_per_minute", 120))
 	}
 }
 

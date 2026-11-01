@@ -11,11 +11,9 @@ import (
 )
 
 func ValidatePassword(password string, cfg config.PasswordConfig) error {
-	if len(password) < cfg.MinLength {
-		return apperr.New(apperr.KindInvalidArgument, "password is too short")
-	}
-	if len(password) > cfg.MaxLength {
-		return apperr.New(apperr.KindInvalidArgument, "password is too long")
+	maximum := min(cfg.MaxLength, 72) // bcrypt rejects passwords longer than 72 bytes.
+	if len(password) < cfg.MinLength || len(password) > maximum {
+		return apperr.PasswordLength(cfg.MinLength, maximum)
 	}
 
 	hasLetter := false

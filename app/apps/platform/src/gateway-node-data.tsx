@@ -1,3 +1,4 @@
+import { ObservationStartInfo } from "./observation-start-info";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useSearchParams, Link } from "react-router-dom";
@@ -113,6 +114,7 @@ export function GatewayNodeData({ gateway, workspaceId }: { gateway: Device; wor
     {indexed&&currentNode?.target.kind==="gateway_node"&&<Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}><DialogContent><DialogHeader><DialogTitle>采集位置时间配置</DialogTitle><DialogDescription>{currentNode.name}</DialogDescription></DialogHeader>{scheduleOpen&&<LoRaWANNodeTimeConfig deviceId={gateway.id} workspaceId={workspaceId} nodeIndex={currentNode.target.node_index}/>}</DialogContent></Dialog>}
     <Panel className="gateway-node-query">
       <div className="panel-header"><div><h2 className="panel-title">{indexed ? "采集位置数据" : "节点数据查询"}</h2></div><div className="header-actions">{indexed&&mode==="node"&&currentNode&&<Button variant="secondary" onClick={()=>setScheduleOpen(true)}>查看采集时间</Button>}{dirty && <Badge tone="warning">条件未应用</Badge>}<Button disabled={invalid || !selected.length || loading || !selectedNode} onClick={search}><Search size={14}/>{loading ? "查询中…" : dirty ? "查询" : "刷新"}</Button></div></div>
+      {currentNode&&<ObservationStartInfo deviceId={currentNode.target.kind==="device"?currentNode.target.device_id:gateway.id} nodeIndex={currentNode.target.kind==="gateway_node"?currentNode.target.node_index:0}/>}
       {nodesQuery.error && <StateView type="error" title="节点加载失败" description={formatApiError(nodesQuery.error).message} />}
       {nodesQuery.isLoading ? <StateView type="loading" title="正在加载节点" description="正在读取节点与指标。" /> : <>
         <div className="gateway-node-query-fields">

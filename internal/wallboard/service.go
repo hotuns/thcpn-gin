@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"thcpn-gin/internal/datasource/platform"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/google/uuid"
@@ -255,8 +256,8 @@ func (s *Service) Save(ctx context.Context, workspaceID, actorID, id uuid.UUID, 
 	if name == "" {
 		return Wallboard{}, apperr.New(apperr.KindInvalidArgument, "wallboard name is required")
 	}
-	if len([]rune(name)) > 120 {
-		return Wallboard{}, apperr.New(apperr.KindInvalidArgument, "wallboard name exceeds 120 characters")
+	if len([]rune(name)) > systemsettings.Int(ctx, "atlas_name", 120) {
+		return Wallboard{}, apperr.LimitExceeded("atlas_name", int64(systemsettings.Int(ctx, "atlas_name", 120)), int64(len([]rune(name))), "characters")
 	}
 	var template Template
 	var err error
@@ -317,8 +318,8 @@ func (s *Service) validateConfig(ctx context.Context, workspaceID uuid.UUID, sce
 	if c.TrendHours <= 0 {
 		c.TrendHours = 24
 	}
-	if c.TrendHours > 720 {
-		return c, apperr.New(apperr.KindInvalidArgument, "trend_hours exceeds 720")
+	if c.TrendHours > systemsettings.Int(ctx, "atlas_trend_hours", 720) {
+		return c, apperr.LimitExceeded("atlas_trend_hours", int64(systemsettings.Int(ctx, "atlas_trend_hours", 720)), int64(c.TrendHours), "hours")
 	}
 	if c.Layout != "" && c.Layout != "balanced" && c.Layout != "map" {
 		return c, apperr.New(apperr.KindInvalidArgument, "layout must be balanced or map")
@@ -329,8 +330,8 @@ func (s *Service) validateConfig(ctx context.Context, workspaceID uuid.UUID, sce
 	if c.Presentation != "technology" && c.Presentation != "panorama" {
 		return c, apperr.New(apperr.KindInvalidArgument, "unknown atlas presentation")
 	}
-	if len([]rune(c.Description)) > 300 {
-		return c, apperr.New(apperr.KindInvalidArgument, "description exceeds 300 characters")
+	if len([]rune(c.Description)) > systemsettings.Int(ctx, "atlas_description", 300) {
+		return c, apperr.LimitExceeded("atlas_description", int64(systemsettings.Int(ctx, "atlas_description", 300)), int64(len([]rune(c.Description))), "characters")
 	}
 	if scene == "site" && c.SiteID == nil {
 		return c, apperr.New(apperr.KindInvalidArgument, "site_id is required")
@@ -338,8 +339,8 @@ func (s *Service) validateConfig(ctx context.Context, workspaceID uuid.UUID, sce
 	if scene == "device" && c.DeviceID == nil {
 		return c, apperr.New(apperr.KindInvalidArgument, "device_id is required")
 	}
-	if scene == "organization" && len(c.DeviceIDs) > 50 {
-		return c, apperr.New(apperr.KindInvalidArgument, "at most 50 device ids are allowed")
+	if scene == "organization" && len(c.DeviceIDs) > systemsettings.Int(ctx, "atlas_devices", 50) {
+		return c, apperr.LimitExceeded("atlas_devices", int64(systemsettings.Int(ctx, "atlas_devices", 50)), int64(len(c.DeviceIDs)), "devices")
 	}
 	if c.SiteID != nil {
 		if err := s.requireWorkspaceRow(ctx, `SELECT 1 FROM sites WHERE id=$1 AND workspace_id=$2 AND status='active'`, *c.SiteID, workspaceID); err != nil {

@@ -404,6 +404,21 @@ type DeviceEnvironmentTerm struct {
 	TermID   uuid.UUID `json:"term_id"`
 }
 
+type DeviceInstallationRecord struct {
+	DeviceID         uuid.UUID          `json:"device_id"`
+	InstalledOn      pgtype.Date        `json:"installed_on"`
+	InstallerID      *uuid.UUID         `json:"installer_id"`
+	ContactName      string             `json:"contact_name"`
+	ContactPhone     string             `json:"contact_phone"`
+	Organization     string             `json:"organization"`
+	ProjectName      string             `json:"project_name"`
+	RetiredOn        pgtype.Date        `json:"retired_on"`
+	RetirementReason string             `json:"retirement_reason"`
+	OpsTags          []string           `json:"ops_tags"`
+	UpdatedBy        *uuid.UUID         `json:"updated_by"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
 // 设备生命周期状态变更日志。
 type DeviceLifecycleEvent struct {
 	ID          uuid.UUID          `json:"id"`
@@ -432,6 +447,25 @@ type DeviceMetadatum struct {
 	UpdatedBy uuid.UUID          `json:"updated_by"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type DeviceObservationStart struct {
+	DeviceID  uuid.UUID          `json:"device_id"`
+	NodeIndex int32              `json:"node_index"`
+	StartsAt  pgtype.Timestamptz `json:"starts_at"`
+	UpdatedBy uuid.UUID          `json:"updated_by"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type DeviceObservationStartEvent struct {
+	ID            uuid.UUID          `json:"id"`
+	DeviceID      uuid.UUID          `json:"device_id"`
+	NodeIndex     int32              `json:"node_index"`
+	PreviousStart pgtype.Timestamptz `json:"previous_start"`
+	StartsAt      pgtype.Timestamptz `json:"starts_at"`
+	Reason        string             `json:"reason"`
+	ActorID       uuid.UUID          `json:"actor_id"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 }
 
 // 用户发起的设备配置或控制操作任务及其执行状态。
@@ -540,6 +574,14 @@ type DeviceTaxonomyTerm struct {
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 	Icon          *string            `json:"icon"`
+}
+
+type DeviceWorkspaceTag struct {
+	DeviceID    uuid.UUID          `json:"device_id"`
+	WorkspaceID uuid.UUID          `json:"workspace_id"`
+	Tags        []string           `json:"tags"`
+	UpdatedBy   *uuid.UUID         `json:"updated_by"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
 // 异步数据导出任务及结果对象、状态、错误和下载有效期。
@@ -656,6 +698,25 @@ type LoginVisual struct {
 	SizeBytes        int64              `json:"size_bytes"`
 	SortOrder        int32              `json:"sort_order"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+}
+
+type LorawanGatewayDetail struct {
+	DeviceID  uuid.UUID          `json:"device_id"`
+	AppKey    string             `json:"app_key"`
+	Eui       string             `json:"eui"`
+	WifiName  string             `json:"wifi_name"`
+	UpdatedBy *uuid.UUID         `json:"updated_by"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type LorawanPhysicalNode struct {
+	ID              uuid.UUID          `json:"id"`
+	DataSourceID    uuid.UUID          `json:"data_source_id"`
+	ExternalID      int64              `json:"external_id"`
+	Sn              string             `json:"sn"`
+	GatewayDeviceID *uuid.UUID         `json:"gateway_device_id"`
+	NodeIndex       pgtype.Int4        `json:"node_index"`
+	SyncedAt        pgtype.Timestamptz `json:"synced_at"`
 }
 
 // Platform semantic snapshot for an upstream LoRaWAN V2 node sensor configuration.
@@ -979,6 +1040,23 @@ type SystemAnnouncement struct {
 	CreatedBy    uuid.UUID          `json:"created_by"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type SystemSetting struct {
+	Singleton  bool               `json:"singleton"`
+	ValuesJson []byte             `json:"values_json"`
+	Version    int64              `json:"version"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+	UpdatedBy  *uuid.UUID         `json:"updated_by"`
+}
+
+type SystemSettingsHistory struct {
+	ID           int64              `json:"id"`
+	ActorAdminID uuid.UUID          `json:"actor_admin_id"`
+	BeforeJson   []byte             `json:"before_json"`
+	AfterJson    []byte             `json:"after_json"`
+	Reason       string             `json:"reason"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
 // 平台普通用户主表，保存身份、联系方式、账号状态和认证版本，不保存密码正文。

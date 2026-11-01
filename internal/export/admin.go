@@ -3,6 +3,7 @@ package export
 import (
 	"context"
 	"net/http"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -63,7 +64,7 @@ func (s *Service) CreateAdmin(ctx context.Context, adminID uuid.UUID, input Crea
 	if err != nil {
 		return Job{}, err
 	}
-	expiry := time.Now().UTC().Add(time.Duration(s.cfg.FileTTLHours) * time.Hour)
+	expiry := time.Now().UTC().Add(time.Duration(systemsettings.Int(ctx, "export_ttl_hours", s.cfg.FileTTLHours)) * time.Hour)
 	row, err := s.queries.CreateAdminExportJob(ctx, sqlc.CreateAdminExportJobParams{RequestedByAdmin: &adminID, ResourceType: input.ResourceType, ResourceID: input.ResourceID, ExportType: input.ExportType, RequestConfigJson: cfg, ExpiresAt: pgTime(expiry)})
 	if err != nil {
 		return Job{}, mapWriteError(err, "create administrator export")

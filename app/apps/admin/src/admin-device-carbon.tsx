@@ -11,22 +11,23 @@ export function AdminDeviceCarbon({deviceId,onExport}:{deviceId:string;onExport:
   const {message}=App.useApp();
   const [node,setNode]=useState<number>();
   const [field,setField]=useState("A");
+  const [phase,setPhase]=useState("all");
   const [range,setRange]=useState<[Dayjs,Dayjs]|null>(()=>[dayjs().subtract(1,"day"),dayjs()]);
   const [applied,setApplied]=useState(()=>({start:dayjs().subtract(1,"day").toISOString(),end:dayjs().toISOString()}));
   const [period,setPeriod]=useState<string>();
   const [fluxView,setFluxView]=useState("chart");
   const overview=useQuery({queryKey:["admin","device",deviceId,"carbon-overview"],queryFn:()=>api.admin.carbonOverview(deviceId)});
   const nodeId=node??overview.data?.nodes[0]?.node_id;
-  const flux=useQuery({queryKey:["admin","device",deviceId,"carbon-flux",nodeId,field,applied],queryFn:()=>api.admin.carbonFlux(deviceId,{node_id:nodeId!,field,...applied}),enabled:nodeId!=null});
-  const periods=useQuery({queryKey:["admin","device",deviceId,"carbon-periods",nodeId,applied],queryFn:()=>api.admin.carbonPeriods(deviceId,{node_id:nodeId!,...applied}),enabled:nodeId!=null});
-  const detail=useQuery({queryKey:["admin","device",deviceId,"carbon-period",nodeId,field,period],queryFn:()=>api.admin.carbonPeriod(deviceId,period!,{node_id:nodeId!,field}),enabled:!!period&&nodeId!=null});
+  const flux=useQuery({queryKey:["admin","device",deviceId,"carbon-flux",nodeId,field,applied,phase],queryFn:()=>api.admin.carbonFlux(deviceId,{node_id:nodeId!,field,...applied,data_phase:phase}),enabled:nodeId!=null});
+  const periods=useQuery({queryKey:["admin","device",deviceId,"carbon-periods",nodeId,applied,phase],queryFn:()=>api.admin.carbonPeriods(deviceId,{node_id:nodeId!,...applied,data_phase:phase}),enabled:nodeId!=null});
+  const detail=useQuery({queryKey:["admin","device",deviceId,"carbon-period",nodeId,field,period,phase],queryFn:()=>api.admin.carbonPeriod(deviceId,period!,{node_id:nodeId!,field,data_phase:phase}),enabled:!!period&&nodeId!=null});
   const fluxCurves=useMemo(()=>carbonFluxCurves(flux.data?.points??[]),[flux.data]);
   return <Card title="碳汇节点与采样数据" extra={<Button onClick={onExport}>导出通量与原始数据</Button>}>
     <Space wrap style={{marginBottom:16}}>
       <Select style={{width:240}} loading={overview.isLoading} value={nodeId} onChange={value=>{setNode(value);setPeriod(undefined);}} options={overview.data?.nodes.map(item=>({value:item.node_id,label:item.name||`Node ${item.node_id}`}))}/>
       <Select value={field} onChange={value=>{setField(value);setPeriod(undefined);}} style={{width:130}} options={["A","B","C","D"].map(value=>({value,label:`地块 ${value}`}))}/>
       <DatePicker.RangePicker value={range} showTime onChange={value=>setRange(value&&value[0]&&value[1]?[value[0],value[1]]:null)} presets={[1,3,7,30].map(days=>({label:`${days} 天`,value:[dayjs().subtract(days,"day"),dayjs()] as [Dayjs,Dayjs]}))}/>
-      <Button type="primary" loading={flux.isFetching||periods.isFetching} onClick={()=>{if(!range||!range[1].isAfter(range[0])){void message.warning("请选择有效时间范围");return;}setApplied({start:range[0].toISOString(),end:range[1].toISOString()});}}>查询</Button>
+      <Select aria-label="数据阶段" value={phase} onChange={value=>{setPhase(value);setPeriod(undefined);}} options={[{value:"all",label:"全部数据"},{value:"formal",label:"正式观测数据"},{value:"testing",label:"调试数据"}]}/><Button type="primary" loading={flux.isFetching||periods.isFetching} onClick={()=>{if(!range||!range[1].isAfter(range[0])){void message.warning("请选择有效时间范围");return;}setApplied({start:range[0].toISOString(),end:range[1].toISOString()});}}>查询</Button>
     </Space>
     {[overview.error,flux.error,periods.error].filter(Boolean).map((error,index)=><Alert key={index} type="error" title="碳汇数据加载失败" description={formatApiError(error).message}/>)}
     <Tabs items={[

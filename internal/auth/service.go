@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/google/uuid"
@@ -208,8 +209,8 @@ func (s *Service) SendSMS(ctx context.Context, input SendSMSInput) (SendSMSResul
 
 	return SendSMSResult{
 		Sent:            true,
-		ExpiresIn:       s.smsCfg.CodeTTLSeconds,
-		CooldownSeconds: s.smsCfg.CooldownSeconds,
+		ExpiresIn:       systemsettings.Int(ctx, "sms_ttl_seconds", s.smsCfg.CodeTTLSeconds),
+		CooldownSeconds: systemsettings.Int(ctx, "sms_cooldown_seconds", s.smsCfg.CooldownSeconds),
 	}, nil
 }
 
@@ -235,7 +236,7 @@ func (s *Service) SendPasswordResetSMS(ctx context.Context, input SendSMSInput) 
 		_ = s.codeStore.ClearIssue(ctx, phone)
 		return SendSMSResult{}, err
 	}
-	return SendSMSResult{Sent: true, ExpiresIn: s.smsCfg.CodeTTLSeconds, CooldownSeconds: s.smsCfg.CooldownSeconds}, nil
+	return SendSMSResult{Sent: true, ExpiresIn: systemsettings.Int(ctx, "sms_ttl_seconds", s.smsCfg.CodeTTLSeconds), CooldownSeconds: systemsettings.Int(ctx, "sms_cooldown_seconds", s.smsCfg.CooldownSeconds)}, nil
 }
 
 func (s *Service) SendEmailVerification(ctx context.Context, input SendEmailInput) (SendEmailResult, error) {
@@ -278,8 +279,8 @@ func (s *Service) SendEmailVerification(ctx context.Context, input SendEmailInpu
 
 	return SendEmailResult{
 		Sent:            true,
-		ExpiresIn:       s.emailCfg.CodeTTLSeconds,
-		CooldownSeconds: s.emailCfg.CooldownSeconds,
+		ExpiresIn:       systemsettings.Int(ctx, "email_ttl_seconds", s.emailCfg.CodeTTLSeconds),
+		CooldownSeconds: systemsettings.Int(ctx, "email_cooldown_seconds", s.emailCfg.CooldownSeconds),
 	}, nil
 }
 
@@ -422,7 +423,7 @@ func (s *Service) RegisterWithPassword(ctx context.Context, input PasswordRegist
 	if phone == nil && email == nil {
 		return LoginResult{}, apperr.New(apperr.KindInvalidArgument, "phone or email is required")
 	}
-	if err := ValidatePassword(input.Password, s.authCfg.Password); err != nil {
+	if err := ValidatePassword(input.Password, systemsettings.Password(ctx, s.authCfg.Password)); err != nil {
 		return LoginResult{}, err
 	}
 
@@ -516,7 +517,7 @@ func (s *Service) ChangePassword(ctx context.Context, input ChangePasswordInput)
 	if input.UserID == uuid.Nil {
 		return apperr.New(apperr.KindInvalidArgument, "user id is required")
 	}
-	if err := ValidatePassword(input.NewPassword, s.authCfg.Password); err != nil {
+	if err := ValidatePassword(input.NewPassword, systemsettings.Password(ctx, s.authCfg.Password)); err != nil {
 		return err
 	}
 	credential, err := s.queries.GetUserCredential(ctx, input.UserID)
@@ -582,7 +583,7 @@ func (s *Service) ResetPassword(ctx context.Context, input ResetPasswordInput) e
 	if code == "" {
 		return apperr.New(apperr.KindInvalidArgument, "sms code is required")
 	}
-	if err := ValidatePassword(input.NewPassword, s.authCfg.Password); err != nil {
+	if err := ValidatePassword(input.NewPassword, systemsettings.Password(ctx, s.authCfg.Password)); err != nil {
 		return err
 	}
 	if s.codeStore == nil {
@@ -758,9 +759,9 @@ func (s *Service) recordPasswordFailure(ctx context.Context, credential sqlc.Use
 	}
 	nextAttempts := credential.FailedAttempts + 1
 	var lockedUntil pgtype.Timestamptz
-	if nextAttempts >= int32(s.authCfg.Password.FailedAttemptLimit) {
+	if nextAttempts >= int32(systemsettings.Password(ctx, s.authCfg.Password).FailedAttemptLimit) {
 		lockedUntil = pgtype.Timestamptz{
-			Time:  s.now().Add(time.Duration(s.authCfg.Password.LockMinutes) * time.Minute),
+			Time:  s.now().Add(time.Duration(systemsettings.Password(ctx, s.authCfg.Password).LockMinutes) * time.Minute),
 			Valid: true,
 		}
 	}

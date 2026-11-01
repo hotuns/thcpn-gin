@@ -7020,6 +7020,7 @@ paths:
         "200": { description: Alert acknowledged, content: { application/json: { schema: { $ref: "#/components/schemas/AlertEvent" } } } }
   /api/v1/admin/devices/{device_id}/telemetry:
     parameters:
+      - $ref: "#/components/parameters/AdminDataPhase"
       - $ref: "#/components/parameters/DeviceID"
     get:
       tags:
@@ -7092,6 +7093,7 @@ paths:
           $ref: "#/components/responses/Internal"
   /api/v1/admin/devices/{device_id}/media:
     parameters:
+      - $ref: "#/components/parameters/AdminDataPhase"
       - $ref: "#/components/parameters/DeviceID"
     get:
       tags:
@@ -7598,6 +7600,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/admin/devices/{device_id}/carbon/flux:
     parameters:
+      - $ref: "#/components/parameters/AdminDataPhase"
       - $ref: "#/components/parameters/DeviceID"
     get:
       tags: [Admin]
@@ -7630,6 +7633,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/admin/devices/{device_id}/carbon/periods:
     parameters:
+      - $ref: "#/components/parameters/AdminDataPhase"
       - $ref: "#/components/parameters/DeviceID"
     get:
       tags: [Admin]
@@ -7662,6 +7666,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/admin/devices/{device_id}/carbon/periods/{period}:
     parameters:
+      - $ref: "#/components/parameters/AdminDataPhase"
       - $ref: "#/components/parameters/DeviceID"
     get:
       tags: [Admin]
@@ -7697,6 +7702,234 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "404": {$ref: "#/components/responses/NotFound"}
 
+  /api/v1/admin/devices/{device_id}/installation:
+    parameters:
+      - {name: device_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      tags: [Admin]
+      operationId: adminGetDeviceInstallation
+      security: [{bearerAuth: []}]
+      responses:
+        "200": {description: Administrator installation dossier, content: {application/json: {schema: {$ref: '#/components/schemas/AdminDeviceInstallation'}}}}
+    put:
+      tags: [Admin]
+      operationId: adminSaveDeviceInstallation
+      security: [{bearerAuth: []}]
+      description: Save installation date, contacts, project name and operations tags. Installer is assigned from the authenticated administrator when an installation date is first saved. complete_installation atomically changes lifecycle to online.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                installed_on: {type: string, format: date, nullable: true}
+                contact_name: {type: string, maxLength: 200}
+                contact_phone: {type: string, maxLength: 200}
+                organization: {type: string, maxLength: 200}
+                project_name: {type: string, maxLength: 200}
+                ops_tags: {type: array, maxItems: 30, items: {type: string, maxLength: 50}}
+                complete_installation: {type: boolean}
+                observation_start_at: {type: string, format: date-time, description: Optional formal observation start when completing installation; if omitted the current boundary is preserved or current time is recorded.}
+      responses:
+        "200": {description: Saved installation, content: {application/json: {schema: {$ref: '#/components/schemas/AdminDeviceInstallation'}}}}
+  /api/v1/devices/{device_id}/installation:
+    parameters:
+      - {name: device_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getDeviceInstallationSummary
+      security: [{bearerAuth: []}]
+      responses:
+        "200": {description: Public device installation summary without contacts or operations tags, content: {application/json: {schema: {$ref: '#/components/schemas/DeviceInstallationSummary'}}}}
+  /api/v1/devices/{device_id}/tags:
+    parameters:
+      - {name: device_id, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: workspace_id, in: query, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getWorkspaceDeviceTags
+      security: [{bearerAuth: []}]
+      responses:
+        "200": {description: Workspace-specific user tags, content: {application/json: {schema: {type: object, properties: {tags: {type: array, items: {type: string}}}}}}}
+    put:
+      operationId: saveWorkspaceDeviceTags
+      security: [{bearerAuth: []}]
+      description: Requires workspace membership and device.configure; does not alter operations tags or another workspace's tags.
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [tags], properties: {tags: {type: array, maxItems: 30, items: {type: string, maxLength: 50}}}}}}}
+      responses:
+        "200": {description: Saved tags}
+
+  /api/v1/admin/devices/{device_id}/gateway-details:
+    parameters:
+      - {name: device_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: adminGetLoRaWANGatewayDetails
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      responses:
+        "200": {description: Manually registered LoRaWAN V2 gateway information, content: {application/json: {schema: {$ref: '#/components/schemas/LoRaWANGatewayDetails'}}}}
+    put:
+      operationId: adminSaveLoRaWANGatewayDetails
+      tags: [Admin]
+      security: [{bearerAuth: []}]
+      description: Administrator registration only; does not modify firmware or dispatch configuration. Empty strings clear a field.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/LoRaWANGatewayDetails'}}}}
+      responses:
+        "200": {description: Saved gateway information, content: {application/json: {schema: {$ref: '#/components/schemas/LoRaWANGatewayDetails'}}}}
+  /api/v1/devices/{device_id}/gateway-details:
+    parameters:
+      - {name: device_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getLoRaWANGatewayDetails
+      security: [{bearerAuth: []}]
+      description: Read-only gateway registration available to users with device.view.
+      responses:
+        "200": {description: Gateway information, content: {application/json: {schema: {$ref: '#/components/schemas/LoRaWANGatewayDetails'}}}}
+
+  /api/v1/admin/devices/{device_id}/observation-start:
+    parameters:
+      - {name: device_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      tags: [Admin]
+      operationId: adminGetObservationStarts
+      security: [{bearerAuth: []}]
+      parameters:
+        - {name: node_index, in: query, schema: {type: integer, minimum: 0, default: 0}}
+      responses:
+        "200": {description: Explicit boundaries, effective boundary and administrator change history, content: {application/json: {schema: {$ref: '#/components/schemas/ObservationStarts'}}}}
+    put:
+      tags: [Admin]
+      operationId: adminSetObservationStart
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [starts_at]
+              properties:
+                node_index: {type: integer, minimum: 0, default: 0, description: Zero sets the device default; positive indexes override a gateway collection position or carbon node. THCPN child devices use their own device ID.}
+                starts_at: {type: string, format: date-time, nullable: true, description: Null clears the explicit boundary and restores inherited/default behavior.}
+                reason: {type: string}
+      responses:
+        "200": {description: Saved boundary and change history, content: {application/json: {schema: {$ref: '#/components/schemas/ObservationStarts'}}}}
+  /api/v1/devices/{device_id}/observation-start:
+    parameters:
+      - {name: device_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getObservationStarts
+      security: [{bearerAuth: []}]
+      parameters:
+        - {name: node_index, in: query, schema: {type: integer, minimum: 0, default: 0}}
+      responses:
+        "200": {description: Read-only boundaries without operator history. User telemetry, media, statistics and exports default to formal observations; raw records remain intact., content: {application/json: {schema: {$ref: '#/components/schemas/ObservationStarts'}}}}
+
+  /api/v1/devices/{device_id}/lorawan-v2/connection:
+    parameters:
+      - {name: device_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getLoRaWANV2GatewayConnection
+      security: [{bearerAuth: []}]
+      description: Queries live MQTT Broker connection state. Unknown or failures must not be interpreted as offline.
+      responses:
+        "200": {description: Latest gateway connection, content: {application/json: {schema: {$ref: '#/components/schemas/LoRaWANV2GatewayConnection'}}}}
+
+  /api/v1/devices/{device_id}/lorawan-v2/activity:
+    parameters:
+      - {name: device_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getLoRaWANV2GatewayActivity
+      security: [{bearerAuth: []}]
+      description: Reads source database activity without querying the Broker. Null timestamps remain null.
+      responses:
+        "200": {description: Latest gateway activity, content: {application/json: {schema: {$ref: '#/components/schemas/LoRaWANV2GatewayActivity'}}}}
+
+  /api/v1/admin/devices/{device_id}/lorawan-v2/connection:
+    parameters:
+      - {name: device_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: adminLoRaWANV2GatewayConnection
+      security: [{bearerAuth: []}]
+      description: Queries live MQTT Broker connection state. Unknown or failures must not be interpreted as offline.
+      responses:
+        "200": {description: Latest gateway connection, content: {application/json: {schema: {$ref: '#/components/schemas/LoRaWANV2GatewayConnection'}}}}
+
+  /api/v1/admin/devices/{device_id}/lorawan-v2/activity:
+    parameters:
+      - {name: device_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: adminLoRaWANV2GatewayActivity
+      security: [{bearerAuth: []}]
+      description: Reads source database activity without querying the Broker. Null timestamps remain null.
+      responses:
+        "200": {description: Latest gateway activity, content: {application/json: {schema: {$ref: '#/components/schemas/LoRaWANV2GatewayActivity'}}}}
+
+  /api/v1/system/policy:
+    get:
+      tags: [System]
+      summary: 获取用户端公开业务限制
+      description: 无需登录；只返回公开参数，不包含基础设施、密钥或内部运维参数。客户端应以当前响应作为输入与分页上限。
+      security: []
+      responses:
+        '200':
+          description: 当前公开策略
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SystemPolicy'}
+  /api/v1/admin/settings:
+    get:
+      tags: [SystemAdmin]
+      summary: 获取系统业务配置与可编辑字段
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: 需要系统管理员身份
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SystemSettings'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+    put:
+      tags: [SystemAdmin]
+      summary: 修改系统业务配置
+      description: 按字段更新；整数值由服务端统一校验。与配置历史、审计日志一起提交事务。新请求和新任务使用新配置，已执行任务不变。
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [values, reason]
+              properties:
+                values: {type: object, additionalProperties: {type: integer}}
+                reason: {type: string, minLength: 5, maxLength: 500}
+      responses:
+        '200':
+          description: 更新后的完整配置
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SystemSettings'}
+        '400': {$ref: '#/components/responses/InvalidArgument'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/v1/admin/settings/history:
+    get:
+      tags: [SystemAdmin]
+      summary: 获取最近 50 次系统配置修改
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: 修改记录
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/SystemSettingsChange'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+
 components:
   securitySchemes:
     bearerAuth:
@@ -7710,6 +7943,11 @@ components:
       name: X-User-ID
       description: Development-only fallback authentication. Production should disable it.
   parameters:
+    AdminDataPhase:
+      name: data_phase
+      in: query
+      schema: {type: string, enum: [all, formal, testing], default: all}
+      description: Administrator data phase. Formal starts inclusively at the effective observation boundary; testing is before it. Without a boundary, existing data remains unclassified and testing is empty.
     AdminReason:
       name: X-Admin-Reason
       in: header
@@ -7965,6 +8203,46 @@ components:
                   message: internal error
                   request_id: req_123
   schemas:
+    SystemPolicy:
+      type: object
+      required: [values, version, billing_enabled]
+      properties:
+        values: {type: object, additionalProperties: {type: integer}}
+        version: {type: integer, format: int64}
+        billing_enabled: {type: boolean}
+        updated_at: {type: string, format: date-time}
+    SystemSettingField:
+      type: object
+      required: [key, group, label, default, min, max, unit]
+      properties:
+        key: {type: string}
+        group: {type: string}
+        label: {type: string}
+        default: {type: integer}
+        min: {type: integer}
+        max: {type: integer}
+        unit: {type: string}
+        kind: {type: string, enum: [switch]}
+    SystemSettings:
+      allOf:
+        - {$ref: '#/components/schemas/SystemPolicy'}
+        - type: object
+          required: [defaults, fields]
+          properties:
+            defaults: {type: object, additionalProperties: {type: integer}}
+            fields:
+              type: array
+              items: {$ref: '#/components/schemas/SystemSettingField'}
+    SystemSettingsChange:
+      type: object
+      required: [id, actor_name, before, after, reason, created_at]
+      properties:
+        id: {type: integer, format: int64}
+        actor_name: {type: string}
+        before: {type: object, additionalProperties: {type: integer}}
+        after: {type: object, additionalProperties: {type: integer}}
+        reason: {type: string}
+        created_at: {type: string, format: date-time}
     NodeRuntime:
       type: object
       required: [key]
@@ -8114,10 +8392,7 @@ components:
       type: string
       enum:
         - inbound
-        - installed
         - online
-        - maintenance
-        - repairing
         - retired
     DeviceTopologyRole:
       type: string
@@ -9683,6 +9958,7 @@ components:
         - created_at
         - updated_at
       properties:
+        tags: {type: array, items: {type: string}, description: Custom tags in the requested workspace}
         iccid:
           type: string
           pattern: '^[0-9]{19,20}$'
@@ -9951,6 +10227,61 @@ components:
         located: { type: integer }
         unlocated: { type: integer }
         unclassified: { type: integer }
+    LoRaWANGatewayDetails:
+      type: object
+      required: [app_key, eui, wifi_name]
+      properties:
+        app_key: {type: string, maxLength: 128}
+        eui: {type: string, maxLength: 128}
+        wifi_name: {type: string, maxLength: 128}
+    ObservationStarts:
+      type: object
+      required: [items, history, effective_start_at]
+      properties:
+        effective_start_at: {type: string, format: date-time, nullable: true}
+        items:
+          type: array
+          items:
+            type: object
+            required: [node_index, starts_at, updated_at]
+            properties:
+              node_index: {type: integer}
+              starts_at: {type: string, format: date-time}
+              updated_at: {type: string, format: date-time}
+        history:
+          type: array
+          items:
+            type: object
+            required: [node_index, previous_start, starts_at, reason, actor, created_at]
+            properties:
+              node_index: {type: integer}
+              previous_start: {type: string, format: date-time, nullable: true}
+              starts_at: {type: string, format: date-time, nullable: true}
+              reason: {type: string}
+              actor: {type: string}
+              created_at: {type: string, format: date-time}
+    DeviceInstallationSummary:
+      type: object
+      required: [device_id, installed_on, project_name]
+      properties:
+        device_id: {type: string, format: uuid}
+        installed_on: {type: string, nullable: true, format: date}
+        project_name: {type: string}
+        retired_on: {type: string, format: date}
+    AdminDeviceInstallation:
+      allOf:
+        - $ref: '#/components/schemas/DeviceInstallationSummary'
+        - type: object
+          properties:
+            installer_id: {type: string, format: uuid}
+            installer_name: {type: string}
+            contact_name: {type: string}
+            contact_phone: {type: string}
+            organization: {type: string}
+            retirement_reason: {type: string}
+            ops_tags: {type: array, items: {type: string}}
+            updated_by: {type: string, format: uuid}
+            updated_at: {type: string, format: date-time}
     DeviceProfile:
       type: object
       required: [device_id, location_source, images, can_configure, can_manage_placement]
@@ -10135,9 +10466,11 @@ components:
         device_id:
           $ref: "#/components/schemas/UUID"
         from_status:
-          $ref: "#/components/schemas/DeviceLifecycleStatus"
+          type: string
+          description: Historical lifecycle value, including legacy stages
         to_status:
-          $ref: "#/components/schemas/DeviceLifecycleStatus"
+          type: string
+          description: Historical lifecycle value, including legacy stages
         occurred_at:
           $ref: "#/components/schemas/Timestamp"
         note:
@@ -10456,6 +10789,23 @@ components:
         wait_time: {type: integer, minimum: 0, maximum: 65535}
         created_at: {type: string, format: date-time}
         updated_at: {type: [string, "null"], format: date-time}
+    LoRaWANV2GatewayActivity:
+      type: object
+      required: [gateway_sn, last_received_at, last_collected_at]
+      properties:
+        gateway_sn: {type: string}
+        last_received_at: {type: string, format: date-time, nullable: true, description: Last valid message received from the MQTT event stream; not an online timestamp.}
+        last_collected_at: {type: string, format: date-time, nullable: true, description: Largest node collection timestamp observed; not a persistence guarantee.}
+    LoRaWANV2GatewayConnection:
+      allOf:
+        - $ref: '#/components/schemas/LoRaWANV2GatewayActivity'
+        - type: object
+          required: [state, checked_at, provider, client_id]
+          properties:
+            state: {type: string, enum: [online, offline, unknown]}
+            checked_at: {type: string, format: date-time, description: Broker query time, not the last connection time.}
+            provider: {type: string, enum: [aliyun, emqx]}
+            client_id: {type: string}
     LoRaWANV2ReportedInfo:
       type: object
       required: [ts, iccid, firmware_version, cell, battery, latitude, longitude, altitude]

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/google/uuid"
@@ -32,8 +33,10 @@ type Policy struct {
 }
 
 type Service struct {
-	db     *pgxpool.Pool
-	policy Policy
+	settings *systemsettings.Service
+	enabled  bool
+	db       *pgxpool.Pool
+	policy   Policy
 }
 
 type Summary struct {
@@ -127,11 +130,15 @@ func NewService(db *pgxpool.Pool, policy Policy) *Service {
 	policy.DownloadUsageWarningPercentages = append([]int(nil), policy.DownloadUsageWarningPercentages...)
 	sort.Sort(sort.Reverse(sort.IntSlice(policy.ExpiryNoticeDays)))
 	sort.Ints(policy.DownloadUsageWarningPercentages)
-	return &Service{db: db, policy: policy}
+	return &Service{db: db, policy: policy, enabled: true}
 }
 
-func (s *Service) BaseHistoryDays() int { return s.policy.BaseHistoryDays }
-func (s *Service) BaseExportDays() int  { return s.policy.BaseExportDays }
+func (s *Service) BaseHistoryDays(contexts ...context.Context) int {
+	return systemsettings.Int(systemsettings.Context(contexts...), "base_history_days", s.policy.BaseHistoryDays)
+}
+func (s *Service) BaseExportDays(contexts ...context.Context) int {
+	return systemsettings.Int(systemsettings.Context(contexts...), "base_export_days", s.policy.BaseExportDays)
+}
 
 func monthStart(now time.Time) time.Time {
 	y, m, _ := now.UTC().Date()
@@ -139,6 +146,12 @@ func monthStart(now time.Time) time.Time {
 }
 
 func (s *Service) Summary(ctx context.Context, workspaceID uuid.UUID) (Summary, error) {
+	var settingsErr error
+	ctx, settingsErr = s.policyContext(ctx)
+	if settingsErr != nil {
+		return Summary{}, settingsErr
+	}
+
 	if workspaceID == uuid.Nil {
 		return Summary{}, apperr.New(apperr.KindInvalidArgument, "workspace id is required")
 	}
@@ -160,7 +173,7 @@ func (s *Service) Summary(ctx context.Context, workspaceID uuid.UUID) (Summary, 
 	if err != nil {
 		return Summary{}, apperr.Wrap(apperr.KindInternal, "load workspace billing", err)
 	}
-	result := s.makeSummary(workspaceID, started, expires, pack, used, now)
+	result := s.makeSummary(workspaceID, started, expires, pack, used, now, ctx)
 	if demo {
 		result.Plan = PlanProfessional
 		result.FullHistory = true
@@ -175,11 +188,12 @@ func (s *Service) Summary(ctx context.Context, workspaceID uuid.UUID) (Summary, 
 	return result, nil
 }
 
-func (s *Service) makeSummary(workspaceID uuid.UUID, started, expires *time.Time, pack, used int64, now time.Time) Summary {
+func (s *Service) makeSummary(workspaceID uuid.UUID, started, expires *time.Time, pack, used int64, now time.Time, contexts ...context.Context) Summary {
+	ctx := systemsettings.Context(contexts...)
 	professional := started != nil && !started.After(now) && expires != nil && expires.After(now)
 	limit := int64(0)
 	if professional {
-		limit = s.policy.MonthlyDownloadLimitBytes
+		limit = s.monthlyLimit(ctx)
 	}
 	remaining := limit - used
 	if remaining < 0 {
@@ -188,7 +202,7 @@ func (s *Service) makeSummary(workspaceID uuid.UUID, started, expires *time.Time
 	result := Summary{WorkspaceID: workspaceID, Plan: PlanBase, ProfessionalStartedAt: started, ProfessionalExpiresAt: expires,
 		MonthlyDownloadLimitBytes: limit, MonthlyDownloadUsedBytes: used, MonthlyDownloadRemainingBytes: remaining, TrafficPackBalanceBytes: pack, Notices: []Notice{},
 		ProfessionalAnnualPriceCents: s.policy.ProfessionalAnnualPriceCents, ProfessionalDefaultMonths: s.policy.ProfessionalDefaultMonths,
-		BaseHistoryDays: s.policy.BaseHistoryDays, BaseExportDays: s.policy.BaseExportDays,
+		BaseHistoryDays: s.BaseHistoryDays(ctx), BaseExportDays: s.BaseExportDays(ctx),
 		TrafficPackSizeBytes: s.policy.TrafficPackSizeBytes, TrafficPackPriceCents: s.policy.TrafficPackPriceCents}
 	if professional {
 		result.Plan = PlanProfessional
@@ -219,6 +233,17 @@ func (s *Service) makeSummary(workspaceID uuid.UUID, started, expires *time.Time
 		}
 		result.Notices = append(result.Notices, Notice{Code: "download_usage_warning", Level: level, Message: "本月下载额度即将用尽"})
 	}
+	if !s.Enabled(ctx) {
+		result.Plan = PlanProfessional
+		result.FullHistory = true
+		result.ProfessionalFeatures = true
+		result.Unlimited = true
+		result.MonthlyDownloadLimitBytes = 0
+		result.MonthlyDownloadRemainingBytes = 0
+		result.UsagePercent = 0
+		result.WarningLevel = 0
+		result.Notices = []Notice{}
+	}
 	return result
 }
 
@@ -247,6 +272,15 @@ func (s *Service) RequireProfessional(ctx context.Context, workspaceID uuid.UUID
 }
 
 func (s *Service) ReserveDownload(ctx context.Context, in ReserveDownloadInput) error {
+	var settingsErr error
+	ctx, settingsErr = s.policyContext(ctx)
+	if settingsErr != nil {
+		return settingsErr
+	}
+	if !s.Enabled(ctx) {
+		return nil
+	}
+
 	if in.WorkspaceID == uuid.Nil || in.Bytes <= 0 || strings.TrimSpace(in.ObjectKey) == "" || strings.TrimSpace(in.IdempotencyKey) == "" {
 		return apperr.New(apperr.KindInvalidArgument, "valid download reservation details are required")
 	}
@@ -297,7 +331,7 @@ func (s *Service) ReserveDownload(ctx context.Context, in ReserveDownloadInput) 
 	if err != nil {
 		return apperr.Wrap(apperr.KindInternal, "load monthly download usage", err)
 	}
-	monthlyAvailable := s.policy.MonthlyDownloadLimitBytes - used
+	monthlyAvailable := s.monthlyLimit(ctx) - used
 	if monthlyAvailable < 0 {
 		monthlyAvailable = 0
 	}
@@ -307,7 +341,9 @@ func (s *Service) ReserveDownload(ctx context.Context, in ReserveDownloadInput) 
 	}
 	packBytes := in.Bytes - monthlyBytes
 	if packBytes > pack {
-		return apperr.New(apperr.KindPermissionDenied, "download allowance exhausted")
+		return &apperr.Error{Kind: apperr.KindPermissionDenied, Message: "download allowance exhausted", Details: map[string]any{
+			"reason": "DOWNLOAD_ALLOWANCE", "required_bytes": in.Bytes, "remaining_bytes": monthlyAvailable + pack,
+		}}
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO workspace_download_usage(workspace_id,usage_month,source_type,resource_id,object_key,bytes,monthly_bytes,traffic_pack_bytes,actor_user_id,idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, in.WorkspaceID, month, in.SourceType, in.ResourceID, in.ObjectKey, in.Bytes, monthlyBytes, packBytes, in.ActorUserID, in.IdempotencyKey)
 	if err != nil {
@@ -528,4 +564,29 @@ func (s *Service) AdminRiskWorkspaces(ctx context.Context, filter string) ([]Ris
 		result = append(result, RiskWorkspace{WorkspaceID: id, WorkspaceName: name, Summary: summary, Risks: risks})
 	}
 	return result, rows.Err()
+}
+
+func (s *Service) SetSettings(settings *systemsettings.Service, enabled bool) {
+	s.settings = settings
+	s.enabled = enabled
+}
+func (s *Service) Enabled(ctx context.Context) bool {
+	fallback := 0
+	if s.enabled {
+		fallback = 1
+	}
+	return systemsettings.Int(ctx, "billing_enabled", fallback) == 1
+}
+func (s *Service) policyContext(ctx context.Context) (context.Context, error) {
+	if s.settings != nil && !systemsettings.HasSnapshot(ctx) {
+		return s.settings.Context(ctx)
+	}
+	return ctx, nil
+}
+func (s *Service) monthlyLimit(ctx context.Context) int64 {
+	gb := systemsettings.Int(ctx, "monthly_download_gb", -1)
+	if gb < 0 {
+		return s.policy.MonthlyDownloadLimitBytes
+	}
+	return int64(gb) * 1024 * 1024 * 1024
 }

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -99,12 +100,12 @@ func (s *verificationCodeStore) Issue(ctx context.Context, subject string) (stri
 
 	subjectHash := hashSubject(subject)
 	cooldownKey := s.key("cooldown", subjectHash)
-	ok, err := s.redis.SetNX(ctx, cooldownKey, "1", time.Duration(s.cfg.CooldownSeconds)*time.Second).Result()
+	ok, err := s.redis.SetNX(ctx, cooldownKey, "1", time.Duration(systemsettings.Int(ctx, s.label+"_cooldown_seconds", s.cfg.CooldownSeconds))*time.Second).Result()
 	if err != nil {
 		return "", apperr.Wrap(apperr.KindInternal, "check "+s.label+" cooldown", err)
 	}
 	if !ok {
-		return "", apperr.New(apperr.KindRateLimited, s.label+" code requested too frequently")
+		return "", apperr.VerificationLimit(s.label, "cooldown", systemsettings.Int(ctx, s.label+"_cooldown_seconds", s.cfg.CooldownSeconds))
 	}
 
 	dailyKey := fmt.Sprintf("auth:%s:daily:%s:%s", s.namespace, subjectHash, time.Now().Format("20060102"))
@@ -115,8 +116,8 @@ func (s *verificationCodeStore) Issue(ctx context.Context, subject string) (stri
 	if count == 1 {
 		_ = s.redis.Expire(ctx, dailyKey, 24*time.Hour).Err()
 	}
-	if count > int64(s.cfg.DailyLimit) {
-		return "", apperr.New(apperr.KindRateLimited, s.label+" daily limit exceeded")
+	if count > int64(systemsettings.Int(ctx, s.label+"_daily_limit", s.cfg.DailyLimit)) {
+		return "", apperr.VerificationLimit(s.label, "daily", systemsettings.Int(ctx, s.label+"_daily_limit", s.cfg.DailyLimit))
 	}
 
 	code, err := generateVerificationCode()
@@ -135,7 +136,7 @@ func (s *verificationCodeStore) Issue(ctx context.Context, subject string) (stri
 	}
 
 	codeKey := s.key("code", subjectHash)
-	if err := s.redis.Set(ctx, codeKey, data, time.Duration(s.cfg.CodeTTLSeconds)*time.Second).Err(); err != nil {
+	if err := s.redis.Set(ctx, codeKey, data, time.Duration(systemsettings.Int(ctx, s.label+"_ttl_seconds", s.cfg.CodeTTLSeconds))*time.Second).Err(); err != nil {
 		return "", apperr.Wrap(apperr.KindInternal, "store "+s.label+" code", err)
 	}
 
@@ -161,14 +162,14 @@ func (s *verificationCodeStore) Verify(ctx context.Context, subject string, code
 		_ = s.redis.Del(ctx, codeKey).Err()
 		return apperr.Wrap(apperr.KindInternal, "decode "+s.label+" code record", err)
 	}
-	if record.Attempts >= s.cfg.MaxVerifyAttempts {
+	if record.Attempts >= systemsettings.Int(ctx, s.label+"_verify_attempts", s.cfg.MaxVerifyAttempts) {
 		_ = s.redis.Del(ctx, codeKey).Err()
 		return apperr.New(apperr.KindUnauthorized, s.label+" code is invalid or expired")
 	}
 
 	if !hmac.Equal([]byte(record.CodeHash), []byte(hashCode(s.secret, subject, code))) {
 		record.Attempts++
-		if record.Attempts >= s.cfg.MaxVerifyAttempts {
+		if record.Attempts >= systemsettings.Int(ctx, s.label+"_verify_attempts", s.cfg.MaxVerifyAttempts) {
 			_ = s.redis.Del(ctx, codeKey).Err()
 			return apperr.New(apperr.KindUnauthorized, s.label+" code is invalid or expired")
 		}

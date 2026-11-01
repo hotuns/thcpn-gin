@@ -17,6 +17,7 @@ export function AdminDeviceData({device,nodeKey,onNodeChange,onExport}:{device:J
   const [selection,setSelection]=useState<{target:string;ids:string[]}|null>(null);
   const [tab,setTab]=useState("telemetry");
   const [view,setView]=useState("chart");
+  const [phase,setPhase]=useState("all");
   const [page,setPage]=useState(1);
   const [mediaStream,setMediaStream]=useState<string>();
   const nodes=useQuery({queryKey:["admin","device",id,"nodes","operations"],queryFn:()=>api.admin.deviceNodes(id),enabled:gateway});
@@ -25,10 +26,10 @@ export function AdminDeviceData({device,nodeKey,onNodeChange,onExport}:{device:J
   const streams=useQuery({queryKey:["admin","device",targetId,"data-streams"],queryFn:()=>api.admin.deviceDataStreams(targetId)});
   const active=useMemo(()=>operationsStreams(streams.data?.items??[],nodes.data?.items??[],node),[streams.data,nodes.data,node]);
   const ids=(selection?.target===`${id}:${nodeKey}`?selection.ids:active.map(stream=>stream.id)).filter(id=>active.some(stream=>stream.id===id));
-  const telemetry=useQuery({queryKey:["admin","device",targetId,"operations-telemetry",ids.join(","),applied],queryFn:()=>api.admin.queryDeviceTelemetry(targetId,{...applied,dataStreamIds:ids}),enabled:tab==="telemetry"&&ids.length>0&&(!gateway||!nodes.isLoading)});
+  const telemetry=useQuery({queryKey:["admin","device",targetId,"operations-telemetry",ids.join(","),applied,phase],queryFn:()=>api.admin.queryDeviceTelemetry(targetId,{...applied,dataStreamIds:ids,dataPhase:phase}),enabled:tab==="telemetry"&&ids.length>0&&(!gateway||!nodes.isLoading)});
   const chartSeries=useMemo(()=>(telemetry.data?.series??[]).map(series=>({id:series.data_stream_id,name:series.name,code:series.code,unit:series.unit,points:series.points})),[telemetry.data]);
   const rows=useMemo(()=>telemetryRows(telemetry.data?.series??[]),[telemetry.data]);
-  const media=useQuery({queryKey:["admin","device",targetId,"operations-media",applied,page,mediaStream],queryFn:()=>api.admin.deviceMedia(targetId,{start_time:applied.startTime,end_time:applied.endTime,page,page_size:20,media_type:"image",...(mediaStream?{data_stream_id:mediaStream}:{})}),enabled:tab==="images"&&!lora});
+  const media=useQuery({queryKey:["admin","device",targetId,"operations-media",applied,page,mediaStream,phase],queryFn:()=>api.admin.deviceMedia(targetId,{start_time:applied.startTime,end_time:applied.endTime,page,page_size:20,media_type:"image",data_phase:phase,...(mediaStream?{data_stream_id:mediaStream}:{})}),enabled:tab==="images"&&!lora});
   const apply=()=>{
     if(!range||!range[1].isAfter(range[0])) {void message.warning("请选择有效的时间范围");return;}
     const next={startTime:range[0].toISOString(),endTime:range[1].toISOString()};
@@ -49,6 +50,7 @@ export function AdminDeviceData({device,nodeKey,onNodeChange,onExport}:{device:J
     <Space wrap align="end" style={{marginBottom:16,width:"100%"}}>
       {gateway&&<Space orientation="vertical"><Typography.Text>查询节点</Typography.Text><Select value={nodeKey} style={{width:260}} showSearch optionFilterProp="label" loading={nodes.isFetching} onChange={key=>{onNodeChange(key);setPage(1);setMediaStream(undefined);}} options={[{value:"",label:"网关自身"},...(nodes.data?.items??[]).map(item=>({value:item.key,label:item.name}))]}/></Space>}
       <Space orientation="vertical"><Typography.Text>时间范围（北京时间）</Typography.Text><DatePicker.RangePicker showTime value={range} style={{width:420}} onChange={value=>setRange(value&&value[0]&&value[1]?[value[0],value[1]]:null)} presets={[6,24,72,168].map(hours=>({label:hours<24?`${hours} 小时`:`${hours/24} 天`,value:[dayjs().subtract(hours,"hour"),dayjs()] as [Dayjs,Dayjs]}))}/></Space>
+      <Select aria-label="数据阶段" value={phase} style={{width:160}} onChange={value=>{setPhase(value);setPage(1);}} options={[{value:"all",label:"全部数据"},{value:"formal",label:"正式观测数据"},{value:"testing",label:"调试数据"}]}/>
       <Button type="primary" onClick={apply} loading={telemetry.isFetching||media.isFetching}>查询 / 刷新</Button>
     </Space>
     <Tabs activeKey={tab} onChange={setTab} items={[

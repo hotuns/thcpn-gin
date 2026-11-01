@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/google/uuid"
@@ -196,7 +197,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Job, ResolvedR
 		}
 		resolved.WorkspaceID = deviceContext.WorkspaceID
 	}
-	expiresAt := time.Now().UTC().Add(time.Duration(s.cfg.FileTTLHours) * time.Hour)
+	expiresAt := time.Now().UTC().Add(time.Duration(systemsettings.Int(ctx, "export_ttl_hours", s.cfg.FileTTLHours)) * time.Hour)
 	if input.ExpiresAt != nil {
 		expiresAt = input.ExpiresAt.UTC()
 		if !expiresAt.After(time.Now().UTC()) {
@@ -270,9 +271,9 @@ func (s *Service) validatePlan(ctx context.Context, resolved ResolvedResource, r
 		return apperr.New(apperr.KindInvalidArgument, "start_time and end_time are required for base plan exports")
 	}
 	now := time.Now().UTC()
-	days := s.billing.BaseExportDays()
+	days := s.billing.BaseExportDays(ctx)
 	if end.After(now.Add(5*time.Minute)) || start.Before(now.AddDate(0, 0, -days)) || end.Sub(start) > time.Duration(days)*24*time.Hour {
-		return apperr.New(apperr.KindPermissionDenied, "base plan export is outside the configured window")
+		return apperr.PlanHistoryLimit("base_export_days", days)
 	}
 	return nil
 }

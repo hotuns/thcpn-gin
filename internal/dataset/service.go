@@ -3,7 +3,9 @@ package dataset
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/google/uuid"
@@ -299,11 +301,11 @@ func (s *Service) QueryTelemetry(ctx context.Context, input TelemetryQueryInput)
 		return TelemetryQueryResult{}, apperr.Wrap(apperr.KindInternal, "list dataset sources", err)
 	}
 
-	start, end, err := resolveTelemetryQueryRange(pgTimeValue(dataset.TimeStart), pgTimeValue(dataset.TimeEnd), input.StartTime, input.EndTime, s.limits)
+	start, end, err := resolveTelemetryQueryRange(pgTimeValue(dataset.TimeStart), pgTimeValue(dataset.TimeEnd), input.StartTime, input.EndTime, systemsettings.Query(ctx, s.limits, "dataset_query_days"))
 	if err != nil {
 		return TelemetryQueryResult{}, err
 	}
-	limit, err := normalizeTelemetryQueryLimit(input.Limit, s.limits)
+	limit, err := normalizeTelemetryQueryLimit(input.Limit, systemsettings.Query(ctx, s.limits, "dataset_query_days"))
 	if err != nil {
 		return TelemetryQueryResult{}, err
 	}
@@ -767,7 +769,7 @@ func normalizeTelemetryQueryLimit(limit int, limits config.QueryLimitsConfig) (i
 		return 0, apperr.New(apperr.KindInvalidArgument, "limit must be greater than 0")
 	}
 	if limit > limits.MaxPoints {
-		return 0, apperr.New(apperr.KindInvalidArgument, "limit exceeds max_points")
+		return 0, apperr.LimitExceeded("query_points", int64(limits.MaxPoints), int64(limit), "points")
 	}
 	return limit, nil
 }
@@ -788,16 +790,16 @@ func resolveTelemetryQueryRange(datasetStart time.Time, datasetEnd time.Time, in
 		return time.Time{}, time.Time{}, apperr.New(apperr.KindInvalidArgument, "end_time must be after start_time")
 	}
 	if !datasetStart.IsZero() && start.Before(datasetStart) {
-		return time.Time{}, time.Time{}, apperr.New(apperr.KindInvalidArgument, "start_time is outside dataset time range")
+		return time.Time{}, time.Time{}, datasetTimeWindowError(datasetStart, datasetEnd)
 	}
 	if !datasetEnd.IsZero() && end.After(datasetEnd) {
-		return time.Time{}, time.Time{}, apperr.New(apperr.KindInvalidArgument, "end_time is outside dataset time range")
+		return time.Time{}, time.Time{}, datasetTimeWindowError(datasetStart, datasetEnd)
 	}
 
 	limits = normalizeQueryLimits(limits)
 	maxRange := time.Duration(limits.MaxHistoryDays) * 24 * time.Hour
 	if end.Sub(start) > maxRange {
-		return time.Time{}, time.Time{}, apperr.New(apperr.KindInvalidArgument, "time range exceeds max_history_days; use dataset export")
+		return time.Time{}, time.Time{}, apperr.LimitExceeded("dataset_query_days", int64(limits.MaxHistoryDays), int64(math.Ceil(end.Sub(start).Hours()/24)), "days")
 	}
 	return start, end, nil
 }
@@ -898,4 +900,16 @@ func mapNotFoundOrInternal(err error, message string) error {
 		return apperr.New(apperr.KindNotFound, message)
 	}
 	return apperr.Wrap(apperr.KindInternal, message, err)
+}
+
+// The saved dataset window is distinct from the server query-span limit.
+func datasetTimeWindowError(start, end time.Time) error {
+	details := map[string]any{"reason": "DATASET_TIME_WINDOW"}
+	if !start.IsZero() {
+		details["start_at"] = start.UTC().Format(time.RFC3339Nano)
+	}
+	if !end.IsZero() {
+		details["end_at"] = end.UTC().Format(time.RFC3339Nano)
+	}
+	return &apperr.Error{Kind: apperr.KindInvalidArgument, Message: "query is outside dataset time range", Details: details}
 }

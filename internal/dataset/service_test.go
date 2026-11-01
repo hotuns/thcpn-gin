@@ -99,3 +99,17 @@ func TestNormalizeTelemetryQueryLimit(t *testing.T) {
 		t.Fatalf("expected max points error, got %v", err)
 	}
 }
+
+func TestPreviewReportsSavedWindowAndConfiguredLimit(t *testing.T) {
+	start := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(10 * 24 * time.Hour)
+	limits := config.QueryLimitsConfig{MaxHistoryDays: 2}
+	_, _, err := resolveTelemetryQueryRange(start, end, start.Add(-time.Second), end, limits)
+	if d := apperr.DetailsOf(err); d["reason"] != "DATASET_TIME_WINDOW" || d["start_at"] != start.Format(time.RFC3339Nano) || d["end_at"] != end.Format(time.RFC3339Nano) {
+		t.Fatalf("wrong saved window: %v", d)
+	}
+	_, _, err = resolveTelemetryQueryRange(start, end, start, start.Add(3*24*time.Hour), limits)
+	if d := apperr.DetailsOf(err); d["field"] != "dataset_query_days" || d["maximum"] != int64(2) {
+		t.Fatalf("wrong query window: %v", d)
+	}
+}

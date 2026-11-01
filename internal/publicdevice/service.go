@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"strings"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/google/uuid"
@@ -127,8 +128,8 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (Publication, e
 		return Publication{}, apperr.New(apperr.KindInvalidArgument, "password is required when password protection is enabled")
 	}
 	if password != "" {
-		if len(password) < 8 || len(password) > 72 {
-			return Publication{}, apperr.New(apperr.KindInvalidArgument, "password must contain 8 to 72 characters")
+		if len(password) < systemsettings.Int(ctx, "password_min_bytes", 8) || len(password) > systemsettings.Int(ctx, "password_max_bytes", 72) {
+			return Publication{}, apperr.PasswordLength(systemsettings.Int(ctx, "password_min_bytes", 8), systemsettings.Int(ctx, "password_max_bytes", 72))
 		}
 		hash, hashErr := auth.HashPassword(password)
 		if hashErr != nil {
@@ -220,7 +221,9 @@ func (s *Service) CheckPassword(publication Publication, password string) bool {
 	return publication.PasswordHash != nil && auth.CheckPassword(*publication.PasswordHash, password)
 }
 
-func Window(now time.Time) (time.Time, time.Time) { return now.Add(-publicWindow), now }
+func Window(now time.Time, contexts ...context.Context) (time.Time, time.Time) {
+	return now.Add(-time.Duration(systemsettings.Int(systemsettings.Context(contexts...), "public_history_hours", int(publicWindow/time.Hour))) * time.Hour), now
+}
 
 func newSlug() (string, error) {
 	var value [24]byte

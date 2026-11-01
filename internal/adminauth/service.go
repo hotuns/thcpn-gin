@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/google/uuid"
@@ -60,7 +61,7 @@ func (s *Service) ChangePassword(ctx context.Context, adminID uuid.UUID, current
 	if strings.TrimSpace(currentPassword) == "" {
 		return apperr.New(apperr.KindInvalidArgument, "current password is required")
 	}
-	if err := auth.ValidatePassword(newPassword, s.passwordCfg); err != nil {
+	if err := auth.ValidatePassword(newPassword, systemsettings.Password(ctx, s.passwordCfg)); err != nil {
 		return err
 	}
 	var passwordHash string
@@ -119,8 +120,8 @@ func (s *Service) Login(ctx context.Context, input LoginInput) (LoginResult, err
 		}
 		next := failedAttempts + 1
 		var lock *time.Time
-		if next >= s.maxAttempts {
-			value := time.Now().Add(s.lockDuration)
+		if next >= systemsettings.Int(ctx, "password_failed_attempts", s.maxAttempts) {
+			value := time.Now().Add(time.Duration(systemsettings.Int(ctx, "password_lock_minutes", int(s.lockDuration/time.Minute))) * time.Minute)
 			lock = &value
 		}
 		if _, err := s.db.Exec(ctx, `UPDATE system_admins SET failed_attempts = $2, locked_until = $3, updated_at = now() WHERE id = $1`, id, next, lock); err != nil {

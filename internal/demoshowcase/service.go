@@ -5,6 +5,7 @@ import (
 	"errors"
 	"regexp"
 	"strings"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"github.com/google/uuid"
@@ -92,7 +93,7 @@ func (s *Service) Create(ctx context.Context, username, name, password string) (
 	if name == "" {
 		return Account{}, apperr.New(apperr.KindInvalidArgument, "name is required")
 	}
-	if err := auth.ValidatePassword(password, s.password); err != nil {
+	if err := auth.ValidatePassword(password, systemsettings.Password(ctx, s.password)); err != nil {
 		return Account{}, err
 	}
 	hash, err := auth.HashPassword(password)
@@ -170,7 +171,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, name, status *string
 	return s.Get(ctx, id)
 }
 func (s *Service) ResetPassword(ctx context.Context, id uuid.UUID, password string) error {
-	if err := auth.ValidatePassword(password, s.password); err != nil {
+	if err := auth.ValidatePassword(password, systemsettings.Password(ctx, s.password)); err != nil {
 		return err
 	}
 	hash, err := auth.HashPassword(password)

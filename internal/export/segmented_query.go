@@ -2,7 +2,9 @@ package export
 
 import (
 	"context"
+	"fmt"
 	"sort"
+	"thcpn-gin/internal/systemsettings"
 	"time"
 
 	"thcpn-gin/internal/apperr"
@@ -22,7 +24,7 @@ func forExportWindows(ctx context.Context, start, end time.Time, read func(time.
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		next := cursor.Add(exportQueryWindow)
+		next := cursor.Add(time.Duration(systemsettings.Int(ctx, "export_window_days", int(exportQueryWindow/(24*time.Hour)))) * 24 * time.Hour)
 		if next.After(end) {
 			next = end
 		}
@@ -35,6 +37,7 @@ func forExportWindows(ctx context.Context, start, end time.Time, read func(time.
 }
 
 func (p *Processor) queryExportTelemetry(ctx context.Context, source platform.DataSource, req platform.TelemetryQuery) ([]platform.TelemetryPoint, error) {
+	maximum := systemsettings.Int(ctx, "export_points", maxExportTelemetryPoints)
 	var points []platform.TelemetryPoint
 	previousBoundary := map[platform.TelemetryPoint]struct{}{}
 	err := forExportWindows(ctx, req.Start, req.End, func(start, end time.Time) error {
@@ -43,6 +46,9 @@ func (p *Processor) queryExportTelemetry(ctx context.Context, source platform.Da
 		part.End = end
 		if part.Limit <= 0 {
 			part.Limit = 100000
+		}
+		if part.Limit > maximum {
+			part.Limit = maximum
 		}
 		var result platform.TelemetryResult
 		for {
@@ -57,12 +63,12 @@ func (p *Processor) queryExportTelemetry(ctx context.Context, source platform.Da
 			if result.Complete && !result.Sampled {
 				break
 			}
-			if part.Limit >= maxExportTelemetryPoints {
-				return apperr.New(apperr.KindDataSource, "遥测数据量超出单次导出上限，请缩短时间范围后重试")
+			if part.Limit >= maximum {
+				return apperr.New(apperr.KindDataSource, fmt.Sprintf("每个指标单次最多导出 %d 条数据；当前指标超过上限，请缩短时间范围后分批导出", maximum))
 			}
 			part.Limit *= 2
-			if part.Limit > maxExportTelemetryPoints {
-				part.Limit = maxExportTelemetryPoints
+			if part.Limit > maximum {
+				part.Limit = maximum
 			}
 		}
 		boundary := map[platform.TelemetryPoint]struct{}{}
@@ -78,8 +84,8 @@ func (p *Processor) queryExportTelemetry(ctx context.Context, source platform.Da
 				boundary[key] = struct{}{}
 			}
 			points = append(points, point)
-			if len(points) > maxExportTelemetryPoints {
-				return apperr.New(apperr.KindDataSource, "遥测数据量超出单次导出上限，请缩短时间范围后重试")
+			if len(points) > maximum {
+				return apperr.New(apperr.KindDataSource, fmt.Sprintf("每个指标单次最多导出 %d 条数据；当前指标超过上限，请缩短时间范围后分批导出", maximum))
 			}
 		}
 		previousBoundary = boundary

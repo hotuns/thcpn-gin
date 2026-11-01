@@ -1,3 +1,4 @@
+import { useSystemPolicy } from "./system-policy";
 import { Fragment, lazy, Suspense, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -29,7 +30,7 @@ import {
   Table2,
   Workflow,
 } from "lucide-react";
-import { billingEnabled, platformHomePath, simplifiedEnabled } from "./features";
+import { platformHomePath, simplifiedEnabled } from "./features";
 import { EditionRoute } from "./edition-route";
 import {
   api,
@@ -178,14 +179,13 @@ const navGroups = simplifiedEnabled ? [
     key: "management",
     items: [
       { to: "/workspaces", key: "workspaces", icon: Building2 },
-      ...(billingEnabled
-        ? [{ to: "/subscription", key: "subscription", icon: CreditCard }]
-        : []),
+      { to: "/subscription", key: "subscription", icon: CreditCard },
     ],
   },
 ];
 
 function Shell() {
+ const billingEnabled=!simplifiedEnabled&&useSystemPolicy().data?.billing_enabled;
   const { t } = useLocale();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [onboardingSession, setOnboardingSession] = useState(0);
@@ -254,7 +254,7 @@ function Shell() {
           }}
         />
         <nav className="sidebar-navigation" aria-label={t("mainNavigation")}>
-          {navGroups.map((group) => (
+          {navGroups.map(group=>({...group,items:group.items.filter(item=>item.key!=="subscription"||billingEnabled)})).map((group) => (
             <div className="nav-group" key={group.key}>
               <div className="nav-title">{t(`platform:navigationGroups.${group.key}`)}</div>
               {group.items.map((item) => {
@@ -561,6 +561,10 @@ function RootRedirect() {
 }
 
 export function PlatformApp() {
+  const policy = useSystemPolicy();
+  const billingEnabled=!simplifiedEnabled&&policy.data?.billing_enabled;
+  if (policy.isPending) return <div className="app-loading">正在加载系统配置…</div>;
+  if (!policy.data) return <div className="app-loading"><StateView type="error" title="系统配置加载失败" description={formatApiError(policy.error).message} /><Button onClick={() => void policy.refetch()}>重试</Button></div>;
   return (
     <Suspense fallback={<div className="app-loading t-shimmer" data-text="正在加载页面…">正在加载页面…</div>}>
       <Routes>

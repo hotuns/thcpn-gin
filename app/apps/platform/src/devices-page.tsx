@@ -1,3 +1,4 @@
+import { LoRaGatewayStatus, LoRaConnectionBadge, useLoRaGatewayStatus, gatewayStatusTime } from "./lorawan-gateway-status";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
@@ -401,7 +402,7 @@ export function DevicesPage() {
         (item) =>
           (category === "all" || deviceCategory(item) === category) &&
           matchesDeviceType(deviceTypeId, deviceTypeByDevice.get(item.id)) &&
-          `${item.name} ${item.serial_no} ${item.id} ${(tagsByDevice.get(item.id) ?? []).join(" ")}`
+          `${item.name} ${item.serial_no} ${item.id} ${(item.tags??[]).join(" ")}`
             .toLowerCase()
             .includes(keyword.toLowerCase()),
       ),
@@ -450,7 +451,7 @@ export function DevicesPage() {
             <div className="device-filter-actions">
               <Button variant="secondary" onClick={() => {
                 void query.refetch();
-                void queryClient.invalidateQueries({ predicate: query => query.queryKey.includes("lorawan-info") });
+                void queryClient.invalidateQueries({ predicate: query => ["lorawan-info","lorawan-connection","lorawan-activity"].some(key=>query.queryKey.includes(key)) });
                 void mapQuery.refetch();
                 if (runtimeDeviceIDs.length) void runtime.refetch();
               }}>
@@ -480,10 +481,10 @@ export function DevicesPage() {
               onChange={setSiteId}
             />
             <DeviceFilterSelect
-              label="筛选设备类型"
+              label="筛选生态分类"
               value={deviceTypeId}
               options={[
-                { value: "", label: "全部设备类型" },
+                { value: "", label: "全部生态分类" },
                 ...(taxonomy.data?.items ?? [])
                   .filter((item) => item.kind === "ecosystem")
                   .map((item) => ({ value: item.id, label: item.name_zh })),
@@ -501,7 +502,7 @@ export function DevicesPage() {
               { id: "standalone", label: "标准站" },
               { id: "gateway", label: "组网站" },
               { id: "carbon_sink", label: "碳汇站" },
-              { id: "camera", label: "监控站" },
+              { id: "camera", label: "视频站" },
             ] as Array<{ id: Category; label: string }>
           ).map((item) => (
             <TabsTrigger
@@ -542,7 +543,7 @@ export function DevicesPage() {
                 <tr>
                   <th>设备</th>
                   <th>电量 / 信号</th>
-                  <th>最近上报</th>
+                  <th>连接 / 最近活动</th>
                   <th>项目 / 站点</th>
                   <th>操作</th>
                 </tr>
@@ -556,7 +557,7 @@ export function DevicesPage() {
                     workspaceId={currentId}
                     runtime={runtimeByDevice.get(device.id)}
                     runtimeLoading={runtime.isLoading}
-                    tags={tagsByDevice.get(device.id) ?? []}
+                    tags={device.tags ?? []}
                     expanded={expandedId === device.id}
                     projectName={device.source_project_name || projectName(device.project_id)}
                     siteName={device.source_site_name || device.source_workspace_name || siteName(device.site_id)}
@@ -641,6 +642,7 @@ function DeviceRows({
   const gateway = deviceCategory(device) === "gateway";
   const camera = deviceCategory(device) === "camera";
   const lora = device.source_family === "lorawan_v2";
+  const gatewayStatus = useLoRaGatewayStatus(device.id,workspaceId,lora&&gateway);
   const gatewayInfo = useQuery({
     queryKey: workspaceQueryKey(workspaceId, "device", device.id, "lorawan-info"),
     queryFn: () => api.devices.lorawanInfo(device.id),
@@ -694,7 +696,7 @@ function DeviceRows({
           {!camera?<DeviceVitalIndicators attributes={runtime?.attributes} batteryValue={lora ? gatewayInfo.data?.battery ?? null : undefined} signalValue={lora ? gatewayInfo.data?.cell ?? null : undefined} loading={lora ? gatewayInfo.isLoading : runtimeLoading} csq={deviceCategory(device) === "standalone"} signalCsq={lora || deviceCategory(device) === "standalone"} lithiumVoltage={device.source_family === "lorawan_v2" || (device.source_family === "thcpn" && ["gateway", "gateway_node"].includes(deviceCategory(device)))}/>:<span className="cell-sub">不适用</span>}
         </td>
         <td>
-          {!camera?<div className="device-last-report" title={overviewTime(runtime?.source_device.updated_at)}><Clock3 size={13}/><span>{runtime?.source_device.updated_at?relativeTime(runtime.source_device.updated_at):"暂无上报"}</span></div>:<span className="cell-sub">视频设备</span>}
+          {lora&&gateway?<div style={{display:"grid",gap:6}}><LoRaConnectionBadge connection={gatewayStatus.connection}/><span title={gatewayStatusTime(gatewayStatus.activity.data?.last_received_at)}>{gatewayStatus.activity.error?"活动读取失败":gatewayStatus.activity.data?.last_received_at?`接收于 ${relativeTime(gatewayStatus.activity.data.last_received_at)}`:"暂无接收"}</span></div>:!camera?<div className="device-last-report" title={overviewTime(runtime?.source_device.updated_at)}><Clock3 size={13}/><span>{runtime?.source_device.updated_at?relativeTime(runtime.source_device.updated_at):"暂无上报"}</span></div>:<span className="cell-sub">视频设备</span>}
         </td>
         <td>
           <div className="device-placement-summary">
@@ -1041,6 +1043,7 @@ export function DeviceCenterDetailPage() {
           </Link>
         </div>
       </div>
+      {device.source_family==="lorawan_v2"&&device.device_type==="gateway"&&<LoRaGatewayStatus deviceId={device.id} workspaceId={detailWorkspaceId!}/>}
       <DeviceDetailTabs tabs={simplifiedEnabled ? tabs.filter((item) => item.id !== "sharing") : tabs} activeTab={tab} onChange={(nextTab) => setParams((current) => { const next = new URLSearchParams(current); next.set("tab", nextTab); return next; })} />
       {feedback && (
         <div className="command-note device-feedback">{feedback}</div>
@@ -1745,17 +1748,17 @@ function SystemCameraBinding({
   }, [query.data]);
   return (
     <section className="thcpn-config-editor camera-binding-editor">
-      <h3>监控站视频绑定</h3>
+      <h3>视频站视频绑定</h3>
       {query.isLoading ? (
         <StateView
           type="loading"
-          title="正在加载监控站视频绑定"
+          title="正在加载视频站视频绑定"
           description="正在读取视频通道配置。"
         />
       ) : query.error ? (
         <StateView
           type="error"
-          title="监控站视频绑定加载失败"
+          title="视频站视频绑定加载失败"
           description={formatApiError(query.error).message}
         />
       ) : (
@@ -1829,11 +1832,11 @@ function SystemCameraBinding({
                     is_encrypted: encrypted,
                     validate_code_secret_ref: secretRef.trim(),
                   }),
-                "监控站视频绑定已更新",
+                "视频站视频绑定已更新",
               )
             }
           >
-            保存监控站视频绑定
+            保存视频站视频绑定
           </Button>
         </>
       )}

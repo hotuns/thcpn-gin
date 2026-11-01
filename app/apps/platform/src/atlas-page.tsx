@@ -1,3 +1,4 @@
+import { usePolicyLimit } from "./system-policy";
 import { simplifiedEnabled } from "./features";
 import {
   Component,
@@ -647,6 +648,10 @@ function AtlasSettings({
   onSaved: (board: AtlasView) => void | Promise<void>;
   onDelete?: () => void;
 }) {
+  const maxName=usePolicyLimit("atlas_name",120);
+  const maxDescription=usePolicyLimit("atlas_description",300);
+  const maxDevices=usePolicyLimit("atlas_devices",50);
+  const trendHours=usePolicyLimit("atlas_trend_hours",720);
   const { t } = useLocale();
   const a = (key: string) => t(`atlas.${key}`);
   const [name, setName] = useState(board?.name ?? a("defaultName"));
@@ -696,7 +701,7 @@ function AtlasSettings({
           <label>
             {a("name")}
             <TextInput
-              maxLength={120}
+              maxLength={maxName}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
@@ -704,7 +709,7 @@ function AtlasSettings({
           <label>
             {a("description")}
             <TextInput
-              maxLength={300}
+              maxLength={maxDescription}
               value={config.description ?? ""}
               onChange={(e) =>
                 setConfig({ ...config, description: e.target.value })
@@ -736,9 +741,10 @@ function AtlasSettings({
                 setConfig({ ...config, trend_hours: Number(e.target.value) })
               }
             >
-              <option value="24">{a("day")}</option>
-              <option value="168">{a("week")}</option>
-              <option value="720">{a("month")}</option>
+              {![24,168,720].includes(trendHours)&&<option value={trendHours}>{trendHours} 小时</option>}
+              {trendHours>=24&&<option value="24">{a("day")}</option>}
+              {trendHours>=168&&<option value="168">{a("week")}</option>}
+              {trendHours>=720&&<option value="720">{a("month")}</option>}
             </SelectInput>
           </label>
           <label className="atlas-setting-switch">
@@ -776,7 +782,7 @@ function AtlasSettings({
                     checked={config.device_ids?.includes(d.device_id) ?? false}
                     disabled={
                       !config.device_ids?.includes(d.device_id) &&
-                      (config.device_ids?.length ?? 0) >= 50
+                      (config.device_ids?.length ?? 0) >= maxDevices
                     }
                     onCheckedChange={(v) =>
                       setConfig({

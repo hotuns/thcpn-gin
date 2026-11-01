@@ -21,7 +21,7 @@ func (s *Service) RegisterFirmware(ctx context.Context, input platform.SourceFir
 		return 0, err
 	}
 	deviceIDs, _ := json.Marshal([]int64{input.ExternalDeviceID})
-	result, err := db.ExecContext(ctx, `INSERT INTO device_firmwares(device_type,device_id,build,input.Version,uri,path,algorithm,hashvalue,created_at,updated_at) VALUES(NULL,?,NULL,?,?,NULL,'MD5',?,NOW(),NOW())`, string(deviceIDs), input.Version, input.PublicURL, input.VerifyValue)
+	result, err := db.ExecContext(ctx, `INSERT INTO device_firmwares(device_type,device_id,build,version,uri,path,algorithm,hashvalue,created_at,updated_at) VALUES(NULL,?,NULL,?,?,NULL,'MD5',?,NOW(),NOW())`, string(deviceIDs), input.Version, input.PublicURL, input.VerifyValue)
 	if err != nil {
 		return 0, apperr.Wrap(apperr.KindDataSource, "insert thcpn firmware record", err)
 	}
