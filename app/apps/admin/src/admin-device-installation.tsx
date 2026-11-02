@@ -1,5 +1,5 @@
 import { AdminNodeStatus } from "./runtime-status";
-import { isMeasurement } from "@thcpn/api";
+import { isMeasurement, nodeStatusKeys, statusMetrics, statusValue } from "@thcpn/api";
 import { AdminObservationStart } from "./admin-observation-start";
 import { AdminDeviceDossier, AdminDeviceScenes } from "./admin-device-dossier";
 import { useEffect, useRef, useState } from "react";
@@ -99,19 +99,19 @@ export function AdminDeviceNodes({device,onData,onTopology,onConfig,onHistory,co
     </Space>
 
     {(nodes.error||runtime.error)&&<Alert type="error" title="节点读取失败" description={formatApiError(nodes.error||runtime.error).message}/>}
-    <Table<GatewayNode> rowKey="key" size="middle" loading={nodes.isLoading} dataSource={visible} pagination={{current:page,pageSize,showSizeChanger:true,onChange:(page,size)=>{setStatusPage(page);setPageSize(size);}}} scroll={{x:1000}} locale={{emptyText:lora?"暂无节点，请添加节点。":"暂无关联节点，请管理网关拓扑。"}} columns={[
+    <Table<GatewayNode> rowKey="key" size="middle" loading={nodes.isLoading} dataSource={visible} pagination={{current:page,pageSize,showSizeChanger:true,onChange:(page,size)=>{setStatusPage(page);setPageSize(size);}}} scroll={{x:compact?760:1000}} locale={{emptyText:compact?"暂无节点":lora?"暂无节点，请添加节点。":"暂无关联节点，请管理网关拓扑。"}} columns={[
       {title:"节点",render:(_,node)=><Space orientation="vertical" size={0}><Typography.Text strong>{node.name}</Typography.Text>{lora&&<Typography.Text>SN {node.node_sn}</Typography.Text>}{node.target.kind==="gateway_node"&&<Typography.Text type="secondary">序号 {node.target.node_index}</Typography.Text>}</Space>},
 
       {title:"指标",width:75,render:(_,node)=>node.streams.filter(isMeasurement).length},
-      {title:lora?"节点状态":"电量 / 信号",width:lora?300:undefined,render:(_,node)=>{if(lora)return <AdminNodeStatus deviceId={id} node={node} reading={runtime.data?.items.find(item=>item.key===node.key)} loading={runtime.isFetching} error={runtime.error?formatApiError(runtime.error).message:undefined}/>;const state=runtime.data?.items.find(item=>item.key===node.key);return state?.error?<Tag color="red">读取失败</Tag>:state?<Space orientation="vertical" size={0}><span>{state.battery??"—"} V · {state.rssi??"—"}</span><Typography.Text type="secondary">{opsTime(state.sampled_at)}</Typography.Text></Space>:"尚未读取";}},
+      {title:lora?"节点状态":"电量 / 信号",width:lora?300:undefined,render:(_,node)=>{if(lora&&compact){const reading=runtime.data?.items.find(item=>item.key===node.key);return <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:"8px 16px"}}>{nodeStatusKeys.map(key=><div key={key}><Typography.Text type="secondary" style={{fontSize:12}}>{statusMetrics[key].label}</Typography.Text><div>{runtime.isFetching?"…":runtime.error||reading?.error?"—":statusValue(key,reading?.[key as "battery"|"rssi"|"snr"|"sd_card_rate"])}</div></div>)}</div>;}if(lora)return <AdminNodeStatus deviceId={id} node={node} reading={runtime.data?.items.find(item=>item.key===node.key)} loading={runtime.isFetching} error={runtime.error?formatApiError(runtime.error).message:undefined}/>;const state=runtime.data?.items.find(item=>item.key===node.key);return state?.error?<Tag color="red">读取失败</Tag>:state?<Space orientation="vertical" size={0}><span>{state.battery??"—"} V · {state.rssi??"—"}</span><Typography.Text type="secondary">{opsTime(state.sampled_at)}</Typography.Text></Space>:"尚未读取";}},
       {title:"状态更新时间",render:(_,node)=>opsTime(runtime.data?.items.find(item=>item.key===node.key)?.sampled_at)},
-      {title:"经纬度",render:(_,node)=>node.longitude!=null?`${node.longitude}, ${node.latitude}`:"未设置"},
-      {title:"操作",render:(_,node)=><Space wrap><Button size="small" onClick={()=>onData(node.key)}>查看数据</Button>{node.target.kind==="gateway_node"?<GatewayNodeActions deviceId={id} node={node} onDetails={()=>setDetailKey(node.key)} onConfig={onConfig?(index,kind)=>onConfig(index,kind):undefined}/>:<Button size="small"><Link to={`/admin/devices/${node.target.device_id}`}>设备资料</Link></Button>}</Space>},
+      {title:"经纬度",hidden:compact,render:(_,node)=>node.longitude!=null?`${node.longitude}, ${node.latitude}`:"未设置"},
+      {title:"操作",hidden:compact,render:(_,node)=><Space wrap><Button size="small" onClick={()=>onData(node.key)}>查看数据</Button>{node.target.kind==="gateway_node"?<GatewayNodeActions deviceId={id} node={node} onDetails={()=>setDetailKey(node.key)} onConfig={onConfig?(index,kind)=>onConfig(index,kind):undefined}/>:<Button size="small"><Link to={`/admin/devices/${node.target.device_id}`}>设备资料</Link></Button>}</Space>},
     ]}/>
   </Space>;
   const toolbar=<Space wrap>{lora&&<><GatewayNodeActions deviceId={id}/>{onHistory&&<Button onClick={onHistory}>历史数据</Button>}<Button onClick={()=>void nodes.refetch()} loading={nodes.isFetching}>刷新节点</Button><Button><Link to={`/admin/devices?kind=node_v2&gateway=${id}`}>节点v2库存</Link></Button></>}{onTopology&&<Button onClick={onTopology}>管理拓扑</Button>}</Space>;
   return <Space orientation="vertical" size="middle" style={{width:"100%"}}>
-    {compact?<><Space wrap style={{justifyContent:"space-between",width:"100%"}}><Typography.Text strong>节点管理 · {visible.length} 个节点</Typography.Text>{toolbar}</Space>{positions}</>:<Card title={lora?"节点管理":"THCPN · 组网节点"} extra={toolbar}>{positions}</Card>}
+    {compact?<><Space wrap style={{justifyContent:"space-between",width:"100%"}}><Typography.Text strong>节点 · {visible.length} 个</Typography.Text></Space>{positions}</>:<Card title={lora?"节点管理":"THCPN · 组网节点"} extra={toolbar}>{positions}</Card>}
     <Drawer title="节点资料" open={!!detail} onClose={()=>setDetailKey(null)} size={560}>
       {detail&&<Space orientation="vertical" size="large" style={{width:"100%"}}>{lora&&<AdminNodeStatus showTime deviceId={id} node={detail} reading={runtime.data?.items.find(item=>item.key===detail.key)} loading={runtime.isFetching}/>}<Descriptions column={1} bordered items={[
         {key:"name",label:"节点名称",children:<Space>{detail.name}<AdminNodeNameEditor name={detail.custom_name} allowEmpty onSave={async name=>{if(detail.target.kind==="gateway_node")await api.admin.renameNode(id,detail.target.node_index,name);await invalidateNodeNames(client);setDetailKey(null);}}/></Space>},
