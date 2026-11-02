@@ -1,3 +1,4 @@
+import { nodeOptionLabel } from "@thcpn/api";
 import { Fragment, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -665,15 +666,16 @@ function GroupExportForm({
   const range = defaultRange();
   const [gatewayId, setGatewayId] = useState(params.get("gateway") ?? "");
   const [keyword, setKeyword] = useState("");
+  const [nodeScope,setNodeScope]=useState<"bound"|"history">(params.get("node_scope")==="history"?"history":"bound");
   const children = useQuery({
-    queryKey: ["device", gatewayId, "nodes", "export"],
-    queryFn: () => api.devices.nodes(gatewayId),
+    queryKey: ["device", gatewayId, "nodes", "export",nodeScope],
+    queryFn: () => api.devices.nodes(gatewayId,nodeScope),
     enabled: Boolean(gatewayId),
   });
   const gateway = gateways.find((item) => value(item, "id") === gatewayId);
   const lorawan = value(gateway ?? {}, "source_family") === "lorawan_v2";
   const nodeItems = children.data?.items ?? [];
-  const nodes = nodeItems.map((node) => ({ id: node.key, name: node.name, serial_no: node.target.kind === "device" ? `ID ${node.target.device_id.slice(0, 8)}` : `节点 ${node.target.node_index}` }));
+  const nodes = nodeItems.map((node) => ({ id: node.key, name: nodeOptionLabel(node), serial_no: node.target.kind === "device" ? `ID ${node.target.device_id.slice(0, 8)}` : `节点 ${node.target.node_index}` }));
   const filteredNodes = nodes.filter((item) =>
     `${value(item, "name")} ${value(item, "serial_no")} ${(tagsByDevice.get(value(item, "id")) ?? []).join(" ")}`
       .toLowerCase()
@@ -681,12 +683,13 @@ function GroupExportForm({
   );
   const requested = arrayParam(params.get("nodes"));
   const [selected, setSelected] = useState<string[] | null>(
-    requested.length ? requested : null,
+    params.has("nodes") ? requested : null,
   );
   const [start, setStart] = useState(params.get("start") ?? range.start);
   const [end, setEnd] = useState(params.get("end") ?? range.end);
   const [images, setImages] = useState(true);
-  const [data, setData] = useState(true);
+  const [data, setData] = useState(params.get("data") !== "0");
+  const [status, setStatus] = useState(params.get("status") === "1");
   const [busy, setBusy] = useState(false);
   const chooseGateway = (id: string) => {
     setGatewayId(id);
@@ -696,14 +699,16 @@ function GroupExportForm({
   const effective = (selected ?? nodes.map((item) => value(item, "id"))).filter(id => nodes.some(node => node.id === id));
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (busy || !effective.length || (!data && (lorawan || !images)) || !validDataRange(start, end)) return;
+    if (busy || (!effective.length && (data || !(lorawan && status))) || (!data && !(lorawan && status) && (lorawan || !images)) || !validDataRange(start, end)) return;
     setBusy(true);
     const chosen = nodeItems.filter((node) => effective.includes(node.key));
     const ids = [...new Set(chosen.map((node) => node.target.kind === "device" ? node.target.device_id : node.target.gateway_device_id))];
+    if (!ids.length && lorawan && status) ids.push(gatewayId);
     const payload = buildBatchExportPayload("group", ids, start, end, !lorawan && images, {
         id: gatewayId,
         name: value(gateway ?? {}, "name"),
       }, data);
+    if (lorawan) (payload.request_config as JsonRecord).include_status = status;
     (payload.request_config as JsonRecord).node_targets = chosen.map((node) => node.target);
     await onCreate(payload);
     setBusy(false);
@@ -735,6 +740,8 @@ function GroupExportForm({
             searchPlaceholder="搜索组网站名称或序列号"
           />
           <section className="export-target-picker">
+            {lorawan&&<SelectInput aria-label="导出节点范围" value={nodeScope} onChange={event=>{setNodeScope(event.target.value as "bound"|"history");setSelected(null);}}><option value="bound">当前节点</option><option value="history">历史数据</option></SelectInput>}
+
             {(nodes.length > 5 || keyword) && <SearchInput
               className="export-node-search"
               aria-label="搜索节点名称或序列号"
@@ -796,11 +803,11 @@ function GroupExportForm({
           setStart={setStart}
           setEnd={setEnd}
         />
-        <ExportContents data={data} images={!lorawan && images} setData={setData} setImages={setImages} imagesAvailable={!lorawan} />
+        <ExportContents data={data} images={!lorawan && images} setData={setData} setImages={setImages} imagesAvailable={!lorawan} status={lorawan && status} setStatus={lorawan ? setStatus : undefined} />
         </div>
           </section>
         </div>
-        <FormFooter count={effective.length} busy={busy} onClose={onClose} system="组网站导出" start={start} end={end} content={data && !lorawan && images ? "设备数据和图片" : data ? "设备数据" : !lorawan && images ? "图片" : "未选择"} invalid={!data && (lorawan || !images)} />
+        <FormFooter count={effective.length || (lorawan && status && gatewayId ? 1 : 0)} busy={busy} onClose={onClose} system="组网站导出" start={start} end={end} content={lorawan ? [data && "采集数据", status && "运行状态"].filter(Boolean).join("、") || "未选择" : data && !lorawan && images ? "设备数据和图片" : data ? "设备数据" : !lorawan && images ? "图片" : "未选择"} invalid={(!effective.length && data) || (!data && !(lorawan && status) && (lorawan || !images))} />
       </form>
     </div>
   );

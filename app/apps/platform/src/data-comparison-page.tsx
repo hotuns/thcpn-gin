@@ -1,3 +1,4 @@
+import { isMeasurement, streamPurposeLabel } from "@thcpn/api";
 import { usePolicyLimit } from "./system-policy";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
@@ -454,8 +455,8 @@ function ComparisonCondition({
     enabled: Boolean(value.deviceId),
   });
   const metrics = useMemo(
-    () => (streams.data?.items ?? []).filter((item) => item.type === "telemetry" && item.status === "active"),
-    [streams.data?.items],
+    () => (streams.data?.items ?? []).filter((item) => item.type === "telemetry" && item.status === "active" && (isMeasurement(item) || item.id === value.streamId)),
+    [streams.data?.items, value.streamId],
   );
 
   useEffect(() => {
@@ -479,7 +480,7 @@ function ComparisonCondition({
           <option value="">{streams.isLoading ? "加载中…" : metrics.length ? "选择要素" : "无可用要素"}</option>
           {metrics.map((item) => (
             <option key={item.id} value={item.id}>
-              {item.computed ? "fx · " : ""}{item.name}{item.unit ? `（${item.unit}）` : ""}
+              {item.computed ? "fx · " : ""}{item.name}{!isMeasurement(item) && ` · ${streamPurposeLabel(item)}`}{item.unit ? `（${item.unit}）` : ""}
             </option>
           ))}
         </SelectInput>

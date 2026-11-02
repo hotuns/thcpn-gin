@@ -40,13 +40,14 @@ export function ExportContentToggle({ checked, onChange, title, description, dis
   return <label className="export-content-toggle"><CheckboxInput checked={checked} disabled={disabled} onChange={event => onChange(event.target.checked)} /><span><strong>{title}</strong>{description && <small>{description}</small>}</span></label>;
 }
 
-export function ExportContents({ data, images, setData, setImages, imagesAvailable = true }: {
-  data: boolean; images: boolean; setData: (value: boolean) => void; setImages: (value: boolean) => void; imagesAvailable?: boolean;
+export function ExportContents({ data, images, setData, setImages, imagesAvailable = true, status, setStatus }: {
+  data: boolean; images: boolean; setData: (value: boolean) => void; setImages: (value: boolean) => void; imagesAvailable?: boolean; status?: boolean; setStatus?: (value:boolean)=>void;
 }) {
   const { t } = useLocale();
   return <fieldset className="export-content-options"><legend>{t("exportEditor.content")}</legend>
-    <ExportContentToggle checked={data} onChange={setData} title={t("exportEditor.dataOnly")} description={t("exportEditor.dataDescription")} />
+    <ExportContentToggle checked={data} onChange={setData} title={setStatus ? "采集数据" : t("exportEditor.dataOnly")} description={setStatus ? undefined : t("exportEditor.dataDescription")} />
     <ExportContentToggle checked={images} onChange={setImages} disabled={!imagesAvailable} title={t("exportEditor.imagesOnly")} description={t(imagesAvailable ? "exportEditor.imageDescription" : "exportEditor.imagesUnavailable")} />
-    {!data && !images && <p className="data-builder-validation" role="alert">{t("exportEditor.chooseContent")}</p>}
+    {setStatus && <ExportContentToggle checked={!!status} onChange={setStatus} title="运行状态"/>}
+    {!data && !images && !status && <p className="data-builder-validation" role="alert">{t("exportEditor.chooseContent")}</p>}
   </fieldset>;
 }

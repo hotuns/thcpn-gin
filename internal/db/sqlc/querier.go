@@ -142,6 +142,7 @@ type Querier interface {
 	ListExportJobsByRequesterAndWorkspace(ctx context.Context, arg ListExportJobsByRequesterAndWorkspaceParams) ([]ExportJob, error)
 	ListExportJobsByWorkspace(ctx context.Context, arg ListExportJobsByWorkspaceParams) ([]ExportJob, error)
 	ListInvitationsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]ListInvitationsByWorkspaceRow, error)
+	ListLoRaWANV2GatewayStatusStreams(ctx context.Context, deviceID uuid.UUID) ([]ListLoRaWANV2GatewayStatusStreamsRow, error)
 	ListPendingInvitationsForIdentity(ctx context.Context, arg ListPendingInvitationsForIdentityParams) ([]ListPendingInvitationsForIdentityRow, error)
 	ListPermissionCodesByTemplate(ctx context.Context, code string) ([]string, error)
 	ListPermissions(ctx context.Context) ([]Permission, error)
@@ -172,6 +173,7 @@ type Querier interface {
 	RevokeRefreshSessionByHash(ctx context.Context, refreshTokenHash string) error
 	RevokeRefreshSessionForUser(ctx context.Context, arg RevokeRefreshSessionForUserParams) (int64, error)
 	RotateRefreshSession(ctx context.Context, arg RotateRefreshSessionParams) (AuthRefreshSession, error)
+	SetDataStreamPurpose(ctx context.Context, arg SetDataStreamPurposeParams) (DataStream, error)
 	SetDeviceProfileImageOrder(ctx context.Context, arg SetDeviceProfileImageOrderParams) error
 	SetDeviceProfileLocation(ctx context.Context, arg SetDeviceProfileLocationParams) (DeviceProfile, error)
 	UpdateCameraBindingStatus(ctx context.Context, arg UpdateCameraBindingStatusParams) (CameraBinding, error)

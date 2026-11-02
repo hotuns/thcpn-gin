@@ -103,7 +103,7 @@ func (s *Service) OperatePhysicalNode(ctx context.Context, id, actor uuid.UUID, 
 		_, syncErr = s.SyncLoRaWANV2Gateway(ctx, SyncLoRaWANV2GatewayInput{DataSourceID: ref.DataSourceID, GatewaySN: ref.GatewaySN, ActorUserID: actor})
 	}
 	result.Status = "completed"
-	result.Message = "登记与绑定操作不发送硬件指令；配置和数据继续属于采集位置。"
+	result.Message = "节点登记与绑定已完成，不发送硬件指令；同一网关、序号的名称、坐标、配置与历史数据保留。"
 	if syncErr != nil {
 		result.Status = "partial"
 		result.Message = "源端已接受，平台同步失败。请刷新核对，不要重复提交。"

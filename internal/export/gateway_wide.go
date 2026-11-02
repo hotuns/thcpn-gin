@@ -53,7 +53,7 @@ func gatewayWideRows(series []telemetrySeries) [][]xlsxCell {
 			}
 		}
 	}
-	header := []xlsxCell{stringCell("节点名称"), stringCell("采集位置ID"), stringCell("节点序号"), stringCell("时间（北京时间）")}
+	header := []xlsxCell{stringCell("节点名称"), stringCell("节点标识"), stringCell("节点序号"), stringCell("时间（北京时间）")}
 	if !gateway {
 		header = []xlsxCell{stringCell("设备名称"), stringCell("设备ID"), stringCell("节点序号"), stringCell("时间（北京时间）")}
 	}
@@ -67,7 +67,7 @@ func gatewayWideRows(series []telemetrySeries) [][]xlsxCell {
 		header = append(header, stringCell(c))
 	}
 	if hasPhysical {
-		header = append(header, stringCell("当前安装节点SN（非历史归属）"))
+		header = append(header, stringCell("当前节点 SN（非历史归属）"))
 	}
 	type rowKey struct {
 		node      string
@@ -129,6 +129,32 @@ func renderGatewayWideCSV(series []telemetrySeries) ([]byte, error) {
 		values := make([]string, len(row))
 		for i, c := range row {
 			values[i] = c.value
+		}
+		if err := writer.Write(values); err != nil {
+			return nil, err
+		}
+	}
+	writer.Flush()
+	return buf.Bytes(), writer.Error()
+}
+
+// Status rows retain exact timestamps and identify the gateway and current physical node.
+func renderV2StatusCSV(series []telemetrySeries, gatewaySN string) ([]byte, error) {
+	rows := gatewayWideRows(series)
+	hasSN := len(rows[0]) > 0 && rows[0][len(rows[0])-1].value == "当前节点 SN（非历史归属）"
+	var buf bytes.Buffer
+	writer := csv.NewWriter(&buf)
+	for i, row := range rows {
+		values := []string{gatewaySN}
+		for _, cell := range row {
+			values = append(values, cell.value)
+		}
+		if !hasSN {
+			values = append(values, "")
+		}
+		if i == 0 {
+			values[0], values[1], values[2], values[3] = "网关SN", "节点名称", "节点标识", "节点序号"
+			values[len(values)-1] = "当前节点 SN（非历史归属）"
 		}
 		if err := writer.Write(values); err != nil {
 			return nil, err

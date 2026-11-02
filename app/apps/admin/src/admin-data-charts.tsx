@@ -31,7 +31,7 @@ export function AdminDataCharts({ series, loading = false }: { series: AdminChar
   </Spin>;
 }
 
-function Curve({ series, colorIndex, expanded = false }: { series: AdminChartSeries; colorIndex: number; expanded?: boolean }) {
+export function Curve({ series, colorIndex, expanded = false }: { series: AdminChartSeries; colorIndex: number; expanded?: boolean }) {
   const { token } = theme.useToken();
   const prepared = useMemo(() => prepareAdminCurve(series.points), [series.points]);
   const color = [token.colorPrimary, token.colorSuccess, token.colorWarning, token.purple, token.cyan, token.magenta][colorIndex % 6];

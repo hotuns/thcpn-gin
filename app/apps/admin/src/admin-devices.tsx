@@ -1,3 +1,4 @@
+import { AdminReportedLocation } from "./admin-reported-location";
 import { LoRaGatewayStatus } from "./lorawan-gateway-status";
 import { confirmManualSync } from "./manual-sync-confirm";
 import { LoRaWANGatewayDetailsEditor } from "./lorawan-gateway-details";
@@ -950,8 +951,8 @@ function DeviceDetailPanel({
   const dataNodeKey=detailParams.get("node")||"";
   const setActiveTab=(tab:string)=>setDetailParams(previous=>{const next=new URLSearchParams(previous);next.set("tab",tab);return next;},{replace:true});
   const setDataNodeKey=(node:string)=>setDetailParams(previous=>{const next=new URLSearchParams(previous);next.set("node",node);return next;},{replace:true});
-  const openData=(node:string)=>setDetailParams(previous=>{const next=new URLSearchParams(previous);next.set("tab","data");next.set("node",node);return next;});
-  const reportedInfo=useQuery({queryKey:["admin",String(device.id),"lorawan-info"],queryFn:()=>api.admin.lorawanInfo(String(device.id)),enabled:device.source_family==="lorawan_v2",staleTime:60000,retry:false});
+  const openData=(node:string)=>setDetailParams(previous=>{const next=new URLSearchParams(previous);next.set("tab","data");next.set("node",node);next.delete("node_scope");return next;});
+  const reportedInfo=useQuery({queryKey:["admin","device",String(device.id),"lorawan-info"],queryFn:()=>api.admin.lorawanInfo(String(device.id)),enabled:device.source_family==="lorawan_v2",staleTime:Infinity,refetchOnWindowFocus:false,retry:false});
   const events = (lifecycleData?.events as JsonRecord[] | undefined) ?? [];
   const capabilities = Array.isArray(device.capabilities) ? device.capabilities.map(String) : [];
   const capabilityDefinitions = useQuery({ queryKey: ["admin", "metadata", "capabilities"], queryFn: api.admin.metadata });
@@ -1087,9 +1088,9 @@ function DeviceDetailPanel({
     </section>
   </div>;
   return <Card className="admin-device-detail"><Tabs className="admin-device-detail-tabs" activeKey={activeTab} onChange={setActiveTab} items={[
-    { key: "overview", label: "设备信息", children: <>{device.source_family==="lorawan_v2"&&device.device_type==="gateway"&&<LoRaGatewayStatus deviceId={String(device.id)}/>} {overview}{device.source_family==="lorawan_v2"&&device.device_type==="gateway"&&<LoRaWANGatewayDetailsEditor deviceId={String(device.id)}/>}{!isCamera&&device.source_family!=="lorawan_v2"&&!isCarbon&&runtime}</> },
+    { key: "overview", label: "设备信息", children: <>{device.source_family==="lorawan_v2"&&device.device_type==="gateway"&&<LoRaGatewayStatus deviceId={String(device.id)} name={String(device.name)} sn={String(device.serial_no)}/>} {overview}{device.source_family==="lorawan_v2"&&device.device_type==="gateway"&&<><LoRaWANGatewayDetailsEditor deviceId={String(device.id)}/><AdminReportedLocation deviceId={String(device.id)}/></>}{!isCamera&&device.source_family!=="lorawan_v2"&&!isCarbon&&runtime}</> },
     { key: "installation", label: "安装档案", children: <AdminDeviceInstallation device={device}/> },
-    ...(device.device_type==="gateway" ? [{ key:"nodes",label:"节点管理",children:<AdminDeviceNodes device={device} onData={openData} onConfig={(index,kind)=>setDetailParams({tab:"configuration",node_index:String(index),config_tab:kind??"sensor",node:`gateway:${device.id}:node:${index}`})} onTopology={device.source_family!=="lorawan_v2"?()=>onOpen("child"):undefined}/> }] : []),
+    ...(device.device_type==="gateway" ? [{ key:"nodes",label:"节点管理",children:<AdminDeviceNodes device={device} onData={openData} onHistory={()=>setDetailParams({tab:"data",node:"",node_scope:"history"})} onConfig={(index,kind)=>setDetailParams({tab:"configuration",node_index:String(index),config_tab:kind??"sensor",node:`gateway:${device.id}:node:${index}`})} onTopology={device.source_family!=="lorawan_v2"?()=>onOpen("child"):undefined}/> }] : []),
     ...(isCarbon ? [{key:"carbon",label:"节点与状态",children:carbonManagement}] : []),
     { key: "data", destroyOnHidden:isCamera, label: isCamera?"视频预览":"数据查看", children: isCamera?<AdminDeviceCamera deviceId={String(device.id)} onEdit={()=>onOpen("camera-edit")}/>:isCarbon?<AdminDeviceCarbon deviceId={String(device.id)} onExport={()=>setActiveTab("exports")}/>:<AdminDeviceData device={device} nodeKey={dataNodeKey} onNodeChange={setDataNodeKey} onExport={()=>setActiveTab("exports")}/> },
     {key:"configuration",label:"设备配置",children:<>{deviceControls}{device.source_family==="lorawan_v2"?<LoRaWANV2ConfigPanel deviceId={String(device.id)}/>:!isCamera?configuration:null}</>},

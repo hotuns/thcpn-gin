@@ -206,7 +206,7 @@ func TestNodeNamingPermissionsPersistenceAndMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	stable := nodes[2].Key
-	if nodes[2].Name != "林下 · 节点 3" || nodes[3].CustomName != "林下" {
+	if nodes[2].Name != "林下" || nodes[3].CustomName != "林下" {
 		t.Fatalf("names %#v", nodes)
 	}
 	must(`UPDATE device_metadata SET value_json='2' WHERE device_id=$1 AND key='lorawan_v2_nodes_count'`, gateway)

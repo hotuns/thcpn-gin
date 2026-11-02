@@ -61,28 +61,6 @@ docker compose exec api adminctl create --name "系统管理员" --email admin@e
 
 用户平台也会把 `/admin/` 转发到后台，因此配置统一域名反向代理时可只暴露用户平台入口。
 
-### 精简版用户前端
-
-默认 `VITE_SIMPLIFIED_ENABLED=false`，保留完整版全部页面。客户需要精简界面时，在仓库根目录 `.env` 设置：
-
-```dotenv
-VITE_SIMPLIFIED_ENABLED=true
-```
-
-精简版登录后进入一张图，主导航保留一张图、设备、设备地图、数据导出和设置；账号资料、安全与偏好仍可使用。设置保留基础资料、成员管理和审计，隐藏外部授权、邀请及高级权限编辑。设备详情保留配置页签，隐藏分享和创建预警入口；不展示数字样地演示、订阅、通知与新手导览。
-
-被省略页面的直接链接统一返回一张图。设置页提供独立系统后台入口。此开关只控制用户前端，不改变后端 API、数据库、Worker、系统后台或商业权益配置。
-
-这是 **Vite 构建时开关**。Docker 部署修改后需要重建用户前端，单纯重启不会生效：
-
-```bash
-docker compose up -d --build platform
-```
-
-本地开发修改根目录 `.env` 后重启 Vite；也可临时运行 `VITE_SIMPLIFIED_ENABLED=true npm --prefix app run dev:platform`。恢复 `false` 并重建即可恢复完整版。
-
-本机精简版与现有 LoRaWAN V2 的独立部署见 [联合部署说明](scripts/deploy/README.simplified-local.md)。
-
 ### 3. 常用运维命令
 
 ```bash

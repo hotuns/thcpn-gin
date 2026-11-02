@@ -194,7 +194,7 @@ func (s *Service) Resolve(ctx context.Context, slug string) (Publication, Public
 }
 
 func (s *Service) LoadStreams(ctx context.Context, deviceID uuid.UUID) (telemetry []StreamInfo, images []StreamInfo, err error) {
-	rows, err := s.db.Query(ctx, `SELECT id, code, name, unit, type FROM data_streams WHERE device_id = $1 AND status = 'active' AND type IN ('telemetry','image') ORDER BY type, name`, deviceID)
+	rows, err := s.db.Query(ctx, `SELECT id, code, name, unit, type FROM data_streams WHERE device_id = $1 AND status = 'active' AND type IN ('telemetry','image') AND (type <> 'telemetry' OR purpose='measurement') ORDER BY type, name`, deviceID)
 	if err != nil {
 		return nil, nil, apperr.Wrap(apperr.KindInternal, "list public device streams", err)
 	}

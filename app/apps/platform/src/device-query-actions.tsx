@@ -1,3 +1,4 @@
+import { isMeasurement } from "@thcpn/api";
 import { useRef, useState } from "react";
 import { fullTelemetry } from "./full-telemetry";
 import { Check, GripVertical, Search } from "lucide-react";
@@ -131,7 +132,7 @@ export function DeviceQueryActions({
   const [dragOverId, setDragOverId] = useState("");
   const draggedRef = useRef(false);
   const telemetryStreams = streams.filter(
-    (item) => item.type === "telemetry" && item.status === "active",
+    (item) => item.type === "telemetry" && item.status === "active" && isMeasurement(item),
   );
   const imageStreams = streams.filter(
     (item) => item.type === "image" && item.status === "active",

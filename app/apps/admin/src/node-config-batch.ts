@@ -3,11 +3,12 @@ import { api, formatApiError, type JsonRecord } from "@thcpn/api";
 export type NodeConfigResult = { node: number; status: "submitting" | "synced" | "sync_failed" | "failed"; detail: string };
 
 export function sensorConfigTargets(current: number, selected: number[], available: number[], applyOthers: boolean): number[] {
-  return [...new Set([current, ...(applyOthers ? selected.filter(index => available.includes(index)) : [])])];
+  return [...new Set([current, ...(applyOthers ? selected : [])])].filter(index=>available.includes(index));
 }
 
 export async function submitNodeSensorBatch(deviceId: string, targets: number[], payload: JsonRecord, onProgress: (results: NodeConfigResult[]) => void): Promise<NodeConfigResult[]> {
   const nodes = [...new Set(targets)];
+  await verifyNodeConfigTargets(deviceId,nodes);
   const results: (NodeConfigResult | undefined)[] = new Array(nodes.length);
   const report = () => onProgress(results.filter((item): item is NodeConfigResult => item !== undefined).map(item => ({ ...item })));
   let next = 0;
@@ -31,4 +32,12 @@ export async function submitNodeSensorBatch(deviceId: string, targets: number[],
   };
   await Promise.all(Array.from({ length: Math.min(3, nodes.length) }, worker));
   return results.filter((item): item is NodeConfigResult => item !== undefined);
+}
+
+export async function verifyNodeConfigTargets(deviceId:string,targets:number[]) {
+  if (!targets.length) throw new Error("请选择已绑定物理节点的采集位置");
+  const current = await api.admin.deviceNodes(deviceId);
+  const installed = new Set(current.items.flatMap(node=>node.bound && node.target.kind === "gateway_node" ? [node.target.node_index] : []));
+  const missing = targets.filter(index=>!installed.has(index));
+  if (missing.length) throw new Error(`节点 ${missing.join("、")} 当前未绑定物理节点，请刷新后重新选择；本次未下发配置`);
 }

@@ -8,7 +8,6 @@ import { useAuth } from "@thcpn/auth";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, CheckboxInput, Input, PageHeader, Panel, SelectInput, StateView, Table, Tabs, TabsList, TabsTrigger } from "./platform-ui";
 import { AccessControlTab } from "./access-control";
-import { simplifiedEnabled } from "./features";
 
 const text = (value: unknown, fallback = "—") =>
   value === undefined || value === null || value === ""
@@ -17,12 +16,10 @@ const text = (value: unknown, fallback = "—") =>
 const resourceKindLabel = (kind: "Project" | "Site") =>
   kind === "Project" ? "项目" : "样地";
 export function SettingsPage() {
- const billingEnabled=!simplifiedEnabled&&useSystemPolicy().data?.billing_enabled;
+ const billingEnabled=useSystemPolicy().data?.billing_enabled;
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const tab = params.get("tab") ?? "resources";
-  if (simplifiedEnabled && !["resources", "access", "audit", "security"].includes(tab))
-    return <Navigate to="/settings" replace />;
   if (tab === "security")
     return <Navigate to="/account?tab=security" replace />;
   if (billingEnabled && tab === "billing")
@@ -30,7 +27,7 @@ export function SettingsPage() {
   if (tab === "billing") return <Navigate to="/settings" replace />;
   const tabs = [
     { id: "resources", label: "基础资料" },
-    { id: "access", label: simplifiedEnabled ? "成员管理" : "访问控制" },
+    { id: "access", label: "访问控制" },
     { id: "audit", label: "审计日志" },
   ];
   return (
@@ -39,9 +36,7 @@ export function SettingsPage() {
         eyebrow="组织 / 设置"
         title="组织设置"
         description="管理当前组织的基础资料、协作关系和审计记录。"
-        actions={simplifiedEnabled ? (
-          <a href="/admin/"><Button variant="secondary">系统后台</Button></a>
-        ) :
+        actions={
           <div className="header-actions">
             <Button variant="secondary" onClick={() => navigate("/workspaces")}><ArrowLeft size={14} />返回组织</Button>
             <Button variant="secondary" onClick={() => navigate("/workspaces?action=create")}><Plus size={14} />新建组织</Button>

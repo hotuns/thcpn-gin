@@ -1,3 +1,4 @@
+import { isMeasurement, streamPurposeLabel } from "@thcpn/api";
 import { policyLimit } from "./system-policy";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
@@ -787,7 +788,7 @@ function DatasetForm({
   const streams = useQuery({
     queryKey: ["device", deviceId, "streams", "dataset-form"],
     queryFn: () => api.dataStreams.list(deviceId),
-    enabled: sourceType === "data_stream" && Boolean(deviceId),
+    enabled: Boolean(deviceId),
   });
   useEffect(() => {
     setStreamSearch("");
@@ -813,12 +814,21 @@ function DatasetForm({
   };
   const addSources = () => {
     if (!deviceId || !canAddCurrentDevice() || sources.some(source => source.source_type === "device" && source.source_id === deviceId)) return;
-    setSources(current => [...current, { source_type: "device", source_id: deviceId }]);
-    setDataType("mixed");
+    const target = datasetSelectableDevices.find(item=>String(item.id)===deviceId);
+    if (target?.source_family === "lorawan_v2") {
+      if (!streams.isSuccess) { setError("请等待指标加载完成"); return; }
+      const ids=streams.data.items.filter(stream=>stream.type==="telemetry" && stream.status==="active" && isMeasurement(stream)).map(stream=>stream.id);
+      if(!ids.length){setError("该设备暂无采集指标");return;}
+      setSources(current=>selectDatasetStreams(current,ids,true));
+      setDataType(current=>sources.length && current!=="telemetry" ? "mixed" : "telemetry");
+    } else {
+      setSources(current => [...current, { source_type: "device", source_id: deviceId }]);
+      setDataType("mixed");
+    }
     setError("");
   };
   const availableStreams =
-    streams.data?.items.filter(item => (streamKind === "image" ? item.type === "image" : item.type === "telemetry")) ?? [];
+    streams.data?.items.filter(item => (streamKind === "image" ? item.type === "image" : item.type === "telemetry" && (item.status === "active" && isMeasurement(item) || selectedStreamIds.includes(item.id)))) ?? [];
   const visibleStreams = availableStreams.filter(item => `${item.name} ${item.code} ${item.unit ?? ""}`.toLowerCase().includes(streamSearch.toLowerCase()));
   const availableStreamIds = visibleStreams.map(item => item.id);
   const allStreamsSelected = availableStreamIds.length > 0 && availableStreamIds.every(id => selectedStreamIds.includes(id));
@@ -1016,7 +1026,7 @@ function DatasetForm({
                         onChange={() => toggleStream(item.id)}
                       />
                       <span>
-                        <strong>{item.name}</strong>
+                        <strong>{item.name}{!isMeasurement(item) && ` · ${streamPurposeLabel(item)}`}</strong>
                         <small>
                           {item.unit ? `${item.code} · ${item.unit}` : item.code}
                         </small>
@@ -1161,7 +1171,7 @@ function SourceName({
       </strong>
       <small>
         {stream.data.computed ? "fx · " : ""}
-        {stream.data.name} · {stream.data.code}
+        {stream.data.name}{!isMeasurement(stream.data) && ` · ${streamPurposeLabel(stream.data)}`} · {stream.data.code}
       </small>
     </span>
   );

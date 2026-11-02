@@ -4,8 +4,8 @@ import { workspaceQueryKey } from "@thcpn/workspace";
 import { Battery, Signal, SignalLow, SignalMedium, SignalHigh } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./platform-ui";
 
-export function useNodeRuntime(workspaceId: string, deviceId: string) {
-  return useQuery({ queryKey: workspaceQueryKey(workspaceId, "device", deviceId, "node-runtime"), queryFn: () => api.devices.nodeRuntime(deviceId), staleTime: 60_000, refetchInterval: 60_000, retry: false });
+export function useNodeRuntime(workspaceId: string, deviceId: string, indices?:number[]) {
+  return useQuery({ queryKey: workspaceQueryKey(workspaceId, "device", deviceId, "node-runtime",indices?.join(",")??"all"), queryFn: () => api.devices.nodeRuntime(deviceId,indices), enabled:indices===undefined||indices.length>0,staleTime: Infinity, refetchInterval:false,refetchOnWindowFocus:false,refetchOnMount:"always",retry:false });
 }
 
 export function NodeVitals({ item, loading, error }: { item?: NodeRuntime; loading?: boolean; error?: boolean }) {

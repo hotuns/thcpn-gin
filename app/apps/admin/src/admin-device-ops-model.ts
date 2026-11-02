@@ -23,7 +23,7 @@ export function telemetryRows(series: TelemetrySeries[]) {
 
 export type OpsExportOptions = {
   start:string;end:string;format:"zip"|"telemetry_excel"|"telemetry_csv"|"media_zip";
-  data:boolean;images:boolean;nodes:GatewayNode[];carbonNodes:number[];fields:string[];
+  data:boolean;images:boolean;status?:boolean;nodes:GatewayNode[];carbonNodes:number[];fields:string[];
 };
 
 export function operationsExportPayload(device:JsonRecord, options:OpsExportOptions): JsonRecord {
@@ -35,12 +35,13 @@ export function operationsExportPayload(device:JsonRecord, options:OpsExportOpti
     return {resource_type:"device",resource_id:id,export_type:"carbon_station_zip",request_config:{...config,node_ids:options.carbonNodes,fields:options.fields,include_flux:options.data,include_raw_samples:options.images}};
   }
   if (options.format!=="zip") return {resource_type:"device",resource_id:id,export_type:options.format,request_config:config};
-  if (!options.data && !options.images) throw new Error("至少选择数据或图片");
+  if (!options.data && !options.images && !options.status) throw new Error("至少选择采集数据、运行状态或图片中的一项");
   if (device.device_type==="gateway") {
-    if (!options.nodes.length) throw new Error("请选择导出节点");
+    if (!options.nodes.length && (options.data || !(device.source_family==="lorawan_v2" && options.status))) throw new Error("请选择导出节点");
     if (device.source_family==="lorawan_v2" && options.images) throw new Error("LoRa V2 节点不支持图片导出");
     const ids=[...new Set(options.nodes.map(node=>node.target.kind==="device" ? node.target.device_id : node.target.gateway_device_id))];
-    return {resource_type:"device_batch",resource_id:ids[0],export_type:"group_site_zip",request_config:{...config,gateway_id:id,gateway_name:device.name,device_ids:ids,node_targets:options.nodes.map(node=>node.target),include_data:options.data,include_images:options.images}};
+    if (!ids.length && options.status) ids.push(id);
+    return {resource_type:"device_batch",resource_id:ids[0],export_type:"group_site_zip",request_config:{...config,gateway_id:id,gateway_name:device.name,device_ids:ids,node_targets:options.nodes.map(node=>node.target),include_data:options.data,include_images:options.images,...(device.source_family==="lorawan_v2"?{include_status:!!options.status}:{})}};
   }
   if (device.device_type!=="standalone") throw new Error("该设备请选择 Excel、CSV 或图片包导出");
   return {resource_type:"device_batch",resource_id:id,export_type:"standard_station_zip",request_config:{...config,device_ids:[id],include_data:options.data,include_images:options.images}};

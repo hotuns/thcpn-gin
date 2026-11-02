@@ -90,5 +90,5 @@ func (h *Handler) deviceLoRaWANV2Info(c *gin.Context, admin bool) {
 }
 
 func (s *Service) latestLoRaWANV2Info(ctx context.Context, id uuid.UUID) (json.RawMessage, error) {
-	return s.LoRaWAN.ReadLatestGatewayInfo(ctx, id)
+	return s.LoRaWAN.ReadGatewayStatusInfo(ctx, id)
 }

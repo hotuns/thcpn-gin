@@ -94,6 +94,7 @@ type DeviceRelation struct {
 	UpdatedAt              time.Time `json:"updated_at"`
 }
 type SyncedDataStream struct {
+	Purpose  string    `json:"purpose"`
 	ID       uuid.UUID `json:"id"`
 	DeviceID uuid.UUID `json:"device_id"`
 	Code     string    `json:"code"`
@@ -300,6 +301,7 @@ func SyncedDataStreamFromSQL(model sqlc.DataStream) SyncedDataStream {
 		Code:     model.Code,
 		Name:     model.Name,
 		Type:     model.Type,
+		Purpose:  model.Purpose,
 		Unit:     model.Unit,
 		Status:   model.Status,
 	}

@@ -170,7 +170,6 @@ services:
       dockerfile: app/Dockerfile
       target: platform
       args:
-        VITE_SIMPLIFIED_ENABLED: ${VITE_SIMPLIFIED_ENABLED:-false}
         VITE_TIANDITU_TOKEN: ${VITE_TIANDITU_TOKEN:-}
         VITE_PLATFORM_URL: ${PLATFORM_PUBLIC_URL:-http://127.0.0.1:5173}
     ports:

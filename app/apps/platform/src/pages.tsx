@@ -1,3 +1,4 @@
+import { isMeasurement } from "@thcpn/api";
 import { policyLimit } from "./system-policy";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -134,7 +135,7 @@ export function DeviceDataPage({
     if (!deviceId || !streamsQuery.isSuccess || selectionReadyForDevice === deviceId)
       return;
     const defaults = streamsQuery.data.items
-        .filter((item) => item.type === "telemetry" && item.status === "active")
+        .filter((item) => item.type === "telemetry" && item.status === "active" && isMeasurement(item))
         .map((item) => item.id);
     const storedOrder = savedStreamOrder(deviceId);
     const orderedDefaults = [

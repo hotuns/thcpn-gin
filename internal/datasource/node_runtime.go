@@ -5,7 +5,9 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
+	"thcpn-gin/internal/apperr"
 	platform "thcpn-gin/internal/datasource/platform"
 	"thcpn-gin/internal/device"
 	"thcpn-gin/internal/httpx"
@@ -24,7 +26,12 @@ func (h *Handler) NodeRuntime(c *gin.Context) {
 	if !h.authorize(c, "device", id, "device.view") {
 		return
 	}
-	nodes, err := device.NewService(h.service.DB).ListGatewayNodes(c.Request.Context(), id)
+	nodes, err := device.NewService(h.service.DB).ListGatewayNodesInScope(c.Request.Context(), id, "bound")
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
+	nodes, err = selectRuntimeNodes(nodes, c.Request.URL.Query()["node_indices"])
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -119,10 +126,41 @@ func (h *Handler) NodeRuntime(c *gin.Context) {
 				result[i].Error = "节点状态读取失败"
 				return
 			}
+			item.HistoryStreamIDs = map[string]uuid.UUID{}
+			for _, stream := range node.Streams {
+				if stream.Purpose == "status" {
+					item.HistoryStreamIDs[stream.Code] = stream.ID
+				}
+			}
 			result[i] = item
 
 		}(i, node)
 	}
 	wg.Wait()
 	c.JSON(http.StatusOK, gin.H{"items": result, "refreshed_at": now})
+}
+
+func selectRuntimeNodes(nodes []device.GatewayNode, raw []string) ([]device.GatewayNode, error) {
+	if len(raw) == 0 {
+		return nodes, nil
+	}
+	wanted := map[int]bool{}
+	for _, part := range strings.Split(strings.Join(raw, ","), ",") {
+		n, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil || n < 1 || n > 254 {
+			return nil, apperr.New(apperr.KindInvalidArgument, "node_indices 必须是 1–254 的整数序号列表")
+		}
+		wanted[n] = true
+	}
+	result := []device.GatewayNode{}
+	for _, node := range nodes {
+		if node.Bound && node.Target.Kind == "gateway_node" && node.Target.NodeIndex != nil && wanted[*node.Target.NodeIndex] {
+			result = append(result, node)
+			delete(wanted, *node.Target.NodeIndex)
+		}
+	}
+	if len(wanted) > 0 {
+		return nil, apperr.New(apperr.KindInvalidArgument, "请求的节点未绑定到当前网关，请刷新节点列表")
+	}
+	return result, nil
 }

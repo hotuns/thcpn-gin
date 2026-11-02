@@ -1,3 +1,6 @@
+export * from "./runtime-status";
+export { nodeOptionLabel, nodeHistoryNotice } from "./node-display";
+export { isMeasurement, streamPurpose, streamPurposeLabel } from "./stream-purpose";
 import { formatLimitError } from "./limit-errors";
 import { publicErrorMessages } from "./error-messages";
 import type { components } from "./openapi";
@@ -921,8 +924,8 @@ export const api = {
     lorawanConnection: (id:string) => request<LoRaWANGatewayConnection>(`/api/v1/devices/${encodeURIComponent(id)}/lorawan-v2/connection`),
     lorawanActivity: (id:string) => request<LoRaWANGatewayActivity>(`/api/v1/devices/${encodeURIComponent(id)}/lorawan-v2/activity`),
     lorawanInfo: (id: string) => request<LoRaWANV2GatewayInfo | null>(`/api/v1/devices/${encodeURIComponent(id)}/lorawan-v2/info`),
-    nodes: (id: string) => request<Schema<"GatewayNodeList">>(`/api/v1/devices/${encodeURIComponent(id)}/nodes`),
-    nodeRuntime: (id: string) => request<{ items: NodeRuntime[]; refreshed_at: string }>(`/api/v1/devices/${encodeURIComponent(id)}/nodes/runtime`),
+    nodes: (id: string, scope: "bound" | "history" | "all" = "bound") => request<Schema<"GatewayNodeList">>(`/api/v1/devices/${encodeURIComponent(id)}/nodes${queryString({scope})}`),
+    nodeRuntime: (id: string, indices?: number[]) => request<{ items: NodeRuntime[]; refreshed_at: string }>(`/api/v1/devices/${encodeURIComponent(id)}/nodes/runtime${queryString({node_indices:indices?.join(",")})}`),
     reconcileConfig: (id: string) => jsonRequest<JsonRecord>(`/api/v1/devices/${encodeURIComponent(id)}/config/resync`, "POST", {}),
     context: (id: string) => request<DeviceInteractionContext>(`/api/v1/devices/${encodeURIComponent(id)}/context`),
     children: (id: string) =>
@@ -1321,8 +1324,8 @@ export const api = {
     lorawanConnection: (id:string) => request<LoRaWANGatewayConnection>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/connection`),
     lorawanActivity: (id:string) => request<LoRaWANGatewayActivity>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/activity`),
     lorawanInfo: (id: string) => request<LoRaWANV2GatewayInfo | null>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/info`),
-    deviceNodes: (id: string) => request<Schema<"GatewayNodeList">>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes`),
-    nodeRuntime: (id:string) => request<{items:NodeRuntime[];refreshed_at:string}>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes/runtime`),
+    deviceNodes: (id: string, scope: "bound" | "history" | "all" = "bound") => request<Schema<"GatewayNodeList">>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes${queryString({scope})}`),
+    nodeRuntime: (id:string, indices?:number[]) => request<{items:NodeRuntime[];refreshed_at:string}>(`/api/v1/admin/devices/${encodeURIComponent(id)}/nodes/runtime${queryString({node_indices:indices?.join(",")})}`),
     reconcileDeviceConfig: (id: string) => jsonRequest<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/config/resync`, "POST", {}),
     startSourceSync: (id: string) => request<SourceOperation>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/sync`, { method: "POST" }),
     deviceSourceConfig: (id: string, kind: "gateway" | "sensor", input: JsonRecord = {}) => request<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/source-config/${kind}${queryString(input as Record<string, string | number | boolean>)}`),

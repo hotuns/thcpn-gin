@@ -1,3 +1,4 @@
+import { nodeOptionLabel } from "@thcpn/api";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import dayjs, { type Dayjs } from "dayjs";
@@ -16,8 +17,10 @@ export function AdminExportsPage({ device }: {device?:JsonRecord}) {
   const [range,setRange]=useState<[Dayjs,Dayjs]|null>(recentRange);
   const [format,setFormat]=useState<OpsExportOptions["format"]>("zip");
   const [includeData,setIncludeData]=useState(true);
+  const [includeStatus,setIncludeStatus]=useState(false);
   const [phase,setPhase]=useState("all");
   const [includeImages,setIncludeImages]=useState(true);
+  const [nodeScope,setNodeScope]=useState<"bound"|"history">("bound");
   const [nodeKeys,setNodeKeys]=useState<string[]|null>(null);
   const [carbonNodes,setCarbonNodes]=useState<number[]|null>(null);
   const [fields,setFields]=useState<string[]>(["A","B","C","D"]);
@@ -30,11 +33,11 @@ export function AdminExportsPage({ device }: {device?:JsonRecord}) {
   const gateway=selected?.device_type==="gateway";
   const carbon=selected?.device_type==="carbon_sink";
   const lora=selected?.source_family==="lorawan_v2";
-  const nodes=useQuery({queryKey:["admin","device",deviceId,"nodes","exports"],queryFn:()=>api.admin.deviceNodes(deviceId),enabled:open&&gateway});
+  const nodes=useQuery({queryKey:["admin","device",deviceId,"nodes","exports",nodeScope],queryFn:()=>api.admin.deviceNodes(deviceId,nodeScope),enabled:open&&gateway});
   const overview=useQuery({queryKey:["admin","device",deviceId,"carbon-overview"],queryFn:()=>api.admin.carbonOverview(deviceId),enabled:open&&carbon});
   const jobs=useQuery({queryKey:["admin","exports",device?.id??"all"],queryFn:()=>api.admin.exportJobs(device ? String(device.id) : undefined),refetchInterval:query=>query.state.data?.items.some(job=>job.status==="pending"||job.status==="running")?5000:false});
   useEffect(()=>{
-    setNodeKeys(null); setCarbonNodes(null); setIncludeData(true);setIncludeImages(!lora);setFormat(selected?.device_type==="gateway_node"?"telemetry_excel":selected?.device_type==="camera"?"media_zip":"zip");
+    setNodeScope("bound");setIncludeStatus(false);setNodeKeys(null); setCarbonNodes(null); setIncludeData(true);setIncludeImages(!lora);setFormat(selected?.device_type==="gateway_node"?"telemetry_excel":selected?.device_type==="camera"?"media_zip":"zip");
   },[deviceId,lora,selected?.device_type]);
   const nodeOptions=nodes.data?.items??[];
   const keys=nodeKeys??nodeOptions.map(node=>node.key);
@@ -53,7 +56,7 @@ export function AdminExportsPage({ device }: {device?:JsonRecord}) {
     setError("");setBusy(true);
     try {
       if(!selected||!range) throw new Error("请选择设备和时间范围");
-      const payload=operationsExportPayload(selected,{start:range[0].toISOString(),end:range[1].toISOString(),format,data:includeData,images:includeImages,nodes:nodeOptions.filter(node=>keys.includes(node.key)),carbonNodes:selectedCarbon,fields});
+      const payload=operationsExportPayload(selected,{start:range[0].toISOString(),end:range[1].toISOString(),format,data:includeData,images:includeImages,status:includeStatus,nodes:nodeOptions.filter(node=>keys.includes(node.key)),carbonNodes:selectedCarbon,fields});
       await api.admin.createExport({...payload,request_config:{...(payload.request_config as JsonRecord),data_phase:phase}});setOpen(false);void message.success("导出任务已创建，可在后台下载");await jobs.refetch();
     }catch(err){setError(formatApiError(err).message);}finally{setBusy(false);}
   };
@@ -78,10 +81,11 @@ export function AdminExportsPage({ device }: {device?:JsonRecord}) {
         <Form.Item label="数据阶段"><Select value={phase} onChange={setPhase} options={[{value:"all",label:"全部数据"},{value:"formal",label:"正式观测数据"},{value:"testing",label:"调试数据"}]}/></Form.Item>
         <Form.Item label="设备" required><Select showSearch optionFilterProp="label" value={deviceId||undefined} disabled={!!device} onChange={setDeviceId} options={(devices.data?.items??(device?[device]:[])).map(item=>({value:String(item.id),label:`${item.name} · ${item.serial_no}`}))}/></Form.Item>
         <Form.Item label="时间范围（北京时间）" required><DatePicker.RangePicker showTime value={range} onChange={value=>setRange(value&&value[0]&&value[1]?[value[0],value[1]]:null)} style={{width:"100%"}} presets={[{label:"最近 6 小时",value:[dayjs().subtract(6,"hour"),dayjs()]},{label:"最近 3 天",value:[dayjs().subtract(3,"day"),dayjs()]},{label:"最近 7 天",value:recentRange()}]}/></Form.Item>
-        {!carbon&&<Form.Item label="文件类型"><Radio.Group value={format} onChange={event=>setFormat(event.target.value)} options={[...(["standalone","gateway"].includes(String(selected?.device_type))?[{value:"zip",label:"设备数据 / 图片 ZIP"}]:[]),{value:"telemetry_excel",label:"全部指标 Excel"},{value:"telemetry_csv",label:"全部指标 CSV"},...(!lora?[{value:"media_zip",label:"图片 ZIP"}]:[])]}/></Form.Item>}
-        {gateway&&format==="zip"&&<Form.Item label="节点" required><Select mode="multiple" maxTagCount="responsive" showSearch optionFilterProp="label" value={keys} onChange={setNodeKeys} loading={nodes.isFetching} options={nodeOptions.map(node=>({value:node.key,label:node.name}))}/><Space><Button type="link" onClick={()=>setNodeKeys(null)}>全选</Button><Button type="link" onClick={()=>setNodeKeys([])}>清空</Button></Space></Form.Item>}
+        {!carbon&&<Form.Item label="文件类型"><Radio.Group value={format} onChange={event=>setFormat(event.target.value)} options={[...(["standalone","gateway"].includes(String(selected?.device_type))?[{value:"zip",label:"设备数据 / 图片 ZIP"}]:[]),{value:"telemetry_excel",label:"采集指标 Excel"},{value:"telemetry_csv",label:"采集指标 CSV"},...(!lora?[{value:"media_zip",label:"图片 ZIP"}]:[])]}/></Form.Item>}
+        {lora&&format==="zip"&&<Form.Item label="节点范围"><Select value={nodeScope} onChange={scope=>{setNodeScope(scope);setNodeKeys(null);}} options={[{value:"bound",label:"当前节点"},{value:"history",label:"历史数据"}]}/></Form.Item>}
+        {gateway&&format==="zip"&&<Form.Item label="节点" required><Select mode="multiple" maxTagCount="responsive" showSearch optionFilterProp="label" value={keys} onChange={setNodeKeys} loading={nodes.isFetching} options={nodeOptions.map(node=>({value:node.key,label:nodeOptionLabel(node)}))}/><Space><Button type="link" onClick={()=>setNodeKeys(null)}>全选</Button><Button type="link" onClick={()=>setNodeKeys([])}>清空</Button></Space></Form.Item>}
         {carbon&&<><Form.Item label="Node" required><Select mode="multiple" maxTagCount="responsive" value={selectedCarbon} onChange={setCarbonNodes} loading={overview.isFetching} options={(overview.data?.nodes??[]).map(node=>({value:Number(node.node_id),label:node.name||`Node ${node.node_id}`}))}/></Form.Item><Form.Item label="地块" required><Checkbox.Group value={fields} onChange={values=>setFields(values as string[])} options={["A","B","C","D"]}/></Form.Item></>}
-        {(format==="zip"||carbon)&&<Form.Item label="打包内容" required><Space><Checkbox checked={includeData} onChange={event=>setIncludeData(event.target.checked)}>{carbon?"通量数据":"设备数据"}</Checkbox><Checkbox checked={includeImages} disabled={lora} onChange={event=>setIncludeImages(event.target.checked)}>{carbon?"原始采样":"采集图片"}</Checkbox></Space></Form.Item>}
+        {(format==="zip"||carbon)&&<Form.Item label="打包内容" required><Space><Checkbox checked={includeData} onChange={event=>setIncludeData(event.target.checked)}>{carbon?"通量数据":"设备数据"}</Checkbox><Checkbox checked={includeImages} disabled={lora} onChange={event=>setIncludeImages(event.target.checked)}>{carbon?"原始采样":"采集图片"}</Checkbox>{lora&&<Checkbox checked={includeStatus} onChange={event=>setIncludeStatus(event.target.checked)}>运行状态</Checkbox>}</Space></Form.Item>}
         {(nodes.error||overview.error)&&<Alert type="error" title="导出目标加载失败" description={formatApiError(nodes.error||overview.error).message}/>}
         <Alert type="info" title="任务由后台异步生成，完成后在本页下载。较大的导出可关闭页面后回来查看。"/>
       </Form>

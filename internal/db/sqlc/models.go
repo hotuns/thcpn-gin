@@ -222,6 +222,7 @@ type DataStream struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 	// 创建主体类型，区分用户创建和系统同步。
 	CreatedByType string `json:"created_by_type"`
+	Purpose       string `json:"purpose"`
 }
 
 // 原始数据流到外部数据源的读取规则和适配器配置；计算数据流没有源绑定。

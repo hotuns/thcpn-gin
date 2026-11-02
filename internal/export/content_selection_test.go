@@ -17,7 +17,8 @@ func TestBatchExportContentSelection(t *testing.T) {
 		{"both", `,"include_data":true,"include_images":true`, true, true, true},
 		{"neither", `,"include_data":false,"include_images":false`, false, false, false},
 		{"partial empty", `,"include_data":false`, false, false, false},
-		{"legacy unspecified", "", true, true, true},
+		{"no content selected", "", false, false, false},
+		{"status only", `,"include_data":false,"include_images":false,"include_status":true`, false, false, true},
 		{"bad type", `,"include_data":"yes"`, false, false, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {

@@ -436,6 +436,10 @@ paths:
           name: device_id
           required: true
           schema: { $ref: "#/components/schemas/UUID" }
+        - in: query
+          name: scope
+          description: Default lists installed V2 physical nodes only; history lists retained unbound node-number records, without implying actual telemetry exists. all combines both. THCPN device nodes remain unchanged for bound/all.
+          schema: {type: string, enum: [bound, history, all], default: bound}
       responses:
         "200":
           description: Success
@@ -466,6 +470,10 @@ paths:
           name: device_id
           required: true
           schema: { $ref: "#/components/schemas/UUID" }
+        - in: query
+          name: scope
+          description: Default lists installed V2 physical nodes only; history lists retained unbound node-number records, without implying actual telemetry exists. all combines both. THCPN device nodes remain unchanged for bound/all.
+          schema: {type: string, enum: [bound, history, all], default: bound}
       responses:
         "200":
           description: Success
@@ -476,12 +484,16 @@ paths:
     get:
       tags: [Devices]
       summary: Read latest gateway node diagnostics
-      description: LoRaWAN V2 reads the dedicated /node/{node_index}/latest endpoint without a history window and retains the original sampled_at time. THCPN keeps its existing three-day diagnostics policy. Missing readings are omitted; individual source failures remain per-node errors.
+      description: LoRaWAN V2 reads only currently bound physical nodes from the dedicated /node/{node_index}/latest endpoint without a history window and retains the original sampled_at time. THCPN keeps its existing three-day diagnostics policy. Missing readings are omitted; individual source failures remain per-node errors.
       parameters:
         - in: path
           name: device_id
           required: true
           schema: { $ref: "#/components/schemas/UUID" }
+        - in: query
+          name: node_indices
+          description: Comma-separated currently bound node indices; omitted means all bound nodes. Validated before upstream access.
+          schema: {type: string, example: "3,100"}
       responses:
         "200":
           description: Node failures are isolated; absent readings are omitted
@@ -7450,12 +7462,16 @@ paths:
     get:
       tags: [Devices]
       summary: Read latest gateway node diagnostics
-      description: LoRaWAN V2 reads the dedicated /node/{node_index}/latest endpoint without a history window and retains the original sampled_at time. THCPN keeps its existing three-day diagnostics policy. Missing readings are omitted; individual source failures remain per-node errors.
+      description: LoRaWAN V2 reads only currently bound physical nodes from the dedicated /node/{node_index}/latest endpoint without a history window and retains the original sampled_at time. THCPN keeps its existing three-day diagnostics policy. Missing readings are omitted; individual source failures remain per-node errors.
       parameters:
         - in: path
           name: device_id
           required: true
           schema: { $ref: "#/components/schemas/UUID" }
+        - in: query
+          name: node_indices
+          description: Comma-separated currently bound node indices; omitted means all bound nodes. Validated before upstream access.
+          schema: {type: string, example: "3,100"}
       responses:
         "200":
           description: Node failures are isolated; absent readings are omitted
@@ -8248,6 +8264,8 @@ components:
       type: object
       required: [key]
       properties:
+        sd_card_rate: {type: number, description: SD card usage percent; upstream ratio multiplied by 100.}
+        history_stream_ids: {type: object, additionalProperties: {$ref: "#/components/schemas/UUID"}}
         key: { type: string }
         sampled_at: { type: string, format: date-time }
         battery: { type: number, description: Battery voltage in volts }
@@ -10771,8 +10789,8 @@ components:
         bound: {type: boolean}
         latitude: { type: number, format: double, minimum: -90, maximum: 90 }
         longitude: { type: number, format: double, minimum: -180, maximum: 180 }
-        key: { type: string }
-        name: { type: string }
+        key: { type: string, description: Internal stable query identity; not a UI node label. }
+        name: { type: string, description: "V2 uses the custom name as-is, or 节点 N when unnamed; number and current SN are separate attributes." }
         custom_name: { type: string }
         can_rename: { type: boolean }
         target: { $ref: "#/components/schemas/DeviceNodeTarget" }
@@ -10811,6 +10829,7 @@ components:
       type: object
       required: [ts, iccid, firmware_version, cell, battery, latitude, longitude, altitude]
       properties:
+        history_stream_ids: {type: object, additionalProperties: {$ref: "#/components/schemas/UUID"}}
         ts: {type: object, additionalProperties: true, description: BSON extended JSON date in milliseconds}
         iccid: {type: string}
         firmware_version: {type: string}
@@ -10990,6 +11009,10 @@ components:
         - created_at
         - updated_at
       properties:
+        purpose:
+          type: string
+          enum: [measurement, status, location]
+          description: Data purpose; defaults to measurement for other sources.
         id:
           $ref: "#/components/schemas/UUID"
         device_id:
@@ -11583,6 +11606,10 @@ components:
         - type
         - status
       properties:
+        purpose:
+          type: string
+          enum: [measurement, status, location]
+          description: Data purpose; defaults to measurement for other sources.
         id:
           $ref: "#/components/schemas/UUID"
         device_id:
@@ -12682,7 +12709,11 @@ components:
         request_config:
           type: object
           additionalProperties: true
-          description: Advanced worker input. Batch station exports use `device_ids`, `start_time`, `end_time`, `include_data`, and `include_images`.
+          properties:
+            include_data: {type: boolean, description: Include node measurements in V2 batch exports.}
+            include_images: {type: boolean}
+            include_status: {type: boolean, default: false, description: V2 group export only; independently export gateway and selected node status and gateway location as a wide table.}
+          description: Advanced worker input. Batch station exports use `device_ids`, `start_time`, `end_time`, `include_data`, and `include_images`. V2 group exports additionally accept `include_status` (boolean, default false); data.csv contains measurements only and 运行状态.csv contains gateway and selected node status plus gateway coordinates.
         expires_at:
           $ref: "#/components/schemas/Timestamp"
     DatasetExportRequest:

@@ -349,7 +349,7 @@ function ComparisonChart({
   );
 }
 
-function TelemetryChart({
+export function TelemetryChart({
   series,
   colorIndex,
   windDirectionSeries,

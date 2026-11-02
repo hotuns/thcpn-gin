@@ -79,14 +79,14 @@ func TestPhysicalNodeRefreshPreservesPositionAndAssetIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	nodes, err := device.NewService(db).ListGatewayNodes(ctx, gateway)
-	if err != nil || len(nodes) != 1 || nodes[0].NodeSN != "NODE-A" || *nodes[0].Target.NodeIndex != 3 {
+	if err != nil || len(nodes) != 1 || nodes[0].Name != "样地三" || nodes[0].NodeSN != "NODE-A" || *nodes[0].Target.NodeIndex != 3 {
 		t.Fatalf("sparse bindings generated phantom nodes: %+v %v", nodes, err)
 	}
 	key := nodes[0].Key
 	current = `[{"id":11,"sn":"NODE-B","gateway_sn":"GW","node_index":3}]`
 	refresh()
 	nodes, err = device.NewService(db).ListGatewayNodes(ctx, gateway)
-	if err != nil || nodes[0].Key != key || nodes[0].NodeSN != "NODE-B" || *nodes[0].Latitude != 30 {
+	if err != nil || nodes[0].Key != key || nodes[0].Name != "样地三" || nodes[0].NodeSN != "NODE-B" || *nodes[0].Latitude != 30 {
 		t.Fatalf("replacement changed position: %+v %v", nodes, err)
 	}
 	var id uuid.UUID
@@ -100,6 +100,14 @@ func TestPhysicalNodeRefreshPreservesPositionAndAssetIdentity(t *testing.T) {
 	if err != nil || len(nodes) != 1 || nodes[0].Bound || nodes[0].Key != key {
 		t.Fatalf("unbinding deleted historical position: %+v %v", nodes, err)
 	}
+	current = `[{"id":13,"sn":"NODE-C","gateway_sn":"GW","node_index":3}]`
+	refresh()
+	restored, restoreErr := device.NewService(db).ListGatewayNodesInScope(ctx, gateway, "bound")
+	if restoreErr != nil || len(restored) != 1 || restored[0].Key != key || restored[0].Name != "样地三" || restored[0].NodeSN != "NODE-C" || *restored[0].Latitude != 30 {
+		t.Fatalf("rebinding lost node data: %+v %v", restored, restoreErr)
+	}
+	current = "[]"
+	refresh()
 	asset, err := device.NewService(db).GetAsset(ctx, gateway)
 	if err != nil || asset.ChildCount != 0 {
 		t.Fatal("count must reflect actual binding count")

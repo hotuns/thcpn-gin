@@ -699,6 +699,14 @@ func (s *Service) persistLoRaWANV2Gateway(ctx context.Context, source sqlc.DataS
 		if err != nil {
 			return LoRaWANV2GatewaySyncResult{}, platform.MapWriteError(err, "upsert lorawan_v2 stream")
 		}
+		var classification loraWANV2TelemetryConfig
+		if err := json.Unmarshal(spec.AdapterConfig, &classification); err != nil {
+			return LoRaWANV2GatewaySyncResult{}, err
+		}
+		stream, err = q.SetDataStreamPurpose(ctx, sqlc.SetDataStreamPurposeParams{ID: stream.ID, Purpose: loRaWANV2StreamPurpose(classification.NodeIndex, classification.Metric)})
+		if err != nil {
+			return LoRaWANV2GatewaySyncResult{}, err
+		}
 		binding, err := upsertLoRaWANV2DataStreamBinding(ctx, q, source.ID, stream.ID, spec.AdapterConfig, actorID)
 		if err != nil {
 			return LoRaWANV2GatewaySyncResult{}, err
@@ -1073,4 +1081,18 @@ func LoraWANV2PathSN(sn string) (string, error) {
 		return "", apperr.New(apperr.KindInvalidArgument, "gateway sn is required")
 	}
 	return sn, nil
+}
+
+func loRaWANV2StreamPurpose(node *int, metric string) string {
+	switch metric {
+	case "longitude", "latitude", "altitude":
+		return "location"
+	}
+	if node == nil {
+		return "status"
+	}
+	if _, ok := loraWANV2NodeDiagnosticMetrics[metric]; ok {
+		return "status"
+	}
+	return "measurement"
 }

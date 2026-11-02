@@ -1,3 +1,4 @@
+import { nodeOptionLabel } from "@thcpn/api";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, App, Button, Card, DatePicker, Form, Input, Modal, Select, Space, Table, Typography } from "antd";
@@ -9,7 +10,7 @@ export function AdminObservationStart({device}:{device:JsonRecord}){
  const id=String(device.id);const client=useQueryClient();const {message}=App.useApp();const [form]=Form.useForm();const [target,setTarget]=useState("default");const [busy,setBusy]=useState(false);
  const nodes=useQuery({queryKey:["admin","device",id,"nodes","observation"],queryFn:()=>api.admin.deviceNodes(id),enabled:device.device_type==="gateway"});
  const carbon=useQuery({queryKey:["admin","device",id,"carbon-overview"],queryFn:()=>api.admin.carbonOverview(id),enabled:device.device_type==="carbon_sink"});
- const choices=useMemo(()=>[{value:"default",label:"设备默认",deviceId:id,index:0},...(nodes.data?.items??[]).map(node=>({value:node.key,label:node.name,deviceId:node.target.kind==="device"?node.target.device_id:id,index:node.target.kind==="gateway_node"?node.target.node_index:0})),...(carbon.data?.nodes??[]).map(node=>({value:`carbon:${node.node_id}`,label:node.name,deviceId:id,index:node.node_id}))],[id,nodes.data,carbon.data]);
+ const choices=useMemo(()=>[{value:"default",label:"设备默认",deviceId:id,index:0},...(nodes.data?.items??[]).map(node=>({value:node.key,label:nodeOptionLabel(node),deviceId:node.target.kind==="device"?node.target.device_id:id,index:node.target.kind==="gateway_node"?node.target.node_index:0})),...(carbon.data?.nodes??[]).map(node=>({value:`carbon:${node.node_id}`,label:node.name,deviceId:id,index:node.node_id}))],[id,nodes.data,carbon.data]);
  const selected=choices.find(choice=>choice.value===target)??choices[0];
  const key=["admin","device",selected.deviceId,"observation-start",selected.index];
  const query=useQuery({queryKey:key,queryFn:()=>api.admin.observationStarts(selected.deviceId,selected.index)});

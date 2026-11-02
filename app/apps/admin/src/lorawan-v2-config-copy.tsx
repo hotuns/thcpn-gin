@@ -1,3 +1,4 @@
+import { nodeOptionLabel } from "@thcpn/api";
 import { api, type JsonRecord } from "@thcpn/api";
 import { ConfigCopyPicker } from "./config-copy-picker";
 import { gatewayConfigCopyDraft, sensorConfigCopyDraft, latestGatewayConfiguration } from "./lorawan-v2-config-copy-model";
@@ -5,7 +6,7 @@ import { gatewayConfigCopyDraft, sensorConfigCopyDraft, latestGatewayConfigurati
 const contexts = async (deviceId: string) => {
   const nodes = await api.admin.deviceNodes(deviceId);
   return nodes.items.flatMap(item => item.target.kind === "gateway_node"
-    ? [{ value: String(item.target.node_index), label: item.name }] : []);
+    ? [{ value: String(item.target.node_index), label: nodeOptionLabel(item) }] : []);
 };
 
 export function LoRaWANV2GatewayConfigCopy({ deviceId, disabled, onCopy }: { deviceId: string; disabled: boolean; onCopy: (draft: string) => void }) {

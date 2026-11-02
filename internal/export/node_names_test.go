@@ -36,7 +36,7 @@ func TestNodeNameSnapshotSurvivesRename(t *testing.T) {
 	svc := NewService(db, nil, config.ExportConfig{})
 	index := 1
 	target := device.NodeTarget{Kind: "gateway_node", GatewayDeviceID: &gateway, NodeIndex: &index}
-	raw, _ := json.Marshal(batchExportConfig{GatewayID: gateway.String(), NodeTargets: []device.NodeTarget{target}, NodeNames: map[string]string{target.Key(): "伪造名称"}})
+	raw, _ := json.Marshal(batchExportConfig{IncludeData: true, GatewayID: gateway.String(), NodeTargets: []device.NodeTarget{target}, NodeNames: map[string]string{target.Key(): "伪造名称"}})
 	snapshot, err := svc.snapshotNodeNames(ctx, "device_batch", gateway, raw)
 	if err != nil {
 		t.Fatal(err)
@@ -68,7 +68,7 @@ func TestNodeNameSnapshotSurvivesRename(t *testing.T) {
 			t.Fatalf("node columns missing %s", b)
 		}
 	}
-	if len(cfg.NodeNames) != 1 || cfg.NodeNames[target.Key()] != "创建时名称 · 节点 1" {
+	if len(cfg.NodeNames) != 1 || cfg.NodeNames[target.Key()] != "创建时名称" {
 		t.Fatal(cfg.NodeNames)
 	}
 	carbonRaw, err := svc.snapshotNodeNames(ctx, "device", carbon, []byte(`{"node_ids":[1]}`))

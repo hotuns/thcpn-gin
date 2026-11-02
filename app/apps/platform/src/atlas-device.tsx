@@ -1,3 +1,5 @@
+import { nodeOptionLabel } from "@thcpn/api";
+import { isMeasurement, streamPurposeLabel } from "@thcpn/api";
 import { policyLimit } from "./system-policy";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -109,7 +111,7 @@ export function AtlasDevice({
   const node = nodes.data?.items.find((n) => n.key === nodeKey);
   const metrics = catalog.filter(
     (s) =>
-      s.type === "telemetry" &&
+      s.type === "telemetry" && (isMeasurement(s) || !!config.telemetry_stream_ids?.includes(s.id)) &&
       (!node || node.streams.some((n) => n.id === s.id)),
   );
   const matches = metrics.filter((s) =>
@@ -228,7 +230,7 @@ export function AtlasDevice({
             <option value="all">{a("all")}</option>
             {nodes.data.items.map((n) => (
               <option key={n.key} value={n.key}>
-                {n.name}
+                {nodeOptionLabel(n)}
               </option>
             ))}
           </SelectInput>
@@ -305,7 +307,7 @@ export function AtlasDevice({
           <div className="atlas-metric-toolbar">
             <span>
               <Database size={14} />
-              {a("streams")} <b>{metrics.length}</b>
+              {a("streams")} <b>{metrics.filter(isMeasurement).length}</b>
             </span>
             <div className="atlas-search">
               <Search size={14} />
@@ -350,7 +352,7 @@ export function AtlasDevice({
                   >
                     <span className="atlas-metric-name">
                       <ObservationIcon unit={stream.unit} size={15} />
-                      <span title={stream.name}>{stream.name}</span>
+                      <span title={stream.name}>{stream.name}{!isMeasurement(stream) && ` · ${streamPurposeLabel(stream)}`}</span>
                       <span className="atlas-check">
                         {selected.includes(stream.id) && <Check size={11} />}
                       </span>

@@ -95,6 +95,7 @@ type batchExportConfig struct {
 	DeviceIDs     []string            `json:"device_ids"`
 	GatewayID     string              `json:"gateway_id"`
 	GatewayName   string              `json:"gateway_name"`
+	IncludeStatus bool                `json:"include_status"`
 	IncludeData   bool                `json:"include_data"`
 	IncludeImages bool                `json:"include_images"`
 }
@@ -550,17 +551,8 @@ func parseBatchExportConfig(raw json.RawMessage) (batchExportConfig, error) {
 	if len(cfg.DeviceIDs) == 0 {
 		return batchExportConfig{}, apperr.New(apperr.KindInvalidArgument, "device_ids are required")
 	}
-	if !cfg.IncludeData && !cfg.IncludeImages {
-		var fields map[string]json.RawMessage
-		_ = json.Unmarshal(raw, &fields)
-		_, dataPresent := fields["include_data"]
-		_, imagesPresent := fields["include_images"]
-		if dataPresent || imagesPresent {
-			return batchExportConfig{}, apperr.New(apperr.KindInvalidArgument, "select data or images for export")
-		}
-		// Historical requests omitted both flags. Preserve that default, but
-		// never turn an explicit empty selection into an all-content export.
-		cfg.IncludeData, cfg.IncludeImages = true, true
+	if !cfg.IncludeData && !cfg.IncludeImages && !cfg.IncludeStatus {
+		return batchExportConfig{}, apperr.New(apperr.KindInvalidArgument, "至少选择采集数据、运行状态或图片中的一项")
 	}
 	return cfg, nil
 }
@@ -586,7 +578,7 @@ func (p *Processor) renderDeviceBatchZIP(ctx context.Context, job Job, cfg batch
 		return err
 	}
 
-	if len(cfg.NodeTargets) > 0 && cfg.NodeTargets[0].Kind == "gateway_node" {
+	if cfg.IncludeStatus || len(cfg.NodeTargets) > 0 && cfg.NodeTargets[0].Kind == "gateway_node" {
 		return p.renderIndexedNodeZIP(ctx, cfg, output)
 	}
 	zw := zip.NewWriter(output)
@@ -1719,13 +1711,28 @@ func (p *Processor) renderIndexedNodeZIP(ctx context.Context, cfg batchExportCon
 	zw := zip.NewWriter(output)
 	defer zw.Close()
 	report := []qualityReportRow{}
+	statusSeries := []telemetrySeries{}
+	gateway, err := p.devices.GetAsset(ctx, gatewayID)
+	if err != nil {
+		return err
+	}
 	for _, node := range nodes {
 		if !selected[node.Key] {
 			continue
 		}
 		delete(selected, node.Key)
 		series := []telemetrySeries{}
+		name := node.Name
+		if snapshot, ok := cfg.NodeNames[node.Key]; ok {
+			name = snapshot
+		}
 		for _, stream := range node.Streams {
+			purpose := stream.Purpose
+			wantData := cfg.IncludeData && purpose == "measurement"
+			wantStatus := cfg.IncludeStatus && purpose != "measurement"
+			if !wantData && !wantStatus {
+				continue
+			}
 			row, err := p.queries.GetDataStream(ctx, stream.ID)
 			if err != nil {
 				return err
@@ -1734,28 +1741,66 @@ func (p *Processor) renderIndexedNodeZIP(ctx context.Context, cfg batchExportCon
 			if err != nil {
 				return err
 			}
-			series = append(series, item)
+			if wantStatus {
+				item.NodeKey, item.NodeName, item.NodeIndex, item.CurrentNodeSN = node.Key, name, node.Target.NodeIndex, node.NodeSN
+				item.Code = stream.Code
+				item.MetricName = strings.TrimPrefix(item.Name, fmt.Sprintf("节点 %d · ", *node.Target.NodeIndex))
+				statusSeries = append(statusSeries, item)
+			} else {
+				series = append(series, item)
+			}
 		}
-		folder := fmt.Sprintf("node-%d", *node.Target.NodeIndex)
-		body, metadata, count, err := renderWideTelemetryCSV(series)
-		if err != nil {
-			return err
-		}
-		name := node.Name
-		if cfg.NodeNames != nil {
-			name = cfg.NodeNames[node.Key]
+		if cfg.IncludeData {
+			folder := fmt.Sprintf("node-%d", *node.Target.NodeIndex)
+			body, metadata, count, err := renderWideTelemetryCSV(series)
+			if err != nil {
+				return err
+			}
 			body, err = appendNodeColumns(body, strconv.Itoa(*node.Target.NodeIndex), name, true)
 			if err != nil {
 				return err
 			}
+			if err := writeBytesFile(zw, path.Join(folder, "data.csv"), body); err != nil {
+				return err
+			}
+			if err := writeMetadataCSV(zw, path.Join(folder, "metadata.csv"), metadata); err != nil {
+				return err
+			}
+			report = append(report, qualityReportRow{gatewayID.String(), folder, name, "packed", count, ""})
 		}
-		if err := writeBytesFile(zw, path.Join(folder, "data.csv"), body); err != nil {
+	}
+	if cfg.IncludeStatus {
+		streams, err := p.queries.ListDataStreamsByDevice(ctx, gatewayID)
+		if err != nil {
 			return err
 		}
-		if err := writeMetadataCSV(zw, path.Join(folder, "metadata.csv"), metadata); err != nil {
+		nodeStreams := map[uuid.UUID]bool{}
+		for _, node := range nodes {
+			for _, stream := range node.Streams {
+				nodeStreams[stream.ID] = true
+			}
+		}
+		for _, stream := range streams {
+			if stream.Status != "active" || stream.Type != "telemetry" || stream.Purpose == "measurement" || nodeStreams[stream.ID] {
+				continue
+			}
+			item, err := p.queryTelemetryStreamFull(ctx, stream, cfg.StartTime, cfg.EndTime)
+			if err != nil {
+				return err
+			}
+			item.NodeKey, item.NodeName = gatewayID.String(), "网关"
+			item.Code = strings.TrimPrefix(item.Code, "lora_gateway_")
+			item.MetricName = strings.TrimPrefix(item.Name, "网关 · ")
+			statusSeries = append(statusSeries, item)
+		}
+		body, err := renderV2StatusCSV(statusSeries, gateway.SerialNo)
+		if err != nil {
 			return err
 		}
-		report = append(report, qualityReportRow{gatewayID.String(), folder, name, "packed", count, ""})
+		if err := writeBytesFile(zw, "运行状态.csv", body); err != nil {
+			return err
+		}
+		report = append(report, qualityReportRow{gatewayID.String(), "status", "运行状态", "packed", len(gatewayWideRows(statusSeries)) - 1, ""})
 	}
 	if len(selected) > 0 {
 		return apperr.New(apperr.KindInvalidArgument, "selected node no longer exists")

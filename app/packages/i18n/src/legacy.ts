@@ -3,9 +3,6 @@ import { businessDynamicEnglish } from "./business-dynamic-english";
 
 export const legacyEnglish: Record<string, string> = {
   ...businessEnglish,
-  "系统后台": "System administration",
-  "成员管理": "Member management",
-  "账号由管理员提供": "Contact your administrator for an account",
   ...businessDynamicEnglish,
   "运行": "Operations", "数据": "Data", "管理": "Management", "主导航": "Main navigation", "后台导航": "Admin navigation", "收起侧栏": "Collapse sidebar", "展开侧栏": "Expand sidebar", "总览": "Overview", "设备": "Devices", "设备详情": "Device details", "数据对比": "Data comparison", "数据集": "Datasets", "数据集详情": "Dataset details", "创建数据集": "Create dataset", "编辑数据集": "Edit dataset", "导出任务": "Export jobs", "工作区": "Workspace", "工作区设置": "Workspace settings", "组织": "Organization", "组织设置": "Organization settings", "账户中心": "Account", "账户资料": "Profile", "账号安全": "Account security",
   "概览": "Overview", "实时视频": "Live video", "资料": "Profile", "配置": "Configuration", "分享": "Sharing", "操作记录": "Activity", "设备列表": "Device list", "返回设备列表": "Back to devices", "全局访问控制": "Global access control", "快捷切换设备": "Quick device switch", "搜索名称、序列号或 ID": "Search name, serial number or ID", "全部项目": "All projects", "全部站点": "All sites", "全部样地": "All sites", "全部": "All", "组网站": "Gateway stations", "监控站": "Monitoring stations", "标准站": "Stations", "拓扑": "Topology", "生命周期": "Lifecycle", "能力": "Capabilities", "操作": "Actions", "状态": "Status", "名称": "Name", "类型": "Type", "创建时间": "Created", "更新时间": "Updated", "未设置": "Not set",

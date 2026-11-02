@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "@thcpn/api";
 import { sensorConfigTargets, submitNodeSensorBatch, type NodeConfigResult } from "./node-config-batch";
 
 afterEach(() => vi.restoreAllMocks());
+beforeEach(()=>vi.spyOn(api.admin,"deviceNodes").mockResolvedValue({items:[1,2,3,4,5].map(index=>({key:`node:${index}`,name:`节点 ${index}`,custom_name:"",can_rename:true,bound:true,streams:[],target:{kind:"gateway_node" as const,gateway_device_id:"gateway",node_index:index}}))}));
 
 describe("node sensor configuration batch", () => {
   it("keeps the current node once and only includes selected nodes belonging to this gateway", () => {
@@ -42,7 +43,7 @@ describe("node sensor configuration batch", () => {
       completions.set(node!, () => { active--; resolve({ write_state: { platform: "synced" } }); });
     }));
     const pending = submitNodeSensorBatch("gateway", [1, 2, 3, 4, 5], {}, vi.fn());
-    expect([...completions.keys()]).toEqual([1, 2, 3]);
+    await vi.waitFor(()=>expect([...completions.keys()]).toEqual([1, 2, 3]));
     completions.get(3)!();
     await vi.waitFor(() => expect(completions.has(4)).toBe(true));
     completions.get(4)!();

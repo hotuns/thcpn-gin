@@ -69,7 +69,7 @@ func (h *Handler) nodes(c *gin.Context, admin bool) {
 			return
 		}
 	}
-	items, err := h.service.ListGatewayNodes(c.Request.Context(), id)
+	items, err := h.service.ListGatewayNodesInScope(c.Request.Context(), id, c.DefaultQuery("scope", "bound"))
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return

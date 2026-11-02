@@ -39,8 +39,17 @@ func (h *Handler) renameNode(c *gin.Context, admin bool) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "name is required"))
 		return
 	}
+	asset, err := h.service.GetAsset(c.Request.Context(), id)
+	if err != nil {
+		httpx.WriteAppError(c, err)
+		return
+	}
 	if name, ok := h.saveNodeName(c, id, index, *req.Name, admin); ok {
-		c.JSON(http.StatusOK, gin.H{"node_index": index, "name": nodeprofile.Label(name, index), "custom_name": name})
+		label := nodeprofile.Label(name, index)
+		if asset.SourceFamily == "lorawan_v2" {
+			label = v2NodeName(name, index)
+		}
+		c.JSON(http.StatusOK, gin.H{"node_index": index, "name": label, "custom_name": name})
 	}
 }
 

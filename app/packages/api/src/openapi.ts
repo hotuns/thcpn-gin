@@ -993,7 +993,10 @@ export interface paths {
         /** List gateway nodes with explicit targets and streams */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    /** @description Default lists installed V2 physical nodes only; history lists retained unbound node-number records, without implying actual telemetry exists. all combines both. THCPN device nodes remain unchanged for bound/all. */
+                    scope?: "bound" | "history" | "all";
+                };
                 header?: never;
                 path: {
                     device_id: components["schemas"]["UUID"];
@@ -1069,7 +1072,10 @@ export interface paths {
         /** List gateway nodes with explicit targets and streams */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    /** @description Default lists installed V2 physical nodes only; history lists retained unbound node-number records, without implying actual telemetry exists. all combines both. THCPN device nodes remain unchanged for bound/all. */
+                    scope?: "bound" | "history" | "all";
+                };
                 header?: never;
                 path: {
                     device_id: components["schemas"]["UUID"];
@@ -1106,11 +1112,14 @@ export interface paths {
         };
         /**
          * Read latest gateway node diagnostics
-         * @description LoRaWAN V2 reads the dedicated /node/{node_index}/latest endpoint without a history window and retains the original sampled_at time. THCPN keeps its existing three-day diagnostics policy. Missing readings are omitted; individual source failures remain per-node errors.
+         * @description LoRaWAN V2 reads only currently bound physical nodes from the dedicated /node/{node_index}/latest endpoint without a history window and retains the original sampled_at time. THCPN keeps its existing three-day diagnostics policy. Missing readings are omitted; individual source failures remain per-node errors.
          */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    /** @description Comma-separated currently bound node indices; omitted means all bound nodes. Validated before upstream access. */
+                    node_indices?: string;
+                };
                 header?: never;
                 path: {
                     device_id: components["schemas"]["UUID"];
@@ -6004,11 +6013,14 @@ export interface paths {
         };
         /**
          * Read latest gateway node diagnostics
-         * @description LoRaWAN V2 reads the dedicated /node/{node_index}/latest endpoint without a history window and retains the original sampled_at time. THCPN keeps its existing three-day diagnostics policy. Missing readings are omitted; individual source failures remain per-node errors.
+         * @description LoRaWAN V2 reads only currently bound physical nodes from the dedicated /node/{node_index}/latest endpoint without a history window and retains the original sampled_at time. THCPN keeps its existing three-day diagnostics policy. Missing readings are omitted; individual source failures remain per-node errors.
          */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    /** @description Comma-separated currently bound node indices; omitted means all bound nodes. Validated before upstream access. */
+                    node_indices?: string;
+                };
                 header?: never;
                 path: {
                     device_id: components["schemas"]["UUID"];
@@ -6599,6 +6611,11 @@ export interface components {
             created_at: string;
         };
         NodeRuntime: {
+            /** @description SD card usage percent; upstream ratio multiplied by 100. */
+            sd_card_rate?: number;
+            history_stream_ids?: {
+                [key: string]: components["schemas"]["UUID"];
+            };
             key: string;
             /** Format: date-time */
             sampled_at?: string;
@@ -8083,7 +8100,9 @@ export interface components {
             latitude?: number;
             /** Format: double */
             longitude?: number;
+            /** @description Internal stable query identity; not a UI node label. */
             key: string;
+            /** @description V2 uses the custom name as-is, or 节点 N when unnamed; number and current SN are separate attributes. */
             name: string;
             custom_name: string;
             can_rename: boolean;
@@ -8129,6 +8148,9 @@ export interface components {
             client_id: string;
         };
         LoRaWANV2ReportedInfo: {
+            history_stream_ids?: {
+                [key: string]: components["schemas"]["UUID"];
+            };
             /** @description BSON extended JSON date in milliseconds */
             ts: {
                 [key: string]: unknown;
@@ -8223,6 +8245,11 @@ export interface components {
         };
         /** @description Device data channel. Raw channels are generated by source synchronization; computed channels are evaluated at query time. Workspace permission is resolved through the parent device active assignment. */
         DataStream: {
+            /**
+             * @description Data purpose; defaults to measurement for other sources.
+             * @enum {string}
+             */
+            purpose?: "measurement" | "status" | "location";
             id: components["schemas"]["UUID"];
             device_id: components["schemas"]["UUID"];
             code: string;
@@ -8582,6 +8609,11 @@ export interface components {
             updated_at: components["schemas"]["Timestamp"];
         };
         SyncedDataStream: {
+            /**
+             * @description Data purpose; defaults to measurement for other sources.
+             * @enum {string}
+             */
+            purpose?: "measurement" | "status" | "location";
             id: components["schemas"]["UUID"];
             device_id: components["schemas"]["UUID"];
             code: string;
@@ -9108,8 +9140,17 @@ export interface components {
             end_time?: components["schemas"]["Timestamp"];
             /** @description Maximum rows per telemetry stream. Defaults to the worker `export.max_rows`. */
             limit?: number;
-            /** @description Advanced worker input. Batch station exports use `device_ids`, `start_time`, `end_time`, `include_data`, and `include_images`. */
+            /** @description Advanced worker input. Batch station exports use `device_ids`, `start_time`, `end_time`, `include_data`, and `include_images`. V2 group exports additionally accept `include_status` (boolean, default false); data.csv contains measurements only and 运行状态.csv contains gateway and selected node status plus gateway coordinates. */
             request_config?: {
+                /** @description Include node measurements in V2 batch exports. */
+                include_data?: boolean;
+                include_images?: boolean;
+                /**
+                 * @description V2 group export only; independently export gateway and selected node status and gateway location as a wide table.
+                 * @default false
+                 */
+                include_status: boolean;
+            } & {
                 [key: string]: unknown;
             };
             expires_at?: components["schemas"]["Timestamp"];

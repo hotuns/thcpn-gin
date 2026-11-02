@@ -14,7 +14,7 @@ import (
 const createDataStream = `-- name: CreateDataStream :one
 INSERT INTO data_streams (device_id, code, name, type, unit, created_by)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, device_id, code, name, type, unit, status, created_by, created_at, updated_at, created_by_type
+RETURNING id, device_id, code, name, type, unit, status, created_by, created_at, updated_at, created_by_type, purpose
 `
 
 type CreateDataStreamParams struct {
@@ -48,6 +48,7 @@ func (q *Queries) CreateDataStream(ctx context.Context, arg CreateDataStreamPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CreatedByType,
+		&i.Purpose,
 	)
 	return i, err
 }
@@ -68,7 +69,7 @@ WHERE ds.device_id = $1
         AND dsb.status = 'active'
         AND (dsb.adapter_config_json->>'external_device_id')::bigint = $4::bigint
   )
-RETURNING ds.id, ds.device_id, ds.code, ds.name, ds.type, ds.unit, ds.status, ds.created_by, ds.created_at, ds.updated_at, ds.created_by_type
+RETURNING ds.id, ds.device_id, ds.code, ds.name, ds.type, ds.unit, ds.status, ds.created_by, ds.created_at, ds.updated_at, ds.created_by_type, ds.purpose
 `
 
 type DisableMissingTHCPNDataStreamsParams struct {
@@ -104,6 +105,7 @@ func (q *Queries) DisableMissingTHCPNDataStreams(ctx context.Context, arg Disabl
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CreatedByType,
+			&i.Purpose,
 		); err != nil {
 			return nil, err
 		}
@@ -116,7 +118,7 @@ func (q *Queries) DisableMissingTHCPNDataStreams(ctx context.Context, arg Disabl
 }
 
 const getDataStream = `-- name: GetDataStream :one
-SELECT id, device_id, code, name, type, unit, status, created_by, created_at, updated_at, created_by_type
+SELECT id, device_id, code, name, type, unit, status, created_by, created_at, updated_at, created_by_type, purpose
 FROM data_streams
 WHERE id = $1
 `
@@ -136,12 +138,13 @@ func (q *Queries) GetDataStream(ctx context.Context, id uuid.UUID) (DataStream, 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CreatedByType,
+		&i.Purpose,
 	)
 	return i, err
 }
 
 const listDataStreamsByDevice = `-- name: ListDataStreamsByDevice :many
-SELECT id, device_id, code, name, type, unit, status, created_by, created_at, updated_at, created_by_type
+SELECT id, device_id, code, name, type, unit, status, created_by, created_at, updated_at, created_by_type, purpose
 FROM data_streams
 WHERE device_id = $1
 ORDER BY created_at DESC, id DESC
@@ -168,6 +171,7 @@ func (q *Queries) ListDataStreamsByDevice(ctx context.Context, deviceID uuid.UUI
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CreatedByType,
+			&i.Purpose,
 		); err != nil {
 			return nil, err
 		}
@@ -179,6 +183,35 @@ func (q *Queries) ListDataStreamsByDevice(ctx context.Context, deviceID uuid.UUI
 	return items, nil
 }
 
+const setDataStreamPurpose = `-- name: SetDataStreamPurpose :one
+UPDATE data_streams SET purpose=$2 WHERE id=$1 RETURNING id, device_id, code, name, type, unit, status, created_by, created_at, updated_at, created_by_type, purpose
+`
+
+type SetDataStreamPurposeParams struct {
+	ID      uuid.UUID `json:"id"`
+	Purpose string    `json:"purpose"`
+}
+
+func (q *Queries) SetDataStreamPurpose(ctx context.Context, arg SetDataStreamPurposeParams) (DataStream, error) {
+	row := q.db.QueryRow(ctx, setDataStreamPurpose, arg.ID, arg.Purpose)
+	var i DataStream
+	err := row.Scan(
+		&i.ID,
+		&i.DeviceID,
+		&i.Code,
+		&i.Name,
+		&i.Type,
+		&i.Unit,
+		&i.Status,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CreatedByType,
+		&i.Purpose,
+	)
+	return i, err
+}
+
 const updateDataStream = `-- name: UpdateDataStream :one
 UPDATE data_streams
 SET code = $2,
@@ -188,7 +221,7 @@ SET code = $2,
     status = $6,
     updated_at = now()
 WHERE id = $1
-RETURNING id, device_id, code, name, type, unit, status, created_by, created_at, updated_at, created_by_type
+RETURNING id, device_id, code, name, type, unit, status, created_by, created_at, updated_at, created_by_type, purpose
 `
 
 type UpdateDataStreamParams struct {
@@ -222,6 +255,7 @@ func (q *Queries) UpdateDataStream(ctx context.Context, arg UpdateDataStreamPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CreatedByType,
+		&i.Purpose,
 	)
 	return i, err
 }
@@ -239,7 +273,7 @@ DO UPDATE SET
         ELSE 'active'
     END,
     updated_at = now()
-RETURNING id, device_id, code, name, type, unit, status, created_by, created_at, updated_at, created_by_type
+RETURNING id, device_id, code, name, type, unit, status, created_by, created_at, updated_at, created_by_type, purpose
 `
 
 type UpsertDataStreamFromSyncParams struct {
@@ -273,6 +307,7 @@ func (q *Queries) UpsertDataStreamFromSync(ctx context.Context, arg UpsertDataSt
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CreatedByType,
+		&i.Purpose,
 	)
 	return i, err
 }

@@ -27,3 +27,28 @@ func (s *Service) ReadLatestGatewayInfo(ctx context.Context, id uuid.UUID) (json
 	}
 	return payload, nil
 }
+
+// Add platform history identities without changing the source record fields.
+func (s *Service) ReadGatewayStatusInfo(ctx context.Context, id uuid.UUID) (json.RawMessage, error) {
+	raw, err := s.ReadLatestGatewayInfo(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	var record map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &record); err != nil {
+		return nil, err
+	}
+	if record == nil {
+		return raw, nil
+	}
+	rows, err := s.Queries.ListLoRaWANV2GatewayStatusStreams(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	ids := map[string]uuid.UUID{}
+	for _, row := range rows {
+		ids[row.Metric] = row.ID
+	}
+	record["history_stream_ids"], _ = json.Marshal(ids)
+	return json.Marshal(record)
+}

@@ -12,12 +12,13 @@ func ParseNodeRuntime(key string, row map[string]json.RawMessage) platform.NodeR
 	if ts, err := loraWANV2Timestamp(row["ts"]); err == nil {
 		result.SampledAt = &ts
 	}
-	for key, target := range map[string]**float64{"battery": &result.Battery, "rssi": &result.RSSI, "snr": &result.SNR} {
+	for key, target := range map[string]**float64{"battery": &result.Battery, "rssi": &result.RSSI, "snr": &result.SNR, "sd_card_rate": &result.SDCardRate} {
 		raw := bytes.TrimSpace(row[key])
 		if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
 			continue
 		}
 		if value, ok := loraWANV2Number(raw); ok && !math.IsNaN(value) && !math.IsInf(value, 0) {
+			value = normalizeLoRaWANV2MetricValue(key, value)
 			*target = &value
 		}
 	}

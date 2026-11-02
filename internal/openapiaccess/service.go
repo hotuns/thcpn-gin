@@ -60,6 +60,7 @@ type OpenDevice struct {
 }
 
 type OpenDataStream struct {
+	Purpose  string    `json:"purpose"`
 	ID       uuid.UUID `json:"id"`
 	DeviceID uuid.UUID `json:"device_id"`
 	Code     string    `json:"code"`
@@ -228,7 +229,7 @@ func (s *Service) ListDataStreams(ctx context.Context, workspaceID, deviceID uui
 	if err := s.DeviceBelongsToWorkspace(ctx, deviceID, workspaceID); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Query(ctx, `SELECT id,device_id,code,name,type,unit,status FROM data_streams WHERE device_id=$1 AND status='active' ORDER BY type,name,code`, deviceID)
+	rows, err := s.db.Query(ctx, `SELECT id,device_id,code,name,type,unit,status,purpose FROM data_streams WHERE device_id=$1 AND status='active' ORDER BY type,name,code`, deviceID)
 	if err != nil {
 		return nil, apperr.Wrap(apperr.KindInternal, "list open api data streams", err)
 	}
@@ -236,7 +237,7 @@ func (s *Service) ListDataStreams(ctx context.Context, workspaceID, deviceID uui
 	items := []OpenDataStream{}
 	for rows.Next() {
 		var item OpenDataStream
-		if err = rows.Scan(&item.ID, &item.DeviceID, &item.Code, &item.Name, &item.Type, &item.Unit, &item.Status); err != nil {
+		if err = rows.Scan(&item.ID, &item.DeviceID, &item.Code, &item.Name, &item.Type, &item.Unit, &item.Status, &item.Purpose); err != nil {
 			return nil, apperr.Wrap(apperr.KindInternal, "scan open api data stream", err)
 		}
 		items = append(items, item)

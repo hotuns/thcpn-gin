@@ -9,7 +9,7 @@ import (
 	"thcpn-gin/internal/apperr"
 )
 
-// Gateway spreadsheet exports include node metrics as well as gateway diagnostics.
+// Gateway spreadsheets contain measurements; diagnostic history uses the status export.
 // A node is either a child device or an indexed target on the gateway itself.
 func (p *Processor) queryGatewayTelemetry(ctx context.Context, id uuid.UUID, start, end time.Time) ([]telemetrySeries, error) {
 	streams, err := p.queries.ListDataStreamsByDevice(ctx, id)
@@ -30,12 +30,15 @@ func (p *Processor) queryGatewayTelemetry(ctx context.Context, id uuid.UUID, sta
 		labels[streamID] = label
 	}
 	for _, stream := range streams {
-		if stream.Status == "active" && stream.Type == "telemetry" {
+		if stream.Status == "active" && stream.Type == "telemetry" && stream.Purpose == "measurement" {
 			add(stream.ID, stream.Name)
 		}
 	}
 	for _, node := range nodes {
 		for _, stream := range node.Streams {
+			if stream.Purpose != "measurement" {
+				continue
+			}
 			add(stream.ID, node.Name+" · "+stream.Name)
 			targets[stream.ID] = node
 		}

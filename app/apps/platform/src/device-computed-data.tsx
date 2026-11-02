@@ -1,3 +1,4 @@
+import { isMeasurement } from "@thcpn/api";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -162,7 +163,7 @@ export function ComputedStreamsPanel({
   const metadata = useQuery({ queryKey: metadataKey, queryFn: () => api.devices.metadata(deviceId) });
   const definitions = query.data?.items ?? [];
   const rawStreams = streams.filter(
-    (stream) => stream.type === "telemetry" && stream.status === "active" && !stream.computed,
+    (stream) => stream.type === "telemetry" && stream.status === "active" && isMeasurement(stream) && !stream.computed,
   );
   const refresh = async () => {
     await Promise.all([

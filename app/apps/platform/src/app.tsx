@@ -30,8 +30,6 @@ import {
   Table2,
   Workflow,
 } from "lucide-react";
-import { platformHomePath, simplifiedEnabled } from "./features";
-import { EditionRoute } from "./edition-route";
 import {
   api,
   commonStatusLabel,
@@ -147,15 +145,7 @@ const PublicDevicePage = lazy(() =>
   import("./public-device-page").then((module) => ({ default: module.PublicDevicePage })),
 );
 
-const navGroups = simplifiedEnabled ? [
-  { key: "operations", items: [
-    { to: "/atlas", key: "wallboards", icon: MapPinned },
-    { to: "/devices", key: "devices", icon: Boxes },
-    { to: "/device-map", key: "deviceMap", icon: MapPinned },
-    { to: "/exports", key: "exports", icon: Download },
-    { to: "/settings", key: "settings", icon: SlidersHorizontal },
-  ] },
-] : [
+const navGroups = [
   {
     key: "operations",
     items: [
@@ -185,7 +175,7 @@ const navGroups = simplifiedEnabled ? [
 ];
 
 function Shell() {
- const billingEnabled=!simplifiedEnabled&&useSystemPolicy().data?.billing_enabled;
+ const billingEnabled=useSystemPolicy().data?.billing_enabled;
   const { t } = useLocale();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [onboardingSession, setOnboardingSession] = useState(0);
@@ -220,7 +210,7 @@ function Shell() {
       const [notices, announcements] = await Promise.all([api.notifications.list(workspace.currentId ?? undefined, 20), api.notifications.announcements(workspace.currentId ?? undefined)]);
       return Number(notices.unread_count ?? 0) + Number(announcements.unread_count ?? 0);
     },
-    enabled: !simplifiedEnabled && Boolean(workspace.currentId),
+    enabled: Boolean(workspace.currentId),
     refetchInterval: 60_000,
   });
   const sidebarContent = (
@@ -332,20 +322,20 @@ function Shell() {
           </div>
           <div className="topbar-actions">
             <LanguageSwitcher compact />
-            {!simplifiedEnabled && <><IconButton label={t("openGuide")} onClick={() => setOnboardingSession((current) => current + 1)}>
+            <IconButton label={t("openGuide")} onClick={() => setOnboardingSession((current) => current + 1)}>
               <HelpCircle size={18} />
             </IconButton>
             <Link className="topbar-notification" to="/notifications" aria-label={t("platform:navigation.notifications")}>
               <Bell size={18} />
               {(notificationSummary.data ?? 0) > 0 && <span>{Math.min(notificationSummary.data ?? 0, 99)}</span>}
-            </Link></>}
+            </Link>
           </div>
         </header>
         <main id="main-content" className="page" tabIndex={-1}>
           <Outlet />
         </main>
       </div>
-      {!simplifiedEnabled && user?.id ? <OnboardingTour key={onboardingSession} userId={user.id} startOpen={onboardingSession > 0} /> : null}
+      {user?.id ? <OnboardingTour key={onboardingSession} userId={user.id} startOpen={onboardingSession > 0} /> : null}
       <RequestErrorToasts />
     </div>
     </Sheet>
@@ -557,18 +547,17 @@ function RootRedirect() {
   const { user, loading } = useAuth();
   if (loading) return <div className="app-loading t-shimmer" data-text="正在恢复会话…">正在恢复会话…</div>;
   if (!user) return <Navigate to="/login" replace />;
-  return <Navigate to={platformHomePath} replace />;
+  return <Navigate to="/dashboard" replace />;
 }
 
 export function PlatformApp() {
   const policy = useSystemPolicy();
-  const billingEnabled=!simplifiedEnabled&&policy.data?.billing_enabled;
+  const billingEnabled=policy.data?.billing_enabled;
   if (policy.isPending) return <div className="app-loading">正在加载系统配置…</div>;
   if (!policy.data) return <div className="app-loading"><StateView type="error" title="系统配置加载失败" description={formatApiError(policy.error).message} /><Button onClick={() => void policy.refetch()}>重试</Button></div>;
   return (
     <Suspense fallback={<div className="app-loading t-shimmer" data-text="正在加载页面…">正在加载页面…</div>}>
       <Routes>
-        <Route element={<EditionRoute />}>
         <Route path="/login" element={<AuthPage />} />
         <Route path="/demo-login" element={<Navigate to="/login?demo=1" replace />} />
         <Route path="/register" element={<AuthPage register />} />
@@ -613,7 +602,6 @@ export function PlatformApp() {
             <Route path="/account" element={<AccountPage />} />
             <Route path="*" element={<RootRedirect />} />
           </Route>
-        </Route>
         </Route>
       </Routes>
     </Suspense>

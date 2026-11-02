@@ -1,3 +1,5 @@
+import { AdminNodeStatus } from "./runtime-status";
+import { isMeasurement } from "@thcpn/api";
 import { AdminObservationStart } from "./admin-observation-start";
 import { AdminDeviceDossier, AdminDeviceScenes } from "./admin-device-dossier";
 import { useEffect, useRef, useState } from "react";
@@ -73,47 +75,52 @@ export function AdminDeviceInstallation({device}:{device:JsonRecord}) {
   </Space>;
 }
 
-export function AdminDeviceNodes({device,onData,onTopology,onConfig,compact=false}:{device:JsonRecord;onData:(key:string)=>void;onTopology?:()=>void;onConfig?:(index:number,kind?:"sensor"|"time")=>void;compact?:boolean}) {
+export function AdminDeviceNodes({device,onData,onTopology,onConfig,onHistory,compact=false}:{device:JsonRecord;onData:(key:string)=>void;onTopology?:()=>void;onConfig?:(index:number,kind?:"sensor"|"time")=>void;onHistory?:()=>void;compact?:boolean}) {
   const id=String(device.id), lora=device.source_family==="lorawan_v2";
   const client=useQueryClient();
   const [readRuntime,setReadRuntime]=useState(false);
-  const [filter,setFilter]=useState("all");
+  const [statusPage,setStatusPage]=useState(1);
+  const [pageSize,setPageSize]=useState(20);
   const [search,setSearch]=useState("");
   const [detailKey,setDetailKey]=useState<string|null>(null);
   const nodes=useQuery({queryKey:["admin","device",id,"nodes","operations"],queryFn:async()=>{if(lora)await api.admin.physicalNodes(id);return api.admin.deviceNodes(id);}});
-  const runtime=useQuery({queryKey:["admin","device",id,"nodes","runtime"],queryFn:()=>api.admin.nodeRuntime(id),enabled:readRuntime});
   const rows=nodes.data?.items??[];
   const detail=rows.find(node=>node.key===detailKey);
-  const visible=rows.filter(n=>(filter==="all"||(filter==="bound"?n.bound:!n.bound))&&[n.name,n.node_sn,n.key].some(v=>v?.toLowerCase().includes(search.toLowerCase())));
+  const visible=rows.filter(n=>[n.name,n.node_sn,n.target.kind==="gateway_node"?String(n.target.node_index):""].some(v=>v?.toLowerCase().includes(search.toLowerCase())));
+  const page=Math.min(statusPage,Math.max(1,Math.ceil(visible.length/pageSize)));
+  const currentNodes=visible.slice((page-1)*pageSize,page*pageSize);
+  const indices=currentNodes.flatMap(node=>node.target.kind==="gateway_node"?[node.target.node_index]:[]);
+  const runtime=useQuery({queryKey:["admin","device",id,"nodes","runtime",lora?indices.join(","):"all"],queryFn:()=>api.admin.nodeRuntime(id,lora?indices:undefined),enabled:lora?indices.length>0:readRuntime,staleTime:Infinity,refetchOnWindowFocus:false,refetchOnMount:"always",retry:false});
   const positions=<Space orientation="vertical" size="middle" style={{width:"100%"}}>
     <Space wrap style={{justifyContent:"space-between",width:"100%"}}>
-      <Space><Input.Search aria-label="搜索节点或位置" placeholder={lora?"名称、节点 SN 或位置标识":"搜索节点名称"} allowClear value={search} onChange={e=>setSearch(e.target.value)} style={{width:280}}/>
-        {lora&&<Select aria-label="采集位置范围" value={filter} onChange={setFilter} style={{width:150}} options={[{value:"all",label:"全部采集位置"},{value:"bound",label:"有当前安装节点"},{value:"history",label:"未绑定／历史位置"}]}/>}</Space>
-      <Button loading={runtime.isFetching} onClick={()=>{setReadRuntime(true);if(readRuntime)void runtime.refetch();}}>读取电量与信号</Button>
+      <Space><Input.Search aria-label="搜索节点" placeholder={lora?"名称、SN 或序号":"搜索节点名称"} allowClear value={search} onChange={e=>{setSearch(e.target.value);setStatusPage(1);}} style={{width:280}}/>
+</Space>
+      <Button disabled={lora&&!indices.length} loading={runtime.isFetching} onClick={()=>{setReadRuntime(true);if(lora||readRuntime)void runtime.refetch();}}>{lora?"刷新状态":"读取电量与信号"}</Button>
     </Space>
-    {lora&&<Typography.Text type="secondary">配置、名称、经纬度和数据归属于采集位置；未绑定的位置保留历史，不能据此判断硬件在线状态。</Typography.Text>}
+
     {(nodes.error||runtime.error)&&<Alert type="error" title="节点读取失败" description={formatApiError(nodes.error||runtime.error).message}/>}
-    <Table<GatewayNode> rowKey="key" size="middle" loading={nodes.isLoading} dataSource={visible} pagination={{pageSize:20,showSizeChanger:true}} scroll={{x:1000}} locale={{emptyText:lora?"暂无采集位置。安装真实节点并同步平台指标后显示；已有位置历史不会因解绑删除。":"暂无关联节点，请管理网关拓扑。"}} columns={[
-      {title:lora?"采集位置":"节点设备",render:(_,node)=><Space orientation="vertical" size={0}><Typography.Text strong>{node.name}</Typography.Text>{node.target.kind==="gateway_node"&&<Typography.Text type="secondary">序号 {node.target.node_index}</Typography.Text>}</Space>},
-      ...(lora?[{title:"物理节点",render:(_:unknown,node:GatewayNode)=><Space orientation="vertical" size={0}><Tag color={node.bound?"blue":"default"}>{node.bound?"已安装":"未绑定"}</Tag><Typography.Text code={!!node.node_sn}>{node.node_sn||"仅保留位置历史"}</Typography.Text></Space>}]:[]),
-      {title:"指标",width:75,render:(_,node)=>node.streams.length},
-      {title:"电量 / 信号",render:(_,node)=>{const state=runtime.data?.items.find(item=>item.key===node.key);return state?.error?<Tag color="red">读取失败</Tag>:state?<Space orientation="vertical" size={0}><span>{state.battery??"—"} V · {state.rssi??"—"}</span><Typography.Text type="secondary">{opsTime(state.sampled_at)}</Typography.Text></Space>:"尚未读取";}},
-      {title:"位置",render:(_,node)=>node.longitude!=null?`${node.longitude}, ${node.latitude}`:"未设置"},
+    <Table<GatewayNode> rowKey="key" size="middle" loading={nodes.isLoading} dataSource={visible} pagination={{current:page,pageSize,showSizeChanger:true,onChange:(page,size)=>{setStatusPage(page);setPageSize(size);}}} scroll={{x:1000}} locale={{emptyText:lora?"暂无节点，请添加节点。":"暂无关联节点，请管理网关拓扑。"}} columns={[
+      {title:"节点",render:(_,node)=><Space orientation="vertical" size={0}><Typography.Text strong>{node.name}</Typography.Text>{lora&&<Typography.Text>SN {node.node_sn}</Typography.Text>}{node.target.kind==="gateway_node"&&<Typography.Text type="secondary">序号 {node.target.node_index}</Typography.Text>}</Space>},
+
+      {title:"指标",width:75,render:(_,node)=>node.streams.filter(isMeasurement).length},
+      {title:lora?"节点状态":"电量 / 信号",width:lora?300:undefined,render:(_,node)=>{if(lora)return <AdminNodeStatus deviceId={id} node={node} reading={runtime.data?.items.find(item=>item.key===node.key)} loading={runtime.isFetching} error={runtime.error?formatApiError(runtime.error).message:undefined}/>;const state=runtime.data?.items.find(item=>item.key===node.key);return state?.error?<Tag color="red">读取失败</Tag>:state?<Space orientation="vertical" size={0}><span>{state.battery??"—"} V · {state.rssi??"—"}</span><Typography.Text type="secondary">{opsTime(state.sampled_at)}</Typography.Text></Space>:"尚未读取";}},
+      {title:"状态更新时间",render:(_,node)=>opsTime(runtime.data?.items.find(item=>item.key===node.key)?.sampled_at)},
+      {title:"经纬度",render:(_,node)=>node.longitude!=null?`${node.longitude}, ${node.latitude}`:"未设置"},
       {title:"操作",render:(_,node)=><Space wrap><Button size="small" onClick={()=>onData(node.key)}>查看数据</Button>{node.target.kind==="gateway_node"?<GatewayNodeActions deviceId={id} node={node} onDetails={()=>setDetailKey(node.key)} onConfig={onConfig?(index,kind)=>onConfig(index,kind):undefined}/>:<Button size="small"><Link to={`/admin/devices/${node.target.device_id}`}>设备资料</Link></Button>}</Space>},
     ]}/>
   </Space>;
-  const toolbar=<Space wrap>{lora&&<><GatewayNodeActions deviceId={id}/><Button onClick={()=>void nodes.refetch()} loading={nodes.isFetching}>刷新节点</Button><Button><Link to={`/admin/devices?kind=node_v2&gateway=${id}`}>节点v2库存</Link></Button></>}{onTopology&&<Button onClick={onTopology}>管理拓扑</Button>}</Space>;
+  const toolbar=<Space wrap>{lora&&<><GatewayNodeActions deviceId={id}/>{onHistory&&<Button onClick={onHistory}>历史数据</Button>}<Button onClick={()=>void nodes.refetch()} loading={nodes.isFetching}>刷新节点</Button><Button><Link to={`/admin/devices?kind=node_v2&gateway=${id}`}>节点v2库存</Link></Button></>}{onTopology&&<Button onClick={onTopology}>管理拓扑</Button>}</Space>;
   return <Space orientation="vertical" size="middle" style={{width:"100%"}}>
-    {compact?<><Space wrap style={{justifyContent:"space-between",width:"100%"}}><Typography.Text strong>节点管理 · {rows.length} 个采集位置</Typography.Text>{toolbar}</Space>{positions}</>:<Card title={lora?"节点管理":"THCPN · 组网节点"} extra={toolbar}>{positions}</Card>}
-    <Drawer title="采集位置资料" open={!!detail} onClose={()=>setDetailKey(null)} size={560}>
-      {detail&&<Space orientation="vertical" size="large" style={{width:"100%"}}><Descriptions column={1} bordered items={[
-        {key:"name",label:"位置名称",children:<Space>{detail.name}<AdminNodeNameEditor name={detail.custom_name} allowEmpty onSave={async name=>{if(detail.target.kind==="gateway_node")await api.admin.renameNode(id,detail.target.node_index,name);await invalidateNodeNames(client);setDetailKey(null);}}/></Space>},
+    {compact?<><Space wrap style={{justifyContent:"space-between",width:"100%"}}><Typography.Text strong>节点管理 · {visible.length} 个节点</Typography.Text>{toolbar}</Space>{positions}</>:<Card title={lora?"节点管理":"THCPN · 组网节点"} extra={toolbar}>{positions}</Card>}
+    <Drawer title="节点资料" open={!!detail} onClose={()=>setDetailKey(null)} size={560}>
+      {detail&&<Space orientation="vertical" size="large" style={{width:"100%"}}>{lora&&<AdminNodeStatus showTime deviceId={id} node={detail} reading={runtime.data?.items.find(item=>item.key===detail.key)} loading={runtime.isFetching}/>}<Descriptions column={1} bordered items={[
+        {key:"name",label:"节点名称",children:<Space>{detail.name}<AdminNodeNameEditor name={detail.custom_name} allowEmpty onSave={async name=>{if(detail.target.kind==="gateway_node")await api.admin.renameNode(id,detail.target.node_index,name);await invalidateNodeNames(client);setDetailKey(null);}}/></Space>},
         {key:"index",label:"序号",children:detail.target.kind==="gateway_node"?detail.target.node_index:"—"},
-        {key:"sn",label:"当前节点 SN",children:detail.node_sn||"未绑定"},
-        {key:"key",label:"位置标识",children:<Typography.Text copyable>{detail.key}</Typography.Text>},
+        {key:"sn",label:"节点 SN",children:detail.node_sn||"未绑定"},
+        {key:"gateway",label:"所属网关",children:`${device.name} · ${device.serial_no}`},
         {key:"location",label:"安装坐标",children:<Space>{detail.longitude!=null?`${detail.longitude}, ${detail.latitude}`:"未设置"}<AdminNodeLocationEditor deviceId={id} node={detail}/></Space>},
-      ]}/><Alert type="info" title="资料与历史随采集位置保留" description="更换或移除物理节点不会清空这里的名称、坐标、配置与历史数据。"/>
-        <Space><Button type="primary" onClick={()=>{onData(detail.key);setDetailKey(null);}}>查看位置数据</Button>{onConfig&&detail.target.kind==="gateway_node"&&<Button onClick={()=>{if(detail.target.kind==="gateway_node")onConfig(detail.target.node_index);setDetailKey(null);}}>编辑采集配置</Button>}</Space>
+      ]}/>
+        <Space><Button type="primary" onClick={()=>{onData(detail.key);setDetailKey(null);}}>查看节点数据</Button>{onConfig&&detail.bound&&detail.target.kind==="gateway_node"&&<Button onClick={()=>{if(detail.target.kind==="gateway_node")onConfig(detail.target.node_index);setDetailKey(null);}}>编辑采集配置</Button>}</Space>
       </Space>}
     </Drawer>
   </Space>;

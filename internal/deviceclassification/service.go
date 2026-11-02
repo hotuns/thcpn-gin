@@ -435,7 +435,8 @@ func (s *Service) appendIndexedNodeLocations(ctx context.Context, result *MapRes
 	for _, item := range result.Items {
 		parents[item.DeviceID] = item
 	}
-	rows, err := s.db.Query(ctx, `SELECT DISTINCT p.device_id,p.node_index,p.name,p.latitude,p.longitude FROM node_profiles p
+	rows, err := s.db.Query(ctx, `SELECT DISTINCT p.device_id,p.node_index,p.name,p.latitude,p.longitude,n.sn FROM node_profiles p
+ JOIN lorawan_physical_nodes n ON n.gateway_device_id=p.device_id AND n.node_index=p.node_index
  JOIN device_source_refs r ON r.device_id=p.device_id AND r.adapter_code='lorawan_v2' AND r.status='active'
 
  WHERE p.device_id=ANY($1::uuid[]) AND p.latitude IS NOT NULL AND p.longitude IS NOT NULL AND p.node_index BETWEEN 1 AND 254 ORDER BY p.device_id,p.node_index`, ids)
@@ -448,7 +449,8 @@ func (s *Service) appendIndexedNodeLocations(ctx context.Context, result *MapRes
 		var index int
 		var name string
 		var lat, lon *float64
-		if err := rows.Scan(&id, &index, &name, &lat, &lon); err != nil {
+		var sn string
+		if err := rows.Scan(&id, &index, &name, &lat, &lon, &sn); err != nil {
 			return err
 		}
 		item := parents[id]
@@ -457,10 +459,9 @@ func (s *Service) appendIndexedNodeLocations(ctx context.Context, result *MapRes
 		item.DeviceID = uuid.NewSHA1(id, []byte(fmt.Sprintf("node:%d", index)))
 		if name == "" {
 			name = fmt.Sprintf("节点 %d", index)
-		} else {
-			name = fmt.Sprintf("%s · 节点 %d", name, index)
 		}
 		item.Name = name
+		item.SerialNo = sn
 		item.DeviceType = "gateway_node"
 		item.Latitude = lat
 		item.Longitude = lon

@@ -231,7 +231,7 @@ func (s *Service) listIndexedNodes(ctx context.Context, gateway Device) ([]Gatew
 		node.Latitude = positions[index][0]
 		node.Longitude = positions[index][1]
 		node.Key = target.Key()
-		node.Name = nodeprofile.Label(names[index], index)
+		node.Name = v2NodeName(names[index], index)
 		node.CustomName = names[index]
 		node.Target = target
 		node.Streams = []datastream.DataStream{}
@@ -243,7 +243,7 @@ func (s *Service) listIndexedNodes(ctx context.Context, gateway Device) ([]Gatew
 	if slotsErr != nil {
 		return nil, slotsErr
 	}
-	rows, err := s.db.Query(ctx, `SELECT ds.id, ds.device_id, ds.code, ds.name, ds.type, ds.unit, ds.status, ds.created_by, ds.created_at, ds.updated_at, b.adapter_config_json
+	rows, err := s.db.Query(ctx, `SELECT ds.id, ds.device_id, ds.code, ds.name, ds.type, ds.unit, ds.status, ds.created_by, ds.created_at, ds.updated_at, ds.purpose, b.adapter_config_json
         FROM data_streams ds JOIN data_stream_bindings b ON b.data_stream_id=ds.id AND b.status='active' AND b.adapter_code='lorawan_v2'
         JOIN device_source_refs ref ON ref.device_id=ds.device_id AND ref.data_source_id=b.data_source_id AND ref.adapter_code='lorawan_v2' AND ref.status='active'
         WHERE ds.device_id=$1 AND ds.status='active' AND ds.type='telemetry' AND b.adapter_config_json->>'gateway_sn'=ref.external_key
@@ -255,7 +255,7 @@ func (s *Service) listIndexedNodes(ctx context.Context, gateway Device) ([]Gatew
 	for rows.Next() {
 		var stream datastream.DataStream
 		var raw []byte
-		if err := rows.Scan(&stream.ID, &stream.DeviceID, &stream.Code, &stream.Name, &stream.Type, &stream.Unit, &stream.Status, &stream.CreatedBy, &stream.CreatedAt, &stream.UpdatedAt, &raw); err != nil {
+		if err := rows.Scan(&stream.ID, &stream.DeviceID, &stream.Code, &stream.Name, &stream.Type, &stream.Unit, &stream.Status, &stream.CreatedBy, &stream.CreatedAt, &stream.UpdatedAt, &stream.Purpose, &raw); err != nil {
 			return nil, err
 		}
 		var cfg struct {
@@ -281,4 +281,34 @@ func (s *Service) listIndexedNodes(ctx context.Context, gateway Device) ([]Gatew
 		return nil, err
 	}
 	return nodes, nil
+}
+
+// Scope controls presentation and live reads, never the historical query identity.
+func (s *Service) ListGatewayNodesInScope(ctx context.Context, gatewayID uuid.UUID, scope string) ([]GatewayNode, error) {
+	if scope != "bound" && scope != "history" && scope != "all" {
+		return nil, apperr.New(apperr.KindInvalidArgument, "scope must be bound, history or all")
+	}
+	nodes, err := s.ListGatewayNodes(ctx, gatewayID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]GatewayNode, 0, len(nodes))
+	for _, node := range nodes {
+		if node.Target.Kind == "gateway_node" {
+			if scope == "bound" && !node.Bound || scope == "history" && node.Bound {
+				continue
+			}
+		} else if scope == "history" {
+			continue
+		}
+		result = append(result, node)
+	}
+	return result, nil
+}
+
+func v2NodeName(name string, index int) string {
+	if name != "" {
+		return name
+	}
+	return fmt.Sprintf("节点 %d", index)
 }

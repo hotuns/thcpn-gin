@@ -1,4 +1,11 @@
-import { lazy, Suspense, useMemo, useState } from "react";
+import { AdminNodeStatus } from "./runtime-status";
+import { nodeHistoryNotice } from "@thcpn/api";
+import { Tooltip } from "antd";
+import { useSearchParams } from "react-router-dom";
+import { nodeOptionLabel } from "@thcpn/api";
+import { adminFullTelemetry } from "./admin-full-telemetry";
+import { isMeasurement, streamPurpose } from "@thcpn/api";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import dayjs, { type Dayjs } from "dayjs";
 import { Alert, App, Button, Card, DatePicker, Descriptions, Empty, Image, Modal, Segmented, Select, Space, Spin, Table, Tabs, Tag, Typography } from "antd";
@@ -16,17 +23,26 @@ export function AdminDeviceData({device,nodeKey,onNodeChange,onExport}:{device:J
   const [applied,setApplied]=useState(()=>({startTime:dayjs().subtract(lora?6:24,"hour").toISOString(),endTime:dayjs().toISOString()}));
   const [selection,setSelection]=useState<{target:string;ids:string[]}|null>(null);
   const [tab,setTab]=useState("telemetry");
+  const purpose: string = "measurement";
+  const [statusOpen,setStatusOpen]=useState(false);
   const [view,setView]=useState("chart");
   const [phase,setPhase]=useState("all");
   const [page,setPage]=useState(1);
   const [mediaStream,setMediaStream]=useState<string>();
-  const nodes=useQuery({queryKey:["admin","device",id,"nodes","operations"],queryFn:()=>api.admin.deviceNodes(id),enabled:gateway});
-  const node=nodes.data?.items.find(item=>item.key===nodeKey);
+  const [params,setParams]=useSearchParams();
+  const [nodeScope,setNodeScope]=useState(params.get("node_scope")==="history"?"history":"bound");
+
+  const nodes=useQuery({queryKey:["admin","device",id,"nodes","operations","all"],queryFn:()=>api.admin.deviceNodes(id,"all"),enabled:gateway});
+  const visibleNodes=(nodes.data?.items??[]).filter(node=>!lora || (nodeScope==="bound"?node.bound:!node.bound));
+  useEffect(()=>{if(!lora)return;const selected=nodes.data?.items.find(node=>node.key===nodeKey);setNodeScope(selected ? selected.bound?"bound":"history" : params.get("node_scope")==="history"?"history":"bound");},[nodes.data,nodeKey,lora,params]);
+  const selectedNodeKey=lora&&purpose==="measurement"&&!nodeKey ? visibleNodes[0]?.key??"" : nodeKey;
+  const node=nodes.data?.items.find(item=>item.key===selectedNodeKey);
+  const selectionTarget=`${id}:${selectedNodeKey}:${purpose}`;
   const targetId=node?.target.kind==="device"?node.target.device_id:id;
   const streams=useQuery({queryKey:["admin","device",targetId,"data-streams"],queryFn:()=>api.admin.deviceDataStreams(targetId)});
-  const active=useMemo(()=>operationsStreams(streams.data?.items??[],nodes.data?.items??[],node),[streams.data,nodes.data,node]);
-  const ids=(selection?.target===`${id}:${nodeKey}`?selection.ids:active.map(stream=>stream.id)).filter(id=>active.some(stream=>stream.id===id));
-  const telemetry=useQuery({queryKey:["admin","device",targetId,"operations-telemetry",ids.join(","),applied,phase],queryFn:()=>api.admin.queryDeviceTelemetry(targetId,{...applied,dataStreamIds:ids,dataPhase:phase}),enabled:tab==="telemetry"&&ids.length>0&&(!gateway||!nodes.isLoading)});
+  const active=useMemo(()=>operationsStreams(streams.data?.items??[],nodes.data?.items??[],node).filter(stream=>!lora || (purpose==="measurement" ? isMeasurement(stream) : streamPurpose(stream)==="status")),[streams.data,nodes.data,node,lora,purpose]);
+  const ids=(selection?.target===selectionTarget?selection.ids:active.map(stream=>stream.id)).filter(id=>active.some(stream=>stream.id===id));
+  const telemetry=useQuery({queryKey:["admin","device",targetId,"operations-telemetry",ids.join(","),applied,phase],queryFn:()=>adminFullTelemetry(targetId,{...applied,dataStreamIds:ids,dataPhase:phase}),enabled:tab==="telemetry"&&ids.length>0&&(!gateway||!nodes.isLoading)});
   const chartSeries=useMemo(()=>(telemetry.data?.series??[]).map(series=>({id:series.data_stream_id,name:series.name,code:series.code,unit:series.unit,points:series.points})),[telemetry.data]);
   const rows=useMemo(()=>telemetryRows(telemetry.data?.series??[]),[telemetry.data]);
   const media=useQuery({queryKey:["admin","device",targetId,"operations-media",applied,page,mediaStream,phase],queryFn:()=>api.admin.deviceMedia(targetId,{start_time:applied.startTime,end_time:applied.endTime,page,page_size:20,media_type:"image",data_phase:phase,...(mediaStream?{data_stream_id:mediaStream}:{})}),enabled:tab==="images"&&!lora});
@@ -46,17 +62,21 @@ export function AdminDeviceData({device,nodeKey,onNodeChange,onExport}:{device:J
   const errors=[streams.error,nodes.error,telemetry.error].filter(Boolean);
   const pointWarnings=(telemetry.data?.series??[]).flatMap(series=>series.warnings?.map(warning=>`${series.name}：${warning.message}`)??[]);
   const partial=telemetry.data?.series.some(series=>!series.complete);
-  return <Card title="设备与节点数据" extra={<Button onClick={onExport}>导出与下载任务</Button>}>
+  return <Card title={purpose==="status"?"运行状态":"设备与节点数据"} extra={<Space>{lora&&node?.bound&&<Button onClick={()=>setStatusOpen(true)}>查看运行状态</Button>}<Button onClick={onExport}>导出与下载任务</Button></Space>}>
+    <Modal title={`${node?.name??"节点"} · 运行状态`} open={statusOpen} onCancel={()=>setStatusOpen(false)} footer={null} destroyOnHidden>{statusOpen&&node&&<AdminNodeStatus showTime deviceId={id} node={node}/>}</Modal>
+    <>
     <Space wrap align="end" style={{marginBottom:16,width:"100%"}}>
-      {gateway&&<Space orientation="vertical"><Typography.Text>查询节点</Typography.Text><Select value={nodeKey} style={{width:260}} showSearch optionFilterProp="label" loading={nodes.isFetching} onChange={key=>{onNodeChange(key);setPage(1);setMediaStream(undefined);}} options={[{value:"",label:"网关自身"},...(nodes.data?.items??[]).map(item=>({value:item.key,label:item.name}))]}/></Space>}
+      {lora&&<Select aria-label="节点范围" value={nodeScope} onChange={scope=>{setNodeScope(scope);setParams(previous=>{const next=new URLSearchParams(previous);next.set("node_scope",scope);next.set("node",(nodes.data?.items??[]).find(node=>scope==="bound"?node.bound:!node.bound)?.key??"");return next;},{replace:true});}} style={{width:150}} options={[{value:"bound",label:"当前节点"},{value:"history",label:"历史数据"}]}/>}
+      {gateway&&<Space orientation="vertical"><Typography.Text>查询节点</Typography.Text><Select value={selectedNodeKey} style={{width:260}} showSearch optionFilterProp="label" loading={nodes.isFetching} onChange={key=>{onNodeChange(key);setPage(1);setMediaStream(undefined);}} options={[...(!lora||purpose==="status"?[{value:"",label:"网关自身"}]:[]),...visibleNodes.map(item=>({value:item.key,label:nodeOptionLabel(item)}))]}/></Space>}
       <Space orientation="vertical"><Typography.Text>时间范围（北京时间）</Typography.Text><DatePicker.RangePicker showTime value={range} style={{width:420}} onChange={value=>setRange(value&&value[0]&&value[1]?[value[0],value[1]]:null)} presets={[6,24,72,168].map(hours=>({label:hours<24?`${hours} 小时`:`${hours/24} 天`,value:[dayjs().subtract(hours,"hour"),dayjs()] as [Dayjs,Dayjs]}))}/></Space>
       <Select aria-label="数据阶段" value={phase} style={{width:160}} onChange={value=>{setPhase(value);setPage(1);}} options={[{value:"all",label:"全部数据"},{value:"formal",label:"正式观测数据"},{value:"testing",label:"调试数据"}]}/>
       <Button type="primary" onClick={apply} loading={telemetry.isFetching||media.isFetching}>查询 / 刷新</Button>
     </Space>
+    {lora&&<Tooltip title={nodeHistoryNotice}><Button type="text">历史归属</Button></Tooltip>}
     <Tabs activeKey={tab} onChange={setTab} items={[
-      {key:"telemetry",label:"指标数据",children:<Space orientation="vertical" style={{width:"100%"}} size="middle">
-        <Select mode="multiple" showSearch optionFilterProp="label" placeholder="选择数据指标" style={{width:"100%"}} maxTagCount="responsive" value={ids} onChange={values=>setSelection({target:`${id}:${nodeKey}`,ids:values})} loading={loading} options={active.map(stream=>({value:stream.id,label:`${stream.name} · ${stream.code}${stream.unit?` (${stream.unit})`:""}`}))}/>
-        <Space><Button size="small" onClick={()=>setSelection(null)}>全选指标</Button><Button size="small" onClick={()=>setSelection({target:`${id}:${nodeKey}`,ids:[]})}>清空</Button><Typography.Text type="secondary">按原始记录查询，每个指标最多 5,000 条；更大范围使用后台导出。</Typography.Text></Space>
+      {key:"telemetry",label:purpose==="status"?"状态数据":"指标数据",children:<Space orientation="vertical" style={{width:"100%"}} size="middle">
+        <Select mode="multiple" showSearch optionFilterProp="label" placeholder="选择数据指标" style={{width:"100%"}} maxTagCount="responsive" value={ids} onChange={values=>setSelection({target:selectionTarget,ids:values})} loading={loading} options={active.map(stream=>({value:stream.id,label:`${stream.name} · ${stream.code}${stream.unit?` (${stream.unit})`:""}`}))}/>
+        <Space><Button size="small" onClick={()=>setSelection(null)}>全选指标</Button><Button size="small" onClick={()=>setSelection({target:selectionTarget,ids:[]})}>清空</Button></Space>
         {errors.map((error,index)=><Alert key={index} type="error" title="数据查询失败" description={formatApiError(error).message}/>)}
         {(telemetry.data?.series??[]).filter(series=>series.error).map(series=><Alert key={series.data_stream_id} type="error" title={series.name} description={series.error}/>)}
         {partial&&<Alert type="warning" title="当前结果未完整覆盖全部记录，请创建后台导出获取完整数据。"/>}
@@ -76,7 +96,7 @@ export function AdminDeviceData({device,nodeKey,onNodeChange,onExport}:{device:J
         ]}/>}
         </>}
       </Space>},
-      {key:"images",label:"采集图片",children:lora?<Empty description="LoRa V2 索引节点没有采集图片"/>:<Space orientation="vertical" style={{width:"100%"}} size="middle">
+      {key:"images",label:"采集图片",children:lora?<Empty description="LoRa V2 节点不支持采集图片"/>:<Space orientation="vertical" style={{width:"100%"}} size="middle">
         <Select allowClear placeholder="全部图片通道" style={{width:300}} value={mediaStream} onChange={value=>{setMediaStream(value);setPage(1);}} options={(streams.data?.items??[]).filter(stream=>stream.type==="image").map(stream=>({value:stream.id,label:stream.name}))}/>
         {media.error&&<Alert type="error" title="图片查询失败" description={formatApiError(media.error).message}/>}
         <Image.PreviewGroup><Table size="small" rowKey={item=>`${item.data_stream_id}:${item.id}`} dataSource={media.data?.items??[]} loading={media.isFetching} pagination={{current:page,pageSize:20,total:media.data?.total??0,showSizeChanger:false,onChange:setPage,showTotal:total=>`${total} 张`}} columns={[
@@ -86,6 +106,7 @@ export function AdminDeviceData({device,nodeKey,onNodeChange,onExport}:{device:J
           {title:"操作",width:210,render:(_,item)=><Space><Button size="small" disabled={!item.download_url} onClick={()=>void mediaDownload(item)}>下载原图</Button><Button size="small" danger disabled={!item.delete_url} onClick={()=>removeImage(item)}>删除</Button></Space>},
         ]}/></Image.PreviewGroup>
       </Space>},
-    ]}/>
+    ].filter(item=>!lora||item.key!=="images")}/>
+    </>
   </Card>;
 }

@@ -1,3 +1,6 @@
+import { RuntimeStatusCards } from "./runtime-status";
+import { nodeSnapshot, nodeStatusKeys, isMeasurement } from "@thcpn/api";
+import { LoRaWANDataView, GatewayReportedDetails } from "./lorawan-data-view";
 import { LoRaGatewayStatus, LoRaConnectionBadge, useLoRaGatewayStatus, gatewayStatusTime } from "./lorawan-gateway-status";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -93,7 +96,6 @@ import { CarbonDeviceOverview } from "./carbon-device-page";
 import { CarbonDevicePage } from "./carbon-device-page";
 import { SamplingProfilePanel } from "./sampling-profile";
 import { DeviceCombobox } from "./device-combobox";
-import { simplifiedEnabled } from "./features";
 import { ComputedStreamsPanel, DeviceMetadataPanel } from "./device-computed-data";
 import { GatewayNodeData } from "./gateway-node-data";
 import { NodeVitals, useNodeRuntime } from "./node-vitals";
@@ -458,7 +460,7 @@ export function DevicesPage() {
                 <RefreshCw size={14} />
                 刷新
               </Button>
-              {!simplifiedEnabled && !user?.is_demo && <Button data-onboarding="claim-entry" onClick={() => navigate("/claim")}>
+              {!user?.is_demo && <Button data-onboarding="claim-entry" onClick={() => navigate("/claim")}>
                 <ScanLine size={14} />
                 添加设备
               </Button>}
@@ -647,8 +649,8 @@ function DeviceRows({
     queryKey: workspaceQueryKey(workspaceId, "device", device.id, "lorawan-info"),
     queryFn: () => api.devices.lorawanInfo(device.id),
     enabled: lora && gateway,
-    staleTime: DEVICE_RUNTIME_STALE_TIME,
-    retry: false,
+    staleTime:Infinity,refetchOnWindowFocus:false,
+    retry:false,
   });
   return (
     <>
@@ -720,6 +722,7 @@ function DeviceRows({
             <DeviceChildren
               workspaceId={workspaceId}
               deviceId={device.id}
+              lora={lora}
               onData={onOpen}
             />
           </td>
@@ -831,7 +834,7 @@ export const deviceDetailTab = (
     : carbon
       ? ["overview", "data", "profile", "config", "sharing", "activity"]
       : ["overview", "data", "profile", "config", "sharing", "activity"];
-  return requested && allowed.includes(requested as DeviceTab) && (!simplifiedEnabled || requested !== "sharing")
+  return requested && allowed.includes(requested as DeviceTab)
     ? (requested as DeviceTab)
     : camera
       ? "video"
@@ -1032,9 +1035,9 @@ export function DeviceCenterDetailPage() {
               onSwitch={switchDevice}
             />
           )}
-          {!simplifiedEnabled && <Link to={`/alerts?new=1&device=${device.id}`}>
+          <Link to={`/alerts?new=1&device=${device.id}`}>
             <Button variant="secondary"><BellRing size={14}/>创建预警</Button>
-          </Link>}
+          </Link>
           <Link to="/devices">
             <Button variant="secondary">
               <ArrowLeft size={14} />
@@ -1043,8 +1046,8 @@ export function DeviceCenterDetailPage() {
           </Link>
         </div>
       </div>
-      {device.source_family==="lorawan_v2"&&device.device_type==="gateway"&&<LoRaGatewayStatus deviceId={device.id} workspaceId={detailWorkspaceId!}/>}
-      <DeviceDetailTabs tabs={simplifiedEnabled ? tabs.filter((item) => item.id !== "sharing") : tabs} activeTab={tab} onChange={(nextTab) => setParams((current) => { const next = new URLSearchParams(current); next.set("tab", nextTab); return next; })} />
+
+      <DeviceDetailTabs tabs={tabs} activeTab={tab} onChange={(nextTab) => setParams((current) => { const next = new URLSearchParams(current); next.set("tab", nextTab); return next; })} />
       {feedback && (
         <div className="command-note device-feedback">{feedback}</div>
       )}
@@ -1058,7 +1061,7 @@ export function DeviceCenterDetailPage() {
           onOpenData={() => setParams((current) => { const next = new URLSearchParams(current); next.set("tab", "data"); return next; })}
         />
       ) : tab === "data" && deviceCategory(device) === "gateway" ? (
-        <GatewayNodeData gateway={device} workspaceId={detailWorkspaceId} />
+        device.source_family === "lorawan_v2" ? <LoRaWANDataView gateway={device} workspaceId={detailWorkspaceId}/> : <GatewayNodeData gateway={device} workspaceId={detailWorkspaceId} />
       ) : tab === "data" ? (
         <DeviceDataPage deviceId={device.id} embedded />
       ) : tab === "video" ? (
@@ -1132,7 +1135,7 @@ function DeviceProfileOperational({ device, workspaceId }: { device: Device; wor
     queryFn: () => api.carbon.overview(device.id),
     enabled: carbonDevice,
   });
-  if (device.source_family === "lorawan_v2") return <Panel><div className="panel-header"><h3>设备接入</h3><Badge tone={device.source_status === "active" ? "success" : "warning"}>{device.source_status === "active" ? "已启用" : "已停用"}</Badge></div><p>LoRaWAN V2 组网站 · {device.child_count} 个节点</p></Panel>;
+  if (device.source_family === "lorawan_v2") return <><GatewayReportedDetails deviceId={device.id} workspaceId={workspaceId} location/><Panel><div className="panel-header"><h3>设备接入</h3><Badge tone={device.source_status === "active" ? "success" : "warning"}>{device.source_status === "active" ? "已启用" : "已停用"}</Badge></div><p>LoRaWAN V2 组网站 · {device.child_count} 个节点</p></Panel></>;
   return <div className="device-profile-operational">
     <section className="device-profile-runtime-summary">
       <div className="device-profile-section-heading"><div><h3><Gauge size={16} />运行概况</h3><span>能力与设备最新状态</span></div><span title={`最近更新 ${overviewTime(device.updated_at)}`}><Clock3 size={14} aria-hidden="true" />{overviewTime(device.updated_at)}</span></div>
@@ -2021,16 +2024,22 @@ export function DeviceChildren({
   workspaceId,
   deviceId,
   onData,
+  lora=false,
 }: {
   workspaceId: string;
   deviceId: string;
   onData: (id?: string) => void;
+  lora?:boolean;
 }) {
-  const runtime = useNodeRuntime(workspaceId, deviceId);
+  const [page,setPage]=useState(1);
   const query = useQuery({
     queryKey: workspaceQueryKey(workspaceId, "device", deviceId, "nodes"),
     queryFn: () => api.devices.nodes(deviceId),
   });
+  const pageCount=Math.max(1,Math.ceil((query.data?.items.length??0)/20));
+  const currentPage=Math.min(page,pageCount);
+  const nodes=lora?(query.data?.items??[]).slice((currentPage-1)*20,currentPage*20):(query.data?.items??[]);
+  const runtime=useNodeRuntime(workspaceId,deviceId,lora?nodes.flatMap(node=>node.target.kind==="gateway_node"?[node.target.node_index]:[]):undefined);
   if (query.isLoading)
     return (
       <StateView
@@ -2057,15 +2066,19 @@ export function DeviceChildren({
       />
     );
   return (
-    <div className="child-device-list">
-      {query.data.items.map((node) => (
-        <div key={node.key}>
+    <div className="child-device-list child-device-list-expanded">
+      {lora&&<div className="header-actions"><Button variant="secondary" onClick={()=>void runtime.refetch()}>刷新状态</Button>{pageCount>1&&<><Button disabled={currentPage===1} onClick={()=>setPage(currentPage-1)}>上一页</Button><span>{currentPage} / {pageCount}</span><Button disabled={currentPage===pageCount} onClick={()=>setPage(currentPage+1)}>下一页</Button></>}</div>}
+      {nodes.map((node) => (
+        <div key={node.key} className="child-device-row">
           <div>
             <div className="cell-title">{node.name}</div>
             <div className="cell-sub">
-              {node.streams.length ? `${node.streams.length} 个指标` : "暂无指标"}
+              {node.streams.filter(isMeasurement).length ? `${node.streams.filter(isMeasurement).length} 个指标` : "暂无指标"}
             </div>
-            <NodeVitals item={runtime.data?.items.find(item => item.key === node.key)} loading={runtime.isLoading} error={runtime.isError}/>
+            {lora&&<div className="cell-sub">SN {node.node_sn} · 序号 {node.target.kind==="gateway_node"?node.target.node_index:"—"}</div>}
+          </div>
+          <div className="child-device-runtime">
+            {lora?<RuntimeStatusCards deviceId={deviceId} workspaceId={workspaceId} name={node.name} sn={node.node_sn} keys={nodeStatusKeys} snapshot={nodeSnapshot(runtime.data?.items.find(item=>item.key===node.key))} loading={runtime.isFetching} error={runtime.error?formatApiError(runtime.error).message:undefined}/>:<NodeVitals item={runtime.data?.items.find(item => item.key === node.key)} loading={runtime.isLoading} error={runtime.isError}/>}
           </div>
           <div>
             {node.target.kind === "device" ? (

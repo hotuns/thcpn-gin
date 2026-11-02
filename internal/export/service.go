@@ -474,6 +474,9 @@ func (s *Service) validateDeviceBatch(ctx context.Context, requestedBy, workspac
 	if err != nil {
 		return err
 	}
+	if exportType != "group_site_zip" && config.IncludeStatus {
+		return apperr.New(apperr.KindInvalidArgument, "运行状态导出仅适用于 LoRaWAN V2 组网站")
+	}
 	wantType := "standalone"
 	if exportType == "group_site_zip" {
 		wantType = "gateway_node"
@@ -489,11 +492,22 @@ func (s *Service) validateDeviceBatch(ctx context.Context, requestedBy, workspac
 		for _, node := range nodes {
 			allowed[node.Key] = true
 		}
-		if len(config.NodeTargets) == 0 {
+		if len(config.NodeTargets) == 0 && (config.IncludeData || !config.IncludeStatus) {
 			return apperr.New(apperr.KindInvalidArgument, "node_targets are required")
 		}
 		selected := map[string]bool{}
 		deviceIDs := map[string]bool{}
+		if len(config.NodeTargets) == 0 && config.IncludeStatus {
+			gateway, err := s.devices.GetAsset(ctx, gatewayID)
+			if err != nil {
+				return err
+			}
+			if gateway.SourceFamily != "lorawan_v2" {
+				return apperr.New(apperr.KindInvalidArgument, "运行状态导出仅适用于 LoRaWAN V2")
+			}
+			wantType = "gateway"
+			deviceIDs[gatewayID.String()] = true
+		}
 		for _, target := range config.NodeTargets {
 			key := target.Key()
 			if !allowed[key] || selected[key] {
@@ -514,6 +528,9 @@ func (s *Service) validateDeviceBatch(ctx context.Context, requestedBy, workspac
 			if !deviceIDs[id] {
 				return apperr.New(apperr.KindInvalidArgument, "device_ids must match node targets")
 			}
+		}
+		if config.IncludeStatus && wantType != "gateway" {
+			return apperr.New(apperr.KindInvalidArgument, "运行状态导出仅适用于 LoRaWAN V2 网关与节点")
 		}
 		if wantType == "gateway" && config.IncludeImages {
 			return apperr.New(apperr.KindInvalidArgument, "indexed nodes do not support image export")

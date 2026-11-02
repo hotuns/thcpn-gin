@@ -1,5 +1,4 @@
 import { usePolicyLimit } from "./system-policy";
-import { simplifiedEnabled } from "./features";
 import {
   Component,
   lazy,
@@ -161,11 +160,11 @@ function AtlasHome({ workspaceId }: { workspaceId: string }) {
           {a("refresh")}
         </Button>
       </header>
-      {!simplifiedEnabled && <section className="atlas-custom-showcase" aria-labelledby="atlas-custom-title">
+      <section className="atlas-custom-showcase" aria-labelledby="atlas-custom-title">
         <div><span id="atlas-custom-title">{t("digitalPlot.category")}</span><h2>{t("digitalPlot.title")}</h2><p>{t("digitalPlot.description")}</p><Button onClick={() => navigate("/atlas/topics/digital-plot")}>{t("digitalPlot.enter")} ↗</Button></div>
         <img src={hongliulin.preview} alt="" />
         <span className="atlas-custom-badge">{t("digitalPlot.demo")}</span>
-      </section>}
+      </section>
       <ol className="atlas-creation-steps" aria-label={a("creationSteps")}>
         {["chooseTemplate", "configure", "save"].map((step, index) => (
           <li key={step}>
