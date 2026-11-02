@@ -854,6 +854,11 @@ export interface paths {
                 content: {
                     "application/json": {
                         csv: string;
+                        /**
+                         * @description 跳过第一条 CSV 记录，适用于任意表头；预览保留原始行号。
+                         * @default false
+                         */
+                        skip_first_row?: boolean;
                     };
                 };
             };

@@ -79,13 +79,14 @@ func (h *Handler) AdminPreviewLoRaWANNodeCSV(c *gin.Context) {
 		return
 	}
 	var input struct {
-		CSV string `json:"csv"`
+		CSV          string `json:"csv"`
+		SkipFirstRow bool   `json:"skip_first_row"`
 	}
 	if c.ShouldBindJSON(&input) != nil {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "CSV 内容无效"))
 		return
 	}
-	rows, err := lorawanv2.ParseNodeCSV(input.CSV)
+	rows, err := lorawanv2.ParseNodeCSV(input.CSV, input.SkipFirstRow)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return

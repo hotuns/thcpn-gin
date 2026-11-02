@@ -1370,7 +1370,7 @@ export const api = {
     sourcePhysicalNodes: (sourceId:string,input:JsonRecord={}) => request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(sourceId)}/lorawan-v2/nodes${queryString(input as Record<string,string|number|boolean>)}`),
     registerPhysicalNode: (sourceId:string,input:JsonRecord) => jsonRequest<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(sourceId)}/lorawan-v2/nodes`,"POST",input),
     physicalNodeGateways: (sourceId:string) => request<{items:Array<{id:string;name:string;sn:string}>}>(`/api/v1/admin/data-sources/${encodeURIComponent(sourceId)}/lorawan-v2/node-gateways`),
-    previewPhysicalNodeCSV: (csv:string) => jsonRequest<{items:Array<{line:number;sn:string;node_index:number;error?:string}>}>("/api/v1/admin/lorawan-v2/nodes/csv-preview","POST",{csv}),
+    previewPhysicalNodeCSV: (csv:string, skipFirstRow=false) => jsonRequest<{items:Array<{line:number;sn:string;node_index:number;error?:string}>}>("/api/v1/admin/lorawan-v2/nodes/csv-preview","POST",{csv,skip_first_row:skipFirstRow}),
     physicalNodes: (id:string, input:JsonRecord={}) => request<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/physical-nodes${queryString(input as Record<string,string|number|boolean>)}`),
     changePhysicalNode: (id:string, input:JsonRecord) => jsonRequest<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/physical-nodes`,"POST",input),
     deviceLoRaWANV2Context: (id: string) =>

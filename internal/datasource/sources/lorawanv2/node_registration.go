@@ -55,7 +55,7 @@ func (s *Service) NodeGateways(ctx context.Context, source uuid.UUID) ([]NodeGat
 	}
 	return result, rows.Err()
 }
-func ParseNodeCSV(input string) ([]NodeImportRow, error) {
+func ParseNodeCSV(input string, skipFirstRows ...bool) ([]NodeImportRow, error) {
 	if len(input) > 256*1024 {
 		return nil, apperr.New(apperr.KindInvalidArgument, "CSV 文件过大，请限制在 256 KB 内")
 	}
@@ -64,6 +64,7 @@ func ParseNodeCSV(input string) ([]NodeImportRow, error) {
 	result := []NodeImportRow{}
 	seenSN := map[string]int{}
 	seenIndex := map[int]int{}
+	first := true
 	for {
 		record, err := reader.Read()
 		if err == io.EOF {
@@ -73,6 +74,12 @@ func ParseNodeCSV(input string) ([]NodeImportRow, error) {
 			return nil, apperr.New(apperr.KindInvalidArgument, "CSV 格式无效，请使用两列：sn,node_index")
 		}
 		line, _ := reader.FieldPos(0)
+		if first {
+			first = false
+			if len(skipFirstRows) > 0 && skipFirstRows[0] {
+				continue
+			}
+		}
 		if len(record) == 2 && strings.EqualFold(strings.TrimSpace(record[0]), "sn") && (strings.EqualFold(strings.TrimSpace(record[1]), "node_index") || strings.TrimSpace(record[1]) == "序号") && len(result) == 0 {
 			continue
 		}

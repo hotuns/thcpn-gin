@@ -383,6 +383,7 @@ paths:
               required: [csv]
               properties:
                 csv: {type: string, maxLength: 262144}
+                skip_first_row: {type: boolean, default: false, description: 跳过第一条 CSV 记录，适用于任意表头；预览保留原始行号。}
       responses:
         "200": {description: Parsed rows with line, sn, node_index and optional error; duplicate SN and indexes are marked on all affected rows, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}
         "400": {$ref: "#/components/responses/InvalidArgument"}

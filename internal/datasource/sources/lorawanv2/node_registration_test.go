@@ -149,3 +149,18 @@ func TestNewNodeRegistrationAndInstallationAreSeparateAndDoNotRescanMetrics(t *t
 		t.Fatal("per-row registration rescanned metric catalog")
 	}
 }
+
+func TestParseNodeCSVSkipArbitraryHeader(t *testing.T) {
+	rows, err := ParseNodeCSV("设备序列号,设备地址\nA,1\nB,2", true)
+	if err != nil || len(rows) != 2 || rows[0].SN != "A" || rows[0].Line != 2 || rows[0].Error != "" {
+		t.Fatalf("skip arbitrary header: %+v %v", rows, err)
+	}
+	rows, err = ParseNodeCSV("设备序列号,设备地址\nA,1", false)
+	if err != nil || len(rows) != 2 || rows[0].Error == "" {
+		t.Fatalf("must not silently skip unchecked header: %+v %v", rows, err)
+	}
+	rows, err = ParseNodeCSV("A,1\nB,2", true)
+	if err != nil || len(rows) != 1 || rows[0].SN != "B" || rows[0].Line != 2 {
+		t.Fatalf("skip applies exactly once: %+v %v", rows, err)
+	}
+}
