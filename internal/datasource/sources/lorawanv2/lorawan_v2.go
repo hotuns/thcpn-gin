@@ -529,7 +529,7 @@ func (s *Service) syncLoRaWANV2Node(ctx context.Context, input SyncLoRaWANV2Gate
 	if err != nil {
 		return err
 	}
-	unlock, err := s.LockSourceSync(ctx, source.ID.String()+"/lorawan_v2/"+input.GatewaySN)
+	unlock, err := s.waitForNodeSyncLock(ctx, source.ID.String()+"/lorawan_v2/"+input.GatewaySN)
 	if err != nil {
 		return err
 	}
@@ -1095,4 +1095,29 @@ func loRaWANV2StreamPurpose(node *int, metric string) string {
 		return "status"
 	}
 	return "measurement"
+}
+
+// Configuration writes have already reached the source. A busy gateway must not
+// discard their platform projection. Retry only lock acquisition, never the write.
+func (s *Service) waitForNodeSyncLock(ctx context.Context, key string) (func(), error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		unlock, err := s.LockSourceSync(ctx, key)
+		if err == nil || apperr.KindOf(err) != apperr.KindConflict {
+			return unlock, err
+		}
+		// LockSourceSync releases its pooled connection on conflict, leaving database
+		// connections available to the sync that currently owns the gateway lock.
+		timer := time.NewTimer(100 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
 }

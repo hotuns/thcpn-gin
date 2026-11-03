@@ -3,6 +3,7 @@ package lorawanv2
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -177,6 +178,64 @@ func TestLoRaWANV2NodeSyncServiceReadsOnlyEditedNode(t *testing.T) {
 		t.Fatalf("failed sync changed platform catalog: %d %v", after, err)
 	}
 }
+
+func TestNodeSyncWaitsForGatewaySync(t *testing.T) {
+	db := testdb.Open(t, 0)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	admin := testdb.Admin(t, db)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/device/GW" {
+			fmt.Fprint(w, `{"success":true,"payload":{"sn":"GW","node_count":100}}`)
+		} else {
+			fmt.Fprint(w, `{"success":true,"payload":{"id":1,"content":[["ad",[["temp","1,0","C"]],1]]}}`)
+		}
+	}))
+	defer server.Close()
+	secret, _ := json.Marshal(map[string]string{"base_url": server.URL, "username": "test", "password": "test"})
+	t.Setenv("TEST_WAIT_SYNC_SOURCE", string(secret))
+	var sourceID uuid.UUID
+	if err := db.QueryRow(ctx, `INSERT INTO data_sources(name,type,source_family,dsn_secret_ref,created_by) VALUES('wait sync','http_api','lorawan_v2','env:TEST_WAIT_SYNC_SOURCE',$1) RETURNING id`, admin).Scan(&sourceID); err != nil {
+		t.Fatal(err)
+	}
+	service := newTestService(db)
+	unlock, err := service.LockSourceSync(ctx, sourceID.String()+"/lorawan_v2/GW")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var once sync.Once
+	release := func() { once.Do(unlock) }
+	defer release()
+	waitCtx, stop := context.WithTimeout(ctx, 50*time.Millisecond)
+	defer stop()
+	if _, err := service.waitForNodeSyncLock(waitCtx, sourceID.String()+"/lorawan_v2/GW"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("lock wait must respect cancellation: %v", err)
+	}
+	results := make(chan error, 2)
+	for _, node := range []int{31, 32} {
+		go func() {
+			results <- service.syncLoRaWANV2Node(ctx, SyncLoRaWANV2GatewayInput{DataSourceID: sourceID, GatewaySN: "GW", ActorUserID: admin}, node)
+		}()
+	}
+	select {
+	case err := <-results:
+		t.Fatalf("node sync returned while gateway locked: %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	release()
+	for range 2 {
+		if err := <-results; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, node := range []int{31, 32} {
+		var count int
+		if err := db.QueryRow(ctx, `SELECT count(*) FROM data_streams WHERE code=$1 AND status='active'`, fmt.Sprintf("lora_node_%d_temp", node)).Scan(&count); err != nil || count != 1 {
+			t.Fatalf("node %d missing measurement: %d %v", node, count, err)
+		}
+	}
+}
+
 func TestCompileLoRaWANV2TemplatesSupportsAllSensorKinds(t *testing.T) {
 	db := testdb.Open(t, 0)
 	ctx := t.Context()
