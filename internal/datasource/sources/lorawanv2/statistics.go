@@ -2,6 +2,7 @@ package lorawanv2
 
 import (
 	"context"
+	"errors"
 	"math"
 	"sort"
 	"time"
@@ -32,8 +33,10 @@ func (s *Service) ObservationStatistics(ctx context.Context, id uuid.UUID, start
 	if err != nil {
 		return platform.ObservationStatistics{}, platform.StatisticsSourceError()
 	}
+	bound := make(map[int]bool, len(current.Data))
 	for _, node := range current.Data {
 		positions[*node.NodeIndex] = true
+		bound[*node.NodeIndex] = true
 	}
 	nodes := make([]int, 0, len(positions))
 	for node := range positions {
@@ -50,6 +53,7 @@ func (s *Service) ObservationStatistics(ctx context.Context, id uuid.UUID, start
 	// Bound nodes plus retained platform mappings are a known subset. The source
 	// has no historical-position manifest, so never claim full gateway coverage.
 	result.RecordsPartial = true
+	confirmed := 0
 	for _, node := range nodes {
 		cutoff, err := (observation.Service{DB: s.DB}).DeviceStart(ctx, id, node)
 		if err != nil {
@@ -58,9 +62,15 @@ func (s *Service) ObservationStatistics(ctx context.Context, id uuid.UUID, start
 		// Sequential requests stay within the upstream's four-request capacity;
 		// the caller's refresh deadline covers the entire gateway, not each node.
 		item, err := client.observationStatistics(ctx, ref.GatewaySN, node, cutoff, start, end)
+		// Retained projections can name positions that never existed upstream.
+		// Only the explicit absence code for an unbound candidate is skippable.
+		if errors.Is(err, errStatisticsPositionNotFound) && !bound[node] {
+			continue
+		}
 		if err != nil || *item.TotalRecords > math.MaxInt64-*result.TotalRecords {
 			return platform.ObservationStatistics{}, platform.StatisticsSourceError()
 		}
+		confirmed++
 		*result.TotalRecords += *item.TotalRecords
 		for i, day := range item.Days {
 			if *day.Records > math.MaxInt64-*result.Days[i].Records {
@@ -74,6 +84,9 @@ func (s *Service) ObservationStatistics(ctx context.Context, id uuid.UUID, start
 		if item.LastObservedAt != nil && (result.LastObservedAt == nil || item.LastObservedAt.After(*result.LastObservedAt)) {
 			result.LastObservedAt = item.LastObservedAt
 		}
+	}
+	if confirmed == 0 {
+		return platform.ObservationStatistics{Identity: identity}, nil
 	}
 	return result, nil
 }

@@ -3,6 +3,7 @@ package lorawanv2
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"net/http"
 	"net/url"
@@ -11,6 +12,8 @@ import (
 
 	"thcpn-gin/internal/datasource/platform"
 )
+
+var errStatisticsPositionNotFound = errors.New("statistics position not found")
 
 type nodeObservationStatistics struct {
 	GatewaySN   string     `json:"gateway_sn"`
@@ -58,6 +61,9 @@ func (c *LoraWANV2Client) observationStatistics(ctx context.Context, sn string, 
 	}
 	path := "/device/" + url.PathEscape(sn) + "/node/" + strconv.Itoa(node) + "/statistics"
 	payload, err := c.Request(ctx, http.MethodGet, path, query, nil)
+	if errors.Is(err, errStatisticsPositionNotFound) {
+		return platform.ObservationStatistics{}, errStatisticsPositionNotFound
+	}
 	if err != nil {
 		return fail()
 	}

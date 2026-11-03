@@ -207,6 +207,10 @@ func (c *LoraWANV2Client) Request(ctx context.Context, method, requestPath strin
 		}
 		if response.StatusCode == http.StatusNotFound && json.Unmarshal(raw, &envelope) == nil && !envelope.Success {
 			switch envelope.ErrorCode {
+			case "0x10012302":
+				if strings.HasSuffix(requestPath, "/statistics") {
+					return nil, apperr.Wrap(apperr.KindDataSource, "lorawan_v2 statistics position not found", errStatisticsPositionNotFound)
+				}
 			case "0x10011307":
 				return nil, apperr.Wrap(apperr.KindDataSource, "lorawan_v2 returned non-success status", ErrLoRaWANV2SensorConfigNotFound)
 			case "0x10010201":

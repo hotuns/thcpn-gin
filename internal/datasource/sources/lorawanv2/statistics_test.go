@@ -40,6 +40,7 @@ func TestObservationStatisticsAggregatesPositionsAndFormalCutoffs(t *testing.T) 
 	binding("1", source, "GW", "active")
 	binding("1", source, "GW", "active")
 	binding("3", source, "GW", "disabled")
+	binding("98", source, "GW", "disabled")
 	binding("8", foreign, "GW", "active")
 	binding("9", source, "OTHER", "active")
 	binding("1000000000000000", source, "GW", "disabled")
@@ -60,6 +61,10 @@ func TestObservationStatisticsAggregatesPositionsAndFormalCutoffs(t *testing.T) 
 				w.WriteHeader(503)
 				return
 			}
+			if mode == "all missing" {
+				fmt.Fprint(w, `{"success":true,"payload":{"gateway_sn":"GW","bound_node_count":0,"data":[]}}`)
+				return
+			}
 			fmt.Fprint(w, `{"success":true,"payload":{"gateway_sn":"GW","bound_node_count":2,"data":[{"id":10,"sn":"REPLACEMENT","gateway_sn":"GW","node_index":1},{"id":11,"sn":"NEW","gateway_sn":"GW","node_index":7}]}}`)
 			return
 		}
@@ -71,6 +76,16 @@ func TestObservationStatisticsAggregatesPositionsAndFormalCutoffs(t *testing.T) 
 		}
 		node, _ := strconv.Atoi(parts[4])
 		calls[node]++
+		if node == 98 || mode == "all missing" || (mode == "current missing" && node == 1) {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"success":false,"error_code":"0x10012302"}`)
+			return
+		}
+		if mode == "generic missing" && node == 3 {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"success":false,"error_code":"0xOTHER"}`)
+			return
+		}
 		if node != 1 && node != 3 && node != 7 && node != 254 {
 			t.Errorf("foreign source, profile-only or capacity-derived slot queried: %d", node)
 		}
@@ -108,13 +123,18 @@ func TestObservationStatisticsAggregatesPositionsAndFormalCutoffs(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.TotalRecords == nil || *out.TotalRecords != 10 || len(calls) != 4 || calls[1] != 1 || calls[3] != 1 || calls[254] != 1 || *out.Days[0].Records != 4 || *out.Days[1].Records != 2 || !out.FirstObservedAt.Equal(override) || out.LastObservedAt.Format(time.RFC3339) != "2026-11-03T12:00:00Z" {
+	if out.TotalRecords == nil || *out.TotalRecords != 10 || len(calls) != 5 || calls[98] != 1 || calls[1] != 1 || calls[3] != 1 || calls[254] != 1 || *out.Days[0].Records != 4 || *out.Days[1].Records != 2 || !out.FirstObservedAt.Equal(override) || out.LastObservedAt.Format(time.RFC3339) != "2026-11-03T12:00:00Z" {
 		t.Fatalf("wrong gateway position aggregation: %+v calls=%v", out, calls)
 	}
 	if !out.RecordsPartial || out.Excluded || out.TotalImages != nil || out.ExpectedIntervalSeconds != nil || out.Identity != platform.ObservationIdentity(source, platform.SourceFamilyLoRaWANV2, "GW") {
 		t.Fatal("position coverage, identity, images or health falsely confirmed")
 	}
-	for _, failure := range []string{"node failure", "inventory failure"} {
+	mode = "all missing"
+	missing, err := service.ObservationStatistics(ctx, gateway, start, end)
+	if err != nil || missing.TotalRecords != nil || missing.Excluded {
+		t.Fatalf("missing candidates became a confirmed zero: %+v %v", missing, err)
+	}
+	for _, failure := range []string{"node failure", "inventory failure", "current missing", "generic missing"} {
 		mode = failure
 		out, err = service.ObservationStatistics(ctx, gateway, start, end)
 		if err == nil || out.TotalRecords != nil || out.Excluded {
