@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { useMemo, useState } from "react";
+import { useAdminMobile } from "./admin-mobile";
 import { validateUserContact } from "./user-contact";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -32,6 +33,7 @@ function ReasonFields({ form, confirm, highRisk = false }) {
 }
 
 export function AdminUsersPage() {
+  const mobile = useAdminMobile();
   const [params, setParams] = useSearchParams();
   const [keyword, setKeyword] = useState(params.get("q") ?? "");
   const [createOpen, setCreateOpen] = useState(false);
@@ -45,7 +47,7 @@ export function AdminUsersPage() {
   const create = async () => { try { const values = await form.validateFields(); const result = await api.admin.users.create(values); setCreateOpen(false); form.resetFields(); setPassword(String(result.temporary_password ?? "")); void message.success("用户已创建"); } catch (error) { if (!error?.errorFields) void message.error(formatApiError(error).message); } };
   const items = query.data?.items ?? [];
   const columns = [
-    { title: "用户", fixed: "left", width: 230, render: (_, item) => <Link className="admin-user-name" to={`/admin/users/${item.id}?tab=overview`}><strong>{text(item.name)}</strong><span>{text(item.email, text(item.phone))}</span></Link> },
+    { title: "用户", fixed: mobile ? undefined : "left", width: 230, render: (_, item) => <Link className="admin-user-name" to={`/admin/users/${item.id}?tab=overview`}><strong>{text(item.name)}</strong><span>{text(item.email, text(item.phone))}</span></Link> },
     { title: "状态", width: 90, render: (_, item) => <Tag color={statusColor(item.status)}>{statusLabel(item.status)}</Tag> },
     { title: "工作区", dataIndex: "workspace_count", width: 110, render: (value) => `${value ?? 0} 个` },
     { title: "MFA", width: 90, render: (_, item) => item.mfa_enabled ? <Tag color="green">已启用</Tag> : <Tag>未启用</Tag> },
@@ -53,7 +55,7 @@ export function AdminUsersPage() {
     { title: "最近登录", dataIndex: "last_login_at", width: 170, render: time },
     { title: "注册时间", dataIndex: "created_at", width: 170, render: time },
     { title: "账号状态", width: 130, render: (_, item) => item.locked ? <Tag color="red">已锁定</Tag> : item.must_change_password ? <Tag color="gold">待改密</Tag> : "正常" },
-    { title: "操作", width: 100, fixed: "right", render: (_, item) => <Link to={`/admin/users/${item.id}?tab=overview`}><Button type="link" icon={<Settings2 size={14} />}>管理</Button></Link> },
+    { title: "操作", width: 100, fixed: mobile ? undefined : "right", render: (_, item) => <Link to={`/admin/users/${item.id}?tab=overview`}><Button type="link" icon={<Settings2 size={14} />}>管理</Button></Link> },
   ];
   return <>
     <PageHeader eyebrow="SYSTEM / USERS" title="用户管理" description="管理普通平台用户账号；系统管理员账号保持独立，不在此列表中。" actions={<Button type="primary" icon={<Plus size={15} />} onClick={() => setCreateOpen(true)}>创建用户</Button>} />

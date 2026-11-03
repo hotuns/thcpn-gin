@@ -1,0 +1,33 @@
+.shadcn-dialog-content.processing-modal { width: calc(100vw - 32px); max-width: none; height: calc(100dvh - 32px); max-height: calc(100dvh - 32px); padding: 0; overflow: hidden; }
+.processing-modal > .shadcn-dialog-close { display: none; }
+.processing-plan-review > summary { display: none; }
+.processing-modal .processing-editor { border: 0; box-shadow: none; }
+.processing-calibration-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-block: 10px; }
+.processing-calibration-actions > span { color: var(--muted); font-size: 13px; }
+.processing-calibration .processing-calibration-stage { touch-action: pan-y; cursor: default; }
+.processing-calibration .processing-calibration-stage.is-drawing { touch-action: none; cursor: crosshair; }
+@media (max-width: 767px) {
+  .shadcn-dialog-content.processing-modal { width: 100%; height: var(--mobile-viewport-height, 100dvh); max-height: var(--mobile-viewport-height, 100dvh); border-radius: 0; }
+  .processing-modal .processing-editor { min-height: 0; height: 100%; border-radius: 0; }
+  .processing-editor > .panel-header { padding: 12px 16px; min-height: 64px; gap: 8px; }
+  .processing-editor .processing-stepper { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0 12px 12px; }
+  .processing-modal .processing-form { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
+  .processing-modal .processing-form-main { flex: 1 0 auto; overflow: visible; padding: 16px; }
+  .processing-modal .processing-form-side { flex: none; overflow: visible; padding: 16px; border-left: 0; border-top: 1px solid var(--line); position: sticky; bottom: 0; background: var(--panel); }
+  .processing-plan-review > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; cursor: pointer; }
+  .processing-plan-review[open] .processor-contract { max-height: 24dvh; overflow-y: auto; }
+  .processing-modal .mobile-form-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: var(--mobile-safe-bottom, env(safe-area-inset-bottom, 0px)); }
+  .processing-modal .mobile-form-actions > button { flex: 1; }
+  .processing-modal .form-grid.two, .processing-modal .processing-plan-options,
+  .processing-modal .processing-input-row, .processing-modal .processing-input-row.without-device { grid-template-columns: minmax(0, 1fr); }
+  .processing-summary > div { padding: 14px 10px; overflow-wrap: anywhere; }
+  .processing-detail-summary, .processing-config-overview, .processing-config-inputs,
+  .processing-outcome-media-grid, .processing-result-layout.has-visuals, .processing-result-layout.no-visuals { grid-template-columns: minmax(0, 1fr); }
+  .processing-config-toggle, .processing-execution > summary, .processing-outcome-toolbar,
+  .processing-outcome-media-head, .processing-calibration-foot { flex-wrap: wrap; gap: 12px; }
+  .processing-execution-main, .processing-execution-meta, .processing-config-inputs > div { min-width: 0; flex-wrap: wrap; overflow-wrap: anywhere; }
+  .processing-execution-main > div, .processing-result-source { min-width: 0; overflow-wrap: anywhere; }
+  .processing-outcome-summary { flex-wrap: wrap; }
+  .processing-calibration-foot code { white-space: normal; overflow-wrap: anywhere; }
+  .processing-config-inputs code, .processing-execution-error { overflow-wrap: anywhere; }
+}

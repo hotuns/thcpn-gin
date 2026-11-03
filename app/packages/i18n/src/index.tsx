@@ -83,7 +83,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     if (typeof document === "undefined") return;
     const originals = new WeakMap<Node, string>();
     const attributeOriginals = new WeakMap<Element, Map<string, string>>();
-    const attributes = ["placeholder", "title", "aria-label"];
+    const attributes = ["placeholder", "title", "aria-label", "data-label"];
     const localize = (root: Node) => {
       const english = normalizeLocale(instance.language) === "en-US";
       const visit = (node: Node) => {

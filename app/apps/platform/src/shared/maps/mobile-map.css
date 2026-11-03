@@ -1,0 +1,25 @@
+.mobile-map-panels { display: flex; gap: 6px; padding: 8px; overflow-x: auto; flex: none; background: var(--panel); border-block: 1px solid var(--border, var(--line)); }
+.mobile-map-panels button { flex: 0 0 auto; min-height: 44px; font-size: 14px; }
+.mobile-map-panels button[aria-expanded="true"], .mobile-map-panels button[aria-pressed="true"] { outline: 2px solid var(--primary, var(--ink)); outline-offset: -3px; }
+@media (max-width: 767px) {
+  .immersive-device-map { height: calc(100dvh - var(--mobile-header-height, 56px) - var(--mobile-nav-height, 0px)); min-height: 0; padding-bottom: var(--mobile-safe-bottom, 0px); }
+  .immersive-device-map > .mobile-map-panels { position: absolute; inset: auto 0 var(--mobile-safe-bottom, 0px); z-index: 5; }
+  .immersive-device-map .device-map-console:not(.is-collapsed), .immersive-device-map .device-map-detail { inset: auto 8px calc(64px + var(--mobile-safe-bottom, 0px)); width: auto; height: 40%; max-height: none; overflow: auto; margin: 0; }
+  .immersive-device-map [hidden] { display: none !important; }
+  .immersive-device-map .device-map-console button, .immersive-device-map .device-map-detail button { min-height: 44px; }
+  .immersive-device-map .device-map-console-collapse { width: 44px; }
+  .immersive-device-map .device-map-detail { padding: 16px; }
+  .immersive-device-map .device-map-detail h2 { padding-right: 44px; overflow-wrap: anywhere; }
+  .immersive-device-map .device-map-footnote { inset: 8px 64px auto 8px; width: auto; flex-wrap: wrap; font-size: 13px; pointer-events: none; }
+  .mobile-device-directory { display: grid; padding: 8px; }
+  .mobile-device-directory > button { display: flex; justify-content: space-between; text-align: left; gap: 12px; white-space: normal; }
+  .mobile-device-directory small { color: var(--muted); }
+  .immersive-device-map .map-tools { top: 8px; right: 64px; }
+  .immersive-device-map .map-tools-panel { right: -56px; }
+  .immersive-device-map .device-map-footnote { top: 64px; }
+  .map-tools .map-tools-panel { width: min(320px, calc(100vw - 32px)); max-height: min(55dvh, 440px); }
+  .map-tools .map-tools-panel button { min-height: 44px; }
+  .map-tools .map-tools-panel input { min-height: 44px; }
+  .map-tools .map-tools-panel small { font-size: 13px; }
+  .maplibregl-ctrl-group button { width: 44px; height: 44px; }
+}

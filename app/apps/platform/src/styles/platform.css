@@ -1,0 +1,26 @@
+/* Keep this import order: later rules intentionally refine earlier platform styles. */
+@import "./platform/overview-and-billing.css";
+@import "./platform/shell.css";
+@import "./platform/query-controls.css";
+@import "./platform/telemetry-layout.css";
+@import "./platform/comparison-and-tables.css";
+@import "./platform/resources.css";
+@import "./platform/processing.css";
+@import "./platform/motion-and-controls.css";
+@import "./platform/access-and-dataset-list.css";
+@import "./platform/computed-data.css";
+@import "./platform/dataset-editor.css";
+@import "./platform/exports.css";
+@import "./platform/onboarding.css";
+@import "./platform/export-details-and-media.css";
+@import "./platform/device-data.css";
+@import "./platform/device-list.css";
+@import "./platform/public-devices.css";
+@import "./platform/device-profile.css";
+@import "./platform/gateway-and-configuration.css";
+@import "./platform/account-and-query-layout.css";
+@import "./platform/device-map-and-claim.css";
+@import "./platform/themes.css";
+@import "./platform/carbon.css";
+@import "./platform/export-workspace.css";
+@import "./platform/refinements.css";

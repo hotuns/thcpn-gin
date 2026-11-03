@@ -25,6 +25,7 @@ import (
 	"thcpn-gin/internal/camera"
 	"thcpn-gin/internal/computedstream"
 	"thcpn-gin/internal/config"
+	"thcpn-gin/internal/dashboard"
 	"thcpn-gin/internal/dataset"
 	"thcpn-gin/internal/datasource"
 	"thcpn-gin/internal/datastream"
@@ -271,6 +272,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	wallboardHandler := wallboard.NewHandler(wallboardService, permissionChecker)
 	notificationHandler := notification.NewHandler(notificationService)
 	alertHandler := alerting.NewHandler(alertService, permissionChecker, auditService)
+	dashboardHandler := dashboard.NewHandler(dashboard.NewService(deps.Postgres, deviceService, permissionChecker, dataSourceService, deps.Redis))
 	if taskClient := task.NewClient(deps.Redis); taskClient != nil {
 		exportHandler.SetJobEnqueuer(taskClient)
 		dataSourceService.SetSyncQueue(taskClient)
@@ -346,6 +348,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.PATCH("/me", userHandler.UpdateMe)
 	authed.POST("/auth/password/change", authHandler.ChangePassword)
 	authed.GET("/workspaces", workspaceHandler.List)
+	authed.GET("/workspaces/:workspace_id/dashboard", dashboardHandler.Get)
 	authed.POST("/workspaces", workspaceHandler.Create)
 	authed.PATCH("/workspaces/:workspace_id", workspaceHandler.UpdateName)
 	if billingHandler != nil {

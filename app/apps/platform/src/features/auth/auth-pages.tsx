@@ -1,0 +1,459 @@
+import { policyLimit } from "../../shared/config/system-policy";
+import { useEffect, useState, type FormEvent } from "react";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowRight, KeyRound, MessageSquareText } from "lucide-react";
+import { api, ApiError, formatApiError } from "@thcpn/api";
+import { useAuth } from "@thcpn/auth";
+import { Brand, Button, Input, Switch } from "../../shared/ui";
+import { LanguageSwitcher, useLocale } from "@thcpn/i18n";
+import { LoginVisualCarousel } from "./login-visual-carousel";
+
+export const validPassword = (value: string) => {
+  const bytes = new TextEncoder().encode(value).length;
+  return bytes >= policyLimit("password_min_bytes",8) && bytes <= policyLimit("password_max_bytes",72) && /\p{L}/u.test(value) && /\p{Nd}/u.test(value);
+};
+export const mfaRequiredMessage = (message: string) =>
+  /mfa|totp|two.?factor|动态验证码/i.test(message);
+export const platformNextPath = (value: string | null) =>
+  value?.startsWith("/") &&
+  !value.startsWith("//") &&
+  !value.startsWith("/admin")
+    ? value
+    : null;
+export const demoModeFromSearch = (search: string) =>
+  new URLSearchParams(search).get("demo") === "1";
+
+export function AuthPage({ register = false }: { register?: boolean }) {
+  const { t } = useLocale();
+  const { user, signIn } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [demoMode, setDemoMode] = useState(() => demoModeFromSearch(location.search));
+  const [mode, setMode] = useState<"password" | "sms">("password");
+  const [forgotPassword, setForgotPassword] = useState(false);
+  const [identifier, setIdentifier] = useState("");
+  const [phone, setPhone] = useState("");
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [smsCode, setSmsCode] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [success, setSuccess] = useState(false);
+  const [initialPasswordToken, setInitialPasswordToken] = useState("");
+  const [initialPassword, setInitialPassword] = useState("");
+  const [initialPasswordConfirm, setInitialPasswordConfirm] = useState("");
+  const visuals = useQuery({ queryKey: ["login-visuals"], queryFn: api.auth.loginVisuals, staleTime: 5 * 60_000 });
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = window.setInterval(
+      () => setCooldown((value) => Math.max(0, value - 1)),
+      1000,
+    );
+    return () => window.clearInterval(timer);
+  }, [cooldown > 0]);
+  const next = platformNextPath(
+    new URLSearchParams(location.search).get("next"),
+  );
+  if (user) return <Navigate to={next ?? "/dashboard"} replace />;
+  const finish = (result: Awaited<ReturnType<typeof api.auth.login>>) => {
+    if (result.password_change_required && result.password_change_token) {
+      setInitialPasswordToken(result.password_change_token);
+      setPassword("");
+      setInitialPasswordConfirm("");
+      setMessage(t("platform:auth.temporaryNotice"));
+      setSuccess(true);
+      return;
+    }
+    signIn(result);
+    if (next) navigate(next, { replace: true });
+    else navigate("/dashboard", { replace: true });
+  };
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setMessage("");
+    setSuccess(false);
+    if (initialPasswordToken) {
+      if (!validPassword(initialPassword)) {
+        setMessage(`密码需为 ${policyLimit("password_min_bytes",8)}–${policyLimit("password_max_bytes",72)} 字节，并同时包含字母和数字；英文和数字各占 1 字节，中文通常各占 3 字节。`);
+        return;
+      }
+      if (initialPassword !== initialPasswordConfirm) {
+        setMessage(t("platform:auth.passwordMismatch"));
+        return;
+      }
+      setBusy(true);
+      try {
+        finish(await api.auth.completeInitialPassword({ password_change_token: initialPasswordToken, password: initialPassword }));
+        setInitialPasswordToken("");
+      } catch (error) {
+        const value = formatApiError(error);
+        setMessage(`${value.message}${value.requestId ? ` · request id ${value.requestId}` : ""}`);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+    if (forgotPassword) {
+      if (!validPassword(password)) {
+        setMessage(`密码需为 ${policyLimit("password_min_bytes",8)}–${policyLimit("password_max_bytes",72)} 字节，并同时包含字母和数字；英文和数字各占 1 字节，中文通常各占 3 字节。`);
+        return;
+      }
+      if (password !== initialPasswordConfirm) {
+        setMessage(t("platform:auth.passwordMismatch"));
+        return;
+      }
+      setBusy(true);
+      try {
+        await api.auth.resetPassword({ phone: phone.trim(), code: smsCode, new_password: password });
+        setForgotPassword(false);
+        setSmsCode("");
+        setPassword("");
+        setInitialPasswordConfirm("");
+        setMessage(t("platform:auth.resetSuccess"));
+        setSuccess(true);
+      } catch (error) {
+        const value = formatApiError(error);
+        setMessage(`${value.message}${value.requestId ? ` · request id ${value.requestId}` : ""}`);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+    if (register && (!name.trim() || !phone.trim())) {
+      setMessage(t("platform:auth.contactRequired"));
+      return;
+    }
+    if (mfaRequired && !/^\d{6}$/.test(mfaCode)) {
+      setMessage(t("platform:auth.mfaRequired"));
+      return;
+    }
+    setBusy(true);
+    try {
+      if (register)
+        finish(
+          await api.auth.smsRegister({
+            phone: phone.trim(),
+            code: smsCode,
+            name: name.trim(),
+          }),
+        );
+      else if (demoMode)
+        finish(
+          await api.auth.demoLogin({
+            username: identifier.trim(),
+            password,
+            ...(mfaCode ? { mfa_code: mfaCode } : {}),
+          }),
+        );
+      else if (mode === "sms")
+        finish(
+          await api.auth.smsLogin({
+            phone: phone.trim(),
+            code: smsCode,
+            ...(mfaCode ? { mfa_code: mfaCode } : {}),
+          }),
+        );
+      else
+        finish(
+          await api.auth.login({
+            identifier: identifier.trim(),
+            password,
+            ...(mfaCode ? { mfa_code: mfaCode } : {}),
+          }),
+        );
+    } catch (error) {
+      const value = formatApiError(error);
+      const rawMessage = error instanceof ApiError ? error.message : value.message;
+      if (!register && mfaRequiredMessage(rawMessage)) setMfaRequired(true);
+      const message = !register && mode === "password" && value.status === 401 && !mfaRequiredMessage(rawMessage)
+        ? t("platform:auth.invalidCredentials")
+        : value.message;
+      setMessage(
+        `${message}${value.requestId ? ` · request id ${value.requestId}` : ""}`,
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  const sendSms = async () => {
+    setBusy(true);
+    setMessage("");
+    setSuccess(false);
+    try {
+      const result = forgotPassword
+        ? await api.auth.sendPasswordResetCode(phone.trim())
+        : await api.auth.smsSend({ phone: phone.trim() });
+      setCooldown(result.cooldown_seconds);
+      setMessage(
+        t("platform:auth.codeSent", { minutes: Math.ceil(result.expires_in / 60) }),
+      );
+      setSuccess(true);
+    } catch (error) {
+      const value = formatApiError(error);
+      setMessage(
+        `${value.message}${value.requestId ? ` · request id ${value.requestId}` : ""}`,
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  const switchMode = (next: "password" | "sms") => {
+    setMode(next);
+    setMfaRequired(false);
+    setMfaCode("");
+    setMessage("");
+  };
+  const switchDemoMode = (enabled: boolean) => {
+    setDemoMode(enabled);
+    setMode("password");
+    setForgotPassword(false);
+    setMfaRequired(false);
+    setMfaCode("");
+    setIdentifier("");
+    setPassword("");
+    setMessage("");
+    setSuccess(false);
+    const params = new URLSearchParams(location.search);
+    if (enabled) params.set("demo", "1");
+    else params.delete("demo");
+    navigate({ pathname: location.pathname, search: params.toString() ? `?${params}` : "" }, { replace: true });
+  };
+  return (
+    <div className="auth-layout">
+      <section className="auth-visual">
+        {visuals.data?.items.length ? <LoginVisualCarousel items={visuals.data.items}/> : null}
+        {visuals.data?.items.length ? <div className="auth-visual-shade" aria-hidden="true" /> : null}
+        <Brand />
+        <div className="auth-language"><LanguageSwitcher compact /></div>
+      </section>
+      <section className="auth-form-side">
+        <div className="auth-card">
+          <div className="eyebrow">
+            {initialPasswordToken
+              ? "FIRST PASSWORD"
+              : forgotPassword
+              ? "RESET PASSWORD"
+              : register
+              ? "CREATE ACCESS"
+              : mfaRequired
+                ? "SECOND FACTOR"
+                : "SECURE SIGN IN"}
+          </div>
+          <h1 className="auth-heading">
+            {initialPasswordToken
+              ? t("platform:auth.setupPassword")
+              : forgotPassword
+              ? t("platform:auth.forgotPassword")
+              : register
+              ? t("platform:auth.createIdentity")
+              : mfaRequired
+                ? t("platform:auth.completeMfa")
+                : t("platform:auth.welcome")}
+          </h1>
+          {!demoMode && !initialPasswordToken && !forgotPassword && !register && !mfaRequired && (
+            <div className="auth-mode">
+              <button
+                type="button"
+                className={mode === "password" ? "active" : ""}
+                onClick={() => switchMode("password")}
+              >
+                {t("platform:auth.passwordLogin")}
+              </button>
+              <button
+                type="button"
+                className={mode === "sms" ? "active" : ""}
+                onClick={() => switchMode("sms")}
+              >
+                {t("platform:auth.smsLogin")}
+              </button>
+            </div>
+          )}
+          <form className="form-grid" onSubmit={submit}>
+            {initialPasswordToken ? (
+              <>
+                <div className="command-note">{t("platform:auth.temporaryHelp")}</div>
+                <label className="field"><span className="field-label">{t("platform:auth.newPassword")}</span><Input autoFocus required maxLength={policyLimit("password_max_bytes",72)} type="password" value={initialPassword} onChange={(event) => setInitialPassword(event.target.value)} /></label>
+                <label className="field"><span className="field-label">{t("platform:auth.confirmNewPassword")}</span><Input required type="password" value={initialPasswordConfirm} onChange={(event) => setInitialPasswordConfirm(event.target.value)} /></label>
+              </>
+            ) : forgotPassword ? (
+              <>
+                <label className="field"><span className="field-label">{t("platform:auth.phone")}</span><Input required type="tel" inputMode="tel" value={phone} onChange={(event) => setPhone(event.target.value)} /></label>
+                <div className="sms-row"><label className="field"><span className="field-label">{t("platform:auth.smsCode")}</span><Input required inputMode="numeric" maxLength={6} value={smsCode} onChange={(event) => setSmsCode(event.target.value.replace(/\D/g, ""))} /></label><Button type="button" variant="secondary" disabled={!phone.trim() || busy || cooldown > 0} onClick={() => void sendSms()}><MessageSquareText size={14} />{cooldown > 0 ? `${cooldown}s` : t("platform:auth.send")}</Button></div>
+                <label className="field"><span className="field-label">{t("platform:auth.newPassword")}</span><Input required maxLength={policyLimit("password_max_bytes",72)} type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+                <label className="field"><span className="field-label">{t("platform:auth.confirmNewPassword")}</span><Input required type="password" value={initialPasswordConfirm} onChange={(event) => setInitialPasswordConfirm(event.target.value)} /></label>
+              </>
+            ) : <>
+            {register && (
+              <label className="field">
+                <span className="field-label">{t("platform:auth.name")}</span>
+                <Input
+                  required
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                />
+              </label>
+            )}
+            {register ? (
+              <>
+                <label className="field">
+                  <span className="field-label">{t("platform:auth.phone")}</span>
+                  <Input
+                    required
+                    type="tel"
+                    inputMode="tel"
+                    value={phone}
+                    onChange={(event) => setPhone(event.target.value)}
+                  />
+                </label>
+                <div className="sms-row">
+                  <label className="field">
+                    <span className="field-label">{t("platform:auth.smsCode")}</span>
+                    <Input
+                      required
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={smsCode}
+                      onChange={(event) =>
+                        setSmsCode(event.target.value.replace(/\D/g, ""))
+                      }
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={!phone.trim() || busy || cooldown > 0}
+                    onClick={() => void sendSms()}
+                  >
+                    <MessageSquareText size={14} />
+                    {cooldown > 0 ? `${cooldown}s` : t("platform:auth.send")}
+                  </Button>
+                </div>
+              </>
+            ) : mode === "sms" ? (
+              <>
+                <label className="field">
+                  <span className="field-label">{t("platform:auth.phone")}</span>
+                  <Input
+                    required
+                    type="tel"
+                    inputMode="tel"
+                    value={phone}
+                    onChange={(event) => setPhone(event.target.value)}
+                  />
+                </label>
+                <div className="sms-row">
+                  <label className="field">
+                    <span className="field-label">{t("platform:auth.smsCode")}</span>
+                    <Input
+                      required
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={smsCode}
+                      onChange={(event) =>
+                        setSmsCode(event.target.value.replace(/\D/g, ""))
+                      }
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={!phone.trim() || busy || cooldown > 0}
+                    onClick={() => void sendSms()}
+                  >
+                    <MessageSquareText size={14} />
+                    {cooldown > 0 ? `${cooldown}s` : t("platform:auth.send")}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <label className="field">
+                <span className="field-label">{demoMode ? "用户名" : t("platform:auth.identifier")}</span>
+                <Input
+                  required
+                  type="text"
+                  inputMode="text"
+                  autoComplete="username"
+                  value={identifier}
+                  onChange={(event) => setIdentifier(event.target.value)}
+                />
+              </label>
+            )}
+            {!register && mode === "password" && (
+              <><label className="field">
+                <span className="field-label">{t("platform:auth.password")}</span>
+                <Input
+                  required
+                  maxLength={128}
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+              </label>{!demoMode && <button type="button" className="link auth-forgot-link" onClick={() => { setForgotPassword(true); setMessage(""); setSuccess(false); }}>{t("platform:auth.forgotPassword")}</button>}</>
+            )}
+            {mfaRequired && (
+              <label className="field mfa-challenge">
+                <span className="field-label">
+                  <KeyRound size={13} />
+                  {t("platform:auth.mfaCode")}
+                </span>
+                <Input
+                  autoFocus
+                  required
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={mfaCode}
+                  onChange={(event) =>
+                    setMfaCode(event.target.value.replace(/\D/g, ""))
+                  }
+                  placeholder="000000"
+                />
+              </label>
+            )}
+            </>}
+            {message && (
+              <div className={success ? "command-note" : "form-error"}>
+                {message}
+              </div>
+            )}
+            <Button type="submit" disabled={busy}>
+              {busy
+                ? t("platform:auth.processing")
+                : mfaRequired
+                  ? t("platform:auth.verifyLogin")
+                  : initialPasswordToken
+                    ? t("platform:auth.savePassword")
+                    : forgotPassword
+                    ? t("platform:auth.resetPassword")
+                    : register
+                    ? t("platform:auth.register")
+                    : t("platform:auth.loginConsole")}
+              <ArrowRight size={15} />
+            </Button>
+            {mfaRequired && (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setMfaRequired(false);
+                  setMfaCode("");
+                  setMessage("");
+                }}
+              >
+                {t("platform:auth.backCredentials")}
+              </Button>
+            )}
+          </form>
+          {forgotPassword ? <div className="auth-form-footer"><button type="button" className="link" onClick={() => { setForgotPassword(false); setMessage(""); }}>{t("platform:auth.backLogin")}</button></div> : <div className="auth-form-footer">
+            <span>{register ? t("platform:auth.hasAccount") : t("platform:auth.noAccount")}</span>
+            <Link className="link" to={register ? "/login" : "/register"}>{register ? t("platform:auth.backLogin") : t("platform:auth.register")}</Link>
+            {!register && <label className="demo-mode-toggle"><span>演示模式</span><Switch checked={demoMode} onCheckedChange={switchDemoMode} /></label>}
+          </div>}
+        </div>
+      </section>
+    </div>
+  );
+}

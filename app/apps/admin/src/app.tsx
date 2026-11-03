@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useState, type FormEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { AdminNavigation } from "./admin-navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
   Link,
@@ -45,7 +46,7 @@ import {
 	UsersRound,
 } from "lucide-react";
 import { Avatar, Dropdown, Input, Menu, Modal, Space, Tooltip, type MenuProps } from "antd";
-import { Button, CloseButton, IconButton } from "@thcpn/admin-ui";
+import { Button, IconButton } from "@thcpn/admin-ui";
 import { ApiError, api, formatApiError } from "@thcpn/api";
 import { billingEnabled } from "./features";
 import { useAdminAuth } from "@thcpn/auth";
@@ -162,7 +163,17 @@ function AdminShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const closeNavigation = useCallback(() => setMobileOpen(false), []);
+  const navigationTrigger = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const pendingPassword = useRef(false);
+  const afterNavigationClosed = useCallback(() => {
+    if (pendingPassword.current) {
+      pendingPassword.current = false;
+      setPasswordOpen(true);
+    }
+  }, []);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -213,7 +224,12 @@ function AdminShell() {
   ];
   const handleAccountAction: MenuProps["onClick"] = ({ key }) => {
     if (key === "zh-CN" || key === "en-US") void setLocale(key);
-    if (key === "change-password") setPasswordOpen(true);
+    if (key === "change-password") {
+      if (mobileOpen) {
+        pendingPassword.current = true;
+        closeNavigation();
+      } else setPasswordOpen(true);
+    }
     if (key === "platform") window.location.assign(`${platformUrl}/dashboard`);
     if (key === "logout") void signOut();
   };
@@ -241,35 +257,9 @@ function AdminShell() {
       String(sidebarCollapsed),
     );
   }, [sidebarCollapsed]);
-  useEffect(() => {
-    if (!mobileOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMobileOpen(false);
-    };
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [mobileOpen]);
   return (
-    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
-      <div className="admin-sidebar-wrap">
-        {mobileOpen && (
-          <button
-            type="button"
-            className="mobile-drawer-backdrop"
-            aria-label={t("closeNavigation")}
-            onClick={() => setMobileOpen(false)}
-          />
-        )}
-      </div>
-      <aside
-        className={`sidebar admin-sidebar ${mobileOpen ? "open" : ""}`}
-        aria-label="后台导航"
-      >
+    <div className={`app-shell admin-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+      <AdminNavigation open={mobileOpen} onClose={closeNavigation} onClosed={afterNavigationClosed} routeKey={location.key} triggerRef={navigationTrigger} mainRef={mainRef}>
         <div className="sidebar-brand-row">
           <Brand admin />
           <div className="desktop-sidebar-toggle">
@@ -279,9 +269,6 @@ function AdminShell() {
             >
               <PanelLeftClose size={18} />
             </IconButton>
-          </div>
-          <div className="mobile-close">
-            <CloseButton onClick={() => setMobileOpen(false)} />
           </div>
         </div>
         <Menu
@@ -309,7 +296,7 @@ function AdminShell() {
             </button>
           </Dropdown>
         </div>
-      </aside>
+      </AdminNavigation>
       <div className="main-area">
         <header className="topbar admin-topbar">
           <div className="topbar-left">
@@ -321,13 +308,17 @@ function AdminShell() {
                 <PanelLeftOpen size={18} />
               </IconButton>
             </div>
-            <IconButton
-              label="打开导航"
-              className="mobile-menu"
-              onClick={() => setMobileOpen(true)}
-            >
-              <MenuIcon size={18} />
-            </IconButton>
+            <div className="admin-mobile-trigger" ref={navigationTrigger}>
+              <IconButton
+                label={t("openNavigation")}
+                className="mobile-menu"
+                aria-expanded={mobileOpen}
+                aria-controls="admin-mobile-navigation"
+                onClick={() => setMobileOpen(true)}
+              >
+                <MenuIcon size={18} />
+              </IconButton>
+            </div>
             <div className="topbar-context">
               <span>{t("admin:title")}</span>
               <span className="breadcrumb-separator">/</span>
@@ -350,7 +341,7 @@ function AdminShell() {
             </Tooltip>
           </Space>
         </header>
-        <main className="page">
+        <main className="page" ref={mainRef} tabIndex={-1}>
           <Suspense
             fallback={
               <div className="route-placeholder">

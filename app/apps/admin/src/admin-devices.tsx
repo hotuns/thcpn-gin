@@ -326,6 +326,7 @@ export function AdminDevicesPage() {
     setSelected(record);
     setMode(next);
     setDetail(null);
+    setFeedback("");
     if (next === "edit")
       form.setFieldsValue({
         iccid: record.iccid ?? "",
@@ -692,7 +693,7 @@ export function AdminDevicesPage() {
     <>
       {firmwareDevice ? <DeviceFirmwareDialog key={String(firmwareDevice.id)} deviceId={String(firmwareDevice.id)} deviceName={value(firmwareDevice.name)} serialNo={value(firmwareDevice.serial_no)} onClose={() => setFirmwareDevice(null)} /> : null}
       {configResult ? <ConfigApplyResult result={configResult} onClose={() => setConfigResult(null)} /> : null}
-      <Drawer title={drawerTitle(mode, selected)} open={Boolean(mode)} onClose={close} size={mode === "config" ? 1180 : 620} extra={mode === "attributes" ? <Button onClick={close}>关闭</Button> : <Space><Button onClick={close}>取消</Button><Button type="primary" danger={mode === "config"} loading={busy} onClick={() => void (mode === "create-device" && createdSourceDevice?.sync_error ? retryCreatedSourceDevice() : submit())}>{mode === "create-device" && createdSourceDevice?.sync_error ? (createdSourceDevice.source_kind === "lorawan_v2" ? "重试默认配置" : "重试同步") : mode === "create-device" ? "创建设备" : "保存"}</Button></Space>}>
+      <Drawer title={drawerTitle(mode, selected)} open={Boolean(mode)} onClose={close} size={mode === "config" ? 1180 : 620} footer={<Space orientation="vertical" style={{ width: "100%" }}>{feedback && <Alert role="alert" type="error" showIcon title={feedback} />}{mode === "attributes" ? <Button onClick={close}>关闭</Button> : <Space><Button onClick={close}>取消</Button><Button type="primary" danger={mode === "config"} loading={busy} onClick={() => void (mode === "create-device" && createdSourceDevice?.sync_error ? retryCreatedSourceDevice() : submit())}>{mode === "create-device" && createdSourceDevice?.sync_error ? (createdSourceDevice.source_kind === "lorawan_v2" ? "重试默认配置" : "重试同步") : mode === "create-device" ? "创建设备" : "保存"}</Button></Space>}</Space>}>
         {mode === "config" && configConflict ? <Alert className="config-conflict-alert" type="warning" showIcon title="源配置已变化，当前草稿尚未保存" description="复制草稿后重新加载最新配置；系统不会强制覆盖其他操作写入的版本。" action={<Space orientation="vertical"><Button size="small" onClick={() => void navigator.clipboard.writeText(JSON.stringify(parseDeviceConfig(form.getFieldsValue() as DeviceConfigFields), null, 2))}>复制草稿</Button><Button size="small" type="primary" onClick={() => { setConfigConflict(false); void loadDetail("config", selected); }}>重新加载</Button></Space>} /> : null}
         <Form form={form} layout="vertical">{mode === "create-device" ? <DeviceCreateForm form={form} sources={sourceQuery.data?.items ?? []} sourcesLoading={sourceQuery.isLoading} /> : <DeviceForm mode={mode} form={form} devices={allRows} deviceId={id} busy={busy} onGetEarliestData={() => void getEarliestDeviceData()} earliestLoading={earliestLoading} earliestFeedback={earliestFeedback} />}</Form>
         {mode === "create-device" && createdSourceDevice?.sync_error ? <Alert type="warning" showIcon title={createdSourceDevice.source_kind === "lorawan_v2" ? "网关已创建，默认配置写入失败" : "源库设备已创建，但平台同步失败"} description={<div>SN {value(createdSourceDevice.sn)}<br />{value(createdSourceDevice.sync_error)}</div>} /> : null}

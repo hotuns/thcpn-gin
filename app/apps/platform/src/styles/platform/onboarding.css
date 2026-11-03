@@ -1,0 +1,148 @@
+.onboarding-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgb(8 22 18 / 58%);
+}
+.onboarding-target {
+  position: fixed;
+  z-index: 1201;
+  border: 2px solid #8dd7b3;
+  border-radius: 10px;
+  box-shadow: 0 0 0 4px rgb(141 215 179 / 25%);
+  pointer-events: none;
+}
+.onboarding-directory {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 1202;
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 28px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line));
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: 0 28px 80px rgb(4 18 13 / 34%);
+  transform: translate(-50%, -50%);
+}
+.onboarding-directory h2 { margin: 10px 36px 8px 0; font-size: var(--font-size-display); }
+.onboarding-directory > p { margin: 0; color: var(--muted); line-height: 1.7; }
+.onboarding-module-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 22px;
+}
+.onboarding-module-grid > button {
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  gap: 3px 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--text);
+  text-align: left;
+  background: var(--surface-muted);
+  cursor: pointer;
+}
+.onboarding-module-grid > button:hover,
+.onboarding-module-grid > button:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.onboarding-module-grid > button > span {
+  grid-row: 1 / span 2;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+}
+.onboarding-module-grid strong { align-self: end; font-size: var(--font-size-body); }
+.onboarding-module-grid small { overflow: hidden; color: var(--muted); font-size: var(--font-size-small); text-overflow: ellipsis; white-space: nowrap; }
+.onboarding-directory-skip {
+  margin-top: 18px;
+  padding: 7px 0;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+.onboarding-bubble {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 1202;
+  width: min(340px, calc(100vw - 32px));
+  padding: 22px;
+  border: 1px solid rgb(126 171 148 / 35%);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 24px 60px rgb(4 18 13 / 30%);
+  transform: translate(-50%, -50%);
+}
+.onboarding-bubble.is-targeted { transform: none; }
+.onboarding-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+.onboarding-step {
+  color: var(--accent);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: .08em;
+}
+.onboarding-bubble h2 { margin: 10px 32px 8px 0; font-size: var(--font-size-heading); }
+.onboarding-bubble p { margin: 0; color: var(--muted); line-height: 1.7; }
+.onboarding-unavailable { display: block; margin-top: 12px; color: var(--warning); line-height: 1.55; }
+.onboarding-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 22px;
+}
+.onboarding-actions > div { display: flex; gap: 8px; }
+.onboarding-actions button {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font: inherit;
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+.onboarding-skip { padding-left: 0 !important; border: 0; color: var(--muted); background: transparent; }
+.onboarding-secondary { border: 1px solid var(--line); color: var(--text); background: var(--panel); }
+.onboarding-primary { border: 1px solid var(--blue); color: #fff; background: var(--blue); box-shadow: 0 4px 12px color-mix(in srgb, var(--blue) 22%, transparent); }
+.onboarding-primary:hover { border-color: var(--blue-dark); background: var(--blue-dark); }
+.onboarding-primary:focus-visible { outline: 3px solid var(--blue-soft); outline-offset: 2px; }
+
+@media (max-width: 760px) {
+  .onboarding-directory { padding: 22px 18px; }
+  .onboarding-module-grid { grid-template-columns: 1fr; }
+  .onboarding-bubble,
+  .onboarding-bubble.is-targeted {
+    top: auto !important;
+    right: 16px;
+    bottom: 16px;
+    left: 16px !important;
+    width: auto;
+    transform: none;
+  }
+}

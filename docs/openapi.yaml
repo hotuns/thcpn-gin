@@ -64,6 +64,32 @@ tags:
   - name: AuditLogs
     description: Sensitive operation audit log APIs
 paths:
+  /api/v1/workspaces/{workspace_id}/dashboard:
+    get:
+      tags: [Workspaces]
+      summary: Read authorized observation totals and daily collection trends
+      description: |
+        Counts stored formal sampling records once per physical source, independently of metric streams,
+        datasets and exports. Images count valid captured-image references, not profile photos.
+        Requires workspace.view and per-device view/history permissions. Authorization is rechecked
+        before summing cached source results. Cumulative counts do not change with the trend window.
+        Daily buckets and today use Asia/Shanghai, with half-open observation-time intervals.
+        Cold sources refresh asynchronously; null is unknown, while partial known sums have complete=false.
+        Source results refresh after five minutes. statistics_updated_at is the oldest included snapshot,
+        not the request time. LoRaWAN upstream currently lacks reliable aggregate counts.
+      security: [{bearerAuth: []}]
+      parameters:
+        - {in: path, name: workspace_id, required: true, schema: {type: string, format: uuid}}
+        - {in: query, name: days, schema: {type: integer, enum: [7, 30], default: 7}}
+      responses:
+        "200":
+          description: Authorized totals, trend, observation health and unresolved alert count
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DashboardOverview"}
+        "400": {description: Invalid workspace or trend window}
+        "401": {description: Authentication required}
+        "403": {description: Workspace access denied}
   /api/v1/devices/{device_id}/lorawan-v2/info:
     get: &loraDeviceInfo
       tags: [Devices]
@@ -8220,6 +8246,72 @@ components:
                   message: internal error
                   request_id: req_123
   schemas:
+    DashboardCount:
+      type: object
+      required: [value, complete, covered_devices, total_devices]
+      properties:
+        value: {type: [integer, "null"], format: int64, minimum: 0}
+        complete: {type: boolean}
+        covered_devices: {type: integer, minimum: 0}
+        total_devices: {type: integer, minimum: 0}
+    DashboardDay:
+      type: object
+      required: [date, records, images, records_complete, images_complete]
+      properties:
+        date: {type: string, format: date}
+        records: {type: [integer, "null"], format: int64, minimum: 0}
+        images: {type: [integer, "null"], format: int64, minimum: 0}
+        records_complete: {type: boolean}
+        images_complete: {type: boolean}
+    DashboardAttention:
+      type: object
+      required: [id, device_id, name, kind, last_observed_at, threshold_seconds]
+      properties:
+        id: {type: string}
+        device_id: {type: string, format: uuid}
+        name: {type: string}
+        kind: {type: string, enum: [delayed, no_data, unavailable]}
+        last_observed_at: {type: [string, "null"], format: date-time}
+        threshold_seconds: {type: [integer, "null"], format: int64}
+    DashboardOverview:
+      type: object
+      required: [generated_at, statistics_updated_at, timezone, days, refresh_interval_seconds, records, images, trend, devices, attention, active_alerts]
+      properties:
+        generated_at: {type: string, format: date-time}
+        statistics_updated_at: {type: [string, "null"], format: date-time}
+        timezone: {type: string, enum: [Asia/Shanghai]}
+        days: {type: integer, enum: [7, 30]}
+        refresh_interval_seconds: {type: integer, minimum: 1}
+        records:
+          type: object
+          required: [total, today, first_observed_at]
+          properties:
+            total: {$ref: "#/components/schemas/DashboardCount"}
+            today: {$ref: "#/components/schemas/DashboardCount"}
+            first_observed_at: {type: [string, "null"], format: date-time}
+        images:
+          type: object
+          required: [total, today]
+          properties:
+            total: {$ref: "#/components/schemas/DashboardCount"}
+            today: {$ref: "#/components/schemas/DashboardCount"}
+        trend:
+          type: array
+          items: {$ref: "#/components/schemas/DashboardDay"}
+        devices:
+          type: object
+          required: [total, reporting, delayed, no_data, unknown, inactive]
+          properties:
+            total: {type: integer, minimum: 0}
+            reporting: {type: integer, minimum: 0}
+            delayed: {type: integer, minimum: 0}
+            no_data: {type: integer, minimum: 0}
+            unknown: {type: integer, minimum: 0}
+            inactive: {type: integer, minimum: 0}
+        attention:
+          type: array
+          items: {$ref: "#/components/schemas/DashboardAttention"}
+        active_alerts: {type: [integer, "null"], format: int64, minimum: 0}
     SystemPolicy:
       type: object
       required: [values, version, billing_enabled]

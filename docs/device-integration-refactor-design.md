@@ -221,7 +221,7 @@ Carbon 共享时间、刷新、反馈和导出操作位置，内容区保留通�
 - `internal/datasource/carbon_runtime.go`：碳汇专用查询及来源连接。
 - `internal/datasource/sampling_profile.go`：已有的共同配置语义。
 - `internal/device/service.go`、`sql/queries/device.sql`：设备身份、资产来源和节点归属。
-- `app/apps/platform/src/devices-page.tsx`：来源判断、节点数据与概览逐指标请求。
+- `app/apps/platform/src/features/devices/device-model.ts`、`device-center-detail-page.tsx`、`gateway-node-data.tsx`：设备分类、详情分派及节点数据查询。
 - `app/apps/admin/src/admin-devices.tsx`：来源判断与专用配置、日志入口。
 - `internal/export/processor.go`：完整性判定及导出结果生成。
 

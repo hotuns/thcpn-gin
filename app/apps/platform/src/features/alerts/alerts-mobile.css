@@ -1,0 +1,20 @@
+@media (max-width: 767px) {
+  .alerts-page .alert-event-card { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 12px; padding: 16px; }
+  .alerts-page .alert-rule-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 16px; }
+  .alerts-page .alert-event-card > div, .alerts-page .alert-rule-card > div { min-width: 0; }
+  .alerts-page .alert-card-title { flex-wrap: wrap; }
+  .alerts-page .alert-card-title strong, .alerts-page .alert-event-card p, .alerts-page .alert-rule-card p,
+  .alerts-page .alert-event-card small, .alerts-page .alert-rule-card small { white-space: normal; overflow-wrap: anywhere; }
+  .alerts-page .alert-event-card .alert-card-actions { grid-column: 2; }
+  .alerts-page .alert-card-actions { display: flex; justify-content: flex-start; flex-wrap: wrap; gap: 12px; }
+  .alerts-page .alert-device-link { display: inline-flex; align-items: center; min-height: 44px; }
+  .alert-rule-dialog .alert-builder-layout, .alert-rule-dialog .alert-type-options,
+  .alert-rule-dialog .alert-form-grid { grid-template-columns: minmax(0, 1fr); }
+  .alert-rule-dialog .alert-builder-steps { display: flex; overflow-x: auto; gap: 4px; }
+  .alert-rule-dialog .alert-builder-steps > button { flex: 0 0 auto; }
+  .alert-rule-dialog .alert-builder-preview { min-width: 0; }
+  .alert-rule-dialog .alert-channel-row { flex-wrap: wrap; gap: 12px; }
+  .alert-rule-dialog .alert-recipient-identity { min-width: 0; overflow-wrap: anywhere; }
+  .alert-rule-dialog .alert-recipient-identity strong, .alert-rule-dialog .alert-recipient-identity small { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+  .alert-rule-dialog .alert-recipient-list label { min-height: 52px; }
+}

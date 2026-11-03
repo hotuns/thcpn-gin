@@ -1,0 +1,225 @@
+.sparkline {
+  height: 42px;
+  display: flex;
+  align-items: end;
+  gap: 4px;
+}
+.sparkline span {
+  flex: 1;
+  min-height: 4px;
+  background: #a9c9f7;
+  border-radius: 2px 2px 0 0;
+}
+.sparkline span:nth-child(3n) {
+  background: var(--blue);
+}
+.section-gap {
+  margin-top: 18px;
+}
+.route-placeholder {
+  min-height: 280px;
+  display: grid;
+  place-items: center;
+}
+.route-placeholder-inner {
+  text-align: center;
+}
+.command-note {
+  padding: 13px 16px;
+  color: #49677f;
+  background: #eef6ff;
+  border: 1px solid #d5e7fb;
+  border-radius: 7px;
+  font-size: var(--font-size-small);
+  line-height: 1.6;
+}
+.admin-link {
+  color: var(--blue);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
+}
+.filter-input {
+  height: var(--control-height);
+  min-width: min(420px, 70vw);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 11px;
+  color: var(--muted);
+  background: var(--control);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.filter-input input {
+  width: 100%;
+  height: 100%;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  outline: 0;
+}
+.filter-input .shadcn-input { min-height: 0; }
+.query-bar {
+  display: grid;
+  grid-template-columns:
+    minmax(220px, 1.5fr) repeat(2, minmax(180px, 1fr))
+    minmax(120px, 0.5fr);
+  gap: 14px;
+  padding: 18px 20px;
+}
+.range-presets {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 20px 12px;
+  color: var(--muted);
+  font-size: var(--font-size-small);
+}
+.range-presets span {
+  margin-right: 4px;
+}
+.range-presets button {
+  min-height: var(--control-height-sm);
+  padding: 0 10px;
+  color: var(--blue-dark);
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
+}
+.range-presets button:hover {
+  background: var(--surface-selected);
+  border-color: var(--blue);
+}
+.query-progress {
+  height: 2px;
+  overflow: hidden;
+  background: #e7edf3;
+}
+.query-progress span {
+  width: 38%;
+  height: 100%;
+  display: block;
+  background: var(--blue);
+  animation: query-progress 1.1s ease-in-out infinite;
+}
+.metric-skeleton {
+  width: 52px;
+  height: 28px;
+  display: inline-block;
+  background: #e9eef3;
+  border-radius: 4px;
+  animation: loading-pulse 1.4s ease-in-out infinite;
+}
+.telemetry-loading {
+  min-height: 292px;
+  padding: 18px 20px 14px;
+  border-top: 1px solid var(--soft-line);
+}
+.telemetry-loading-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+.telemetry-loading-head span {
+  width: 138px;
+  height: 14px;
+  background: #e6ecf1;
+  border-radius: 3px;
+  animation: loading-pulse 1.4s ease-in-out infinite;
+}
+.telemetry-loading-head span:last-child {
+  width: 76px;
+  height: 22px;
+}
+.telemetry-loading-stats {
+  display: flex;
+  gap: 14px;
+  margin-top: 14px;
+}
+.telemetry-loading-stats span {
+  width: 64px;
+  height: 9px;
+  background: #edf1f4;
+  border-radius: 3px;
+  animation: loading-pulse 1.4s ease-in-out infinite;
+}
+.telemetry-loading-chart {
+  height: 184px;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  margin-top: 13px;
+  padding: 18px 8px 0;
+  border-bottom: 1px solid var(--line);
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 43px,
+    var(--soft-line) 44px
+  );
+}
+.telemetry-loading-chart i {
+  flex: 1;
+  height: 30%;
+  background: #e8f0fb;
+  border-radius: 2px 2px 0 0;
+  animation: loading-wave 1.6s ease-in-out infinite;
+  transform-origin: bottom;
+}
+.telemetry-loading-chart i:nth-child(2) {
+  height: 52%;
+  animation-delay: 100ms;
+}
+.telemetry-loading-chart i:nth-child(3) {
+  height: 42%;
+  animation-delay: 200ms;
+}
+.telemetry-loading-chart i:nth-child(4) {
+  height: 70%;
+  animation-delay: 300ms;
+}
+.telemetry-loading-chart i:nth-child(5) {
+  height: 58%;
+  animation-delay: 400ms;
+}
+.telemetry-loading-chart i:nth-child(6) {
+  height: 76%;
+  animation-delay: 500ms;
+}
+.telemetry-loading-caption {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: var(--font-size-caption);
+  text-align: center;
+}
+@keyframes query-progress {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+@keyframes loading-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes loading-wave {
+  0%,
+  100% {
+    transform: scaleY(0.72);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}

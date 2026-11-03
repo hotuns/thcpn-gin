@@ -1,4 +1,6 @@
 export * from "./runtime-status";
+export * from "./dashboard";
+import type { DashboardOverview } from "./dashboard";
 export { nodeOptionLabel, nodeHistoryNotice } from "./node-display";
 export { isMeasurement, streamPurpose, streamPurposeLabel } from "./stream-purpose";
 import { formatLimitError } from "./limit-errors";
@@ -545,6 +547,8 @@ export type SystemSettings = SystemPolicy & {defaults:Record<string,number>;fiel
 export type SystemSettingsChange = {id:number;actor_name:string;before:Record<string,number>;after:Record<string,number>;reason:string;created_at:string};
 
 export const api = {
+  dashboard: (workspaceId: string, days: 7 | 30 = 7) =>
+    request<DashboardOverview>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/dashboard?days=${days}`),
  systemPolicy: () => request<SystemPolicy>("/api/v1/system/policy", {}, false),
   health: () => request<{ status: string }>("/healthz", {}, false),
   ready: () => request<{ status: string }>("/readyz", {}, false),

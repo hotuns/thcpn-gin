@@ -1,0 +1,22 @@
+/* One table and one set of actions: cards below the phone breakpoint. */
+@media (max-width: 767px) {
+  .mobile-data-list { overflow: visible; }
+  .mobile-data-list .mobile-summary-table { display: block; width: 100%; min-width: 0; }
+  .mobile-summary-table > thead { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .mobile-summary-table > tbody { display: grid; gap: 12px; }
+  .mobile-summary-table > tbody > tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+  .mobile-summary-table > tbody > tr > td { display: block; min-width: 0; width: auto; padding: 0; border: 0; white-space: normal; overflow-wrap: anywhere; }
+  .mobile-summary-table > tbody > tr > td::before { content: attr(data-label); display: block; margin-bottom: 4px; color: var(--muted); font-size: 13px; font-weight: 500; }
+  .mobile-summary-table > tbody > tr > .mobile-cell-title { grid-column: 1 / -1; order: -2; font-size: 16px; }
+  .mobile-summary-table > tbody > tr > .mobile-cell-status { order: -1; }
+  .mobile-summary-table > tbody > tr > .mobile-cell-wide,
+  .mobile-summary-table > tbody > tr > .mobile-cell-actions { grid-column: 1 / -1; }
+  .mobile-summary-table .table-actions,
+  .mobile-summary-table .workspace-list-actions { display: flex; flex-wrap: wrap; gap: 8px; white-space: normal; }
+  .mobile-summary-table .table-actions > *,
+  .mobile-summary-table .workspace-list-actions > * { flex: 0 1 auto; }
+  .mobile-summary-table .cell-sub { white-space: normal; overflow-wrap: anywhere; }
+  .mobile-summary-table > tbody > .export-detail-row { margin-top: -12px; border-top: 0; border-radius: 0 0 10px 10px; }
+  .mobile-summary-table > tbody > .export-detail-row > td { grid-column: 1 / -1; }
+  .mobile-summary-table > tbody > .export-detail-row > td::before { display: none; }
+}

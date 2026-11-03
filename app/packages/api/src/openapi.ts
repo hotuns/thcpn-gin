@@ -4,6 +4,77 @@
  */
 
 export interface paths {
+    "/api/v1/workspaces/{workspace_id}/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read authorized observation totals and daily collection trends
+         * @description Counts stored formal sampling records once per physical source, independently of metric streams,
+         *     datasets and exports. Images count valid captured-image references, not profile photos.
+         *     Requires workspace.view and per-device view/history permissions. Authorization is rechecked
+         *     before summing cached source results. Cumulative counts do not change with the trend window.
+         *     Daily buckets and today use Asia/Shanghai, with half-open observation-time intervals.
+         *     Cold sources refresh asynchronously; null is unknown, while partial known sums have complete=false.
+         *     Source results refresh after five minutes. statistics_updated_at is the oldest included snapshot,
+         *     not the request time. LoRaWAN upstream currently lacks reliable aggregate counts.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    days?: 7 | 30;
+                };
+                header?: never;
+                path: {
+                    workspace_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Authorized totals, trend, observation health and unresolved alert count */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DashboardOverview"];
+                    };
+                };
+                /** @description Invalid workspace or trend window */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Workspace access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/devices/{device_id}/lorawan-v2/info": {
         parameters: {
             query?: never;
@@ -6569,6 +6640,68 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        DashboardCount: {
+            /** Format: int64 */
+            value: number | null;
+            complete: boolean;
+            covered_devices: number;
+            total_devices: number;
+        };
+        DashboardDay: {
+            /** Format: date */
+            date: string;
+            /** Format: int64 */
+            records: number | null;
+            /** Format: int64 */
+            images: number | null;
+            records_complete: boolean;
+            images_complete: boolean;
+        };
+        DashboardAttention: {
+            id: string;
+            /** Format: uuid */
+            device_id: string;
+            name: string;
+            /** @enum {string} */
+            kind: "delayed" | "no_data" | "unavailable";
+            /** Format: date-time */
+            last_observed_at: string | null;
+            /** Format: int64 */
+            threshold_seconds: number | null;
+        };
+        DashboardOverview: {
+            /** Format: date-time */
+            generated_at: string;
+            /** Format: date-time */
+            statistics_updated_at: string | null;
+            /** @enum {string} */
+            timezone: "Asia/Shanghai";
+            /** @enum {integer} */
+            days: 7 | 30;
+            refresh_interval_seconds: number;
+            records: {
+                total: components["schemas"]["DashboardCount"];
+                today: components["schemas"]["DashboardCount"];
+                /** Format: date-time */
+                first_observed_at: string | null;
+            };
+            images: {
+                total: components["schemas"]["DashboardCount"];
+                today: components["schemas"]["DashboardCount"];
+            };
+            trend: components["schemas"]["DashboardDay"][];
+            devices: {
+                total: number;
+                reporting: number;
+                delayed: number;
+                no_data: number;
+                unknown: number;
+                inactive: number;
+            };
+            attention: components["schemas"]["DashboardAttention"][];
+            /** Format: int64 */
+            active_alerts: number | null;
+        };
         SystemPolicy: {
             values: {
                 [key: string]: number;

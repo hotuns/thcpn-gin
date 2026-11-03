@@ -1,0 +1,46 @@
+@media (min-width: 768px) and (max-width: 1000px) {
+  .digital-plot.digital-plot { height: auto; overflow: visible; }
+  .digital-plot .dp-scene { padding: 12px; overflow: visible; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 767px) {
+  .digital-plot.digital-plot { height: calc(100dvh - var(--mobile-header-height, 56px) - var(--mobile-nav-height, 0px)); min-height: 0; padding-bottom: var(--mobile-safe-bottom, 0px); overflow: hidden; }
+  .digital-plot.is-fullscreen { height: 100dvh; }
+  .digital-plot [hidden] { display: none !important; }
+  .digital-plot .dp-header { flex: none; height: auto; padding: 8px; grid-template-columns: 44px minmax(0, 1fr); gap: 6px; }
+  .digital-plot .dp-header-tools { grid-column: 1 / -1; width: 100%; justify-content: space-between; }
+  .digital-plot .dp-title.obs-title h1 { font-size: 22px; letter-spacing: 0; }
+  .digital-plot .dp-back { min-height: 44px; }
+  .digital-plot .dp-demo { font-size: 13px; }
+  .digital-plot .shadcn-button { min-height: 44px; font-size: 14px; }
+  .digital-plot small { font-size: 13px; }
+  .digital-plot .dp-scene { display: flex; flex-direction: column; padding: 0; gap: 0; min-height: 0; flex: 1; }
+  .digital-plot .dp-geography { order: -1; position: relative; inset: auto; height: auto; min-height: 160px; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(160px, 1fr); }
+  .digital-plot .dp-geography:has(.dp-map-top:not([hidden])) { grid-template-rows: minmax(160px, 1fr) minmax(0, 45%); }
+  .digital-plot .dp-geography > .dp-map-container { position: relative; inset: auto; grid-area: 1 / 1; min-height: 0; }
+  .digital-plot .dp-directory, .digital-plot .dp-inspector { flex: 0 1 45%; min-height: 0; max-height: 45%; width: 100%; margin: 0; overflow: auto; overscroll-behavior: contain; }
+  .digital-plot .dp-plot-list.obs-auto-scroll { max-height: none; overflow: visible; }
+  .digital-plot .dp-layer-list { overflow: visible; }
+  .digital-plot .dp-map-top { position: relative; inset: auto; grid-area: 2 / 1; min-height: 0; max-height: none; overflow: auto; overscroll-behavior: contain; padding: 12px; gap: 10px; background: var(--panel); pointer-events: auto; border-top: 1px solid var(--border); align-items: stretch; }
+  .digital-plot .dp-statistics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 0; width: 100%; }
+  .digital-plot .dp-statistics > div { display: grid; grid-template-columns: auto auto; justify-content: center; align-items: baseline; gap: 2px; min-width: 0; }
+  .digital-plot .dp-statistics > div > span { grid-column: 1 / -1; font-size: 12px; white-space: normal; }
+  .digital-plot .dp-statistics small { display: block; }
+  .digital-plot .dp-mode { flex-shrink: 0; }
+  .digital-plot .dp-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .digital-plot .dp-metrics .shadcn-button { min-width: 0; padding: 6px 4px; white-space: normal; }
+  .digital-plot .dp-mode { display: flex; flex-wrap: wrap; }
+  .digital-plot .dp-legend { position: relative; inset: auto; grid-area: 1 / 1; align-self: end; margin: 8px; transform: none; width: auto; max-width: none; grid-template-columns: auto minmax(80px, 1fr); gap: 8px; padding: 6px; pointer-events: none; }
+  .digital-plot .dp-legend > small { grid-column: 1 / -1; }
+  .digital-plot .dp-map-canvas .maplibregl-ctrl-bottom-left { left: 0; bottom: 0; }
+  .digital-plot .dp-map-canvas .maplibregl-ctrl-bottom-right { right: 0; bottom: 0; max-width: calc(100% - 30px); }
+  .digital-plot .dp-map-source-mode, .digital-plot .dp-map-warning { left: 8px; right: 64px; width: auto; max-width: none; }
+  .digital-plot .dp-playback { flex: 0 1 42%; min-height: 0; overflow: auto; margin: 0; padding: 12px; }
+  .digital-plot .dp-transport { display: flex; flex-wrap: wrap; gap: 12px; }
+  .digital-plot .dp-transport > label { width: 100%; }
+  .digital-plot .dp-transport input { min-width: 0; width: 100%; font-size: 16px; }
+  .digital-plot .dp-timeline { flex: 1 0 100%; margin: 24px 0 0; }
+  .digital-plot .dp-slider { min-height: 44px; }
+  .digital-plot .dp-slider-thumb { width: 24px; height: 24px; }
+  .digital-plot .dp-dates button, .digital-plot .dp-flight-markers button { min-height: 44px; min-width: 40px; }
+  .digital-plot .dp-footer { flex: none; padding: 6px 10px; gap: 4px; line-height: 1.4; font-size: 11px; }
+}

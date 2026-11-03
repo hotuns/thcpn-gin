@@ -1,0 +1,26 @@
+export const mobileZh = {
+  startTime: "开始时间", endTime: "结束时间", lastReported: "最近上报 {{time}}", lastReceived: "接收于 {{time}}", noReport: "暂无上报", noReception: "暂无接收", activityFailed: "活动读取失败",
+  data: "数据", more: "更多", dataTitle: "数据工作台", dataDescription: "整理观测数据，运行分析并交付结果。",
+  compareDescription: "把不同设备与指标放在一起查看", datasetsDescription: "保存常用来源和查询范围",
+  processingDescription: "查看分析任务、执行记录与产物", exportsDescription: "创建导出，查看进度与下载文件",
+  moreDescription: "管理工作区、账号和使用偏好。", workspaceSection: "工作区", exploreSection: "观测空间", preferencesSection: "使用偏好",
+  workspacesDescription: "切换或管理你的观测团队", settingsDescription: "项目、站点、成员与资源授权", subscriptionDescription: "套餐与下载额度",
+  mapDescription: "在地图上查找观测设备", atlasDescription: "观测大屏与空间展示", plotDescription: "浏览样地与观测场景", digitalPlot: "数字样地",
+  accountDescription: "个人资料、密码与账号安全", helpDescription: "重新查看平台使用引导", signOut: "退出登录", signingOut: "正在退出…",
+  workspacePicker: "切换工作区", noWorkspace: "选择工作区", currentWorkspace: "当前工作区", searchWorkspace: "搜索工作区", noWorkspaceMatch: "没有匹配的工作区",
+  mobileNavigation: "底部主导航", backTo: "返回{{page}}", offline: "网络已断开，恢复连接后可刷新数据。", reconnect: "重新加载",
+  openNotifications: "查看通知", openAccount: "账号与设置", dataSection: "数据工具", openGuide: "使用引导", theme: "界面外观",
+};
+export const mobileEn: Record<keyof typeof mobileZh, string> = {
+  startTime: "Start time", endTime: "End time", lastReported: "Last reported {{time}}", lastReceived: "Received {{time}}", noReport: "No reports yet", noReception: "Nothing received yet", activityFailed: "Could not load activity",
+  data: "Data", more: "More", dataTitle: "Data workspace", dataDescription: "Organize observations, run analyses and deliver results.",
+  compareDescription: "Compare devices and measurements", datasetsDescription: "Save sources and query ranges",
+  processingDescription: "Analysis tasks, executions and outputs", exportsDescription: "Create exports, check progress and download files",
+  moreDescription: "Manage workspaces, your account and preferences.", workspaceSection: "Workspace", exploreSection: "Observation spaces", preferencesSection: "Preferences",
+  workspacesDescription: "Switch or manage your observation teams", settingsDescription: "Projects, sites, members and access", subscriptionDescription: "Your plan and download allowance",
+  mapDescription: "Find observation devices on the map", atlasDescription: "Wallboards and spatial views", plotDescription: "Explore plots and observation scenes", digitalPlot: "Digital plot",
+  accountDescription: "Profile, password and account security", helpDescription: "Take the platform tour again", signOut: "Sign out", signingOut: "Signing out…",
+  workspacePicker: "Switch workspace", noWorkspace: "Choose a workspace", currentWorkspace: "Current workspace", searchWorkspace: "Search workspaces", noWorkspaceMatch: "No matching workspaces",
+  mobileNavigation: "Primary mobile navigation", backTo: "Back to {{page}}", offline: "You are offline. Refresh your data when the connection returns.", reconnect: "Reload",
+  openNotifications: "View notifications", openAccount: "Account and settings", dataSection: "Data tools", openGuide: "Getting started", theme: "Appearance",
+};

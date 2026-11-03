@@ -1,0 +1,45 @@
+@media (max-width: 767px) {
+  .atlas-shell.atlas-shell { height: calc(100dvh - var(--mobile-header-height, 56px) - var(--mobile-nav-height, 0px)); min-height: 0; padding: 0 0 var(--mobile-safe-bottom, 0px); display: flex; flex-direction: column; overflow: hidden; }
+  .atlas-shell.is-presenting { height: 100dvh; }
+  .atlas-shell.atlas-shell > .atlas-topbar { position: relative; inset: auto; display: flex; flex-wrap: wrap; flex: none; padding: 8px 12px; gap: 8px; }
+  .atlas-shell.atlas-shell > .atlas-topbar > .atlas-header { position: relative; inset: auto; transform: none; width: 100%; height: auto; min-height: 0; flex: 1 0 100%; padding: 0; }
+  .atlas-shell .atlas-header .atlas-title.obs-title { width: auto; padding: 0; text-align: left; }
+  .atlas-shell .atlas-title.obs-title h1 { font-size: 22px; letter-spacing: 0; }
+  .atlas-shell.atlas-shell > .atlas-topbar > .atlas-header-actions { position: static; margin: 0; gap: 8px; }
+  .atlas-shell .atlas-clock { font-size: 11px; }
+  .atlas-shell .atlas-clock strong { font-size: 14px; }
+  .atlas-shell .shadcn-button { min-height: 44px; }
+  .atlas-mobile-workbench { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .atlas-mobile-workbench > .atlas-map-region { flex: 1; min-height: 160px; height: auto; position: relative; inset: auto; border-radius: 0; }
+  .atlas-mobile-panel { flex: 0 1 45%; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+  .atlas-mobile-panel[hidden] { display: none; }
+  .atlas-mobile-panel .atlas-directory, .atlas-mobile-panel .atlas-inspector { position: relative; inset: auto; width: auto; max-height: none; min-height: 0; margin: 0; overflow: visible; }
+  .atlas-shell .atlas-mobile-panel .atlas-summary { position: relative; inset: auto; width: auto; height: auto; margin: 0; }
+  .atlas-shell .atlas-mobile-panel .atlas-health-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .atlas-mobile-panel .atlas-device-list { max-height: none; overflow: visible; }
+  .atlas-mobile-panel .atlas-directory { display: block; }
+  .atlas-mobile-panel input, .atlas-mobile-panel select { font-size: 16px; }
+  .atlas-mobile-workbench .maplibregl-ctrl-top-right { top: 8px; right: 8px; }
+  .atlas-shell .atlas-mobile-workbench .maplibregl-ctrl-attrib { display: block; }
+  .atlas-mobile-workbench .maplibregl-ctrl-bottom-right { right: 0; bottom: 0; }
+  .atlas-mobile-workbench .maplibregl-ctrl-bottom-left { left: 0; bottom: 0; }
+  .atlas-shell .atlas-mobile-workbench .observatory-map > .observatory-view-controls.atlas-map-actions { left: 8px; right: auto; top: 56px; bottom: auto; transform: none; max-width: calc(100% - 72px); max-height: calc(100% - 64px); overflow: auto; flex-wrap: wrap; background: var(--panel); }
+  .atlas-mobile-workbench [hidden] { display: none !important; }
+  .atlas-mobile-view-toggle { position: absolute; left: 8px; top: 8px; z-index: 4; }
+  .atlas-mobile-workbench .map-tools { top: 8px; right: 8px; }
+  .atlas-mobile-workbench .atlas-map-tools { top: 8px; left: 8px; bottom: auto; transform: none; max-width: calc(100% - 64px); flex-wrap: wrap; }
+  .atlas-mobile-workbench .atlas-map-heading { top: auto; bottom: 58px; left: 8px; pointer-events: none; }
+  .atlas-mobile-workbench .atlas-map-heading h2 { font-size: 16px; }
+  .atlas-mobile-workbench .atlas-map-caption { bottom: 32px; left: 8px; }
+  .atlas-shell .atlas-footer { flex: none; padding: 6px 10px; flex-wrap: wrap; font-size: 11px; }
+  .atlas-home .atlas-home-templates, .atlas-home .atlas-saved-grid, .atlas-settings .atlas-template-choices, .atlas-settings .atlas-settings-fields { grid-template-columns: minmax(0, 1fr); }
+  .atlas-home .atlas-home-heading { flex-wrap: wrap; gap: 12px; }
+  .atlas-home .atlas-custom-showcase { padding: 48px 16px 20px; }
+  .atlas-home .atlas-custom-showcase > div { max-width: 100%; }
+  .atlas-home .atlas-custom-showcase > img { opacity: .2; }
+  .atlas-home button, .atlas-settings button { min-height: 44px; }
+  .atlas-settings input { font-size: 16px; }
+  .atlas-settings .atlas-template-card { min-width: 0; white-space: normal; }
+  .atlas-home .atlas-creation-steps { flex-wrap: wrap; gap: 12px; }
+  .atlas-home .atlas-saved-card h3 { overflow-wrap: anywhere; }
+}

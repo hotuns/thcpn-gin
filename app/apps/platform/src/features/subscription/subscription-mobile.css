@@ -1,0 +1,17 @@
+@media (max-width: 767px) {
+  .subscription-page .subscription-hero { display: flex; flex-wrap: wrap; gap: 16px; }
+  .subscription-page .subscription-plan-copy { min-width: 0; flex: 1 1 70%; }
+  .subscription-page .subscription-plan-side { width: 100%; justify-items: start; text-align: left; }
+  .subscription-page .subscription-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .subscription-page .subscription-metrics > .panel { min-width: 0; overflow-wrap: anywhere; }
+  .subscription-page .pricing-grid { grid-template-columns: minmax(0, 1fr); }
+  .subscription-page .pricing-card-top, .subscription-page .pricing-footnote,
+  .subscription-page .billing-usage-meta, .subscription-page .api-key-heading-actions,
+  .subscription-page .api-key-create, .subscription-page .api-key-secret,
+  .subscription-page .api-key-list > div { flex-wrap: wrap; gap: 12px; }
+  .subscription-page .api-key-create { grid-template-columns: minmax(0, 1fr); }
+  .subscription-page .api-key-create > input { flex: 1 1 100%; min-width: 0; }
+  .subscription-page .api-key-secret { display: flex; }
+  .subscription-page .api-key-secret code { flex: 1 1 100%; white-space: normal; overflow-wrap: anywhere; }
+  .subscription-page .api-key-list > div > div { min-width: 0; flex: 1 1 100%; overflow-wrap: anywhere; }
+}

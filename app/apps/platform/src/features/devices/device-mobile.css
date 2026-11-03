@@ -1,0 +1,75 @@
+.device-metric-option { display: contents; }
+.device-query-editor[hidden] { display: none; }
+
+@media (max-width: 767px) {
+  .device-mobile-list { display: grid; gap: 12px; min-width: 0; }
+  .device-mobile-card { display: grid; gap: 10px; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+  .device-mobile-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .device-mobile-card .device-name-link { min-width: 0; min-height: 44px; font-size: 17px; line-height: 1.4; text-align: left; overflow-wrap: anywhere; }
+  .device-mobile-meta { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+  .device-mobile-status, .device-mobile-card-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .device-mobile-card-actions > button { flex: 1 1 auto; min-height: 44px; }
+  .device-mobile-card .device-row-tags { flex-wrap: wrap; }
+  .device-filter-bar .device-filter-main-row { flex-wrap: wrap; gap: 10px; }
+  .device-filter-bar .filter-input { flex: 1 1 100%; min-width: 0; }
+  .device-filter-bar input { min-height: 44px; font-size: 16px; }
+  .device-filter-bar .device-filter-actions { flex-wrap: wrap; }
+  .device-filter-sheet .device-filter-scope-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; padding-block: 16px; }
+  .device-filter-sheet .device-filter-select, .device-filter-sheet .device-filter-select button { width: 100%; min-width: 0; min-height: 44px; }
+  .device-filter-sheet { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+  .device-active-filters { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; overflow-wrap: anywhere; }
+  .device-categories { display: flex; flex-wrap: nowrap; max-width: 100%; overflow-x: auto; justify-content: flex-start; }
+  .device-categories > button { flex-shrink: 0; min-height: 44px; }
+  .device-mobile-card .child-device-list { min-width: 0; }
+  .device-mobile-card .child-device-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .device-mobile-card .child-device-runtime { min-width: 0; }
+  .device-node-status > summary { cursor: pointer; min-height: 44px; padding-block: 12px; font-size: 14px; }
+  .device-mobile-card .child-device-list .header-actions { flex-wrap: wrap; }
+  .device-mobile-card .child-device-list > div > div:last-child { text-align: left; }
+  .page .device-detail-heading { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; max-width: 100%; }
+  .device-detail-heading .device-detail-title { min-width: 0; max-width: 100%; }
+  .device-detail-title h1 { font-size: 24px; overflow-wrap: anywhere; }
+  .device-detail-meta { flex-wrap: wrap; overflow-wrap: anywhere; }
+  .device-detail-heading .device-detail-actions { display: flex; flex-direction: row; flex-wrap: wrap; width: 100%; min-width: 0; gap: 8px; }
+  .device-detail-actions .device-quick-switch { display: grid; grid-template-columns: minmax(0, 1fr); flex: 1 1 100%; min-width: 0; max-width: 100%; white-space: normal; }
+  .device-detail-heading .device-quick-switch-control { flex: none; width: 100%; min-width: 0; max-width: 100%; }
+  .device-detail-heading .device-quick-switch-input { height: auto; min-height: 44px; white-space: normal; }
+  .device-detail-heading .device-quick-switch-value { white-space: normal; overflow-wrap: anywhere; overflow: visible; text-overflow: clip; }
+  .device-detail-actions > a { flex: 1; }
+  .device-detail-actions > a > button { width: 100%; min-height: 44px; }
+  .device-detail-tabs { display: flex; max-width: 100%; overflow-x: auto; flex-wrap: nowrap; white-space: nowrap; }
+  .device-detail-tabs > button { flex: 0 0 auto; min-height: 44px; }
+  .device-detail-tab-content, .device-data-layout, .device-data-content { min-width: 0; max-width: 100%; }
+  .device-query-summary { display: grid; gap: 10px; margin-block: 12px; }
+  .device-query-summary p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--muted); overflow-wrap: anywhere; }
+  .device-query-summary > button { justify-self: start; min-height: 44px; }
+  .device-query-editor .gateway-node-query-fields { grid-template-columns: minmax(0, 1fr); }
+  .device-query-editor input, .device-query-editor [role="combobox"] { min-width: 0; width: 100%; min-height: 44px; font-size: 16px; }
+  .device-query-editor .range-presets { flex-wrap: wrap; }
+  .device-query-editor .range-presets button { min-height: 44px; }
+  .device-query-editor .stream-check-grid, .device-query-editor .gateway-node-metric-checks { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .device-query-editor .device-metric-option { display: flex; align-items: stretch; gap: 6px; min-width: 0; }
+  .device-metric-option > button { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; min-height: 44px; padding: 8px; text-align: left; color: var(--ink); background: var(--surface-muted); border: 1px solid var(--soft-line); border-radius: 6px; }
+  .device-metric-option > button.selected { background: var(--surface-selected); border-color: var(--blue); }
+  .device-metric-option > button.selected :is(.stream-check, .gateway-node-metric-check) { background: var(--blue); border-color: var(--blue); }
+  .device-metric-option > button > span:last-child { display: grid; gap: 4px; min-width: 0; }
+  .device-metric-option > button strong { font-size: 14px; }
+  .device-metric-option > button small { font-size: 13px; }
+  .device-metric-option > button strong { overflow-wrap: anywhere; }
+  .device-metric-order { display: flex; align-items: stretch; gap: 4px; }
+  .device-metric-order > button { min-width: 44px; min-height: 44px; padding: 10px; }
+  .device-query-editor .stream-drag-handle, .device-query-editor .gateway-node-metric-drag-handle { display: none; }
+  .gateway-node-data .panel-header, .query-condition-panel .panel-header { align-items: flex-start; flex-wrap: wrap; gap: 10px; }
+  .gateway-node-data .header-actions, .query-condition-panel .header-actions { flex-wrap: wrap; }
+  .gateway-node-data .header-actions button, .query-condition-panel .header-actions button { min-height: 44px; }
+  .device-detail-tab-content .carbon-query-fields { grid-template-columns: minmax(0, 1fr); }
+  .device-detail-tab-content .carbon-query-toolbar { flex-wrap: wrap; }
+  .device-detail-tab-content .carbon-metric-grid, .device-detail-tab-content .carbon-detail-charts, .device-detail-tab-content .carbon-phase-grid { grid-template-columns: minmax(0, 1fr); }
+  .device-detail-tab-content .carbon-query-fields input, .device-detail-tab-content .carbon-query-fields [role="combobox"] { min-width: 0; width: 100%; min-height: 44px; font-size: 16px; }
+  .device-detail-tab-content .carbon-query-toolbar button { min-height: 44px; }
+  .device-detail-tab-content .carbon-period-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; text-align: left; }
+  .device-detail-tab-content .carbon-flux-panel > .panel-header { flex-wrap: wrap; gap: 12px; }
+  .device-detail-tab-content .carbon-flux-panel .header-actions { flex-wrap: wrap; }
+  .device-detail-tab-content .camera-live { min-width: 0; }
+  .device-detail-tab-content .camera-live > .panel-header { flex-wrap: wrap; gap: 12px; }
+}

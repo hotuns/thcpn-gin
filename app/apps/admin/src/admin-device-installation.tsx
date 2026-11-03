@@ -92,8 +92,8 @@ export function AdminDeviceNodes({device,onData,onTopology,onConfig,onHistory,co
   const indices=currentNodes.flatMap(node=>node.target.kind==="gateway_node"?[node.target.node_index]:[]);
   const runtime=useQuery({queryKey:["admin","device",id,"nodes","runtime",lora?indices.join(","):"all"],queryFn:()=>api.admin.nodeRuntime(id,lora?indices:undefined),enabled:lora?indices.length>0:readRuntime,staleTime:Infinity,refetchOnWindowFocus:false,refetchOnMount:"always",retry:false});
   const positions=<Space orientation="vertical" size="middle" style={{width:"100%"}}>
-    <Space wrap style={{justifyContent:"space-between",width:"100%"}}>
-      <Space><Input.Search aria-label="搜索节点" placeholder={lora?"名称、SN 或序号":"搜索节点名称"} allowClear value={search} onChange={e=>{setSearch(e.target.value);setStatusPage(1);}} style={{width:280}}/>
+    <Space className="admin-query-toolbar" wrap style={{justifyContent:"space-between",width:"100%"}}>
+      <Space wrap><Input.Search aria-label="搜索节点" placeholder={lora?"名称、SN 或序号":"搜索节点名称"} allowClear value={search} onChange={e=>{setSearch(e.target.value);setStatusPage(1);}} style={{width:280}}/>
 </Space>
       <Button disabled={lora&&!indices.length} loading={runtime.isFetching} onClick={()=>{setReadRuntime(true);if(lora||readRuntime)void runtime.refetch();}}>{lora?"刷新状态":"读取电量与信号"}</Button>
     </Space>

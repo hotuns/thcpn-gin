@@ -10,7 +10,10 @@ import { I18nProvider } from "@thcpn/i18n";
 import "antd/dist/reset.css";
 import "@thcpn/ui/styles.css";
 import "./admin.css";
+import "./admin-mobile.css";
 import { AdminApp } from "./app";
+
+document.body.classList.add("admin-app");
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 0 } } });
 // Bundle the MapLibre v6 worker and its shared chunk before any map mounts.

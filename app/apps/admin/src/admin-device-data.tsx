@@ -1,4 +1,6 @@
 import { AdminNodeStatus } from "./runtime-status";
+import { AdminTimeRange } from "./admin-time-range";
+import { useAdminMobile } from "./admin-mobile";
 import { nodeHistoryNotice } from "@thcpn/api";
 import { Tooltip } from "antd";
 import { useSearchParams } from "react-router-dom";
@@ -8,7 +10,7 @@ import { isMeasurement, streamPurpose } from "@thcpn/api";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import dayjs, { type Dayjs } from "dayjs";
-import { Alert, App, Button, Card, DatePicker, Descriptions, Empty, Image, Modal, Segmented, Select, Space, Spin, Table, Tabs, Tag, Typography } from "antd";
+import { Alert, App, Button, Card, Descriptions, Empty, Image, Modal, Segmented, Select, Space, Spin, Table, Tabs, Tag, Typography } from "antd";
 import { api, formatApiError, type GatewayNode, type JsonRecord, type MediaItem } from "@thcpn/api";
 import { operationsStreams, opsTime, telemetryRows } from "./admin-device-ops-model";
 
@@ -16,6 +18,7 @@ const AdminDataCharts = lazy(() => import("./admin-data-charts").then(module => 
 
 export function AdminDeviceData({device,nodeKey,onNodeChange,onExport}:{device:JsonRecord;nodeKey:string;onNodeChange:(key:string)=>void;onExport:()=>void}) {
   const {message}=App.useApp();
+  const mobile = useAdminMobile();
   const id=String(device.id);
   const gateway=device.device_type==="gateway";
   const lora=device.source_family==="lorawan_v2";
@@ -65,10 +68,10 @@ export function AdminDeviceData({device,nodeKey,onNodeChange,onExport}:{device:J
   return <Card title={purpose==="status"?"运行状态":"设备与节点数据"} extra={<Space>{lora&&node?.bound&&<Button onClick={()=>setStatusOpen(true)}>查看运行状态</Button>}<Button onClick={onExport}>导出与下载任务</Button></Space>}>
     <Modal title={`${node?.name??"节点"} · 运行状态`} open={statusOpen} onCancel={()=>setStatusOpen(false)} footer={null} destroyOnHidden>{statusOpen&&node&&<AdminNodeStatus showTime deviceId={id} node={node}/>}</Modal>
     <>
-    <Space wrap align="end" style={{marginBottom:16,width:"100%"}}>
+    <Space className="admin-query-toolbar" wrap align="end" style={{marginBottom:16,width:"100%"}}>
       {lora&&<Select aria-label="节点范围" value={nodeScope} onChange={scope=>{setNodeScope(scope);setParams(previous=>{const next=new URLSearchParams(previous);next.set("node_scope",scope);next.set("node",(nodes.data?.items??[]).find(node=>scope==="bound"?node.bound:!node.bound)?.key??"");return next;},{replace:true});}} style={{width:150}} options={[{value:"bound",label:"当前节点"},{value:"history",label:"历史数据"}]}/>}
       {gateway&&<Space orientation="vertical"><Typography.Text>查询节点</Typography.Text><Select value={selectedNodeKey} style={{width:260}} showSearch optionFilterProp="label" loading={nodes.isFetching} onChange={key=>{onNodeChange(key);setPage(1);setMediaStream(undefined);}} options={[...(!lora||purpose==="status"?[{value:"",label:"网关自身"}]:[]),...visibleNodes.map(item=>({value:item.key,label:nodeOptionLabel(item)}))]}/></Space>}
-      <Space orientation="vertical"><Typography.Text>时间范围（北京时间）</Typography.Text><DatePicker.RangePicker showTime value={range} style={{width:420}} onChange={value=>setRange(value&&value[0]&&value[1]?[value[0],value[1]]:null)} presets={[6,24,72,168].map(hours=>({label:hours<24?`${hours} 小时`:`${hours/24} 天`,value:[dayjs().subtract(hours,"hour"),dayjs()] as [Dayjs,Dayjs]}))}/></Space>
+      <Space orientation="vertical"><Typography.Text>时间范围（北京时间）</Typography.Text><AdminTimeRange value={range} onChange={setRange} presets={[6,24,72,168].map(hours=>({label:hours<24?`${hours} 小时`:`${hours/24} 天`,value:[dayjs().subtract(hours,"hour"),dayjs()] as [Dayjs,Dayjs]}))}/></Space>
       <Select aria-label="数据阶段" value={phase} style={{width:160}} onChange={value=>{setPhase(value);setPage(1);}} options={[{value:"all",label:"全部数据"},{value:"formal",label:"正式观测数据"},{value:"testing",label:"调试数据"}]}/>
       <Button type="primary" onClick={apply} loading={telemetry.isFetching||media.isFetching}>查询 / 刷新</Button>
     </Space>
@@ -91,7 +94,7 @@ export function AdminDeviceData({device,nodeKey,onNodeChange,onExport}:{device:J
           {title:"最近采集时间",render:(_,series)=>opsTime(series.points.at(-1)?.ts)},
         ]}/>
         {!loading&&!active.length?<Empty description="当前设备或节点没有数值指标，请检查源配置并同步平台配置"/>:<Table size="small" loading={telemetry.isFetching} rowKey="key" dataSource={rows} pagination={{pageSize:50,showSizeChanger:true,showTotal:total=>`${total} 个采集时刻`}} scroll={{x:Math.max(800,ids.length*170+210)}} columns={[
-          {title:"采集时间（北京时间）",dataIndex:"timestamp",width:210,fixed:"left",render:(timestamp:string)=>opsTime(timestamp)},
+          {title:"采集时间（北京时间）",dataIndex:"timestamp",width:210,fixed:mobile?undefined:"left",render:(timestamp:string)=>opsTime(timestamp)},
           ...active.filter(stream=>ids.includes(stream.id)).map(stream=>({title:`${stream.name}${stream.unit?` (${stream.unit})`:""}`,dataIndex:stream.id,width:170,render:(value:unknown)=>value==null?"—":String(value)})),
         ]}/>}
         </>}

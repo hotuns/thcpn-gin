@@ -1,0 +1,193 @@
+/* Admin-only responsive rules also cover AntD portals and direct antd imports. */
+.admin-shell .main-area,
+.admin-shell .page,
+.admin-app .ant-space-item,
+.admin-app .ant-tabs-content-holder,
+.admin-app .ant-tabs-tabpane,
+.admin-app .ant-card,
+.admin-app .ant-table-wrapper { min-width: 0; }
+.admin-mobile-trigger,
+.admin-icon-button.mobile-menu { display: none; }
+.admin-time-range { display: grid; gap: 10px; width: 100%; }
+.admin-time-range > label { display: grid; gap: 4px; }
+.admin-time-range .ant-picker { width: 100%; }
+.admin-navigation-drawer .ant-drawer-body { display: flex; padding: 0; overflow: hidden; }
+.admin-navigation-drawer .sidebar.admin-sidebar {
+  position: static;
+  transform: none;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  padding: 16px 12px max(16px, env(safe-area-inset-bottom));
+  box-shadow: none;
+}
+.admin-navigation-drawer .desktop-sidebar-toggle { display: none; }
+.admin-navigation-drawer .ant-drawer-header { background: var(--panel); }
+
+@media (max-width: 767px) {
+  .admin-mobile-trigger { display: flex; flex-shrink: 0; }
+  .admin-icon-button.mobile-menu { display: inline-flex; }
+  .admin-shell .desktop-sidebar-toggle,
+  .admin-shell .desktop-sidebar-open,
+  .admin-shell.sidebar-collapsed .desktop-sidebar-open { display: none; }
+  .admin-shell .main-area { width: 100%; }
+  .admin-shell .topbar { min-height: 60px; height: auto; padding: 8px 12px; gap: 8px; }
+  .admin-shell .topbar-left { min-width: 0; gap: 8px; }
+  .admin-shell .topbar-context { display: flex; min-width: 0; }
+  .admin-shell .topbar-context > span { display: none; }
+  .admin-shell .topbar-context strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .admin-shell .page { width: 100%; padding: 20px 12px max(28px, env(safe-area-inset-bottom)); }
+  .admin-shell .page-header { display: block; }
+  .admin-shell .page-header h1 { font-size: 24px; overflow-wrap: anywhere; }
+  .admin-shell .header-actions { margin-top: 12px; flex-wrap: wrap; }
+  .admin-shell .grid-2,
+  .admin-shell .grid-3,
+  .admin-shell .grid-4 { grid-template-columns: minmax(0, 1fr); }
+  .admin-app .ant-space { max-width: 100%; }
+  .admin-app .ant-space-horizontal { flex-wrap: wrap; }
+  .admin-app .ant-space-item { max-width: 100%; }
+  .admin-app .ant-input-search,
+  .admin-app .ant-input-affix-wrapper,
+  .admin-app .ant-select,
+  .admin-app .ant-picker,
+  .admin-app .ant-input-number { max-width: 100%; }
+  .admin-app .ant-btn,
+  .admin-app .ant-table-wrapper .ant-table-cell .ant-btn { min-height: 44px; height: auto; white-space: normal; }
+  .admin-app .admin-icon-button.ant-btn { width: 44px; flex-shrink: 0; }
+  .admin-app .ant-input,
+  .admin-app .ant-input-number-input,
+  .admin-app .ant-select,
+  .admin-app .ant-picker-input > input,
+  .admin-auth-panel input { font-size: 16px; }
+  .admin-app input.ant-input,
+  .admin-app .ant-input-affix-wrapper,
+  .admin-app .ant-picker,
+  .admin-app .ant-select-single,
+  .admin-app .ant-input-number { min-height: 44px; }
+  .admin-app .ant-input-affix-wrapper input.ant-input { min-height: 0; }
+  .admin-app .ant-select-multiple .ant-select-selector { min-height: 44px; }
+  .admin-app .ant-input-number-input { height: 42px; }
+  .admin-navigation.ant-menu-dark .ant-menu-item,
+  .admin-navigation.ant-menu-dark .ant-menu-submenu-title,
+  .admin-navigation.ant-menu-dark .ant-menu-sub .ant-menu-item { height: 44px; line-height: 44px; }
+  .admin-app .ant-form-inline { gap: 12px; }
+  .admin-app .ant-form-inline .ant-form-item { width: 100%; margin-inline-end: 0; }
+  .admin-app .ant-card-head { padding-inline: 12px; }
+  .admin-app .ant-card-head-wrapper { flex-wrap: wrap; gap: 8px; padding-block: 12px; }
+  .admin-app .ant-card-head-title { white-space: normal; }
+  .admin-app .ant-card-extra { margin-inline-start: 0; max-width: 100%; }
+  .admin-app .ant-card-body { padding: 12px; }
+  .admin-app .ant-descriptions-item-content { overflow-wrap: anywhere; }
+  .admin-app .ant-alert { min-width: 0; flex-wrap: wrap; gap: 8px; }
+
+  /* Keep all management grids scrollable inside their own table viewport. */
+  .admin-app .ant-table-wrapper { max-width: 100%; }
+  .admin-app .ant-table-content,
+  .admin-app .ant-table-body { overflow-x: auto !important; overscroll-behavior-x: contain; }
+  .admin-app .ant-table-container table { min-width: 640px; }
+  .admin-app .ant-table-cell-fix,
+  .admin-app .ant-table-cell-fix-left,
+  .admin-app .ant-table-cell-fix-right,
+  .admin-app .ant-table-cell-fix-start,
+  .admin-app .ant-table-cell-fix-end { position: static !important; }
+  .admin-app .ant-table-cell-fix::after,
+  .admin-app .ant-table-container::before,
+  .admin-app .ant-table-container::after,
+  .admin-app .ant-table-cell-fix-left-last::after,
+  .admin-app .ant-table-cell-fix-right-first::after,
+  .admin-app .ant-table-cell-fix-start-shadow::after,
+  .admin-app .ant-table-cell-fix-end-shadow::after { display: none; }
+  .admin-app .ant-pagination { flex-wrap: wrap; row-gap: 8px; }
+  .admin-app .ant-pagination-item,
+  .admin-app .ant-pagination-prev,
+  .admin-app .ant-pagination-next { min-width: 44px; height: 44px; line-height: 42px; }
+  .admin-app .ant-pagination-total-text { height: auto; white-space: normal; }
+
+  .admin-app .ant-drawer-content-wrapper { max-width: 100vw; }
+  .admin-app .ant-drawer-header { padding: 12px; flex-wrap: wrap; gap: 8px; }
+  .admin-app .ant-drawer-header-title { min-width: 0; }
+  .admin-app .ant-drawer-title { overflow-wrap: anywhere; }
+  .admin-app .ant-drawer-extra { max-width: 100%; margin-inline-start: 0; }
+  .admin-app .ant-drawer-body { min-height: 0; padding: 12px; overscroll-behavior: contain; }
+  .admin-app .ant-drawer-footer { padding: 12px 12px max(12px, env(safe-area-inset-bottom)); }
+  .admin-app .admin-navigation-drawer .ant-drawer-body { padding: 0; }
+  .admin-app .ant-modal { top: 12px; max-width: calc(100vw - 24px); padding-bottom: 12px; }
+  .admin-app .ant-modal-container,
+  .admin-app .ant-modal-content { display: flex; flex-direction: column; max-height: calc(100dvh - 24px); padding: 16px; }
+  .admin-app .ant-modal-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .admin-app .ant-modal-header,
+  .admin-app .ant-modal-footer { flex-shrink: 0; }
+  .admin-app .ant-modal-title { padding-inline-end: 32px; overflow-wrap: anywhere; }
+  .admin-app .ant-modal-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+  .admin-app .ant-modal-footer > .ant-btn + .ant-btn { margin-inline-start: 0; }
+  .admin-app .ant-modal-close,
+  .admin-app .ant-drawer-close { min-width: 44px; min-height: 44px; }
+  .admin-app .ant-picker-dropdown { max-width: calc(100vw - 16px); }
+  .admin-app .ant-picker-panel-container { max-width: calc(100vw - 16px); max-height: calc(100dvh - 32px); overflow: auto; }
+  .admin-app .ant-picker-datetime-panel { flex-direction: column; }
+  .admin-app .ant-picker-time-panel { border-inline-start: 0; }
+  .admin-app .ant-picker-time-panel-column { height: 112px; }
+  .admin-app .ant-picker-panels { flex-direction: column; }
+  .admin-app .ant-picker-ranges { flex-wrap: wrap; }
+
+  .admin-query-toolbar > .ant-space-item,
+  .admin-query-toolbar > .ant-space-item > .ant-space,
+  .admin-query-toolbar .ant-picker,
+  .admin-query-toolbar .ant-select,
+  .admin-query-toolbar .ant-input-search { width: 100% !important; }
+  .admin-device-filters,
+  .admin-user-toolbar,
+  .governance-toolbar,
+  .firmware-filters,
+  .firmware-form-grid,
+  .sensor-catalog-toolbar,
+  .config-form-grid,
+  .config-form-grid-3,
+  .config-form-grid-4,
+  .metric-editor-fields,
+  .schedule-editor-row,
+  .schedule-editor-row.advanced,
+  .drawer-grid,
+  .lora-log-filters { grid-template-columns: minmax(0, 1fr); }
+  .admin-device-filters > .ant-input-search { width: 100% !important; }
+  .admin-user-toolbar > :nth-child(4),
+  .governance-toolbar > .ant-input-affix-wrapper { grid-column: auto; }
+  .admin-list-toolbar,
+  .admin-device-batch-toolbar,
+  .admin-detail-section-head,
+  .visual-config-toolbar,
+  .visual-subsection-head,
+  .tab-toolbar,
+  .system-operation-list > section,
+  .lora-config-node,
+  .lora-protocol-item-head,
+  .lora-node-protocol-head,
+  .lora-template-instance-head { align-items: stretch; flex-direction: column; }
+  .admin-detail-section { padding: 16px 12px; }
+  .admin-detail-section-head .ant-space,
+  .admin-device-batch-toolbar .ant-space { flex-wrap: wrap; }
+  .admin-device-detail-summary,
+  .admin-attribute-grid,
+  .admin-claim-credential { grid-template-columns: minmax(0, 1fr); }
+  .admin-device-detail-summary > div,
+  .admin-attribute-grid > div { border-right: 0; }
+  .metric-editor-row { grid-template-columns: 24px minmax(0, 1fr); }
+  .metric-editor-row > .ant-space { grid-column: 2; }
+  .typed-extra-list > div { grid-template-columns: minmax(0, 1fr) auto; }
+  .typed-extra-list > div > span { grid-column: 1 / -1; }
+  .admin-event-list > a { grid-template-columns: auto minmax(0, 1fr); }
+  .admin-event-list time { grid-column: 2; }
+  .admin-child-list > div { flex-wrap: wrap; }
+  .admin-child-list > div > div { flex-wrap: wrap; }
+  .admin-auth-page { padding: 72px 12px 24px; min-height: 100dvh; }
+  .admin-auth-panel { padding: 24px 16px; }
+  .admin-auth-panel input { height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-app .admin-spin,
+  .admin-app .sync-progress-running .sync-progress-track span,
+  .admin-app .sync-result { animation: none; }
+}

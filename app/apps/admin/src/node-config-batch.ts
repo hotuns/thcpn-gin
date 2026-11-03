@@ -22,7 +22,7 @@ export async function submitNodeSensorBatch(deviceId: string, targets: number[],
         const result = await api.admin.updateDeviceSourceConfig(deviceId, "sensor", payload, node);
         const state = result.write_state as JsonRecord | undefined;
         const partial = state?.platform === "failed";
-        results[index] = { node, status: partial ? "sync_failed" : "synced", detail: partial ? "源端已接受，平台同步失败，请重新读取节点配置。" : "源端已接受，平台已同步；设备是否应用尚未确认。" };
+        results[index] = { node, status: partial ? "sync_failed" : "synced", detail: partial ? "源端已接受，平台同步失败，请执行网关“同步平台配置”，无需再次下发。" : "源端已接受，平台已同步；设备是否应用尚未确认。" };
       } catch (error) {
         const detail = formatApiError(error);
         results[index] = { node, status: "failed", detail: detail.message + (detail.requestId ? " · request id " + detail.requestId : "") };

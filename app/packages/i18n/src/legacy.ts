@@ -23,6 +23,11 @@ export const translateLegacyText = (value: string) => {
   const exact = legacyEnglish[value];
   if (exact) return exact;
   const countPatterns: Array<[RegExp, (match: RegExpMatchArray) => string]> = [
+    [/^上移 (.+)$/, (m) => `Move ${m[1]} up`],
+    [/^下移 (.+)$/, (m) => `Move ${m[1]} down`],
+    [/^(.+) 更多操作$/, (m) => `More actions for ${m[1]}`],
+    [/^最近上报 (.+)$/, (m) => `Last reported ${m[1]}`],
+    [/^筛选 · (\d+)$/, (m) => `Filters · ${m[1]}`],
     [/^(\d+) 项指标$/, (m) => `${m[1]} metrics`],
     [/^(\d+) 种图片$/, (m) => `${m[1]} image types`],
     [/^(\d+) 张$/, (m) => `${m[1]} images`],

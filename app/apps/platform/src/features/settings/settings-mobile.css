@@ -1,0 +1,31 @@
+.shadcn-dialog-content.resource-modal { padding: 0; overflow: hidden; max-width: 560px; }
+.resource-modal > .shadcn-dialog-close { display: none; }
+.resource-modal .resource-dialog { border: 0; max-height: calc(100dvh - 48px); box-shadow: none; }
+.resource-modal .resource-dialog-form { min-height: 0; }
+.resource-modal .resource-dialog-form input { background: var(--panel); }
+@media (max-width: 767px) {
+  .workspace-resource-layout .workspace-resource-grid, .access-guide-grid, .access-layout,
+  .access-editor .access-form-grid, .access-editor .permission-grid { grid-template-columns: minmax(0, 1fr); }
+  .workspace-settings-summary .workspace-setting-row, .workspace-settings-summary .workspace-setting-value,
+  .resource-row, .access-row { flex-wrap: wrap; gap: 12px; }
+  .workspace-setting-value { width: 100%; min-width: 0; }
+  .workspace-setting-value > span { white-space: normal; overflow-wrap: anywhere; }
+  .resource-row > div:first-child, .access-row > div:first-child { min-width: 0; flex: 1 1 100%; }
+  .resource-row .resource-row-actions, .access-row .resource-row-actions { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 8px; }
+  .resource-row .cell-title, .resource-row .cell-sub, .access-row .cell-title, .access-row .cell-sub { white-space: normal; overflow-wrap: anywhere; }
+  .access-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .shadcn-dialog-content.resource-modal { width: 100%; max-width: none; max-height: 100dvh; }
+  .resource-modal .resource-dialog { max-height: 100dvh; }
+  .resource-modal .panel-header { flex: none; padding: 16px; }
+  .resource-modal .resource-dialog-form { padding: 16px; overflow-y: auto; }
+  .resource-modal .taxonomy-choice-grid { grid-template-columns: minmax(0, 1fr); }
+  .resource-modal .mobile-form-actions { bottom: -16px; margin: 0 -16px -16px; padding: 12px 16px calc(12px + var(--mobile-safe-bottom, env(safe-area-inset-bottom, 0px))); display: flex; flex-wrap: wrap; gap: 8px; }
+  .resource-modal .mobile-form-actions > button { flex: 1; }
+  .access-editor .access-editor-panel { min-width: 0; }
+  .access-editor .access-form { padding: 16px; }
+  .access-editor .field-wide { grid-column: auto; }
+  .access-editor .form-actions { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; gap: 8px; background: var(--panel); padding-block: 12px calc(12px + var(--mobile-safe-bottom, env(safe-area-inset-bottom, 0px))); }
+  .access-editor .permission-grid > label, .resource-modal .taxonomy-choice-grid > label { min-height: 44px; }
+  .access-editor .access-toggles { flex-wrap: wrap; }
+  [data-onboarding="organization-audit"] .compact-control { flex-wrap: wrap; }
+}

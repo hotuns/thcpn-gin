@@ -1,10 +1,13 @@
 import { atlasZh, atlasEn } from "./atlas";
+import { mobileZh, mobileEn } from "./mobile";
 import { digitalPlotZh, digitalPlotEn } from "./digital-plot";
 import { exportEditorZh, exportEditorEn } from "./export-editor";
+import { overviewZh, overviewEn } from "./dashboard";
 export const resources = {
   "zh-CN": {
     common: {
       atlas: atlasZh,
+      mobile: mobileZh,
       digitalPlot: digitalPlotZh,
       exportEditor: exportEditorZh,
       appTitle: "In-situ EcoCloud | 原位生态云",
@@ -110,6 +113,7 @@ export const resources = {
       },
     },
     platform: {
+      overview: overviewZh,
       brand: "原位生态云",
       shell: { skipNavigation: "跳转到主要内容" },
       navigationGroups: {
@@ -118,6 +122,8 @@ export const resources = {
         management: "管理",
       },
       navigation: {
+        dataHub: "数据工作台",
+        more: "更多",
         overview: "总览",
         devices: "设备",
         deviceMap: "设备地图",
@@ -388,6 +394,7 @@ export const resources = {
   "en-US": {
     common: {
       atlas: atlasEn,
+      mobile: mobileEn,
       digitalPlot: digitalPlotEn,
       exportEditor: exportEditorEn,
       appTitle: "In-situ EcoCloud",
@@ -497,6 +504,7 @@ export const resources = {
       },
     },
     platform: {
+      overview: overviewEn,
       brand: "In-situ EcoCloud",
       shell: { skipNavigation: "Skip to main content" },
       navigationGroups: {
@@ -505,6 +513,8 @@ export const resources = {
         management: "Management",
       },
       navigation: {
+        dataHub: "Data workspace",
+        more: "More",
         overview: "Overview",
         devices: "Devices",
         deviceMap: "Device map",

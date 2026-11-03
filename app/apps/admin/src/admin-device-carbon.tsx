@@ -1,7 +1,8 @@
+import { AdminTimeRange } from "./admin-time-range";
 import { lazy, Suspense, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import dayjs, { type Dayjs } from "dayjs";
-import { Alert, App, Button, Card, DatePicker, Descriptions, Drawer, Segmented, Select, Space, Spin, Table, Tabs, Typography } from "antd";
+import { Alert, App, Button, Card, Descriptions, Drawer, Segmented, Select, Space, Spin, Table, Tabs, Typography } from "antd";
 import { api, formatApiError } from "@thcpn/api";
 import { opsTime } from "./admin-device-ops-model";
 import { carbonFluxCurves, carbonPhaseCurves } from "./admin-chart-model";
@@ -23,10 +24,10 @@ export function AdminDeviceCarbon({deviceId,onExport}:{deviceId:string;onExport:
   const detail=useQuery({queryKey:["admin","device",deviceId,"carbon-period",nodeId,field,period,phase],queryFn:()=>api.admin.carbonPeriod(deviceId,period!,{node_id:nodeId!,field,data_phase:phase}),enabled:!!period&&nodeId!=null});
   const fluxCurves=useMemo(()=>carbonFluxCurves(flux.data?.points??[]),[flux.data]);
   return <Card title="碳汇节点与采样数据" extra={<Button onClick={onExport}>导出通量与原始数据</Button>}>
-    <Space wrap style={{marginBottom:16}}>
+    <Space className="admin-query-toolbar" wrap style={{marginBottom:16}}>
       <Select style={{width:240}} loading={overview.isLoading} value={nodeId} onChange={value=>{setNode(value);setPeriod(undefined);}} options={overview.data?.nodes.map(item=>({value:item.node_id,label:item.name||`Node ${item.node_id}`}))}/>
       <Select value={field} onChange={value=>{setField(value);setPeriod(undefined);}} style={{width:130}} options={["A","B","C","D"].map(value=>({value,label:`地块 ${value}`}))}/>
-      <DatePicker.RangePicker value={range} showTime onChange={value=>setRange(value&&value[0]&&value[1]?[value[0],value[1]]:null)} presets={[1,3,7,30].map(days=>({label:`${days} 天`,value:[dayjs().subtract(days,"day"),dayjs()] as [Dayjs,Dayjs]}))}/>
+      <AdminTimeRange value={range} onChange={setRange} presets={[1,3,7,30].map(days=>({label:`${days} 天`,value:[dayjs().subtract(days,"day"),dayjs()] as [Dayjs,Dayjs]}))}/>
       <Select aria-label="数据阶段" value={phase} onChange={value=>{setPhase(value);setPeriod(undefined);}} options={[{value:"all",label:"全部数据"},{value:"formal",label:"正式观测数据"},{value:"testing",label:"调试数据"}]}/><Button type="primary" loading={flux.isFetching||periods.isFetching} onClick={()=>{if(!range||!range[1].isAfter(range[0])){void message.warning("请选择有效时间范围");return;}setApplied({start:range[0].toISOString(),end:range[1].toISOString()});}}>查询</Button>
     </Space>
     {[overview.error,flux.error,periods.error].filter(Boolean).map((error,index)=><Alert key={index} type="error" title="碳汇数据加载失败" description={formatApiError(error).message}/>)}

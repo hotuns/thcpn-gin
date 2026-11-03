@@ -1,0 +1,8 @@
+@media (max-width: 767px) {
+  .notification-page .notification-toolbar { flex-wrap: wrap; gap: 12px; }
+  .notification-page .notification-list article { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 12px; padding: 16px; }
+  .notification-page .notification-copy { min-width: 0; }
+  .notification-page .notification-title { flex-wrap: wrap; }
+  .notification-page .notification-title strong, .notification-page .notification-copy p { white-space: normal; overflow-wrap: anywhere; }
+  .notification-page .notification-actions { grid-column: 2; display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 8px; }
+}

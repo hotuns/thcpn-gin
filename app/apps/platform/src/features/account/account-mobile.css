@@ -1,0 +1,15 @@
+@media (max-width: 767px) {
+  .preferences-panel .preference-row { flex-wrap: wrap; align-items: flex-start; gap: 12px; }
+  .preferences-panel .preference-row > div { min-width: 0; }
+  .preferences-panel .preference-value { display: flex; flex-wrap: wrap; gap: 8px; max-width: 100%; }
+  .preferences-panel .preference-value > span { white-space: normal; overflow-wrap: anywhere; }
+  .preferences-panel .preference-row > .shadcn-select-trigger { width: 100%; }
+  .preferences-panel .color-theme-options { width: 100%; grid-template-columns: minmax(0, 1fr); }
+  .account-security-dialog .security-session-actions, .account-security-dialog .session-meta { flex-wrap: wrap; gap: 8px; }
+  .account-security-dialog .session-list > div { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 12px; }
+  .account-security-dialog .session-list > div > button { grid-column: 2; justify-self: start; }
+  .account-security-dialog .session-copy, .account-security-dialog .session-client, .account-security-dialog .session-id { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+  .account-security-dialog .mfa-setup, .account-security-dialog .security-code-row { display: flex; flex-wrap: wrap; gap: 16px; }
+  .account-security-dialog .mfa-setup > div { min-width: 0; overflow-wrap: anywhere; }
+  .account-security-dialog .security-code-row > .field { flex: 1 1 100%; }
+}

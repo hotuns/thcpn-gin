@@ -1,8 +1,9 @@
+import { AdminTimeRange } from "./admin-time-range";
 import { nodeOptionLabel } from "@thcpn/api";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import dayjs, { type Dayjs } from "dayjs";
-import { Alert, App, Button, Card, Checkbox, DatePicker, Descriptions, Drawer, Form, Input, Modal, Radio, Select, Space, Table, Tag, Typography } from "antd";
+import { Alert, App, Button, Card, Checkbox, Descriptions, Drawer, Form, Input, Modal, Radio, Select, Space, Table, Tag, Typography } from "antd";
 import { api, formatApiError, type ExportJob, type JsonRecord } from "@thcpn/api";
 import { operationsExportPayload, opsTime, type OpsExportOptions } from "./admin-device-ops-model";
 
@@ -80,7 +81,7 @@ export function AdminExportsPage({ device }: {device?:JsonRecord}) {
         {error&&<Alert type="error" title={error} style={{marginBottom:16}}/>}
         <Form.Item label="数据阶段"><Select value={phase} onChange={setPhase} options={[{value:"all",label:"全部数据"},{value:"formal",label:"正式观测数据"},{value:"testing",label:"调试数据"}]}/></Form.Item>
         <Form.Item label="设备" required><Select showSearch optionFilterProp="label" value={deviceId||undefined} disabled={!!device} onChange={setDeviceId} options={(devices.data?.items??(device?[device]:[])).map(item=>({value:String(item.id),label:`${item.name} · ${item.serial_no}`}))}/></Form.Item>
-        <Form.Item label="时间范围（北京时间）" required><DatePicker.RangePicker showTime value={range} onChange={value=>setRange(value&&value[0]&&value[1]?[value[0],value[1]]:null)} style={{width:"100%"}} presets={[{label:"最近 6 小时",value:[dayjs().subtract(6,"hour"),dayjs()]},{label:"最近 3 天",value:[dayjs().subtract(3,"day"),dayjs()]},{label:"最近 7 天",value:recentRange()}]}/></Form.Item>
+        <Form.Item label="时间范围（北京时间）" required><AdminTimeRange value={range} onChange={setRange} style={{width:"100%"}} presets={[{label:"最近 6 小时",value:[dayjs().subtract(6,"hour"),dayjs()]},{label:"最近 3 天",value:[dayjs().subtract(3,"day"),dayjs()]},{label:"最近 7 天",value:recentRange()}]}/></Form.Item>
         {!carbon&&<Form.Item label="文件类型"><Radio.Group value={format} onChange={event=>setFormat(event.target.value)} options={[...(["standalone","gateway"].includes(String(selected?.device_type))?[{value:"zip",label:"设备数据 / 图片 ZIP"}]:[]),{value:"telemetry_excel",label:"采集指标 Excel"},{value:"telemetry_csv",label:"采集指标 CSV"},...(!lora?[{value:"media_zip",label:"图片 ZIP"}]:[])]}/></Form.Item>}
         {lora&&format==="zip"&&<Form.Item label="节点范围"><Select value={nodeScope} onChange={scope=>{setNodeScope(scope);setNodeKeys(null);}} options={[{value:"bound",label:"当前节点"},{value:"history",label:"历史数据"}]}/></Form.Item>}
         {gateway&&format==="zip"&&<Form.Item label="节点" required><Select mode="multiple" maxTagCount="responsive" showSearch optionFilterProp="label" value={keys} onChange={setNodeKeys} loading={nodes.isFetching} options={nodeOptions.map(node=>({value:node.key,label:nodeOptionLabel(node)}))}/><Space><Button type="link" onClick={()=>setNodeKeys(null)}>全选</Button><Button type="link" onClick={()=>setNodeKeys([])}>清空</Button></Space></Form.Item>}

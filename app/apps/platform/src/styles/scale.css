@@ -1,0 +1,36 @@
+/* Platform only: admin keeps its Ant Design typography and density. */
+:root {
+  --font-size-caption: 13px;
+  --font-size-small: 14px;
+  --font-size-body: 15px;
+  --font-size-section: 18px;
+  --font-size-subtitle: 20px;
+  --font-size-heading: 22px;
+  --font-size-title: 28px;
+  --font-size-display: 32px;
+  --font-size-hero: 36px;
+  --font-size-input: 15px;
+  --font-size-control: 14px;
+  --control-height: 40px;
+  --control-height-sm: 32px;
+  --control-icon-size: 36px;
+}
+
+@media (max-width: 767px), (pointer: coarse) {
+  :root {
+    --control-height: 44px;
+    --control-height-sm: 44px;
+    --control-icon-size: 44px;
+    --font-size-input: 16px;
+  }
+}
+
+@media (max-width: 767px) {
+  :root {
+    --font-size-body: 16px;
+    --font-size-title: 24px;
+    --font-size-display: 28px;
+    --font-size-hero: 32px;
+    --font-size-control: 15px;
+  }
+}
