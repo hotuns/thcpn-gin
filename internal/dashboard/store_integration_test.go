@@ -55,6 +55,16 @@ func TestPostgresStatisticsRevisionAndAlertScope(t *testing.T) {
 	if version() == initial {
 		t.Fatal("rebinding a physical source must invalidate cached counts")
 	}
+	beforeSnapshot := version()
+	mustExec(`INSERT INTO lorawan_v2_node_config_snapshots(device_id,node_index,content_hash,wait_time,content_json,metrics_json,management_status) VALUES($1,254,'history',0,'{}','[]','unmanaged')`, first)
+	withSnapshot := version()
+	if withSnapshot == beforeSnapshot {
+		t.Fatal("a historical node position must invalidate cached counts")
+	}
+	mustExec(`INSERT INTO lorawan_v2_node_config_snapshots(device_id,node_index,content_hash,wait_time,content_json,metrics_json,management_status) VALUES($1,254,'new-version',0,'{}','[]','unmanaged')`, first)
+	if version() != withSnapshot {
+		t.Fatal("another configuration at the same position does not add observations")
+	}
 	if count, err := repo.ActiveAlerts(ctx, workspace, []uuid.UUID{first}); err != nil || count != 1 {
 		t.Fatalf("only authorized device alerts should count: count=%d err=%v", count, err)
 	}

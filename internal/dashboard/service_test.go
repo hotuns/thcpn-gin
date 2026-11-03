@@ -80,6 +80,20 @@ func TestAggregateRangeMidnightAndStaleSnapshots(t *testing.T) {
 	}
 }
 
+func TestPartialSourceCountsRemainVisibleWithoutClaimingCoverage(t *testing.T) {
+	now := time.Now()
+	id := uuid.New()
+	entry := sampleEntry(now, "known-positions", 801)
+	entry.Data.RecordsPartial = true
+	result := aggregate([]authorizedDevice{{Device: device.Device{ID: id}, records: true, images: true}}, map[uuid.UUID]cachedStatistics{id: entry}, now, 7)
+	if result.Records.Total.Value == nil || *result.Records.Total.Value != 801 || result.Records.Total.Complete || result.Records.Total.CoveredDevices != 0 || result.Records.Total.TotalDevices != 1 || result.Records.Today.Complete || result.Trend[6].RecordsComplete {
+		t.Fatalf("known subset became complete or disappeared: %+v", result.Records)
+	}
+	if !result.Images.Total.Complete || result.Devices.Reporting != 0 || result.Devices.Unknown != 1 {
+		t.Fatal("record completeness must not alter image coverage or assert gateway health")
+	}
+}
+
 func TestDailyOnlyCountsKeepTheirStatisticsTimestamp(t *testing.T) {
 	now := time.Now()
 	id := uuid.New()

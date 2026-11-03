@@ -53,6 +53,7 @@ func (r postgresRepository) Revisions(ctx context.Context, ids []uuid.UUID) (map
 			FROM data_streams ds LEFT JOIN data_stream_bindings b ON b.data_stream_id=ds.id LEFT JOIN data_sources s ON s.id=b.data_source_id WHERE ds.device_id=d.id),
 		'parents',(SELECT jsonb_agg(parent_device_id ORDER BY parent_device_id) FROM device_relations WHERE child_device_id=d.id AND status='active'),
 		'nodes',(SELECT jsonb_agg(jsonb_build_array(id,node_index) ORDER BY id) FROM lorawan_physical_nodes WHERE gateway_device_id=d.id),
+		'node_config_positions',(SELECT jsonb_agg(node_index ORDER BY node_index) FROM (SELECT DISTINCT node_index FROM lorawan_v2_node_config_snapshots WHERE device_id=d.id) positions),
 		'starts',(SELECT jsonb_agg(jsonb_build_array(o.device_id,o.node_index,o.starts_at) ORDER BY o.device_id,o.node_index)
 			FROM device_observation_starts o WHERE o.device_id=d.id OR o.device_id IN (SELECT parent_device_id FROM device_relations WHERE child_device_id=d.id AND status='active'))
 	)::text) FROM devices d WHERE d.id=ANY($1::uuid[])`, ids)

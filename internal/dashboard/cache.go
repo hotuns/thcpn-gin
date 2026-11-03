@@ -55,7 +55,7 @@ func (c *statisticsCache) load(ctx context.Context, keys map[uuid.UUID]string, n
 			result[id] = value
 		} else {
 			missingIDs = append(missingIDs, id)
-			missingKeys = append(missingKeys, "dashboard:observations:v1:"+key)
+			missingKeys = append(missingKeys, "dashboard:observations:v2:"+key)
 		}
 	}
 	c.mu.Unlock()
@@ -129,7 +129,7 @@ func (c *statisticsCache) refresh(id uuid.UUID, key string, previous cachedStati
 		// Coalesce refreshes across API processes as well as within this one.
 		if c.redis != nil {
 			lockCtx, lockCancel := context.WithTimeout(ctx, time.Second)
-			lockKey, token := "dashboard:observations:lock:v1:"+key, uuid.NewString()
+			lockKey, token := "dashboard:observations:lock:v2:"+key, uuid.NewString()
 			locked, err := c.redis.SetNX(lockCtx, lockKey, token, 70*time.Second).Result()
 			lockCancel()
 			if err == nil && !locked {
@@ -159,7 +159,7 @@ func (c *statisticsCache) refresh(id uuid.UUID, key string, previous cachedStati
 			if raw, err := json.Marshal(entry); err == nil {
 				writeCtx, done := context.WithTimeout(context.Background(), time.Second)
 				defer done()
-				c.redis.Set(writeCtx, "dashboard:observations:v1:"+key, raw, 24*time.Hour)
+				c.redis.Set(writeCtx, "dashboard:observations:v2:"+key, raw, 24*time.Hour)
 			}
 		}
 	}()

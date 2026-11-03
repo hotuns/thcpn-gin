@@ -17,10 +17,12 @@ import (
 // ObservationStatistics counts source rows, never projected metrics. Nil means
 // unsupported/unknown; a non-nil zero means the source was queried successfully.
 // Totals and extrema cover formal observations before end, while Days covers
-// [start,end) in Asia/Shanghai. Images count references, not image rows.
+// [start,end) in Asia/Shanghai. RecordsPartial keeps a known subset visible
+// without claiming complete source coverage. Images count references, not rows.
 type ObservationStatistics struct {
 	Identity                string           `json:"identity"`
 	TotalRecords            *int64           `json:"total_records"`
+	RecordsPartial          bool             `json:"records_partial"`
 	TotalImages             *int64           `json:"total_images"`
 	Days                    []ObservationDay `json:"days"`
 	FirstObservedAt         *time.Time       `json:"first_observed_at"`

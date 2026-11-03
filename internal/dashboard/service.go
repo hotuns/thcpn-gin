@@ -179,7 +179,7 @@ func aggregate(devices []authorizedDevice, entries map[uuid.UUID]cachedStatistic
 			byDate[day.Date] = i
 		}
 		if item.records {
-			records.add(data.TotalRecords, fresh)
+			records.add(data.TotalRecords, fresh && !data.RecordsPartial)
 			if data.FirstObservedAt != nil && (result.Records.FirstObservedAt == nil || data.FirstObservedAt.Before(*result.Records.FirstObservedAt)) {
 				result.Records.FirstObservedAt = data.FirstObservedAt
 			}
@@ -193,9 +193,9 @@ func aggregate(devices []authorizedDevice, entries map[uuid.UUID]cachedStatistic
 				recordCount, imageCount = data.Days[index].Records, data.Days[index].Images
 			}
 			if item.records {
-				dailyRecords[i].add(recordCount, fresh)
+				dailyRecords[i].add(recordCount, fresh && !data.RecordsPartial)
 				if i == days-1 {
-					todayRecords.add(recordCount, fresh)
+					todayRecords.add(recordCount, fresh && !data.RecordsPartial)
 				}
 			}
 			if item.images {
@@ -218,7 +218,7 @@ func aggregate(devices []authorizedDevice, entries map[uuid.UUID]cachedStatistic
 		}
 		attention := Attention{DeviceID: item.ID, Name: item.Name, LastObservedAt: latest}
 		switch {
-		case !fresh:
+		case !fresh || data.RecordsPartial:
 			result.Devices.Unknown++
 			attention.Kind = "unavailable"
 		case latest == nil && data.TotalRecords != nil && *data.TotalRecords == 0 && data.TotalImages != nil && *data.TotalImages == 0:

@@ -2,10 +2,13 @@ package lorawanv2
 
 import (
 	"context"
+	"math"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
 	"thcpn-gin/internal/datasource/platform"
+	"thcpn-gin/internal/observation"
 )
 
 func (s *Service) ObservationStatistics(ctx context.Context, id uuid.UUID, start, end time.Time) (platform.ObservationStatistics, error) {
@@ -13,25 +16,92 @@ func (s *Service) ObservationStatistics(ctx context.Context, id uuid.UUID, start
 	if err != nil {
 		return platform.ObservationStatistics{}, platform.StatisticsSourceError()
 	}
-	result := platform.ObservationStatistics{Identity: platform.ObservationIdentity(ref.DataSourceID, platform.SourceFamilyLoRaWANV2, ref.GatewaySN)}
-	// Nodes currently belong to the gateway device UUID, rather than separate
-	// platform devices. Any node binding makes this an unsupported observation
-	// source, not an excluded status-only gateway. Do not use physical node SN as
-	// observation identity: historical observations belong to gatewaySN/nodeIndex.
-	var hasNodes bool
-	err = s.DB.QueryRow(ctx, `SELECT EXISTS (
- SELECT 1 FROM data_streams ds JOIN data_stream_bindings b ON b.data_stream_id=ds.id
- WHERE ds.device_id=$1 AND b.status='active' AND b.adapter_code='lorawan_v2'
- AND b.adapter_config_json->>'node_index' IS NOT NULL
- UNION ALL SELECT 1 FROM lorawan_physical_nodes WHERE gateway_device_id=$1 AND node_index IS NOT NULL
- )`, id).Scan(&hasNodes)
+	source, err := s.loadLoRaWANV2DataSource(ctx, ref.DataSourceID)
 	if err != nil {
 		return platform.ObservationStatistics{}, platform.StatisticsSourceError()
 	}
-	result.Excluded = !hasNodes
-	// HTTP pagination.total_count includes invalid timestamp documents, so it
-	// cannot provide accurate totals or daily counts. A gateway's newest node
-	// cannot establish freshness of all its nodes. Leave extrema and interval
-	// unknown, and never page through the complete remote history here.
+	client, err := newLoRaWANV2Client(ctx, s.Runtime.Resolver, platform.DataSourceFromSQL(source))
+	if err != nil {
+		return platform.ObservationStatistics{}, platform.StatisticsSourceError()
+	}
+	current, err := readPhysicalNodes(ctx, client, ref.GatewaySN)
+	if err != nil {
+		return platform.ObservationStatistics{}, platform.StatisticsSourceError()
+	}
+	positions, err := s.statisticsPositions(ctx, ref)
+	if err != nil {
+		return platform.ObservationStatistics{}, platform.StatisticsSourceError()
+	}
+	for _, node := range current.Data {
+		positions[*node.NodeIndex] = true
+	}
+	nodes := make([]int, 0, len(positions))
+	for node := range positions {
+		nodes = append(nodes, node)
+	}
+	sort.Ints(nodes)
+	identity := platform.ObservationIdentity(ref.DataSourceID, platform.SourceFamilyLoRaWANV2, ref.GatewaySN)
+	if len(nodes) == 0 {
+		// The current-binding endpoint cannot rule out source-only historical
+		// positions. An empty inventory is unknown, not proof of zero observations.
+		return platform.ObservationStatistics{Identity: identity}, nil
+	}
+	result := platform.NewRecordStatistics(identity, time.Unix(start.Unix(), 0), time.Unix(end.Unix(), 0)).Result()
+	// Bound nodes plus retained platform mappings are a known subset. The source
+	// has no historical-position manifest, so never claim full gateway coverage.
+	result.RecordsPartial = true
+	for _, node := range nodes {
+		cutoff, err := (observation.Service{DB: s.DB}).DeviceStart(ctx, id, node)
+		if err != nil {
+			return platform.ObservationStatistics{}, platform.StatisticsSourceError()
+		}
+		// Sequential requests stay within the upstream's four-request capacity;
+		// the caller's refresh deadline covers the entire gateway, not each node.
+		item, err := client.observationStatistics(ctx, ref.GatewaySN, node, cutoff, start, end)
+		if err != nil || *item.TotalRecords > math.MaxInt64-*result.TotalRecords {
+			return platform.ObservationStatistics{}, platform.StatisticsSourceError()
+		}
+		*result.TotalRecords += *item.TotalRecords
+		for i, day := range item.Days {
+			if *day.Records > math.MaxInt64-*result.Days[i].Records {
+				return platform.ObservationStatistics{}, platform.StatisticsSourceError()
+			}
+			*result.Days[i].Records += *day.Records
+		}
+		if item.FirstObservedAt != nil && (result.FirstObservedAt == nil || item.FirstObservedAt.Before(*result.FirstObservedAt)) {
+			result.FirstObservedAt = item.FirstObservedAt
+		}
+		if item.LastObservedAt != nil && (result.LastObservedAt == nil || item.LastObservedAt.After(*result.LastObservedAt)) {
+			result.LastObservedAt = item.LastObservedAt
+		}
+	}
 	return result, nil
+}
+
+func (s *Service) statisticsPositions(ctx context.Context, ref LoRaWANV2GatewayRef) (map[int]bool, error) {
+	// Disabled metric bindings and retained configurations keep historical slots
+	// discoverable after physical replacement/unbinding. Never count per metric or
+	// synthesize 1..node_count: node_count is capacity and positions can be sparse.
+	rows, err := s.DB.Query(ctx, `WITH candidates AS (
+ SELECT CASE WHEN b.adapter_config_json->>'node_index' ~ '^[0-9]{1,3}$'
+ THEN (b.adapter_config_json->>'node_index')::integer END AS node_index
+ FROM data_streams ds JOIN data_stream_bindings b ON b.data_stream_id=ds.id
+ WHERE ds.device_id=$1 AND b.adapter_code='lorawan_v2' AND b.data_source_id=$2
+ AND b.adapter_config_json->>'gateway_sn'=$3
+ UNION ALL SELECT node_index FROM lorawan_v2_node_config_snapshots WHERE device_id=$1
+ UNION ALL SELECT node_index FROM lorawan_physical_nodes WHERE gateway_device_id=$1 AND data_source_id=$2
+ ) SELECT DISTINCT node_index FROM candidates WHERE node_index BETWEEN 1 AND 254`, ref.DeviceID, ref.DataSourceID, ref.GatewaySN)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	positions := make(map[int]bool)
+	for rows.Next() {
+		var node int
+		if err := rows.Scan(&node); err != nil {
+			return nil, err
+		}
+		positions[node] = true
+	}
+	return positions, rows.Err()
 }
