@@ -66,7 +66,27 @@ func (e *Evaluator) ProcessAvailable(ctx context.Context, limit int) (int, error
 	if limit <= 0 {
 		limit = 100
 	}
-	rows, err := e.db.Query(ctx, `SELECT id,workspace_id,device_id,data_stream_id,name,type,severity,condition_mode,lower_value,upper_value,duration_seconds,recovery_delta,offline_after_seconds,channels FROM alert_rules WHERE enabled AND archived_at IS NULL ORDER BY updated_at LIMIT $1`, limit)
+	// Rotate by evaluation attempts, not rule edits. Record the attempt before
+	// external calls so skipped, failed or interrupted batches cannot starve
+	// other rules. Lock selection and advancement together across workers.
+	rows, err := e.db.Query(ctx, `
+		WITH candidates AS (
+			SELECT r.*, s.last_evaluated_at AS previous_evaluation
+			FROM alert_rules r
+			JOIN alert_evaluation_states s ON s.rule_id=r.id
+			WHERE r.enabled AND r.archived_at IS NULL
+			ORDER BY s.last_evaluated_at NULLS FIRST, r.id
+			LIMIT $1
+			FOR UPDATE OF s SKIP LOCKED
+		), attempted AS (
+			UPDATE alert_evaluation_states s
+			SET last_evaluated_at=now(), updated_at=now()
+			FROM candidates c WHERE s.rule_id=c.id
+			RETURNING s.rule_id
+		)
+		SELECT c.id,c.workspace_id,c.device_id,c.data_stream_id,c.name,c.type,c.severity,c.condition_mode,c.lower_value,c.upper_value,c.duration_seconds,c.recovery_delta,c.offline_after_seconds,c.channels
+		FROM candidates c JOIN attempted a ON a.rule_id=c.id
+		ORDER BY c.previous_evaluation NULLS FIRST, c.id`, limit)
 	if err != nil {
 		return 0, err
 	}
