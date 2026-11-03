@@ -4,6 +4,9 @@
   border: 1px solid var(--line);
   background: var(--panel);
 }
+.command-note + .processing-summary {
+  margin-top: 18px;
+}
 .processing-summary > div {
   display: grid;
   gap: 4px;

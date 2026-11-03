@@ -183,6 +183,8 @@
   min-width: 1120px;
   table-layout: fixed;
 }
+.device-table-sequence { width: 64px; }
+.device-table .device-sequence-cell { color: var(--muted); font-variant-numeric: tabular-nums; }
 .device-table-name {
   width: auto;
 }

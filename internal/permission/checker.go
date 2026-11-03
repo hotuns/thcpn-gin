@@ -29,6 +29,10 @@ type workspaceDeviceStore interface {
 	GetWorkspaceDeviceContext(ctx context.Context, userID, deviceID uuid.UUID) (sqlc.WorkspaceDeviceContext, error)
 }
 
+type demoWorkspaceStore interface {
+	IsDemoWorkspaceOwner(context.Context, sqlc.IsDemoWorkspaceOwnerParams) (bool, error)
+}
+
 type Checker struct {
 	store Store
 }
@@ -96,6 +100,18 @@ func (c *Checker) Can(ctx context.Context, actor Actor, action string, resource 
 	}
 	if scope.WorkspaceID == uuid.Nil {
 		return Decision{Allowed: false, Reason: "unsupported resource type"}, nil
+	}
+
+	// A demo workspace is an administrator-curated showcase. Its owner can use
+	// every feature on its resources without maintaining copied permission rows.
+	if demos, ok := c.store.(demoWorkspaceStore); ok {
+		allowed, err := demos.IsDemoWorkspaceOwner(ctx, sqlc.IsDemoWorkspaceOwnerParams{UserID: actor.UserID, WorkspaceID: scope.WorkspaceID})
+		if err != nil {
+			return Decision{}, apperr.Wrap(apperr.KindInternal, "check demo workspace access", err)
+		}
+		if allowed {
+			return Decision{Allowed: true, Reason: "allowed by demo workspace", Source: "demo_workspace", GrantRoleCode: "owner"}, nil
+		}
 	}
 
 	memberRoleCode, err := c.store.GetWorkspaceMemberPermissionRole(ctx, sqlc.GetWorkspaceMemberPermissionRoleParams{

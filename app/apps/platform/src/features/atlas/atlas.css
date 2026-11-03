@@ -963,25 +963,8 @@
   color: var(--muted);
   margin: 0;
 }
-.atlas-settings-scope > div {
-  max-height: 210px;
-  overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px;
-}
-.atlas-settings-scope label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px;
-  font-size: 12px;
-}
-.atlas-settings-scope small {
-  display: block;
-  color: var(--muted);
-  font-size: 10px;
-  margin-top: 3px;
+.atlas-settings-scope .device-option-results {
+  max-height: 250px;
 }
 @media (min-width: 1700px) {
   .atlas-workbench {

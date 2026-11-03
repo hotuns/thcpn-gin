@@ -130,7 +130,7 @@
 .account-dropdown-content { width: min(250px, calc(100vw - 24px)); }
 
 .shadcn-popover-content { z-index: 100; width: 288px; padding: 0; color: var(--popover-foreground); background: var(--popover); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 14px 40px rgb(0 0 0 / 18%); outline: none; transform-origin: var(--radix-popover-content-transform-origin); animation: shadcn-menu-in 140ms ease-out; }
-.shadcn-popover-content.device-quick-switch-menu { width: var(--radix-popover-trigger-width); max-width: calc(100vw - 24px); }
+.shadcn-popover-content.device-quick-switch-menu { width: max(380px, var(--radix-popover-trigger-width)); max-width: min(560px, calc(100vw - 24px)); max-height: var(--radix-popover-content-available-height); }
 .shadcn-tabs-list.device-option-categories { border-radius: 0; }
 .shadcn-command { display: flex; flex-direction: column; overflow: hidden; color: var(--popover-foreground); background: var(--popover); border-radius: inherit; }
 .shadcn-command-input-wrapper { display: flex; align-items: center; gap: 8px; min-height: var(--control-height); padding: 0 11px; border-bottom: 1px solid var(--border); }

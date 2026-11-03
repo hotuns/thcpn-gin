@@ -23,24 +23,23 @@ export const resolveWorkspaceId = (persistedId: string | null, workspaces: Array
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["workspaces"], queryFn: api.workspaces.list });
-  const [currentId, setCurrentIdState] = useState<string | null>(() => localStorage.getItem(storageKey));
+  const [preferredId, setCurrentIdState] = useState<string | null>(() => localStorage.getItem(storageKey));
   const workspaces = useMemo<AccessibleWorkspace[]>(() => (query.data?.items ?? []).map(({ workspace, membership }) => ({ ...workspace, membership })), [query.data]);
+  const currentId = resolveWorkspaceId(preferredId, workspaces);
 
   useEffect(() => {
-    if (!workspaces.length) return;
-    const resolved = resolveWorkspaceId(currentId, workspaces);
-    if (resolved !== currentId && resolved) {
-      setCurrentIdState(resolved);
-      localStorage.setItem(storageKey, resolved);
-    }
-  }, [currentId, workspaces]);
+    if (!query.isSuccess) return;
+    if (currentId !== preferredId) setCurrentIdState(currentId);
+    if (currentId) localStorage.setItem(storageKey, currentId);
+    else localStorage.removeItem(storageKey);
+  }, [currentId, preferredId, query.isSuccess]);
 
   const value = useMemo<WorkspaceContextValue>(() => ({
     workspaces,
     current: workspaces.find((workspace) => workspace.id === currentId) ?? null,
     currentId,
     setCurrentId: (id) => {
-      if (id === currentId) return;
+      if (id === currentId || !workspaces.some((workspace) => workspace.id === id)) return;
       setCurrentIdState(id);
       localStorage.setItem(storageKey, id);
       queryClient.invalidateQueries({ predicate: (item) => item.queryKey[0] !== "workspaces" });

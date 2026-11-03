@@ -1,5 +1,4 @@
 import { type DeviceNodeTarget, type ExportJob, type JsonRecord } from "@thcpn/api";
-import { type PickerOption } from "../../shared/ui";
 
 export type ResourceType = "device" | "data_stream" | "dataset" | "media";
 
@@ -29,14 +28,6 @@ export const defaultRange = () => ({
 });
 
 export const value = (item: JsonRecord, key: string) => String(item[key] ?? "");
-
-export const pickerOptions = (items: JsonRecord[]): PickerOption[] =>
-  items.map((item) => ({
-    id: value(item, "id"),
-    label: value(item, "name"),
-    description: value(item, "serial_no"),
-    searchText: Array.isArray(item.research_tags) ? item.research_tags.join(" ") : "",
-  }));
 
 export const arrayParam = (input: string | null) =>
   input

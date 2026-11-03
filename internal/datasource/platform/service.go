@@ -9,6 +9,7 @@ import (
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/billing"
 	"thcpn-gin/internal/db/sqlc"
+	"thcpn-gin/internal/devicescope"
 	"thcpn-gin/internal/objectstore"
 	"time"
 
@@ -56,9 +57,13 @@ func (s *Service) ValidateDeviceHistory(ctx context.Context, deviceID uuid.UUID,
 	if s.billing == nil {
 		return nil
 	}
-	assignment, err := s.Queries.GetActiveDeviceAssignment(ctx, deviceID)
+	assignment, err := devicescope.Resolve(ctx, s.Queries, deviceID)
 	if err != nil {
-		return MapNotFoundOrInternal(err, "active device assignment not found")
+		var appErr *apperr.Error
+		if errors.As(err, &appErr) {
+			return err
+		}
+		return MapNotFoundOrInternal(err, "device workspace context not found")
 	}
 	summary, err := s.billing.Summary(ctx, assignment.WorkspaceID)
 	if err != nil {

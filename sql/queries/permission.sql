@@ -1,3 +1,11 @@
+-- name: IsDemoWorkspaceOwner :one
+SELECT EXISTS (
+    SELECT 1 FROM users u
+    JOIN workspaces w ON w.owner_user_id = u.id
+    WHERE u.id = sqlc.arg(user_id)::uuid AND u.is_demo = true AND u.status = 'active'
+      AND w.id = sqlc.arg(workspace_id)::uuid AND w.is_demo_workspace = true AND w.status = 'active'
+) AS allowed;
+
 -- name: HasWorkspacePermission :one
 SELECT EXISTS (
     SELECT 1

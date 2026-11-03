@@ -7,8 +7,70 @@ import (
 	"github.com/google/uuid"
 
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/auth"
 	"thcpn-gin/internal/config"
+	"thcpn-gin/internal/testdb"
 )
+
+func TestDemoDatasetSourcesUseReferenceWorkspaceAndProject(t *testing.T) {
+	db := testdb.Open(t, 0)
+	ctx := t.Context()
+	admin := testdb.Admin(t, db)
+	demo, user, demoWorkspace, realWorkspace, demoProject, realProject, device, stream := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	must := func(query string, args ...any) {
+		t.Helper()
+		if _, err := db.Exec(ctx, query, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(`INSERT INTO users(id,name,username,is_demo) VALUES($1,'Demo','dataset-demo',true)`, demo)
+	must(`INSERT INTO users(id,name,email) VALUES($1,'Owner','dataset-owner@example.test')`, user)
+	must(`INSERT INTO workspaces(id,type,name,owner_user_id,is_demo_workspace) VALUES($1,'personal','Demo',$2,true),($3,'personal','Real',$4,false)`, demoWorkspace, demo, realWorkspace, user)
+	must(`INSERT INTO projects(id,workspace_id,name,created_by) VALUES($1,$2,'Demo project',$3),($4,$5,'Real project',$6)`, demoProject, demoWorkspace, demo, realProject, realWorkspace, user)
+	must(`INSERT INTO devices(id,name,device_type) VALUES($1,'Selected station','standalone')`, device)
+	must(`INSERT INTO demo_showcase_devices(user_id,workspace_id,project_id,device_id,added_by) VALUES($1,$2,$3,$4,$5)`, demo, demoWorkspace, demoProject, device, admin)
+	must(`INSERT INTO data_streams(id,device_id,code,name,type,created_by,created_by_type) VALUES($1,$2,'temp','Temperature','telemetry',$3,'system_admin')`, stream, device, admin)
+	svc := NewService(db)
+	demoCtx := auth.WithActor(ctx, auth.Actor{UserID: demo, IsDemo: true})
+	userCtx := auth.WithActor(ctx, auth.Actor{UserID: user})
+	for _, assigned := range []bool{false, true} {
+		if assigned {
+			must(`INSERT INTO device_assignments(device_id,workspace_id,project_id) VALUES($1,$2,$3)`, device, realWorkspace, realProject)
+		}
+		for _, source := range []SourceInput{{SourceType: "device", SourceID: device}, {SourceType: "data_stream", SourceID: stream}} {
+			input := CreateInput{WorkspaceID: demoWorkspace, ProjectID: &demoProject, Name: "Selected source", DataType: "telemetry", TimeStart: time.Now().Add(-time.Hour), TimeEnd: time.Now(), Sources: []SourceInput{source}, ActorUserID: demo}
+			created, err := svc.Create(demoCtx, input)
+			if err != nil || created.WorkspaceID != demoWorkspace || created.ProjectID == nil || *created.ProjectID != demoProject || len(created.Sources) != 1 {
+				t.Fatalf("demo dataset assigned=%t source=%s: %#v %v", assigned, source.SourceType, created, err)
+			}
+			input.ActorUserID = user
+			_, err = svc.Create(userCtx, input)
+			want := apperr.KindNotFound
+			if assigned {
+				want = apperr.KindInvalidArgument
+			}
+			if apperr.KindOf(err) != want {
+				t.Fatalf("ordinary source must use real assignment: %v", err)
+			}
+			if assigned {
+				input.WorkspaceID, input.ProjectID = realWorkspace, &realProject
+				if _, err := svc.Create(userCtx, input); err != nil {
+					t.Fatalf("ordinary dataset in assigned workspace: %v", err)
+				}
+			}
+			if err := svc.validateSources(demoCtx, realWorkspace, nil, []SourceInput{source}); apperr.KindOf(err) != apperr.KindInvalidArgument {
+				t.Fatalf("demo source must not use real workspace: %v", err)
+			}
+			if err := svc.validateSources(demoCtx, demoWorkspace, &realProject, []SourceInput{source}); apperr.KindOf(err) != apperr.KindInvalidArgument {
+				t.Fatalf("demo source must use reference project: %v", err)
+			}
+		}
+	}
+	must(`DELETE FROM demo_showcase_devices WHERE device_id=$1`, device)
+	if err := svc.validateSources(demoCtx, demoWorkspace, nil, []SourceInput{{SourceType: "data_stream", SourceID: stream}}); apperr.KindOf(err) != apperr.KindPermissionDenied {
+		t.Fatalf("unselected source must remain denied: %v", err)
+	}
+}
 
 func TestNormalizeSourcesDeduplicates(t *testing.T) {
 	sourceID := uuid.New()

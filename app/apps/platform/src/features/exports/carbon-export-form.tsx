@@ -1,11 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Layers3 } from "lucide-react";
-import { api, formatApiError, type JsonRecord } from "@thcpn/api";
+import { api, formatApiError, type Device } from "@thcpn/api";
 import { CheckboxInput, StateView } from "../../shared/ui";
 import { DataRangeFields as RangeFields, validDataRange } from "../../shared/data/data-builder";
 import { ExportDevicePicker, ExportContentToggle as ChoiceCard } from "./export-device-picker";
-import { defaultRange, value, pickerOptions, arrayParam, buildCarbonExportPayload } from "./export-model";
+import { defaultRange, value, arrayParam, buildCarbonExportPayload } from "./export-model";
 import { type FormCommon, FormFooter } from "./export-form-layout";
 
 export function CarbonExportForm({
@@ -15,7 +15,7 @@ export function CarbonExportForm({
   onClose,
   onCreate,
   feedback,
-}: { devices: JsonRecord[] } & FormCommon) {
+}: { devices: Device[] } & FormCommon) {
   const stations = devices.filter(
     (item) => value(item, "device_type") === "carbon_sink",
   );
@@ -83,7 +83,7 @@ export function CarbonExportForm({
         <div className="export-settings-fields">
         <ExportDevicePicker
           label="碳汇站"
-          options={pickerOptions(stations)}
+          devices={stations}
           selectedIds={deviceId ? [deviceId] : []}
           onChange={(ids) => {
             setDeviceId(ids[0] ?? "");

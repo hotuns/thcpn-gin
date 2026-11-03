@@ -353,7 +353,7 @@ export function DeviceDataPage({
               <label className="field">
                 <span className="field-label">监控站</span>
                 <DeviceCombobox
-                  devices={devices}
+                  devices={devices.filter(isCameraDevice)}
                   value={deviceId}
                   ariaLabel="搜索并切换监控站"
                   onChange={(nextId) => {

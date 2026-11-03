@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from "react";
-import { type JsonRecord } from "@thcpn/api";
+import { type Device } from "@thcpn/api";
 import { DataRangeFields as RangeFields, validDataRange } from "../../shared/data/data-builder";
 import { ExportDevicePicker, ExportContents } from "./export-device-picker";
-import { defaultRange, value, pickerOptions, arrayParam, buildBatchExportPayload } from "./export-model";
+import { defaultRange, value, arrayParam, buildBatchExportPayload } from "./export-model";
 import { type FormCommon, FormFooter } from "./export-form-layout";
 
 export function StandardExportForm({
@@ -12,7 +12,7 @@ export function StandardExportForm({
   onClose,
   onCreate,
   feedback,
-}: { devices: JsonRecord[] } & FormCommon) {
+}: { devices: Device[] } & FormCommon) {
   const list = devices.filter(
     (item) => value(item, "device_type") === "standalone",
   );
@@ -54,7 +54,7 @@ export function StandardExportForm({
         <div className="export-picker-layout">
           <ExportDevicePicker
             label="标准站"
-            options={pickerOptions(list)}
+            devices={list}
             selectedIds={selected}
             onChange={setSelected}
             mode="multiple"

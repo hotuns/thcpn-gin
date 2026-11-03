@@ -14,6 +14,7 @@ import (
 
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/db/sqlc"
+	"thcpn-gin/internal/devicescope"
 )
 
 type Service struct {
@@ -70,7 +71,7 @@ func (s *Service) WorkspaceForDevice(ctx context.Context, deviceID uuid.UUID) (u
 		return uuid.Nil, apperr.New(apperr.KindInvalidArgument, "device id is required")
 	}
 
-	assignment, err := s.queries.GetActiveDeviceAssignment(ctx, deviceID)
+	assignment, err := devicescope.Resolve(ctx, s.queries, deviceID)
 	if err != nil {
 		return uuid.Nil, mapNotFoundOrInternal(err, "active device assignment not found")
 	}
@@ -289,6 +290,10 @@ func mapWriteError(err error, message string) error {
 func mapNotFoundOrInternal(err error, message string) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return apperr.New(apperr.KindNotFound, message)
+	}
+	var appErr *apperr.Error
+	if errors.As(err, &appErr) {
+		return err
 	}
 	return apperr.Wrap(apperr.KindInternal, message, err)
 }

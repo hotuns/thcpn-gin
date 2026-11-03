@@ -19,6 +19,7 @@ import (
 	"thcpn-gin/internal/datasource"
 	platform "thcpn-gin/internal/datasource/platform"
 	"thcpn-gin/internal/db/sqlc"
+	"thcpn-gin/internal/devicescope"
 	telemetrysvc "thcpn-gin/internal/telemetry"
 )
 
@@ -585,7 +586,7 @@ func (s *Service) validateSources(ctx context.Context, workspaceID uuid.UUID, pr
 			if err != nil {
 				return mapNotFoundOrInternal(err, "device source not found")
 			}
-			assignment, err := s.queries.GetActiveDeviceAssignment(ctx, device.ID)
+			assignment, err := devicescope.Resolve(ctx, s.queries, device.ID)
 			if err != nil {
 				return mapNotFoundOrInternal(err, "active device assignment not found")
 			}
@@ -600,7 +601,7 @@ func (s *Service) validateSources(ctx context.Context, workspaceID uuid.UUID, pr
 			if err != nil {
 				return mapNotFoundOrInternal(err, "data stream source not found")
 			}
-			assignment, err := s.queries.GetActiveDeviceAssignmentByDataStream(ctx, stream.ID)
+			assignment, err := devicescope.Resolve(ctx, s.queries, stream.DeviceID)
 			if err != nil {
 				return mapNotFoundOrInternal(err, "active device assignment not found")
 			}
@@ -898,6 +899,10 @@ func mapWriteError(err error, message string) error {
 func mapNotFoundOrInternal(err error, message string) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return apperr.New(apperr.KindNotFound, message)
+	}
+	var appErr *apperr.Error
+	if errors.As(err, &appErr) {
+		return err
 	}
 	return apperr.Wrap(apperr.KindInternal, message, err)
 }

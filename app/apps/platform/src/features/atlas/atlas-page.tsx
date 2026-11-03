@@ -1,4 +1,5 @@
 import { useIsMobile } from "../../shared/hooks/use-mobile";
+import { DeviceCombobox } from "../../shared/data/device-combobox";
 import { MobileMapPanels } from "../../shared/maps/mobile-map-panels";
 import { MobileAtlasLayout } from "./atlas-templates";
 import { usePolicyLimit } from "../../shared/config/system-policy";
@@ -667,7 +668,6 @@ function AtlasSettings({
     ...defaultAtlasConfig,
     ...initialConfig,
   });
-  const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const save = async (copy = false) => {
@@ -775,41 +775,16 @@ function AtlasSettings({
             {a("scope")} · {config.device_ids?.length ?? 0}
           </strong>
           <p>{a("deviceLimit")}</p>
-          <SearchInput
-            placeholder={a("search")}
-            aria-label={a("search")}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+          <DeviceCombobox
+            devices={devices.map((device) => ({ ...device, id: device.device_id, research_tags: device.environment.research_tags }))}
+            variant="inline"
+            multiple
+            value={config.device_ids ?? []}
+            onChange={(device_ids) => setConfig({ ...config, device_ids })}
+            maxSelected={maxDevices}
+            disabled={busy}
+            ariaLabel="选择一张图设备范围"
           />
-          <div>
-            {devices
-              .filter((d) => `${d.name} ${d.serial_no}`.includes(query))
-              .map((d) => (
-                <label key={d.device_id}>
-                  <Checkbox
-                    checked={config.device_ids?.includes(d.device_id) ?? false}
-                    disabled={
-                      !config.device_ids?.includes(d.device_id) &&
-                      (config.device_ids?.length ?? 0) >= maxDevices
-                    }
-                    onCheckedChange={(v) =>
-                      setConfig({
-                        ...config,
-                        device_ids: v
-                          ? [...(config.device_ids ?? []), d.device_id]
-                          : (config.device_ids ?? []).filter(
-                              (id) => id !== d.device_id,
-                            ),
-                      })
-                    }
-                  />
-                  <span>
-                    {d.name}
-                    <small>{d.serial_no}</small>
-                  </span>
-                </label>
-              ))}
-          </div>
         </div>
         {selectedMetrics.length > 0 && (
           <>

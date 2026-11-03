@@ -19,6 +19,7 @@ import (
 	"thcpn-gin/internal/config"
 	"thcpn-gin/internal/db/sqlc"
 	"thcpn-gin/internal/device"
+	"thcpn-gin/internal/devicescope"
 	"thcpn-gin/internal/objectstore"
 	"thcpn-gin/internal/permission"
 )
@@ -107,6 +108,10 @@ func NewService(db *pgxpool.Pool, signer *objectstore.Signer, cfg config.ExportC
 }
 
 func (s *Service) Resolve(ctx context.Context, resourceType string, resourceID uuid.UUID, exportType string) (ResolvedResource, error) {
+	return s.resolve(ctx, resourceType, resourceID, exportType, uuid.Nil)
+}
+
+func (s *Service) resolve(ctx context.Context, resourceType string, resourceID uuid.UUID, exportType string, requestedBy uuid.UUID) (ResolvedResource, error) {
 	resourceType = strings.TrimSpace(resourceType)
 	exportType = strings.TrimSpace(exportType)
 	if resourceID == uuid.Nil {
@@ -134,31 +139,31 @@ func (s *Service) Resolve(ctx context.Context, resourceType string, resourceID u
 		if exportType == "carbon_station_zip" && device.DeviceType != "carbon_sink" {
 			return ResolvedResource{}, apperr.New(apperr.KindInvalidArgument, "carbon export requires a carbon sink device")
 		}
-		assignment, err := s.queries.GetActiveDeviceAssignment(ctx, device.ID)
+		workspaceID, err := s.workspaceForDevice(ctx, device.ID, requestedBy)
 		if err != nil {
-			return ResolvedResource{}, mapNotFoundOrInternal(err, "active device assignment not found")
+			return ResolvedResource{}, err
 		}
-		resolved.WorkspaceID = assignment.WorkspaceID
+		resolved.WorkspaceID = workspaceID
 	case "data_stream":
 		stream, err := s.queries.GetDataStream(ctx, resourceID)
 		if err != nil {
 			return ResolvedResource{}, mapNotFoundOrInternal(err, "data stream not found")
 		}
-		assignment, err := s.queries.GetActiveDeviceAssignmentByDataStream(ctx, stream.ID)
+		workspaceID, err := s.workspaceForDevice(ctx, stream.DeviceID, requestedBy)
 		if err != nil {
-			return ResolvedResource{}, mapNotFoundOrInternal(err, "active device assignment not found")
+			return ResolvedResource{}, err
 		}
-		resolved.WorkspaceID = assignment.WorkspaceID
+		resolved.WorkspaceID = workspaceID
 	case "media":
 		stream, err := s.queries.GetDataStream(ctx, resourceID)
 		if err != nil {
 			return ResolvedResource{}, mapNotFoundOrInternal(err, "data stream not found")
 		}
-		assignment, err := s.queries.GetActiveDeviceAssignmentByDataStream(ctx, stream.ID)
+		workspaceID, err := s.workspaceForDevice(ctx, stream.DeviceID, requestedBy)
 		if err != nil {
-			return ResolvedResource{}, mapNotFoundOrInternal(err, "active device assignment not found")
+			return ResolvedResource{}, err
 		}
-		resolved.WorkspaceID = assignment.WorkspaceID
+		resolved.WorkspaceID = workspaceID
 		resolved.PermissionResourceID = stream.ID
 	case "dataset":
 		dataset, err := s.queries.GetDataset(ctx, resourceID)
@@ -172,30 +177,29 @@ func (s *Service) Resolve(ctx context.Context, resourceType string, resourceID u
 	return resolved, nil
 }
 
+func (s *Service) workspaceForDevice(ctx context.Context, deviceID, requestedBy uuid.UUID) (uuid.UUID, error) {
+	if requestedBy != uuid.Nil {
+		// Creation may run without an HTTP actor; its explicit requester owns the job.
+		placement, err := s.queries.GetWorkspaceDeviceContext(ctx, requestedBy, deviceID)
+		if err != nil {
+			return uuid.Nil, mapNotFoundOrInternal(err, "device workspace context not found")
+		}
+		return placement.WorkspaceID, nil
+	}
+	placement, err := devicescope.Resolve(ctx, s.queries, deviceID)
+	if err != nil {
+		return uuid.Nil, mapNotFoundOrInternal(err, "active device assignment not found")
+	}
+	return placement.WorkspaceID, nil
+}
+
 func (s *Service) Create(ctx context.Context, input CreateInput) (Job, ResolvedResource, error) {
 	if input.RequestedBy == uuid.Nil {
 		return Job{}, ResolvedResource{}, apperr.New(apperr.KindInvalidArgument, "requested_by is required")
 	}
-	resolved, err := s.Resolve(ctx, input.ResourceType, input.ResourceID, input.ExportType)
+	resolved, err := s.resolve(ctx, input.ResourceType, input.ResourceID, input.ExportType, input.RequestedBy)
 	if err != nil {
 		return Job{}, ResolvedResource{}, err
-	}
-	if input.ResourceType == "device" || input.ResourceType == "device_batch" {
-		deviceContext, contextErr := s.queries.GetWorkspaceDeviceContext(ctx, input.RequestedBy, input.ResourceID)
-		if contextErr != nil {
-			return Job{}, ResolvedResource{}, mapNotFoundOrInternal(contextErr, "device workspace context not found")
-		}
-		resolved.WorkspaceID = deviceContext.WorkspaceID
-	} else if input.ResourceType == "data_stream" || input.ResourceType == "media" {
-		stream, streamErr := s.queries.GetDataStream(ctx, input.ResourceID)
-		if streamErr != nil {
-			return Job{}, ResolvedResource{}, mapNotFoundOrInternal(streamErr, "data stream not found")
-		}
-		deviceContext, contextErr := s.queries.GetWorkspaceDeviceContext(ctx, input.RequestedBy, stream.DeviceID)
-		if contextErr != nil {
-			return Job{}, ResolvedResource{}, mapNotFoundOrInternal(contextErr, "device workspace context not found")
-		}
-		resolved.WorkspaceID = deviceContext.WorkspaceID
 	}
 	expiresAt := time.Now().UTC().Add(time.Duration(systemsettings.Int(ctx, "export_ttl_hours", s.cfg.FileTTLHours)) * time.Hour)
 	if input.ExpiresAt != nil {
@@ -675,6 +679,10 @@ func mapWriteError(err error, message string) error {
 func mapNotFoundOrInternal(err error, message string) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return apperr.New(apperr.KindNotFound, message)
+	}
+	var appErr *apperr.Error
+	if errors.As(err, &appErr) {
+		return err
 	}
 	return apperr.Wrap(apperr.KindInternal, message, err)
 }

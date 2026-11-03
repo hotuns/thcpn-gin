@@ -5,6 +5,8 @@
   .device-mobile-list { display: grid; gap: 12px; min-width: 0; }
   .device-mobile-card { display: grid; gap: 10px; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
   .device-mobile-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .device-mobile-sequence { flex-shrink: 0; padding-top: 10px; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .device-mobile-card-heading > .device-name-link { flex: 1; }
   .device-mobile-card .device-name-link { min-width: 0; min-height: 44px; font-size: 17px; line-height: 1.4; text-align: left; overflow-wrap: anywhere; }
   .device-mobile-meta { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
   .device-mobile-status, .device-mobile-card-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

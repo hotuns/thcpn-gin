@@ -112,6 +112,7 @@ type Querier interface {
 	HasWorkspacePermission(ctx context.Context, arg HasWorkspacePermissionParams) (bool, error)
 	HeartbeatExportJob(ctx context.Context, arg HeartbeatExportJobParams) (int64, error)
 	IsAccessTokenBlacklisted(ctx context.Context, tokenHash string) (bool, error)
+	IsDemoWorkspaceOwner(ctx context.Context, arg IsDemoWorkspaceOwnerParams) (bool, error)
 	ListAccessGrantsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]ListAccessGrantsByWorkspaceRow, error)
 	ListAccessGrantsForUser(ctx context.Context, subjectID uuid.UUID) ([]ListAccessGrantsForUserRow, error)
 	ListActiveDeviceChildren(ctx context.Context, parentDeviceID uuid.UUID) ([]ListActiveDeviceChildrenRow, error)

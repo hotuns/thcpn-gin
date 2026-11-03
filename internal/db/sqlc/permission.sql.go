@@ -95,3 +95,24 @@ func (q *Queries) HasWorkspacePermission(ctx context.Context, arg HasWorkspacePe
 	err := row.Scan(&allowed)
 	return allowed, err
 }
+
+const isDemoWorkspaceOwner = `-- name: IsDemoWorkspaceOwner :one
+SELECT EXISTS (
+    SELECT 1 FROM users u
+    JOIN workspaces w ON w.owner_user_id = u.id
+    WHERE u.id = $1::uuid AND u.is_demo = true AND u.status = 'active'
+      AND w.id = $2::uuid AND w.is_demo_workspace = true AND w.status = 'active'
+) AS allowed
+`
+
+type IsDemoWorkspaceOwnerParams struct {
+	UserID      uuid.UUID `json:"user_id"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+}
+
+func (q *Queries) IsDemoWorkspaceOwner(ctx context.Context, arg IsDemoWorkspaceOwnerParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isDemoWorkspaceOwner, arg.UserID, arg.WorkspaceID)
+	var allowed bool
+	err := row.Scan(&allowed)
+	return allowed, err
+}

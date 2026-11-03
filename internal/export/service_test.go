@@ -15,8 +15,11 @@ import (
 	"github.com/google/uuid"
 
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/auth"
+	"thcpn-gin/internal/config"
 	platform "thcpn-gin/internal/datasource/platform"
 	"thcpn-gin/internal/objectstore"
+	"thcpn-gin/internal/testdb"
 )
 
 type exportTestStore struct{ getCalls int }
@@ -26,6 +29,64 @@ func (s *exportTestStore) Put(context.Context, objectstore.PutInput) error { ret
 func (s *exportTestStore) Get(context.Context, string) (objectstore.GetResult, error) {
 	s.getCalls++
 	return objectstore.GetResult{}, nil
+}
+
+func TestDemoExportResolvesBeforeCreateWithoutRealAssignment(t *testing.T) {
+	db := testdb.Open(t, 0)
+	ctx := t.Context()
+	admin := testdb.Admin(t, db)
+	demo, user, demoWorkspace, realWorkspace, device, telemetry, media := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	must := func(query string, args ...any) {
+		t.Helper()
+		if _, err := db.Exec(ctx, query, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(`INSERT INTO users(id,name,username,is_demo) VALUES($1,'Demo','export-demo',true)`, demo)
+	must(`INSERT INTO users(id,name,email) VALUES($1,'Owner','export-owner@example.test')`, user)
+	must(`INSERT INTO workspaces(id,type,name,owner_user_id,is_demo_workspace) VALUES($1,'personal','Demo',$2,true),($3,'personal','Real',$4,false)`, demoWorkspace, demo, realWorkspace, user)
+	must(`INSERT INTO devices(id,name,device_type) VALUES($1,'Selected station','standalone')`, device)
+	must(`INSERT INTO demo_showcase_devices(user_id,workspace_id,device_id,added_by) VALUES($1,$2,$3,$4)`, demo, demoWorkspace, device, admin)
+	must(`INSERT INTO data_streams(id,device_id,code,name,type,created_by,created_by_type) VALUES($1,$2,'temp','Temperature','telemetry',$3,'system_admin'),($4,$2,'image','Image','image',$3,'system_admin')`, telemetry, device, admin, media)
+	svc := NewService(db, nil, config.ExportConfig{})
+	demoCtx := auth.WithActor(ctx, auth.Actor{UserID: demo, IsDemo: true})
+	userCtx := auth.WithActor(ctx, auth.Actor{UserID: user})
+	for _, assigned := range []bool{false, true} {
+		if assigned {
+			must(`INSERT INTO device_assignments(device_id,workspace_id) VALUES($1,$2)`, device, realWorkspace)
+		}
+		for _, resource := range []struct {
+			kind, exportType string
+			id               uuid.UUID
+		}{{"device", "telemetry_csv", device}, {"data_stream", "telemetry_csv", telemetry}, {"media", "media_zip", media}} {
+			resolved, err := svc.Resolve(demoCtx, resource.kind, resource.id, resource.exportType)
+			if err != nil || resolved.WorkspaceID != demoWorkspace {
+				t.Fatalf("demo resolve assigned=%t type=%s: %#v %v", assigned, resource.kind, resolved, err)
+			}
+			for _, ordinaryCtx := range []context.Context{ctx, userCtx} {
+				resolved, err = svc.Resolve(ordinaryCtx, resource.kind, resource.id, resource.exportType)
+				if (!assigned && apperr.KindOf(err) != apperr.KindNotFound) || (assigned && (err != nil || resolved.WorkspaceID != realWorkspace)) {
+					t.Fatalf("ordinary/background resolve: %#v %v", resolved, err)
+				}
+			}
+			// Jobs also originate without an HTTP actor. RequestedBy must still
+			// select the demo workspace before any real-assignment requirement.
+			input := CreateInput{ResourceType: resource.kind, ResourceID: resource.id, ExportType: resource.exportType, RequestedBy: demo, RequestConfig: json.RawMessage(`{}`)}
+			job, resolved, err := svc.Create(ctx, input)
+			if err != nil || job.WorkspaceID != demoWorkspace || job.RequestedBy != demo || resolved.WorkspaceID != demoWorkspace {
+				t.Fatalf("demo create without actor: %#v %#v %v", job, resolved, err)
+			}
+			input.RequestedBy = user
+			job, _, err = svc.Create(demoCtx, input)
+			if (!assigned && apperr.KindOf(err) != apperr.KindNotFound) || (assigned && (err != nil || job.WorkspaceID != realWorkspace || job.RequestedBy != user)) {
+				t.Fatalf("explicit ordinary requester must own workspace: %#v %v", job, err)
+			}
+		}
+	}
+	must(`DELETE FROM demo_showcase_devices WHERE device_id=$1`, device)
+	if _, err := svc.Resolve(demoCtx, "data_stream", telemetry, "telemetry_csv"); apperr.KindOf(err) != apperr.KindPermissionDenied {
+		t.Fatalf("unselected export must remain denied: %v", err)
+	}
 }
 
 func TestResolveAction(t *testing.T) {

@@ -79,7 +79,7 @@ function WorkspaceData({ load }: { load: (id: string) => Promise<string> }) {
   const query = useQuery({
     queryKey: workspaceQueryKey(currentId, "observations"),
     queryFn: () => load(currentId!),
-    enabled: !!current,
+    enabled: !!currentId,
   });
   return <>
     <output data-testid="current-workspace">{current?.id}</output>
@@ -97,6 +97,39 @@ it("replaces a persisted inaccessible workspace with one the user can access", a
   await eventually(() => expect(host.querySelector('[data-testid="observations"]')?.textContent).toBe("forest-data"));
   expect(localStorage.getItem("thcpn.workspace.current")).toBe("forest");
   expect(load.mock.calls.every(([id]) => id === "forest")).toBe(true);
+});
+
+it("waits for the accessible workspace list before exposing a persisted ID", async () => {
+  localStorage.setItem("thcpn.workspace.current", "previous-account-workspace");
+  const listing = deferred<{ items: WorkspaceWithMembership[] }>();
+  vi.spyOn(api.workspaces, "list").mockReturnValue(listing.promise);
+  const load = vi.fn(async (id: string) => `${id}-data`);
+  const { host } = await render(<WorkspaceProvider><WorkspaceData load={load} /></WorkspaceProvider>);
+
+  expect(load).not.toHaveBeenCalled();
+  await act(async () => listing.resolve({ items: workspaces }));
+  await eventually(() => expect(host.querySelector('[data-testid="observations"]')?.textContent).toBe("forest-data"));
+  expect(load.mock.calls.every(([id]) => id === "forest")).toBe(true);
+});
+
+it("clears a stale persisted workspace when the accessible list is empty", async () => {
+  localStorage.setItem("thcpn.workspace.current", "previous-account-workspace");
+  vi.spyOn(api.workspaces, "list").mockResolvedValue({ items: [] });
+  const load = vi.fn(async (id: string) => `${id}-data`);
+  await render(<WorkspaceProvider><WorkspaceData load={load} /></WorkspaceProvider>);
+
+  await eventually(() => expect(localStorage.getItem("thcpn.workspace.current")).toBeNull());
+  expect(load).not.toHaveBeenCalled();
+});
+
+it("does not request resources using a persisted workspace after listing fails", async () => {
+  localStorage.setItem("thcpn.workspace.current", "previous-account-workspace");
+  vi.spyOn(api.workspaces, "list").mockRejectedValue(new Error("offline"));
+  const load = vi.fn(async (id: string) => `${id}-data`);
+  await render(<WorkspaceProvider><WorkspaceData load={load} /></WorkspaceProvider>);
+
+  expect(load).not.toHaveBeenCalled();
+  expect(localStorage.getItem("thcpn.workspace.current")).toBe("previous-account-workspace");
 });
 
 it("switches workspace data without showing the previous workspace while the new query is pending", async () => {

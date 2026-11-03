@@ -40,7 +40,7 @@ function DeviceQuickSwitcher({
   return (
     <div className="device-quick-switch">
       <span>快捷切换设备</span>
-      <DeviceCombobox devices={devices} value={device.id} onChange={onSwitch} includeNodes={false} ariaLabel="搜索并切换设备" />
+      <DeviceCombobox devices={devices} value={device.id} onChange={onSwitch} variant="compact" includeNodes={false} ariaLabel="搜索并切换设备" />
     </div>
   );
 }

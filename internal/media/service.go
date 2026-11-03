@@ -21,6 +21,7 @@ import (
 	"thcpn-gin/internal/datasource"
 	platform "thcpn-gin/internal/datasource/platform"
 	"thcpn-gin/internal/db/sqlc"
+	"thcpn-gin/internal/devicescope"
 	"thcpn-gin/internal/objectstore"
 )
 
@@ -232,7 +233,7 @@ func (s *Service) ResolveMediaToken(ctx context.Context, token string, administr
 	}
 	var workspaceID uuid.UUID
 	if len(administrative) == 0 || !administrative[0] {
-		assignment, err := s.queries.GetActiveDeviceAssignmentByDataStream(ctx, stream.ID)
+		assignment, err := devicescope.Resolve(ctx, s.queries, stream.DeviceID)
 		if err != nil {
 			return MediaTarget{}, mapNotFoundOrInternal(err, "active device assignment not found")
 		}
@@ -279,7 +280,7 @@ func (s *Service) listDevice(ctx context.Context, deviceID uuid.UUID, mediaType 
 	}
 	_ = device
 	if len(administrative) == 0 || !administrative[0] {
-		assignment, err := s.queries.GetActiveDeviceAssignment(ctx, deviceID)
+		assignment, err := devicescope.Resolve(ctx, s.queries, deviceID)
 		if err != nil {
 			if allowUnassigned && errors.Is(err, pgx.ErrNoRows) {
 				downloadAllowed = false
@@ -352,7 +353,7 @@ func (s *Service) listDataStream(ctx context.Context, dataStreamID uuid.UUID, de
 		return ListResult{}, apperr.New(apperr.KindInvalidArgument, "data stream is not active")
 	}
 	if len(administrative) == 0 || !administrative[0] {
-		assignment, err := s.queries.GetActiveDeviceAssignmentByDataStream(ctx, dataStreamID)
+		assignment, err := devicescope.Resolve(ctx, s.queries, stream.DeviceID)
 		if err != nil {
 			if allowUnassigned && errors.Is(err, pgx.ErrNoRows) {
 				downloadAllowed = false
@@ -590,6 +591,10 @@ func validateTimeRange(start time.Time, end time.Time, limits config.QueryLimits
 func mapNotFoundOrInternal(err error, message string) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return apperr.New(apperr.KindNotFound, message)
+	}
+	var appErr *apperr.Error
+	if errors.As(err, &appErr) {
+		return err
 	}
 	return apperr.Wrap(apperr.KindInternal, message, err)
 }

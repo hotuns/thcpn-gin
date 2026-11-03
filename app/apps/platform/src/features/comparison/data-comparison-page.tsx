@@ -472,7 +472,7 @@ function ComparisonCondition({
       <div className="comparison-index">{index + 1}</div>
       <div className="comparison-field comparison-device-field">
         <span className="field-label comparison-mobile-label">设备</span>
-        <DeviceCombobox devices={devices} value={value.deviceId} className="comparison-device-control" ariaLabel="搜索对比设备" onChange={(deviceId) => onChange({ deviceId, streamId: "" })} />
+        <DeviceCombobox devices={devices} value={value.deviceId} includeNodes className="comparison-device-control" ariaLabel="搜索对比设备" onChange={(deviceId) => onChange({ deviceId, streamId: "" })} />
       </div>
       <label className="comparison-field">
         <span className="field-label comparison-mobile-label">数据要素</span>

@@ -251,10 +251,11 @@ function DeviceList() {
             {(projectId || siteId || deviceTypeId) && <button type="button" className="device-filter-reset" onClick={() => { setProjectId(""); setSiteId(""); setDeviceTypeId(""); }}><X size={13} />重置筛选</button>}
           </div>
   );
-  const deviceRows = rows.map((device) => (
+  const deviceRows = rows.map((device, index) => (
                   <DeviceRows
                     key={device.id}
                     device={device}
+                    sequence={index + 1}
                     mobile={mobile}
                     deviceType={deviceTypeByDevice.get(device.id)}
                     workspaceId={currentId}
@@ -350,6 +351,7 @@ function DeviceList() {
           <div className="table-wrap">
             <Table className="data-table device-table">
               <colgroup>
+                <col className="device-table-sequence" />
                 <col className="device-table-name" />
                 <col className="device-table-vitals" />
                 <col className="device-table-report" />
@@ -358,6 +360,7 @@ function DeviceList() {
               </colgroup>
               <thead>
                 <tr>
+                  <th scope="col">序号</th>
                   <th>设备</th>
                   <th>电量 / 信号</th>
                   <th>连接 / 最近活动</th>
@@ -390,6 +393,7 @@ function DeviceList() {
 
 function DeviceRows({
   device,
+  sequence,
   mobile,
   deviceType,
   workspaceId,
@@ -403,6 +407,7 @@ function DeviceRows({
   onOpen,
 }: {
   device: Device;
+  sequence: number;
   mobile: boolean;
   deviceType?: DeviceTaxonomyTerm;
   workspaceId: string;
@@ -428,7 +433,7 @@ function DeviceRows({
     retry:false,
   });
   if (mobile) return <article className="device-mobile-card">
-    <div className="device-mobile-card-heading"><button className="device-name-link" onClick={() => onOpen()}>{device.name}</button><Badge>{deviceModelLabel(device)}</Badge></div>
+    <div className="device-mobile-card-heading"><span className="device-mobile-sequence" aria-label={`序号 ${sequence}`}>{sequence}</span><button className="device-name-link" onClick={() => onOpen()}>{device.name}</button><Badge>{deviceModelLabel(device)}</Badge></div>
     <div className="device-mobile-meta">SN {device.serial_no}{deviceType ? ` · ${deviceType.name_zh}` : ""}</div>
     <div className="device-mobile-meta">{siteName} · {projectName}</div>
     <div className="device-mobile-status">{lora && gateway ? <><LoRaConnectionBadge connection={gatewayStatus.connection}/><span>{gatewayStatus.activity.error ? t("mobile.activityFailed") : gatewayStatus.activity.data?.last_received_at ? t("mobile.lastReceived", { time: formatDateTime(gatewayStatus.activity.data.last_received_at) }) : t("mobile.noReception")}</span></> : <span>{camera ? "视频设备" : runtime?.source_device.updated_at ? t("mobile.lastReported", { time: formatDateTime(runtime.source_device.updated_at) }) : t("mobile.noReport")}</span>}</div>
@@ -443,6 +448,7 @@ function DeviceRows({
   return (
     <>
       <tr className={expanded ? "selected-row" : ""}>
+        <td className="device-sequence-cell">{sequence}</td>
         <td>
           <div className="device-name-cell">
             {gateway ? (
@@ -506,7 +512,7 @@ function DeviceRows({
       </tr>
       {expanded && (
         <tr className="children-row">
-          <td colSpan={5}>
+          <td colSpan={6}>
             <DeviceChildren
               workspaceId={workspaceId}
               deviceId={device.id}

@@ -42,22 +42,6 @@
 .export-page.export-editor-page .export-review-hint { margin: 0; font-size: var(--font-size-caption); line-height: 1.6; color: var(--muted); }
 .export-device-picker { min-width: 0; margin: 0; padding: 0; border: 0; display: grid; gap: 10px; }
 .export-device-picker legend { padding: 0 0 10px; font-weight: var(--font-weight-semibold); font-size: var(--font-size-small); color: var(--ink); }
-.export-device-picker-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: var(--font-size-caption); }
-.export-device-picker-toolbar > div { display: flex; gap: 4px; }
-.export-device-picker-toolbar .shadcn-button { min-height: var(--control-height-sm); height: auto; padding: 4px 10px; font-size: var(--font-size-small); }
-.export-device-picker-list { display: grid; max-height: 240px; overflow-y: auto; scrollbar-width: thin; border-block: 1px solid var(--line); }
-.export-device-picker-list > :is(label, button) {
-  display: flex; align-items: center; gap: 12px; width: 100%; height: auto;
-  min-height: 54px; padding: 10px 12px; border: 0; border-bottom: 1px solid var(--line);
-  border-radius: 0; background: transparent; text-align: left; cursor: pointer; box-shadow: none;
-}
-.export-device-picker-list > :last-child { border-bottom: 0; }
-.export-device-picker-list > :is(label, button):hover { background: var(--surface-subtle); }
-.export-device-picker-list > .is-selected { background: color-mix(in srgb, var(--blue) 7%, var(--panel)); }
-.export-device-picker-list > :is(label, button) > span { display: grid; gap: 3px; min-width: 0; flex: 1; }
-.export-device-picker-list strong { font-size: var(--font-size-small); font-weight: var(--font-weight-semibold); color: var(--ink); white-space: normal; overflow-wrap: anywhere; }
-.export-device-picker-list small { color: var(--muted); font-size: var(--font-size-caption); }
-.export-device-picker-list .shadcn-checkbox { flex: none; }
 .export-content-toggle { display: flex; align-items: center; gap: 12px; padding: 0; cursor: pointer; }
 .export-content-toggle > span { display: grid; gap: 4px; }
 .export-content-toggle strong { color: var(--ink); font-size: var(--font-size-small); font-weight: var(--font-weight-semibold); }

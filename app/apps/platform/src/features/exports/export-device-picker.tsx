@@ -1,36 +1,22 @@
-import { useState } from "react";
 import { useLocale } from "@thcpn/i18n";
-import { Button,CheckboxInput,SearchInput,type PickerOption } from "../../shared/ui";
-import { RadioGroup,RadioGroupItem } from "../../shared/ui/primitives/radio-group";
+import { CheckboxInput } from "../../shared/ui";
+import { DeviceCombobox, type DeviceOption } from "../../shared/data/device-combobox";
 
-/** Export choices are live form values, not a second confirm/commit workflow. */
-export function ExportDevicePicker({ label, options, selectedIds, onChange, mode = "single", searchPlaceholder }: {
-  label: string; options: PickerOption[]; selectedIds: string[];
+export function ExportDevicePicker({ label, devices, selectedIds, onChange, mode = "single", searchPlaceholder }: {
+  label: string; devices: DeviceOption[]; selectedIds: string[];
   onChange: (ids: string[]) => void; mode?: "single" | "multiple"; searchPlaceholder?: string;
 }) {
-  const { t } = useLocale();
-  const [keyword, setKeyword] = useState("");
-  const filtered = options.filter(item => `${item.label} ${item.description ?? ""} ${item.searchText ?? ""}`.toLowerCase().includes(keyword.trim().toLowerCase()));
-  const selected = options.filter(item => selectedIds.includes(item.id));
-  const choose = (id: string) => onChange(mode === "single" ? [id] : selectedIds.includes(id) ? selectedIds.filter(value => value !== id) : [...selectedIds, id]);
-  const choices = <>{filtered.map(item => {
-    const checked = selectedIds.includes(item.id);
-    const content = <span><strong>{item.label}</strong>{item.description && <small>{item.description}</small>}</span>;
-    return <label key={item.id} className={checked ? "is-selected" : ""}>
-      {mode === "multiple" ? <CheckboxInput checked={checked} onChange={() => choose(item.id)} /> : <RadioGroupItem value={item.id} />}{content}
-    </label>;
-  })}{!filtered.length && <p className="data-builder-empty" role="status">{t(options.length ? "exportEditor.noMatch" : "exportEditor.noDevices")}</p>}</>;
   return <fieldset className="export-device-picker">
     <legend>{label}</legend>
-    {(options.length > 5 || keyword) && <SearchInput aria-label={searchPlaceholder ?? label} placeholder={searchPlaceholder ?? label} value={keyword} onChange={event => setKeyword(event.target.value)} />}
-    {mode === "multiple" && <div className="export-device-picker-toolbar">
-      <span aria-live="polite">{t("exportEditor.selected", { count: selected.length })}</span>
-      {options.length > 1 && <div>
-        <Button type="button" variant="ghost" disabled={!filtered.length} onClick={() => onChange([...new Set([...selectedIds, ...filtered.map(item => item.id)])])}>{t("exportEditor.selectAll")}</Button>
-        <Button type="button" variant="ghost" disabled={!selected.length} onClick={() => onChange([])}>{t("exportEditor.clear")}</Button>
-      </div>}
-    </div>}
-    {mode === "single" ? <RadioGroup value={selectedIds[0] ?? ""} onValueChange={id => onChange([id])} className="export-device-picker-list" aria-label={label}>{choices}</RadioGroup> : <div className="export-device-picker-list">{choices}</div>}
+    <DeviceCombobox
+      devices={devices}
+      variant="inline"
+      ariaLabel={`选择${label}`}
+      searchPlaceholder={searchPlaceholder}
+      {...(mode === "multiple"
+        ? { multiple: true, value: selectedIds, onChange }
+        : { value: selectedIds[0] ?? "", onChange: (id: string) => onChange([id]) })}
+    />
   </fieldset>;
 }
 

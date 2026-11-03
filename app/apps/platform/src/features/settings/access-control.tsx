@@ -20,6 +20,7 @@ import {
 } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, CheckboxInput, CopyId, Input, Panel, SelectInput, Sheet, SheetContent, SheetTitle, StateView } from "../../shared/ui";
+import { DeviceCombobox } from "../../shared/data/device-combobox";
 
 type FormMode = "member" | "edit-member" | "grant" | "invitation";
 type Template = { code: string; name: string; permission_codes: string[] };
@@ -639,18 +640,6 @@ function AccessForm({
   const [allowReshare, setAllowReshare] = useState(false);
   const [allowApi, setAllowApi] = useState(false);
   const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !busy) onClose();
-    };
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [busy, onClose]);
   const internalTemplateCodes = [
     "custom",
     "owner",
@@ -705,6 +694,13 @@ function AccessForm({
         ? current.filter((item) => item !== code)
         : [...current, code],
     );
+  const deviceOptions = (resources.device ?? []).map((item) => ({
+    id: text(item.id),
+    name: text(item.name, text(item.serial_no, item.id)),
+    serial_no: text(item.serial_no, ""),
+    device_type: text(item.device_type),
+    tags: Array.isArray(item.tags) ? item.tags.filter((tag): tag is string => typeof tag === "string") : [],
+  }));
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!selectedPermissions.length || !scopeId) return;
@@ -862,7 +858,13 @@ function AccessForm({
                 </label>
                 <label className="field field-wide">
                   <span className="field-label">具体资源</span>
-                  <SelectInput
+                  {scopeType === "device" ? <DeviceCombobox
+                    devices={deviceOptions}
+                    value={scopeId}
+                    onChange={setScopeId}
+                    ariaLabel="选择授权设备"
+                    disabled={busy}
+                  /> : <SelectInput
                     required
                     value={scopeId}
                     disabled={scopeType === "workspace"}
@@ -874,7 +876,7 @@ function AccessForm({
                         {text(item.name, text(item.serial_no, item.id))}
                       </option>
                     ))}
-                  </SelectInput>
+                  </SelectInput>}
                 </label>
               </div>
             </div>

@@ -98,7 +98,7 @@ func Middleware(lookup ActorLookup, configs ...MiddlewareConfig) gin.HandlerFunc
 			return
 		}
 
-		c.Set(actorContextKey, actor)
+		SetActorContext(c, actor)
 		c.Next()
 	}
 }
@@ -177,6 +177,20 @@ func ActorFromContext(c *gin.Context) (Actor, bool) {
 	return actor, ok
 }
 
+type requestActorKey struct{}
+
+// ActorInContext exposes the authenticated identity to workflow modules without
+// depending on Gin or accepting an identity supplied by the client payload.
+func ActorInContext(ctx context.Context) (Actor, bool) {
+	actor, ok := ctx.Value(requestActorKey{}).(Actor)
+	return actor, ok
+}
+
+func WithActor(ctx context.Context, actor Actor) context.Context {
+	return context.WithValue(ctx, requestActorKey{}, actor)
+}
+
 func SetActorContext(c *gin.Context, actor Actor) {
 	c.Set(actorContextKey, actor)
+	c.Request = c.Request.WithContext(WithActor(c.Request.Context(), actor))
 }

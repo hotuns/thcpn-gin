@@ -1,12 +1,12 @@
 import { nodeOptionLabel } from "@thcpn/api";
 import { useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, formatApiError, type JsonRecord } from "@thcpn/api";
+import { api, formatApiError, type Device } from "@thcpn/api";
 import { Alert, AlertDescription, AlertTitle } from "../../shared/ui/primitives/alert";
 import { Button, CheckboxInput, SearchInput, SelectInput } from "../../shared/ui";
 import { DataRangeFields as RangeFields, validDataRange } from "../../shared/data/data-builder";
 import { ExportDevicePicker, ExportContents } from "./export-device-picker";
-import { defaultRange, value, pickerOptions, arrayParam, buildGroupExportPayload } from "./export-model";
+import { defaultRange, value, arrayParam, buildGroupExportPayload } from "./export-model";
 import { type FormCommon, FormFooter } from "./export-form-layout";
 
 export function GroupExportForm({
@@ -17,7 +17,7 @@ export function GroupExportForm({
   onClose,
   onCreate,
   feedback,
-}: { devices: JsonRecord[]; tagsByDevice: Map<string, string[]> } & FormCommon) {
+}: { devices: Device[]; tagsByDevice: Map<string, string[]> } & FormCommon) {
   const gateways = devices.filter(
     (item) => value(item, "device_type") === "gateway",
   );
@@ -88,7 +88,7 @@ export function GroupExportForm({
         <div className="export-group-layout">
           <ExportDevicePicker
             label="组网站"
-            options={pickerOptions(gateways)}
+            devices={gateways}
             selectedIds={gatewayId ? [gatewayId] : []}
             onChange={(ids) => chooseGateway(ids[0] ?? "")}
             searchPlaceholder="搜索组网站名称或序列号"

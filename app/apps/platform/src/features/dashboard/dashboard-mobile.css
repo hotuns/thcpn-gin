@@ -7,7 +7,7 @@
   font-size: var(--font-size-body);
   line-height: 1.55;
   display: grid;
-  gap: 24px;
+  gap: 20px;
   min-width: 0;
 }
 :root[data-theme="dark"] .observation-overview {
@@ -21,19 +21,19 @@
 .observation-overview a { display: inline-flex; align-items: center; color: var(--ink); text-decoration: underline; text-underline-offset: 4px; }
 .observation-overview a:focus-visible, .observation-overview button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 .observation-overview > .page-header { margin-bottom: 0; }
-.overview-statistics, .overview-trend, .overview-attention, .overview-alerts { padding: 28px; border: 1px solid var(--line); box-shadow: none; background: var(--panel); gap: 0; }
-.overview-hero { max-width: 760px; padding-bottom: 28px; }
+.overview-statistics, .overview-trend, .overview-attention, .overview-alerts { padding: 24px; border: 1px solid var(--line); box-shadow: none; background: var(--panel); gap: 0; }
+.overview-statistics { padding: 20px; }
+.overview-metrics { display: grid; grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(0, 1fr)) minmax(0, 1.25fr); gap: 24px; }
+.overview-metric { min-width: 0; }
+.overview-metric + .overview-metric { border-left: 1px solid var(--line); padding-left: 24px; }
 .overview-metric h2 { font-size: var(--font-size-body); }
-.overview-value { margin: 12px 0; color: var(--ink); font-size: var(--font-size-display); font-weight: 600; letter-spacing: -.035em; line-height: 1.15; overflow-wrap: anywhere; }
-.overview-hero .overview-value { font-size: clamp(48px, 5.5vw, 72px); }
+.overview-value { margin: 12px 0; color: var(--ink); font-size: 36px; font-weight: 600; letter-spacing: -.035em; line-height: 1.15; overflow-wrap: anywhere; }
+.overview-hero .overview-value { font-size: 44px; }
 .overview-metric-notes { color: var(--muted); display: grid; gap: 5px; font-size: var(--font-size-small); }
-.overview-supporting-metrics { border-top: 1px solid var(--line); padding-top: 24px; display: grid; grid-template-columns: 1fr 1fr 1.25fr; gap: 28px; }
-.overview-supporting-metrics .overview-metric { min-width: 0; }
-.overview-coverage strong { color: var(--ink); font-weight: 500; }
 .overview-status-help summary { min-height: 44px; padding-block: 10px; cursor: pointer; color: var(--ink); }
 .overview-status-help summary:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .overview-status-help p { padding-bottom: 8px; }
-.overview-metadata { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 16px; display: flex; flex-wrap: wrap; gap: 8px 24px; color: var(--muted); font-size: var(--font-size-caption); }
+.overview-metadata { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 12px; display: flex; flex-wrap: wrap; gap: 8px 24px; color: var(--muted); font-size: var(--font-size-caption); }
 .overview-notice { background: var(--surface-subtle); color: var(--ink); padding: 14px 18px; border-radius: 6px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; overflow-wrap: anywhere; }
 .overview-section-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .overview-section-heading > div { min-width: 0; }
@@ -74,8 +74,11 @@
 .overview-trend-table th, .overview-trend-table td { padding: 12px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
 .overview-trend-table thead th { color: var(--muted); font-weight: 500; }
 .overview-trend-table tbody th { font-weight: 400; }
-.overview-table-status { display: block; color: var(--muted); font-size: var(--font-size-caption); }
-.overview-bottom { display: grid; grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr); gap: 24px; }
+.overview-content { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); align-items: start; gap: 20px; }
+.overview-content > * { min-width: 0; }
+.overview-bottom { display: grid; gap: 20px; }
+.overview-attention .overview-section-heading { flex-wrap: wrap; }
+.overview-attention .overview-device-list li { flex-wrap: wrap; gap: 0 12px; }
 .overview-attention > p, .overview-attention > .overview-notice { margin-top: 20px; }
 .overview-device-list { list-style: none; margin: 16px 0 0; padding: 0; }
 .overview-device-list li { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--line); }
@@ -86,17 +89,25 @@
 .overview-alert-count { font-size: var(--font-size-display); line-height: 1.2; font-weight: 600; margin: 20px 0 12px; }
 .overview-alerts p { color: var(--muted); }
 .overview-alerts > a { margin-top: 12px; }
+@media (max-width: 1279px) {
+  .overview-content { grid-template-columns: minmax(0, 1fr); }
+  .overview-bottom { grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr); }
+}
 @media (max-width: 1023px) {
-  .overview-bottom { grid-template-columns: minmax(0, 1fr); }
-  .overview-supporting-metrics { gap: 20px; }
+  .overview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+  .overview-metric:nth-child(odd) { border-left: 0; padding-left: 0; }
+  .overview-metric:nth-child(n + 3) { border-top: 1px solid var(--line); padding-top: 20px; }
 }
 @media (max-width: 767px) {
   .observation-overview { gap: 18px; }
   .overview-statistics, .overview-trend, .overview-attention, .overview-alerts { padding: 20px 16px; }
-  .overview-supporting-metrics { grid-template-columns: minmax(0, 1fr); gap: 20px; }
-  .overview-supporting-metrics .overview-metric + .overview-metric { padding-top: 20px; border-top: 1px solid var(--line); }
+  .overview-bottom { grid-template-columns: minmax(0, 1fr); }
+  .overview-metrics { gap: 16px; }
+  .overview-hero, .overview-metric:last-child { grid-column: 1 / -1; }
+  .overview-metric + .overview-metric { border-top: 1px solid var(--line); padding-top: 16px; padding-left: 0; border-left: 0; }
+  .overview-metric:nth-child(3) { border-left: 1px solid var(--line); padding-left: 16px; }
   .overview-value { font-size: 32px; }
-  .overview-hero { padding-bottom: 24px; }
+  .overview-hero .overview-value { font-size: 40px; }
   .overview-section-heading { flex-wrap: wrap; }
   .overview-trend-controls { gap: 10px; margin-top: 20px; }
   .overview-segment button { padding-inline: 12px; }

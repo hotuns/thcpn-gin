@@ -352,7 +352,7 @@ func (s *Service) validateConfig(ctx context.Context, workspaceID uuid.UUID, sce
 		ids = append(ids, *c.DeviceID)
 	}
 	for _, id := range ids {
-		if err := s.requireWorkspaceRow(ctx, `SELECT 1 FROM devices d WHERE d.id=$1 AND (EXISTS (SELECT 1 FROM device_assignments da WHERE da.device_id=d.id AND da.workspace_id=$2 AND da.status='active') OR EXISTS (SELECT 1 FROM demo_showcase_devices dsd JOIN workspaces w ON w.owner_user_id=dsd.user_id AND w.is_demo_workspace=true AND w.status='active' WHERE dsd.device_id=d.id AND w.id=$2))`, id, workspaceID); err != nil {
+		if err := s.requireWorkspaceRow(ctx, `SELECT 1 FROM devices d WHERE d.id=$1 AND (EXISTS (SELECT 1 FROM device_assignments da WHERE da.device_id=d.id AND da.workspace_id=$2 AND da.status='active') OR EXISTS (SELECT 1 FROM demo_showcase_devices dsd JOIN workspaces w ON w.owner_user_id=dsd.user_id AND w.is_demo_workspace=true AND w.status='active' WHERE w.id=$2 AND (dsd.device_id=d.id OR EXISTS (SELECT 1 FROM device_relations dr WHERE dr.parent_device_id=dsd.device_id AND dr.child_device_id=d.id AND dr.relation_type='gateway_node' AND dr.status='active'))))`, id, workspaceID); err != nil {
 			return c, err
 		}
 	}
@@ -361,7 +361,7 @@ func (s *Service) validateConfig(ctx context.Context, workspaceID uuid.UUID, sce
 		streamIDs = append(streamIDs, *c.ComparisonStreamID)
 	}
 	for _, id := range streamIDs {
-		if err := s.requireWorkspaceRow(ctx, `SELECT 1 FROM data_streams ds WHERE ds.id=$1 AND ds.status='active' AND (EXISTS (SELECT 1 FROM device_assignments da WHERE da.device_id=ds.device_id AND da.workspace_id=$2 AND da.status='active') OR EXISTS (SELECT 1 FROM demo_showcase_devices dsd JOIN workspaces w ON w.owner_user_id=dsd.user_id AND w.is_demo_workspace=true AND w.status='active' WHERE dsd.device_id=ds.device_id AND w.id=$2))`, id, workspaceID); err != nil {
+		if err := s.requireWorkspaceRow(ctx, `SELECT 1 FROM data_streams ds WHERE ds.id=$1 AND ds.status='active' AND (EXISTS (SELECT 1 FROM device_assignments da WHERE da.device_id=ds.device_id AND da.workspace_id=$2 AND da.status='active') OR EXISTS (SELECT 1 FROM demo_showcase_devices dsd JOIN workspaces w ON w.owner_user_id=dsd.user_id AND w.is_demo_workspace=true AND w.status='active' WHERE w.id=$2 AND (dsd.device_id=ds.device_id OR EXISTS (SELECT 1 FROM device_relations dr WHERE dr.parent_device_id=dsd.device_id AND dr.child_device_id=ds.device_id AND dr.relation_type='gateway_node' AND dr.status='active'))))`, id, workspaceID); err != nil {
 			return c, err
 		}
 	}
@@ -437,7 +437,7 @@ func (s *Service) buildSnapshot(ctx context.Context, workspaceID uuid.UUID, cfg 
 		out.Sites = append(out.Sites, v)
 	}
 	siteRows.Close()
-	deviceSQL := `SELECT d.id,d.name,d.status,d.device_type,COALESCE(dsd.site_id,da.site_id),COALESCE(s.name,''),s.latitude,s.longitude,(dsd.site_id IS NOT NULL AND s.latitude IS NOT NULL AND s.longitude IS NOT NULL) FROM devices d LEFT JOIN device_assignments da ON da.device_id=d.id AND da.workspace_id=$1 AND da.status='active' LEFT JOIN demo_showcase_devices dsd ON dsd.device_id=d.id AND dsd.workspace_id=$1 LEFT JOIN sites s ON s.id=COALESCE(dsd.site_id,da.site_id) WHERE (da.workspace_id=$1 OR dsd.device_id IS NOT NULL)`
+	deviceSQL := `SELECT d.id,d.name,d.status,d.device_type,COALESCE(dsd.site_id,da.site_id),COALESCE(s.name,''),s.latitude,s.longitude,(dsd.site_id IS NOT NULL AND s.latitude IS NOT NULL AND s.longitude IS NOT NULL) FROM devices d LEFT JOIN device_assignments da ON da.device_id=d.id AND da.workspace_id=$1 AND da.status='active' LEFT JOIN LATERAL (SELECT ref.device_id,ref.site_id FROM demo_showcase_devices ref JOIN users u ON u.id=ref.user_id AND u.is_demo=true AND u.status='active' WHERE ref.workspace_id=$1 AND (ref.device_id=d.id OR EXISTS (SELECT 1 FROM device_relations dr WHERE dr.parent_device_id=ref.device_id AND dr.child_device_id=d.id AND dr.relation_type='gateway_node' AND dr.status='active')) ORDER BY (ref.device_id=d.id) DESC LIMIT 1) dsd ON true LEFT JOIN sites s ON s.id=COALESCE(dsd.site_id,da.site_id) WHERE (da.workspace_id=$1 OR dsd.device_id IS NOT NULL)`
 	args := []any{workspaceID}
 	if cfg.SiteID != nil {
 		deviceSQL += ` AND COALESCE(dsd.site_id,da.site_id)=$2`

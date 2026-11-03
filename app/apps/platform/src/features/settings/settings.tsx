@@ -35,7 +35,7 @@ export function SettingsPage() {
           </div>
         }
       />
-      <Tabs value={tab} onValueChange={(value) => setParams({ tab: value })}>
+      <Tabs className="section-tabs" value={tab} onValueChange={(value) => setParams({ tab: value })}>
         <TabsList>
           {tabs.map((item) => <TabsTrigger key={item.id} value={item.id}>{item.label}</TabsTrigger>)}
         </TabsList>

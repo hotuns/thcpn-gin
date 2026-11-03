@@ -1,5 +1,6 @@
 import "./alerts-mobile.css";
 import { policyLimit } from "../../shared/config/system-policy";
+import { DeviceCombobox } from "../../shared/data/device-combobox";
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
@@ -68,7 +69,7 @@ export function CreateRuleDialog({open,workspaceId,initialDeviceId,onClose,onSav
           <h3>{titles[step-1]}</h3>
           {step===1&&<>
             <div className="alert-type-options">{[{value:"telemetry_threshold",title:"指标阈值",description:"指标持续越界时通知"},{value:"device_offline",title:"设备离线",description:"设备长时间未上报时通知"}].map(item=><Button key={item.value} variant="secondary" aria-pressed={type===item.value} onClick={()=>setType(item.value)}><strong>{item.title}</strong><small>{item.description}</small></Button>)}</div>
-            <Field label="选择设备"><AlertSelect label="选择设备" value={deviceId} placeholder="请选择" onValueChange={value=>{setDeviceId(value);setStreamId("");setLower("");setUpper("")}} options={(devices.data?.items??[]).map(d=>({value:d.id,label:d.name}))}/></Field>
+            <Field label="选择设备"><DeviceCombobox devices={devices.data?.items??[]} value={deviceId} onChange={value=>{setDeviceId(value);setStreamId("");setLower("");setUpper("")}} ariaLabel="选择预警设备" loading={devices.isLoading} disabled={busy||devices.isLoading||devices.isError}/></Field>
             {devices.isLoading?<p role="status">正在加载设备…</p>:devices.isError?<p role="alert">{formatApiError(devices.error).message}<Button variant="ghost" onClick={()=>void devices.refetch()}>重试</Button></p>:!devices.data?.items.length&&<p>暂无可选设备</p>}
             {type==="telemetry_threshold"&&deviceId&&<><Field label="指标"><AlertSelect label="指标" value={streamId} placeholder="请选择" onValueChange={value=>{setStreamId(value);setLower("");setUpper("")}} options={streamItems.map(s=>({value:s.id,label:s.name+(s.unit?" ("+s.unit+")":"")}))}/></Field>{streams.isLoading?<p role="status">正在加载指标…</p>:streams.isError?<p role="alert">{formatApiError(streams.error).message}<Button variant="ghost" onClick={()=>void streams.refetch()}>重试</Button></p>:!streamItems.length&&<p>该设备暂无可用的数值指标</p>}</>}
           </>}

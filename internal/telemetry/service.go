@@ -20,6 +20,7 @@ import (
 	"thcpn-gin/internal/datasource"
 	platform "thcpn-gin/internal/datasource/platform"
 	"thcpn-gin/internal/db/sqlc"
+	"thcpn-gin/internal/devicescope"
 )
 
 type TelemetryRuntime interface {
@@ -162,21 +163,21 @@ func (s *Service) validateHistoryWindow(ctx context.Context, input QueryInput) e
 	if s.billing == nil {
 		return nil
 	}
-	var workspaceID uuid.UUID
-	var err error
+	var deviceID uuid.UUID
 	if input.DataStreamID != nil {
-		var assignment sqlc.DeviceAssignment
-		assignment, err = s.queries.GetActiveDeviceAssignmentByDataStream(ctx, *input.DataStreamID)
-		workspaceID = assignment.WorkspaceID
+		stream, err := s.queries.GetDataStream(ctx, *input.DataStreamID)
+		if err != nil {
+			return mapNotFoundOrInternal(err, "data stream not found")
+		}
+		deviceID = stream.DeviceID
 	} else if input.DeviceID != nil {
-		var assignment sqlc.DeviceAssignment
-		assignment, err = s.queries.GetActiveDeviceAssignment(ctx, *input.DeviceID)
-		workspaceID = assignment.WorkspaceID
+		deviceID = *input.DeviceID
 	}
+	placement, err := devicescope.Resolve(ctx, s.queries, deviceID)
 	if err != nil {
-		return mapNotFoundOrInternal(err, "active device assignment not found")
+		return mapNotFoundOrInternal(err, "device workspace context not found")
 	}
-	summary, err := s.billing.Summary(ctx, workspaceID)
+	summary, err := s.billing.Summary(ctx, placement.WorkspaceID)
 	if err != nil {
 		return err
 	}
@@ -696,6 +697,10 @@ func pgTime(value pgtype.Timestamptz) time.Time {
 func mapNotFoundOrInternal(err error, message string) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return apperr.New(apperr.KindNotFound, message)
+	}
+	var appErr *apperr.Error
+	if errors.As(err, &appErr) {
+		return err
 	}
 	return apperr.Wrap(apperr.KindInternal, message, err)
 }

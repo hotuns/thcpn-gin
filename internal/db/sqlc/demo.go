@@ -31,6 +31,7 @@ func (q *Queries) GetWorkspaceDeviceContext(ctx context.Context, userID, deviceI
 				  AND dr.relation_type = 'gateway_node' AND dr.status = 'active'
 			)
 		)
+		ORDER BY (dsd.device_id = $2) DESC
 		LIMIT 1`, userID, deviceID).Scan(&result.WorkspaceID, &result.ProjectID, &result.SiteID, &result.Referenced)
 	if err == nil {
 		return result, nil

@@ -16,6 +16,9 @@
 .section-gap {
   margin-top: 18px;
 }
+.section-tabs {
+  margin-bottom: 18px;
+}
 .route-placeholder {
   min-height: 280px;
   display: grid;
