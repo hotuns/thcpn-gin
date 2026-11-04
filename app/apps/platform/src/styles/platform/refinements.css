@@ -220,20 +220,3 @@
 .device-detail-heading .device-detail-actions { flex:0 1 auto; flex-wrap:wrap; }
 .device-detail-meta { flex-wrap:wrap; }
 .device-detail-meta > span { white-space:nowrap; }
-
-/* Expanded gateway nodes use the full row for identity, status and actions. */
-.child-device-list-expanded { padding-left:16px; }
-.child-device-list-expanded > .child-device-row { display:grid; grid-template-columns:minmax(180px,1fr) minmax(280px,2fr) auto; gap:24px; }
-.child-device-row > div { min-width:0; }
-.child-device-row .cell-title, .child-device-row .cell-sub { overflow-wrap:anywhere; }
-.child-device-row .runtime-status-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
-.child-device-row .runtime-status-value { min-width:0; white-space:normal; }
-.child-device-row .node-vitals { display:flex; gap:24px; }
-@media(max-width:1100px) {
- .child-device-list-expanded > .child-device-row { grid-template-columns:minmax(150px,1fr) minmax(240px,1.5fr) auto; gap:12px; }
- .child-device-row .runtime-status-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
-}
-@media(max-width:700px) {
- .child-device-list-expanded > .child-device-row { grid-template-columns:minmax(0,1fr) auto; }
- .child-device-row .child-device-runtime { grid-column:1 / -1; grid-row:2; }
-}

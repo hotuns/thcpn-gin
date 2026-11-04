@@ -5,7 +5,6 @@ import { isMeasurement } from "@thcpn/api";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
-import { RadioTower } from "lucide-react";
 import { api, formatApiError, type Device, type GatewayNode } from "@thcpn/api";
 import { invalidateNodeNames, workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, Panel, StateView, NodeNameEditor, SearchInput, SelectInput, Table, TableHeader, TableRow, TableHead, TableBody, TableCell, Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter, Alert, AlertTitle, AlertDescription, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../../shared/ui";
@@ -35,11 +34,11 @@ export function GatewayOverview({ device, workspaceId }: { device: Device; works
   const openData = (node: GatewayNode) => { setDetailKey(null); setParams(previous => { const next = new URLSearchParams(previous); next.set("tab", "data"); next.set("node", node.key); return next; }); };
   const refresh = () => { void nodes.refetch(); if(!lora||pageRows.length)void runtime.refetch(); };
   const formatTime = (value?: string | null) => value ? new Date(value).toLocaleString() : "—";
+  const actions = <>{lora&&<Button variant="secondary" onClick={()=>setInfoOpen(true)}>网关上报信息</Button>}<Button variant="secondary" disabled={nodes.isFetching || runtime.isFetching} onClick={refresh}>刷新</Button></>;
   return <div className="gateway-overview">
-    <section className="gateway-overview-hero"><div className="gateway-overview-hero-main"><div className="gateway-overview-icon"><RadioTower size={22} /></div><div><span>{lora ? "LoRaWAN V2 · 网关与节点" : "THCPN · 组网节点"}</span><h2>{device.name}</h2></div></div><div className="header-actions">{lora&&<Button variant="secondary" onClick={()=>setInfoOpen(true)}>网关上报信息</Button>}<Button variant="secondary" disabled={nodes.isFetching || runtime.isFetching} onClick={refresh}>刷新</Button></div></section>
     {lora && <Dialog open={infoOpen} onOpenChange={setInfoOpen}><DialogContent><DialogHeader><DialogTitle>网关上报信息</DialogTitle><DialogDescription>由设备上报的物联卡和固件信息，与平台人工登记资料区分。</DialogDescription></DialogHeader>{infoOpen&&<LoRaWANGatewayInfo deviceId={device.id} workspaceId={workspaceId}/>}</DialogContent></Dialog>}
     {lora && <GatewayReportedDetails deviceId={device.id} workspaceId={workspaceId} name={device.name} sn={device.serial_no}/>}
-    {nodes.error ? <StateView type="error" title="节点读取失败" description={formatApiError(nodes.error).message} /> : nodes.isLoading ? <StateView type="loading" title="正在读取节点" description="正在汇总节点与指标。" /> : <>
+    {nodes.error ? <StateView type="error" title="节点读取失败" description={formatApiError(nodes.error).message} action={<div className="header-actions">{actions}</div>} /> : nodes.isLoading ? <StateView type="loading" title="正在读取节点" description="正在汇总节点与指标。" /> : <>
       <div className="gateway-overview-kpis">
         <div><span>{lora ? "当前安装节点" : "节点设备"}</span><strong>{lora ? rows.filter(n => n.bound).length : rows.length}</strong></div>
         <div><span>指标数量</span><strong>{boundRows.reduce((sum, n) => sum + n.streams.filter(isMeasurement).length, 0)}</strong></div>
@@ -47,7 +46,7 @@ export function GatewayOverview({ device, workspaceId }: { device: Device; works
         <div><span>本页读取失败</span><strong>{pageRows.filter(n => readings.get(n.key)?.error).length}</strong></div>
       </div>
       <Panel className="gateway-nodes-panel section-gap">
-        <div className="panel-header"><div><h2 className="panel-title">节点</h2></div><div className="header-actions">{lora&&<Button variant="ghost" onClick={()=>setParams(previous=>{const next=new URLSearchParams(previous);next.set("tab","data");next.set("node_scope","history");next.delete("node");return next;})}>历史数据</Button>}<Badge tone="info">{visible.length} 项</Badge></div></div>
+        <div className="panel-header"><div><h2 className="panel-title">节点</h2></div><div className="header-actions">{lora&&<Button variant="ghost" onClick={()=>setParams(previous=>{const next=new URLSearchParams(previous);next.set("tab","data");next.set("node_scope","history");next.delete("node");return next;})}>历史数据</Button>}<Badge tone="info">{visible.length} 项</Badge>{actions}</div></div>
         <div className="gateway-node-toolbar">
           <div className="gateway-node-toolbar-search"><SearchInput aria-label="搜索节点" placeholder="搜索名称、SN 或序号" value={search} onChange={e => setSearch(e.target.value)} />
 

@@ -797,9 +797,6 @@
   .camera-player {
     min-height: 220px;
   }
-  .child-device-list {
-    padding-left: 12px;
-  }
   .mfa-setup {
     grid-template-columns: 1fr;
   }

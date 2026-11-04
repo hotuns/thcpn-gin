@@ -12,9 +12,10 @@ import { TelemetryLoading } from "../../shared/telemetry/telemetry-loading";
 import { gatewayStatusTime } from "./lorawan-gateway-status";
 import "./runtime-status.css";
 const icons={battery:Battery,rssi:Signal,sd_card_rate:HardDrive,snr:Radio,cell:Signal};
-export function RuntimeStatusCards({deviceId,workspaceId,name,sn,keys,snapshot,loading=false,error}:{deviceId:string;workspaceId:string;name:string;sn?:string;keys:StatusMetric[];snapshot:StatusSnapshot;loading?:boolean;error?:string}){
+const compactLabels = {battery:"电压",rssi:"信号",sd_card_rate:"SD 卡",snr:"信噪比",cell:"信号质量"};
+export function RuntimeStatusCards({deviceId,workspaceId,name,sn,keys,snapshot,loading=false,error,compact=false}:{deviceId:string;workspaceId:string;name:string;sn?:string;keys:StatusMetric[];snapshot:StatusSnapshot;loading?:boolean;error?:string;compact?:boolean}){
   const [metric,setMetric]=useState<StatusMetric|null>(null);
-  return <><div className="runtime-status-grid">{keys.map(key=>{const Icon=icons[key];return <TooltipProvider key={key}><Tooltip><TooltipTrigger asChild><Button variant="ghost" className="runtime-status-value" onClick={()=>setMetric(key)}><span><Icon size={14}/>{statusMetrics[key].label}</span><strong>{loading?"…":error||snapshot.error?"—":statusValue(key,snapshot.values[key])}</strong></Button></TooltipTrigger><TooltipContent>查看历史</TooltipContent></Tooltip></TooltipProvider>;})}</div>
+  return <><div className="runtime-status-grid">{keys.map(key=>{const Icon=icons[key];return <TooltipProvider key={key}><Tooltip><TooltipTrigger asChild><Button variant="ghost" className="runtime-status-value" onClick={()=>setMetric(key)}><span><Icon size={14}/>{compact ? compactLabels[key] : statusMetrics[key].label}</span><strong>{loading?"…":error||snapshot.error?"—":statusValue(key,snapshot.values[key])}</strong></Button></TooltipTrigger><TooltipContent>{statusMetrics[key].label} · 查看历史</TooltipContent></Tooltip></TooltipProvider>;})}</div>
     {(error||snapshot.error)&&<span role="status">{error||snapshot.error}</span>}
     <Dialog open={metric!==null} onOpenChange={open=>{if(!open)setMetric(null);}}><DialogContent style={{width:"80vw",maxWidth:"80vw",maxHeight:"90vh",overflowY:"auto"}} aria-describedby={undefined}><DialogHeader><DialogTitle>{name}{sn?` · 当前 SN ${sn}`:""} · {metric?statusMetrics[metric].label:"运行状态"}</DialogTitle></DialogHeader>{metric&&<StatusHistoryBody deviceId={deviceId} workspaceId={workspaceId} keys={keys} snapshot={snapshot} metric={metric} onMetric={setMetric}/>}</DialogContent></Dialog>
   </>;

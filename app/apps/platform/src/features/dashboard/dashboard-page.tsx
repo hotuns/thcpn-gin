@@ -2,11 +2,11 @@ import "./dashboard-mobile.css";
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react";
+import { Info, RefreshCw } from "lucide-react";
 import { api, formatApiError } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { useLocale } from "@thcpn/i18n";
-import { Button, PageHeader, Panel, StateView } from "../../shared/ui";
+import { Button, PageHeader, Panel, StateView, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../shared/ui";
 import { DashboardTrend } from "./dashboard-trend";
 
 export function DashboardPage() {
@@ -61,14 +61,14 @@ function WorkspaceOverview({ workspaceId, workspaceName }: { workspaceId: string
   return <div className="observation-overview">
     <PageHeader eyebrow={t("platform:overview.workspace", { name: workspaceName })}
       title={t("platform:overview.title")} description={t("platform:overview.description")}
-      actions={<Button variant="secondary" disabled={busy} onClick={refresh}><RefreshCw size={16} aria-hidden="true" />{t(`platform:overview.${busy ? data ? "refreshing" : "loadingValue" : "refresh"}`)}</Button>} />
+      actions={<><Button variant="secondary" disabled={busy} onClick={refresh}><RefreshCw size={16} aria-hidden="true" />{t(`platform:overview.${busy ? data ? "refreshing" : "loadingValue" : "refresh"}`)}</Button>{preparing && <PreparingHint message={t("platform:overview.preparing")} />}</>} />
     {error && <div className="overview-notice" role="alert">
       <strong>{t(`platform:overview.${data ? "refreshFailed" : "failed"}`)}</strong>
       <span>{error.message}</span>
       {error.requestId && <span>{t("common:requestId", { id: error.requestId })}</span>}
       <Button variant="secondary" onClick={refresh} disabled={busy}>{t("platform:overview.retry")}</Button>
     </div>}
-    {(busy || preparing) && <p className="overview-notice" role="status">{t(`platform:overview.${busy ? data ? "refreshing" : "loading" : "preparing"}`)}</p>}
+    {busy && <p className="overview-notice" role="status">{t(`platform:overview.${data ? "refreshing" : "loading"}`)}</p>}
     {data?.devices.total === 0 && <div className="overview-notice"><strong>{t("platform:overview.noDevices")}</strong><span>{t("platform:overview.noDevicesHelp")}</span></div>}
     {allUnknown && !preparing && <p className="overview-notice" role="status">{t("platform:overview.allUnknown")}</p>}
 
@@ -117,6 +117,18 @@ function WorkspaceOverview({ workspaceId, workspaceName }: { workspaceId: string
       </div>
     </div>
   </div>;
+}
+
+function PreparingHint({ message }: { message: string }) {
+  const [open, setOpen] = useState(false);
+  return <TooltipProvider delayDuration={200}><Tooltip open={open} onOpenChange={setOpen}>
+    <TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" aria-label={message} onClick={event => {
+      // Keep the tooltip open on tap as well as hover and keyboard focus.
+      event.preventDefault();
+      setOpen(current => !current);
+    }}><Info size={17} aria-hidden="true" /></Button></TooltipTrigger>
+    <TooltipContent side="bottom" align="end" style={{ maxWidth: 280 }}>{message}</TooltipContent>
+  </Tooltip></TooltipProvider>;
 }
 
 function Metric({ id, label, value, hero, children }: { id: string; label: string; value: string; hero?: boolean; children: ReactNode }) {

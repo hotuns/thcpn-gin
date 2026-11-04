@@ -159,7 +159,7 @@ func (s *Service) ListGatewayNodes(ctx context.Context, gatewayID uuid.UUID) ([]
 				active = append(active, stream)
 			}
 		}
-		nodes = append(nodes, GatewayNode{Key: target.Key(), Name: child.Device.Name, CustomName: child.Device.Name, Target: target, Streams: active})
+		nodes = append(nodes, GatewayNode{Key: target.Key(), Name: child.Device.Name, NodeSN: child.Device.SerialNo, CustomName: child.Device.Name, Target: target, Streams: active})
 	}
 	return nodes, nil
 }

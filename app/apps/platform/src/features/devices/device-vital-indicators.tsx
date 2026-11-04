@@ -39,8 +39,7 @@ export function DeviceVitalIndicators({
         className={`device-vital ${battery.level}`}
         aria-label={loading ? "正在读取电量" : battery.description}
       >
-        <BatteryIcon size={20} aria-hidden="true" />
-        {(!csq || battery.level === "unknown") && <small>{loading ? "…" : battery.valueLabel}</small>}
+        {loading ? <small aria-hidden="true">…</small> : battery.valueLabel === "—" ? <small aria-hidden="true">?</small> : <BatteryIcon size={20} aria-hidden="true" />}
       </span></TooltipTrigger><TooltipContent className="device-vital-tooltip">
         <div><strong>电池</strong><b>{loading ? "…" : battery.valueLabel}</b></div>
         <p>{loading ? "正在读取电量" : battery.description}</p>
@@ -50,8 +49,7 @@ export function DeviceVitalIndicators({
         className={`device-vital ${signal.level}`}
         aria-label={loading ? "正在读取信号" : signal.description}
       >
-        <SignalIcon size={20} aria-hidden="true" />
-        {(!signalCsq || bars === null) && <small>{loading ? "…" : signal.valueLabel}</small>}
+        {loading ? <small aria-hidden="true">…</small> : signal.level === "unknown" ? <small aria-hidden="true">?</small> : <SignalIcon size={20} aria-hidden="true" />}
       </span></TooltipTrigger><TooltipContent className="device-vital-tooltip">
         <div><strong>信号</strong><b>{loading ? "…" : signal.valueLabel}</b></div>
         <p>{loading ? "正在读取信号" : signal.description}</p>

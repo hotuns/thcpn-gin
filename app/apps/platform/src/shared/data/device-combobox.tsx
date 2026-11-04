@@ -201,7 +201,7 @@ export function DeviceCombobox(props: DeviceComboboxProps) {
         <DialogTitle>{ariaLabel}</DialogTitle>
         {content}
       </DialogContent>
-    </Dialog> : <Popover open={open} onOpenChange={changeOpen}>
+    </Dialog> : <Popover modal open={open} onOpenChange={changeOpen}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent className="device-quick-switch-menu" align={variant === "compact" ? "end" : "start"}>{content}</PopoverContent>
     </Popover>}

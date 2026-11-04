@@ -3,6 +3,7 @@ import { nodeSnapshot, nodeStatusKeys, isMeasurement } from "@thcpn/api";
 import { useState } from "react";
 import { useIsMobile } from "../../shared/hooks/use-mobile";
 import "./device-mobile.css";
+import "./device-children.css";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api, formatApiError } from "@thcpn/api";
@@ -57,23 +58,23 @@ export function DeviceChildren({
       />
     );
   return (
-    <div className="child-device-list child-device-list-expanded">
-      {lora&&<div className="header-actions"><Button variant="secondary" onClick={()=>void runtime.refetch()}>刷新状态</Button>{pageCount>1&&<><Button disabled={currentPage===1} onClick={()=>setPage(currentPage-1)}>上一页</Button><span>{currentPage} / {pageCount}</span><Button disabled={currentPage===pageCount} onClick={()=>setPage(currentPage+1)}>下一页</Button></>}</div>}
-      {nodes.map((node) => {
-        const runtimeView = lora?<RuntimeStatusCards deviceId={deviceId} workspaceId={workspaceId} name={node.name} sn={node.node_sn} keys={nodeStatusKeys} snapshot={nodeSnapshot(runtime.data?.items.find(item=>item.key===node.key))} loading={runtime.isFetching} error={runtime.error?formatApiError(runtime.error).message:undefined}/>:<NodeVitals item={runtime.data?.items.find(item => item.key === node.key)} loading={runtime.isLoading} error={runtime.isError}/>;
+    <div className={`child-device-list child-device-list-expanded${lora ? " is-lorawan" : ""}`}>
+      {lora&&<div className="header-actions child-device-toolbar"><Button variant="secondary" onClick={()=>void runtime.refetch()}>刷新状态</Button>{pageCount>1&&<><Button disabled={currentPage===1} onClick={()=>setPage(currentPage-1)}>上一页</Button><span>{currentPage} / {pageCount}</span><Button disabled={currentPage===pageCount} onClick={()=>setPage(currentPage+1)}>下一页</Button></>}</div>}
+      {!mobile && <div className="child-device-head" aria-hidden="true"><span>序号</span><span>节点名称</span><span>SN</span>{lora && <span>节点编号</span>}<span>指标数</span><span>{lora ? "节点状态" : "电量 / 信号"}</span><span>操作</span></div>}
+      {nodes.map((node, index) => {
+        const sequence = (lora ? (currentPage - 1) * 20 : 0) + index + 1;
+        const runtimeView = lora?<RuntimeStatusCards compact deviceId={deviceId} workspaceId={workspaceId} name={node.name} sn={node.node_sn} keys={nodeStatusKeys} snapshot={nodeSnapshot(runtime.data?.items.find(item=>item.key===node.key))} loading={runtime.isFetching} error={runtime.error?formatApiError(runtime.error).message:undefined}/>:<NodeVitals item={runtime.data?.items.find(item => item.key === node.key)} loading={runtime.isLoading} error={runtime.isError}/>;
         return (
         <div key={node.key} className="child-device-row">
-          <div>
-            <div className="cell-title">{node.name}</div>
-            <div className="cell-sub">
-              {node.streams.filter(isMeasurement).length ? `${node.streams.filter(isMeasurement).length} 个指标` : "暂无指标"}
-            </div>
-            {lora&&<div className="cell-sub">SN {node.node_sn} · 序号 {node.target.kind==="gateway_node"?node.target.node_index:"—"}</div>}
-          </div>
+          <span className="child-device-sequence" aria-label={`序号 ${sequence}`}>{sequence}</span>
+          <div className="child-device-name cell-title">{node.name}</div>
+          <div className="child-device-sn"><span className="child-device-label">SN </span>{node.node_sn || "—"}</div>
+          {lora && <div className="child-device-index"><span className="child-device-label">节点编号 </span>{node.target.kind === "gateway_node" ? node.target.node_index : "—"}</div>}
+          <div className="child-device-metrics"><span className="child-device-label">指标数 </span>{node.streams.filter(isMeasurement).length}</div>
           <div className="child-device-runtime">
             {mobile ? <details className="device-node-status"><summary>运行状态</summary>{runtimeView}</details> : runtimeView}
           </div>
-          <div>
+          <div className="child-device-actions">
             {node.target.kind === "device" ? (
               <Button variant="secondary" onClick={() => onData(node.target.kind === "device" ? node.target.device_id : undefined)}>
                 查看数据

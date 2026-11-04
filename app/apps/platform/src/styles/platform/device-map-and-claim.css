@@ -49,7 +49,7 @@
 .device-map-route {
   overflow: hidden;
 }
-.device-map-route .page {
+.device-map-route .platform-shell .page {
   width: 100%;
   max-width: none;
   padding: 0;
@@ -72,6 +72,7 @@
   position: absolute;
   z-index: 2;
 }
+.device-map-controls { display: contents; }
 .device-map-console {
   top: 76px;
   right: 16px;
@@ -123,6 +124,57 @@
   width: 100%;
   height: 100%;
   color: var(--blue-dark);
+}
+@media (min-width: 768px) {
+  .device-map-controls {
+    position: absolute;
+    top: 76px;
+    right: 16px;
+    bottom: 60px;
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: min(330px, calc(100% - 32px));
+    pointer-events: none;
+  }
+  .device-map-controls > .device-map-console {
+    position: relative;
+    top: auto;
+    right: auto;
+    flex: 0 0 auto;
+    width: 100%;
+    pointer-events: auto;
+  }
+  .device-map-controls > .device-map-console.is-collapsed {
+    align-self: flex-end;
+    width: 36px;
+    height: 36px;
+  }
+  .device-map-controls > .map-tools {
+    position: static;
+    display: flex;
+    flex: 0 1 auto;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+  }
+  .device-map-controls > .map-tools > button {
+    align-self: flex-end;
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    pointer-events: auto;
+  }
+  .device-map-controls > .map-tools > .map-tools-panel {
+    position: static;
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    width: 100%;
+    pointer-events: auto;
+  }
 }
 .device-map-console-head > div:nth-child(2) {
   min-width: 0;
@@ -210,6 +262,7 @@
 }
 .device-map-console:has(.map-device-type-select.is-open) {
   overflow: visible;
+  z-index: 5;
 }
 .map-device-type-select {
   position: relative;

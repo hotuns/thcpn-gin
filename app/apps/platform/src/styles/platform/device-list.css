@@ -356,9 +356,12 @@
 }
 .device-vitals-refined { gap: 8px; }
 .device-vitals-refined .device-vital {
+  box-sizing: border-box;
+  flex: 0 0 36px;
+  width: 36px;
   min-width: 36px;
   height: 30px;
-  padding: 0 8px;
+  padding: 0;
   border-color: transparent;
   background: var(--surface-subtle);
   cursor: help;
@@ -376,27 +379,6 @@
 .children-row > td {
   padding: 0 !important;
   background: #f8fbff !important;
-}
-.child-device-list {
-  display: grid;
-  padding-left: 48px;
-}
-.child-device-list > div {
-  min-height: 58px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--soft-line);
-}
-.child-device-list > div:last-child {
-  border-bottom: 0;
-}
-.child-device-list > div > div:last-child {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 .device-editor {
   animation: panel-enter 180ms ease-out;

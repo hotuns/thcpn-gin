@@ -7,8 +7,10 @@ import { exportCanvas, geometryMeasure, mapSourceCredit } from "./map-tools-mode
 import type { MapDraw } from "./map-draw-session";
 import "./map-tools.css";
 
-export function MapTools({ map }: { map: Map | null }) {
-  const [open, setOpen] = useState(false); const [legend, setLegend] = useState(false);
+export function MapTools({ map, open: controlledOpen, onOpenChange }: { map: Map | null; open?: boolean; onOpenChange?: (open: boolean) => void }) {
+  const [internalOpen, setInternalOpen] = useState(false); const [legend, setLegend] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = (next: boolean) => { setInternalOpen(next); onOpenChange?.(next); };
   const [mode, setMode] = useState(""); const [measure, setMeasure] = useState(""); const [error, setError] = useState("");
   const [layers, setLayers] = useState<{ id: string; name: string; layerIds: string[]; type: string; visible: boolean; opacity: number }[]>([]);
   const draw = useRef<MapDraw | null>(null); const pending = useRef(0);
@@ -36,8 +38,9 @@ export function MapTools({ map }: { map: Map | null }) {
     } catch { setError("绘制工具初始化失败，请关闭后重试"); }
   };
   const stop = () => { pending.current++; draw.current?.stop(); draw.current = null; setMode(""); setMeasure(""); };
+  useEffect(() => { if (!open) stop(); }, [open]);
   return <div className="map-tools" aria-label="地图工具">
-    <Button variant="secondary" aria-label="地图工具" title="地图工具" aria-expanded={open} disabled={!map} onClick={() => { if (open) stop(); setOpen(v => !v); refreshLayers(); }}><Layers3 size={17} /></Button>
+    <Button variant="secondary" aria-label="地图工具" title="地图工具" aria-expanded={open} disabled={!map} onClick={() => { setOpen(!open); if (!open) refreshLayers(); }}><Layers3 size={17} /></Button>
     {open && <section className="map-tools-panel">
       <header><strong>地图工具</strong><Button variant="ghost" aria-label="关闭地图工具" onClick={() => { setOpen(false); stop(); }}><X size={14} /></Button></header>
       <div className="map-tools-actions"><Button variant="secondary" aria-pressed={mode === "linestring"} onClick={() => void start("linestring")}><Ruler size={14} />测距离</Button><Button variant="secondary" aria-pressed={mode === "polygon"} onClick={() => void start("polygon")}><Shapes size={14} />测面积</Button></div>

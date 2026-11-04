@@ -22,12 +22,7 @@
   .device-active-filters { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; overflow-wrap: anywhere; }
   .device-categories { display: flex; flex-wrap: nowrap; max-width: 100%; overflow-x: auto; justify-content: flex-start; }
   .device-categories > button { flex-shrink: 0; min-height: 44px; }
-  .device-mobile-card .child-device-list { min-width: 0; }
-  .device-mobile-card .child-device-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
-  .device-mobile-card .child-device-runtime { min-width: 0; }
   .device-node-status > summary { cursor: pointer; min-height: 44px; padding-block: 12px; font-size: 14px; }
-  .device-mobile-card .child-device-list .header-actions { flex-wrap: wrap; }
-  .device-mobile-card .child-device-list > div > div:last-child { text-align: left; }
   .page .device-detail-heading { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; max-width: 100%; }
   .device-detail-heading .device-detail-title { min-width: 0; max-width: 100%; }
   .device-detail-title h1 { font-size: 24px; overflow-wrap: anywhere; }

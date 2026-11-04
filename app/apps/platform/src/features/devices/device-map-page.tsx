@@ -14,7 +14,8 @@ import { MobileMapPanels } from "../../shared/maps/mobile-map-panels";
 export function DeviceMapPage() {
   const mobile = useIsMobile();
   const [mobilePanel, setMobilePanel] = useState("");
-  const selectDevice = (id: string) => { setSelectedId(id); if (mobile) setMobilePanel("inspector"); };
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const selectDevice = (id: string) => { setSelectedId(id); if (mobile) { setMobilePanel("inspector"); setToolsOpen(false); } };
   const [mapInstance, setMapInstance] = useState<LibreMap | null>(null);
   const { currentId, current } = useWorkspace();
   const [includeChildren, setIncludeChildren] = useState(false);
@@ -64,9 +65,8 @@ export function DeviceMapPage() {
         selectedDeviceId={selectedId}
         onSelect={selectDevice}
       />
-      <MapTools map={mapInstance} />
-
-      {mobile && <MobileMapPanels value={mobilePanel} onChange={setMobilePanel} options={[{ value: "directory", label: "目录与筛选" }, { value: "inspector", label: "设备详情", disabled: !selected }]} />}
+      {mobile && <MobileMapPanels value={mobilePanel} onChange={value => { setMobilePanel(value); if (value) setToolsOpen(false); }} options={[{ value: "directory", label: "目录与筛选" }, { value: "inspector", label: "设备详情", disabled: !selected }]} />}
+      <div className="device-map-controls">
       <section hidden={mobile && mobilePanel !== "directory"} className={`device-map-console t-resize ${!mobile && consoleCollapsed ? "is-collapsed" : ""}`} aria-label="地图筛选">
         {!mobile && consoleCollapsed ? (
           <button type="button" className="device-map-console-toggle" aria-expanded="false" aria-label="展开地图筛选" title="展开地图筛选" onClick={() => setConsoleCollapsed(false)}>
@@ -102,6 +102,8 @@ export function DeviceMapPage() {
           </>
         )}
       </section>
+      <MapTools map={mapInstance} open={toolsOpen} onOpenChange={open => { setToolsOpen(open); if (mobile && open) setMobilePanel(""); }} />
+      </div>
 
       {query.isLoading ? <div className="device-map-state"><StateView type="loading" title="正在加载设备地图" description="正在读取设备位置。" /></div> : null}
       {query.error ? <div className="device-map-state"><StateView type="error" title="设备地图加载失败" description={formatApiError(query.error).message} requestId={formatApiError(query.error).requestId} /></div> : null}

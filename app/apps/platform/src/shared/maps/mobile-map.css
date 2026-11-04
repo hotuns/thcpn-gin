@@ -17,6 +17,8 @@
   .immersive-device-map .map-tools { top: 8px; right: 64px; }
   .immersive-device-map .map-tools-panel { right: -56px; }
   .immersive-device-map .device-map-footnote { top: 64px; }
+  .immersive-device-map:has(.map-tools-panel) .device-map-footnote { visibility: hidden; }
+  .map-tools > button { min-width: 44px; min-height: 44px; }
   .map-tools .map-tools-panel { width: min(320px, calc(100vw - 32px)); max-height: min(55dvh, 440px); }
   .map-tools .map-tools-panel button { min-height: 44px; }
   .map-tools .map-tools-panel input { min-height: 44px; }
