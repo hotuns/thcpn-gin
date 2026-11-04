@@ -61,7 +61,7 @@ smtp:
   port: 587
   username: ""
   password: ""
-  from_name: "原位生态云"
+  from_name: "IES Watch"
   from_address: ""
   tls_mode: "starttls"
 

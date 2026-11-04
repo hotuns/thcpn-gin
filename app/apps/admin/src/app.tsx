@@ -53,6 +53,7 @@ import { useAdminAuth } from "@thcpn/auth";
 import {
   Badge,
   Brand,
+  BrandLogo,
   PageHeader,
   Panel,
   StateView,
@@ -415,7 +416,7 @@ function AdminLoginPage() {
     catch (reason) { setError(formatApiError(reason).message); }
     finally { setBusy(false); }
   };
-  return <main className="admin-auth-page"><div className="admin-auth-actions"><LanguageSwitcher compact /><Tooltip title={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")}><IconButton label={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")} onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>{resolvedTheme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</IconButton></Tooltip></div><section className="admin-auth-panel"><div className="brand-mark"><img src="/admin/brand/insitu-ecocloud-logo.png" alt="" /></div><div className="eyebrow">IN-SITU ECOCLOUD / SYSTEM CONTROL</div><h1>{t("admin:auth.title")}</h1><p>{t("admin:auth.copy")}</p><form onSubmit={submit}><label>{t("admin:auth.email")}<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required /></label><label>{t("admin:auth.password")}<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></label>{error && <div className="admin-login-error">{error}</div>}<Button type="primary" htmlType="submit" size="large" block loading={busy} disabled={busy}>{busy ? t("admin:auth.signingIn") : t("admin:auth.submit")}</Button></form><a href={`${platformUrl}/login`}>{t("admin:auth.back")}</a></section></main>;
+  return <main className="admin-auth-page"><div className="admin-auth-actions"><LanguageSwitcher compact /><Tooltip title={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")}><IconButton label={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")} onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>{resolvedTheme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</IconButton></Tooltip></div><section className="admin-auth-panel"><div className="brand-mark"><BrandLogo /></div><div className="eyebrow">IES Watch / SYSTEM CONTROL</div><h1>{t("admin:auth.title")}</h1><p>{t("admin:auth.copy")}</p><form onSubmit={submit}><label>{t("admin:auth.email")}<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required /></label><label>{t("admin:auth.password")}<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></label>{error && <div className="admin-login-error">{error}</div>}<Button type="primary" htmlType="submit" size="large" block loading={busy} disabled={busy}>{busy ? t("admin:auth.signingIn") : t("admin:auth.submit")}</Button></form><a href={`${platformUrl}/login`}>{t("admin:auth.back")}</a></section></main>;
 }
 
 const overviewText = (input: unknown, fallback = "—") =>

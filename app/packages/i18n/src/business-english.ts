@@ -138,7 +138,7 @@ export const businessEnglish: Record<string, string> = {
 "红柳林数字样地 · mock 数据 · 用户提供正射影像": "Hongliulin digital plots · Simulated data · User-provided orthophoto",
 "红柳林数字样地 · 边界/设备/指标为模拟 · 用户提供正射影像": "Hongliulin digital plots · Simulated boundaries, devices and metrics · User-provided orthophoto",
 "卫星影像": "Satellite imagery", "地名标注": "Place labels", "设备点位": "Device locations",
-"In-situ EcoCloud · 天地图 / Esri / OpenStreetMap，具体来源以当前底图为准": "In-situ EcoCloud · Tianditu / Esri / OpenStreetMap; see current basemap attribution",
+"IES Watch · 天地图 / Esri / OpenStreetMap，具体来源以当前底图为准": "IES Watch · Tianditu / Esri / OpenStreetMap; see current basemap attribution",
 "· 样地边界与测量": "· Parcel boundaries and measurements",
 "· 模拟": "· Simulated", "· 模拟 A": "· Simulated A", "· 模拟 B": "· Simulated B",
 "三维场景截图失败": "Unable to capture the 3D scene",

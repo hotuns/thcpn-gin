@@ -1,6 +1,6 @@
 # LoRaWAN V2 观测统计接口需求
 
-用于原位生态云用户总览。上游已于 2026-11-03 发布该接口；平台按本文契约调用，成功字段位于既有 `AppResponse.payload`。完整上游实现说明位于 LoRaWAN 服务端的 `apps/docs/observation-statistics.md`。
+用于IES Watch 用户总览。上游已于 2026-11-03 发布该接口；平台按本文契约调用，成功字段位于既有 `AppResponse.payload`。完整上游实现说明位于 LoRaWAN 服务端的 `apps/docs/observation-statistics.md`。
 
 ## 最小可接入版本
 

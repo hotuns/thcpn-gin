@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	totpIssuer      = "In-situ EcoCloud"
+	totpIssuer      = "IES Watch"
 	totpDigits      = 6
 	totpPeriod      = 30
 	totpWindow      = 1

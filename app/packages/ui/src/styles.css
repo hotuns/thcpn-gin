@@ -520,6 +520,7 @@ a {
 .brand-mark {
   width: 31px;
   height: 31px;
+  flex: 0 0 auto;
   display: grid;
   place-items: center;
   color: white;

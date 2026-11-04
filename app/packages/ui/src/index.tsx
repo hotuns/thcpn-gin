@@ -483,17 +483,25 @@ export function CopyId({ value }: { value: string }) {
   );
 }
 
-export function Brand({ admin = false }: { admin?: boolean }) {
+export function BrandLogo() {
+  return <img src={new URL("./ies-watch.svg", import.meta.url).href} alt="" />;
+}
+
+export function Brand({ admin = false, showDescription = false }: { admin?: boolean; showDescription?: boolean }) {
+  const { locale, t } = useLocale();
   return (
     <div className="brand">
       <div className="brand-mark">
-        <img src={admin ? "/admin/brand/insitu-ecocloud-logo.png" : "/brand/insitu-ecocloud-logo.png"} alt="" />
+        <BrandLogo />
       </div>
       <div>
-        <div className="brand-name">In-situ EcoCloud</div>
+        <div className="brand-name">IES Watch</div>
         <div className="brand-sub">
-          {admin ? "SYSTEM CONTROL" : "原位生态云"}
+          {admin ? "SYSTEM CONTROL" : t("platform:brandSubtitle")}
         </div>
+        {showDescription && !admin && locale === "zh-CN" && (
+          <div className="brand-sub" lang="en">In-situ Ecological Sensing</div>
+        )}
       </div>
     </div>
   );

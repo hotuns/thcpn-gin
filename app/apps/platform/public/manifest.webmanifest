@@ -1,7 +1,8 @@
 {
   "id": "/",
-  "name": "In-situ EcoCloud · 原位生态云",
-  "short_name": "原位生态云",
+  "name": "IES Watch 生态感知云平台",
+  "short_name": "IES Watch",
+  "description": "In-situ Ecological Sensing",
   "lang": "zh-CN",
   "start_url": "/dashboard",
   "scope": "/",
@@ -9,7 +10,7 @@
   "background_color": "#edf2f0",
   "theme_color": "#285f5a",
   "icons": [
-    { "src": "/brand/app-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/brand/app-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/brand/ies-watch-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/brand/ies-watch-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }

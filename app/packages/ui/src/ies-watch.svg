@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="IES Watch">
+  <defs>
+    <linearGradient id="field" x2="1" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#102d39"/>
+      <stop offset="1" stop-color="#0c524a"/>
+    </linearGradient>
+    <linearGradient id="signal" x2="1" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#5ce4d0"/>
+      <stop offset="1" stop-color="#c1f59d"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" fill="url(#field)"/>
+  <path d="M5 52c10-8 19-7 27-3 10 5 19 2 27-5M5 58c10-8 19-7 27-3 10 5 19 2 27-5M44 6a15 15 0 0 1 11 11" fill="none" stroke="#8aead1" stroke-opacity=".3" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M44 12a9 9 0 0 1 6 6" fill="none" stroke="#91efc3" stroke-width="1.8" stroke-linecap="round"/>
+  <circle cx="44" cy="18" r="1.7" fill="#c1f59d"/>
+  <path d="M13 24v17m19-17H21v17h11m-11-8.5h9" fill="none" stroke="#f2fff9" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M51 24h-8a4.25 4.25 0 0 0 0 8.5h4a4.25 4.25 0 0 1 0 8.5h-8" fill="none" stroke="url(#signal)" stroke-width="4.5" stroke-linecap="round"/>
+</svg>

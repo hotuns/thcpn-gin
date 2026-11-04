@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
-  title: In-situ EcoCloud API
+  title: IES Watch API
   version: 0.16.0
   description: |
-    原位生态云后端 API。
+    IES Watch 生态感知云平台（In-situ Ecological Sensing）后端 API。
 
     当前文档覆盖已实现的阶段功能：健康检查、短信验证码登录/注册、邮箱验证码验证、密码注册/登录、TOTP MFA、refresh token、logout、会话管理、
     JWT 认证、Workspace 列表/创建、Workspace 成员管理、Project、Site、Device、DeviceRelation、DataStream、DataSource、DataStreamBinding、Telemetry Query、Media Query、Dataset 元信息与遥测查询管理和 ExportJob 导出任务、

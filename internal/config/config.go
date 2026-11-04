@@ -233,7 +233,7 @@ func Default() Config {
 			DailyLimit:        10,
 			MaxVerifyAttempts: 5,
 		},
-		SMTP: SMTPConfig{Port: 587, FromName: "原位生态云", TLSMode: "starttls"},
+		SMTP: SMTPConfig{Port: 587, FromName: "IES Watch", TLSMode: "starttls"},
 		ObjectStore: ObjectStoreConfig{
 			Provider:        "oss",
 			Endpoint:        "https://oss-cn-beijing.aliyuncs.com",

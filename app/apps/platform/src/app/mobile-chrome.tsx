@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useLocale } from "@thcpn/i18n";
+import { BrandLogo } from "@thcpn/ui";
 import { useWorkspace } from "@thcpn/workspace";
 import { AlertTriangle, ArrowLeft, Bell, Boxes, Building2, Check, ChevronDown, Gauge, Grid2X2, Layers3 } from "lucide-react";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList, IconButton, Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "../shared/ui";
@@ -26,7 +27,7 @@ export function MobileHeader({ title, unread }: { title: string; unread: number 
       {parent ? <IconButton label={t("back")} onClick={() => {
         if (window.history.state?.idx > 0) void navigate(-1);
         else void navigate(parent, { replace: true, state: { restoreScroll: true } });
-      }}><ArrowLeft size={22} /></IconButton> : <span className="mobile-brand-mark"><img src="/brand/insitu-ecocloud-logo.png" alt="" /></span>}
+      }}><ArrowLeft size={22} /></IconButton> : <span className="mobile-brand-mark"><BrandLogo /></span>}
       <SheetTrigger asChild><button type="button" className="mobile-context-trigger" aria-label={t("mobile.workspacePicker")}>
         <strong>{title}</strong><span>{workspace.current?.name ?? t("mobile.noWorkspace")}<ChevronDown size={12} aria-hidden="true" /></span>
       </button></SheetTrigger>

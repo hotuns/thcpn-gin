@@ -1,6 +1,6 @@
-# In-situ EcoCloud（原位生态云）
+# IES Watch 生态感知云平台
 
-原位生态云管理科研监测设备、数据资产以及面向用户的数据交付流程；THCPN 仅指源数据库及其适配器。
+IES Watch（In-situ Ecological Sensing）管理科研监测设备、数据资产以及面向用户的数据交付流程；THCPN 仅指源数据库及其适配器。
 
 ## 系统视觉原则
 

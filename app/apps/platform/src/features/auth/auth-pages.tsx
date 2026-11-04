@@ -227,7 +227,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
       <section className="auth-visual">
         {visuals.data?.items.length ? <LoginVisualCarousel items={visuals.data.items}/> : null}
         {visuals.data?.items.length ? <div className="auth-visual-shade" aria-hidden="true" /> : null}
-        <Brand />
+        <Brand showDescription />
         <div className="auth-language"><LanguageSwitcher compact /></div>
       </section>
       <section className="auth-form-side">
