@@ -1,3 +1,4 @@
+import { AdminDeviceDeletion } from "./admin-device-deletion";
 import { confirmManualSync } from "./manual-sync-confirm";
 import { useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -20,6 +21,7 @@ export function LoRaWANNodeInventory(){
  const gateways=useQuery({queryKey:["admin",sourceId,"node-gateways"],queryFn:()=>api.admin.physicalNodeGateways(sourceId),enabled:!!sourceId});
  const gateway=gateways.data?.items.find(g=>g.id===gatewayId);
  const query=useQuery({queryKey:["admin",sourceId,"node-inventory",bound,sn,page,gatewayId],queryFn:()=>api.admin.sourcePhysicalNodes(sourceId,{page,page_size:20,...(bound==="all"?{}:{bound:bound==="bound"}),...(sn?{sn}:{}),...(gateway?{gateway_sn:gateway.sn}:{})}),enabled:!!sourceId&&gateways.isSuccess});
+ const pendingDeletions=useQuery({queryKey:["admin",sourceId,"node-deletions"],queryFn:()=>api.admin.pendingPhysicalNodeDeletions(sourceId),enabled:!!sourceId});
  const [operation,setOperation]=useState<Operation|null>(null);const [detail,setDetail]=useState<Node|null>(null);const [busy,setBusy]=useState(false);const [feedback,setFeedback]=useState<{type:"success"|"warning"|"error";text:string}|null>(null);
  const [importOpen,setImportOpen]=useState(false);const [rows,setRows]=useState<ImportRow[]>([]);const [fileName,setFileName]=useState("");const [previewing,setPreviewing]=useState(false);const [importing,setImporting]=useState(false);const stop=useRef(false);const [syncMessage,setSyncMessage]=useState("");
  const [skipFirstRow,setSkipFirstRow]=useState(false);const [csvText,setCSVText]=useState("");
@@ -62,7 +64,8 @@ export function LoRaWANNodeInventory(){
     {operation?.action!=="replace"&&<><Form.Item name="gateway_device_id" label="安装网关" rules={operation?.action==="bind"?[{required:true}]:[]}><Select allowClear showSearch optionFilterProp="label" placeholder={operation?.action==="register"?"暂不安装（只新建）":"选择安装网关"} options={gateways.data?.items.map(g=>({value:g.id,label:`${g.name} · ${g.sn}`}))}/></Form.Item>{operationGateway&&<Form.Item name="node_index" label="序号" rules={[{required:true}]}><InputNumber min={1} max={254} precision={0}/></Form.Item>}</>}
    </Form>{feedback?.type==="error"&&<Alert type="error" title={feedback.text}/>}
   </Modal>
-  <Drawer title="节点设备资料" open={!!detail} onClose={()=>setDetail(null)} size={520}>{detail&&<Space orientation="vertical" style={{width:"100%"}}><Descriptions column={1} bordered items={[{key:"sn",label:"SN",children:<Typography.Text copyable>{detail.sn}</Typography.Text>},{key:"id",label:"源端 ID",children:detail.id},{key:"gateway",label:"当前网关",children:detail.gateway_sn||"未安装"},{key:"index",label:"序号",children:detail.node_index??"—"}]}/>{gateways.data?.items.filter(g=>g.sn===detail.gateway_sn).map(g=><Button key={g.id}><Link to={`/admin/devices/${g.id}?tab=nodes`}>查看所属网关与节点数据</Link></Button>)}</Space>}</Drawer>
+  {pendingDeletions.data?.items.map(node=><AdminDeviceDeletion key={node.id} pending target={{sourceId,sn:node.sn,nodeId:node.id}} onDeleted={()=>void refresh()} />)}
+  <Drawer title="节点设备资料" open={!!detail} onClose={()=>setDetail(null)} size={520}>{detail&&<Space orientation="vertical" style={{width:"100%"}}><Descriptions column={1} bordered items={[{key:"sn",label:"SN",children:<Typography.Text copyable>{detail.sn}</Typography.Text>},{key:"id",label:"源端 ID",children:detail.id},{key:"gateway",label:"当前网关",children:detail.gateway_sn||"未安装"},{key:"index",label:"序号",children:detail.node_index??"—"}]}/>{gateways.data?.items.filter(g=>g.sn===detail.gateway_sn).map(g=><Button key={g.id}><Link to={`/admin/devices/${g.id}?tab=nodes`}>查看所属网关与节点数据</Link></Button>)}<AdminDeviceDeletion target={{sourceId,sn:detail.sn,nodeId:detail.id}} onChanged={()=>void refresh()} onDeleted={()=>{setDetail(null);void refresh();}} /></Space>}</Drawer>
   <Modal title="CSV 批量新建节点并安装" open={importOpen} onCancel={()=>{if(!importing)setImportOpen(false)}} footer={null} width={950} maskClosable={!importing} closable={!importing} destroyOnHidden>
    <Space orientation="vertical" size="middle" style={{width:"100%"}}><Alert type="info" title="第一列 SN，第二列序号" description="使用 UTF-8 CSV，自动识别 sn,node_index 表头；其他表头请勾选“忽略第一行”，无表头时不要勾选。每行执行新建＋安装，不复用已有 SN，不覆盖已有位置；失败不回滚其他已成功行。"/>
     <Select aria-label="CSV目标网关" disabled={importing||rows.some(r=>r.status!=="pending")} placeholder="选择目标网关" value={gateway?.id} style={{width:"100%"}} options={gateways.data?.items.map(g=>({value:g.id,label:`${g.name} · ${g.sn}`}))} onChange={id=>{setGatewayId(id);setPage(1)}}/>

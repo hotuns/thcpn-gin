@@ -7973,6 +7973,133 @@ paths:
                     items: {$ref: '#/components/schemas/SystemSettingsChange'}
         '401': {$ref: '#/components/responses/Unauthorized'}
 
+  /api/v1/admin/devices/{device_id}/deletion:
+    parameters:
+      - name: device_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: checkAdminDeviceDeletion
+      summary: 检查误建设备的删除条件
+      security: [{bearerAuth: []}]
+      responses:
+        "200":
+          description: 删除检查或操作结果；检查拒绝及待清理状态通过响应状态字段区分
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AdminDeviceDeletion"}
+        "400": {description: 参数或确认内容无效}
+        "401": {description: 需要管理员会话}
+        "404": {description: 平台设备不存在}
+        "409": {description: 设备身份变化或正在同步}
+    delete:
+      operationId: executeAdminDeviceDeletion
+      summary: 永久删除误建登记或继续平台清理
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirmation, reason, expected_id]
+              properties:
+                confirmation: {type: string}
+                reason: {type: string, maxLength: 300}
+                expected_id: {type: integer, format: int64, minimum: 0}
+      responses:
+        "200":
+          description: 删除检查或操作结果；检查拒绝及待清理状态通过响应状态字段区分
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AdminDeviceDeletion"}
+        "400": {description: 参数或确认内容无效}
+        "401": {description: 需要管理员会话}
+        "404": {description: 平台设备不存在}
+        "409": {description: 设备身份变化或正在同步}
+  /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/nodes/{node_sn}/{node_id}/deletion:
+    parameters:
+      - name: data_source_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: node_sn
+        in: path
+        required: true
+        schema: {type: string}
+      - name: node_id
+        in: path
+        required: true
+        schema: {type: integer, format: int64}
+    get:
+      operationId: checkAdminPhysicalNodeDeletion
+      summary: 检查误建设备的删除条件
+      security: [{bearerAuth: []}]
+      responses:
+        "200":
+          description: 删除检查或操作结果；检查拒绝及待清理状态通过响应状态字段区分
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AdminDeviceDeletion"}
+        "400": {description: 参数或确认内容无效}
+        "401": {description: 需要管理员会话}
+        "404": {description: 平台设备不存在}
+        "409": {description: 设备身份变化或正在同步}
+    delete:
+      operationId: executeAdminPhysicalNodeDeletion
+      summary: 永久删除误建登记或继续平台清理
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirmation, reason, expected_id]
+              properties:
+                confirmation: {type: string}
+                reason: {type: string, maxLength: 300}
+                expected_id: {type: integer, format: int64, minimum: 0}
+      responses:
+        "200":
+          description: 删除检查或操作结果；检查拒绝及待清理状态通过响应状态字段区分
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AdminDeviceDeletion"}
+        "400": {description: 参数或确认内容无效}
+        "401": {description: 需要管理员会话}
+        "404": {description: 平台设备不存在}
+        "409": {description: 设备身份变化或正在同步}
+  /api/v1/admin/data-sources/{data_source_id}/lorawan-v2/node-deletions:
+    get:
+      operationId: listAdminPendingPhysicalNodeDeletions
+      summary: 查看待核对或待清理的节点删除操作
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: data_source_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: 需要继续核对的节点
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, sn]
+                      properties:
+                        id: {type: integer, format: int64}
+                        sn: {type: string}
+        "401": {description: 需要管理员会话}
+
 components:
   securitySchemes:
     bearerAuth:
@@ -8246,6 +8373,19 @@ components:
                   message: internal error
                   request_id: req_123
   schemas:
+    AdminDeviceDeletion:
+      type: object
+      required: [allowed, reasons, state, name, confirmation, device_type, scope, expected_id]
+      properties:
+        allowed: {type: boolean}
+        reasons: {type: array, items: {type: string}}
+        state: {type: string, enum: [eligible, blocked, deleted, unknown, partial]}
+        name: {type: string}
+        confirmation: {type: string}
+        device_type: {type: string}
+        scope: {type: string}
+        expected_id: {type: integer, format: int64}
+        operation_id: {type: string, format: uuid}
     DashboardCount:
       type: object
       required: [value, complete, covered_devices, total_devices]

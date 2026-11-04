@@ -6636,10 +6636,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/devices/{device_id}/deletion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        /** 检查误建设备的删除条件 */
+        get: operations["checkAdminDeviceDeletion"];
+        put?: never;
+        post?: never;
+        /** 永久删除误建登记或继续平台清理 */
+        delete: operations["executeAdminDeviceDeletion"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/nodes/{node_sn}/{node_id}/deletion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                data_source_id: string;
+                node_sn: string;
+                node_id: number;
+            };
+            cookie?: never;
+        };
+        /** 检查误建设备的删除条件 */
+        get: operations["checkAdminPhysicalNodeDeletion"];
+        put?: never;
+        post?: never;
+        /** 永久删除误建登记或继续平台清理 */
+        delete: operations["executeAdminPhysicalNodeDeletion"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data-sources/{data_source_id}/lorawan-v2/node-deletions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查看待核对或待清理的节点删除操作 */
+        get: operations["listAdminPendingPhysicalNodeDeletions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AdminDeviceDeletion: {
+            allowed: boolean;
+            reasons: string[];
+            /** @enum {string} */
+            state: "eligible" | "blocked" | "deleted" | "unknown" | "partial";
+            name: string;
+            confirmation: string;
+            device_type: string;
+            scope: string;
+            /** Format: int64 */
+            expected_id: number;
+            /** Format: uuid */
+            operation_id?: string;
+        };
         DashboardCount: {
             /** Format: int64 */
             value: number | null;
@@ -18581,6 +18654,263 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["LoRaWANV2GatewayActivity"];
                 };
+            };
+        };
+    };
+    checkAdminDeviceDeletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 删除检查或操作结果；检查拒绝及待清理状态通过响应状态字段区分 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminDeviceDeletion"];
+                };
+            };
+            /** @description 参数或确认内容无效 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 需要管理员会话 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 平台设备不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 设备身份变化或正在同步 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    executeAdminDeviceDeletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    confirmation: string;
+                    reason: string;
+                    /** Format: int64 */
+                    expected_id: number;
+                };
+            };
+        };
+        responses: {
+            /** @description 删除检查或操作结果；检查拒绝及待清理状态通过响应状态字段区分 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminDeviceDeletion"];
+                };
+            };
+            /** @description 参数或确认内容无效 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 需要管理员会话 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 平台设备不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 设备身份变化或正在同步 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    checkAdminPhysicalNodeDeletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                data_source_id: string;
+                node_sn: string;
+                node_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 删除检查或操作结果；检查拒绝及待清理状态通过响应状态字段区分 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminDeviceDeletion"];
+                };
+            };
+            /** @description 参数或确认内容无效 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 需要管理员会话 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 平台设备不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 设备身份变化或正在同步 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    executeAdminPhysicalNodeDeletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                data_source_id: string;
+                node_sn: string;
+                node_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    confirmation: string;
+                    reason: string;
+                    /** Format: int64 */
+                    expected_id: number;
+                };
+            };
+        };
+        responses: {
+            /** @description 删除检查或操作结果；检查拒绝及待清理状态通过响应状态字段区分 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminDeviceDeletion"];
+                };
+            };
+            /** @description 参数或确认内容无效 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 需要管理员会话 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 平台设备不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 设备身份变化或正在同步 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listAdminPendingPhysicalNodeDeletions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                data_source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 需要继续核对的节点 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: int64 */
+                            id: number;
+                            sn: string;
+                        }[];
+                    };
+                };
+            };
+            /** @description 需要管理员会话 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

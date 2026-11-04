@@ -1,3 +1,4 @@
+import { AdminDeviceDeletion } from "./admin-device-deletion";
 import { AdminReportedLocation } from "./admin-reported-location";
 import { LoRaGatewayStatus } from "./lorawan-gateway-status";
 import { confirmManualSync } from "./manual-sync-confirm";
@@ -964,6 +965,7 @@ function DeviceDetailPanel({
   const sourceDevice = (attributes?.source_device ?? {}) as JsonRecord;
   const carbonRuntime = (carbonData?.runtime ?? {}) as JsonRecord;
   const nodeQueryClient = useQueryClient();
+  const navigateAfterDeletion = useNavigate();
   const carbonNodes = (carbonData?.nodes as JsonRecord[] | undefined) ?? [];
   const date = (input: unknown) => input ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(String(input))) : "—";
   const inlineError = (error: unknown, title: string) => error ? <Alert type="warning" showIcon title={title} description={formatApiError(error).message} /> : null;
@@ -1006,6 +1008,15 @@ function DeviceDetailPanel({
         { key: "eventCount", label: "历史记录", children: queryLoading({ loading: lifecycleLoading, data: lifecycleData, error: lifecycleError }) ? "加载中…" : `${events.length} 条` },
       ]} />
       {events.length ? <div className="admin-latest-event"><strong>{events[0].from_status ? `${deviceLifecycleLabel(value(events[0].from_status, ""))} → ` : ""}{deviceLifecycleLabel(value(events[0].to_status, ""))}</strong><span>{date(events[0].occurred_at)}{events[0].note ? ` · ${value(events[0].note)}` : ""}</span></div> : null}
+    </section>
+    <section className="admin-detail-section">
+      <div className="admin-detail-section-head">
+        <div><h2>删除设备</h2><span>仅允许删除从未使用的误建记录</span></div>
+        <AdminDeviceDeletion target={{ deviceId: String(device.id), label: deviceModelLabel(device) }} onDeleted={() => {
+          void nodeQueryClient.invalidateQueries({ predicate: query => query.queryKey.includes("admin") });
+          navigateAfterDeletion(`/admin/devices?kind=${device.source_family === "lorawan_v2" ? "lorawan_v2" : categoryOf(device)}`, { replace: true });
+        }} />
+      </div>
     </section>
   </div>;
   const deviceControls = <div className="admin-device-detail-content">

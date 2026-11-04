@@ -22,6 +22,7 @@ type Querier interface {
 	ClaimNextPendingExportJob(ctx context.Context) (ExportJob, error)
 	ClearDeviceProfileImageCover(ctx context.Context, deviceID uuid.UUID) error
 	CloseActiveDeviceAssignment(ctx context.Context, arg CloseActiveDeviceAssignmentParams) (DeviceAssignment, error)
+	CompleteDeviceDeletionOperation(ctx context.Context, id uuid.UUID) error
 	CopyInvitationPermissionsToAccessGrant(ctx context.Context, arg CopyInvitationPermissionsToAccessGrantParams) (int64, error)
 	CountActiveWorkspaceOwners(ctx context.Context, workspaceID uuid.UUID) (int64, error)
 	CountDeviceProfileImages(ctx context.Context, deviceID uuid.UUID) (int64, error)
@@ -59,8 +60,14 @@ type Querier interface {
 	DeleteDeviceProfileImage(ctx context.Context, arg DeleteDeviceProfileImageParams) (DeviceProfileImage, error)
 	DeleteExpiredAuthTokens(ctx context.Context) error
 	DeleteInvitationPermissions(ctx context.Context, invitationID uuid.UUID) error
+	DeleteUnusedDevice(ctx context.Context, id uuid.UUID) (int64, error)
+	DeleteUnusedPhysicalNodeProjection(ctx context.Context, arg DeleteUnusedPhysicalNodeProjectionParams) error
 	DeleteUserTOTP(ctx context.Context, userID uuid.UUID) (int64, error)
 	DeleteWorkspaceMemberPermissions(ctx context.Context, memberID uuid.UUID) error
+	DeletionOperationForAsset(ctx context.Context, arg DeletionOperationForAssetParams) (DeletionOperationForAssetRow, error)
+	DeviceDeletionBlockers(ctx context.Context, deviceID uuid.UUID) ([]string, error)
+	DeviceDeletionCameraSN(ctx context.Context, deviceID uuid.UUID) (string, error)
+	DeviceDeletionSources(ctx context.Context, deviceID uuid.UUID) ([]DeviceDeletionSourcesRow, error)
 	DisableMissingTHCPNDataStreamBindings(ctx context.Context, arg DisableMissingTHCPNDataStreamBindingsParams) ([]DataStreamBinding, error)
 	DisableMissingTHCPNDataStreams(ctx context.Context, arg DisableMissingTHCPNDataStreamsParams) ([]DataStream, error)
 	EnableUserTOTP(ctx context.Context, arg EnableUserTOTPParams) (UserMfaTotp, error)
@@ -113,6 +120,7 @@ type Querier interface {
 	HeartbeatExportJob(ctx context.Context, arg HeartbeatExportJobParams) (int64, error)
 	IsAccessTokenBlacklisted(ctx context.Context, tokenHash string) (bool, error)
 	IsDemoWorkspaceOwner(ctx context.Context, arg IsDemoWorkspaceOwnerParams) (bool, error)
+	IsPhysicalNodeProjectedAsBound(ctx context.Context, arg IsPhysicalNodeProjectedAsBoundParams) (bool, error)
 	ListAccessGrantsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]ListAccessGrantsByWorkspaceRow, error)
 	ListAccessGrantsForUser(ctx context.Context, subjectID uuid.UUID) ([]ListAccessGrantsForUserRow, error)
 	ListActiveDeviceChildren(ctx context.Context, parentDeviceID uuid.UUID) ([]ListActiveDeviceChildrenRow, error)
@@ -145,6 +153,7 @@ type Querier interface {
 	ListInvitationsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]ListInvitationsByWorkspaceRow, error)
 	ListLoRaWANV2GatewayStatusStreams(ctx context.Context, deviceID uuid.UUID) ([]ListLoRaWANV2GatewayStatusStreamsRow, error)
 	ListPendingInvitationsForIdentity(ctx context.Context, arg ListPendingInvitationsForIdentityParams) ([]ListPendingInvitationsForIdentityRow, error)
+	ListPendingPhysicalNodeDeletions(ctx context.Context, dataSourceID uuid.UUID) ([][]byte, error)
 	ListPermissionCodesByTemplate(ctx context.Context, code string) ([]string, error)
 	ListPermissions(ctx context.Context) ([]Permission, error)
 	ListProjectsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]Project, error)
@@ -158,6 +167,7 @@ type Querier interface {
 	ListWorkspaceMembers(ctx context.Context, workspaceID uuid.UUID) ([]ListWorkspaceMembersRow, error)
 	ListWorkspaces(ctx context.Context) ([]Workspace, error)
 	ListWorkspacesForUser(ctx context.Context, userID uuid.UUID) ([]ListWorkspacesForUserRow, error)
+	LockDeviceForDeletion(ctx context.Context, id uuid.UUID) (LockDeviceForDeletionRow, error)
 	LockDeviceProfileUploads(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	MarkDeviceRelationRemovedByDevices(ctx context.Context, arg MarkDeviceRelationRemovedByDevicesParams) (DeviceRelation, error)
 	MarkExportJobExpired(ctx context.Context, id uuid.UUID) (ExportJob, error)
@@ -166,6 +176,8 @@ type Querier interface {
 	MarkExportJobSuccess(ctx context.Context, arg MarkExportJobSuccessParams) (ExportJob, error)
 	MarkMissingDeviceRelationsRemoved(ctx context.Context, arg MarkMissingDeviceRelationsRemovedParams) ([]DeviceRelation, error)
 	PromoteFirstDeviceProfileImageCover(ctx context.Context, deviceID uuid.UUID) error
+	RemoveUnusedDeviceInstallation(ctx context.Context, deviceID uuid.UUID) error
+	RemoveUnusedGatewayDetails(ctx context.Context, deviceID uuid.UUID) error
 	RemoveWorkspaceMember(ctx context.Context, arg RemoveWorkspaceMemberParams) (WorkspaceMember, error)
 	ResetUserCredentialFailure(ctx context.Context, userID uuid.UUID) (UserCredential, error)
 	RevokeAccessGrant(ctx context.Context, id uuid.UUID) (AccessGrant, error)

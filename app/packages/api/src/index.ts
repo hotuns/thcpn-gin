@@ -394,6 +394,18 @@ const parseResponse = async (response: Response) => {
   return { body, requestId };
 };
 
+export type DeviceDeletion = {
+  allowed: boolean;
+  reasons: string[];
+  state: "eligible" | "blocked" | "deleted" | "unknown" | "partial";
+  name: string;
+  confirmation: string;
+  device_type: string;
+  scope: string;
+  expected_id: number;
+  operation_id?: string;
+};
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
@@ -1374,6 +1386,16 @@ export const api = {
     carbonPeriods: (id:string,input:Record<string,string|number>) => request<ListResponse<CarbonPeriodSummary>>(`/api/v1/admin/devices/${encodeURIComponent(id)}/carbon/periods${queryString(input)}`),
     carbonPeriod: (id:string,period:string,input:Record<string,string|number>) => request<CarbonPeriodDetail>(`/api/v1/admin/devices/${encodeURIComponent(id)}/carbon/periods/${encodeURIComponent(period)}${queryString(input)}`),
     cameraLive: (id:string) => jsonRequest<CameraLiveSession>(`/api/v1/admin/devices/${encodeURIComponent(id)}/camera/live-session`,"POST",{}),
+    deviceDeletion: (id: string, input?: JsonRecord) => {
+      const path = `/api/v1/admin/devices/${encodeURIComponent(id)}/deletion`;
+      return input ? jsonRequest<DeviceDeletion>(path, "DELETE", input) : request<DeviceDeletion>(path);
+    },
+    physicalNodeDeletion: (sourceId: string, sn: string, id: number, input?: JsonRecord) => {
+      const path = `/api/v1/admin/data-sources/${encodeURIComponent(sourceId)}/lorawan-v2/nodes/${encodeURIComponent(sn)}/${id}/deletion`;
+      return input ? jsonRequest<DeviceDeletion>(path, "DELETE", input) : request<DeviceDeletion>(path);
+    },
+    pendingPhysicalNodeDeletions: (sourceId: string) =>
+      request<{items: Array<{id: number; sn: string}>}>(`/api/v1/admin/data-sources/${encodeURIComponent(sourceId)}/lorawan-v2/node-deletions`),
     sourcePhysicalNodes: (sourceId:string,input:JsonRecord={}) => request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(sourceId)}/lorawan-v2/nodes${queryString(input as Record<string,string|number|boolean>)}`),
     registerPhysicalNode: (sourceId:string,input:JsonRecord) => jsonRequest<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(sourceId)}/lorawan-v2/nodes`,"POST",input),
     physicalNodeGateways: (sourceId:string) => request<{items:Array<{id:string;name:string;sn:string}>}>(`/api/v1/admin/data-sources/${encodeURIComponent(sourceId)}/lorawan-v2/node-gateways`),
