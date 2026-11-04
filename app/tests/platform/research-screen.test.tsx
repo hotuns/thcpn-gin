@@ -1,0 +1,45 @@
+import { act } from "react";
+import { expect, it, vi } from "vitest";
+import { api, type DashboardOverview, type DeviceMapItem, type DataStream } from "@thcpn/api";
+import { ResearchScreen } from "../../apps/platform/src/features/atlas/research-screen";
+import type { AtlasScreenProps } from "../../apps/platform/src/features/atlas/atlas-screen-props";
+import { render, eventually } from "../render";
+vi.mock("@thcpn/auth", () => ({ useAuth: () => ({ user: { id: "observer" } }) }));
+const stamp = "2026-11-03T06:00:00Z";
+const device: DeviceMapItem = { device_id: "station", device_type: "standalone", name: "青山标准站", serial_no: "ST001", status: "active", location_source: "device", child_count: 0, environment: { research_tags: [], observation_objects: [], purposes: [] } };
+const count = (value: number) => ({ value, complete: true, covered_devices: 2, total_devices: 2 });
+const overview: DashboardOverview = { generated_at: stamp, statistics_updated_at: stamp, timezone: "Asia/Shanghai", days: 7, refresh_interval_seconds: 30, records: { total: count(900), today: count(24), first_observed_at: null }, images: { total: count(3), today: count(1) }, trend: [], devices: { total: 2, reporting: 1, delayed: 1, no_data: 0, unknown: 0, inactive: 0 }, attention: [], active_alerts: 0 };
+const metrics: DataStream[] = Array.from({ length: 6 }, (_, index) => ({ id: `s${index}`, code: `c${index}`, name: `指标${index}`, type: "telemetry", status: "active", device_id: "station", computed: false, created_by: "observer", created_at: stamp, updated_at: stamp }));
+function props(): AtlasScreenProps { return { title: "生态观测一张图", workspaceId: "forest", boardId: "board", config: { presentation: "technology", layout: "balanced", trend_hours: 24, show_trends: true, show_images: false, metric_defaults: { "device:standalone": metrics.map(item => item.code) } }, devices: [device], selectedNodeKey: "gateway", kind: "all", onKindChange: vi.fn(), onSelect: vi.fn(), onSelectNode: vi.fn(), map: <div data-testid="map">地图</div>, canManage: true, onEdit: vi.fn(), onBack: vi.fn(), presenting: false, onFullscreen: vi.fn(), motion: { enabled: false, paused: true, reduced: false, toggle: vi.fn() } }; }
+it("renders an independent research composition and never uses workspace totals for scoped screens", async () => {
+  const dashboard = vi.spyOn(api, "dashboard").mockResolvedValue(overview);
+  vi.spyOn(api.devices, "runtime").mockResolvedValue({ items: [], failures: [], refreshed_at: stamp });
+  const input = props(); input.config.device_ids = [device.device_id];
+  const { host } = await render(<ResearchScreen {...input} />);
+  await eventually(() => expect(host.querySelectorAll(".research-stat strong")[0].textContent).toBe("1"));
+  expect(dashboard).not.toHaveBeenCalled();
+  expect(host.querySelectorAll(".research-stat strong")[1].textContent).toBe("—");
+  expect(host.querySelectorAll(".research-stat strong")[2].textContent).toBe("—");
+  expect(host.querySelector(".atlas-shell")).toBeNull();
+  expect(host.querySelector(".eco-screen")).toBeNull();
+  expect(host.querySelector(".research-map-region [data-testid=map]")).toBeTruthy();
+  await act(async () => host.querySelector<HTMLButtonElement>(".research-catalog-list button")!.click());
+  expect(input.onSelect).toHaveBeenCalledWith(device.device_id);
+});
+it("shares metric preferences, keeps six metrics navigable and saves the selection", async () => {
+  vi.spyOn(api, "dashboard").mockResolvedValue(overview);
+  vi.spyOn(api.dataStreams, "list").mockResolvedValue({ items: metrics });
+  vi.spyOn(api.telemetry, "dataStream").mockResolvedValue({ device_id: "station", start_time: stamp, end_time: stamp, limit: 1, series: [] });
+  const input = props(); input.selectedDevice = device;
+  const { host } = await render(<ResearchScreen {...input} />);
+  await eventually(() => expect(host.querySelectorAll(".research-observation-table > button")).toHaveLength(6));
+  await act(async () => host.querySelectorAll<HTMLButtonElement>(".research-observation-table > button")[5].click());
+  expect(host.querySelector<HTMLSelectElement>(".research-trend-label select")?.value).toBe("s5");
+  expect(host.querySelector(".research-trend-pagination > span")?.textContent).toBe("6 / 6");
+  expect(host.querySelectorAll(".research-stat strong")[2].textContent).toBe("24");
+  await act(async () => host.querySelector<HTMLButtonElement>(".research-observations > .research-section-title button")!.click());
+  const popup = document.querySelector<HTMLElement>(".research-preferences")!;
+  await act(async () => popup.querySelector<HTMLInputElement>('input[type=checkbox]')!.click());
+  await act(async () => popup.querySelector<HTMLButtonElement>("footer button:last-child")!.click());
+  await eventually(() => expect(host.querySelectorAll(".research-observation-table > button")).toHaveLength(5));
+});

@@ -8377,10 +8377,18 @@ components:
           type: array
           items: {type: string, format: uuid}
           description: Preferred metrics; all other metrics remain accessible.
+        metric_defaults:
+          type: object
+          description: Ordered metric codes by device type (device:<device_type>); unavailable metrics are skipped for the current device or node.
+          additionalProperties:
+            type: array
+            maxItems: 6
+            uniqueItems: true
+            items: {type: string, minLength: 1}
         trend_hours: {type: integer, minimum: 1, maximum: 720, default: 24}
         description: {type: string, maxLength: 300}
         layout: {type: string, enum: [balanced, map], default: balanced}
-        presentation: {type: string, enum: [technology, panorama], default: technology, description: Registered presentation template, independent of device and module settings.}
+        presentation: {type: string, enum: [technology, panorama, deep-blue], default: technology, description: Registered presentation template, independent of device and module settings.}
         show_images: {type: boolean, default: true}
         show_trends: {type: boolean, default: true}
     AtlasSaveRequest:

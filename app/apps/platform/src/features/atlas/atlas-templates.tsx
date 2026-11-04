@@ -25,7 +25,7 @@ type AtlasTemplate = {
   titleKey: string;
   descriptionKey: string;
   initialTab: "metrics" | "images";
-  Layout: ComponentType<AtlasSlots>;
+  Layout?: ComponentType<AtlasSlots>;
 };
 
 // Layouts own composition only. Queries, permissions and device selection stay
@@ -53,6 +53,12 @@ function PanoramaLayout({ directory, map, inspector }: AtlasSlots) {
 }
 
 export const atlasTemplates: readonly AtlasTemplate[] = [
+  {
+    id: "deep-blue",
+    titleKey: "templateDeepBlue",
+    descriptionKey: "templateDeepBlueHint",
+    initialTab: "metrics",
+  },
   {
     id: "technology",
     titleKey: "templateTechnology",

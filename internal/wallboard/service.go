@@ -55,18 +55,19 @@ type Wallboard struct {
 }
 
 type Config struct {
-	DeviceID           *uuid.UUID  `json:"device_id"`
-	SiteID             *uuid.UUID  `json:"site_id"`
-	DeviceIDs          []uuid.UUID `json:"device_ids"`
-	TelemetryStreamIDs []uuid.UUID `json:"telemetry_stream_ids"`
-	ImageStreamIDs     []uuid.UUID `json:"image_stream_ids"`
-	ComparisonStreamID *uuid.UUID  `json:"comparison_stream"`
-	TrendHours         int         `json:"trend_hours"`
-	Description        string      `json:"description,omitempty"`
-	Layout             string      `json:"layout,omitempty"`
-	Presentation       string      `json:"presentation,omitempty"`
-	ShowImages         *bool       `json:"show_images,omitempty"`
-	ShowTrends         *bool       `json:"show_trends,omitempty"`
+	DeviceID           *uuid.UUID          `json:"device_id"`
+	SiteID             *uuid.UUID          `json:"site_id"`
+	DeviceIDs          []uuid.UUID         `json:"device_ids"`
+	TelemetryStreamIDs []uuid.UUID         `json:"telemetry_stream_ids"`
+	ImageStreamIDs     []uuid.UUID         `json:"image_stream_ids"`
+	ComparisonStreamID *uuid.UUID          `json:"comparison_stream"`
+	TrendHours         int                 `json:"trend_hours"`
+	Description        string              `json:"description,omitempty"`
+	Layout             string              `json:"layout,omitempty"`
+	Presentation       string              `json:"presentation,omitempty"`
+	ShowImages         *bool               `json:"show_images,omitempty"`
+	ShowTrends         *bool               `json:"show_trends,omitempty"`
+	MetricDefaults     map[string][]string `json:"metric_defaults,omitempty"`
 }
 type Device struct {
 	ID               uuid.UUID  `json:"id"`
@@ -327,8 +328,20 @@ func (s *Service) validateConfig(ctx context.Context, workspaceID uuid.UUID, sce
 	if c.Presentation == "" {
 		c.Presentation = "technology"
 	}
-	if c.Presentation != "technology" && c.Presentation != "panorama" {
+	if c.Presentation != "technology" && c.Presentation != "panorama" && c.Presentation != "deep-blue" {
 		return c, apperr.New(apperr.KindInvalidArgument, "unknown atlas presentation")
+	}
+	for kind, codes := range c.MetricDefaults {
+		if !strings.HasPrefix(kind, "device:") || len(kind) <= len("device:") || len(codes) > 6 {
+			return c, apperr.New(apperr.KindInvalidArgument, "metric defaults require a device type and at most six metric codes")
+		}
+		seen := make(map[string]bool)
+		for _, code := range codes {
+			if strings.TrimSpace(code) == "" || seen[code] {
+				return c, apperr.New(apperr.KindInvalidArgument, "metric default codes must be non-empty and unique")
+			}
+			seen[code] = true
+		}
 	}
 	if len([]rune(c.Description)) > systemsettings.Int(ctx, "atlas_description", 300) {
 		return c, apperr.LimitExceeded("atlas_description", int64(systemsettings.Int(ctx, "atlas_description", 300)), int64(len([]rune(c.Description))), "characters")

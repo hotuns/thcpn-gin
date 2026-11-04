@@ -1,9 +1,10 @@
+import { useAtlasDevice } from "./use-atlas-device";
+import { Popover } from "radix-ui";
+import { AtlasMetricSelection } from "./atlas-metric-settings";
 import { nodeOptionLabel } from "@thcpn/api";
 import { isMeasurement, streamPurposeLabel } from "@thcpn/api";
-import { policyLimit } from "../../shared/config/system-policy";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
   Activity,
@@ -11,10 +12,7 @@ import {
   Check,
   CalendarRange,
   LoaderCircle,
-  ChevronLeft,
-  ChevronRight,
   Database,
-  Search,
 } from "lucide-react";
 import {
   Area,
@@ -26,7 +24,6 @@ import {
   YAxis,
 } from "recharts";
 import {
-  api,
   formatApiError,
   type DataStream,
   type DeviceMapItem,
@@ -49,8 +46,6 @@ import { ObservationIcon } from "../devices/observation-icon";
 import {
   numberLabel,
   seriesSummary,
-  streamCatalog,
-  timeRange,
   validRange,
   type AtlasConfig,
 } from "./atlas-model";
@@ -61,10 +56,16 @@ export function AtlasDevice({
   config,
   onSelection,
   analysisHost,
+  boardId = "default",
+  selectedNodeKey,
+  onNodeChange,
 }: {
   device: DeviceMapItem;
   workspaceId: string;
   config: AtlasConfig;
+  boardId?: string;
+  selectedNodeKey?: string;
+  onNodeChange?: (key: string) => void;
   onSelection: (ids: string[]) => void;
   initialTab?: "metrics" | "images";
   analysisHost?: HTMLElement | null;
@@ -72,115 +73,14 @@ export function AtlasDevice({
   const { t, locale } = useLocale();
   const revealed = useSceneReveal();
   const a = (key: string) => t(`atlas.${key}`);
-  const [tab, setTab] = useState("images");
-  const [nodeKey, setNodeKey] = useState("all");
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(0);
-  const [chartPage, setChartPage] = useState(0);
-  const [chosen, setChosen] = useState<string[] | null>(null);
-  const [range, setRange] = useState(() => timeRange(config.trend_hours ?? 24));
-  const [draft, setDraft] = useState(range);
-  const [rangeError, setRangeError] = useState(false);
-  const streams = useQuery({
-    queryKey: workspaceQueryKey(
-      workspaceId,
-      "atlas",
-      device.device_id,
-      "streams",
-    ),
-    queryFn: () => api.dataStreams.list(device.device_id),
-    staleTime: 60000,
-  });
-  const isGateway =
-    device.device_type === "gateway" || device.device_type.includes("gateway");
-  const nodes = useQuery({
-    queryKey: workspaceQueryKey(
-      workspaceId,
-      "atlas",
-      device.device_id,
-      "nodes",
-    ),
-    queryFn: () => api.devices.nodes(device.device_id),
-    enabled: isGateway,
-    staleTime: 60000,
-  });
-  const catalog = useMemo(
-    () => streamCatalog(streams.data?.items ?? [], nodes.data?.items ?? []),
-    [streams.data, nodes.data],
-  );
-  const node = nodes.data?.items.find((n) => n.key === nodeKey);
-  const metrics = catalog.filter(
-    (s) =>
-      s.type === "telemetry" && (isMeasurement(s) || !!config.telemetry_stream_ids?.includes(s.id)) &&
-      (!node || node.streams.some((n) => n.id === s.id)),
-  );
-  const matches = metrics.filter((s) =>
-    `${s.name} ${s.code} ${s.node}`
-      .toLocaleLowerCase()
-      .includes(search.toLocaleLowerCase()),
-  );
-  const selected = (
-    chosen ??
-    (config.telemetry_stream_ids?.filter((id) =>
-      metrics.some((s) => s.id === id),
-    ).length
-      ? config.telemetry_stream_ids
-      : metrics.slice(0, 2).map((s) => s.id)) ??
-    []
-  ).filter((id) => metrics.some((s) => s.id === id));
-  const visible = matches.slice(page * 6, page * 6 + 6);
-  // Query only the visible cards and chart page, not every selected stream.
-  const currentChartPage = Math.min(
-    chartPage,
-    Math.max(0, Math.ceil(selected.length / 4) - 1),
-  );
-  const chartIds =
-    config.show_trends === false
-      ? []
-      : selected.slice(currentChartPage * 4, currentChartPage * 4 + 4);
-  const queryStreams = catalog.filter((s) =>
-    [...visible.map((s) => s.id), ...chartIds].includes(s.id),
-  );
-  const queries = useQueries({
-    queries: queryStreams.map((stream) => ({
-      queryKey: workspaceQueryKey(
-        workspaceId,
-        "atlas",
-        "telemetry",
-        stream.id,
-        range.start,
-        range.end,
-      ),
-      queryFn: () =>
-        api.telemetry.dataStream(stream.id, {
-          startTime: range.start,
-          endTime: range.end,
-          adaptive: true,
-          targetPoints: Math.min(300,policyLimit("query_points",5000)),
-          limit: Math.min(5000,policyLimit("query_points",5000)),
-        }),
-      staleTime: 60000,
-      retry: false,
-    })),
-  });
-  const results = new Map(
-    queryStreams.map((stream, index) => [stream.id, queries[index]]),
-  );
+  const { tab, setTab, mediaAvailable, setMediaAvailable, nodeKey, setNodeKey, setChosen,
+    pickerOpen, setPickerOpen, metricDraft, setMetricDraft, preferenceError, setPreferenceError,
+    setFocusedChart, storageKey, range, setRange, draft, setDraft, rangeError, setRangeError,
+    streams, isGateway, nodes, catalog, node, metrics, selected, visible, chartIds, results, setHours,
+    savePreference, imageDevice } = useAtlasDevice({ device, workspaceId, config, boardId, selectedNodeKey, onNodeChange });
   useEffect(() => {
     onSelection(selected);
   }, [selected.join(",")]);
-  const setHours = (hours: number) => {
-    const next = timeRange(hours);
-    setRange(next);
-    setDraft(next);
-    setRangeError(false);
-  };
-  const changeMetric = (id: string) =>
-    setChosen(
-      selected.includes(id)
-        ? selected.filter((x) => x !== id)
-        : [...selected, id],
-    );
   const dateLabel = (value?: string) =>
     value
       ? new Date(value).toLocaleString(locale, {
@@ -190,8 +90,6 @@ export function AtlasDevice({
           minute: "2-digit",
         })
       : "—";
-  const imageDevice =
-    node?.target.kind === "device" ? node.target.device_id : device.device_id;
   return (
     <section className="atlas-detail">
       <header
@@ -200,9 +98,9 @@ export function AtlasDevice({
       >
         <div>
           <span className="atlas-overline">{a("explore")}</span>
-          <h2>{device.name}</h2>
+          <h2>{node?.name ?? device.name}</h2>
           <p>
-            {device.serial_no} <span>·</span>{" "}
+            {node ? device.name : device.serial_no} <span>·</span>{" "}
             {device.environment.ecosystem?.[
               locale === "en-US" ? "name_en" : "name_zh"
             ] || a("devices")}
@@ -223,11 +121,11 @@ export function AtlasDevice({
             value={nodeKey}
             onChange={(e) => {
               setNodeKey(e.target.value);
-              setPage(0);
+              onNodeChange?.(e.target.value);
               setChosen(null);
             }}
           >
-            <option value="all">{a("all")}</option>
+            <option value="gateway">网关概况</option>
             {nodes.data.items.map((n) => (
               <option key={n.key} value={n.key}>
                 {nodeOptionLabel(n)}
@@ -305,22 +203,17 @@ export function AtlasDevice({
       {
         <>
           <div className="atlas-metric-toolbar">
-            <span>
-              <Database size={14} />
-              {a("streams")} <b>{metrics.filter(isMeasurement).length}</b>
-            </span>
-            <div className="atlas-search">
-              <Search size={14} />
-              <Input
-                aria-label={a("searchMetric")}
-                placeholder={a("searchMetric")}
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPage(0);
-                }}
-              />
-            </div>
+            <span><Database size={14} />关注指标 <b>{selected.length}</b></span>
+            <Popover.Root open={pickerOpen} onOpenChange={open => { setPickerOpen(open); if (open) { setMetricDraft(selected); setPreferenceError(""); } }}>
+              <Popover.Trigger asChild><Button variant="ghost">全部指标 · {metrics.length}</Button></Popover.Trigger>
+              <Popover.Portal><Popover.Content className="atlas-metric-popover" side="left" align="start" sideOffset={14} collisionPadding={12} aria-label="指标展示设置">
+                <header><h3>指标展示设置</h3><Popover.Close asChild><Button variant="ghost" aria-label="关闭指标设置">×</Button></Popover.Close></header>
+                <p>个人设置 · 仅对当前设备或节点生效，保存在此浏览器</p>
+                <AtlasMetricSelection key={storageKey} metrics={metrics} value={metricDraft} onChange={setMetricDraft} />
+                {preferenceError && <p role="alert">{preferenceError}</p>}
+                <footer><Button variant="ghost" onClick={() => savePreference(true)}>恢复类型默认</Button><Button onClick={() => savePreference()}>保存</Button></footer>
+              </Popover.Content></Popover.Portal>
+            </Popover.Root>
           </div>
           {streams.isLoading ? (
             <AtlasEmpty text={a("loading")} />
@@ -329,8 +222,8 @@ export function AtlasDevice({
               error={streams.error}
               retry={() => void streams.refetch()}
             />
-          ) : !matches.length ? (
-            <AtlasEmpty text={a("noMetrics")} />
+          ) : !visible.length ? (
+            <AtlasEmpty text={metrics.length ? "尚未选择关注指标，请打开全部指标进行配置" : a("noMetrics")} />
           ) : (
             <div className="atlas-metrics">
               {visible.map((stream) => {
@@ -346,9 +239,9 @@ export function AtlasDevice({
                   <Button
                     variant="ghost"
                     key={stream.id}
-                    className={`atlas-metric ${selected.includes(stream.id) ? "is-selected" : ""}`}
-                    onClick={() => changeMetric(stream.id)}
-                    aria-pressed={selected.includes(stream.id)}
+                    className={`atlas-metric ${chartIds.includes(stream.id) ? "is-selected" : ""}`}
+                    onClick={() => setFocusedChart(stream.id)}
+                    aria-pressed={chartIds.includes(stream.id)}
                   >
                     <span className="atlas-metric-name">
                       <ObservationIcon unit={stream.unit} size={15} />
@@ -384,35 +277,6 @@ export function AtlasDevice({
               })}
             </div>
           )}
-          {matches.length > 6 && (
-            <div className="atlas-pagination">
-              <Button
-                variant="ghost"
-                aria-label={a("previous")}
-                disabled={page === 0}
-                onClick={() => setPage(page - 1)}
-              >
-                <ChevronLeft size={14} />
-              </Button>
-              <span>
-                {page + 1} / {Math.ceil(matches.length / 6)}
-              </span>
-              <Button
-                variant="ghost"
-                aria-label={a("next")}
-                disabled={(page + 1) * 6 >= matches.length}
-                onClick={() => setPage(page + 1)}
-              >
-                <ChevronRight size={14} />
-              </Button>
-            </div>
-          )}
-          <div className="atlas-selection">
-            <span>{t("atlas.selected", { count: selected.length })}</span>
-            <Button variant="ghost" onClick={() => setChosen([])}>
-              {a("clear")}
-            </Button>
-          </div>
           {config.show_trends !== false && (
             <AtlasAnalysis host={analysisHost}>
               <div className="atlas-analysis-title">
@@ -439,33 +303,12 @@ export function AtlasDevice({
                   );
                 })}
               </div>
-              {selected.length > 4 && (
-                <nav className="atlas-pagination" aria-label={a("chart")}>
-                  <Button
-                    variant="ghost"
-                    disabled={!currentChartPage}
-                    onClick={() => setChartPage(currentChartPage - 1)}
-                  >
-                    {a("previous")}
-                  </Button>
-                  <span>
-                    {currentChartPage + 1} / {Math.ceil(selected.length / 4)}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    disabled={(currentChartPage + 1) * 4 >= selected.length}
-                    onClick={() => setChartPage(currentChartPage + 1)}
-                  >
-                    {a("next")}
-                  </Button>
-                </nav>
-              )}
             </AtlasAnalysis>
           )}
         </>
       }
       {config.show_images !== false && (
-        <section className="atlas-imagery">
+        <section className="atlas-imagery" hidden={!mediaAvailable}>
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList>
               <TabsTrigger value="images">{a("images")}</TabsTrigger>
@@ -473,15 +316,18 @@ export function AtlasDevice({
             </TabsList>
           </Tabs>
           <AtlasMedia
-            key={`${tab}:${imageDevice}`}
+            key={`${tab}:${imageDevice}:${nodeKey}`}
             workspaceId={workspaceId}
             deviceId={tab === "photos" ? device.device_id : imageDevice}
-            streams={catalog.filter(
-              (s) => s.type === "image" && s.device_id === imageDevice,
+            streams={(node?.streams ?? (isGateway && nodeKey !== "gateway" ? [] : catalog)).filter(
+              (s) => s.type === "image" && s.status === "active" && (node || s.device_id === imageDevice),
             )}
+            restrictToStreams={node?.target.kind === "gateway_node" || (isGateway && nodeKey !== "gateway" && !node)}
             range={range}
             asset={tab === "photos"}
             pageSize={2}
+            onAvailability={setMediaAvailable}
+            assetDeviceId={device.device_id}
           />
         </section>
       )}
@@ -707,7 +553,6 @@ function AtlasTrend({
               {w.message}
             </p>
           ))}
-          <p className="atlas-footnote">{a("sampled")}</p>
         </>
       )}
     </article>

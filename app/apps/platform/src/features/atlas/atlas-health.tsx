@@ -36,11 +36,13 @@ export function AtlasHealth({
   deviceIds,
   loading,
   framed = false,
+  scopeLabel,
 }: {
   workspaceId: string;
   deviceIds: string[];
   loading: boolean;
   framed?: boolean;
+  scopeLabel?: string;
 }) {
   const { t } = useLocale();
   const a = (key: string) => t(`atlas.${key}`);
@@ -62,11 +64,11 @@ export function AtlasHealth({
   return (
     <section
       className="atlas-summary atlas-health"
-      aria-label={a("reportingOverview")}
+      aria-label={scopeLabel ?? a("reportingOverview")}
     >
       {framed && <ObservatoryPanelFrame />}
       <header>
-        <strong>{a("reportingOverview")}</strong>
+        <strong>{scopeLabel ?? a("reportingOverview")}</strong>
         <small>{a("reportingWindow")}</small>
       </header>
       <div className="atlas-health-grid">
@@ -90,9 +92,7 @@ export function AtlasHealth({
           </div>
         ))}
       </div>
-      <footer title={a("reportingHint")}>
-        {runtime.isError ? a("reportingUnavailable") : a("reportingHint")}
-      </footer>
+
     </section>
   );
 }

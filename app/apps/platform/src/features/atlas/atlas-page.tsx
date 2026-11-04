@@ -1,7 +1,4 @@
-import { useIsMobile } from "../../shared/hooks/use-mobile";
 import { DeviceCombobox } from "../../shared/data/device-combobox";
-import { MobileMapPanels } from "../../shared/maps/mobile-map-panels";
-import { MobileAtlasLayout } from "./atlas-templates";
 import { usePolicyLimit } from "../../shared/config/system-policy";
 import {
   Component,
@@ -14,27 +11,20 @@ import {
   type ReactNode,
 } from "react";
 import { hongliulin } from "../digital-plot/digital-plot-imagery";
-import { AtlasClock } from "./atlas-clock";
-import { ObservatoryAutoScroll, ObservatoryMotionToggle, useObservatoryMotion } from "../../shared/observatory/observatory-motion";
-import { ObservatoryMasthead, ObservatoryPanelFrame, ObservatoryTitle } from "../../shared/observatory/observatory-decoration";
+import { useObservatoryMotion } from "../../shared/observatory/observatory-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import {
-  Compass,
-  Globe2,
+  Plus,
+  Copy,
+  Trash2,
   Layers3,
-  MapPin,
-  MapPinOff,
-  Maximize2,
-  Minimize2,
   RefreshCw,
   Save,
-  Search,
   Settings2,
 } from "lucide-react";
 import {
   api,
-  deviceTopologyRoleLabel,
   formatApiError,
   type DeviceMapItem,
   type AtlasView,
@@ -50,27 +40,29 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  Input,
   TextInput,
   SearchInput,
   SelectInput,
   Switch,
 } from "../../shared/ui";
-import { AtlasDevice, AtlasEmpty, AtlasError } from "./atlas-device";
-import { AtlasHealth } from "./atlas-health";
+import { AtlasEmpty, AtlasError } from "./atlas-device";
 import { Card } from "../../shared/ui/primitives/card";
 import {
   ATLAS_TEMPLATE,
   defaultAtlasConfig,
   filterDevices,
-  located,
   type AtlasConfig,
 } from "./atlas-model";
+import { AtlasMetricDefaultsEditor } from "./atlas-metric-settings";
+import { EcoScreen } from "./eco-screen";
+import { ResearchScreen } from "./research-screen";
+import { ExpeditionScreen } from "./expedition-screen";
+import type { AtlasScreenProps } from "./atlas-screen-props";
 import "./atlas.css";
 import "./atlas-templates.css";
 import "../../shared/observatory/observatory.css";
 import "../../shared/observatory/observatory-decoration.css";
-import "./atlas-mobile.css";
+import "./atlas-management.css";
 import {
   atlasTemplate,
   atlasTemplates,
@@ -83,7 +75,7 @@ const AtlasMap = lazy(() =>
   import("./atlas-map").then((m) => ({ default: m.AtlasMap })),
 );
 export function AtlasPage() {
-  const { currentId, current } = useWorkspace();
+  const { currentId } = useWorkspace();
   const { id } = useParams();
   const { t } = useLocale();
   return currentId ? (
@@ -91,7 +83,6 @@ export function AtlasPage() {
       <AtlasWorkspace
         key={`${currentId}:${id ?? "default"}`}
         workspaceId={currentId}
-        workspaceName={current?.name ?? ""}
         id={id}
       />
     ) : (
@@ -107,8 +98,12 @@ function AtlasHome({ workspaceId }: { workspaceId: string }) {
   const a = (key: string) => t(`atlas.${key}`);
   const navigate = useNavigate();
   const client = useQueryClient();
+  const [section, setSection] = useState("views");
+  const [viewSearch, setViewSearch] = useState("");
+  const [templateFilter, setTemplateFilter] = useState("all");
   const [creating, setCreating] = useState<AtlasPresentation>();
   const [editing, setEditing] = useState<AtlasView>();
+  const [copying, setCopying] = useState<AtlasView>();
   const [deleting, setDeleting] = useState<AtlasView>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -146,12 +141,16 @@ function AtlasHome({ workspaceId }: { workspaceId: string }) {
       (view) =>
         view.status === "active" && view.template_code === ATLAS_TEMPLATE,
     ) ?? [];
+  const matching = saved.filter(view =>
+    `${view.name} ${view.config.description ?? ""}`.toLocaleLowerCase().includes(viewSearch.toLocaleLowerCase()) &&
+    (templateFilter === "all" || atlasTemplate(view.config.presentation).id === templateFilter));
   return (
-    <div className="atlas-home">
+    <div className="atlas-home atlas-management">
       <header className="atlas-home-heading">
         <div>
-          <h1>{a("title")}</h1>
-          <p>{a("homeHint")}</p>
+          <span className="atlas-management-eyebrow">ECOLOGICAL OBSERVATION</span>
+          <h1>{a("manageTitle")}</h1>
+          <p>{a("manageHint")}</p>
         </div>
         <Button
           variant="secondary"
@@ -165,19 +164,6 @@ function AtlasHome({ workspaceId }: { workspaceId: string }) {
           {a("refresh")}
         </Button>
       </header>
-      <section className="atlas-custom-showcase" aria-labelledby="atlas-custom-title">
-        <div><span id="atlas-custom-title">{t("digitalPlot.category")}</span><h2>{t("digitalPlot.title")}</h2><p>{t("digitalPlot.description")}</p><Button onClick={() => navigate("/atlas/topics/digital-plot")}>{t("digitalPlot.enter")} ↗</Button></div>
-        <img src={hongliulin.preview} alt="" />
-        <span className="atlas-custom-badge">{t("digitalPlot.demo")}</span>
-      </section>
-      <ol className="atlas-creation-steps" aria-label={a("creationSteps")}>
-        {["chooseTemplate", "configure", "save"].map((step, index) => (
-          <li key={step}>
-            <span>{index + 1}</span>
-            {a(step)}
-          </li>
-        ))}
-      </ol>
       {boards.isLoading && <AtlasEmpty text={a("loading")} />}
       {boards.data?.can_manage && devices.isLoading && (
         <p role="status">{a("loading")}</p>
@@ -194,6 +180,25 @@ function AtlasHome({ workspaceId }: { workspaceId: string }) {
       {boards.data && !boards.data.can_manage && (
         <p className="atlas-home-note">{a("readOnlyHint")}</p>
       )}
+      <nav className="atlas-management-tabs" aria-label={a("title")}>
+        {[["views", "myViews", saved.length], ["templates", "templates", atlasTemplates.length], ["topics", "topics", 1]].map(([key, label, count]) => <Button key={key} variant="ghost" aria-pressed={section === key} onClick={() => setSection(String(key))}>{a(String(label))}<span>{count}</span></Button>)}
+      </nav>
+      <div hidden={section !== "topics"}>
+      <section className="atlas-custom-showcase" aria-labelledby="atlas-custom-title">
+        <div><span id="atlas-custom-title">{t("digitalPlot.category")}</span><h2>{t("digitalPlot.title")}</h2><p>{t("digitalPlot.description")}</p><Button onClick={() => navigate("/atlas/topics/digital-plot")}>{t("digitalPlot.enter")} ↗</Button></div>
+        <img src={hongliulin.preview} alt="" />
+        <span className="atlas-custom-badge">{t("digitalPlot.demo")}</span>
+      </section>
+      </div>
+      <div hidden={section !== "templates"}>
+      <ol className="atlas-creation-steps" aria-label={a("creationSteps")}>
+        {["chooseTemplate", "configure", "save"].map((step, index) => (
+          <li key={step}>
+            <span>{index + 1}</span>
+            {a(step)}
+          </li>
+        ))}
+      </ol>
       <section
         aria-label={a("chooseTemplate")}
         className="atlas-home-templates"
@@ -218,11 +223,17 @@ function AtlasHome({ workspaceId }: { workspaceId: string }) {
           </Card>
         ))}
       </section>
-      <section className="atlas-home-saved" aria-labelledby="atlas-saved-title">
+      </div>
+      <section hidden={section !== "views"} className="atlas-home-saved" aria-labelledby="atlas-saved-title">
         <header>
-          <h2 id="atlas-saved-title">{a("savedViews")}</h2>
+          <h2 id="atlas-saved-title">{a("myViews")}</h2>
           <span>{saved.length}</span>
         </header>
+        <div className="atlas-management-toolbar">
+          <SearchInput aria-label={a("searchViews")} placeholder={a("searchViews")} value={viewSearch} onChange={event => setViewSearch(event.target.value)} />
+          <SelectInput aria-label={a("displayTemplate")} value={templateFilter} onChange={event => setTemplateFilter(event.target.value)}><option value="all">{a("displayTemplate")} · {a("allTypes")}</option>{atlasTemplates.map(template => <option key={template.id} value={template.id}>{a(template.titleKey)}</option>)}</SelectInput>
+          {boards.data?.can_manage && <Button onClick={() => setSection("templates")}><Plus size={16} />{a("newView")}</Button>}
+        </div>
         {boards.data && !saved.length && (
           <Card className="atlas-home-empty">
             <Layers3 size={24} />
@@ -230,8 +241,9 @@ function AtlasHome({ workspaceId }: { workspaceId: string }) {
             <p>{a("noSavedViewsHint")}</p>
           </Card>
         )}
+        {saved.length > 0 && !matching.length && <AtlasEmpty text={a("noMatchingViews")} />}
         <div className="atlas-saved-grid">
-          {saved.map((view) => (
+          {matching.map((view) => (
             <Card key={view.id} className="atlas-saved-card">
               <AtlasTemplatePreview
                 id={atlasTemplate(view.config.presentation).id}
@@ -242,6 +254,7 @@ function AtlasHome({ workspaceId }: { workspaceId: string }) {
                 </span>
                 <h3>{view.name}</h3>
                 {view.config.description && <p>{view.config.description}</p>}
+                <small>{a("savedAt")} {new Date(view.updated_at).toLocaleDateString()}</small>
                 <Button
                   variant="secondary"
                   onClick={() => navigate(`/atlas/${view.id}`)}
@@ -258,6 +271,10 @@ function AtlasHome({ workspaceId }: { workspaceId: string }) {
                     {a("configure")}
                   </Button>
                 )}
+                {boards.data?.can_manage && <div className="atlas-management-card-actions">
+                  <Button variant="ghost" disabled={!devices.data} onClick={() => { setCreating(atlasTemplate(view.config.presentation).id); setCopying(view); }}><Copy size={14} />{a("saveAs")}</Button>
+                  <Button variant="ghost" onClick={() => { setDeleting(view); setError(""); }}><Trash2 size={14} />{a("delete")}</Button>
+                </div>}
               </div>
             </Card>
           ))}
@@ -267,17 +284,19 @@ function AtlasHome({ workspaceId }: { workspaceId: string }) {
         <AtlasSettings
           workspaceId={workspaceId}
           board={editing}
+          initialName={copying ? `${copying.name} · ${a("saveAs")}` : undefined}
           initialConfig={
-            editing?.config ?? {
+            editing?.config ?? copying?.config ?? {
               ...defaultAtlasConfig,
               presentation: creating ?? defaultAtlasConfig.presentation,
             }
           }
-          devices={devices.data.items}
+          devices={devices.data.items.filter(device => !device.gateway_device_id)}
           selectedMetrics={[]}
           onClose={() => {
             setCreating(undefined);
             setEditing(undefined);
+            setCopying(undefined);
           }}
           onDelete={
             editing
@@ -329,28 +348,23 @@ function AtlasHome({ workspaceId }: { workspaceId: string }) {
 }
 function AtlasWorkspace({
   workspaceId,
-  workspaceName,
   id,
 }: {
   workspaceId: string;
-  workspaceName: string;
   id?: string;
 }) {
   const motion = useObservatoryMotion();
-  const mobile = useIsMobile();
-  const [mobilePanel, setMobilePanel] = useState("");
   const { t } = useLocale();
   const a = (key: string) => t(`atlas.${key}`);
   const navigate = useNavigate();
   const client = useQueryClient();
   // Open with real observations ready; an explicit map reset can still clear focus.
   const [selection, setSelection] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
   const [kind, setKind] = useState("all");
+  const [editingScreen, setEditingScreen] = useState(false);
+  const [nodeKey, setNodeKey] = useState<string | null>(null);
   const [present, setPresent] = useState(false);
   const [reset, setReset] = useState(0);
-  const [analysisHost, setAnalysisHost] = useState<HTMLDivElement | null>(null);
-  const [error, setError] = useState("");
   const devices = useQuery({
     queryKey: workspaceQueryKey(workspaceId, "atlas", "map"),
     queryFn: () => api.devices.map(workspaceId),
@@ -364,26 +378,33 @@ function AtlasWorkspace({
     enabled: Boolean(id),
     retry: false,
   });
+  const views = useQuery({
+    queryKey: workspaceQueryKey(workspaceId, "atlas", "views"),
+    queryFn: () => api.atlas.list(workspaceId),
+    staleTime: 30000,
+  });
   const config: AtlasConfig = {
     ...defaultAtlasConfig,
     ...board.data?.config,
   };
   const template = atlasTemplate(config.presentation);
-  const Layout = mobile ? MobileAtlasLayout : template.Layout;
   const rows = devices.data?.items ?? [];
   const scoped = useMemo(
     () => filterDevices(rows, config.device_ids ?? [], "", "all"),
     [devices.data, board.data],
   );
-  const visible = filterDevices(scoped, [], search, kind);
+  const visible = filterDevices(scoped, [], "", "all").filter(device =>
+    kind === "all" || (kind === "network" ? ["gateway", "gateway_node"].includes(device.device_type) : device.device_type === kind));
   const selected =
     scoped.find((d) => d.device_id === selection) ??
-    (selection === null ? scoped[0] : undefined);
-  const kinds = [...new Set(scoped.map((d) => d.device_type))];
+    (selection === "" ? undefined : visible[0]);
+  const selectedGateway = selected?.gateway_device_id ? rows.find(device => device.device_id === selected.gateway_device_id) : undefined;
+  const inspectorDevice = selectedGateway ?? selected;
+  const activeNodeKey = nodeKey ?? (selected?.gateway_device_id && selected.node_index != null ? `gateway:${selected.gateway_device_id}:node:${selected.node_index}` : "gateway");
   const onSelect = useCallback((next: string) => {
     setSelection(next);
-    if (mobile && next) setMobilePanel("inspector");
-  }, [mobile]);
+    setNodeKey(null);
+  }, []);
   useEffect(() => {
     document.body.classList.add("atlas-route");
     return () => {
@@ -425,10 +446,6 @@ function AtlasWorkspace({
       }
     }
   };
-  const refresh = () =>
-    client.invalidateQueries({
-      queryKey: workspaceQueryKey(workspaceId, "atlas"),
-    });
   if (
     id &&
     (board.isLoading ||
@@ -448,194 +465,35 @@ function AtlasWorkspace({
         <Button onClick={() => navigate("/atlas")}>{a("back")}</Button>
       </section>
     );
-  return (
-    <div
-      className={`atlas-shell ${present ? "is-presenting" : ""} atlas-layout-${config.layout} atlas-template-${template.id}`}
-      data-observatory-motion={motion.enabled ? "running" : "paused"}
-    >
-      <div className="atlas-topbar">
-      <ObservatoryMasthead />
-      <header className="atlas-header">
-        <ObservatoryTitle className="atlas-title" title={board.data?.name ?? a("defaultName")} description={config.description} />
-      </header>
-      {!mobile && template.id === "panorama" && <AtlasHealth
-        framed
-        workspaceId={workspaceId}
-        deviceIds={scoped.map((device) => device.device_id)}
-        loading={devices.isLoading}
-      />}
-        <div className="atlas-header-actions">
-          <AtlasClock />
-          <ObservatoryMotionToggle motion={motion} />
-          <Button
-            className="atlas-fullscreen-button"
-            variant="ghost"
-            title={a(present ? "exit" : "presentation")}
-            aria-label={a(present ? "exit" : "presentation")}
-            onClick={() => void toggleFullscreen()}
-          >
-            {present ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-          </Button>
-        </div>
-      </div>
-      {(devices.error || error) && (
-        <div className="atlas-top-warning" role="alert">
-          {error ||
-            `${devices.data ? a("retained") : a("failed")}: ${formatApiError(devices.error).message}`}
-          <Button
-            variant="ghost"
-            onClick={() => {
-              setError("");
-              void refresh();
-            }}
-          >
-            {a("retry")}
-          </Button>
-        </div>
-      )}
-      {mobile && <MobileMapPanels value={mobilePanel} onChange={setMobilePanel} options={[{ value: "directory", label: a("deviceList") }, { value: "inspector", label: "设备详情" }]} />}
-      <Layout
-        mobilePanel={mobilePanel}
-        summary={mobile || template.id !== "panorama" ? <AtlasHealth framed workspaceId={workspaceId} deviceIds={scoped.map(device => device.device_id)} loading={devices.isLoading} /> : undefined}
-        analysis={config.show_trends !== false && selected ? <div className="atlas-analysis-host" ref={setAnalysisHost}><ObservatoryPanelFrame /></div> : undefined}
-        directory={
-          <aside className="atlas-directory">
-            <ObservatoryPanelFrame />
-            <header>
-              <h2>
-                <Layers3 size={16} />
-                {a("deviceList")}
-              </h2>
-              <span>{visible.length}</span>
-            </header>
-            <div className="atlas-directory-filters">
-              <div className="atlas-search">
-                <Search size={14} />
-                <Input
-                  placeholder={a("search")}
-                  aria-label={a("search")}
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-              <SelectInput
-                aria-label={a("scope")}
-                value={kind}
-                onChange={(e) => setKind(e.target.value)}
-              >
-                <option value="all">{a("all")}</option>
-                {kinds.map((k) => (
-                  <option key={k} value={k}>
-                    {deviceTopologyRoleLabel(k)}
-                  </option>
-                ))}
-              </SelectInput>
-            </div>
-            <ObservatoryAutoScroll className="atlas-device-list" label={a("deviceList")} paused={mobile || !motion.enabled} resetKey={visible.map(device => device.device_id).join(",")}>
-              {devices.isLoading ? (
-                <AtlasEmpty text={a("loading")} />
-              ) : !visible.length ? (
-                <AtlasEmpty text={a("noDevices")} />
-              ) : (
-                visible.map((d, index) => (
-                  <Button
-                    variant="ghost"
-                    key={d.device_id}
-                    className={`atlas-device-row ${d.device_id === selected?.device_id ? "is-selected" : ""}`}
-                    aria-pressed={d.device_id === selected?.device_id}
-                    onClick={() => onSelect(d.device_id)}
-                  >
-                    <span className="atlas-device-number">
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
-                    <span>
-                      <strong>{d.name}</strong>
-                      <small>{d.serial_no}</small>
-                      <em>{deviceTopologyRoleLabel(d.device_type)}</em>
-                    </span>
-                    {located(d) ? (
-                      <MapPin size={13} />
-                    ) : (
-                      <MapPinOff size={13} />
-                    )}
-                  </Button>
-                ))
-              )}
-            </ObservatoryAutoScroll>
-            <footer>
-              <Compass size={13} />
-              {a("mapNote")}
-            </footer>
-          </aside>
-        }
-        map={
-          <section className="atlas-map-region" aria-label={a("overview")}>
-            <MapBoundary fallback={<AtlasEmpty text={a("mapUnavailable")} />}>
-              <Suspense fallback={<AtlasEmpty text={a("loading")} />}>
-                <AtlasMap
-                  points={visible}
-                  selectedId={selected?.device_id ?? ""}
-                  onSelect={onSelect}
-                  reset={reset}
-                  onReset={() => {
-                    onSelect("");
-                    setReset(value => value + 1);
-                  }}
-                  panorama={template.id === "panorama"}
-                />
-              </Suspense>
-            </MapBoundary>
-            <div className="atlas-map-heading">
-              <span className="atlas-overline">OBSERVATION NETWORK</span>
-              <h2>{workspaceName}</h2>
-            </div>
-            <div className="atlas-map-caption">
-              <i />
-              {a("located")} <b>{visible.filter(located).length}</b>
-              <span>·</span>
-              {a("unlocated")}{" "}
-              <b>{visible.filter((d) => !located(d)).length}</b>
-            </div>
-          </section>
-        }
-        inspector={
-          <div className="atlas-inspector">
-            <ObservatoryPanelFrame />
-            {selected ? (
-              <AtlasDevice
-                key={`${selected.device_id}:${board.data?.updated_at ?? "default"}:${template.id}`}
-                device={selected}
-                workspaceId={workspaceId}
-                config={config}
-                onSelection={() => {}}
-                initialTab={template.initialTab}
-                analysisHost={!mobile && template.id === "technology" ? analysisHost : null}
-              />
-            ) : (
-              <div className="atlas-welcome">
-                <div className="atlas-orbit">
-                  <Globe2 size={52} />
-                  <span />
-                  <i />
-                </div>
-                <span className="atlas-overline">CONNECTED OBSERVATIONS</span>
-                <h2>{a("selectDevice")}</h2>
-                <p>{a("deviceHint")}</p>
-                <div className="atlas-welcome-rule" />
-                <small>{a("source")}</small>
-              </div>
-            )}
-          </div>
-        }
-      />
-      <footer className="atlas-footer">
-        <span>{a("source")}</span>
-        <span>
-          IN-SITU <b>ATLAS</b> / 01
-        </span>
-      </footer>
-    </div>
-  );
+  const onSelectNode = (key: string) => {
+    if (inspectorDevice && scoped.some(device => device.device_id === inspectorDevice.device_id)) setSelection(inspectorDevice.device_id);
+    setNodeKey(key);
+  };
+  const settingsDialog = editingScreen && views.data?.can_manage ? <AtlasSettings workspaceId={workspaceId} board={board.data} initialConfig={config} devices={rows.filter(device => !device.gateway_device_id)} selectedMetrics={[]} onClose={() => setEditingScreen(false)} onSaved={async view => {
+    client.setQueryData(workspaceQueryKey(workspaceId, "atlas", "view", view.id), view);
+    await client.invalidateQueries({ queryKey: workspaceQueryKey(workspaceId, "atlas", "views") });
+    setEditingScreen(false);
+    if (view.id !== id) navigate(`/atlas/${view.id}`);
+  }} /> : null;
+  const Screen = template.id === "deep-blue" ? EcoScreen : template.id === "technology" ? ResearchScreen : ExpeditionScreen;
+  const appearance = template.id === "technology" ? "research" : template.id === "panorama" ? "expedition" : "deep-blue";
+  const screenProps: AtlasScreenProps = {
+    title: board.data?.name ?? a("defaultName"), workspaceId, boardId: id, config,
+    devices: scoped, selectedDevice: inspectorDevice, selectedNodeKey: activeNodeKey, kind,
+    onKindChange: kind => { setKind(kind); setSelection(null); setNodeKey(null); },
+    onSelect, onSelectNode, canManage: views.data?.can_manage === true,
+    onEdit: () => setEditingScreen(true), onBack: () => navigate("/atlas"), motion,
+    presenting: present, onFullscreen: () => void toggleFullscreen(), settings: settingsDialog,
+    warning: devices.error ? formatApiError(devices.error).message : undefined,
+    map: <MapBoundary fallback={<AtlasEmpty text={a("mapUnavailable")} />}><Suspense fallback={<div role="status">{a("loading")}</div>}>
+      <AtlasMap appearance={appearance} workspaceId={workspaceId} panorama={template.id !== "technology"}
+        points={selectedGateway && !visible.some(device => device.device_id === selectedGateway.device_id) ? [...visible, selectedGateway] : visible}
+        networkDevices={rows} selectedId={inspectorDevice?.device_id ?? ""} selectedNodeKey={activeNodeKey}
+        onSelect={onSelect} onSelectNode={onSelectNode} motionEnabled={motion.enabled}
+        reset={reset} onReset={() => { onSelect(""); setReset(value => value + 1); }} />
+    </Suspense></MapBoundary>,
+  };
+  return <Screen {...screenProps} />;
 }
 
 function AtlasSettings({
@@ -644,6 +502,7 @@ function AtlasSettings({
   initialConfig,
   devices,
   selectedMetrics,
+  initialName,
   onClose,
   onSaved,
   onDelete,
@@ -653,6 +512,7 @@ function AtlasSettings({
   initialConfig: AtlasConfig;
   devices: DeviceMapItem[];
   selectedMetrics: string[];
+  initialName?: string;
   onClose: () => void;
   onSaved: (board: AtlasView) => void | Promise<void>;
   onDelete?: () => void;
@@ -663,7 +523,7 @@ function AtlasSettings({
   const trendHours=usePolicyLimit("atlas_trend_hours",720);
   const { t } = useLocale();
   const a = (key: string) => t(`atlas.${key}`);
-  const [name, setName] = useState(board?.name ?? a("defaultName"));
+  const [name, setName] = useState(initialName ?? board?.name ?? a("defaultName"));
   const [config, setConfig] = useState<AtlasConfig>({
     ...defaultAtlasConfig,
     ...initialConfig,
@@ -684,7 +544,7 @@ function AtlasSettings({
         config,
       };
       const saved =
-        board && !copy
+        board?.id && !copy
           ? await api.atlas.update(workspaceId, board.id, payload)
           : await api.atlas.create(workspaceId, payload);
       await onSaved(saved);
@@ -786,6 +646,7 @@ function AtlasSettings({
             ariaLabel="选择一张图设备范围"
           />
         </div>
+        <AtlasMetricDefaultsEditor workspaceId={workspaceId} devices={devices} value={config.metric_defaults} onChange={metric_defaults => setConfig({ ...config, metric_defaults })} />
         {selectedMetrics.length > 0 && (
           <>
             <label className="atlas-setting-switch">

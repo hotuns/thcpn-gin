@@ -593,3 +593,31 @@
 .atlas-custom-showcase p { color: #a9c0ca; max-width: 560px; margin-bottom: 20px; }
 .atlas-custom-showcase > img { position: absolute; inset: 0 0 0 auto; width: 34%; height: 100%; object-fit: cover; opacity: .5; mask-image: linear-gradient(to right, transparent, black); }
 .atlas-custom-badge { position: absolute; right: 20px; top: 20px; padding: 4px 8px; border: 1px solid #a6803e; border-radius: 3px; color: #eeb865; font-size: 11px; }
+
+.preview-deep-blue { background:radial-gradient(ellipse at 58% 55%,#124b64,transparent 65%),repeating-linear-gradient(32deg,#03152c 0,#153e53 16px,#08243b 38px); grid-template-columns:1fr 1.7fr 1fr; }
+.preview-deep-blue::before { left:30%; width:40%; background:#8aeaff; box-shadow:0 0 10px #31c7ff; }
+.preview-deep-blue i { background:#042140d9; border-color:#40b9e588; }
+.preview-deep-blue i:nth-child(2) { background:transparent; border:0; }
+.preview-deep-blue i:nth-child(2)::after { content:""; display:block; width:70%; height:70%; margin:auto; border-top:2px solid #68efff; border-radius:50%; transform:rotate(-30deg); box-shadow:0 -3px 12px #35e1fc44; }
+/* Template covers mirror the actual composition, not just a palette swap. */
+.atlas-template-preview.preview-technology {
+  display:grid; grid-template-columns:.6fr 2fr .9fr; grid-template-rows:1fr 1fr; gap:7px;
+  padding:30px 10px 10px; border:1px solid #d2dacd; border-radius:4px; background:#f4f1e7;
+}
+.preview-technology::before { background:#3b6652; height:4px; left:10px; top:12px; width:45%; }
+.preview-technology i { border:1px solid #c3d0be; border-radius:2px; background:#fffdf7; }
+.preview-technology i:first-child { grid-column:1; grid-row:1/3; background:repeating-linear-gradient(#e9eee3 0 8px,#faf9f2 8px 15px); }
+.preview-technology i:nth-child(2) { grid-column:2; grid-row:1; background:repeating-linear-gradient(25deg,#c2ccb0 0 10px,#d3dbc4 10px 21px,#a4b89b 21px 27px); }
+.preview-technology i:nth-child(3) { grid-column:3; grid-row:1/3; background:repeating-linear-gradient(#fffdf6 0 11px,#d9e2d3 11px 12px); }
+.preview-technology i:last-child { display:block; grid-column:2; grid-row:2; position:relative; background:#fcfbf6; }
+.preview-technology i:last-child::after { content:""; position:absolute; inset:12% 8%; background:linear-gradient(#326449aa,#32644911); clip-path:polygon(0 70%,14% 58%,25% 65%,35% 35%,48% 47%,60% 15%,72% 32%,86% 20%,100% 42%,100% 100%,0 100%); }
+.atlas-template-preview.preview-panorama {
+  display:block; padding:0; border:1px solid #65533b; border-radius:3px;
+  background:radial-gradient(ellipse at 65% 35%,#75664a99,transparent 55%),repeating-linear-gradient(28deg,#252a25 0,#3d4034 18px,#2b3028 35px);
+}
+.preview-panorama::before { top:12px; left:12px; width:34%; height:4px; box-shadow:none; background:#e4bd7a; }
+.preview-panorama i { position:absolute; border:1px solid #ac865044; border-radius:0; background:#151c19df; }
+.preview-panorama i:first-child { left:10px; top:30px; bottom:34%; width:17%; }
+.preview-panorama i:nth-child(2) { display:block; visibility:visible; top:12px; right:12px; width:32%; height:13%; border:0; background:linear-gradient(90deg,#bf9a5c55,transparent); }
+.preview-panorama i:nth-child(3) { left:22%; top:36%; width:36%; height:6%; border:0; border-bottom:2px solid #e0c49a; background:transparent; }
+.preview-panorama i:last-child { display:block; left:10px; right:10px; bottom:9px; width:auto; height:28%; background:linear-gradient(90deg,#171f1ae8 0 24%,#30362be8 24% 73%,#1d231de8 73%); border-top:2px solid #c4a16d; }

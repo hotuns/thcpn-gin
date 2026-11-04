@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Map, LngLatBounds, ScaleControl } from "maplibre-gl";
 import { NativeDeviceLayer, tiandituImageryStyle } from "@thcpn/device-map";
-import type { DeviceMapItem } from "@thcpn/api";
+import { api, formatApiError, type DeviceMapItem } from "@thcpn/api";
+import { useQuery } from "@tanstack/react-query";
+import { workspaceQueryKey } from "@thcpn/workspace";
+import { AtlasNetwork } from "./atlas-network";
+import { networkMarkerIds, networkNodes } from "./atlas-network-model";
 import { useLocale } from "@thcpn/i18n";
 import { Crosshair, Globe2, Mountain, Map as MapIcon } from "lucide-react";
 import { Button } from "../../shared/ui";
@@ -17,11 +21,17 @@ import "maplibre-gl/dist/maplibre-gl.css";
 
 type Props = {
   points: DeviceMapItem[];
+  networkDevices?: DeviceMapItem[];
   selectedId: string;
   onSelect: (id: string) => void;
   reset: number;
   onReset: () => void;
   panorama?: boolean;
+  workspaceId?: string;
+  selectedNodeKey?: string;
+  onSelectNode?: (key: string) => void;
+  motionEnabled?: boolean;
+  appearance?: "deep-blue" | "research" | "expedition";
 };
 
 export function AtlasMapActions({ ready, terrain, terrainError, onReset, onTerrain, globe = false, onGlobe }: {
@@ -46,13 +56,24 @@ export function AtlasMapActions({ ready, terrain, terrainError, onReset, onTerra
 }
 export function AtlasMap(props: Props) {
   const { t } = useLocale();
+  const independentAppearance = props.appearance !== undefined;
+  const mapPrefix = props.appearance === "deep-blue" ? "eco" : props.appearance;
+  const selectedGateway = props.points.find(point => point.device_id === props.selectedId && point.device_type === "gateway");
+  const nodes = useQuery({
+    queryKey: workspaceQueryKey(props.workspaceId ?? "", "atlas", selectedGateway?.device_id ?? "", "nodes"),
+    queryFn: () => api.devices.nodes(selectedGateway!.device_id),
+    enabled: Boolean(props.workspaceId && selectedGateway),
+    staleTime: 60000,
+  });
+  const gatewayNodes = nodes.data?.items ?? [];
+  const networkLocations = networkNodes(gatewayNodes, props.networkDevices ?? props.points);
   const host = useRef<HTMLDivElement>(null);
   const instance = useRef<Map | null>(null);
   const current = useRef(props);
   current.current = props;
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [terrain, setTerrain] = useState(true);
+  const [terrain, setTerrain] = useState(props.appearance !== "research");
   const [globe, setGlobe] = useState(false);
   const globeRef = useRef(false);
   globeRef.current = globe;
@@ -62,6 +83,19 @@ export function AtlasMap(props: Props) {
   const deviceLayer = useRef<NativeDeviceLayer | null>(null);
   const padding = (map: Map) => {
     const width = map.getContainer().clientWidth;
+    if (current.current.appearance === "deep-blue" && width > 900) return {
+      top: 150,
+      bottom: 110,
+      left: Math.round(width * .25) + 35,
+      right: Math.round(width * .28) + 35,
+    };
+    if (current.current.appearance === "research") return { top: 40, bottom: 40, left: 40, right: 40 };
+    if (current.current.appearance === "expedition") {
+      const height = map.getContainer().clientHeight;
+      const top = Math.min(170, Math.max(30, height - 180));
+      return { top, left: Math.min(285, width * .35), right: 60,
+        bottom: Math.max(0, Math.min(Math.max(414, Math.min(500, height * .4)) + 45, height - top - 100)) };
+    }
     return current.current.panorama && width > 900
       ? {
           top: 120,
@@ -144,6 +178,18 @@ export function AtlasMap(props: Props) {
   }, [attempt]);
   useEffect(() => {
     const map = instance.current;
+    if (!map || !ready || !["research", "expedition"].includes(props.appearance ?? "")) return;
+    for (const layer of map.getStyle().layers ?? []) {
+      if (layer.type !== "raster" || layer.id.includes("labels")) continue;
+      const research = props.appearance === "research";
+      map.setPaintProperty(layer.id, "raster-saturation", research ? -0.7 : -0.65);
+      map.setPaintProperty(layer.id, "raster-brightness-min", research ? 0.2 : 0.04);
+      map.setPaintProperty(layer.id, "raster-brightness-max", research ? 1 : 0.65);
+      map.setPaintProperty(layer.id, "raster-contrast", research ? -0.12 : 0.12);
+    }
+  }, [ready, props.appearance]);
+  useEffect(() => {
+    const map = instance.current;
     if (!map || !ready) return;
     try {
       setSceneTerrain(map, terrain && !globe);
@@ -185,33 +231,60 @@ export function AtlasMap(props: Props) {
     const map = instance.current;
     if (!map || !ready) return;
     if (!deviceLayer.current) deviceLayer.current = new NativeDeviceLayer(map, id => current.current.onSelect(id));
-    deviceLayer.current.update(props.points, props.selectedId);
-  }, [ready, props.points, props.selectedId]);
+    const childIds = networkMarkerIds(globe ? [] : networkLocations.locatedNodes, props.points);
+    const overlayGateway = !globe && selectedGateway && located(selectedGateway) && Boolean(nodes.data);
+    deviceLayer.current.update(props.points.filter(point => !childIds.has(point.device_id) && !(overlayGateway && point.device_id === selectedGateway.device_id)), props.selectedId);
+  }, [ready, props.points, props.selectedId, nodes.data, globe, props.networkDevices]);
   useEffect(() => {
     const map = instance.current;
     const selected = props.points.find(
       (p) => p.device_id === props.selectedId && located(p),
     );
     if (!map || !ready || !selected) return;
+    if (selectedGateway && networkLocations.locatedNodes.length) {
+      const bounds = new LngLatBounds([selected.longitude!, selected.latitude!], [selected.longitude!, selected.latitude!]);
+      networkLocations.locatedNodes.forEach(({ location }) => bounds.extend([location.longitude, location.latitude]));
+      map.fitBounds(bounds, { padding: padding(map), maxZoom: 17, pitch: terrain && !globeRef.current ? (props.panorama ? 48 : 30) : 0, duration: motionDuration() });
+      return;
+    }
     map.easeTo({
       center: [selected.longitude!, selected.latitude!],
       padding: padding(map),
       pitch: terrain && !globeRef.current ? (props.panorama ? 48 : 30) : 0,
       duration: motionDuration(),
     });
-  }, [ready, props.selectedId, locations]);
+  }, [ready, props.selectedId, locations, nodes.data, props.networkDevices, terrain]);
   return (
-    <div className={`observatory-map${globe ? " is-globe" : ""}`}>
+    <div className={`${independentAppearance ? `${mapPrefix}-map` : "observatory-map"}${globe ? " is-globe" : ""}`}>
       <div
         ref={host}
-        className="observatory-map-canvas"
+        className={independentAppearance ? `${mapPrefix}-map-canvas` : "observatory-map-canvas"}
         aria-label={t("atlas.overview")}
       />
-      <AtlasMapActions ready={ready} terrain={terrain} terrainError={terrainError} globe={globe} onGlobe={() => setGlobe(value => !value)} onReset={props.onReset} onTerrain={() => setTerrain(value => !value)} />
-      <MapTools map={ready ? instance.current : null} />
+      {ready && !globe && selectedGateway && nodes.data && instance.current && <AtlasNetwork
+        map={instance.current} gateway={selectedGateway} nodes={gatewayNodes} devices={props.networkDevices ?? props.points}
+        selectedNodeKey={props.selectedNodeKey} running={props.motionEnabled !== false} appearance={props.appearance}
+        onSelectNode={key => {
+          if (props.onSelectNode) props.onSelectNode(key);
+          else {
+            const node = gatewayNodes.find(item => item.key === key);
+            if (node?.target.kind === "device") props.onSelect(node.target.device_id);
+          }
+        }}
+      />}
+      {selectedGateway && nodes.error && <div className={independentAppearance ? `${mapPrefix}-network-status` : "atlas-network-caption"} role="alert">{formatApiError(nodes.error).message}<Button onClick={() => void nodes.refetch()}>重试组网信息</Button></div>}
+      {independentAppearance ? <div className={`${mapPrefix}-map-controls`} role="group" aria-label={t("atlas.overview")}>
+        <button type="button" title={t("atlas.resetMap")} aria-label={t("atlas.resetMap")} onClick={props.onReset}><Crosshair size={17} /></button>
+        <button type="button" title={t("atlas.terrainHint")} aria-label={t(terrain ? "atlas.terrain3d" : "atlas.terrain2d")} aria-pressed={terrain && !globe} disabled={!ready || terrainError || globe} onClick={() => setTerrain(value => !value)}>{terrain ? <Mountain size={17} /> : <MapIcon size={17} />}</button>
+        <button type="button" title={t("atlas.globeHint")} aria-label={t(globe ? "atlas.returnMap" : "atlas.globe")} aria-pressed={globe} disabled={!ready} onClick={() => setGlobe(value => !value)}><Globe2 size={17} /></button>
+        {terrainError && !globe && <small role="status">{t("atlas.terrainUnavailable")}</small>}
+      </div> : <>
+        <AtlasMapActions ready={ready} terrain={terrain} terrainError={terrainError} globe={globe} onGlobe={() => setGlobe(value => !value)} onReset={props.onReset} onTerrain={() => setTerrain(value => !value)} />
+        <MapTools map={ready ? instance.current : null} />
+      </>}
       {(!ready || failed) && (
         <div
-          className="observatory-map-status"
+          className={independentAppearance ? `${mapPrefix}-map-status` : "observatory-map-status"}
           role={failed ? "alert" : "status"}
         >
           {t(failed ? "atlas.mapUnavailable" : "atlas.loading")}

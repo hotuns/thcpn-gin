@@ -33,7 +33,7 @@ func TestAtlasConfig(t *testing.T) {
 }
 
 func TestAtlasPresentationRoundTrip(t *testing.T) {
-	for _, presentation := range []string{"technology", "panorama"} {
+	for _, presentation := range []string{"technology", "panorama", "deep-blue"} {
 		raw, _ := json.Marshal(Config{Presentation: presentation})
 		config, err := (&Service{}).validateConfig(context.Background(), uuid.New(), "organization", raw)
 		if err != nil || config.Presentation != presentation {
@@ -96,5 +96,33 @@ func TestApplyTemplateSettingsOverridesManifestManagementFields(t *testing.T) {
 	applyTemplateSettings(&item, "template-code", 2, "published", "premium", "¥9,800 / 年", "联系开通")
 	if item.Code != "template-code" || item.Version != 2 || item.Status != "published" || item.Tier != "premium" || item.DisplayPrice != "¥9,800 / 年" || item.ContactCopy != "联系开通" {
 		t.Fatalf("database settings were not preserved: %#v", item)
+	}
+}
+
+func TestMetricDefaults(t *testing.T) {
+	for _, raw := range []string{
+		`{"metric_defaults":{"device:gateway":["temperature","humidity"]}}`,
+		`{"metric_defaults":{"device:station":[]}}`,
+	} {
+		c, err := (&Service{}).validateConfig(context.Background(), uuid.New(), "organization", json.RawMessage(raw))
+		if err != nil || c.MetricDefaults == nil {
+			t.Fatalf("valid defaults rejected: %s %v", raw, err)
+		}
+		encoded, _ := json.Marshal(c)
+		var saved Config
+		if err := json.Unmarshal(encoded, &saved); err != nil || len(saved.MetricDefaults) != 1 {
+			t.Fatalf("defaults lost: %s", encoded)
+		}
+	}
+	for _, raw := range []string{
+		`{"metric_defaults":{"station":["temperature"]}}`,
+		`{"metric_defaults":{"device:":["temperature"]}}`,
+		`{"metric_defaults":{"device:station":[""]}}`,
+		`{"metric_defaults":{"device:station":["a","a"]}}`,
+		`{"metric_defaults":{"device:station":["a","b","c","d","e","f","g"]}}`,
+	} {
+		if _, err := (&Service{}).validateConfig(context.Background(), uuid.New(), "organization", json.RawMessage(raw)); err == nil {
+			t.Fatalf("invalid defaults accepted: %s", raw)
+		}
 	}
 }

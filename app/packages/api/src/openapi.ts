@@ -6765,6 +6765,10 @@ export interface components {
             device_ids?: string[];
             /** @description Preferred metrics; all other metrics remain accessible. */
             telemetry_stream_ids?: string[];
+            /** @description Ordered metric codes by device type (device:<device_type>); unavailable metrics are skipped for the current device or node. */
+            metric_defaults?: {
+                [key: string]: string[];
+            };
             /** @default 24 */
             trend_hours: number;
             description?: string;
@@ -6778,7 +6782,7 @@ export interface components {
              * @default technology
              * @enum {string}
              */
-            presentation: "technology" | "panorama";
+            presentation: "technology" | "panorama" | "deep-blue";
             /** @default true */
             show_images: boolean;
             /** @default true */

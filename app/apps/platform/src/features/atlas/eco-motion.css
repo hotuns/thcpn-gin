@@ -1,0 +1,66 @@
+/* Interaction durations use the existing transitions.dev token scale. Ambient loops are slower. */
+.eco-screen {
+ --panel-open-dur:var(--duration-slow,400ms); --panel-close-dur:var(--duration-medium,350ms);
+ --panel-translate-y:12px; --panel-blur:2px; --panel-ease:var(--ease-smooth-out,cubic-bezier(.22,1,.36,1));
+ --eco-stagger:40ms; --eco-ambient:6s; --eco-scan:8s;
+ --stagger-dur:500ms; --stagger-distance:12px; --stagger-stagger:40ms; --stagger-blur:3px; --stagger-ease:cubic-bezier(.22,1,.36,1);
+}
+/* transitions.dev texts-reveal hooks; each line enters once. */
+.t-stagger-line {
+ display:block; opacity:0; transform:translateY(var(--stagger-distance)); filter:blur(var(--stagger-blur));
+ transition:opacity var(--stagger-dur) var(--stagger-ease),transform var(--stagger-dur) var(--stagger-ease),filter var(--stagger-dur) var(--stagger-ease);
+ will-change:transform,opacity,filter;
+}
+.t-stagger-line--2 { transition-delay:var(--stagger-stagger); }
+.t-stagger.is-shown .t-stagger-line { opacity:1; transform:translateY(0); filter:blur(0); }
+.t-stagger.is-hiding .t-stagger-line { opacity:0; transform:translateY(0); filter:blur(0); transition:opacity 200ms ease,transform 0s linear,filter 0s linear; transition-delay:0s; }
+.eco-screen .eco-overview.t-panel-slide { transition-delay:var(--eco-stagger); }
+.eco-screen .eco-device-panel.t-panel-slide { transition-delay:calc(var(--eco-stagger) * 2); }
+.eco-screen .eco-distribution.t-panel-slide { transition-delay:calc(var(--eco-stagger) * 3); }
+.eco-screen .eco-device-inspector.t-panel-slide { transition-delay:calc(var(--eco-stagger) * 3); }
+.eco-screen .eco-panel::before,.eco-screen .eco-inspector::before { animation:eco-frame-breathe var(--eco-ambient) ease-in-out infinite; }
+.eco-screen .eco-header-traces .eco-trace-halo { animation:eco-trace-breathe var(--eco-ambient) ease-in-out infinite; }
+.eco-screen .eco-panel-title,.eco-screen .eco-section-heading { overflow:hidden; }
+.eco-screen .eco-panel-title::after,.eco-screen .eco-section-heading::after {
+ content:""; position:absolute; left:0; bottom:0; width:48px; height:1px; pointer-events:none;
+ background:linear-gradient(90deg,transparent,#9dffff,transparent); box-shadow:0 0 7px #20dfff;
+ animation:eco-heading-scan var(--eco-scan) linear infinite;
+}
+.eco-screen .eco-device-panel .eco-panel-title::after { animation-delay:-2s; }
+.eco-screen .eco-distribution .eco-panel-title::after { animation-delay:-4s; }
+.eco-screen .eco-trend:nth-child(2) .eco-section-heading::after { animation-delay:-3s; }
+.eco-screen .eco-observation-row {
+ transition:transform var(--duration-fast,250ms) var(--ease-smooth-out,cubic-bezier(.22,1,.36,1)),border-color var(--duration-fast,250ms) ease,box-shadow var(--duration-fast,250ms) ease;
+}
+.eco-screen .eco-observation-row:hover { transform:translateX(2px); box-shadow:inset 2px 0 #38e6f3,inset 0 0 18px #15c8ec15; }
+.eco-screen .eco-type-switch > button { transition:color var(--duration-fast,250ms) ease,background-color var(--duration-fast,250ms) ease,box-shadow var(--duration-fast,250ms) ease; }
+.eco-screen .eco-type-switch > button > svg { transition:transform var(--duration-fast,250ms) var(--ease-smooth-out,cubic-bezier(.22,1,.36,1)); }
+.eco-screen .eco-type-switch > button:hover > svg { transform:translateY(-3px); }
+.eco-screen .eco-node-table tbody tr,.eco-screen .eco-device-rows > button { animation:eco-row-enter var(--duration-medium,350ms) var(--ease-smooth-out,cubic-bezier(.22,1,.36,1)) both; }
+.eco-screen .eco-node-table tbody tr:nth-child(2),.eco-screen .eco-device-rows > button:nth-child(2) { animation-delay:40ms; }
+.eco-screen .eco-node-table tbody tr:nth-child(3),.eco-screen .eco-device-rows > button:nth-child(3) { animation-delay:80ms; }
+.eco-screen .eco-node-table tbody tr:nth-child(4),.eco-screen .eco-device-rows > button:nth-child(4) { animation-delay:120ms; }
+.eco-screen .eco-distribution-bars i { transform-origin:left; animation:eco-bar-enter var(--duration-very-slow,500ms) var(--ease-smooth-out,cubic-bezier(.22,1,.36,1)) both; }
+.eco-screen .eco-photo img { transition:transform var(--duration-slow,400ms) var(--ease-smooth-out,cubic-bezier(.22,1,.36,1)); }
+.eco-screen .eco-photo:hover img { transform:scale(1.04); }
+.eco-screen .eco-network-halo { transform-box:fill-box; transform-origin:center; animation:eco-ground-breathe 4s ease-in-out infinite; }
+@keyframes eco-frame-breathe { 0%,100% { opacity:.65; } 50% { opacity:1; } }
+@keyframes eco-trace-breathe { 0%,100% { opacity:.35; } 50% { opacity:.65; } }
+@keyframes eco-heading-scan { 0% { transform:translateX(-100%); opacity:0; } 8% { opacity:.8; } 65% { opacity:.7; } 85%,100% { transform:translateX(1000%); opacity:0; } }
+@keyframes eco-row-enter { from { opacity:0; } to { opacity:1; } }
+@keyframes eco-bar-enter { from { transform:scaleX(0); } to { transform:scaleX(1); } }
+@keyframes eco-ground-breathe { 0%,100% { transform:scale(1); opacity:.5; } 50% { transform:scale(1.12); opacity:.85; } }
+/* Pausing never hides data or makes a selected control jump. */
+.eco-screen[data-observatory-motion="paused"] *,
+.eco-screen[data-observatory-motion="paused"] *::before,
+.eco-screen[data-observatory-motion="paused"] *::after { animation-play-state:paused; transition:none; }
+.eco-screen[data-observatory-motion="paused"] .t-panel-slide,
+.eco-screen[data-observatory-motion="paused"] .t-stagger-line { opacity:1; transform:none; filter:none; }
+.eco-screen[data-observatory-motion="paused"] .eco-node-table tbody tr,
+.eco-screen[data-observatory-motion="paused"] .eco-device-rows > button,
+.eco-screen[data-observatory-motion="paused"] .eco-distribution-bars i { animation:none; }
+@media (prefers-reduced-motion:reduce) {
+ .t-stagger-line { transition:none !important; }
+ .eco-screen *,.eco-screen *::before,.eco-screen *::after { animation:none !important; transition:none !important; }
+ .eco-screen .t-panel-slide,.eco-screen .t-stagger-line { opacity:1; transform:none; filter:none; }
+}

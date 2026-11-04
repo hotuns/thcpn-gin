@@ -146,7 +146,7 @@ func TestDemoLoginUsesSelectedDevicesWithoutPermissionSetup(t *testing.T) {
 	if err := json.Unmarshal(request("GET", workspacePath+"/wallboards", "", 200), &atlas); err != nil || !atlas.CanManage {
 		t.Fatalf("demo cannot use atlas: %v %+v", err, atlas)
 	}
-	board := request("POST", workspacePath+"/wallboards", fmt.Sprintf(`{"name":"Demo map","template_code":"atlas-tech","config":{"device_ids":[%q],"telemetry_stream_ids":[%q],"trend_hours":24}}`, child, childStream), 201)
+	board := request("POST", workspacePath+"/wallboards", fmt.Sprintf(`{"name":"Demo map","template_code":"atlas-tech","config":{"presentation":"deep-blue","device_ids":[%q],"telemetry_stream_ids":[%q],"trend_hours":24}}`, child, childStream), 201)
 	var saved struct {
 		ID uuid.UUID `json:"id"`
 	}

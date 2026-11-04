@@ -1,0 +1,12 @@
+/* Accents stay on small data and category cues; the screen chrome stays blue. */
+.eco-screen {
+ --eco-gold:#d6b37c; --eco-mint:#86c9ad; --eco-violet:#aca0cf;
+}
+.eco-screen .eco-overview-count[data-tone="gold"] > svg { color:var(--eco-gold); }
+.eco-screen .eco-overview-count[data-tone="mint"] > svg { color:var(--eco-mint); }
+.eco-screen [data-kind="standalone"] { --eco-category:var(--eco-gold); }
+.eco-screen [data-kind="network"] { --eco-category:var(--eco-cyan); }
+.eco-screen [data-kind="carbon_sink"] { --eco-category:var(--eco-mint); }
+.eco-screen [data-kind="camera"] { --eco-category:var(--eco-violet); }
+.eco-screen .eco-type-switch > button:not([aria-pressed="true"]) > svg { color:var(--eco-category); }
+.eco-screen .eco-distribution-bars i { background:linear-gradient(90deg,color-mix(in srgb,var(--eco-category) 58%,#174065),var(--eco-category)); }
