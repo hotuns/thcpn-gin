@@ -1,5 +1,6 @@
 import { AdminDeviceDeletion } from "./admin-device-deletion";
 import { usePlatformBaseUrl } from "./deployment-address";
+import { DeviceClaimLabelPrint } from "./device-claim-label-print";
 import { AdminReportedLocation } from "./admin-reported-location";
 import { LoRaGatewayStatus } from "./lorawan-gateway-status";
 import { confirmManualSync } from "./manual-sync-confirm";
@@ -1115,6 +1116,7 @@ function DeviceDetailPanel({
 
 function ClaimCredentialSection({ device, date }: { device: JsonRecord; date: (input: unknown) => string }) {
   const deviceId = value(device.id, "");
+  const [printOpen, setPrintOpen] = useState(false);
   const query = useQuery({
     queryKey: ["admin", "device", deviceId, "claim-credential"],
     queryFn: () => api.admin.deviceClaimCredential(deviceId),
@@ -1122,21 +1124,13 @@ function ClaimCredentialSection({ device, date }: { device: JsonRecord; date: (i
   const credential = query.data;
   const configuredBase = (import.meta as ImportMeta & { env?: Record<string, string> }).env?.VITE_DEVICE_CLAIM_BASE_URL;
   const publicBase = usePlatformBaseUrl(configuredBase);
-  const claimUrl = credential ? `${publicBase}${credential.claim_path}` : "";
-  const print = async () => {
-    if (!credential) return;
-    const popup = window.open("", "_blank", "width=520,height=720");
-    if (!popup) return;
-    const svg = document.getElementById(`claim-qr-${deviceId}`)?.outerHTML ?? "";
-    popup.document.write(`<title>设备永久铭牌</title><style>body{font-family:system-ui;padding:32px;text-align:center}h1{font-size:22px}.code{font:700 22px ui-monospace;margin:16px}.sn{font:16px ui-monospace;color:#475569}svg{margin:24px}</style><h1>${credential.device_name}</h1>${svg}<div class="sn">SN ${credential.serial_no}</div><div class="code">${credential.manual_code}</div><p>扫码登录后认领设备</p>`);
-    popup.document.close();
-    popup.focus();
-    popup.print();
+  const claimUrl = credential?.claim_path ? `${publicBase}${credential.claim_path}` : "";
+  const recordPrint = async () => {
     await api.admin.markDeviceClaimCredentialPrinted(deviceId);
     await query.refetch();
   };
   return <section className="admin-detail-section">
-    <div className="admin-detail-section-head"><div><h2>永久认领铭牌</h2><span>二维码和手动认领码永久有效，可在设备解绑后重复使用</span></div>{credential ? <Space><Button onClick={() => void navigator.clipboard.writeText(`${claimUrl}\nSN: ${credential.serial_no}\n认领码: ${credential.manual_code}`)}>复制</Button><Button type="primary" onClick={() => void print()}>打印铭牌</Button></Space> : null}</div>
+    <div className="admin-detail-section-head"><div><h2>永久认领铭牌</h2><span>二维码和手动认领码永久有效，可在设备解绑后重复使用</span></div>{credential ? <Space><Button onClick={() => void navigator.clipboard.writeText(`${claimUrl}\nSN: ${credential.serial_no}\n认领码: ${credential.manual_code}`)}>复制</Button><Button type="primary" onClick={() => setPrintOpen(true)}>打印铭牌</Button></Space> : null}</div>
     {query.isLoading ? <div className="admin-inline-loading">正在加载永久铭牌…</div> : query.error ? <Alert type="warning" showIcon title="永久铭牌加载失败" description={formatApiError(query.error).message} /> : credential ? <div className="admin-claim-credential">
       <QRCodeSVG id={`claim-qr-${deviceId}`} value={claimUrl} size={148} level="M" marginSize={2} />
       <Descriptions bordered size="small" column={1} items={[
@@ -1147,6 +1141,8 @@ function ClaimCredentialSection({ device, date }: { device: JsonRecord; date: (i
         { key: "printed", label: "最近打印", children: date(credential.printed_at) },
       ]} />
     </div> : null}
+    {credential ? <DeviceClaimLabelPrint open={printOpen} onClose={() => setPrintOpen(false)}
+      claimUrl={claimUrl} serialNo={credential.serial_no} manualCode={credential.manual_code ?? ""} onPrinted={recordPrint} /> : null}
   </section>;
 }
 
