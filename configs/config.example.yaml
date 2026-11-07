@@ -1,6 +1,11 @@
 server:
   addr: ":8080"
 
+deployment:
+  # Environment PLATFORM_PUBLIC_URL overrides this. Empty uses the frontend's
+  # configured/current origin; production is https://ieswatch.com.
+  public_base_url: ""
+
 logger:
   level: "info"
   format: "json"

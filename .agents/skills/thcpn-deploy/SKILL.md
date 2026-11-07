@@ -18,7 +18,7 @@ description: 提交并部署 thcpn-gin 原位生态云项目到既有 Docker Com
 - 后端使用 .deploy/Dockerfile.prebuilt，COPY .deploy/api、worker、adminctl。
 - 服务器 x86_64；本地交叉编译 CGO_ENABLED=0 GOOS=linux GOARCH=amd64。
 - 用户端和后台 Docker 镜像由 app/Dockerfile 的 platform/admin target 构建。
-- 公网 https://www.insitueco.com；用户端 5173、后台 5174、API 127.0.0.1:18081。
+- 公网目标地址 https://ieswatch.com；切换步骤与入口配置见 docs/deployment-domain.md 和 scripts/deploy/Caddyfile.ieswatch。部署前核实 Caddy、证书和实际生效的平台访问地址，不能仅修改文档即认为域名已上线。用户端 5173、后台 5174、API 127.0.0.1:18081。
 - 数据库和 Redis 容器为 thcpn-gin-postgres-1 / thcpn-gin-redis-1。
 - .deploy/deployed-commit 记录后端版本；platform-deployed-commit / admin-deployed-commit 分别记录两套前端版本。纯前端发布不要改后端标记。
 - 本地 make run-all 的 API 使用 18080，不能当作服务器端口。

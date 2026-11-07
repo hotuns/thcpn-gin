@@ -85,8 +85,10 @@ func TestSettingsPersistAuditAndFreezeInFlightContext(t *testing.T) {
 }
 func TestSettingsMigrationDownUp(t *testing.T) {
 	pool := testdb.Open(t, 0)
+	testdb.Apply(t, pool, "../../migrations/000056_deployment_public_url.down.sql")
 	testdb.Apply(t, pool, "../../migrations/000052_system_settings.down.sql")
 	testdb.Apply(t, pool, "../../migrations/000052_system_settings.up.sql")
+	testdb.Apply(t, pool, "../../migrations/000056_deployment_public_url.up.sql")
 	if _, err := New(pool, config.Default()).Load(t.Context()); err != nil {
 		t.Fatal(err)
 	}

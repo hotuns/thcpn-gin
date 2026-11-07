@@ -1,4 +1,4 @@
-import { policyLimit } from "../../shared/config/system-policy";
+import { policyLimit, useSystemPolicy } from "../../shared/config/system-policy";
 import { useMemo, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Download, Globe2, LockKeyhole, Pencil, Printer } from "lucide-react";
@@ -11,6 +11,7 @@ const formatTime = (value?: string) => value
   : "—";
 
 export function DevicePublicAccessPanel({ device }: { device: Device }) {
+  const policy = useSystemPolicy();
   const client = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [feedback, setFeedback] = useState("");
@@ -22,8 +23,8 @@ export function DevicePublicAccessPanel({ device }: { device: Device }) {
   const forbidden = formatApiError(query.error).status === 403;
   const publication = query.data;
   const publicUrl = useMemo(
-    () => publication?.public_slug ? `${window.location.origin}/public/devices/${publication.public_slug}` : "",
-    [publication?.public_slug],
+    () => publication?.public_slug ? `${(policy.data?.public_base_url || window.location.origin).replace(/\/+$/, "")}/public/devices/${publication.public_slug}` : "",
+    [publication?.public_slug, policy.data?.public_base_url],
   );
   if (forbidden) return null;
   if (query.isLoading) return <Panel><StateView type="loading" title="正在加载公开访问" description="正在读取设备公开设置。" /></Panel>;

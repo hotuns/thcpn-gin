@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"thcpn-gin/internal/notification"
+	"thcpn-gin/internal/systemsettings"
 	"thcpn-gin/internal/telemetry"
 )
 
@@ -37,12 +38,15 @@ type Evaluator struct {
 	billing   ProfessionalGate
 	notifier  UserNotifier
 	mailer    Mailer
+	settings  *systemsettings.Service
 	now       func() time.Time
 }
 
 func NewEvaluator(db *pgxpool.Pool, reader TelemetryReader, gate ProfessionalGate, notifier UserNotifier, mailer Mailer) *Evaluator {
 	return &Evaluator{db: db, telemetry: reader, billing: gate, notifier: notifier, mailer: mailer, now: func() time.Time { return time.Now().UTC() }}
 }
+
+func (e *Evaluator) SetSettings(settings *systemsettings.Service) { e.settings = settings }
 
 type evaluationRule struct {
 	ID, WorkspaceID, DeviceID uuid.UUID
@@ -285,6 +289,9 @@ func (e *Evaluator) deliver(ctx context.Context, limit int) error {
 		}
 		list = append(list, d)
 	}
+	var emailBaseURL string
+	var emailSettingsErr error
+	emailSettingsLoaded := false
 	for _, d := range list {
 		action := fmt.Sprintf("/alerts?event=%s", d.eventID)
 		level := "warning"
@@ -308,7 +315,25 @@ func (e *Evaluator) deliver(ctx context.Context, limit int) error {
 		} else if e.mailer == nil {
 			sendErr = fmt.Errorf("SMTP is not configured")
 		} else {
-			sendErr = e.mailer.SendAlert(ctx, AlertEmail{To: *d.email, Subject: title, Title: title, Content: d.content, ActionURL: action})
+			// Read once per delivery batch so a domain change takes effect without
+			// restarting Worker. In-app notifications retain their relative path.
+			if !emailSettingsLoaded {
+				if e.settings != nil {
+					var settings systemsettings.Snapshot
+					settings, emailSettingsErr = e.settings.Load(ctx)
+					emailBaseURL = settings.PublicBaseURL
+				}
+				emailSettingsLoaded = true
+			}
+			if emailSettingsErr != nil {
+				sendErr = emailSettingsErr
+			} else {
+				emailAction := ""
+				if emailBaseURL != "" {
+					emailAction = emailBaseURL + action
+				}
+				sendErr = e.mailer.SendAlert(ctx, AlertEmail{To: *d.email, Subject: title, Title: title, Content: d.content, ActionURL: emailAction})
+			}
 		}
 		if skipped {
 			_, err = e.db.Exec(ctx, `UPDATE alert_deliveries SET status='skipped',last_error='recipient has no verified email',updated_at=now() WHERE id=$1`, d.id)

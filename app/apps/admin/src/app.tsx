@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { AdminNavigation } from "./admin-navigation";
+import { usePlatformBaseUrl } from "./deployment-address";
 import { useQuery } from "@tanstack/react-query";
 import {
   Link,
@@ -154,11 +155,8 @@ const adminNav = [
   { to: "/admin/administrators", key: "administrators", icon: UsersRound, group: "system" },
   { to: "/admin/settings", key: "settings", icon: Settings, group: "system" },
 ] as const;
-const platformUrl =
-  (import.meta.env.VITE_PLATFORM_URL as string | undefined) ??
-  "http://127.0.0.1:5173";
-
 function AdminShell() {
+  const platformUrl = usePlatformBaseUrl();
   const { locale, setLocale, t } = useLocale();
   const { resolvedTheme, setTheme } = useTheme();
   const location = useLocation();
@@ -368,6 +366,7 @@ function AdminShell() {
 }
 
 function Forbidden() {
+  const platformUrl = usePlatformBaseUrl();
   return (
     <Panel className="forbidden">
       <StateView
@@ -401,6 +400,7 @@ function AdminGuard() {
 }
 
 function AdminLoginPage() {
+  const platformUrl = usePlatformBaseUrl();
   const { t } = useLocale();
   const { resolvedTheme, setTheme } = useTheme();
   const { admin, loading, signIn } = useAdminAuth();

@@ -6495,8 +6495,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 获取用户端公开业务限制
-         * @description 无需登录；只返回公开参数，不包含基础设施、密钥或内部运维参数。客户端应以当前响应作为输入与分页上限。
+         * 获取用户端公开业务限制和平台访问地址
+         * @description 无需登录；只返回公开参数和平台访问地址，不包含基础设施、密钥或内部运维参数。客户端以当前响应作为输入与分页上限，生成对外链接时优先使用 public_base_url。
          */
         get: {
             parameters: {
@@ -6556,8 +6556,8 @@ export interface paths {
             };
         };
         /**
-         * 修改系统业务配置
-         * @description 按字段更新；整数值由服务端统一校验。与配置历史、审计日志一起提交事务。新请求和新任务使用新配置，已执行任务不变。
+         * 修改系统业务配置和平台访问地址
+         * @description 按字段更新；values 和 public_base_url 至少提供一项。数值与地址由服务端统一校验，与配置历史、审计日志一起提交事务。新请求和新任务使用新配置，已执行任务不变。平台访问地址只影响生成的对外链接，不变更 DNS、HTTPS、反向代理、API 请求源或设备接入地址。
          */
         put: {
             parameters: {
@@ -6569,9 +6569,16 @@ export interface paths {
             requestBody: {
                 content: {
                     "application/json": {
-                        values: {
+                        values?: {
                             [key: string]: number;
                         };
+                        /**
+                         * @description 平台用户端访问地址，仅允许 http/https 的完整 origin，可含端口，不得含路径、用户名、密码、查询参数或片段。省略表示保持原值；空字符串恢复 PLATFORM_PUBLIC_URL 启动配置。根路径末尾斜线会移除。
+                         * @example https://ieswatch.com
+                         * @example http://192.168.1.10:8088
+                         * @example
+                         */
+                        public_base_url?: string;
                         reason: string;
                     };
                 };
@@ -6779,6 +6786,8 @@ export interface components {
             values: {
                 [key: string]: number;
             };
+            /** @description 当前生效的平台用户端访问地址；空字符串表示未配置，前端沿用部署构建值或当前访问地址。 */
+            public_base_url: string;
             /** Format: int64 */
             version: number;
             billing_enabled: boolean;
@@ -6800,6 +6809,8 @@ export interface components {
             defaults: {
                 [key: string]: number;
             };
+            /** @description PLATFORM_PUBLIC_URL 或 YAML 中的启动配置，恢复默认时使用。 */
+            default_public_base_url?: string;
             fields: components["schemas"]["SystemSettingField"][];
         };
         SystemSettingsChange: {
@@ -6812,6 +6823,10 @@ export interface components {
             after: {
                 [key: string]: number;
             };
+            /** @description 修改前生效的平台访问地址；旧记录为空。 */
+            before_public_base_url: string;
+            /** @description 修改后生效的平台访问地址；旧记录为空。 */
+            after_public_base_url: string;
             reason: string;
             /** Format: date-time */
             created_at: string;

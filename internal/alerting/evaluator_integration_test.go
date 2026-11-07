@@ -9,6 +9,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"thcpn-gin/internal/config"
+	"thcpn-gin/internal/notification"
+	"thcpn-gin/internal/systemsettings"
 	"thcpn-gin/internal/telemetry"
 	"thcpn-gin/internal/testdb"
 )
@@ -17,6 +20,80 @@ type scanTelemetryReader func(context.Context, telemetry.QueryInput) (telemetry.
 
 func (f scanTelemetryReader) QueryInternal(ctx context.Context, input telemetry.QueryInput) (telemetry.QueryResult, error) {
 	return f(ctx, input)
+}
+
+type deliveryTestMailer struct{ messages []AlertEmail }
+
+func (m *deliveryTestMailer) SendAlert(_ context.Context, message AlertEmail) error {
+	m.messages = append(m.messages, message)
+	return nil
+}
+
+type deliveryTestNotifier struct{ messages []notification.SendInput }
+
+func (n *deliveryTestNotifier) SendToUser(_ context.Context, _, _ uuid.UUID, message notification.SendInput) error {
+	n.messages = append(n.messages, message)
+	return nil
+}
+
+func TestAlertEmailUsesCurrentDeploymentURL(t *testing.T) {
+	db := testdb.Open(t, 0)
+	ctx := t.Context()
+	mustExec := func(query string, args ...any) {
+		t.Helper()
+		if _, err := db.Exec(ctx, query, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	userID, workspaceID, deviceID, ruleID, eventID := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	mustExec(`INSERT INTO users(id,name,email,email_verified_at) VALUES($1,'Delivery test','delivery@test.invalid',now())`, userID)
+	mustExec(`INSERT INTO workspaces(id,type,organization_type,name,owner_user_id) VALUES($1,'organization','lab','Delivery test',$2)`, workspaceID, userID)
+	mustExec(`INSERT INTO devices(id,name,device_type) VALUES($1,'Delivery device','standalone')`, deviceID)
+	mustExec(`INSERT INTO alert_rules(id,workspace_id,name,type,severity,device_id,offline_after_seconds,channels,created_by) VALUES($1,$2,'Offline test','device_offline','warning',$3,600,ARRAY['in_app','email'],$4)`, ruleID, workspaceID, deviceID, userID)
+	mustExec(`INSERT INTO alert_events(id,rule_id,workspace_id,device_id,severity,title,content) VALUES($1,$2,$3,$4,'warning','Device offline','No recent readings')`, eventID, ruleID, workspaceID, deviceID)
+	mustExec(`INSERT INTO alert_deliveries(event_id,user_id,channel,kind) VALUES($1,$2,'email','triggered'),($1,$2,'in_app','triggered')`, eventID, userID)
+	mustExec(`INSERT INTO system_settings(singleton) VALUES(true) ON CONFLICT DO NOTHING`)
+	cfg := config.Default()
+	cfg.Deployment.PublicBaseURL = "https://startup.example"
+	mailer, notifier := &deliveryTestMailer{}, &deliveryTestNotifier{}
+	evaluator := NewEvaluator(db, nil, nil, notifier, mailer)
+	evaluator.SetSettings(systemsettings.New(db, cfg))
+	path := "/alerts?event=" + eventID.String()
+	for _, tc := range []struct {
+		name, stored, want string
+	}{
+		{"startup setting", "", "https://startup.example"},
+		{"configured public domain", "https://ieswatch.com", "https://ieswatch.com"},
+		{"changed without worker restart", "http://site.lan:8088", "http://site.lan:8088"},
+		{"restored startup setting", "", "https://startup.example"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mustExec(`UPDATE system_settings SET public_base_url=NULLIF($1,'') WHERE singleton=true`, tc.stored)
+			mustExec(`UPDATE alert_deliveries SET status='pending',attempts=0,next_attempt_at=now()`)
+			mailer.messages, notifier.messages = nil, nil
+			if err := evaluator.deliver(ctx, 10); err != nil {
+				t.Fatal(err)
+			}
+			if len(mailer.messages) != 1 || mailer.messages[0].ActionURL != tc.want+path {
+				t.Fatalf("email action: %+v, want %s", mailer.messages, tc.want+path)
+			}
+			if len(notifier.messages) != 1 || notifier.messages[0].ActionURL != path {
+				t.Fatalf("in-app action: %+v, want %s", notifier.messages, path)
+			}
+		})
+	}
+
+	// An installation with no public address sends the alert text, not a broken
+	// relative link that a mail client would try to open outside the application.
+	evaluator.SetSettings(systemsettings.New(db, config.Default()))
+	mustExec(`UPDATE alert_deliveries SET status='pending',attempts=0,next_attempt_at=now()`)
+	mailer.messages = nil
+	if err := evaluator.deliver(ctx, 10); err != nil {
+		t.Fatal(err)
+	}
+	if len(mailer.messages) != 1 || mailer.messages[0].ActionURL != "" || mailer.messages[0].Content != "No recent readings" {
+		t.Fatalf("unconfigured domain email: %+v", mailer.messages)
+	}
 }
 
 type scanProfessionalGate func(context.Context, uuid.UUID) error

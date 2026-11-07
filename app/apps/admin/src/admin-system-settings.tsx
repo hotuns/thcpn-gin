@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, App, Button, Card, Col, Drawer, Form, Input, InputNumber, Modal, Row, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { api, formatApiError, type SystemSettingField, type SystemSettingsChange } from "@thcpn/api";
+import { AdminDeploymentSettings } from "./admin-deployment-settings";
 
 const key = ["admin", "system-settings"];
 export function AdminSystemSettings() {
@@ -50,11 +51,14 @@ export function AdminSystemSettings() {
     return `启动默认值 ${query.data?.defaults[field.key]} ${field.unit}`;
   };
   const changeRows = confirmation ? fields.filter(field => field.key in confirmation).map(field => ({ ...field, before: query.data?.values[field.key], after: confirmation[field.key] })) : [];
-  const historyDiff = (item: SystemSettingsChange) => fields.filter(field => item.before[field.key] !== item.after[field.key]).map(field => ({ ...field, before: item.before[field.key], after: item.after[field.key] }));
-  const diffColumns = [
-    { title: "配置项", dataIndex: "label" }, { title: "修改前", dataIndex: "before" }, { title: "修改后", dataIndex: "after" }, { title: "单位", dataIndex: "unit" },
+  const historyDiff = (item: SystemSettingsChange) => [
+    ...fields.filter(field => item.before[field.key] !== item.after[field.key]).map(field => ({ ...field, before: item.before[field.key], after: item.after[field.key] })),
+    ...(item.before_public_base_url !== item.after_public_base_url ? [{ key: "public_base_url", label: "用户端访问地址", unit: "—", before: item.before_public_base_url || "使用前端默认地址，未配置时随当前访问地址", after: item.after_public_base_url || "使用前端默认地址，未配置时随当前访问地址" }] : []),
   ];
-  return <Card title="业务参数" extra={<Space><Tag>版本 {query.data?.version ?? 0}</Tag><Button onClick={() => setHistoryOpen(true)}>修改记录</Button><Button onClick={() => void query.refetch()}>刷新配置</Button></Space>} loading={query.isLoading}>
+  const diffColumns = [
+    { title: "配置项", dataIndex: "label" }, { title: "修改前", dataIndex: "before", render: (value: string | number) => <span style={{ wordBreak: "break-all" }}>{value}</span> }, { title: "修改后", dataIndex: "after", render: (value: string | number) => <span style={{ wordBreak: "break-all" }}>{value}</span> }, { title: "单位", dataIndex: "unit" },
+  ];
+  return <Space orientation="vertical" size="middle" style={{ width: "100%" }}><AdminDeploymentSettings onHistory={() => setHistoryOpen(true)} /><Card title="业务参数" extra={<Space><Tag>版本 {query.data?.version ?? 0}</Tag><Button onClick={() => setHistoryOpen(true)}>修改记录</Button><Button onClick={() => void query.refetch()}>刷新配置</Button></Space>} loading={query.isLoading}>
     {query.error ? <Alert type="error" message={formatApiError(query.error).message} action={<Button onClick={() => void query.refetch()}>重试</Button>} /> : <>
       <Alert type="info" message="修改影响全平台。保存前确认变更内容并填写原因；新请求使用新值，正在执行的导出保持启动时的配置。" style={{ marginBottom: 16 }} />
       <Tabs activeKey={active} onChange={setActive} items={groups.map(group => ({ key: group, label: group }))} />
@@ -76,6 +80,6 @@ export function AdminSystemSettings() {
         { title: "修改人", dataIndex: "actor_name" }, { title: "原因", dataIndex: "reason" },
       ]} />}
     </Drawer>
-    <Typography.Paragraph type="secondary" style={{ marginTop: 16, marginBottom: 0 }}>数据库连接、对象存储密钥、服务地址和 Worker 并发等部署参数继续由服务器配置维护。</Typography.Paragraph>
-  </Card>;
+    <Typography.Paragraph type="secondary" style={{ marginTop: 16, marginBottom: 0 }}>数据库连接、对象存储密钥、内部服务地址和 Worker 并发等部署参数继续由服务器配置维护。</Typography.Paragraph>
+  </Card></Space>;
 }

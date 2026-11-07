@@ -554,9 +554,9 @@ export const formatApiError = (error: unknown) => {
 };
 
 export type SystemSettingField = {key:string;group:string;label:string;default:number;min:number;max:number;unit:string;kind?:"switch"};
-export type SystemPolicy = {values:Record<string,number>;version:number;billing_enabled:boolean;updated_at?:string};
-export type SystemSettings = SystemPolicy & {defaults:Record<string,number>;fields:SystemSettingField[]};
-export type SystemSettingsChange = {id:number;actor_name:string;before:Record<string,number>;after:Record<string,number>;reason:string;created_at:string};
+export type SystemPolicy = {values:Record<string,number>;version:number;billing_enabled:boolean;public_base_url:string;updated_at?:string};
+export type SystemSettings = SystemPolicy & {defaults:Record<string,number>;fields:SystemSettingField[];default_public_base_url?:string};
+export type SystemSettingsChange = {id:number;actor_name:string;before:Record<string,number>;after:Record<string,number>;before_public_base_url:string;after_public_base_url:string;reason:string;created_at:string};
 
 export const api = {
   dashboard: (workspaceId: string, days: 7 | 30 = 7) =>
@@ -1210,6 +1210,7 @@ export const api = {
     settings: {
       get: () => request<SystemSettings>("/api/v1/admin/settings"),
       update: (values:Record<string,number>, reason:string) => jsonRequest<SystemSettings>("/api/v1/admin/settings","PUT",{values,reason}),
+      updateDeployment: (publicBaseUrl:string, reason:string) => jsonRequest<SystemSettings>("/api/v1/admin/settings","PUT",{public_base_url:publicBaseUrl,reason}),
       history: () => request<ListResponse<SystemSettingsChange>>("/api/v1/admin/settings/history"),
     },
     workspaces: {

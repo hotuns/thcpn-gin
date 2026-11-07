@@ -61,6 +61,7 @@ services:
       - .env
     environment: &backend_environment
       SERVER_ADDR: ":8080"
+      PLATFORM_PUBLIC_URL: ${PLATFORM_PUBLIC_URL:-}
       PLATFORM_DATABASE_DSN: "postgres://${POSTGRES_USER:-thcpn}:${POSTGRES_PASSWORD:-thcpn_dev_password}@postgres:5432/${POSTGRES_DB:-thcpn_platform}?sslmode=disable"
       REDIS_ADDR: "redis:6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}

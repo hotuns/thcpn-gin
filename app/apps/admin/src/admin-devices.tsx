@@ -1,4 +1,5 @@
 import { AdminDeviceDeletion } from "./admin-device-deletion";
+import { usePlatformBaseUrl } from "./deployment-address";
 import { AdminReportedLocation } from "./admin-reported-location";
 import { LoRaGatewayStatus } from "./lorawan-gateway-status";
 import { confirmManualSync } from "./manual-sync-confirm";
@@ -1120,8 +1121,8 @@ function ClaimCredentialSection({ device, date }: { device: JsonRecord; date: (i
   });
   const credential = query.data;
   const configuredBase = (import.meta as ImportMeta & { env?: Record<string, string> }).env?.VITE_DEVICE_CLAIM_BASE_URL;
-  const fallbackBase = window.location.origin.replace(/:5174$/, ":5173");
-  const claimUrl = credential ? `${(configuredBase || fallbackBase).replace(/\/$/, "")}${credential.claim_path}` : "";
+  const publicBase = usePlatformBaseUrl(configuredBase);
+  const claimUrl = credential ? `${publicBase}${credential.claim_path}` : "";
   const print = async () => {
     if (!credential) return;
     const popup = window.open("", "_blank", "width=520,height=720");

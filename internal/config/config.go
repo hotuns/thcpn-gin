@@ -14,6 +14,7 @@ import (
 
 type Config struct {
 	Server               ServerConfig      `yaml:"server"`
+	Deployment           DeploymentConfig  `yaml:"deployment"`
 	Logger               LoggerConfig      `yaml:"logger"`
 	Database             DatabaseConfig    `yaml:"database"`
 	Redis                RedisConfig       `yaml:"redis"`
@@ -35,6 +36,10 @@ type Config struct {
 
 type ServerConfig struct {
 	Addr string `yaml:"addr"`
+}
+
+type DeploymentConfig struct {
+	PublicBaseURL string `yaml:"public_base_url"`
 }
 
 type LoggerConfig struct {
@@ -331,6 +336,11 @@ func Load() (Config, error) {
 	}
 
 	applyEnv(&cfg)
+	var err error
+	cfg.Deployment.PublicBaseURL, err = NormalizePublicBaseURL(cfg.Deployment.PublicBaseURL)
+	if err != nil {
+		return Config{}, err
+	}
 
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -379,6 +389,9 @@ func loadDotEnv() error {
 }
 
 func (cfg Config) Validate() error {
+	if _, err := NormalizePublicBaseURL(cfg.Deployment.PublicBaseURL); err != nil {
+		return err
+	}
 	if strings.TrimSpace(cfg.Server.Addr) == "" {
 		return errors.New("server.addr is required")
 	}
@@ -573,6 +586,7 @@ func (cfg Config) Validate() error {
 }
 
 func applyEnv(cfg *Config) {
+	cfg.Deployment.PublicBaseURL = envOr(cfg.Deployment.PublicBaseURL, "PLATFORM_PUBLIC_URL")
 	cfg.SMTP.Host = envOr(cfg.SMTP.Host, "SMTP_HOST")
 	cfg.SMTP.Username = envOr(cfg.SMTP.Username, "SMTP_USERNAME")
 	cfg.SMTP.Password = envOr(cfg.SMTP.Password, "SMTP_PASSWORD")

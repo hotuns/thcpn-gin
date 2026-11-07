@@ -34,7 +34,7 @@ JWT_SECRET=使用足够长的随机字符串
 ADMIN_JWT_SECRET=使用另一个随机字符串
 AUTH_DEV_USER_HEADER_ENABLED=false
 AUTH_DEV_REGISTER_ENABLED=false
-PLATFORM_PUBLIC_URL=https://你的平台域名
+PLATFORM_PUBLIC_URL=https://ieswatch.com
 ```
 
 使用 OSS 时填写 `OBJECT_STORE_*`；需要同步旧系统数据时填写对应数据源连接信息。不要把 `.env` 提交到 Git。
@@ -62,6 +62,8 @@ docker compose exec api adminctl create --name "系统管理员" --email admin@e
 - API 健康检查：<http://服务器地址:8080/healthz>
 
 用户平台也会把 `/admin/` 转发到后台，因此配置统一域名反向代理时可只暴露用户平台入口。
+
+平台访问地址可在后台「系统设置 → 部署地址」维护，用于返回用户平台、设备认领/公开二维码及预警邮件。数据库设置优先于 `PLATFORM_PUBLIC_URL`，恢复默认后使用启动配置。DNS、HTTPS、入口代理和第三方域名白名单需在对应服务配置，完整切换步骤见[域名部署与迁移](docs/deployment-domain.md)。
 
 ### 3. 常用运维命令
 
@@ -115,9 +117,9 @@ docker compose \
 ```bash
 docker compose ps
 curl -fsS http://127.0.0.1:18081/healthz
-curl -fsS https://www.insitueco.com/healthz
+curl -fsS https://ieswatch.com/healthz
 curl -sS -o /tmp/login.out -w '%{http_code}\n' \
-  -X POST https://www.insitueco.com/api/v1/auth/password/login \
+  -X POST https://ieswatch.com/api/v1/auth/password/login \
   -H 'Content-Type: application/json' \
   --data '{}'
 cat /tmp/login.out

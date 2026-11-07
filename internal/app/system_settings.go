@@ -23,7 +23,7 @@ func settingsMiddleware(service *systemsettings.Service) gin.HandlerFunc {
 	}
 }
 func registerSystemSettings(api, admin *gin.RouterGroup, service *systemsettings.Service, auditService *audit.Service) {
-	// Only public product constraints are exposed; no infrastructure credentials.
+	// Only public product constraints and the public site address are exposed.
 	api.GET("/system/policy", func(c *gin.Context) {
 		snapshot, err := service.Load(c.Request.Context())
 		if err != nil {
@@ -57,7 +57,7 @@ func registerSystemSettings(api, admin *gin.RouterGroup, service *systemsettings
 		}
 		var input systemsettings.UpdateInput
 		if err := c.ShouldBindJSON(&input); err != nil {
-			httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "配置值必须为整数，并填写修改原因"))
+			httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "业务参数必须为整数，平台访问地址必须为字符串，并填写修改原因"))
 			return
 		}
 		snapshot, err := service.Update(c.Request.Context(), input, systemsettings.Actor{ID: actor.UserID, IP: c.ClientIP(), UserAgent: c.Request.UserAgent(), RequestID: httpx.RequestIDFromContext(c)})

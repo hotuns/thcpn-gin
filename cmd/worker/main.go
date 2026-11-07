@@ -95,6 +95,7 @@ func run() int {
 		alertGate = billingService
 	}
 	alertEvaluator := alerting.NewEvaluator(pg, telemetryService, alertGate, notification.NewService(pg), alerting.NewSMTPSender(cfg.SMTP))
+	alertEvaluator.SetSettings(systemsettings.New(pg, cfg))
 	processor := export.NewProcessor(
 		pg,
 		dataSourceService,

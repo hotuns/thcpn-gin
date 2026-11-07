@@ -63,7 +63,10 @@ func (s *SMTPSender) SendAlert(ctx context.Context, message AlertEmail) error {
 	}
 	from := mail.Address{Name: s.config.FromName, Address: s.config.FromAddress}
 	subject := mime.QEncoding.Encode("UTF-8", message.Subject)
-	body := fmt.Sprintf("%s\n\n%s\n\n%s", message.Title, message.Content, message.ActionURL)
+	body := fmt.Sprintf("%s\n\n%s", message.Title, message.Content)
+	if message.ActionURL != "" {
+		body += "\n\n" + message.ActionURL
+	}
 	if _, err = fmt.Fprintf(writer, "From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s", from.String(), message.To, subject, body); err != nil {
 		return err
 	}

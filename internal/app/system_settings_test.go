@@ -74,4 +74,27 @@ func TestSystemSettingsAdministratorBoundary(t *testing.T) {
 	if w = request(http.MethodPut, "/api/v1/admin/settings", `{"values":{"query_points":2.5},"reason":"不接受非整数配置值"}`, token.AccessToken); w.Code != 400 {
 		t.Fatalf("fraction accepted: %s", w.Body.String())
 	}
+	urlPayload := `{"public_base_url":"https://ieswatch.com/","reason":"管理员更新平台访问地址"}`
+	if w = request(http.MethodPut, "/api/v1/admin/settings", urlPayload, outsider.AccessToken); w.Code != 401 {
+		t.Fatalf("outsider changed deployment URL: %s", w.Body.String())
+	}
+	if w = request(http.MethodPut, "/api/v1/admin/settings", urlPayload, token.AccessToken); w.Code != 200 {
+		t.Fatalf("URL-only update failed: %d %s", w.Code, w.Body.String())
+	}
+	w = request(http.MethodGet, "/api/v1/system/policy", "", "")
+	if err = json.Unmarshal(w.Body.Bytes(), &policy); err != nil || policy.PublicBaseURL != "https://ieswatch.com" || policy.Values["query_points"] != 37 {
+		t.Fatalf("public URL not updated or numeric settings lost: %s %v", w.Body.String(), err)
+	}
+	for _, invalid := range []string{`{"public_base_url":42,"reason":"不允许数值访问地址"}`, `{"public_base_url":"https://site.example/admin","reason":"不允许路径作为地址"}`, `{"public_base_url":"https://site.example","reason":"短"}`} {
+		if w = request(http.MethodPut, "/api/v1/admin/settings", invalid, token.AccessToken); w.Code != 400 {
+			t.Fatalf("invalid URL update accepted: %d %s", w.Code, w.Body.String())
+		}
+	}
+	if w = request(http.MethodPut, "/api/v1/admin/settings", `{"public_base_url":"","reason":"清除保存的平台地址"}`, token.AccessToken); w.Code != 200 {
+		t.Fatalf("URL reset failed: %d %s", w.Code, w.Body.String())
+	}
+	w = request(http.MethodGet, "/api/v1/system/policy", "", "")
+	if err = json.Unmarshal(w.Body.Bytes(), &policy); err != nil || policy.PublicBaseURL != "" {
+		t.Fatalf("public address not reset to unconfigured state: %s %v", w.Body.String(), err)
+	}
 }
