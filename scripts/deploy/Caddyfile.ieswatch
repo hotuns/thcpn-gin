@@ -1,11 +1,22 @@
 # Merge these site blocks into the host Caddyfile. Replace the existing
 # insitueco.com / www.insitueco.com blocks; preserve every unrelated service.
-# Caddy manages HTTPS certificates once DNS and ports 80/443 are ready.
+# New domains use TLS-ALPN-01 on public TCP 443 because HTTP-01 is blocked
+# upstream with HTTP 403. Caddy still manages issuance and renewal.
 ieswatch.com {
+	tls {
+		issuer acme {
+			disable_http_challenge
+		}
+	}
 	reverse_proxy 127.0.0.1:5173
 }
 
 www.ieswatch.com {
+	tls {
+		issuer acme {
+			disable_http_challenge
+		}
+	}
 	redir https://ieswatch.com{uri} permanent
 }
 
