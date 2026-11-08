@@ -83,8 +83,10 @@ export function DeviceClaimLabelPrint({ open, onClose, claimUrl, serialNo, manua
         <article className="claim-label" style={dimensions} ref={labelRef} aria-label="绑定标签预览">
           <h1>扫码绑定设备</h1>
           <div className="claim-label-qr"><QRCodeSVG value={claimUrl} size={256} level="M" marginSize={4} /></div>
-          <div className="claim-label-sn">SN {serialNo}</div>
-          <div className="claim-label-code">绑定码 {manualCode}</div>
+          <div className="claim-label-details">
+            <div className="claim-label-sn">SN {serialNo}</div>
+            <div className="claim-label-code">绑定码 {manualCode}</div>
+          </div>
         </article>
       </div>
     </div>

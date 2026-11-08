@@ -1,8 +1,7 @@
 .claim-label {
   box-sizing: border-box;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
-  gap: calc(0.55 * var(--claim-label-unit));
+  grid-template-rows: minmax(0, 1fr) calc(25 * var(--claim-label-unit)) minmax(0, 1fr);
   width: var(--claim-label-width);
   height: var(--claim-label-height);
   padding: calc(1.4 * var(--claim-label-unit));
@@ -17,7 +16,8 @@
 }
 
 .claim-label h1 {
-  margin: 0;
+  align-self: end;
+  margin: 0 0 calc(0.55 * var(--claim-label-unit));
   color: #000;
   font-size: calc(2.7 * var(--claim-label-unit));
   font-weight: 700;
@@ -47,13 +47,17 @@
   min-width: 0;
   font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
   font-size: calc(1.9 * var(--claim-label-unit));
+  font-weight: 400;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
 
-.claim-label-code {
-  font-size: calc(2.2 * var(--claim-label-unit));
-  font-weight: 700;
+.claim-label-details {
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.55 * var(--claim-label-unit));
+  margin-top: calc(0.55 * var(--claim-label-unit));
+  min-width: 0;
 }
 
 .claim-label-preview {
