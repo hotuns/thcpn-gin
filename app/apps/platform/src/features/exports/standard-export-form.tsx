@@ -71,7 +71,7 @@ export function StandardExportForm({
         </div>
           </section>
         </div>
-        <FormFooter feedback={feedback} count={selected.length} busy={busy} onClose={onClose} system="标准站导出" start={start} end={end} content={data && images ? "设备数据和图片" : data ? "设备数据" : images ? "图片" : "未选择"} invalid={!data && !images} />
+        <FormFooter includesImages={images} feedback={feedback} count={selected.length} busy={busy} onClose={onClose} system="标准站导出" start={start} end={end} content={data && images ? "设备数据和图片" : data ? "设备数据" : images ? "图片" : "未选择"} invalid={!data && !images} />
       </form>
     </div>
   );

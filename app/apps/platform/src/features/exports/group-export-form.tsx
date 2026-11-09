@@ -161,7 +161,7 @@ export function GroupExportForm({
         </div>
           </section>
         </div>
-        <FormFooter feedback={feedback} count={effective.length || (lorawan && status && gatewayId ? 1 : 0)} busy={busy} onClose={onClose} system="组网站导出" start={start} end={end} content={lorawan ? [data && "采集数据", status && "运行状态"].filter(Boolean).join("、") || "未选择" : data && !lorawan && images ? "设备数据和图片" : data ? "设备数据" : !lorawan && images ? "图片" : "未选择"} invalid={(!effective.length && data) || (!data && !(lorawan && status) && (lorawan || !images))} />
+        <FormFooter includesImages={!lorawan && images} feedback={feedback} count={effective.length || (lorawan && status && gatewayId ? 1 : 0)} busy={busy} onClose={onClose} system="组网站导出" start={start} end={end} content={lorawan ? [data && "采集数据", status && "运行状态"].filter(Boolean).join("、") || "未选择" : data && !lorawan && images ? "设备数据和图片" : data ? "设备数据" : !lorawan && images ? "图片" : "未选择"} invalid={(!effective.length && data) || (!data && !(lorawan && status) && (lorawan || !images))} />
       </form>
     </div>
   );

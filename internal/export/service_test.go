@@ -71,7 +71,7 @@ func TestDemoExportResolvesBeforeCreateWithoutRealAssignment(t *testing.T) {
 			}
 			// Jobs also originate without an HTTP actor. RequestedBy must still
 			// select the demo workspace before any real-assignment requirement.
-			input := CreateInput{ResourceType: resource.kind, ResourceID: resource.id, ExportType: resource.exportType, RequestedBy: demo, RequestConfig: json.RawMessage(`{}`)}
+			input := CreateInput{ResourceType: resource.kind, ResourceID: resource.id, ExportType: resource.exportType, RequestedBy: demo, RequestConfig: json.RawMessage(`{"start_time":"2026-06-01T00:00:00Z","end_time":"2026-06-02T00:00:00Z"}`)}
 			job, resolved, err := svc.Create(ctx, input)
 			if err != nil || job.WorkspaceID != demoWorkspace || job.RequestedBy != demo || resolved.WorkspaceID != demoWorkspace {
 				t.Fatalf("demo create without actor: %#v %#v %v", job, resolved, err)

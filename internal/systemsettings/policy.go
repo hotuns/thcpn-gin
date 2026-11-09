@@ -45,6 +45,8 @@ var definitions = []Field{
 	{Key: "atlas_devices", Group: "一张图与预警", Label: "一张图手选设备数量", Default: 50, Min: 1, Max: 1000, Unit: "台", Public: true},
 	{Key: "atlas_trend_hours", Group: "一张图与预警", Label: "一张图趋势范围", Default: 720, Min: 1, Max: 87600, Unit: "小时", Public: true},
 	{Key: "alert_duration_seconds", Group: "一张图与预警", Label: "预警持续时间上限", Default: 2592000, Min: 1, Max: 31536000, Unit: "秒", Public: true},
+	{Key: "export_image_days", Group: "导出任务", Label: "含图片的单任务最大时间范围", Default: 31, Min: 1, Max: 3650, Unit: "天", Public: true},
+	{Key: "export_data_days", Group: "导出任务", Label: "不含图片的单任务最大时间范围", Default: 365, Min: 1, Max: 3650, Unit: "天", Public: true},
 	{Key: "export_points", Group: "导出任务", Label: "每指标单任务最大条数", Default: 10000000, Min: 100, Max: 100000000, Unit: "条", Public: false},
 	{Key: "export_ttl_hours", Group: "导出任务", Label: "新任务文件有效期", Default: 72, Min: 1, Max: 8760, Unit: "小时", Public: false},
 	{Key: "export_window_days", Group: "导出任务", Label: "后台分段查询窗口", Default: 30, Min: 1, Max: 366, Unit: "天", Public: false},

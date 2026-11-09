@@ -212,6 +212,9 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Job, ResolvedR
 	if err != nil {
 		return Job{}, ResolvedResource{}, err
 	}
+	if err := s.validateUserExportRange(ctx, resolved, requestConfig); err != nil {
+		return Job{}, ResolvedResource{}, err
+	}
 	if err := s.validatePlan(ctx, resolved, requestConfig); err != nil {
 		return Job{}, ResolvedResource{}, err
 	}

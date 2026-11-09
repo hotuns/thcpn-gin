@@ -4,6 +4,7 @@ import { Network, Sprout } from "lucide-react";
 import { type JsonRecord } from "@thcpn/api";
 import { Button, Tabs, TabsList, TabsTrigger } from "../../shared/ui";
 import { validDataRange } from "../../shared/data/data-builder";
+import { usePolicyLimit } from "../../shared/config/system-policy";
 import { useLocale } from "@thcpn/i18n";
 import { type ExportSystem } from "./export-model";
 
@@ -76,6 +77,7 @@ export function FormFooter({
   content,
   label = "创建 ZIP 导出",
   invalid = false,
+  includesImages = false,
   feedback,
 }: {
   count: number;
@@ -87,9 +89,14 @@ export function FormFooter({
   content: string;
   label?: string;
   invalid?: boolean;
+  includesImages?: boolean;
   feedback?: string;
 }) {
   const { t } = useLocale();
+  const imageDays = usePolicyLimit("export_image_days", 31);
+  const dataDays = usePolicyLimit("export_data_days", 365);
+  const maxDays = includesImages ? imageDays : dataDays;
+  const rangeTooLong = validDataRange(start, end) && new Date(end).getTime() - new Date(start).getTime() > maxDays * 86400000;
   const contentKeys: Record<string, string> = { "设备数据和图片": "dataImages", "设备数据": "dataOnly", "通量数据、原始采样": "fluxRaw", "通量数据": "flux", "原始采样": "raw", "图片": "imagesOnly", "未选择": "nothingSelected" };
   return (
     <aside className="export-builder-summary dataset-builder-summary">
@@ -100,12 +107,14 @@ export function FormFooter({
         <div><dt>时间范围</dt><dd>{start.replace("T", " ")}<span>至</span>{end.replace("T", " ")}</dd></div>
         <div><dt>导出内容</dt><dd>{contentKeys[content] ? t(`exportEditor.${contentKeys[content]}`) : content}</dd></div>
       </dl>
+      <p>单次导出最多 {maxDays} 天（{includesImages ? "含图片" : "不含图片"}）</p>
+      {rangeTooLong && <div className="form-error" role="alert">请缩短时间范围{includesImages ? "，或取消勾选图片" : ""}。</div>}
       {feedback && <div className="form-error" role="alert">{feedback}</div>}
       <div className="export-builder-actions mobile-form-actions">
         <Button type="button" variant="secondary" onClick={onClose}>取消</Button>
-        <Button type="submit" disabled={busy || count === 0 || invalid || !validDataRange(start, end)}>{busy ? "创建中…" : label}</Button>
+        <Button type="submit" disabled={busy || count === 0 || invalid || rangeTooLong || !validDataRange(start, end)}>{busy ? "创建中…" : label}</Button>
       </div>
-      <p className="export-review-hint" role="status">{t(busy ? "exportEditor.creating" : !count ? "exportEditor.missing" : invalid ? "exportEditor.invalidSettings" : !validDataRange(start, end) ? "exportEditor.invalidRange" : "exportEditor.ready")}</p>
+      <p className="export-review-hint" role="status" hidden={rangeTooLong}>{t(busy ? "exportEditor.creating" : !count ? "exportEditor.missing" : invalid ? "exportEditor.invalidSettings" : !validDataRange(start, end) ? "exportEditor.invalidRange" : "exportEditor.ready")}</p>
     </aside>
   );
 }
