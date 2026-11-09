@@ -70,8 +70,9 @@ func TestPhysicalNodeRefreshPreservesPositionAndAssetIdentity(t *testing.T) {
 		t.Fatalf("register: %+v %v", registered, err)
 	}
 	var unbound bool
-	var registeredAsset, hardwareSN string
-	if err := db.QueryRow(ctx, `SELECT gateway_device_id IS NULL AND node_index IS NULL,asset_no,hardware_sn FROM lorawan_physical_nodes WHERE sn='UNBOUND'`).Scan(&unbound, &registeredAsset, &hardwareSN); err != nil || !unbound || !strings.HasPrefix(registeredAsset, "LR-") || hardwareSN != "UNBOUND" {
+	var registeredAsset string
+	var hardwareSN *string
+	if err := db.QueryRow(ctx, `SELECT gateway_device_id IS NULL AND node_index IS NULL,asset_no,hardware_sn FROM lorawan_physical_nodes WHERE sn='UNBOUND'`).Scan(&unbound, &registeredAsset, &hardwareSN); err != nil || !unbound || !strings.HasPrefix(registeredAsset, "LR-") || hardwareSN != nil {
 		t.Fatal("registered asset not persisted independently")
 	}
 	if _, err := s.OperatePhysicalNode(ctx, gateway, actor, PhysicalNodeCommand{Action: "bind", SN: "UNBOUND", NodeIndex: 255}); err == nil {

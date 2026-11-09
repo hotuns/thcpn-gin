@@ -973,17 +973,17 @@ function DeviceDetailPanel({
   const date = (input: unknown) => input ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(String(input))) : "—";
   const inlineError = (error: unknown, title: string) => error ? <Alert type="warning" showIcon title={title} description={formatApiError(error).message} /> : null;
   const queryLoading = ({ loading, data, error }: DetailQueryProps) => loading && !data && !error;
+  const reportedICCID = device.source_family === "lorawan_v2" ? reportedInfo.data?.iccid?.trim() : undefined;
+  const displayedICCID = reportedICCID && /^[0-9]{19,20}$/.test(reportedICCID) ? reportedICCID : device.iccid;
   const overview = <div className="admin-device-detail-content">
     <section className="admin-detail-section">
       <div className="admin-detail-section-head"><div><h2>设备资料</h2><span>设备身份与资产状态</span></div><Button onClick={() => onOpen("edit")}>编辑</Button></div>
       <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }} items={[
-        { key: "assetNo", label: "平台资产编号", children: <span className="mono">{value(device.asset_no, device.serial_no)}</span> },
-        { key: "hardwareSN", label: "硬件 SN", children: <span className="mono">{value(device.hardware_sn, "未登记")}</span> },
-        { key: "iccid", label: device.source_family==="lorawan_v2" ? "人工登记 ICCID" : "物联卡 ICCID", children: <span className="mono">{value(device.iccid, "未记录")}</span> },
-        ...(device.source_family==="lorawan_v2" ? [{key:"reported-iccid",label:"设备上报 ICCID",children:<span className="mono">{reportedInfo.isLoading ? "读取中" : reportedInfo.error ? formatApiError(reportedInfo.error).message : reportedInfo.data?.iccid || "未上报"}</span>}] : []),
+        { key: "assetNo", label: "资产编号", span: "filled", children: <Typography.Text strong copyable className="mono">{value(device.asset_no, device.serial_no)}</Typography.Text> },
+        ...(device.hardware_sn ? [{ key: "hardwareSN", label: "硬件 SN", children: <span className="mono">{value(device.hardware_sn)}</span> }] : []),
+        { key: "iccid", label: "物联卡 ICCID", children: <span className="mono">{value(displayedICCID, "未记录")}</span> },
         { key: "type", label: "设备类型", children: deviceModelLabel(device) },
         { key: "externalId", label: device.source_family === "lorawan_v2" ? "采集网关标识" : "采集服务设备 ID", children: <Tooltip title="用于关联采集数据源中的设备；LoRaWAN V2 使用网关 SN，THCPN/Carbon 使用源数据库编号。"><span className="mono">{value(device.source_family === "lorawan_v2" ? device.external_key : device.external_device_id, "未关联")}</span></Tooltip> },
-        { key: "id", label: "平台设备 ID", span: 2, children: <Tooltip title="平台内部唯一 UUID，用于接口、关联和排障，不是硬件 SN。"><span className="mono admin-break-value">{value(device.id)}</span></Tooltip> },
         { key: "status", label: "资产状态", children: <Tag color={device.status === "active" ? "green" : "default"}>{deviceStatusLabel(value(device.status, ""))}</Tag> },
         { key: "created", label: "创建时间", children: date(device.created_at) },
         { key: "updated", label: "更新时间", children: date(device.updated_at) },
@@ -1283,10 +1283,10 @@ function DeviceForm({
         <Form.Item name="name" label="设备名称" rules={[{ required: true }]}>
           <Input />
         </Form.Item>
-        <Form.Item name="hardware_sn" label="硬件 SN" normalize={text => text?.trim()}>
+        <Form.Item name="hardware_sn" label="硬件 SN（选填）" normalize={text => text?.trim()}>
           <Input maxLength={128} placeholder="填写出厂铭牌上的 SN" />
         </Form.Item>
-        <Form.Item name="iccid" label="物联卡 ICCID" extra="当前安装的物联卡编号，19–20 位数字；留空可清除。" rules={[{ pattern: /^[0-9]{19,20}$/, message: "请输入 19–20 位数字的 ICCID" }]} normalize={text => text?.trim()}>
+        <Form.Item name="iccid" label="物联卡 ICCID" extra={devices.find(item => item.id === deviceId)?.source_family === "lorawan_v2" ? "未收到有效上报时使用手填值；留空可清除手填记录。" : "19–20 位数字；留空可清除。"} rules={[{ pattern: /^[0-9]{19,20}$/, message: "请输入 19–20 位数字的 ICCID" }]} normalize={text => text?.trim()}>
           <Input maxLength={20} placeholder="请输入物联卡 ICCID" />
         </Form.Item>
         <div className="drawer-grid">

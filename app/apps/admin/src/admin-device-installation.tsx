@@ -86,7 +86,7 @@ export function AdminDeviceNodes({device,onData,onTopology,onConfig,onHistory,co
   const nodes=useQuery({queryKey:["admin","device",id,"nodes","operations"],queryFn:async()=>{if(lora)await api.admin.physicalNodes(id);return api.admin.deviceNodes(id);}});
   const rows=nodes.data?.items??[];
   const detail=rows.find(node=>node.key===detailKey);
-  const visible=rows.filter(n=>[n.name,n.asset_no,n.hardware_sn,n.node_sn,n.target.kind==="gateway_node"?String(n.target.node_index):""].some(v=>v?.toLowerCase().includes(search.toLowerCase())));
+  const visible=rows.filter(n=>[n.name,n.asset_no,lora?undefined:n.hardware_sn,n.node_sn,n.target.kind==="gateway_node"?String(n.target.node_index):""].some(v=>v?.toLowerCase().includes(search.toLowerCase())));
   const page=Math.min(statusPage,Math.max(1,Math.ceil(visible.length/pageSize)));
   const currentNodes=visible.slice((page-1)*pageSize,page*pageSize);
   const indices=currentNodes.flatMap(node=>node.target.kind==="gateway_node"?[node.target.node_index]:[]);
@@ -100,7 +100,7 @@ export function AdminDeviceNodes({device,onData,onTopology,onConfig,onHistory,co
 
     {(nodes.error||runtime.error)&&<Alert type="error" title="节点读取失败" description={formatApiError(nodes.error||runtime.error).message}/>}
     <Table<GatewayNode> rowKey="key" size="middle" loading={nodes.isLoading} dataSource={visible} pagination={{current:page,pageSize,showSizeChanger:true,onChange:(page,size)=>{setStatusPage(page);setPageSize(size);}}} scroll={{x:compact?760:1000}} locale={{emptyText:compact?"暂无节点":lora?"暂无节点，请添加节点。":"暂无关联节点，请管理网关拓扑。"}} columns={[
-      {title:"节点",render:(_,node)=><Space orientation="vertical" size={0}><Typography.Text strong>{node.name}</Typography.Text>{node.asset_no&&<Typography.Text>{node.asset_no}</Typography.Text>}{node.target.kind==="gateway_node"&&<Typography.Text type="secondary">序号 {node.target.node_index}</Typography.Text>}</Space>},
+      {title:"节点",render:(_,node)=><Space orientation="vertical" size={0}><Typography.Text strong>{node.name}</Typography.Text>{node.asset_no&&<Typography.Text>{node.asset_no}</Typography.Text>}{lora&&node.node_sn&&<Typography.Text type="secondary">SN {node.node_sn}</Typography.Text>}{node.target.kind==="gateway_node"&&<Typography.Text type="secondary">序号 {node.target.node_index}</Typography.Text>}</Space>},
 
       {title:"指标",width:75,render:(_,node)=>node.streams.filter(isMeasurement).length},
       {title:lora?"节点状态":"电量 / 信号",width:lora?300:undefined,render:(_,node)=>{if(lora&&compact){const reading=runtime.data?.items.find(item=>item.key===node.key);return <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:"8px 16px"}}>{nodeStatusKeys.map(key=><div key={key}><Typography.Text type="secondary" style={{fontSize:12}}>{statusMetrics[key].label}</Typography.Text><div>{runtime.isFetching?"…":runtime.error||reading?.error?"—":statusValue(key,reading?.[key as "battery"|"rssi"|"snr"|"sd_card_rate"])}</div></div>)}</div>;}if(lora)return <AdminNodeStatus deviceId={id} node={node} reading={runtime.data?.items.find(item=>item.key===node.key)} loading={runtime.isFetching} error={runtime.error?formatApiError(runtime.error).message:undefined}/>;const state=runtime.data?.items.find(item=>item.key===node.key);return state?.error?<Tag color="red">读取失败</Tag>:state?<Space orientation="vertical" size={0}><span>{state.battery??"—"} V · {state.rssi??"—"}</span><Typography.Text type="secondary">{opsTime(state.sampled_at)}</Typography.Text></Space>:"尚未读取";}},
@@ -117,8 +117,8 @@ export function AdminDeviceNodes({device,onData,onTopology,onConfig,onHistory,co
         {key:"name",label:"节点名称",children:<Space>{detail.name}<AdminNodeNameEditor name={detail.custom_name} allowEmpty onSave={async name=>{if(detail.target.kind==="gateway_node")await api.admin.renameNode(id,detail.target.node_index,name);await invalidateNodeNames(client);setDetailKey(null);}}/></Space>},
         {key:"index",label:"序号",children:detail.target.kind==="gateway_node"?detail.target.node_index:"—"},
         {key:"asset",label:"资产编号",children:detail.asset_no||"—"},
-        {key:"hardware",label:"硬件 SN",children:detail.hardware_sn||"未登记"},
-        ...(lora?[{key:"sn",label:"采集节点标识",children:detail.node_sn||"未绑定"}]:[]),
+        ...(!lora&&detail.hardware_sn?[{key:"hardware",label:"硬件 SN",children:detail.hardware_sn}]:[]),
+        ...(lora?[{key:"sn",label:"节点 SN",children:detail.node_sn||"未绑定"}]:[]),
         {key:"gateway",label:"所属网关",children:`${device.name} · ${device.asset_no || device.serial_no}`},
         {key:"location",label:"安装坐标",children:<Space>{detail.longitude!=null?`${detail.longitude}, ${detail.latitude}`:"未设置"}<AdminNodeLocationEditor deviceId={id} node={detail}/></Space>},
       ]}/>

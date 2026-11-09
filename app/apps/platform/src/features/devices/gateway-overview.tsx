@@ -24,7 +24,7 @@ export function GatewayOverview({ device, workspaceId }: { device: Device; works
   const boundRows = lora ? rows.filter(node=>node.bound) : rows;
   const current = rows.find(n => n.key === detailKey);
   const recent = (node: GatewayNode) => { const ts = readings.get(node.key)?.sampled_at; const age = ts ? Date.now() - Date.parse(ts) : -1; return age >= 0 && age <= 3 * 86400000; };
-  const visible = rows.filter(n => [n.name, n.asset_no, n.hardware_sn, n.node_sn, n.target.kind === "gateway_node" ? String(n.target.node_index) : ""].some(value => value?.toLowerCase().includes(search.toLowerCase())));
+  const visible = rows.filter(n => [n.name, n.asset_no, n.node_sn, n.target.kind === "gateway_node" ? String(n.target.node_index) : ""].some(value => value?.toLowerCase().includes(search.toLowerCase())));
   const [page,setPage]=useState(1);
   const pageCount=Math.max(1,Math.ceil(visible.length/20));
   const currentPage=Math.min(page,pageCount);
@@ -71,7 +71,7 @@ export function GatewayOverview({ device, workspaceId }: { device: Device; works
         <dl className="gateway-node-facts">
           <div><dt>节点名称</dt><dd>{current.name}{current.can_rename && <NodeNameEditor name={current.custom_name} allowEmpty={current.target.kind !== "device"} onSave={async name => { if (current.target.kind === "device") await api.devices.update(current.target.device_id, { name }); else await api.devices.renameNode(device.id, current.target.node_index, name); await invalidateNodeNames(client); }} />}</dd></div>
           <div><dt>资产编号</dt><dd>{current.asset_no || "—"}</dd></div>
-          {lora&&<><div><dt>硬件 SN</dt><dd>{current.hardware_sn || "未登记"}</dd></div><div><dt>采集节点标识</dt><dd>{current.node_sn || "—"}</dd></div><div><dt>所属网关</dt><dd>{device.name} · {device.asset_no || device.serial_no}</dd></div><div><dt>序号</dt><dd>{current.target.kind === "gateway_node" ? current.target.node_index : "—"}</dd></div></>}
+          {lora&&<><div><dt>节点 SN</dt><dd>{current.node_sn || "—"}</dd></div><div><dt>所属网关</dt><dd>{device.name} · {device.asset_no || device.serial_no}</dd></div><div><dt>序号</dt><dd>{current.target.kind === "gateway_node" ? current.target.node_index : "—"}</dd></div></>}
           {!lora&&<div><dt>设备标识</dt><dd className="mono">{current.key}</dd></div>}
           <div><dt>指标数量</dt><dd>{current.streams.filter(isMeasurement).length}</dd></div><div><dt>最近采集时间</dt><dd>{formatTime(readings.get(current.key)?.sampled_at)}</dd></div>
           {current.target.kind === "gateway_node" && <div><dt>经纬度</dt><dd>{current.longitude != null ? `${current.longitude}, ${current.latitude}` : "未设置"}{current.can_rename && <NodeLocationEditor gatewayId={device.id} node={current} />}</dd></div>}
