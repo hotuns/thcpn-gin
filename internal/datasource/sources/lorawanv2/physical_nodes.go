@@ -86,6 +86,6 @@ func (s *Service) RememberRegisteredNode(ctx context.Context, sourceID uuid.UUID
 	if json.Unmarshal(raw, &node) != nil || node.ID <= 0 || node.SN == "" || node.NodeIndex != nil || node.GatewaySN != nil {
 		return apperr.New(apperr.KindDataSource, "invalid registered physical node")
 	}
-	_, err := s.DB.Exec(ctx, `INSERT INTO lorawan_physical_nodes(data_source_id,external_id,sn) VALUES($1,$2,$3) ON CONFLICT(data_source_id,external_id) DO UPDATE SET sn=EXCLUDED.sn,synced_at=now()`, sourceID, node.ID, node.SN)
+	_, err := s.DB.Exec(ctx, `INSERT INTO lorawan_physical_nodes(data_source_id,external_id,sn,hardware_sn) VALUES($1,$2,$3,$3) ON CONFLICT(data_source_id,external_id) DO UPDATE SET sn=EXCLUDED.sn,hardware_sn=EXCLUDED.hardware_sn,synced_at=now()`, sourceID, node.ID, node.SN)
 	return err
 }

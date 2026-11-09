@@ -25,6 +25,8 @@ type Service struct {
 }
 
 type Device struct {
+	AssetNo             string     `json:"asset_no,omitempty"`
+	HardwareSN          *string    `json:"hardware_sn,omitempty"`
 	Tags                []string   `json:"tags,omitempty"`
 	ICCID               *string    `json:"iccid,omitempty"`
 	SourceFamily        string     `json:"source_family,omitempty"`
@@ -161,6 +163,7 @@ type DemoPlacementInput struct {
 }
 
 type AdminUpdateInput struct {
+	HardwareSN   *string
 	ICCID        *string
 	DeviceID     uuid.UUID
 	ProductID    *string
@@ -848,7 +851,7 @@ func (s *Service) ListAdminChildren(ctx context.Context, parentDeviceID uuid.UUI
 		}
 		items = append(items, fromActiveChildRow(row, capabilities))
 	}
-	return items, nil
+	return s.withChildInteractions(ctx, items)
 }
 
 func (s *Service) ListVisibleChildren(ctx context.Context, parentDeviceID uuid.UUID) ([]DeviceChild, error) {
@@ -867,7 +870,7 @@ func (s *Service) ListVisibleChildren(ctx context.Context, parentDeviceID uuid.U
 		}
 		items = append(items, fromVisibleChildRow(row, capabilities))
 	}
-	return items, nil
+	return s.withChildInteractions(ctx, items)
 }
 
 func (s *Service) AddChild(ctx context.Context, input AddChildInput) (DeviceRelation, error) {
@@ -1147,6 +1150,15 @@ func (s *Service) AdminUpdate(ctx context.Context, input AdminUpdateInput) (Devi
 		return Device{}, mapWriteError(err, "update device")
 	}
 
+	if input.HardwareSN != nil {
+		sn := strings.TrimSpace(*input.HardwareSN)
+		if len(sn) > 128 {
+			return Device{}, apperr.New(apperr.KindInvalidArgument, "hardware SN must be at most 128 bytes")
+		}
+		if _, err := tx.Exec(ctx, "UPDATE devices SET hardware_sn=NULLIF($2,'') WHERE id=$1", input.DeviceID, sn); err != nil {
+			return Device{}, apperr.Wrap(apperr.KindInternal, "update hardware SN", err)
+		}
+	}
 	if input.ICCID != nil {
 		if _, err := tx.Exec(ctx, "UPDATE devices SET iccid=NULLIF($2, '') WHERE id=$1", input.DeviceID, *input.ICCID); err != nil {
 			return Device{}, apperr.Wrap(apperr.KindInternal, "update device ICCID", err)

@@ -56,7 +56,7 @@ export function DeviceDetail({
         <div>
           <h2 className="panel-title">设备详情 · {device?.name}</h2>
           <div className="panel-kicker mono">
-            SN {device?.serial_no} · ID {device?.id}
+            资产编号 {device?.asset_no || device?.serial_no} · ID {device?.id}
           </div>
         </div>
         <div className="header-actions">

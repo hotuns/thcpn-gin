@@ -31,6 +31,8 @@ func (t NodeTarget) Key() string {
 }
 
 type GatewayNode struct {
+	HardwareSN     *string                 `json:"hardware_sn,omitempty"`
+	AssetNo        string                  `json:"asset_no,omitempty"`
 	PhysicalNodeID *uuid.UUID              `json:"physical_node_id,omitempty"`
 	NodeSN         string                  `json:"node_sn,omitempty"`
 	Bound          bool                    `json:"bound"`
@@ -52,6 +54,21 @@ func (s *Service) withInteraction(ctx context.Context, item Device) (Device, err
 	return items[0], nil
 }
 
+func (s *Service) withChildInteractions(ctx context.Context, children []DeviceChild) ([]DeviceChild, error) {
+	devices := make([]Device, len(children))
+	for i := range children {
+		devices[i] = children[i].Device
+	}
+	devices, err := s.withInteractions(ctx, devices)
+	if err != nil {
+		return nil, err
+	}
+	for i := range children {
+		children[i].Device = devices[i]
+	}
+	return children, nil
+}
+
 func (s *Service) withInteractions(ctx context.Context, items []Device) ([]Device, error) {
 	if len(items) == 0 {
 		return items, nil
@@ -67,7 +84,7 @@ func (s *Service) withInteractions(ctx context.Context, items []Device) ([]Devic
         CASE WHEN src.source_family='lorawan_v2' THEN (SELECT count(*) FROM lorawan_physical_nodes WHERE gateway_device_id=d.id)
              ELSE (SELECT count(*) FROM device_relations WHERE parent_device_id=d.id AND relation_type='gateway_node' AND status='active') END,
         EXISTS (SELECT 1 FROM data_streams WHERE device_id=d.id AND status='active' AND type='telemetry'),
-        EXISTS (SELECT 1 FROM data_streams WHERE device_id=d.id AND status='active' AND type='image'), d.iccid
+        EXISTS (SELECT 1 FROM data_streams WHERE device_id=d.id AND status='active' AND type='image'), d.iccid, COALESCE(d.asset_no,''), d.hardware_sn
         FROM devices d LEFT JOIN device_source_refs ref ON ref.device_id=d.id AND ref.status='active'
         LEFT JOIN data_sources src ON src.id=ref.data_source_id WHERE d.id=ANY($1::uuid[])`, ids)
 	if err != nil {
@@ -79,12 +96,14 @@ func (s *Service) withInteractions(ctx context.Context, items []Device) ([]Devic
 		var family, status, externalKey, adapter string
 		var count int64
 		var telemetry, media bool
-		var iccid *string
-		if err := rows.Scan(&id, &family, &status, &externalKey, &adapter, &count, &telemetry, &media, &iccid); err != nil {
+		var iccid, hardwareSN *string
+		var assetNo string
+		if err := rows.Scan(&id, &family, &status, &externalKey, &adapter, &count, &telemetry, &media, &iccid, &assetNo, &hardwareSN); err != nil {
 			return nil, err
 		}
 		item := &items[indices[id]]
 		item.ICCID = iccid
+		item.AssetNo, item.HardwareSN = assetNo, hardwareSN
 		item.SourceFamily, item.SourceStatus, item.ChildCount = family, status, count
 		item.ExternalKey = externalKey
 		item.Features = interactionFeatures(item.DeviceType, family, telemetry, media)
@@ -159,7 +178,7 @@ func (s *Service) ListGatewayNodes(ctx context.Context, gatewayID uuid.UUID) ([]
 				active = append(active, stream)
 			}
 		}
-		nodes = append(nodes, GatewayNode{Key: target.Key(), Name: child.Device.Name, NodeSN: child.Device.SerialNo, CustomName: child.Device.Name, Target: target, Streams: active})
+		nodes = append(nodes, GatewayNode{Key: target.Key(), Name: child.Device.Name, NodeSN: child.Device.SerialNo, AssetNo: child.Device.AssetNo, HardwareSN: child.Device.HardwareSN, CustomName: child.Device.Name, Target: target, Streams: active})
 	}
 	return nodes, nil
 }
@@ -192,20 +211,21 @@ func (s *Service) listIndexedNodes(ctx context.Context, gateway Device) ([]Gatew
 	if locationErr != nil {
 		return nil, locationErr
 	}
-	registry, err := s.db.Query(ctx, `SELECT id,sn,node_index FROM lorawan_physical_nodes WHERE gateway_device_id=$1 ORDER BY node_index`, gateway.ID)
+	registry, err := s.db.Query(ctx, `SELECT id,sn,node_index,asset_no,hardware_sn FROM lorawan_physical_nodes WHERE gateway_device_id=$1 ORDER BY node_index`, gateway.ID)
 	if err != nil {
 		return nil, err
 	}
 	bound := map[int]GatewayNode{}
 	for registry.Next() {
 		var id uuid.UUID
-		var sn string
+		var sn, assetNo string
+		var hardwareSN *string
 		var index int
-		if err := registry.Scan(&id, &sn, &index); err != nil {
+		if err := registry.Scan(&id, &sn, &index, &assetNo, &hardwareSN); err != nil {
 			registry.Close()
 			return nil, err
 		}
-		bound[index] = GatewayNode{PhysicalNodeID: &id, NodeSN: sn, Bound: true}
+		bound[index] = GatewayNode{PhysicalNodeID: &id, NodeSN: sn, AssetNo: assetNo, HardwareSN: hardwareSN, Bound: true}
 	}
 	registryErr := registry.Err()
 	registry.Close()

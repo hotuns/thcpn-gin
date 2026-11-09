@@ -100,7 +100,7 @@ export function DeviceClaimPage() {
       {!resolved && !claimSlug ? (
         <Panel>
           <form className="device-claim-form" data-onboarding="claim-identity" onSubmit={resolve}>
-            <label className="field"><span className="field-label">设备序列号</span><Input autoCapitalize="characters" value={serialNo} onChange={(event) => setSerialNo(event.target.value)} placeholder="铭牌上的 SN" /></label>
+            <label className="field"><span className="field-label">资产编号或旧 SN</span><Input autoCapitalize="characters" value={serialNo} onChange={(event) => setSerialNo(event.target.value)} placeholder="铭牌上的编号" /></label>
             <label className="field"><span className="field-label">认领码</span><Input autoCapitalize="characters" value={code} onChange={(event) => setCode(event.target.value)} placeholder="XXXX-XXXX-XX" /></label>
             <Button type="submit" disabled={busy || !serialNo.trim() || !code.trim()}><Link2 size={15} />验证设备</Button>
           </form>
@@ -110,7 +110,7 @@ export function DeviceClaimPage() {
         <Panel>
           <div className="device-claim-device">
             <CheckCircle2 size={22} />
-            <div><strong>{resolved.device_name}</strong><span>{resolved.device_type === "gateway" ? `网关 · 包含 ${resolved.child_count} 个节点` : "标准站"} · SN 尾号 {resolved.serial_no}</span></div>
+            <div><strong>{resolved.device_name}</strong><span>{resolved.device_type === "gateway" ? `网关 · 包含 ${resolved.child_count} 个节点` : "标准站"} · 资产编号尾号 {resolved.asset_no || resolved.serial_no}</span></div>
           </div>
           <div className="device-claim-form" data-onboarding="claim-assignment">
             <label className="field"><span className="field-label">目标组织</span><SelectInput value={workspaceId} onChange={(event) => { setWorkspaceId(event.target.value); setProjectId(""); setSiteId(""); }}>{workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</SelectInput></label>

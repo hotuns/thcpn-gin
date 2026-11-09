@@ -28,6 +28,7 @@ type Service struct {
 }
 
 type Credential struct {
+	AssetNo     string     `json:"asset_no,omitempty"`
 	DeviceID    uuid.UUID  `json:"device_id"`
 	DeviceName  string     `json:"device_name"`
 	DeviceType  string     `json:"device_type"`
@@ -145,7 +146,7 @@ func (s *Service) GetAdminCredential(ctx context.Context, deviceID uuid.UUID) (C
 	var slugCipher, slugNonce, codeCipher, codeNonce []byte
 	var printedAt *time.Time
 	err = s.db.QueryRow(ctx, `
-		SELECT d.id, d.name, d.device_type, d.serial_no,
+		SELECT d.id, d.name, d.device_type, d.serial_no, COALESCE(d.asset_no,''),
 		       c.claim_slug_ciphertext, c.claim_slug_nonce,
 		       c.manual_code_ciphertext, c.manual_code_nonce,
 		       c.printed_at, c.created_at,
@@ -154,7 +155,7 @@ func (s *Service) GetAdminCredential(ctx context.Context, deviceID uuid.UUID) (C
 		FROM devices d
 		JOIN device_claim_credentials c ON c.device_id=d.id
 		WHERE d.id=$1`, deviceID).Scan(
-		&result.DeviceID, &result.DeviceName, &result.DeviceType, &result.SerialNo,
+		&result.DeviceID, &result.DeviceName, &result.DeviceType, &result.SerialNo, &result.AssetNo,
 		&slugCipher, &slugNonce, &codeCipher, &codeNonce, &printedAt, &result.CreatedAt,
 		&result.IsAssigned, &result.ChildCount)
 	if err != nil {
@@ -199,7 +200,7 @@ func (s *Service) Resolve(ctx context.Context, input ResolveInput) (Credential, 
 			SELECT c.device_id
 			FROM device_claim_credentials c
 			JOIN devices d ON d.id=c.device_id
-			WHERE lower(d.serial_no)=lower($1) AND c.manual_code_hash=$2`,
+			WHERE (lower(d.serial_no)=lower($1) OR lower(d.asset_no)=lower($1)) AND c.manual_code_hash=$2`,
 			strings.TrimSpace(input.SerialNo), hash(normalizeManualCode(input.Code))).Scan(&deviceID)
 		if err != nil {
 			return Credential{}, genericUnavailable(err)
@@ -214,6 +215,9 @@ func (s *Service) Resolve(ctx context.Context, input ResolveInput) (Credential, 
 	result.ClaimSlug = ""
 	result.ClaimPath = ""
 	result.ManualCode = ""
+	if len(result.AssetNo) > 4 {
+		result.AssetNo = result.AssetNo[len(result.AssetNo)-4:]
+	}
 	if len(result.SerialNo) > 4 {
 		result.SerialNo = result.SerialNo[len(result.SerialNo)-4:]
 	}

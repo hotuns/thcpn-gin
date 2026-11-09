@@ -360,7 +360,7 @@ paths:
         - {name: bound, in: query, schema: {type: boolean}}
         - {name: gateway_sn, in: query, schema: {type: string}}
       responses:
-        "200": {description: Source inventory with data and pagination, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}
+        "200": {description: Source inventory with pagination and platform asset_no and hardware_sn on each node, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "502": {description: Source query failed}
     post:
@@ -10226,6 +10226,8 @@ components:
         - created_at
         - updated_at
       properties:
+        asset_no: {type: string, description: Stable platform asset number}
+        hardware_sn: {type: string, description: Registered factory serial number; omitted when unknown}
         tags: {type: array, items: {type: string}, description: Custom tags in the requested workspace}
         iccid:
           type: string
@@ -10290,7 +10292,7 @@ components:
       type: object
       properties:
         claim_slug: { type: string }
-        serial_no: { type: string }
+        serial_no: { type: string, description: Platform asset number or original printed serial, used with the binding code }
         code: { type: string }
     ClaimDeviceRequest:
       allOf:
@@ -10305,6 +10307,7 @@ components:
       type: object
       required: [device_id, device_name, device_type, serial_no, created_at, child_count, is_assigned, is_claimable]
       properties:
+        asset_no: {type: string, description: Platform asset number; masked on public resolution}
         device_id: { $ref: "#/components/schemas/UUID" }
         device_name: { type: string }
         device_type: { $ref: "#/components/schemas/DeviceTopologyRole" }
@@ -11033,6 +11036,8 @@ components:
       type: object
       required: [key, name, target, streams, custom_name, can_rename]
       properties:
+        asset_no: {type: string, description: Current node asset number}
+        hardware_sn: {type: string, description: Registered factory serial number}
         node_sn: {type: string, description: Current physical node only; does not attribute historical samples}
         physical_node_id: {$ref: "#/components/schemas/UUID"}
         bound: {type: boolean}
@@ -11139,8 +11144,9 @@ components:
           $ref: "#/components/schemas/UUID"
     AdminUpdateDeviceRequest:
       type: object
-      description: System admin update for mutable device asset fields. Platform serial numbers are generated once and cannot be edited. Assignment, topology relations, and lifecycle are managed separately.
+      description: System admin update for mutable device asset fields. Platform asset numbers are immutable. Assignment, topology relations, and lifecycle are managed separately.
       properties:
+        hardware_sn: {type: string, maxLength: 128, description: Registered factory serial number; empty clears it and omission preserves it}
         iccid:
           type: string
           pattern: '^([0-9]{19,20})?$'

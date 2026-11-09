@@ -32,6 +32,11 @@ func (h *Handler) AdminLoRaWANNodeInventory(c *gin.Context) {
 			httpx.WriteAppError(c, err)
 			return
 		}
+		raw, err = h.service.LoRaWAN.ProjectNodeAssets(c.Request.Context(), source, raw)
+		if err != nil {
+			httpx.WriteAppError(c, err)
+			return
+		}
 		writeLoRaWANV2Payload(c, 200, raw)
 		return
 	}

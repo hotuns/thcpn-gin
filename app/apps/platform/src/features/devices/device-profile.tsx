@@ -148,7 +148,7 @@ export function DeviceProfileTab({
           </div>
           <div className="device-profile-basic-grid">
             <ProfileDatum label="设备名称" value={device.name} />
-            <ProfileDatum label="设备序列号" value={device.serial_no} mono />
+            <ProfileDatum label="资产编号" value={device.asset_no || device.serial_no} mono />
             <ProfileDatum label="数据源" value={({thcpn: "THCPN", lorawan_v2: "LoRaWAN V2", carbon: "碳汇"} as Record<string, string>)[device.source_family ?? ""] ?? value(device.source_family)} />
             <ProfileDatum label="设备 ID" value={device.id} mono />
           </div>
@@ -472,7 +472,7 @@ function PlacementEditor({ device, projects, sites, busy, onClose, onSubmit }: {
           <div className="panel-header">
             <div>
               <SheetTitle className="panel-title">编辑归属</SheetTitle>
-              <div className="panel-kicker">{device.name} · SN {device.serial_no}</div>
+              <div className="panel-kicker">{device.name} · 资产编号 {device.asset_no || device.serial_no}</div>
             </div>
             <Button variant="secondary" onClick={onClose}><X size={14} />关闭</Button>
           </div>

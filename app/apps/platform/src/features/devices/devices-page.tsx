@@ -186,7 +186,7 @@ function DeviceList() {
         (item) =>
           (category === "all" || deviceCategory(item) === category) &&
           matchesDeviceType(deviceTypeId, deviceTypeByDevice.get(item.id)) &&
-          `${item.name} ${item.serial_no} ${item.id} ${(item.tags??[]).join(" ")}`
+          `${item.name} ${item.asset_no ?? ""} ${item.serial_no} ${item.id} ${(item.tags??[]).join(" ")}`
             .toLowerCase()
             .includes(keyword.toLowerCase()),
       ),
@@ -434,7 +434,7 @@ function DeviceRows({
   });
   if (mobile) return <article className="device-mobile-card">
     <div className="device-mobile-card-heading"><span className="device-mobile-sequence" aria-label={`序号 ${sequence}`}>{sequence}</span><button className="device-name-link" onClick={() => onOpen()}>{device.name}</button><Badge>{deviceModelLabel(device)}</Badge></div>
-    <div className="device-mobile-meta">SN {device.serial_no}{deviceType ? ` · ${deviceType.name_zh}` : ""}</div>
+    <div className="device-mobile-meta">{device.asset_no || device.serial_no}{deviceType ? ` · ${deviceType.name_zh}` : ""}</div>
     <div className="device-mobile-meta">{siteName} · {projectName}</div>
     <div className="device-mobile-status">{lora && gateway ? <><LoRaConnectionBadge connection={gatewayStatus.connection}/><span>{gatewayStatus.activity.error ? t("mobile.activityFailed") : gatewayStatus.activity.data?.last_received_at ? t("mobile.lastReceived", { time: formatDateTime(gatewayStatus.activity.data.last_received_at) }) : t("mobile.noReception")}</span></> : <span>{camera ? "视频设备" : runtime?.source_device.updated_at ? t("mobile.lastReported", { time: formatDateTime(runtime.source_device.updated_at) }) : t("mobile.noReport")}</span>}</div>
     {!camera && <DeviceVitalIndicators attributes={runtime?.attributes} batteryValue={lora ? gatewayInfo.data?.battery ?? null : undefined} signalValue={lora ? gatewayInfo.data?.cell ?? null : undefined} loading={lora ? gatewayInfo.isLoading : runtimeLoading} csq={deviceCategory(device) === "standalone"} signalCsq={lora || deviceCategory(device) === "standalone"} lithiumVoltage={lora || (device.source_family === "thcpn" && gateway)}/>}
@@ -481,7 +481,7 @@ function DeviceRows({
                     {deviceType.name_zh}
                   </span>
                 ) : null}
-                <span>SN {device.serial_no}</span>
+                <span>{device.asset_no || device.serial_no}</span>
                 {gateway && <span>{`${device.child_count} 个节点`}</span>}
               </div>
               {tags.length ? <div className="device-row-tags">{tags.slice(0,2).map((tag)=><span key={tag}>{tag}</span>)}{tags.length>2?<span>+{tags.length-2}</span>:null}</div> : null}

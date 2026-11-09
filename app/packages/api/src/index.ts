@@ -114,6 +114,7 @@ export type DevicePublicAccess = Schema<"DevicePublicAccess">;
 export type PublicDevice = Schema<"PublicDevice">;
 export type PublicDeviceStream = Schema<"PublicDeviceStream">;
 export type DeviceClaimCredential = {
+  asset_no?: string;
   device_id: string;
   device_name: string;
   device_type: string;

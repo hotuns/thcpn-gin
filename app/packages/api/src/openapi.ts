@@ -790,7 +790,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Source inventory with data and pagination */
+                /** @description Source inventory with pagination and platform asset_no and hardware_sn on each node */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -7813,6 +7813,10 @@ export interface components {
         };
         /** @description System-level device asset view. Assignment fields are present only when the device has an active Workspace assignment. */
         Device: {
+            /** @description Stable platform asset number */
+            asset_no?: string;
+            /** @description Registered factory serial number; omitted when unknown */
+            hardware_sn?: string;
             /** @description Custom tags in the requested workspace */
             tags?: string[];
             /** @description Administrator-maintained SIM card ICCID. */
@@ -7850,6 +7854,7 @@ export interface components {
         };
         ResolveDeviceClaimRequest: {
             claim_slug?: string;
+            /** @description Platform asset number or original printed serial */
             serial_no?: string;
             code?: string;
         };
@@ -7859,6 +7864,8 @@ export interface components {
             site_id?: components["schemas"]["UUID"];
         };
         DeviceClaimCredential: {
+            /** @description Platform asset number; masked on public resolution */
+            asset_no?: string;
             device_id: components["schemas"]["UUID"];
             device_name: string;
             device_type: components["schemas"]["DeviceTopologyRole"];
@@ -8317,6 +8324,10 @@ export interface components {
             longitude: number | null;
         };
         GatewayNode: {
+            /** @description Current node asset number */
+            asset_no?: string;
+            /** @description Registered factory serial number */
+            hardware_sn?: string;
             /** @description Current physical node only; does not attribute historical samples */
             node_sn?: string;
             physical_node_id?: components["schemas"]["UUID"];
@@ -8414,8 +8425,10 @@ export interface components {
             project_id?: components["schemas"]["UUID"];
             site_id?: components["schemas"]["UUID"];
         };
-        /** @description System admin update for mutable device asset fields. Platform serial numbers are generated once and cannot be edited. Assignment, topology relations, and lifecycle are managed separately. */
+        /** @description System admin update for mutable device asset fields. Platform asset numbers are immutable. Assignment, topology relations, and lifecycle are managed separately. */
         AdminUpdateDeviceRequest: {
+            /** @description Registered factory serial number; empty clears it and omission preserves it */
+            hardware_sn?: string;
             /** @description Administrator-maintained SIM card ICCID. Empty string clears it; omitted value preserves it. */
             iccid?: string;
             name?: string;

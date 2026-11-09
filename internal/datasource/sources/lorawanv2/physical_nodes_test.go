@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"thcpn-gin/internal/datasource/platform"
 	"thcpn-gin/internal/device"
@@ -24,8 +25,10 @@ func TestPhysicalNodeRefreshPreservesPositionAndAssetIdentity(t *testing.T) {
 		}
 	}
 	// Validate the new migration round trip before inserting inventory.
+	testdb.Apply(t, db, "../../../../migrations/000057_asset_numbers.down.sql")
 	testdb.Apply(t, db, "../../../../migrations/000048_lorawan_physical_nodes.down.sql")
 	testdb.Apply(t, db, "../../../../migrations/000048_lorawan_physical_nodes.up.sql")
+	testdb.Apply(t, db, "../../../../migrations/000057_asset_numbers.up.sql")
 	must(`INSERT INTO data_sources(id,name,type,source_family,dsn_secret_ref,created_by) VALUES($1,'LoRa','http_api','lorawan_v2','secret:test',$2)`, source, actor)
 	must(`INSERT INTO devices(id,name,device_type) VALUES($1,'Gateway','gateway')`, gateway)
 	must(`INSERT INTO device_source_refs(device_id,data_source_id,adapter_code,external_key) VALUES($1,$2,'lorawan_v2','GW')`, gateway, source)
@@ -67,7 +70,8 @@ func TestPhysicalNodeRefreshPreservesPositionAndAssetIdentity(t *testing.T) {
 		t.Fatalf("register: %+v %v", registered, err)
 	}
 	var unbound bool
-	if err := db.QueryRow(ctx, `SELECT gateway_device_id IS NULL AND node_index IS NULL FROM lorawan_physical_nodes WHERE sn='UNBOUND'`).Scan(&unbound); err != nil || !unbound {
+	var registeredAsset, hardwareSN string
+	if err := db.QueryRow(ctx, `SELECT gateway_device_id IS NULL AND node_index IS NULL,asset_no,hardware_sn FROM lorawan_physical_nodes WHERE sn='UNBOUND'`).Scan(&unbound, &registeredAsset, &hardwareSN); err != nil || !unbound || !strings.HasPrefix(registeredAsset, "LR-") || hardwareSN != "UNBOUND" {
 		t.Fatal("registered asset not persisted independently")
 	}
 	if _, err := s.OperatePhysicalNode(ctx, gateway, actor, PhysicalNodeCommand{Action: "bind", SN: "UNBOUND", NodeIndex: 255}); err == nil {
@@ -82,16 +86,28 @@ func TestPhysicalNodeRefreshPreservesPositionAndAssetIdentity(t *testing.T) {
 	if err != nil || len(nodes) != 1 || nodes[0].Name != "样地三" || nodes[0].NodeSN != "NODE-A" || *nodes[0].Target.NodeIndex != 3 {
 		t.Fatalf("sparse bindings generated phantom nodes: %+v %v", nodes, err)
 	}
-	key := nodes[0].Key
+	key, originalAsset := nodes[0].Key, nodes[0].AssetNo
+	if !strings.HasPrefix(originalAsset, "LR-") {
+		t.Fatal("bound node lacks an asset number")
+	}
+	projected, err := s.ProjectNodeAssets(ctx, source, json.RawMessage(`{"data":[{"id":10,"sn":"NODE-A","gateway_sn":"GW","node_index":3},{"id":99,"sn":"INVENTORY-ONLY"}],"pagination":{"total":2}}`))
+	if err != nil || !strings.Contains(string(projected), originalAsset) {
+		t.Fatalf("inventory projection lost asset number: %v", err)
+	}
+	var inventoryAsset string
+	if err := db.QueryRow(ctx, `SELECT asset_no FROM lorawan_physical_nodes WHERE external_id=99`).Scan(&inventoryAsset); err != nil || !strings.HasPrefix(inventoryAsset, "LR-") {
+		t.Fatalf("inventory-only node has no asset number: %v", err)
+	}
 	current = `[{"id":11,"sn":"NODE-B","gateway_sn":"GW","node_index":3}]`
 	refresh()
 	nodes, err = device.NewService(db).ListGatewayNodes(ctx, gateway)
-	if err != nil || nodes[0].Key != key || nodes[0].Name != "样地三" || nodes[0].NodeSN != "NODE-B" || *nodes[0].Latitude != 30 {
+	if err != nil || nodes[0].Key != key || nodes[0].Name != "样地三" || nodes[0].NodeSN != "NODE-B" || nodes[0].AssetNo == originalAsset || !strings.HasPrefix(nodes[0].AssetNo, "LR-") || *nodes[0].Latitude != 30 {
 		t.Fatalf("replacement changed position: %+v %v", nodes, err)
 	}
 	var id uuid.UUID
 	var bound bool
-	if err := db.QueryRow(ctx, `SELECT id,gateway_device_id IS NOT NULL FROM lorawan_physical_nodes WHERE sn='NODE-A'`).Scan(&id, &bound); err != nil || id != oldID || bound {
+	var oldAsset string
+	if err := db.QueryRow(ctx, `SELECT id,gateway_device_id IS NOT NULL,asset_no FROM lorawan_physical_nodes WHERE sn='NODE-A'`).Scan(&id, &bound, &oldAsset); err != nil || id != oldID || bound || oldAsset != originalAsset {
 		t.Fatal("old physical asset lost or still bound")
 	}
 	current = "[]"

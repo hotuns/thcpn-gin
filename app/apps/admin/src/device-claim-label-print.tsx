@@ -8,12 +8,12 @@ type Props = {
   open: boolean;
   onClose: () => void;
   claimUrl: string;
-  serialNo: string;
+  assetNo: string;
   manualCode: string;
   onPrinted: () => Promise<void>;
 };
 
-export function DeviceClaimLabelPrint({ open, onClose, claimUrl, serialNo, manualCode, onPrinted }: Props) {
+export function DeviceClaimLabelPrint({ open, onClose, claimUrl, assetNo, manualCode, onPrinted }: Props) {
   const { message } = App.useApp();
   const [width, setWidth] = useState<number | null>(30);
   const [printing, setPrinting] = useState(false);
@@ -28,7 +28,7 @@ export function DeviceClaimLabelPrint({ open, onClose, claimUrl, serialNo, manua
   } as CSSProperties;
 
   const print = async () => {
-    if (!validWidth || !claimUrl || !serialNo || !manualCode || !labelRef.current) return;
+    if (!validWidth || !claimUrl || !assetNo || !manualCode || !labelRef.current) return;
     const popup = window.open("", "_blank", "width=520,height=720");
     if (!popup) {
       void message.error("打印窗口被浏览器拦截，请允许弹出窗口后重试");
@@ -67,7 +67,7 @@ export function DeviceClaimLabelPrint({ open, onClose, claimUrl, serialNo, manua
 
   return <Modal open={open} title="打印绑定标签" onCancel={() => !printing && onClose()}
     onOk={() => void print()} okText="打印" cancelText="关闭" confirmLoading={printing}
-    okButtonProps={{ disabled: !validWidth || !claimUrl || !serialNo || !manualCode }} width={440}>
+    okButtonProps={{ disabled: !validWidth || !claimUrl || !assetNo || !manualCode }} width={440}>
     <style>{labelStyles}</style>
     <Form layout="vertical">
       <Form.Item label="标签尺寸（宽 × 高）">
@@ -84,7 +84,7 @@ export function DeviceClaimLabelPrint({ open, onClose, claimUrl, serialNo, manua
           <h1>扫码绑定设备</h1>
           <div className="claim-label-qr"><QRCodeSVG value={claimUrl} size={256} level="M" marginSize={4} /></div>
           <div className="claim-label-details">
-            <div className="claim-label-sn">SN {serialNo}</div>
+            <div className="claim-label-sn">资产编号 {assetNo}</div>
             <div className="claim-label-code">绑定码 {manualCode}</div>
           </div>
         </article>

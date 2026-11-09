@@ -42,6 +42,7 @@ type createDeviceRequest struct {
 }
 
 type updateDeviceRequest struct {
+	HardwareSN   *string   `json:"hardware_sn"`
 	ICCID        *string   `json:"iccid"`
 	ProjectID    *string   `json:"project_id"`
 	SiteID       *string   `json:"site_id"`
@@ -217,7 +218,7 @@ func (h *Handler) AdminUpdate(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
-	if req.ICCID == nil && h.updateNodeDeviceName(c, deviceID, req, true) {
+	if req.ICCID == nil && req.HardwareSN == nil && h.updateNodeDeviceName(c, deviceID, req, true) {
 		return
 	}
 	if req.ProjectID != nil || req.SiteID != nil {
@@ -225,6 +226,7 @@ func (h *Handler) AdminUpdate(c *gin.Context) {
 		return
 	}
 	result, err := h.service.AdminUpdate(c.Request.Context(), AdminUpdateInput{
+		HardwareSN:   req.HardwareSN,
 		ICCID:        req.ICCID,
 		DeviceID:     deviceID,
 		ProductID:    req.ProductID,

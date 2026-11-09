@@ -110,7 +110,7 @@ export function DeviceActionForm({
                 : "转移设备"}
           </h2>
           <div className="panel-kicker">
-            {device.name} · SN {device.serial_no}
+            {device.name} · 资产编号 {device.asset_no || device.serial_no}
           </div>
         </div>
         <Button variant="secondary" onClick={onClose}>
