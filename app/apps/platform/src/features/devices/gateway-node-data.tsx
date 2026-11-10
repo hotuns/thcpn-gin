@@ -96,9 +96,17 @@ export function GatewayNodeData({ gateway, workspaceId, purpose = "measurement" 
     }),
     enabled: Boolean(applied),
   })) });
+  const nodeNameCounts = new Map<string, number>();
+  for (const node of nodes) nodeNameCounts.set(node.name, (nodeNameCounts.get(node.name) ?? 0) + 1);
+  const comparisonNodeName = (node?: GatewayNode) => {
+    if (!node) return "节点";
+    if ((nodeNameCounts.get(node.name) ?? 0) < 2) return node.name;
+    const identity = node.target.kind === "gateway_node" ? `序号 ${node.target.node_index}` : node.asset_no || node.node_sn || String(nodes.indexOf(node) + 1);
+    return `${node.name}（${identity}）`;
+  };
   const series: TelemetrySeries[] = queries.flatMap((query, index) => (query.data?.series ?? []).map((item) => {
     const node = queryGroups[index].streams.find((stream) => stream.id === item.data_stream_id)?.node;
-    return { ...item, name: applied?.mode === "compare" ? `${node?.name ?? "节点"} · ${item.name}` : item.name };
+    return { ...item, name: applied?.mode === "compare" ? `${comparisonNodeName(node)} · ${item.name}` : item.name };
   }));
   const streamOrder = new Map(nodes.flatMap((node) => node.streams.map((stream) => [stream.id, applied?.metrics.indexOf(nodeMetricKey(stream)) ?? 0] as const)));
   series.sort((a,b) => (streamOrder.get(a.data_stream_id) ?? 0) - (streamOrder.get(b.data_stream_id) ?? 0));

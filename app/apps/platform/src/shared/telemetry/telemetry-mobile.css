@@ -1,12 +1,10 @@
-.telemetry-zoom-controls, .telemetry-chart-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.telemetry-zoom-controls { padding: 8px 12px; }
+.telemetry-chart-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 
 @media (max-width: 767px) {
   .telemetry-visualization, .telemetry-charts, .telemetry-chart, .comparison-chart, .telemetry-table-shell { min-width: 0; max-width: 100%; }
   .telemetry-charts { grid-template-columns: minmax(0, 1fr); }
   .telemetry-chart > header { flex-wrap: wrap; gap: 10px; }
   .telemetry-chart .chart-heading-actions { flex-wrap: wrap; }
-  .telemetry-zoom-controls > button { min-width: 44px; min-height: 44px; }
   .telemetry-chart .chart-canvas, .comparison-chart .comparison-canvas { height: 300px; min-width: 0; }
   .telemetry-visualization .chart-toolbar, .telemetry-visualization .chart-series-toggles, .comparison-chart .comparison-summary, .comparison-chart .comparison-ranges { flex-wrap: wrap; }
   .telemetry-visualization .chart-mode button, .telemetry-visualization .chart-series-toggles button { min-height: 44px; }

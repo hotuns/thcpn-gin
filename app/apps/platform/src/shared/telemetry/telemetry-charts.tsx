@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useId, useMemo, useRef, useState } from "react";
 import {
   Area,
@@ -16,11 +17,13 @@ import { ChartNoAxesCombined, PanelsTopLeft, Maximize2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, IconButton } from "../ui";
 import type { TelemetrySeries } from "@thcpn/api";
 import { useLocale } from "@thcpn/i18n";
-import { ChartZoomControls } from "./chart-zoom-controls";
 import "./telemetry-mobile.css";
 import { useChartZoom } from "./chart-zoom";
 
 const chartColors = ["#1769e0", "#16845b", "#d36b12", "#b13e4a", "#6a5ab5"];
+const seriesColor = (index: number, distinct: boolean) => distinct
+  ? `hsl(${(218 + index * 137.508) % 360} 65% ${[40, 48, 35][index % 3]}%)`
+  : chartColors[index % chartColors.length];
 const windDirectionLabel = (value: number) => ["北", "东北", "东", "东南", "南", "西南", "西", "西北"][Math.round((value % 360) / 45) % 8];
 const normalizedCode = (series: TelemetrySeries) => series.code.trim().toLowerCase();
 const isWindSpeed = (series: TelemetrySeries) => ["wind_sp", "wind_speed"].includes(normalizedCode(series));
@@ -62,7 +65,9 @@ export function TelemetryCharts({
   const available = series.filter((item) =>
     item.points.some((point) => Number.isFinite(point.value)),
   );
-  const windDirectionSeries = available.find(isWindDirection);
+  const fixedComparison = displayMode === "compare" && !compact;
+  const distinctColors = fixedComparison && available.length > chartColors.length;
+  const windDirectionSeries = fixedComparison ? undefined : available.find(isWindDirection);
   const windSpeedSeries = available.find(isWindSpeed);
   const chartSeries = windDirectionSeries && windSpeedSeries
     ? available.filter((item) => !isWindDirection(item))
@@ -82,11 +87,41 @@ export function TelemetryCharts({
         : [...current, id],
     );
 
+  const legend = (
+    <div className={`chart-series-toggles${fixedComparison ? " comparison-series-list" : ""}`} aria-label={t("platform:telemetry.visibleMetrics")}>
+      {chartSeries.map((item, index) => (
+        <button
+          type="button"
+          key={item.data_stream_id}
+          className={
+            hidden.includes(item.data_stream_id) ? "muted-series" : ""
+          }
+          title={item.name}
+          onClick={() => toggle(item.data_stream_id)}
+          aria-pressed={!hidden.includes(item.data_stream_id)}
+        >
+          <i
+            style={{
+              background: seriesColor(index, distinctColors),
+            }}
+          />
+          <span>{item.name}{isWindSpeed(item) && windDirectionSeries ? " · 风向" : ""}</span>
+          <small>{item.unit}</small>
+        </button>
+      ))}
+    </div>
+  );
+  const seriesPicker = fixedComparison && chartSeries.length > 8 ? (
+    <details className="comparison-series-picker">
+      <summary>{t("platform:telemetry.visibleMetrics")} · {visible.length}/{chartSeries.length}</summary>
+      {legend}
+    </details>
+  ) : legend;
   return (
     <div className={`telemetry-visualization ${compact ? "compact" : ""}`}>
       {!compact && (
-        <div className="chart-toolbar">
-        <div className="chart-mode" aria-label={t("platform:telemetry.displayMode")}>
+        <div className={`chart-toolbar${fixedComparison ? " comparison-series-toolbar" : ""}`}>
+        {!displayMode && <div className="chart-mode" aria-label={t("platform:telemetry.displayMode")}>
             <button
               type="button"
               className={mode === "compare" ? "active" : ""}
@@ -104,28 +139,8 @@ export function TelemetryCharts({
               <PanelsTopLeft size={13} />
               {t("platform:telemetry.separate")}
             </button>
-          </div>
-          <div className="chart-series-toggles" aria-label={t("platform:telemetry.visibleMetrics")}>
-            {chartSeries.map((item, index) => (
-              <button
-                type="button"
-                key={item.data_stream_id}
-                className={
-                  hidden.includes(item.data_stream_id) ? "muted-series" : ""
-                }
-                onClick={() => toggle(item.data_stream_id)}
-                aria-pressed={!hidden.includes(item.data_stream_id)}
-              >
-                <i
-                  style={{
-                    background: chartColors[index % chartColors.length],
-                  }}
-                />
-                {item.name}{isWindSpeed(item) && windDirectionSeries ? " · 风向" : ""}
-                <small>{item.unit}</small>
-              </button>
-            ))}
-          </div>
+          </div>}
+          {seriesPicker}
         </div>
       )}
       {activeMode === "compare" && chartSeries.length > 1 ? (
@@ -136,6 +151,8 @@ export function TelemetryCharts({
           startTime={startTime}
           endTime={endTime}
           zoomable={!compact}
+          fixedComparison={fixedComparison}
+          seriesPicker={fixedComparison ? seriesPicker : undefined}
         />
       ) : (
         <div className="telemetry-charts">
@@ -169,6 +186,8 @@ function ComparisonChart({
   endTime,
   zoomable,
   expanded = false,
+  fixedComparison = false,
+  seriesPicker,
 }: {
   series: TelemetrySeries[];
   allSeries: TelemetrySeries[];
@@ -177,10 +196,16 @@ function ComparisonChart({
   endTime: string;
   zoomable: boolean;
   expanded?: boolean;
+  fixedComparison?: boolean;
+  seriesPicker?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const expandButton = useRef<HTMLButtonElement | null>(null);
   const { t, formatNumber, formatDateTime } = useLocale();
+  const sameMetric = allSeries.length > 0 && allSeries.every(item => normalizedCode(item) === normalizedCode(allSeries[0]) && item.unit === allSeries[0].unit);
+  const normalized = !fixedComparison || !sameMetric;
+  const title = t(normalized ? "platform:telemetry.normalizedChart" : "platform:telemetry.nodeChart");
+  const colorFor = (item: TelemetrySeries) => seriesColor(allSeries.indexOf(item), fixedComparison && allSeries.length > chartColors.length);
   const { data, stats } = useMemo(() => {
     const directionByTime = new Map(
       windDirectionSeries?.points
@@ -205,7 +230,7 @@ function ComparisonChart({
         if (!Number.isFinite(time) || !Number.isFinite(point.value)) return;
         const row = rows.get(time) ?? { time };
         const spread = itemStats.max - itemStats.min;
-        row[item.data_stream_id] = spread
+        row[item.data_stream_id] = !normalized ? point.value : spread
           ? ((point.value - itemStats.min) / spread) * 100
           : 50;
         row[`${item.data_stream_id}:raw`] = point.value;
@@ -217,7 +242,7 @@ function ComparisonChart({
       data: [...rows.values()].sort((a, b) => Number(a.time) - Number(b.time)),
       stats: nextStats,
     };
-  }, [series, windDirectionSeries]);
+  }, [series, windDirectionSeries, normalized]);
   const returnedTotal = series.reduce(
     (count, item) => count + item.points.length,
     0,
@@ -243,14 +268,14 @@ function ComparisonChart({
           {sampled ? t("platform:telemetry.chartPoints") : t("platform:telemetry.dataPoints")}
         </span>
         <span className="normalization-note">
-          {complete ? t("platform:telemetry.complete") : t("platform:telemetry.truncated")} · {t("platform:telemetry.normalized")}
+          {complete ? t("platform:telemetry.complete") : t("platform:telemetry.truncated")}{normalized ? ` · ${t("platform:telemetry.normalized")}` : allSeries[0]?.unit ? ` · ${allSeries[0].unit}` : ""}
         </span>
       </div>
-      {zoomable && <div className="telemetry-chart-controls">{!open && <ChartZoomControls zoom={zoom}/>}{!expanded && <IconButton label={t("platform:telemetry.expand")} onClick={(event) => { expandButton.current = event.currentTarget; setOpen(true); }}><Maximize2 size={16}/></IconButton>}</div>}
+      {zoomable && !expanded && <div className="telemetry-chart-controls"><IconButton label={t("platform:telemetry.expand")} onClick={(event) => { expandButton.current = event.currentTarget; setOpen(true); }}><Maximize2 size={16}/></IconButton></div>}
       {!open && <div
         className="comparison-canvas"
         role="img"
-        aria-label={t("platform:telemetry.normalizedChart")}
+        aria-label={title}
         {...(zoomable ? zoom.interactionProps : {})}
       >
         <ResponsiveContainer width="100%" height="100%">
@@ -277,9 +302,9 @@ function ComparisonChart({
               axisLine={{ stroke: "var(--line)" }}
             />
             <YAxis
-              domain={[0, 100]}
-              ticks={[0, 25, 50, 75, 100]}
-              tickFormatter={(value) => `${value}%`}
+              domain={normalized ? [0, 100] : ["auto", "auto"]}
+              ticks={normalized ? [0, 25, 50, 75, 100] : undefined}
+              tickFormatter={normalized ? (value) => `${value}%` : undefined}
               width="auto" tickMargin={10}
               tick={{ fontSize: 13 }}
               tickLine={false}
@@ -313,7 +338,7 @@ function ComparisonChart({
                 dataKey={item.data_stream_id}
                 name={item.data_stream_id}
                 stroke={
-                  chartColors[allSeries.indexOf(item) % chartColors.length]
+                  colorFor(item)
                 }
                 strokeWidth={2}
                 dot={false}
@@ -327,7 +352,7 @@ function ComparisonChart({
                 key={`${item.data_stream_id}:wind-direction`}
                 dataKey={item.data_stream_id}
                 fill="transparent"
-                shape={(props) => <WindArrow {...props as WindArrowProps} stroke={chartColors[allSeries.indexOf(item) % chartColors.length]} />}
+                shape={(props) => <WindArrow {...props as WindArrowProps} stroke={colorFor(item)} />}
                 isAnimationActive={false}
                 legendType="none"
               />
@@ -335,7 +360,7 @@ function ComparisonChart({
           </LineChart>
         </ResponsiveContainer>
       </div>}
-      <div className="comparison-ranges">
+      {!fixedComparison && <div className="comparison-ranges">
         {series.map((item) => {
           const itemStats = stats.get(item.data_stream_id);
           return (
@@ -343,7 +368,7 @@ function ComparisonChart({
               <i
                 style={{
                   background:
-                    chartColors[allSeries.indexOf(item) % chartColors.length],
+                    colorFor(item),
                 }}
               />
               <strong>{item.name}</strong>
@@ -353,8 +378,16 @@ function ComparisonChart({
             </span>
           );
         })}
-      </div>
-      {!expanded && <Dialog open={open} onOpenChange={setOpen}><DialogContent className="telemetry-expanded-dialog" aria-describedby={undefined} onCloseAutoFocus={(event) => { event.preventDefault(); expandButton.current?.focus(); }}><DialogHeader><DialogTitle>{t("platform:telemetry.normalizedChart")}</DialogTitle></DialogHeader>{open && <ComparisonChart series={series} allSeries={allSeries} windDirectionSeries={windDirectionSeries} startTime={startTime} endTime={endTime} zoomable expanded/>}</DialogContent></Dialog>}
+      </div>}
+      {!expanded && (
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent className="telemetry-expanded-dialog" aria-describedby={undefined} onCloseAutoFocus={(event) => { event.preventDefault(); expandButton.current?.focus(); }}>
+            <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
+            {seriesPicker}
+            {open && <ComparisonChart series={series} allSeries={allSeries} windDirectionSeries={windDirectionSeries} startTime={startTime} endTime={endTime} zoomable expanded fixedComparison={fixedComparison}/>}
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
@@ -438,7 +471,6 @@ export function TelemetryChart({
         {!expanded && <IconButton label={t("platform:telemetry.expand")} onClick={(event) => { expandButton.current = event.currentTarget; setOpen(true); }}><Maximize2 size={16} /></IconButton>}
         </div>
       </header>
-      {zoomable && !open && <ChartZoomControls zoom={zoom}/>}
       {!open && <div
         className="chart-canvas"
         role="img"

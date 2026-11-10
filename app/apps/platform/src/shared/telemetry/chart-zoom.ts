@@ -79,10 +79,7 @@ export function useChartZoom(min: number, max: number) {
   };
   const resetZoom = () => { drag.current = null; setDragging(false); setDomain([min, max]); };
   return {
-    domain, isDragging, onWheel, resetZoom, onClickCapture,
-    zoomIn: () => scaleZoom(0.8), zoomOut: () => scaleZoom(1.25),
-    canZoomIn: valid && domain[1] - domain[0] > (max - min) / 1000,
-    canZoomOut: canPan,
+    domain, isDragging, onClickCapture,
     interactionProps: {
       ref: setElement,
       onWheel, onDoubleClick: resetZoom, onPointerDown, onPointerMove,
