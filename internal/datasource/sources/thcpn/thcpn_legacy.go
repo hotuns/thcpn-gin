@@ -685,3 +685,32 @@ func defaultIdentifier(value string, fallback string) string {
 	}
 	return value
 }
+
+// InspectionSampleTime checks the raw observation row, independently of
+// whether any configured numeric channel could decode that row.
+func (s *Service) InspectionSampleTime(ctx context.Context, id uuid.UUID, deviceType string, start, end time.Time) (time.Time, error) {
+	db, ref, err := s.openTHCPNDevice(ctx, id)
+	if err != nil {
+		return time.Time{}, err
+	}
+	cfg, err := parseTHCPNLegacyConfig(thcpnTelemetryAdapterConfig(ref.ExternalDeviceID, thcpnShardStrategyForDeviceType(deviceType), "inspection"))
+	if err != nil {
+		return time.Time{}, err
+	}
+	shards, err := queryTHCPNShardTables(ctx, db, cfg, start, end)
+	if err != nil {
+		return time.Time{}, err
+	}
+	var latest time.Time
+	for _, shard := range shards {
+		query := fmt.Sprintf("SELECT MAX(ts) FROM %s WHERE device_id=? AND deleted_at IS NULL AND type='data' AND ts>=? AND ts<=?", platform.QuoteMySQLIdentifier(shard.Name))
+		var at sql.NullTime
+		if err = db.QueryRowContext(ctx, query, ref.ExternalDeviceID, start, end).Scan(&at); err != nil {
+			return time.Time{}, apperr.Wrap(apperr.KindDataSource, "read THCPN raw inspection timestamp", err)
+		}
+		if at.Valid && at.Time.After(latest) {
+			latest = at.Time
+		}
+	}
+	return latest, nil
+}

@@ -1,3 +1,5 @@
+import type { InspectionDevice, InspectionEvent, InspectionMetric, InspectionOverview, InspectionTemplate } from "./device-inspection";
+export type { InspectionDevice, InspectionEvent, InspectionKind, InspectionMetric, InspectionOverview, InspectionTemplate } from "./device-inspection";
 export * from "./runtime-status";
 export * from "./dashboard";
 import type { DashboardOverview } from "./dashboard";
@@ -1206,6 +1208,13 @@ export const api = {
       ),
   },
     admin: {
+    inspectionOverview: (date: string) => request<InspectionOverview>(`/api/v1/admin/device-inspection${queryString({date})}`),
+    inspectionEvents: (params: {status: string; q?: string; page: number}) => request<{items: InspectionEvent[]; total: number}>(`/api/v1/admin/device-inspection/events${queryString(params)}`),
+    inspectionDevices: (params: {state: string; q?: string; page: number}) => request<{items: InspectionDevice[]; total: number}>(`/api/v1/admin/device-inspection/devices${queryString(params)}`),
+    inspectionMetrics: () => request<{items: InspectionMetric[]}>("/api/v1/admin/device-inspection/metrics"),
+    inspectionTemplates: () => request<{items: InspectionTemplate[]}>("/api/v1/admin/device-inspection/templates"),
+    saveInspectionTemplate: (item: InspectionTemplate) => jsonRequest<InspectionTemplate>("/api/v1/admin/device-inspection/templates","PUT",item),
+    acknowledgeInspection: (id: string, note: string) => jsonRequest<void>(`/api/v1/admin/device-inspection/events/${encodeURIComponent(id)}/acknowledge`,"POST",{note}),
     settings: {
       get: () => request<SystemSettings>("/api/v1/admin/settings"),
       update: (values:Record<string,number>, reason:string) => jsonRequest<SystemSettings>("/api/v1/admin/settings","PUT",{values,reason}),

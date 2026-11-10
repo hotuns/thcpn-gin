@@ -20,6 +20,7 @@ import (
 	"thcpn-gin/internal/db"
 	"thcpn-gin/internal/deviceclaim"
 	"thcpn-gin/internal/export"
+	"thcpn-gin/internal/inspection"
 	"thcpn-gin/internal/logger"
 	"thcpn-gin/internal/media"
 	"thcpn-gin/internal/notification"
@@ -110,6 +111,7 @@ func run() int {
 	processorClient := processing.NewClient(cfg.Processing.ProcessorURL)
 	processingEngine := processing.NewEngine(pg, processorClient, media.NewService(pg, dataSourceService, datasource.NewRuntime(nil, pg), objectstore.NewSigner(cfg.ObjectStore, cfg.Auth.JWTSecret), cfg.QueryLimits, objectstore.NewStore(cfg.ObjectStore)), objectstore.NewStore(cfg.ObjectStore))
 
+	inspectionService := &inspection.Service{DB: pg, Sources: dataSourceService, Telemetry: telemetryService}
 	if envBool("WORKER_RUN_ONCE") {
 		if err := processor.RecoverInterrupted(ctx); err != nil {
 			log.Error("recover interrupted exports", slog.Any("error", err))
@@ -117,6 +119,10 @@ func run() int {
 		}
 		if _, err := alertEvaluator.ProcessAvailable(ctx, 100); err != nil {
 			log.Error("process alerts", slog.Any("error", err))
+			return 1
+		}
+		if _, err := inspectionService.ProcessAvailable(ctx, 20); err != nil {
+			log.Error("process device inspection", slog.Any("error", err))
 			return 1
 		}
 		if err := cleanupExpiredAccess(ctx, accessGrantService, log); err != nil {
@@ -140,10 +146,12 @@ func run() int {
 	server, mux := task.NewExportServer(redisClient, processor, log, concurrency, processingEngine)
 	task.RegisterSourceSyncHandler(mux, dataSourceService)
 	task.RegisterAlertHandler(mux, alertEvaluator, log)
+	task.RegisterInspectionHandler(mux, inspectionService, log)
 	taskClient := task.NewClient(redisClient)
 	defer taskClient.Close()
 	startProcessingScan(ctx, taskClient, log, time.Duration(cfg.Processing.PollSeconds)*time.Second)
 	startAlertScan(ctx, taskClient, log, time.Minute)
+	startMinuteScan(ctx, taskClient.EnqueueInspectionScan, log, time.Minute, "enqueue device inspection scan")
 	startExpiredAccessCleanup(ctx, accessGrantService, log, time.Hour)
 	startExpiredExportFileCleanup(ctx, processor, log, time.Hour)
 	startExportRecovery(ctx, processor, log)
@@ -169,10 +177,14 @@ func run() int {
 }
 
 func startAlertScan(ctx context.Context, client *task.Client, log *slog.Logger, interval time.Duration) {
+	startMinuteScan(ctx, client.EnqueueAlertScan, log, interval, "enqueue alert scan")
+}
+
+func startMinuteScan(ctx context.Context, scan func(context.Context) error, log *slog.Logger, interval time.Duration, message string) {
 	go func() {
 		enqueue := func() {
-			if err := client.EnqueueAlertScan(ctx); err != nil && log != nil {
-				log.Warn("enqueue alert scan", slog.Any("error", err))
+			if err := scan(ctx); err != nil && log != nil {
+				log.Warn(message, slog.Any("error", err))
 			}
 		}
 		enqueue()

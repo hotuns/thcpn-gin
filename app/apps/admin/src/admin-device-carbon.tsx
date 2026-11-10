@@ -1,3 +1,5 @@
+import { inspectionRange } from "./inspection-query";
+import { useSearchParams } from "react-router-dom";
 import { AdminTimeRange } from "./admin-time-range";
 import { lazy, Suspense, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -10,11 +12,12 @@ const AdminDataCharts = lazy(() => import("./admin-data-charts").then(module => 
 
 export function AdminDeviceCarbon({deviceId,onExport}:{deviceId:string;onExport:()=>void}) {
   const {message}=App.useApp();
-  const [node,setNode]=useState<number>();
-  const [field,setField]=useState("A");
+  const [params]=useSearchParams();
+  const [node,setNode]=useState<number|undefined>(()=>Number(params.get("node_id"))||undefined);
+  const [field,setField]=useState(params.get("field")||"A");
   const [phase,setPhase]=useState("all");
-  const [range,setRange]=useState<[Dayjs,Dayjs]|null>(()=>[dayjs().subtract(1,"day"),dayjs()]);
-  const [applied,setApplied]=useState(()=>({start:dayjs().subtract(1,"day").toISOString(),end:dayjs().toISOString()}));
+  const [range,setRange]=useState<[Dayjs,Dayjs]|null>(()=>inspectionRange(params,24));
+  const [applied,setApplied]=useState(()=>({start:range![0].toISOString(),end:range![1].toISOString()}));
   const [period,setPeriod]=useState<string>();
   const [fluxView,setFluxView]=useState("chart");
   const overview=useQuery({queryKey:["admin","device",deviceId,"carbon-overview"],queryFn:()=>api.admin.carbonOverview(deviceId)});

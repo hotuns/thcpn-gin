@@ -3154,6 +3154,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/device-inspection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Device inspection coverage and Beijing calendar day summary */
+        get: operations["adminDeviceInspectionOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/device-inspection/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List covered devices and last inspection result */
+        get: operations["adminListInspectionDevices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/device-inspection/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List inspection events separately from workspace alerts */
+        get: operations["adminListInspectionEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/device-inspection/events/{id}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record operator acknowledgement without marking the incident resolved */
+        post: operations["adminAcknowledgeInspectionEvent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/device-inspection/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List metric codes and units available for global templates */
+        get: operations["adminListInspectionMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/device-inspection/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List global data quality templates */
+        get: operations["adminListInspectionTemplates"];
+        /** Create a template or update its thresholds and enablement by ID */
+        put: operations["adminSaveInspectionTemplate"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/device-map": {
         parameters: {
             query?: never;
@@ -6725,6 +6828,28 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        DeviceInspectionTemplate: {
+            /** Format: uuid */
+            id?: string;
+            /** @enum {string} */
+            family: "thcpn" | "carbon";
+            /**
+             * @default all
+             * @enum {string}
+             */
+            device_type: "all" | "standalone" | "gateway" | "gateway_node";
+            metric_code: string;
+            unit: string;
+            /** @enum {string} */
+            kind: "range" | "invalid" | "zero";
+            lower_value?: number | null;
+            upper_value?: number | null;
+            invalid_value?: number | null;
+            consecutive: number;
+            enabled: boolean;
+            /** Format: date-time */
+            updated_at?: string;
+        };
         AdminDeviceDeletion: {
             allowed: boolean;
             reasons: string[];
@@ -12994,6 +13119,156 @@ export interface operations {
                 content?: never;
             };
             409: components["responses"]["Conflict"];
+        };
+    };
+    adminDeviceInspectionOverview: {
+        parameters: {
+            query?: {
+                date?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Date and counts (eligible */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminListInspectionDevices: {
+        parameters: {
+            query?: {
+                state?: "attention" | "all" | "pending" | "unknown" | "error" | "overdue";
+                page?: number;
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Inspection device items and total count. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminListInspectionEvents: {
+        parameters: {
+            query?: {
+                status?: "pending" | "active" | "resolved" | "all";
+                page?: number;
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Inspection event items and total count. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminAcknowledgeInspectionEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Acknowledged. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminListInspectionMetrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Available metric items. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminListInspectionTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Global template items. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminSaveInspectionTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceInspectionTemplate"];
+            };
+        };
+        responses: {
+            /** @description Saved template. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceInspectionTemplate"];
+                };
+            };
         };
     };
     adminListDeviceMap: {

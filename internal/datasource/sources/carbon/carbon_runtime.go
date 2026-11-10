@@ -454,8 +454,13 @@ func queryCarbonFlux(ctx context.Context, db *sql.DB, tables []string, deviceID 
 	parts := make([]string, 0, len(tables))
 	args := make([]any, 0, len(tables)*4)
 	for _, table := range tables {
-		parts = append(parts, "SELECT node_id, period, period_at, data FROM `"+table+"` WHERE device_id=? AND node_id=? AND period_at>=? AND period_at<=? AND deleted_at IS NULL")
-		args = append(args, deviceID, nodeID, start, end)
+		where := " WHERE device_id=? AND period_at>=? AND period_at<=? AND deleted_at IS NULL"
+		args = append(args, deviceID, start, end)
+		if nodeID > 0 {
+			where += " AND node_id=?"
+			args = append(args, nodeID)
+		}
+		parts = append(parts, "SELECT node_id, period, period_at, data FROM `"+table+"`"+where)
 	}
 	rows, err := db.QueryContext(ctx, strings.Join(parts, " UNION ALL ")+" ORDER BY period_at, period", args...)
 	if err != nil {
@@ -477,10 +482,10 @@ func queryCarbonFlux(ctx context.Context, db *sql.DB, tables []string, deviceID 
 			return nil, err
 		}
 		for _, item := range items {
-			if !strings.EqualFold(strings.TrimSpace(item.Field), strings.TrimSpace(field)) {
+			if field != "" && !strings.EqualFold(strings.TrimSpace(item.Field), strings.TrimSpace(field)) {
 				continue
 			}
-			key := point.Period + ":" + strings.ToUpper(strings.TrimSpace(item.Field))
+			key := strconv.Itoa(point.NodeID) + ":" + point.Period + ":" + strings.ToUpper(strings.TrimSpace(item.Field))
 			if _, ok := seen[key]; ok {
 				continue
 			}
@@ -737,4 +742,78 @@ func carbonNumber(value any) (float64, bool) {
 }
 func carbonWallTime(value time.Time) time.Time {
 	return time.Date(value.Year(), value.Month(), value.Day(), value.Hour(), value.Minute(), value.Second(), value.Nanosecond(), CarbonLocation)
+}
+
+// InspectionSampleTimes reads only raw sample arrival by configured node in
+// the inspection window, without fetching flux, attributes or device dossiers.
+type InspectionNodeSample struct{ At, Start time.Time }
+
+func (s *Service) InspectionSampleTimes(ctx context.Context, id uuid.UUID, start, end time.Time) (map[int]InspectionNodeSample, error) {
+	ref, db, err := s.openCarbonDeviceSource(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	count, err := s.carbonNodesCount(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	tables, err := carbonExistingTables(ctx, db, "device_data_next", carbonMonthNames(start, end))
+	if err != nil {
+		return nil, err
+	}
+	samples, err := carbonLatestNodeTimes(ctx, db, tables, ref.ExternalID, start.In(CarbonLocation), end.In(CarbonLocation))
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[int]InspectionNodeSample, count)
+	for index := 1; index <= count; index++ {
+		cutoff, err := (observation.Service{DB: s.DB}).DeviceStart(ctx, id, index)
+		if err != nil {
+			return nil, err
+		}
+		if cutoff != nil && cutoff.After(end) {
+			continue
+		}
+		var sample InspectionNodeSample
+		if cutoff != nil {
+			sample.Start = *cutoff
+		}
+		if at := samples[index]; at != nil && (cutoff == nil || !at.Before(*cutoff)) {
+			sample.At = *at
+		}
+		result[index] = sample
+	}
+	return result, nil
+}
+
+// InspectionFlux reads every node and field in the bounded inspection window.
+func (s *Service) InspectionFlux(ctx context.Context, id uuid.UUID, start, end time.Time) ([]CarbonFluxPoint, error) {
+	ref, db, err := s.openCarbonDeviceSource(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	tables, err := carbonExistingTables(ctx, db, "carbon_flux", carbonMonthNames(start, end))
+	if err != nil {
+		return nil, err
+	}
+	points, err := queryCarbonFlux(ctx, db, tables, ref.ExternalID, 0, "", start.In(CarbonLocation), end.In(CarbonLocation))
+	if err != nil {
+		return nil, err
+	}
+	cutoffs := make(map[int]*time.Time)
+	filtered := points[:0]
+	for _, point := range points {
+		cutoff, ok := cutoffs[point.NodeID]
+		if !ok {
+			cutoff, err = (observation.Service{DB: s.DB}).DeviceStart(ctx, id, point.NodeID)
+			if err != nil {
+				return nil, err
+			}
+			cutoffs[point.NodeID] = cutoff
+		}
+		if cutoff == nil || !point.PeriodAt.Before(*cutoff) {
+			filtered = append(filtered, point)
+		}
+	}
+	return filtered, nil
 }

@@ -2786,6 +2786,90 @@ paths:
       responses:
         "204": { description: Classification term deleted. }
         "409": { $ref: "#/components/responses/Conflict" }
+  /api/v1/admin/device-inspection:
+    get:
+      tags: [Admin]
+      operationId: adminDeviceInspectionOverview
+      summary: Device inspection coverage and Beijing calendar day summary
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: date, in: query, schema: { type: string, format: date } }
+      responses:
+        "200": { description: Date and counts (eligible, checked, unknown_schedule, failed, overdue, new_events, resolved_events, unacknowledged). }
+  /api/v1/admin/device-inspection/devices:
+    get:
+      tags: [Admin]
+      operationId: adminListInspectionDevices
+      summary: List covered devices and last inspection result
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: state, in: query, schema: { type: string, enum: [attention, all, pending, unknown, error, overdue] } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: q, in: query, schema: { type: string } }
+      responses:
+        "200": { description: Inspection device items and total count. }
+  /api/v1/admin/device-inspection/events:
+    get:
+      tags: [Admin]
+      operationId: adminListInspectionEvents
+      summary: List inspection events separately from workspace alerts
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending, active, resolved, all] } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: q, in: query, schema: { type: string } }
+      responses:
+        "200": { description: Inspection event items and total count. }
+  /api/v1/admin/device-inspection/events/{id}/acknowledge:
+    post:
+      tags: [Admin]
+      operationId: adminAcknowledgeInspectionEvent
+      summary: Record operator acknowledgement without marking the incident resolved
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note: { type: string, maxLength: 500 }
+      responses:
+        "204": { description: Acknowledged. }
+  /api/v1/admin/device-inspection/metrics:
+    get:
+      tags: [Admin]
+      operationId: adminListInspectionMetrics
+      summary: List metric codes and units available for global templates
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Available metric items. }
+  /api/v1/admin/device-inspection/templates:
+    get:
+      tags: [Admin]
+      operationId: adminListInspectionTemplates
+      summary: List global data quality templates
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Global template items. }
+    put:
+      tags: [Admin]
+      operationId: adminSaveInspectionTemplate
+      summary: Create a template or update its thresholds and enablement by ID
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeviceInspectionTemplate" }
+      responses:
+        "200":
+          description: Saved template.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceInspectionTemplate" }
   /api/v1/admin/device-map:
     get:
       tags: [Admin]
@@ -8416,6 +8500,22 @@ components:
                   message: internal error
                   request_id: req_123
   schemas:
+    DeviceInspectionTemplate:
+      type: object
+      required: [family, metric_code, unit, kind, consecutive, enabled]
+      properties:
+        id: { type: string, format: uuid }
+        family: { type: string, enum: [thcpn, carbon] }
+        device_type: { type: string, enum: [all, standalone, gateway, gateway_node], default: all }
+        metric_code: { type: string, maxLength: 120 }
+        unit: { type: string, maxLength: 32 }
+        kind: { type: string, enum: [range, invalid, zero] }
+        lower_value: { type: [number, "null"] }
+        upper_value: { type: [number, "null"] }
+        invalid_value: { type: [number, "null"] }
+        consecutive: { type: integer, minimum: 2, maximum: 100 }
+        enabled: { type: boolean }
+        updated_at: { type: string, format: date-time }
     AdminDeviceDeletion:
       type: object
       required: [allowed, reasons, state, name, confirmation, device_type, scope, expected_id]

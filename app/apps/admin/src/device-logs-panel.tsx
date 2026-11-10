@@ -1,3 +1,4 @@
+import { useSearchParams } from "react-router-dom";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Download, Eye, FileText, RefreshCw, Search } from "lucide-react";
@@ -10,9 +11,14 @@ const text = (value: unknown, fallback = "—") => value === undefined || value 
 const time = (value: unknown) => value ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "medium" }).format(new Date(String(value))) : "—";
 
 export function DeviceLogsPanel({ deviceId, deviceName }: { deviceId: string; deviceName?: string }) {
+  const [params] = useSearchParams();
+  const queryDate = (key: string, fallback: Date) => {
+    const value = new Date(params.get(key) ?? "");
+    return dateValue(Number.isFinite(value.getTime()) ? value : fallback);
+  };
   const [keyword, setKeyword] = useState("");
-  const [startDate, setStartDate] = useState(() => dateValue(new Date(Date.now() - 30 * 86400000)));
-  const [endDate, setEndDate] = useState(() => dateValue(new Date()));
+  const [startDate, setStartDate] = useState(() => queryDate("start", new Date(Date.now() - 30 * 86400000)));
+  const [endDate, setEndDate] = useState(() => queryDate("end", new Date()));
   const [submitted, setSubmitted] = useState({ keyword: "", startDate, endDate });
   const [page, setPage] = useState(1);
   const [preview, setPreview] = useState<any>(null);

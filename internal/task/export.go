@@ -19,6 +19,7 @@ const (
 	TypeExportJob      = "export:process"
 	TypeProcessingScan = "processing:scan"
 	TypeAlertScan      = "alerts:scan"
+	TypeInspectionScan = "device-inspection:scan"
 	QueueExports       = "exports"
 	QueueProcessing    = "processing"
 	QueueAlerts        = "alerts"
@@ -93,6 +94,24 @@ func (c *Client) EnqueueAlertScan(ctx context.Context) error {
 		return nil
 	}
 	return err
+}
+
+func (c *Client) EnqueueInspectionScan(ctx context.Context) error {
+	_, err := c.client.EnqueueContext(ctx, asynq.NewTask(TypeInspectionScan, nil), asynq.Queue(QueueAlerts), asynq.MaxRetry(0), asynq.Timeout(50*time.Second), asynq.Unique(55*time.Second))
+	if errors.Is(err, asynq.ErrDuplicateTask) {
+		return nil
+	}
+	return err
+}
+
+func RegisterInspectionHandler(mux *asynq.ServeMux, processor ProcessingProcessor, logger *slog.Logger) {
+	mux.HandleFunc(TypeInspectionScan, func(ctx context.Context, _ *asynq.Task) error {
+		processed, err := processor.ProcessAvailable(ctx, 100)
+		if logger != nil {
+			logger.Info("device inspection scan handled", slog.Int("processed", processed))
+		}
+		return err
+	})
 }
 
 func (c *Client) Close() error {

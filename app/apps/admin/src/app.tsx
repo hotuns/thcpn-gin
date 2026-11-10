@@ -76,6 +76,7 @@ const AdminSensorsPage = lazy(() =>
     default: module.AdminSensorsPage,
   })),
 );
+const AdminInspectionPage = lazy(() => import("./admin-inspection").then(module => ({ default: module.AdminInspectionPage })));
 const AdminDevicesPage = lazy(() =>
   import("./admin-devices").then((module) => ({
     default: module.AdminDevicesPage,
@@ -136,6 +137,7 @@ const adminNavGroups = [
 const adminNav = [
   { to: "/admin", key: "overview", icon: Home, group: "overview" },
   { to: "/admin/devices", key: "devices", icon: Boxes, group: "operations" },
+  { to: "/admin/device-inspection", key: "deviceInspection", icon: Activity, group: "operations" },
   { to: "/admin/device-map", key: "deviceMap", icon: MapPinned, group: "operations" },
   { to: "/admin/exports", key: "exports", icon: FileText, group: "operations" },
   { to: "/admin/firmware", key: "firmware", icon: HardDriveUpload, group: "operations" },
@@ -596,6 +598,7 @@ function AdminRoot() {
         <Route path="exports" element={<AdminExportsPage />} />
         <Route path="sensors" element={<AdminSensorsPage key="v1" version="v1" />} />
         <Route path="sensors-v2" element={<AdminSensorsPage key="v2" version="v2" />} />
+        <Route path="device-inspection" element={<AdminInspectionPage />} />
         <Route path="device-map" element={<AdminDeviceInsightsPage />} />
         <Route path="logs" element={<AdminLogsPage />} />
         <Route path="workspaces" element={<AdminWorkspacesPage />} />

@@ -1,3 +1,4 @@
+import { inspectionRange } from "./inspection-query";
 import { AdminNodeStatus } from "./runtime-status";
 import { AdminTimeRange } from "./admin-time-range";
 import { useAdminMobile } from "./admin-mobile";
@@ -22,8 +23,9 @@ export function AdminDeviceData({device,nodeKey,onNodeChange,onExport}:{device:J
   const id=String(device.id);
   const gateway=device.device_type==="gateway";
   const lora=device.source_family==="lorawan_v2";
-  const [range,setRange]=useState<[Dayjs,Dayjs]|null>(()=>[dayjs().subtract(lora?6:24,"hour"),dayjs()]);
-  const [applied,setApplied]=useState(()=>({startTime:dayjs().subtract(lora?6:24,"hour").toISOString(),endTime:dayjs().toISOString()}));
+  const [params,setParams]=useSearchParams();
+  const [range,setRange]=useState<[Dayjs,Dayjs]|null>(()=>inspectionRange(params,lora?6:24));
+  const [applied,setApplied]=useState(()=>({startTime:range![0].toISOString(),endTime:range![1].toISOString()}));
   const [selection,setSelection]=useState<{target:string;ids:string[]}|null>(null);
   const [tab,setTab]=useState("telemetry");
   const purpose: string = "measurement";
@@ -32,7 +34,6 @@ export function AdminDeviceData({device,nodeKey,onNodeChange,onExport}:{device:J
   const [phase,setPhase]=useState("all");
   const [page,setPage]=useState(1);
   const [mediaStream,setMediaStream]=useState<string>();
-  const [params,setParams]=useSearchParams();
   const [nodeScope,setNodeScope]=useState(params.get("node_scope")==="history"?"history":"bound");
 
   const nodes=useQuery({queryKey:["admin","device",id,"nodes","operations","all"],queryFn:()=>api.admin.deviceNodes(id,"all"),enabled:gateway});
@@ -44,7 +45,9 @@ export function AdminDeviceData({device,nodeKey,onNodeChange,onExport}:{device:J
   const targetId=node?.target.kind==="device"?node.target.device_id:id;
   const streams=useQuery({queryKey:["admin","device",targetId,"data-streams"],queryFn:()=>api.admin.deviceDataStreams(targetId)});
   const active=useMemo(()=>operationsStreams(streams.data?.items??[],nodes.data?.items??[],node).filter(stream=>!lora || (purpose==="measurement" ? isMeasurement(stream) : streamPurpose(stream)==="status")),[streams.data,nodes.data,node,lora,purpose]);
-  const ids=(selection?.target===selectionTarget?selection.ids:active.map(stream=>stream.id)).filter(id=>active.some(stream=>stream.id===id));
+  const linkedStream=params.get("stream");
+  const defaultIDs=linkedStream&&active.some(stream=>stream.id===linkedStream)?[linkedStream]:active.map(stream=>stream.id);
+  const ids=(selection?.target===selectionTarget?selection.ids:defaultIDs).filter(id=>active.some(stream=>stream.id===id));
   const telemetry=useQuery({queryKey:["admin","device",targetId,"operations-telemetry",ids.join(","),applied,phase],queryFn:()=>adminFullTelemetry(targetId,{...applied,dataStreamIds:ids,dataPhase:phase}),enabled:tab==="telemetry"&&ids.length>0&&(!gateway||!nodes.isLoading)});
   const chartSeries=useMemo(()=>(telemetry.data?.series??[]).map(series=>({id:series.data_stream_id,name:series.name,code:series.code,unit:series.unit,points:series.points})),[telemetry.data]);
   const rows=useMemo(()=>telemetryRows(telemetry.data?.series??[]),[telemetry.data]);

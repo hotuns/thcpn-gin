@@ -40,6 +40,7 @@ import (
 	"thcpn-gin/internal/export"
 	"thcpn-gin/internal/firmware"
 	"thcpn-gin/internal/httpx"
+	"thcpn-gin/internal/inspection"
 	"thcpn-gin/internal/loginvisual"
 	"thcpn-gin/internal/media"
 	"thcpn-gin/internal/member"
@@ -445,6 +446,14 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.PATCH("/cameras/:device_id", cameraHandler.AdminUpdate)
 	admin.GET("/devices", deviceHandler.AdminListSystemAssets)
 	admin.GET("/device-map", deviceClassificationHandler.AdminMap)
+	inspectionService := &inspection.Service{DB: deps.Postgres}
+	admin.GET("/device-inspection", inspectionService.Overview)
+	admin.GET("/device-inspection/devices", inspectionService.Devices)
+	admin.GET("/device-inspection/events", inspectionService.Events)
+	admin.POST("/device-inspection/events/:id/acknowledge", inspectionService.Acknowledge)
+	admin.GET("/device-inspection/templates", inspectionService.ListTemplates)
+	admin.GET("/device-inspection/metrics", inspectionService.Metrics)
+	admin.PUT("/device-inspection/templates", inspectionService.SaveTemplate)
 	admin.POST("/devices/environment/bulk", deviceClassificationHandler.AdminBulkUpdate)
 	admin.POST("/device-claims/ensure", deviceClaimHandler.AdminEnsureAll)
 	admin.GET("/devices/:device_id/claim-credential", deviceClaimHandler.AdminCredential)
