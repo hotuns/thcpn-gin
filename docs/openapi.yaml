@@ -7758,7 +7758,7 @@ paths:
       tags: [Admin]
       operationId: adminSaveDeviceInstallation
       security: [{bearerAuth: []}]
-      description: Save installation date, contacts, project name and operations tags. Installer is assigned from the authenticated administrator when an installation date is first saved. complete_installation atomically changes lifecycle to online.
+      description: Save the installation dossier. An optional profile updates the installation address and notes in the same transaction. Installer is assigned from the authenticated administrator when an installation date is first saved. complete_installation atomically changes lifecycle to online.
       requestBody:
         required: true
         content:
@@ -7772,10 +7772,48 @@ paths:
                 organization: {type: string, maxLength: 200}
                 project_name: {type: string, maxLength: 200}
                 ops_tags: {type: array, maxItems: 30, items: {type: string, maxLength: 50}}
+                profile:
+                  type: object
+                  required: [location_text, description]
+                  description: Omit to preserve the existing address and notes. When provided, both fields are replaced; an empty string clears a field.
+                  properties:
+                    location_text: {type: string, maxLength: 500}
+                    description: {type: string, maxLength: 4000}
                 complete_installation: {type: boolean}
                 observation_start_at: {type: string, format: date-time, description: Optional formal observation start when completing installation; if omitted the current boundary is preserved or current time is recorded.}
       responses:
         "200": {description: Saved installation, content: {application/json: {schema: {$ref: '#/components/schemas/AdminDeviceInstallation'}}}}
+  /api/v1/admin/devices/{device_id}/installation/delivery:
+    parameters:
+      - {name: device_id, in: path, required: true, schema: {type: string, format: uuid}}
+    patch:
+      tags: [Admin]
+      operationId: adminUpdateDeviceDelivery
+      security: [{bearerAuth: []}]
+      description: Update only supplied delivery information. Blank inputs leave existing fields untouched. Contact and phone must be provided together and are updated as a pair. An assigned project is always retained.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                organization: {type: string, maxLength: 200}
+                project_name: {type: string, maxLength: 200}
+                contact_name: {type: string, maxLength: 200}
+                contact_phone: {type: string, maxLength: 200}
+                overwrite: {type: boolean, default: false, description: Replace existing values for supplied fields. Defaults to filling empty fields only.}
+      responses:
+        "200":
+          description: Result of the delivery edit.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [updated, linked_project_retained]
+                properties:
+                  updated: {type: boolean}
+                  linked_project_retained: {type: boolean}
   /api/v1/devices/{device_id}/installation:
     parameters:
       - {name: device_id, in: path, required: true, schema: {type: string, format: uuid}}
@@ -7949,7 +7987,7 @@ paths:
                   type: string
                   maxLength: 2048
                   description: 平台用户端访问地址，仅允许 http/https 的完整 origin，可含端口，不得含路径、用户名、密码、查询参数或片段。省略表示保持原值；空字符串恢复 PLATFORM_PUBLIC_URL 启动配置。根路径末尾斜线会移除。
-                  examples: [https://ieswatch.com, 'http://192.168.1.10:8088', '']
+                  examples: ['https://ieswatch.com', 'http://192.168.1.10:8088', '']
                 reason: {type: string, minLength: 5, maxLength: 500}
       responses:
         '200':
@@ -10549,6 +10587,10 @@ components:
             contact_name: {type: string}
             contact_phone: {type: string}
             organization: {type: string}
+            recorded_project_name: {type: string, description: Project name written in the installation dossier.}
+            linked_project_name: {type: string, description: Current assigned project name when linked.}
+            location_text: {type: string}
+            description: {type: string}
             retirement_reason: {type: string}
             ops_tags: {type: array, items: {type: string}}
             updated_by: {type: string, format: uuid}

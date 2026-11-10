@@ -2,10 +2,10 @@ import { AdminNodeStatus } from "./runtime-status";
 import { isMeasurement, nodeStatusKeys, statusMetrics, statusValue } from "@thcpn/api";
 import { AdminObservationStart } from "./admin-observation-start";
 import { AdminDeviceDossier, AdminDeviceScenes } from "./admin-device-dossier";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Alert, App, Button, Card, Checkbox, Col, Row, Descriptions, Drawer, Form, Image, Input, InputNumber, Modal, Select, Space, Table, Tabs, Tag, Typography, Upload } from "antd";
+import { Alert, App, Button, Card, Descriptions, Drawer, Form, Image, Input, InputNumber, Modal, Select, Space, Table, Tabs, Tag, Typography, Upload } from "antd";
 import { api, formatApiError, type DeviceProfileImage, type GatewayNode, type JsonRecord } from "@thcpn/api";
 import { AdminNodeLocationEditor } from "./node-location-editor";
 import { AdminNodeNameEditor } from "./node-name-editor";
@@ -16,18 +16,13 @@ import { opsTime } from "./admin-device-ops-model";
 
 export function AdminDeviceInstallation({device}:{device:JsonRecord}) {
   const id=String(device.id);
-  const {message}=App.useApp();
+  const { message, modal } = App.useApp();
   const client=useQueryClient();
-  const [form]=Form.useForm();
-  const [locationForm]=Form.useForm();
   const [busy,setBusy]=useState(false);
-  const initialized=useRef(false);
+  const [locationEditing,setLocationEditing]=useState(false);
   const [editing,setEditing]=useState<DeviceProfileImage|null>(null);
   const [caption,setCaption]=useState("");
   const profile=useQuery({queryKey:["admin","device",id,"profile"],queryFn:()=>api.admin.deviceProfile(id)});
-  useEffect(()=>{
-    if(profile.data&&!initialized.current){initialized.current=true;form.setFieldsValue({description:profile.data.description??"",location_text:profile.data.location_text??""});locationForm.setFieldsValue({latitude:profile.data.manual_latitude,longitude:profile.data.manual_longitude});}
-  },[profile.data,form,locationForm]);
   const refresh=async()=>{await client.invalidateQueries({predicate:query=>query.queryKey.includes("admin")&&(query.queryKey.includes(id)||query.queryKey.includes("device-map"))});};
   const execute=async(action:()=>Promise<unknown>,text:string)=>{
     setBusy(true);try{await action();await refresh();void message.success(text);return true;}catch(error){void message.error(formatApiError(error).message);return false;}finally{setBusy(false);}
@@ -38,39 +33,58 @@ export function AdminDeviceInstallation({device}:{device:JsonRecord}) {
     [ids[index],ids[next]]=[ids[next],ids[index]];
     void execute(()=>api.admin.reorderDeviceImages(id,ids),"图片顺序已保存");
   };
+  const current = profile.data;
+  const hasManualLocation = current?.manual_latitude != null && current?.manual_longitude != null;
+  const formatCoordinates = (longitude?: number, latitude?: number) =>
+    longitude == null || latitude == null ? "未设置" : `${longitude}, ${latitude}`;
+  const locationSource = ({device:"人工安装位置",source:"设备源数据",site:"关联站点",none:"未设置"} as Record<string,string>)[current?.location_source ?? "none"];
+  const profileError = profile.error && <Alert type="error" title="安装资料读取失败" description={formatApiError(profile.error).message} action={<Button onClick={() => void profile.refetch()}>重试</Button>}/>;
   return <Space orientation="vertical" size="middle" style={{width:"100%"}}>
-    <AdminDeviceDossier deviceId={id}/>
-    <AdminObservationStart device={device}/>
-    {profile.error?<Alert type="error" title="安装资料读取失败" description={formatApiError(profile.error).message}/>:<>
-      {profile.data?.location_warning&&<Alert type="warning" title={profile.data.location_warning}/>}
-      <Tabs items={[{key:"location",label:"位置与说明",children:<Space orientation="vertical" style={{width:"100%"}}>
-      <Card title="安装说明" loading={profile.isLoading}>
-        <Form form={form} layout="vertical" onFinish={values=>void execute(()=>api.admin.updateDeviceProfile(id,values),"安装资料已保存")}>
-          <Form.Item name="description" label="设备描述 / 安装说明"><Input.TextArea rows={3} maxLength={4000} showCount/></Form.Item>
-          <Form.Item name="location_text" label="安装地点"><Input placeholder="例如样地编号、立杆位置或安装地址" maxLength={500}/></Form.Item>
-          <Button type="primary" htmlType="submit" loading={busy}>保存资料</Button>
-        </Form>
-      </Card>
-      <Card title="安装坐标（WGS84）" loading={profile.isLoading}>
-        <Descriptions size="small" column={2} style={{marginBottom:16}} items={[
-          {key:"effective",label:"当前生效坐标",children:profile.data?.effective_location?`${profile.data.effective_location.longitude??"—"}, ${profile.data.effective_location.latitude??"—"}`:"未定位"},
-          {key:"source",label:"位置来源",children:({device:"人工安装位置",source:"设备源数据",site:"关联站点",none:"未设置"} as Record<string,string>)[profile.data?.location_source??"none"]},
-        ]}/>
-        <Form form={locationForm} layout="inline" onFinish={values=>void execute(()=>api.admin.setDeviceLocation(id,values),"安装坐标已保存，地图已更新")}>
-          <Form.Item name="longitude" label="经度" rules={[{required:true},{type:"number",min:-180,max:180}]}><InputNumber min={-180} max={180} precision={7}/></Form.Item>
-          <Form.Item name="latitude" label="纬度" rules={[{required:true},{type:"number",min:-90,max:90}]}><InputNumber min={-90} max={90} precision={7}/></Form.Item>
-          <Form.Item><Space><Button type="primary" htmlType="submit" loading={busy}>保存坐标</Button><Button disabled={busy||profile.data?.manual_latitude==null} onClick={()=>Modal.confirm({title:"清除人工安装坐标？",content:"地图将恢复使用设备源数据或关联站点位置。",onOk:async()=>{if(await execute(()=>api.admin.setDeviceLocation(id,{latitude:null,longitude:null}),"人工坐标已清除"))locationForm.resetFields();}})}>恢复默认位置</Button></Space></Form.Item>
-        </Form>
-        <Typography.Paragraph type="secondary" style={{marginTop:12,marginBottom:0}}>人工安装坐标优先用于平台地图，不改变设备上报的原始位置。</Typography.Paragraph>
-      </Card>
-      </Space>},{key:"classification",label:"应用场景",children:<AdminDeviceScenes deviceId={id}/>},{key:"photos",label:`安装照片（${profile.data?.images.length??0}）`,children:<Card title={`安装照片 · ${profile.data?.images.length??0} / 12`} extra={<Upload multiple showUploadList={false} accept="image/jpeg,image/png,image/webp" disabled={busy} beforeUpload={file=>{if(!["image/jpeg","image/png","image/webp"].includes(file.type)||file.size>10*1024*1024){void message.error("请选择不超过 10 MB 的 JPEG、PNG 或 WebP 图片");return Upload.LIST_IGNORE;}return true;}} customRequest={options=>{void api.admin.uploadDeviceImages(id,[options.file as File]).then(async response=>{options.onSuccess?.(response);await refresh();}).catch(error=>{options.onError?.(error);void message.error(formatApiError(error).message);});}}><Button>上传安装照片</Button></Upload>}>
+    <Tabs defaultActiveKey="dossier" items={[
+      { key:"dossier", label:"档案总览", children:<Space orientation="vertical" size="middle" style={{width:"100%"}}>
+        <AdminDeviceDossier deviceId={id} lifecycle={String(device.lifecycle_status ?? "inbound")}/>
+        <Card title="安装坐标（WGS84）" loading={profile.isLoading} extra={current && <Space wrap>
+          <Button onClick={() => setLocationEditing(true)}>编辑坐标</Button>
+          {hasManualLocation && <Button disabled={busy} onClick={() => modal.confirm({
+            title:"清除人工安装坐标？",
+            content:"地图将恢复使用设备源数据或关联站点位置。",
+            okText:"确认清除",
+            onOk:() => execute(() => api.admin.setDeviceLocation(id,{latitude:null,longitude:null}),"人工坐标已清除"),
+          })}>恢复默认位置</Button>}
+        </Space>}>
+          {profileError || <>
+            {current?.location_warning && <Alert type="warning" title={current.location_warning} style={{marginBottom:12}}/>}
+            <Descriptions size="small" column={{xs:1, sm:2}} items={[
+              {key:"effective",label:"当前生效坐标",children:formatCoordinates(current?.effective_location?.longitude,current?.effective_location?.latitude)},
+              {key:"source",label:"位置来源",children:locationSource},
+            ]}/>
+          </>}
+        </Card>
+      </Space> },
+      { key:"observation", label:"正式观测", children:<AdminObservationStart device={device}/> },
+      { key:"classification", label:"应用场景", children:<AdminDeviceScenes deviceId={id}/> },
+      { key:"photos", label:`安装照片（${current?.images.length ?? 0}）`, children:profileError || <Card title={`安装照片 · ${profile.data?.images.length??0} / 12`} extra={<Upload multiple showUploadList={false} accept="image/jpeg,image/png,image/webp" disabled={busy} beforeUpload={file=>{if(!["image/jpeg","image/png","image/webp"].includes(file.type)||file.size>10*1024*1024){void message.error("请选择不超过 10 MB 的 JPEG、PNG 或 WebP 图片");return Upload.LIST_IGNORE;}return true;}} customRequest={options=>{void api.admin.uploadDeviceImages(id,[options.file as File]).then(async response=>{options.onSuccess?.(response);await refresh();}).catch(error=>{options.onError?.(error);void message.error(formatApiError(error).message);});}}><Button>上传安装照片</Button></Upload>}>
         <Image.PreviewGroup><Table rowKey="id" size="small" dataSource={profile.data?.images??[]} pagination={false} columns={[
           {title:"图片",width:150,render:(_,item)=><Image width={120} height={80} style={{objectFit:"cover"}} src={item.preview_url}/>},
           {title:"说明",render:(_,item)=><>{item.is_cover&&<Tag color="blue">封面</Tag>}{item.caption||item.original_filename}</>},
           {title:"操作",render:(_,item,index)=><Space wrap><Button size="small" disabled={busy} onClick={()=>{setEditing(item);setCaption(item.caption??"");}}>编辑说明</Button><Button size="small" disabled={busy||item.is_cover} onClick={()=>void execute(()=>api.admin.updateDeviceImage(id,item.id,{is_cover:true}),"封面已更新")}>设为封面</Button><Button size="small" disabled={busy||index===0} onClick={()=>reorder(item.id,-1)}>前移</Button><Button size="small" disabled={busy||index===(profile.data?.images.length??0)-1} onClick={()=>reorder(item.id,1)}>后移</Button><Button size="small" danger disabled={busy} onClick={()=>Modal.confirm({title:"删除安装照片？",okButtonProps:{danger:true},onOk:()=>execute(()=>api.admin.deleteDeviceImage(id,item.id),"照片已删除")})}>删除</Button></Space>},
         ]}/></Image.PreviewGroup>
-      </Card>}]}/>
-    </>}
+      </Card> },
+    ]}/>
+    <Modal title="编辑安装坐标" open={locationEditing} onCancel={() => { if (!busy) setLocationEditing(false); }} destroyOnHidden
+      okText="保存坐标" cancelText="取消" confirmLoading={busy} mask={{closable:false}} keyboard={!busy} closable={!busy}
+      cancelButtonProps={{disabled:busy}} okButtonProps={{htmlType:"submit",form:"installation-coordinate-form"}}>
+      {locationEditing && <Form id="installation-coordinate-form" layout="vertical" disabled={busy}
+        initialValues={{latitude:current?.manual_latitude,longitude:current?.manual_longitude}}
+        onFinish={values => void execute(() => api.admin.setDeviceLocation(id,values),"安装坐标已保存，地图已更新").then(success => {if (success) setLocationEditing(false);})}>
+        <Form.Item name="longitude" label="经度" rules={[{required:true,message:"请输入经度"},{type:"number",min:-180,max:180,message:"经度必须在 −180 至 180 之间"}]}>
+          <InputNumber min={-180} max={180} precision={7} style={{width:"100%"}}/>
+        </Form.Item>
+        <Form.Item name="latitude" label="纬度" rules={[{required:true,message:"请输入纬度"},{type:"number",min:-90,max:90,message:"纬度必须在 −90 至 90 之间"}]}>
+          <InputNumber min={-90} max={90} precision={7} style={{width:"100%"}}/>
+        </Form.Item>
+      </Form>}
+    </Modal>
     <Modal title="编辑安装照片说明" open={!!editing} onCancel={()=>setEditing(null)} confirmLoading={busy} onOk={()=>{if(editing)void execute(()=>api.admin.updateDeviceImage(id,editing.id,{caption}),"说明已保存").then(success=>{if(success)setEditing(null);});}}><Input.TextArea rows={3} value={caption} onChange={event=>setCaption(event.target.value)} maxLength={500}/></Modal>
   </Space>;
 }

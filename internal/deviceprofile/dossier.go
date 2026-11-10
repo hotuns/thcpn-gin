@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/db/sqlc"
 	"thcpn-gin/internal/observation"
 )
 
@@ -23,6 +24,10 @@ type Installation struct {
 	ContactPhone     string     `json:"contact_phone,omitempty"`
 	Organization     string     `json:"organization,omitempty"`
 	ProjectName      string     `json:"project_name"`
+	RecordedProject  string     `json:"recorded_project_name,omitempty"`
+	LinkedProject    string     `json:"linked_project_name,omitempty"`
+	LocationText     string     `json:"location_text,omitempty"`
+	Description      string     `json:"description,omitempty"`
 	RetiredOn        *string    `json:"retired_on,omitempty"`
 	RetirementReason string     `json:"retirement_reason,omitempty"`
 	OpsTags          []string   `json:"ops_tags,omitempty"`
@@ -30,24 +35,35 @@ type Installation struct {
 	UpdatedAt        *time.Time `json:"updated_at,omitempty"`
 }
 type InstallationInput struct {
-	ObservationStartAt *time.Time `json:"observation_start_at"`
-	InstalledOn        *string    `json:"installed_on"`
-	ContactName        string     `json:"contact_name"`
-	ContactPhone       string     `json:"contact_phone"`
-	Organization       string     `json:"organization"`
-	ProjectName        string     `json:"project_name"`
-	OpsTags            []string   `json:"ops_tags"`
-	Complete           bool       `json:"complete_installation"`
+	ObservationStartAt *time.Time                `json:"observation_start_at"`
+	InstalledOn        *string                   `json:"installed_on"`
+	ContactName        string                    `json:"contact_name"`
+	ContactPhone       string                    `json:"contact_phone"`
+	Organization       string                    `json:"organization"`
+	ProjectName        string                    `json:"project_name"`
+	OpsTags            []string                  `json:"ops_tags"`
+	Complete           bool                      `json:"complete_installation"`
+	Profile            *InstallationProfileInput `json:"profile"`
+}
+
+type InstallationProfileInput struct {
+	LocationText string `json:"location_text"`
+	Description  string `json:"description"`
 }
 
 func (s *Service) Installation(ctx context.Context, id uuid.UUID, admin bool) (Installation, error) {
 	result := Installation{DeviceID: id, OpsTags: []string{}}
-	err := s.db.QueryRow(ctx, `SELECT i.installed_on::text,i.installer_id,COALESCE(a.name,''),COALESCE(i.contact_name,''),COALESCE(i.contact_phone,''),COALESCE(i.organization,''),COALESCE(p.name,NULLIF(i.project_name,''),''),i.retired_on::text,COALESCE(i.retirement_reason,''),COALESCE(i.ops_tags,'{}'::text[]),i.updated_by,i.updated_at
+	err := s.db.QueryRow(ctx, `SELECT i.installed_on::text,i.installer_id,COALESCE(a.name,''),COALESCE(i.contact_name,''),COALESCE(i.contact_phone,''),COALESCE(i.organization,''),COALESCE(i.project_name,''),COALESCE(p.name,''),COALESCE(profile.location_text,''),COALESCE(profile.description,''),i.retired_on::text,COALESCE(i.retirement_reason,''),COALESCE(i.ops_tags,'{}'::text[]),i.updated_by,i.updated_at
  FROM devices d LEFT JOIN device_installation_records i ON i.device_id=d.id LEFT JOIN system_admins a ON a.id=i.installer_id
  LEFT JOIN device_assignments da ON da.device_id=d.id AND da.status='active' LEFT JOIN projects p ON p.id=da.project_id
- WHERE d.id=$1`, id).Scan(&result.InstalledOn, &result.InstallerID, &result.InstallerName, &result.ContactName, &result.ContactPhone, &result.Organization, &result.ProjectName, &result.RetiredOn, &result.RetirementReason, &result.OpsTags, &result.UpdatedBy, &result.UpdatedAt)
+ LEFT JOIN device_profiles profile ON profile.device_id=d.id
+ WHERE d.id=$1`, id).Scan(&result.InstalledOn, &result.InstallerID, &result.InstallerName, &result.ContactName, &result.ContactPhone, &result.Organization, &result.RecordedProject, &result.LinkedProject, &result.LocationText, &result.Description, &result.RetiredOn, &result.RetirementReason, &result.OpsTags, &result.UpdatedBy, &result.UpdatedAt)
 	if err != nil {
 		return result, mapNotFound(err, "device not found")
+	}
+	result.ProjectName = result.RecordedProject
+	if result.LinkedProject != "" {
+		result.ProjectName = result.LinkedProject
 	}
 	if !admin {
 		result.InstallerID = nil
@@ -55,6 +71,10 @@ func (s *Service) Installation(ctx context.Context, id uuid.UUID, admin bool) (I
 		result.ContactName = ""
 		result.ContactPhone = ""
 		result.Organization = ""
+		result.RecordedProject = ""
+		result.LinkedProject = ""
+		result.LocationText = ""
+		result.Description = ""
 		result.OpsTags = nil
 		result.UpdatedBy = nil
 		result.UpdatedAt = nil
@@ -101,6 +121,17 @@ func (s *Service) SaveInstallation(ctx context.Context, id, actor uuid.UUID, inp
 			return Installation{}, apperr.New(apperr.KindInvalidArgument, "安装档案字段最多200个字符")
 		}
 	}
+	var location, description *string
+	if input.Profile != nil {
+		location = cleanOptional(&input.Profile.LocationText)
+		description = cleanOptional(&input.Profile.Description)
+		if location != nil && utf8.RuneCountInString(*location) > 500 {
+			return Installation{}, apperr.New(apperr.KindInvalidArgument, "安装地址最多500个字符")
+		}
+		if description != nil && utf8.RuneCountInString(*description) > 4000 {
+			return Installation{}, apperr.New(apperr.KindInvalidArgument, "安装说明最多4000个字符")
+		}
+	}
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return Installation{}, err
@@ -118,6 +149,14 @@ func (s *Service) SaveInstallation(ctx context.Context, id, actor uuid.UUID, inp
  ON CONFLICT(device_id) DO UPDATE SET installed_on=EXCLUDED.installed_on,installer_id=COALESCE(device_installation_records.installer_id,EXCLUDED.installer_id),contact_name=EXCLUDED.contact_name,contact_phone=EXCLUDED.contact_phone,organization=EXCLUDED.organization,project_name=EXCLUDED.project_name,ops_tags=EXCLUDED.ops_tags,updated_by=$3,updated_at=now()`, id, input.InstalledOn, actor, strings.TrimSpace(input.ContactName), strings.TrimSpace(input.ContactPhone), strings.TrimSpace(input.Organization), strings.TrimSpace(input.ProjectName), tags)
 	if err != nil {
 		return Installation{}, err
+	}
+	if input.Profile != nil {
+		_, err = sqlc.New(tx).UpsertDeviceProfile(ctx, sqlc.UpsertDeviceProfileParams{
+			DeviceID: id, LocationText: location, Description: description,
+		})
+		if err != nil {
+			return Installation{}, apperr.Wrap(apperr.KindInternal, "save installation location and description", err)
+		}
 	}
 	if input.Complete && status != "online" {
 		if _, err = tx.Exec(ctx, `UPDATE devices SET lifecycle_status='online',lifecycle_updated_at=now(),updated_at=now() WHERE id=$1`, id); err != nil {

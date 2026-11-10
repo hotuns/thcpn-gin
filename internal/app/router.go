@@ -505,6 +505,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.PUT("/devices/:device_id/observation-start", deviceProfileHandler.SaveObservationStart)
 	admin.GET("/devices/:device_id/installation", deviceProfileHandler.Installation)
 	admin.PUT("/devices/:device_id/installation", deviceProfileHandler.SaveInstallation)
+	admin.PATCH("/devices/:device_id/installation/delivery", deviceProfileHandler.UpdateDelivery)
 	admin.GET("/devices/:device_id/profile", deviceProfileHandler.Get)
 	admin.PATCH("/devices/:device_id/profile", deviceProfileHandler.Update)
 	admin.PATCH("/devices/:device_id/profile/location", deviceProfileHandler.AdminLocation)

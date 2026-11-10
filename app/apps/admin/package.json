@@ -18,6 +18,7 @@
     "@thcpn/i18n": "*",
     "@thcpn/ui": "*",
     "@thcpn/workspace": "*",
+    "@vant/area-data": "2.2.0",
     "antd": "^6.5.0",
     "dayjs": "1.11.21",
     "ezuikit-js": "9.0.12",

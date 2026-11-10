@@ -46,6 +46,33 @@ func (h *Handler) SaveInstallation(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, result)
 }
+func (h *Handler) UpdateDelivery(c *gin.Context) {
+	id, actor, ok := h.authorize(c, "device.configure")
+	if !ok {
+		return
+	}
+	if !actor.IsSystemAdmin {
+		httpx.WriteAppError(c, apperr.New(apperr.KindPermissionDenied, "administrator required"))
+		return
+	}
+	var input DeliveryUpdateInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid delivery information"))
+		return
+	}
+	result, err := h.service.UpdateDelivery(c.Request.Context(), id, actor.UserID, input)
+	if err != nil {
+		if h.record(c, actor.UserID, id, "device.installation.delivery.update", audit.ResultFailure, "") {
+			httpx.WriteAppError(c, err)
+		}
+		return
+	}
+	if result.Updated && !h.record(c, actor.UserID, id, "device.installation.delivery.update", audit.ResultSuccess, "") {
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
 func (h *Handler) Tags(c *gin.Context) {
 	id, actor, ok := h.authorize(c, "device.view")
 	if !ok {

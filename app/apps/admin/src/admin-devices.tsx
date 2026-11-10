@@ -12,7 +12,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { FormInstance } from "antd";
 import { Typography } from "antd";
-import dayjs, { type Dayjs } from "dayjs";
+import dayjs from "dayjs";
 import { Battery, GitBranch, Radio, Search, Settings2, Trash2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
@@ -159,10 +159,6 @@ export function AdminDevicesPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-  const [bulkLifecycleOpen, setBulkLifecycleOpen] = useState(false);
-  const [bulkLifecycleStatus, setBulkLifecycleStatus] = useState("");
-  const [bulkLifecycleNote, setBulkLifecycleNote] = useState("");
-  const [bulkLifecycleAt, setBulkLifecycleAt] = useState<Dayjs | null>(dayjs());
   const [selected, setSelected] = useState<JsonRecord | null>(null);
   const [mode, setMode] = useState<Mode>(null);
   const sourceQuery = useQuery({
@@ -235,94 +231,6 @@ export function AdminDevicesPage() {
     const keys = new Set(selectedRowKeys.map(String));
     return topLevelRows.filter((item) => keys.has(value(item.id, "")));
   }, [selectedRowKeys, topLevelRows]);
-
-  const runBatch = async (
-    action: "activate" | "disable" | "unassign",
-  ) => {
-    const candidates =
-      action === "unassign"
-        ? selectedRows.filter((item) => Boolean(item.workspace_id))
-        : selectedRows;
-    if (!candidates.length) {
-      setFeedback(
-        action === "unassign" ? "选中的设备均未分配工作区" : "请先选择设备",
-      );
-      return;
-    }
-    const actionLabel =
-      action === "activate" ? "启用" : action === "disable" ? "停用" : "解除分配";
-    Modal.confirm({
-      title: `批量${actionLabel}设备`,
-      content: `将处理 ${candidates.length} 台设备。各设备独立提交，单条失败不会中断其他设备。`,
-      okText: `确认${actionLabel}`,
-      cancelText: "取消",
-      okButtonProps: { danger: action !== "activate" },
-      onOk: async () => {
-        setBusy(true);
-        setFeedback("");
-        try {
-          const results = await Promise.allSettled(
-            candidates.map((item) => {
-              const deviceID = value(item.id, "");
-              return action === "unassign"
-                ? api.admin.unassignDevice(deviceID)
-                : api.admin.updateDevice(deviceID, {
-                    status: action === "activate" ? "active" : "disabled",
-                  });
-            }),
-          );
-          const failedKeys = results.flatMap((result, index) =>
-            result.status === "rejected"
-              ? [value(candidates[index]?.id, "")]
-              : [],
-          );
-          const succeeded = results.length - failedKeys.length;
-          setFeedback(
-            failedKeys.length
-              ? `批量${actionLabel}完成：成功 ${succeeded} 台，失败 ${failedKeys.length} 台`
-              : `已批量${actionLabel} ${succeeded} 台设备`,
-          );
-          setSelectedRowKeys(failedKeys);
-          await query.refetch();
-        } finally {
-          setBusy(false);
-        }
-      },
-    });
-  };
-
-  const runBatchLifecycle = async () => {
-    if (!bulkLifecycleStatus || !bulkLifecycleAt || !selectedRows.length) return;
-    setBusy(true);
-    setFeedback("");
-    try {
-      const results = await Promise.allSettled(
-        selectedRows.map((item) =>
-          api.admin.updateLifecycle(value(item.id, ""), {
-            lifecycle_status: bulkLifecycleStatus,
-            note: bulkLifecycleNote,
-            ...(bulkLifecycleAt ? { occurred_at: bulkLifecycleAt.toISOString() } : {}),
-          }),
-        ),
-      );
-      const failedKeys = results.flatMap((result, index) =>
-        result.status === "rejected"
-          ? [value(selectedRows[index]?.id, "")]
-          : [],
-      );
-      const succeeded = results.length - failedKeys.length;
-      setFeedback(
-        failedKeys.length
-          ? `批量设置生命周期完成：成功 ${succeeded} 台，失败 ${failedKeys.length} 台`
-          : `已批量设置 ${succeeded} 台设备的生命周期`,
-      );
-      setSelectedRowKeys(failedKeys);
-      setBulkLifecycleOpen(false);
-      await query.refetch();
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const open = (next: Exclude<Mode, null>, record: JsonRecord) => {
     if (next === "firmware") { setFirmwareDevice(record); return; }
@@ -781,11 +689,7 @@ export function AdminDevicesPage() {
           <div className="admin-device-batch-toolbar">
             <strong>已选择 {selectedRowKeys.length} 台</strong>
             <Space wrap>
-              <AdminDeviceBulkEdit devices={selectedRows} disabled={busy} onSaved={async failedIds => { setSelectedRowKeys(failedIds); await query.refetch(); }} />
-              <Button loading={busy} onClick={() => void runBatch("activate")}>批量启用</Button>
-              <Button danger loading={busy} onClick={() => void runBatch("disable")}>批量停用</Button>
-              <Button loading={busy} onClick={() => { setBulkLifecycleStatus(""); setBulkLifecycleNote(""); setBulkLifecycleAt(dayjs()); setBulkLifecycleOpen(true); }}>批量设置生命周期</Button>
-              <Button loading={busy} onClick={() => void runBatch("unassign")}>解除分配</Button>
+              <AdminDeviceBulkEdit devices={selectedRows} disabled={busy} onSaved={failedIds => { setSelectedRowKeys(failedIds); void query.refetch(); }} />
               <Button type="text" disabled={busy} onClick={() => setSelectedRowKeys([])}>清空选择</Button>
             </Space>
           </div>
@@ -860,31 +764,6 @@ export function AdminDevicesPage() {
           />
         )}
       </Card>
-      <Modal
-        title={`批量设置生命周期 · ${selectedRows.length} 台`}
-        open={bulkLifecycleOpen}
-        onCancel={() => setBulkLifecycleOpen(false)}
-        onOk={() => void runBatchLifecycle()}
-        okText="确认设置"
-        confirmLoading={busy}
-        okButtonProps={{ disabled: !bulkLifecycleStatus || !bulkLifecycleAt }}
-      >
-        <Form layout="vertical">
-          <Form.Item label="新生命周期" required>
-            <Select
-              value={bulkLifecycleStatus || undefined}
-              onChange={setBulkLifecycleStatus}
-              options={deviceLifecycleOptions.map((item) => ({ value: item.value, label: deviceLifecycleLabel(item.value) }))}
-            />
-          </Form.Item>
-          <Form.Item label="状态生效时间" required>
-            <DatePicker showTime value={bulkLifecycleAt} onChange={setBulkLifecycleAt} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item label="变更说明">
-            <Input.TextArea rows={4} value={bulkLifecycleNote} onChange={(event) => setBulkLifecycleNote(event.target.value)} placeholder="记录本次状态变化的原因" />
-          </Form.Item>
-        </Form>
-      </Modal>
       {managementOverlays}
     </>
   );
@@ -1105,7 +984,7 @@ function DeviceDetailPanel({
   </div>;
   return <Card className="admin-device-detail"><Tabs className="admin-device-detail-tabs" activeKey={activeTab} onChange={setActiveTab} items={[
     { key: "overview", label: "设备信息", children: <>{device.source_family==="lorawan_v2"&&device.device_type==="gateway"&&<LoRaGatewayStatus deviceId={String(device.id)} name={String(device.name)} sn={String(device.serial_no)}/>} {overview}{device.source_family==="lorawan_v2"&&device.device_type==="gateway"&&<><LoRaWANGatewayDetailsEditor deviceId={String(device.id)}/><AdminReportedLocation deviceId={String(device.id)}/></>}{!isCamera&&device.source_family!=="lorawan_v2"&&!isCarbon&&runtime}</> },
-    { key: "installation", label: "安装档案", children: <AdminDeviceInstallation device={device}/> },
+    { key: "installation", label: "安装档案", children: <AdminDeviceInstallation key={String(device.id)} device={device}/> },
     ...(device.device_type==="gateway" ? [{ key:"nodes",label:"节点管理",children:<AdminDeviceNodes device={device} onData={openData} onHistory={()=>setDetailParams({tab:"data",node:"",node_scope:"history"})} onConfig={(index,kind)=>setDetailParams({tab:"configuration",node_index:String(index),config_tab:kind??"sensor",node:`gateway:${device.id}:node:${index}`})} onTopology={device.source_family!=="lorawan_v2"?()=>onOpen("child"):undefined}/> }] : []),
     ...(isCarbon ? [{key:"carbon",label:"节点与状态",children:carbonManagement}] : []),
     { key: "data", destroyOnHidden:isCamera, label: isCamera?"视频预览":"数据查看", children: isCamera?<AdminDeviceCamera deviceId={String(device.id)} onEdit={()=>onOpen("camera-edit")}/>:isCarbon?<AdminDeviceCarbon deviceId={String(device.id)} onExport={()=>setActiveTab("exports")}/>:<AdminDeviceData device={device} nodeKey={dataNodeKey} onNodeChange={setDataNodeKey} onExport={()=>setActiveTab("exports")}/> },

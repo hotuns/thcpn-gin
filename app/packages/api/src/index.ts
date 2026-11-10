@@ -5,7 +5,7 @@ export { nodeOptionLabel, nodeHistoryNotice } from "./node-display";
 export { isMeasurement, streamPurpose, streamPurposeLabel } from "./stream-purpose";
 import { formatLimitError } from "./limit-errors";
 import { publicErrorMessages } from "./error-messages";
-import type { components } from "./openapi";
+import type { components, operations } from "./openapi";
 export * from "./display-labels";
 export * from "./sampling-profile";
 export * from "./node-time-schedule";
@@ -48,11 +48,9 @@ export type GatewayNode = Schema<"GatewayNode">;
 export type LoRaWANV2TimeConfig = Schema<"LoRaWANV2TimeConfig">;
 export type LoRaWANGatewayDetails = Schema<"LoRaWANGatewayDetails">;
 export type ObservationStarts = Schema<"ObservationStarts">;
-export type DeviceInstallation = {
- device_id: string; installed_on: string | null; installer_id?: string; installer_name?: string;
- contact_name?: string; contact_phone?: string; organization?: string; project_name: string;
- retired_on?: string; retirement_reason?: string; ops_tags?: string[]; updated_by?: string; updated_at?: string;
-};
+export type DeviceInstallation = Schema<"AdminDeviceInstallation">;
+export type DeviceInstallationInput = operations["adminSaveDeviceInstallation"]["requestBody"]["content"]["application/json"];
+export type DeviceDeliveryInput = operations["adminUpdateDeviceDelivery"]["requestBody"]["content"]["application/json"];
 export type LoRaWANGatewayConnection = Schema<"LoRaWANV2GatewayConnection">;
 export type LoRaWANGatewayActivity = Schema<"LoRaWANV2GatewayActivity">;
 export type LoRaWANV2GatewayInfo = Schema<"LoRaWANV2ReportedInfo">;
@@ -792,7 +790,7 @@ export const api = {
       request<Device>(`/api/v1/devices/${encodeURIComponent(id)}`),
     gatewayDetails: (id:string) => request<LoRaWANGatewayDetails>(`/api/v1/devices/${encodeURIComponent(id)}/gateway-details`),
     observationStarts: (id:string,nodeIndex=0) => request<ObservationStarts>(`/api/v1/devices/${encodeURIComponent(id)}/observation-start?node_index=${nodeIndex}`),
-    installation: (id: string) => request<DeviceInstallation>(`/api/v1/devices/${encodeURIComponent(id)}/installation`),
+    installation: (id: string) => request<Schema<"DeviceInstallationSummary">>(`/api/v1/devices/${encodeURIComponent(id)}/installation`),
     tags: (id: string, workspace: string) => request<{tags:string[]}>(`/api/v1/devices/${encodeURIComponent(id)}/tags?${new URLSearchParams({workspace_id:workspace})}`),
     setTags: (id: string, workspace: string, tags: string[]) => jsonRequest<{tags:string[]}>(`/api/v1/devices/${encodeURIComponent(id)}/tags?${new URLSearchParams({workspace_id:workspace})}`,"PUT",{tags}),
     latestAttributes: (id: string) =>
@@ -1372,7 +1370,11 @@ export const api = {
     observationStarts: (id:string,nodeIndex=0) => request<ObservationStarts>(`/api/v1/admin/devices/${encodeURIComponent(id)}/observation-start?node_index=${nodeIndex}`),
     setObservationStart: (id:string,payload:{node_index:number;starts_at:string|null;reason:string}) => jsonRequest<ObservationStarts>(`/api/v1/admin/devices/${encodeURIComponent(id)}/observation-start`,"PUT",payload),
     deviceInstallation: (id:string) => request<DeviceInstallation>(`/api/v1/admin/devices/${encodeURIComponent(id)}/installation`),
-    saveDeviceInstallation: (id:string,payload:JsonRecord) => jsonRequest<DeviceInstallation>(`/api/v1/admin/devices/${encodeURIComponent(id)}/installation`,"PUT",payload),
+    saveDeviceInstallation: (id:string,payload:DeviceInstallationInput) => jsonRequest<DeviceInstallation>(`/api/v1/admin/devices/${encodeURIComponent(id)}/installation`,"PUT",payload),
+    updateDeviceDelivery: (id: string, payload: DeviceDeliveryInput) =>
+      jsonRequest<operations["adminUpdateDeviceDelivery"]["responses"][200]["content"]["application/json"]>(
+        `/api/v1/admin/devices/${encodeURIComponent(id)}/installation/delivery`, "PATCH", payload,
+      ),
     updateDeviceProfile: (id:string,payload:JsonRecord) => jsonRequest<DeviceProfile>(`/api/v1/admin/devices/${encodeURIComponent(id)}/profile`,"PATCH",payload),
     setDeviceLocation: (id:string,location:{latitude:number|null;longitude:number|null}) => jsonRequest<DeviceProfile>(`/api/v1/admin/devices/${encodeURIComponent(id)}/profile/location`,"PATCH",location),
     uploadDeviceImages: (id:string,files:File[]) => {

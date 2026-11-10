@@ -182,3 +182,61 @@ func TestCompleteInstallationRegistersObservationStartAtomically(t *testing.T) {
 		t.Fatal("completing again reset formal start")
 	}
 }
+
+func TestDossierEditsExistingLocationWithoutChangingCoordinatesOrObservation(t *testing.T) {
+	db := testdb.Open(t, 0)
+	ctx := t.Context()
+	actor := testdb.Admin(t, db)
+	id := uuid.New()
+	if _, err := db.Exec(ctx, "INSERT INTO devices(id,name,device_type) VALUES($1,'Station','standalone')", id); err != nil {
+		t.Fatal(err)
+	}
+	svc := NewService(db, nil, nil)
+	legacyAddress := "森林站样地西侧"
+	if _, err := svc.Update(ctx, UpdateProfileInput{DeviceID: id, LocationText: &legacyAddress, Administrator: true}); err != nil {
+		t.Fatal(err)
+	}
+	lat, lon := 39.9, 116.4
+	if _, err := svc.SetLocation(ctx, id, &lat, &lon); err != nil {
+		t.Fatal(err)
+	}
+	if initial, err := svc.Installation(ctx, id, true); err != nil || initial.LocationText != legacyAddress {
+		t.Fatalf("legacy address missing: %#v %v", initial, err)
+	}
+	address := "北京市 海淀区 森林站样地西侧"
+	input := InstallationInput{ContactName: "Contact", Profile: &InstallationProfileInput{
+		LocationText: address, Description: "支架已固定",
+	}}
+	record, err := svc.SaveInstallation(ctx, id, actor, input)
+	if err != nil || record.LocationText != address || record.Description != "支架已固定" {
+		t.Fatalf("address and dossier not saved together: %#v %v", record, err)
+	}
+	profile, err := svc.Get(ctx, id)
+	if err != nil || profile.LocationText == nil || *profile.LocationText != address ||
+		profile.ManualLatitude == nil || *profile.ManualLatitude != lat || profile.ManualLongitude == nil || *profile.ManualLongitude != lon {
+		t.Fatalf("shared address or coordinates changed unexpectedly: %#v %v", profile, err)
+	}
+	var stage string
+	var hasStart bool
+	err = db.QueryRow(ctx, `SELECT lifecycle_status, EXISTS(SELECT 1 FROM device_observation_starts WHERE device_id=$1) FROM devices WHERE id=$1`, id).Scan(&stage, &hasStart)
+	if err != nil || stage != "inbound" || hasStart {
+		t.Fatalf("saving a draft must not complete installation: %q %v %v", stage, hasStart, err)
+	}
+	input.ContactName = "Changed"
+	input.Profile.LocationText = strings.Repeat("长", 501)
+	if _, err = svc.SaveInstallation(ctx, id, actor, input); err == nil {
+		t.Fatal("oversized address accepted")
+	}
+	record, err = svc.Installation(ctx, id, true)
+	if err != nil || record.LocationText != address || record.ContactName != "Contact" {
+		t.Fatalf("failed edit changed stored data: %#v %v", record, err)
+	}
+	record, err = svc.SaveInstallation(ctx, id, actor, InstallationInput{ContactName: "Changed"})
+	if err != nil || record.LocationText != address || record.Description != "支架已固定" {
+		t.Fatalf("omitting the profile erased the address or notes: %#v %v", record, err)
+	}
+	public, err := svc.Installation(ctx, id, false)
+	if err != nil || public.LocationText != "" || public.Description != "" {
+		t.Fatalf("admin profile fields were included in the installation summary: %#v %v", public, err)
+	}
+}

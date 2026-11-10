@@ -6289,13 +6289,32 @@ export interface paths {
             cookie?: never;
         };
         get: operations["adminGetDeviceInstallation"];
-        /** @description Save installation date, contacts, project name and operations tags. Installer is assigned from the authenticated administrator when an installation date is first saved. complete_installation atomically changes lifecycle to online. */
+        /** @description Save the installation dossier. An optional profile updates the installation address and notes in the same transaction. Installer is assigned from the authenticated administrator when an installation date is first saved. complete_installation atomically changes lifecycle to online. */
         put: operations["adminSaveDeviceInstallation"];
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/devices/{device_id}/installation/delivery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** @description Update only supplied delivery information. Blank inputs leave existing fields untouched. Contact and phone must be provided together and are updated as a pair. An assigned project is always retained. */
+        patch: operations["adminUpdateDeviceDelivery"];
         trace?: never;
     };
     "/api/v1/devices/{device_id}/installation": {
@@ -8063,6 +8082,12 @@ export interface components {
             contact_name?: string;
             contact_phone?: string;
             organization?: string;
+            /** @description Project name written in the installation dossier. */
+            recorded_project_name?: string;
+            /** @description Current assigned project name when linked. */
+            linked_project_name?: string;
+            location_text?: string;
+            description?: string;
             retirement_reason?: string;
             ops_tags?: string[];
             /** Format: uuid */
@@ -18344,6 +18369,11 @@ export interface operations {
                     organization?: string;
                     project_name?: string;
                     ops_tags?: string[];
+                    /** @description Omit to preserve the existing address and notes. When provided, both fields are replaced; an empty string clears a field. */
+                    profile?: {
+                        location_text: string;
+                        description: string;
+                    };
                     complete_installation?: boolean;
                     /**
                      * Format: date-time
@@ -18361,6 +18391,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminDeviceInstallation"];
+                };
+            };
+        };
+    };
+    adminUpdateDeviceDelivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    organization?: string;
+                    project_name?: string;
+                    contact_name?: string;
+                    contact_phone?: string;
+                    /**
+                     * @description Replace existing values for supplied fields. Defaults to filling empty fields only.
+                     * @default false
+                     */
+                    overwrite?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Result of the delivery edit. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        updated: boolean;
+                        linked_project_retained: boolean;
+                    };
                 };
             };
         };
