@@ -110,6 +110,13 @@ export type LoRaWANV2TemplateSensorConfigRequest = Schema<"LoRaWANV2TemplateSens
 export type LoRaWANV2AdvancedSensorConfigRequest = Schema<"LoRaWANV2AdvancedSensorConfigRequest">;
 export type SamplingProfile = Schema<"SamplingProfileResponse">;
 export type UpdateSamplingProfile = Schema<"UpdateSamplingProfileRequest">;
+export type DeviceCaptureConfig = Schema<"DeviceCaptureConfig">;
+export type DeviceCaptureField = Schema<"DeviceCaptureField">;
+export type DeviceCaptureItem = Schema<"DeviceCaptureItem">;
+export type UpdateDeviceCaptureConfig = Schema<"UpdateDeviceCaptureConfig">;
+export type WorkspaceNodeSensorConfig = Schema<"WorkspaceNodeSensorConfig">;
+export type UpdateWorkspaceNodeSensorConfig = Schema<"UpdateWorkspaceNodeSensorConfig">;
+export type CaptureConfigSaveResult = Schema<"CaptureConfigSaveResult">;
 export type DevicePublicAccess = Schema<"DevicePublicAccess">;
 export type PublicDevice = Schema<"PublicDevice">;
 export type PublicDeviceStream = Schema<"PublicDeviceStream">;
@@ -944,6 +951,10 @@ export const api = {
     nodes: (id: string, scope: "bound" | "history" | "all" = "bound") => request<Schema<"GatewayNodeList">>(`/api/v1/devices/${encodeURIComponent(id)}/nodes${queryString({scope})}`),
     nodeRuntime: (id: string, indices?: number[]) => request<{ items: NodeRuntime[]; refreshed_at: string }>(`/api/v1/devices/${encodeURIComponent(id)}/nodes/runtime${queryString({node_indices:indices?.join(",")})}`),
     reconcileConfig: (id: string) => jsonRequest<JsonRecord>(`/api/v1/devices/${encodeURIComponent(id)}/config/resync`, "POST", {}),
+    captureConfig: (id: string) => request<DeviceCaptureConfig>(`/api/v1/devices/${encodeURIComponent(id)}/capture-config`),
+    updateCaptureConfig: (id: string, payload: UpdateDeviceCaptureConfig) => jsonRequest<CaptureConfigSaveResult>(`/api/v1/devices/${encodeURIComponent(id)}/capture-config`, "PATCH", payload),
+    nodeSensorConfig: (id: string, index: number) => request<WorkspaceNodeSensorConfig>(`/api/v1/devices/${encodeURIComponent(id)}/nodes/${index}/sensor-config`),
+    updateNodeSensorConfig: (id: string, index: number, payload: UpdateWorkspaceNodeSensorConfig) => jsonRequest<CaptureConfigSaveResult>(`/api/v1/devices/${encodeURIComponent(id)}/nodes/${index}/sensor-config`, "PATCH", payload),
     context: (id: string) => request<DeviceInteractionContext>(`/api/v1/devices/${encodeURIComponent(id)}/context`),
     children: (id: string) =>
       request<ListResponse<DeviceChild>>(

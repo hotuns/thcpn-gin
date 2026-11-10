@@ -48,7 +48,7 @@ func (h *Handler) interaction(c *gin.Context, admin bool) {
 			}
 			allowed = decision.Allowed
 		}
-		if name == "source_configure" && (item.Status != "active" || item.SourceStatus != "active") {
+		if name == "source_configure" && (actor.IsDemo || item.Status != "active" || item.SourceStatus != "active") {
 			allowed = false
 		}
 		result.Actions[name] = allowed

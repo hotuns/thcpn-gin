@@ -6,10 +6,10 @@ import { invalidateNodeNames } from "@thcpn/workspace";
 import { validateSensorWaitTime } from "./sensor-config-wait-time";
 import { useLocale } from "@thcpn/i18n";
 import { describeNodeTimeSchedule, parseNodeTimeSchedule } from "@thcpn/api";
-import { NodeSensorEditor, serializeNodeSensorDraft } from './node-sensor-editor';
+import { NodeSensorEditor, readNodeSensorDraft, serializeNodeSensorDraft } from './node-sensor-editor';
 import { sensorConfigTargets, submitNodeSensorBatch, verifyNodeConfigTargets, type NodeConfigResult } from "./node-config-batch";
 import { AdminNodeLocationEditor } from "./node-location-editor";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
@@ -58,6 +58,10 @@ const parseArray = (raw: string) => {
   if (!Array.isArray(result)) throw new Error("节点传感器配置必须是 JSON 数组");
   return result;
 };
+const canonicalJSON = (value: unknown) => JSON.stringify(value, (_, entry) => {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry;
+  return Object.fromEntries(Object.keys(entry).sort().map(key => [key, entry[key]]));
+});
 const managementLabel: Record<string, { label: string; color: string }> = {
   managed: { label: "平台已托管", color: "green" },
   matched: { label: "已匹配模板", color: "blue" },
@@ -99,8 +103,14 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
 
   const [sensorDirty, setSensorDirty] = useState(false);
   const [sensorWaitTime,setSensorWaitTime]=useState<number|null>(0);
-  const loadedSensorConfig = useRef("");
-  useEffect(()=>{setSensorWaitTime(0);setSensorDirty(false);loadedSensorConfig.current="";},[deviceId,node]);
+  const [loadedSensorConfig, setLoadedSensorConfig] = useState<{ node: number; key: string; content: string; metrics: string; waitTime: number } | null>(null);
+  useEffect(() => {
+    setLoadedSensorConfig(null);
+    setSensorJSON("[]");
+    setSensorMetricsJSON("[]");
+    setSensorWaitTime(0);
+    setSensorDirty(false);
+  }, [deviceId, node]);
 
   const [timeContent, setTimeContent] = useState("");
   const timeConfig = useQuery({ queryKey: ["admin",deviceId,node,"time-config"], queryFn: () => api.admin.nodeTimeConfig(deviceId,node), enabled: Boolean(nodes.data?.items.some(item=>item.bound && item.target.kind==="gateway_node" && item.target.node_index===node)), retry: false });
@@ -198,15 +208,29 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
     const content = Array.isArray(current.content) ? current.content : [];
     const metrics = Array.isArray(current.metrics) ? current.metrics : [];
     const waitTime=Number(current.wait_time ?? 0);
-    const configKey = `${node}:${text(current.upstream_config_id ?? current.id, "")}:${JSON.stringify(content)}:${JSON.stringify(metrics)}:${waitTime}`;
-    if (loadedSensorConfig.current === configKey) return;
-    loadedSensorConfig.current = configKey;
+    const originalContent = canonicalJSON(content);
+    const originalMetrics = canonicalJSON(metrics);
+    const configKey = `${node}:${text(current.upstream_config_id ?? current.id, "")}:${originalContent}:${originalMetrics}:${waitTime}`;
+    if (loadedSensorConfig?.key === configKey) return;
+    setLoadedSensorConfig({ node, key: configKey, content: originalContent, metrics: originalMetrics, waitTime });
     setSensorJSON(JSON.stringify(content, null, 2));
     setSensorMetricsJSON(JSON.stringify(metrics, null, 2));
     setSensorWaitTime(waitTime);
 
     setSensorDirty(false);
-  }, [latest.data, node, sensorDirty]);
+  }, [latest.data, loadedSensorConfig?.key, node, sensorDirty]);
+  const canSaveSensor = !busy && latest.isSuccess && loadedSensorConfig?.node === node && sensorTargets.length > 0;
+  const buildSensorRequest = () => {
+    const content = parseArray(sensorJSON);
+    const metrics = parseArray(sensorMetricsJSON);
+    const waitTime = validateSensorWaitTime(sensorWaitTime);
+    const nativeUnchanged = loadedSensorConfig?.node === node && loadedSensorConfig.waitTime === waitTime && loadedSensorConfig.content === canonicalJSON(content);
+    // A batch can still explicitly apply the existing full configuration to other nodes.
+    if (content.length > 0 && nativeUnchanged && (sensorTargets.length === 1 || loadedSensorConfig.metrics !== canonicalJSON(metrics))) {
+      return { mode: "metrics", metrics };
+    }
+    return { mode: "advanced", wait_time: waitTime, content, metrics };
+  };
   const refreshPlatformCatalog = async () => {
     if (!await confirmManualSync({reason:needsRecovery?"recovery":"external",title:"重新读取节点配置？",scope:"读取网关及全部节点的源端配置，刷新平台指标目录，不重新下发配置。"})) return;
     setBusy("recover");
@@ -230,7 +254,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
       setBusy("");
     }
   };
-  const run = async (kind: "gateway" | "sensor" | "time") => {
+  const run = async (kind: "gateway" | "sensor" | "time", sensorRequest?: JsonRecord) => {
     if (busy) return;
     setBusy(kind);
     setFeedback("");
@@ -246,15 +270,18 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
         await gateways.refetch();
       }
       if (kind === "sensor") {
-        await sensorForm.validateFields();
-        const request = { mode: "advanced", wait_time: validateSensorWaitTime(sensorWaitTime), content: parseArray(sensorJSON), metrics: parseArray(sensorMetricsJSON) };
-        const results = await submitNodeSensorBatch(deviceId, sensorTargets, request, setSensorResults);
+        if (!sensorRequest) return;
+        const results = await submitNodeSensorBatch(deviceId, sensorTargets, sensorRequest, setSensorResults);
         setNeedsRecovery(results.some(item => item.status === "sync_failed"));
         const failed = results.filter(item => item.status === "failed").length;
         const pendingSync = results.filter(item => item.status === "sync_failed").length;
-        setFeedback(`已提交 ${results.length} 个节点：${results.length-failed-pendingSync} 个平台已同步，${pendingSync} 个待恢复同步，${failed} 个失败。设备是否应用需等待回报。`);
+        const platformOnly = results.filter(item => item.status === "synced" && item.source === "unchanged").length;
+        const synced = results.filter(item => item.status === "synced" && item.source === "accepted").length;
+        const sent = results.some(item => item.source === "accepted");
+        const summary = [platformOnly ? `${platformOnly} 个仅保存平台指标` : "", synced ? `${synced} 个源端已接受且平台已同步` : "", pendingSync ? `${pendingSync} 个待恢复平台同步` : "", failed ? `${failed} 个失败` : ""].filter(Boolean).join("，");
+        setFeedback(`${summary}。${sent ? "设备是否应用需等待回报。" : sensorRequest.mode === "metrics" ? "未下发设备配置。" : ""}`);
         for (const item of results) {
-          void queryClient.invalidateQueries({ queryKey: ["admin",deviceId,item.node,"sensor-configs"] });
+          if (item.source === "accepted") void queryClient.invalidateQueries({ queryKey: ["admin",deviceId,item.node,"sensor-configs"] });
           void queryClient.invalidateQueries({ queryKey: ["admin",deviceId,item.node,"sensor-config-latest"] });
         }
         await Promise.all([
@@ -297,6 +324,32 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
       setBusy("");
     }
   };
+  const confirmSensorSave = async () => {
+    if (!canSaveSensor) return;
+    try {
+      await sensorForm.validateFields();
+      const request = buildSensorRequest();
+      const metricsOnly = request.mode === "metrics";
+      const multiple = sensorTargets.length > 1;
+      const description = metricsOnly
+        ? "仅保存平台指标。每个节点保留原有协议配置和等待时间。"
+        : "只向原生配置有变化的节点提交配置；设备是否应用需等待回报。";
+      if (!multiple && metricsOnly) {
+        await run("sensor", request);
+        return;
+      }
+      modal.confirm({
+        title: multiple ? "确认同时应用到其他节点？" : `保存节点 ${node} 的传感器配置？`,
+        content: <div><p>{description}</p>{multiple ? <ul>{sensorTargets.map(index => <li key={index}>{sensorNodeOptions.find(item => item.value === index)?.label ?? `节点 ${index}`}</li>)}</ul> : null}</div>,
+        okText: multiple ? `应用到 ${sensorTargets.length} 个节点` : "确认保存",
+        cancelText: "取消",
+        autoFocusButton: "cancel",
+        onOk: () => run("sensor", request),
+      });
+    } catch (error) {
+      if (error instanceof Error) setFeedback(error instanceof SyntaxError ? "JSON 格式不正确" : error.message);
+    }
+  };
   const columns = [
     { title: "配置 ID", dataIndex: "id", width: 110 },
     { title: "创建时间", dataIndex: "created_at", width: 200 },
@@ -307,7 +360,8 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
       ),
     },
   ];
-  const currentManagement = latest.data
+  const hasSensorConfig = Array.isArray(payload(latest.data).content);
+  const currentManagement = hasSensorConfig
     ? managementLabel[text(payload(latest.data).management_status, "unmanaged")] ?? managementLabel.unmanaged
     : null;
   return (
@@ -333,7 +387,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
         {feedback ? <div className="admin-feedback">{feedback}</div> : null}
         {needsRecovery ? (
           <div className="admin-feedback">
-            上次配置已被源端接受，但平台指标目录尚未刷新。请使用右上角“重新读取节点配置”。
+            有配置尚未同步到平台。请使用右上角“重新读取节点配置”。
           </div>
         ) : null}
         {failure ? (
@@ -342,6 +396,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
             title="配置读取失败"
             description={formatApiError(failure).message}
             requestId={formatApiError(failure).requestId}
+            action={failure === latest.error && <Button size="small" loading={latest.isFetching} onClick={() => void latest.refetch()}>重试读取当前节点</Button>}
           />
         ) : null}
         <Tabs
@@ -403,20 +458,14 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                         )
                           return;
                         selectNode(next);
-                        loadedSensorConfig.current = "";
-                        setSensorJSON("[]");
-                        setSensorMetricsJSON("[]");
-
-
                         setTimeContent("");
-                        setSensorDirty(false);
                       }}
                     />
                     {nodes.data?.items.some(item => item.target.kind === "gateway_node" && item.target.node_index === node) && <NodeNameEditor name={nodes.data?.items.find(item => item.target.kind === "gateway_node" && item.target.node_index === node)?.custom_name ?? ""} onSave={async name => {await api.admin.renameNode(deviceId, node, name); await invalidateNodeNames(queryClient);}}/>}
                     {nodes.data?.items.filter(item => item.target.kind === "gateway_node" && item.target.node_index === node).map(item => <AdminNodeLocationEditor key={item.key} deviceId={deviceId} node={item}/>)}
                     {currentManagement ? <Tag color={currentManagement.color}>{currentManagement.label}</Tag> : null}
                   </Space>
-                  {latest.data
+                  {hasSensorConfig
                     ? (() => {
                         const current = payload(latest.data);
                         const metrics = Array.isArray(current.metrics)
@@ -478,41 +527,27 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                     : null}
                   <div className="lora-config-step"><span className="lora-config-step-number">2</span><div><strong>编辑配置草稿</strong><span>协议和指标在同一表单编辑；可选择将同一份配置应用到其他节点。</span></div></div>
                   <LoRaWANV2SensorConfigCopy key={`sensor-copy-${deviceId}-${node}`} deviceId={deviceId} node={node}
-                    disabled={Boolean(busy) || nodes.isLoading || !sensorNodeOptions.some(item => item.value === node)}
+                    disabled={!canSaveSensor}
                     onCopy={draft => { setSensorJSON(draft.content); setSensorMetricsJSON(draft.metrics); setSensorWaitTime(draft.waitTime); setSensorDirty(true); setSensorResults([]); }} />
-                  <Form form={sensorForm} layout="vertical" disabled={Boolean(busy)} onValuesChange={(_, values) => {
+                  <Form form={sensorForm} layout="vertical" disabled={!canSaveSensor} onValuesChange={(_, values) => {
                     const draft = serializeNodeSensorDraft(values.lora_items ?? []);
-                    setSensorJSON(draft.content); setSensorMetricsJSON(draft.metrics); setSensorDirty(true);
+                    // The visual editor normalizes the protocol. Preserve its original JSON when only labels or other platform fields change.
+                    const original = serializeNodeSensorDraft(readNodeSensorDraft(sensorJSON, sensorMetricsJSON));
+                    if (draft.content !== original.content) setSensorJSON(draft.content);
+                    setSensorMetricsJSON(draft.metrics);
+                    setSensorDirty(true);
                   }}>
                     <NodeSensorEditor key={node} contentJSON={sensorJSON} metricsJSON={sensorMetricsJSON} templates={loraTemplates} onChange={(content, metrics) => {setSensorJSON(content); setSensorMetricsJSON(metrics); setSensorDirty(true);}} />
-                    <Form.Item label="等待时间（wait_time）" required extra="单位：秒，范围 0–65535；与节点传感器配置一起提交，批量应用时所有选中节点使用同一值。">
+                    <Form.Item label="等待时间（wait_time）" required extra="单位：秒，范围 0–65535。只修改平台指标时，保留各节点原有等待时间。">
                       <InputNumber aria-label="等待时间（秒）" min={0} max={65535} precision={0} step={1} value={sensorWaitTime} onChange={value=>{setSensorWaitTime(value);setSensorDirty(true);}} addonAfter="秒" style={{width:240,maxWidth:"100%"}} />
                     </Form.Item>
-                    <div className="lora-config-step"><span className="lora-config-step-number">3</span><div><strong>确认并提交</strong><span>提交会写入源端；“已接受”不等于设备已应用。</span></div></div>
+                    <div className="lora-config-step"><span className="lora-config-step-number">3</span><div><strong>保存配置</strong><span>只有协议配置或等待时间变化才会下发。</span></div></div>
                     <div className="lora-config-apply-nodes">
                       <Checkbox checked={applyToOthers && sensorNodeOptions.length > 1} disabled={Boolean(busy) || sensorNodeOptions.length < 2} onChange={event => setApplyToOthers(event.target.checked)}>同时应用到其他节点</Checkbox>
                       {applyToOthers && sensorNodeOptions.length > 1 ? <Checkbox.Group aria-label="同时应用的节点" disabled={Boolean(busy)} options={sensorNodeOptions.filter(item => item.value !== node)} value={selectedOtherNodes} onChange={values => setSelectedOtherNodes(values.map(Number))} /> : null}
                       <span>应用范围：{sensorTargets.map(index => sensorNodeOptions.find(item => item.value === index)?.label ?? `节点 ${index}`).join("、")}</span>
                     </div>
-                    {applyToOthers ? <Button type="primary" disabled={Boolean(busy) || nodes.isLoading || !sensorNodeOptions.some(item=>item.value===node)} loading={busy === "sensor"} onClick={async () => {
-                      try {
-                        await sensorForm.validateFields();
-                        parseArray(sensorJSON); parseArray(sensorMetricsJSON);
-                        validateSensorWaitTime(sensorWaitTime);
-                        modal.confirm({
-                          title: "确认同时应用到其他节点？",
-                          content: <div><p>以下 {sensorTargets.length} 个节点的协议和指标将更新为当前编辑的配置：</p><ul>{sensorTargets.map(index => <li key={index}>{sensorNodeOptions.find(item => item.value === index)?.label ?? `节点 ${index}`}</li>)}</ul><p>配置提交至 LoRa V2 服务后，设备是否应用需等待回报。</p></div>,
-                          okText: `确认应用到 ${sensorTargets.length} 个节点`,
-                          cancelText: "取消",
-                          autoFocusButton: "cancel",
-                          onOk: () => run("sensor"),
-                        });
-                      } catch (error) {
-                        if (error instanceof Error) setFeedback(error instanceof SyntaxError ? "JSON 格式不正确" : error.message);
-                      }
-                    }}>提交到 LoRa V2</Button> : <Popconfirm title={`提交节点 ${node} 的传感器配置？`} description="配置将写入 LoRa V2 服务，设备是否应用需等待回报。" okText="确认提交" cancelText="取消" onConfirm={() => void run("sensor")} disabled={Boolean(busy)}>
-                      <Button type="primary" disabled={Boolean(busy) || nodes.isLoading || !sensorNodeOptions.some(item=>item.value===node)} loading={busy === "sensor"}>提交到 LoRa V2</Button>
-                    </Popconfirm>}
+                    <Button type="primary" disabled={!canSaveSensor} loading={busy === "sensor"} onClick={() => void confirmSensorSave()}>保存配置</Button>
                   </Form>
                   {sensorResults.length ? <Table size="small" rowKey="node" pagination={false} dataSource={sensorResults} columns={[{title:"节点",dataIndex:"node",width:90},{title:"提交状态",dataIndex:"status",width:140,render:(status:NodeConfigResult["status"]) => <Tag color={status === "synced" ? "green" : status === "submitting" ? "blue" : status === "sync_failed" ? "orange" : "red"}>{{submitting:"提交中",synced:"平台已同步",sync_failed:"待恢复同步",failed:"提交失败"}[status]}</Tag>},{title:"结果说明",dataIndex:"detail"}]} /> : null}
                   <Collapse className="lora-config-history" items={[{ key: "history", label: `节点 ${node} 历史配置（${list(sensors.data).length}）`, children: <Table rowKey={(item) => text(item.id)} size="small" dataSource={list(sensors.data)} columns={columns} pagination={false} /> }]} />
@@ -549,11 +584,7 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                         )
                           return;
                         selectNode(next);
-                        loadedSensorConfig.current = "";
-                        setSensorJSON("[]");
-
                         setTimeContent("");
-                        setSensorDirty(false);
                       }}
                     />
                   </Space>

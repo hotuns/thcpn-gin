@@ -40,7 +40,11 @@ func (h *Handler) AdminDeviceSourceConfig(c *gin.Context) {
 		writeLoRaWANV2Payload(c, http.StatusOK, result.Payload)
 		return
 	}
-	if !h.recordLoRaWANV2(c, actor.UserID, result.DataSourceID, "device.config."+kind, audit.ResultSuccess, result.Status) {
+	reason := result.Status
+	if result.WriteState != nil && result.WriteState.Source == "unchanged" {
+		reason += ":source_unchanged"
+	}
+	if !h.recordLoRaWANV2(c, actor.UserID, result.DataSourceID, "device.config."+kind, audit.ResultSuccess, reason) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"payload": result.Payload, "write_state": result.WriteState, "warnings": result.Warnings})

@@ -229,13 +229,24 @@ func (h *Handler) adminLoRaWANV2Write(c *gin.Context, method, path string, body 
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
-	payload, err := h.service.LoRaWAN.LoRaWANV2Request(c.Request.Context(), id, method, path, url.Values{}, body)
+	var payload json.RawMessage
+	var err error
+	reason := ""
+	if method == http.MethodPost && strings.HasSuffix(path, "/sensor_config") {
+		var sent bool
+		payload, sent, err = h.service.LoRaWAN.SaveNativeSensorConfig(c.Request.Context(), id, path, body)
+		if !sent {
+			reason = "source_unchanged"
+		}
+	} else {
+		payload, err = h.service.LoRaWAN.LoRaWANV2Request(c.Request.Context(), id, method, path, url.Values{}, body)
+	}
 	if err != nil {
 		h.recordLoRaWANV2(c, actor.UserID, id, action, audit.ResultFailure, apperr.MessageOf(err))
 		httpx.WriteAppError(c, err)
 		return
 	}
-	if !h.recordLoRaWANV2(c, actor.UserID, id, action, audit.ResultSuccess, "") {
+	if !h.recordLoRaWANV2(c, actor.UserID, id, action, audit.ResultSuccess, reason) {
 		return
 	}
 	writeLoRaWANV2Payload(c, status, payload)

@@ -96,6 +96,25 @@ const deviceModelLabel = (item: JsonRecord) =>
     : deviceTopologyRoleLabel(value(item.device_type, ""));
 const deviceModelOf = (item: JsonRecord) =>
   value(item.source_family, "") === "lorawan_v2" ? "lorawan_v2" : categoryOf(item);
+const deviceSortOptions = [
+  { value: "created_desc", label: "创建时间：最新优先" },
+  { value: "created_asc", label: "创建时间：最早优先" },
+  { value: "name_asc", label: "设备名称：正序" },
+  { value: "name_desc", label: "设备名称：倒序" },
+  { value: "asset_asc", label: "资产编号：正序" },
+  { value: "asset_desc", label: "资产编号：倒序" },
+] as const;
+type DeviceSort = typeof deviceSortOptions[number]["value"];
+const deviceCollator = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
+
+function compareDevices(a: JsonRecord, b: JsonRecord, sort: DeviceSort) {
+  const compare = (field: string) => deviceCollator.compare(value(a[field], ""), value(b[field], ""));
+  const created = (item: JsonRecord) => Date.parse(value(item.created_at, "")) || 0;
+  const newestFirst = created(b) - created(a);
+  const order = sort === "created_asc" ? -newestFirst : sort === "created_desc" ? newestFirst
+    : (sort.startsWith("name") ? compare("name") : compare("asset_no")) * (sort.endsWith("desc") ? -1 : 1);
+  return order || newestFirst || compare("id");
+}
 
 import { adminDeviceCategories, matchesAdminDeviceCategory } from "./admin-device-category-model";
 import { LoRaWANNodeInventory } from "./lorawan-node-inventory";
@@ -156,6 +175,7 @@ export function AdminDevicesPage() {
   const [status, setStatus] = useState("");
   const [lifecycle, setLifecycle] = useState("");
   const [assignment, setAssignment] = useState("");
+  const [sort, setSort] = useState<DeviceSort>("created_desc");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -213,14 +233,14 @@ export function AdminDevicesPage() {
               : !item.workspace_id)) &&
           matchesAdminDeviceCategory(item,category,categoryOf(item))
         );
-      }),
-    [topLevelRows, keyword, deviceModel, status, lifecycle, assignment, category, tagsByDevice],
+      }).sort((a, b) => compareDevices(a, b, sort)),
+    [topLevelRows, keyword, deviceModel, status, lifecycle, assignment, category, sort, tagsByDevice],
   );
   const id = value(selected?.id, "");
 
   useEffect(() => {
     setPage(1);
-  }, [keyword, status, lifecycle, assignment, category]);
+  }, [keyword, deviceModel, status, lifecycle, assignment, category, sort]);
 
   useEffect(() => {
     const lastPage = Math.max(1, Math.ceil(rows.length / pageSize));
@@ -644,8 +664,8 @@ export function AdminDevicesPage() {
       />
       <Card>
         {categoryTabs}
-        <div className="admin-device-filters">
-          <Input.Search value={keyword} onChange={event=>setKeyword(event.target.value)} placeholder="搜索设备名称、序列号、ID 或标签" allowClear style={{width:320}} />
+        <div className="admin-device-filters admin-device-list-filters">
+          <Input.Search value={keyword} onChange={event=>setKeyword(event.target.value)} placeholder="搜索设备名称、序列号、ID 或标签" allowClear />
           <Select
             allowClear
             placeholder="设备类型"
@@ -682,6 +702,13 @@ export function AdminDevicesPage() {
               { value: "assigned", label: "已分配" },
               { value: "unassigned", label: "未分配" },
             ]}
+          />
+          <Select<DeviceSort>
+            className="admin-device-sort"
+            aria-label="排序方式"
+            value={sort}
+            onChange={setSort}
+            options={[...deviceSortOptions]}
           />
           <Badge tone="info">{rows.length} 台设备</Badge>
         </div>
@@ -785,7 +812,7 @@ function confirmConfigSave(review: ConfigSaveReview) {
       okText: "确认保存",
       cancelText: "继续编辑",
       okButtonProps: { danger: review.destructive },
-      content: <div className="config-save-summary"><p>{review.changes.length ? review.changes.join("；") : "配置内容已修改"}</p>{review.warnings.length ? <Alert type="warning" showIcon title="配置提示" description={review.warnings.join("；")} /> : null}<p>系统会保存到当前设备的数据源，并刷新平台配置。源端保存不代表设备已经应用。</p></div>,
+      content: <div className="config-save-summary"><p>{review.changes.length ? review.changes.join("；") : "将核对当前源端配置"}</p>{review.warnings.length ? <Alert type="warning" showIcon title="配置提示" description={review.warnings.join("；")} /> : null}<p>只有原生配置变化才会写入数据源。源端保存不代表设备已经应用。</p></div>,
       onOk: () => finish(true),
       onCancel: () => finish(false),
       afterClose: () => finish(false),
@@ -1576,7 +1603,8 @@ function ConfigApplyResult({
   const [recoveryError, setRecoveryError] = useState("");
   const response = result.response;
   const writeState = response.write_state as JsonRecord | undefined;
-  const needsRecovery = Boolean(writeState && writeState.platform !== "synced" && !recovered);
+  const unchanged = writeState?.source === "unchanged";
+  const needsRecovery = writeState?.platform === "failed" && !recovered;
   const recover = async () => {
     if (!await confirmManualSync({reason:"recovery",title:"恢复平台同步？",scope:"重新读取源端配置并恢复平台指标绑定，不重复下发配置。"})) return;
     setRecovering(true);
@@ -1598,12 +1626,12 @@ function ConfigApplyResult({
           <h2 className="panel-title">配置应用结果 · {result.deviceName}</h2>
           <div className="panel-kicker">
             外部配置版本 {value(config.version, value(config.id))}{" "}
-            {needsRecovery ? "源端已接受，平台同步失败" : "已同步至平台"}；设备是否应用尚未确认
+            {unchanged ? "原生配置无变化，未创建新版本" : `${needsRecovery ? "源端已接受，平台同步失败" : "已同步至平台"}；设备是否应用尚未确认`}
           </div>
         </div>
         <Space>
           <Tag color={warnings.length ? "orange" : "green"}>
-            {needsRecovery ? "需要恢复同步" : recovered ? "同步已恢复" : warnings.length ? `${warnings.length} 条警告` : "平台同步成功"}
+            {unchanged ? "未下发" : needsRecovery ? "需要恢复同步" : recovered ? "同步已恢复" : warnings.length ? `${warnings.length} 条警告` : "平台同步成功"}
           </Tag>
           {needsRecovery && <Button loading={recovering} onClick={recover}>重新同步平台</Button>}
           <Button type="text" onClick={onClose}>
@@ -1612,7 +1640,7 @@ function ConfigApplyResult({
         </Space>
       </div>
       {recoveryError && <div role="alert">{recoveryError}</div>}
-      <div className="sync-result-metrics">
+      {!unchanged && <div className="sync-result-metrics">
         <div>
           <strong>{count("data_streams")}</strong>
           <span>生效 DataStream</span>
@@ -1629,7 +1657,7 @@ function ConfigApplyResult({
           <strong>{count("disabled_bindings")}</strong>
           <span>禁用 Binding</span>
         </div>
-      </div>
+      </div>}
       {warnings.length ? (
         <div className="sync-warnings">
           {warnings.map((warning, index) => (

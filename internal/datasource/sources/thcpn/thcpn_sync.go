@@ -525,15 +525,7 @@ func (s *Service) UpdateDeviceConfig(ctx context.Context, input platform.UpdateD
 	if input.ExpectedConfigID <= 0 {
 		return platform.UpdateDeviceConfigResult{}, apperr.New(apperr.KindInvalidArgument, "expected_config_id is required")
 	}
-	dataJSON, err := platform.NormalizeConfigArrayJSON(input.DataJSON, "data_json")
-	if err != nil {
-		return platform.UpdateDeviceConfigResult{}, err
-	}
-	imageJSON, err := platform.NormalizeConfigArrayJSON(input.ImageJSON, "image_json")
-	if err != nil {
-		return platform.UpdateDeviceConfigResult{}, err
-	}
-	controlJSON, err := platform.NormalizeConfigObjectJSON(input.ControlJSON, "control_json")
+	dataJSON, imageJSON, controlJSON, err := platform.NormalizeDeviceConfigInput(input, true)
 	if err != nil {
 		return platform.UpdateDeviceConfigResult{}, err
 	}
@@ -575,8 +567,17 @@ func (s *Service) UpdateDeviceConfig(ctx context.Context, input platform.UpdateD
 	if previous.ID != input.ExpectedConfigID {
 		return platform.UpdateDeviceConfigResult{}, apperr.New(apperr.KindConflict, "device config has changed; reload and try again")
 	}
+	dataJSON, imageJSON, controlJSON = platform.PreserveConfigSections(thcpnDeviceConfigFromExternal(previous), dataJSON, imageJSON, controlJSON)
+	auditSummary := platform.SummarizeConfigChange(previous.ID, previous.Data, previous.Image, previous.Control, dataJSON, imageJSON, controlJSON)
+	if len(auditSummary.ChangedSections) == 0 {
+		return platform.UnchangedDeviceConfigResult(input.DeviceID, source.ID, thcpnDeviceConfigFromExternal(previous), auditSummary), nil
+	}
 
-	operationID, err := s.BeginSourceOperation(ctx, source.ID, &input.DeviceID, "config_update", "running", map[string]any{"expected_config_id": input.ExpectedConfigID, "data": dataJSON, "image": imageJSON, "control": controlJSON}, input.ActorUserID)
+	operationRequest := map[string]any{"expected_config_id": input.ExpectedConfigID, "data": dataJSON, "image": imageJSON, "control": controlJSON}
+	if input.CapturePatch {
+		operationRequest = map[string]any{"expected_config_id": input.ExpectedConfigID, "sections": auditSummary.ChangedSections}
+	}
+	operationID, err := s.BeginSourceOperation(ctx, source.ID, &input.DeviceID, "config_update", "running", operationRequest, input.ActorUserID)
 	if err != nil {
 		return platform.UpdateDeviceConfigResult{}, err
 	}
@@ -604,7 +605,6 @@ func (s *Service) UpdateDeviceConfig(ctx context.Context, input platform.UpdateD
 			response.Warnings = append(response.Warnings, platform.QueryWarning{Code: "operation_record_failed", Message: "操作结果记录未更新，请重新核对配置状态。"})
 		}
 	}()
-	auditSummary := platform.SummarizeConfigChange(previous.ID, previous.Data, previous.Image, previous.Control, dataJSON, imageJSON, controlJSON)
 	inserted, err := insertTHCPNDeviceConfig(ctx, mysqlTx, previous, dataJSON, imageJSON, controlJSON)
 	if err != nil {
 		return platform.UpdateDeviceConfigResult{}, err

@@ -42,6 +42,7 @@ type UpdateDeviceConfigInput struct {
 	ControlJSON      json.RawMessage
 	ActorUserID      uuid.UUID
 	ExpectedConfigID int64
+	CapturePatch     bool // Preserve unspecified native sections, including the capture schedule.
 }
 type UpdateDeviceConfigResult struct {
 	WriteState          *ConfigWriteState    `json:"write_state,omitempty"`
@@ -49,7 +50,7 @@ type UpdateDeviceConfigResult struct {
 	DataSourceID        uuid.UUID            `json:"data_source_id"`
 	ExternalDeviceID    int64                `json:"external_device_id"`
 	Config              DeviceConfig         `json:"config"`
-	ConfigSnapshot      DeviceConfigSnapshot `json:"config_snapshot"`
+	ConfigSnapshot      DeviceConfigSnapshot `json:"config_snapshot,omitzero"`
 	DataStreams         []SyncedDataStream   `json:"data_streams"`
 	Bindings            []DataStreamBinding  `json:"bindings"`
 	DisabledDataStreams []SyncedDataStream   `json:"disabled_data_streams,omitempty"`

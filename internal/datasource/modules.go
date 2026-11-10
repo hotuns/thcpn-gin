@@ -19,6 +19,7 @@ type sourceModule struct {
 	NodeRuntime    platform.NodeRuntimeReader
 	Runtime        platform.RuntimeReader
 	Config         platform.ConfigManager
+	Capture        platform.CaptureConfigSpec
 	Sampling       platform.SamplingManager
 	Reconcile      platform.ConfigReconciler
 	SyncAll        func(context.Context, uuid.UUID, uuid.UUID) (any, error)
@@ -39,10 +40,10 @@ func (s *Service) registerModules() {
 	}
 
 	s.modules = map[string]sourceModule{
-		platform.SourceFamilyTHCPN: {Statistics: s.THCPN.ObservationStatistics, Locations: s.THCPN, TemplateTarget: s.THCPN.SensorTemplateTarget, Runtime: s.THCPN, Config: s.THCPN, Sampling: s.THCPN, Reconcile: s.THCPN, SyncAll: func(ctx context.Context, id, actor uuid.UUID) (any, error) {
+		platform.SourceFamilyTHCPN: {Statistics: s.THCPN.ObservationStatistics, Locations: s.THCPN, TemplateTarget: s.THCPN.SensorTemplateTarget, Runtime: s.THCPN, Config: s.THCPN, Capture: thcpn.CaptureConfigSpec(), Sampling: s.THCPN, Reconcile: s.THCPN, SyncAll: func(ctx context.Context, id, actor uuid.UUID) (any, error) {
 			return s.THCPN.SyncAllTHCPNDevices(ctx, thcpn.SyncAllTHCPNDevicesInput{DataSourceID: id, ActorUserID: actor})
 		}, Firmware: s.THCPN.RegisterFirmware},
-		platform.SourceFamilyCarbon: {Statistics: s.Carbon.ObservationStatistics, Config: s.Carbon, Sampling: s.Carbon, Reconcile: s.Carbon, SyncAll: func(ctx context.Context, id, actor uuid.UUID) (any, error) {
+		platform.SourceFamilyCarbon: {Statistics: s.Carbon.ObservationStatistics, Config: s.Carbon, Capture: carbon.CaptureConfigSpec(), Sampling: s.Carbon, Reconcile: s.Carbon, SyncAll: func(ctx context.Context, id, actor uuid.UUID) (any, error) {
 			return s.Carbon.SyncAllCarbonDevices(ctx, carbon.SyncAllCarbonDevicesInput{DataSourceID: id, ActorUserID: actor})
 		}, Firmware: s.Carbon.RegisterFirmware},
 		platform.SourceFamilyLoRaWANV2: {Statistics: s.LoRaWAN.ObservationStatistics, NodeRuntime: s.LoRaWAN, Firmware: s.LoRaWAN.RegisterFirmware, Reconcile: s.LoRaWAN, SyncAll: func(ctx context.Context, id, actor uuid.UUID) (any, error) {

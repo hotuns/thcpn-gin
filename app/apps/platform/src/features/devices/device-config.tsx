@@ -4,6 +4,7 @@ import { api, type Device } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, Panel } from "../../shared/ui";
 import { SamplingProfilePanel } from "./sampling-profile";
+import { DeviceCaptureSettings } from "./device-capture-config";
 import { ComputedStreamsPanel, DeviceMetadataPanel } from "./device-computed-data";
 import { SystemDeviceConfig } from "./system-device-config";
 
@@ -34,6 +35,7 @@ export function DeviceConfig({
         <DeviceMetadataPanel workspaceId={currentWorkspaceId} deviceId={device.id} canConfigure={Boolean(context.data?.actions.configure)} />
       </div>
       {device.features?.includes("sampling") && <SamplingProfilePanel deviceId={device.id} workspaceId={currentWorkspaceId} carbon={device.device_type === "carbon_sink"} />}
+      {context.data?.actions.source_configure && device.features?.includes("sensor_config") && <DeviceCaptureSettings key={`${currentWorkspaceId}:${device.id}`} device={device} workspaceId={currentWorkspaceId} />}
       {systemAdmin && (
         <SystemDeviceConfig device={device} workspaces={workspaces} run={run} />
       )}

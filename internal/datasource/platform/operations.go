@@ -21,7 +21,7 @@ type SourceOperation struct {
 	UpdatedAt    time.Time       `json:"updated_at"`
 }
 type ConfigWriteState struct {
-	OperationID uuid.UUID `json:"operation_id"`
+	OperationID uuid.UUID `json:"operation_id,omitzero"`
 	Source      string    `json:"source"`
 	Platform    string    `json:"platform"`
 	Device      string    `json:"device"`

@@ -661,7 +661,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Source configuration history or latest configuration; time history is unsupported */
+                /** @description Source configuration history or latest configuration. The latest node sensor configuration is an empty object when no record exists. */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -676,8 +676,8 @@ export interface paths {
         };
         put?: never;
         /**
-         * Write source configuration and report source and platform stages separately
-         * @description For LoRaWAN V2 sensor configuration use the templates or advanced discriminated request. Sensor edits reconcile only the selected node's platform metrics, preserving other nodes; they do not scan the full gateway. Gateway and time configurations retain their source-native object shape.
+         * Save configuration and report source and platform stages separately
+         * @description For LoRaWAN V2 sensor configuration, use metrics to update only platform definitions, or templates/advanced to include native settings. The source receives a new version only when the native content or wait time differs. Each request reconciles only the selected node's platform metrics. Gateway and time configurations retain their source-native object shape.
          */
         post: {
             parameters: {
@@ -693,13 +693,13 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["LoRaWANV2TemplateSensorConfigRequest"] | components["schemas"]["LoRaWANV2AdvancedSensorConfigRequest"] | {
+                    "application/json": components["schemas"]["LoRaWANV2TemplateSensorConfigRequest"] | components["schemas"]["LoRaWANV2AdvancedSensorConfigRequest"] | components["schemas"]["LoRaWANV2MetricOnlySensorConfigRequest"] | {
                         [key: string]: unknown;
                     };
                 };
             };
             responses: {
-                /** @description Source accepted; inspect write_state for platform result */
+                /** @description Configuration saved. Inspect write_state to see whether a new source version was created and whether platform synchronization succeeded. */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2900,7 +2900,10 @@ export interface paths {
         /** List node sensor configuration history */
         get: operations["adminListLoRaWANV2NodeSensorConfigs"];
         put?: never;
-        /** Create node sensor configuration from a JSON object */
+        /**
+         * Save native node sensor configuration from a JSON object
+         * @description Returns the current source version when the native content and wait time are unchanged. This endpoint does not edit platform metric definitions.
+         */
         post: operations["adminCreateLoRaWANV2NodeSensorConfig"];
         delete?: never;
         options?: never;
@@ -4672,6 +4675,58 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/capture-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read workspace-editable sensor and camera settings
+         * @description Requires device.configure on the selected device. Only supported settings are returned; connection details and the native control schedule stay private. Demo accounts cannot use this operation.
+         */
+        get: operations["getDeviceCaptureConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update sensor or camera settings after confirmation
+         * @description Requires device.configure on the selected device. Applies only editable fields against the version reviewed by the user. Unspecified settings and the capture schedule are preserved.
+         */
+        patch: operations["updateDeviceCaptureConfig"];
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/nodes/{node_index}/sensor-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+                node_index: components["parameters"]["LoRaWANV2NodeIndex"];
+            };
+            cookie?: never;
+        };
+        /** Read sensor settings for a currently bound LoRaWAN V2 node */
+        get: operations["getWorkspaceNodeSensorConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Save sensor settings for a bound LoRaWAN V2 node after confirmation
+         * @description Requires device.configure on the gateway. Checks the bound node SN and the latest native version. Platform metric changes do not send native configuration.
+         */
+        patch: operations["updateWorkspaceNodeSensorConfig"];
         trace?: never;
     };
     "/api/v1/devices/{device_id}/sampling-profile": {
@@ -8403,13 +8458,13 @@ export interface components {
             updated_at: components["schemas"]["Timestamp"];
         };
         ConfigWriteState: {
-            operation_id: components["schemas"]["UUID"];
+            operation_id?: components["schemas"]["UUID"];
             /** @enum {string} */
-            source: "pending" | "accepted" | "failed" | "unknown";
+            source: "pending" | "accepted" | "failed" | "unknown" | "unchanged";
             /** @enum {string} */
-            platform: "pending" | "synced" | "failed";
+            platform: "pending" | "synced" | "failed" | "unchanged";
             /** @enum {string} */
-            device: "unknown";
+            device: "unknown" | "not_sent";
         };
         SourceOperationList: {
             items: components["schemas"]["SourceOperation"][];
@@ -9145,6 +9200,8 @@ export interface components {
             name: string;
             type?: string;
             unit?: string;
+            min?: number;
+            max?: number;
         };
         LoRaWANV2TemplateInstance: {
             /** Format: int64 */
@@ -9166,6 +9223,12 @@ export interface components {
             mode: "advanced";
             wait_time?: number;
             content: unknown[];
+            metrics: components["schemas"]["LoRaWANV2MetricSemantic"][];
+        };
+        LoRaWANV2MetricOnlySensorConfigRequest: {
+            /** @enum {string} */
+            mode: "metrics";
+            /** @description Platform metadata matching the target node's existing native metric keys and units. The target node's native configuration and wait time remain unchanged. */
             metrics: components["schemas"]["LoRaWANV2MetricSemantic"][];
         };
         SensorTemplateListResponse: {
@@ -9250,6 +9313,75 @@ export interface components {
             /** Format: int64 */
             expected_config_id: number;
         };
+        DeviceCaptureField: {
+            key: string;
+            /** @enum {string} */
+            kind: "text" | "integer" | "number";
+            value: string;
+        };
+        DeviceCaptureItem: {
+            id: string;
+            label: string;
+            fields: components["schemas"]["DeviceCaptureField"][];
+            metrics?: {
+                number: number;
+                label: string;
+                fields: components["schemas"]["DeviceCaptureField"][];
+            }[];
+        };
+        DeviceCaptureConfig: {
+            /** Format: int64 */
+            version: number;
+            sensors: components["schemas"]["DeviceCaptureItem"][];
+            cameras: components["schemas"]["DeviceCaptureItem"][];
+            has_cameras: boolean;
+        };
+        UpdateDeviceCaptureConfig: {
+            /** Format: int64 */
+            expected_version: number;
+            /** @enum {boolean} */
+            risk_confirmed: true;
+            changes: {
+                /** @enum {string} */
+                section: "sensor" | "camera";
+                item_id: string;
+                metric?: number;
+                fields: {
+                    [key: string]: string;
+                };
+            }[];
+        };
+        WorkspaceNodeSensorConfig: {
+            /**
+             * Format: int64
+             * @description Zero when the bound node has no configuration yet.
+             */
+            version: number;
+            node_sn: string;
+            wait_time: number;
+            content: unknown[];
+            metrics: components["schemas"]["LoRaWANV2MetricSemantic"][];
+        };
+        UpdateWorkspaceNodeSensorConfig: {
+            /** Format: int64 */
+            expected_version: number;
+            node_sn: string;
+            /** @enum {boolean} */
+            risk_confirmed: true;
+            /** @enum {string} */
+            mode: "metrics" | "advanced";
+            /** @description Required in advanced mode; omitted in metrics mode. */
+            wait_time?: number;
+            /** @description Required in advanced mode; omitted in metrics mode. */
+            content?: unknown[];
+            metrics: components["schemas"]["LoRaWANV2MetricSemantic"][];
+        };
+        CaptureConfigSaveResult: {
+            /** Format: int64 */
+            version: number;
+            write_state: components["schemas"]["ConfigWriteState"];
+            warnings?: components["schemas"]["QueryWarning"][];
+        };
         UpdateDeviceConfigRequest: {
             data_json: {
                 [key: string]: unknown;
@@ -9270,7 +9402,7 @@ export interface components {
             /** Format: int64 */
             external_device_id: number;
             config: components["schemas"]["DeviceConfig"];
-            config_snapshot: components["schemas"]["DeviceConfigSnapshot"];
+            config_snapshot?: components["schemas"]["DeviceConfigSnapshot"];
             data_streams: components["schemas"]["SyncedDataStream"][];
             bindings: components["schemas"]["DataStreamBinding"][];
             disabled_data_streams?: components["schemas"]["SyncedDataStream"][];
@@ -15732,6 +15864,123 @@ export interface operations {
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["Internal"];
+        };
+    };
+    getDeviceCaptureConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current editable settings and their configuration version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCaptureConfig"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateDeviceCaptureConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDeviceCaptureConfig"];
+            };
+        };
+        responses: {
+            /** @description Save result. Source acceptance does not confirm application on the device. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureConfigSaveResult"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getWorkspaceNodeSensorConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+                node_index: components["parameters"]["LoRaWANV2NodeIndex"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Native sensor configuration and platform metrics for the bound node. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceNodeSensorConfig"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateWorkspaceNodeSensorConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+                node_index: components["parameters"]["LoRaWANV2NodeIndex"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateWorkspaceNodeSensorConfig"];
+            };
+        };
+        responses: {
+            /** @description Configuration save result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureConfigSaveResult"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     getDeviceSamplingProfile: {

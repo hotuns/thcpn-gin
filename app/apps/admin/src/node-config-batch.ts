@@ -1,6 +1,6 @@
 import { api, formatApiError, type JsonRecord } from "@thcpn/api";
 
-export type NodeConfigResult = { node: number; status: "submitting" | "synced" | "sync_failed" | "failed"; detail: string };
+export type NodeConfigResult = { node: number; status: "submitting" | "synced" | "sync_failed" | "failed"; source?: "accepted" | "unchanged"; detail: string };
 
 export function sensorConfigTargets(current: number, selected: number[], available: number[], applyOthers: boolean): number[] {
   return [...new Set([current, ...(applyOthers ? selected : [])])].filter(index=>available.includes(index));
@@ -22,7 +22,11 @@ export async function submitNodeSensorBatch(deviceId: string, targets: number[],
         const result = await api.admin.updateDeviceSourceConfig(deviceId, "sensor", payload, node);
         const state = result.write_state as JsonRecord | undefined;
         const partial = state?.platform === "failed";
-        results[index] = { node, status: partial ? "sync_failed" : "synced", detail: partial ? "源端已接受，平台同步失败，请执行网关“同步平台配置”，无需再次下发。" : "源端已接受，平台已同步；设备是否应用尚未确认。" };
+        const source = state?.source === "unchanged" ? "unchanged" : "accepted";
+        const detail = source === "unchanged"
+          ? partial ? "指标资料已保存，请重新读取节点配置以恢复同步。本次未下发。" : "已保存平台指标，未下发设备配置。"
+          : partial ? "源端已接受，平台同步失败，请重新读取节点配置，无需再次下发。" : "源端已接受，平台已同步；设备是否应用尚未确认。";
+        results[index] = { node, status: partial ? "sync_failed" : "synced", source, detail };
       } catch (error) {
         const detail = formatApiError(error);
         results[index] = { node, status: "failed", detail: detail.message + (detail.requestId ? " · request id " + detail.requestId : "") };
@@ -35,7 +39,7 @@ export async function submitNodeSensorBatch(deviceId: string, targets: number[],
 }
 
 export async function verifyNodeConfigTargets(deviceId:string,targets:number[]) {
-  if (!targets.length) throw new Error("请选择已绑定物理节点的采集位置");
+  if (!targets.length) throw new Error("请选择已绑定的节点");
   const current = await api.admin.deviceNodes(deviceId);
   const installed = new Set(current.items.flatMap(node=>node.bound && node.target.kind === "gateway_node" ? [node.target.node_index] : []));
   const missing = targets.filter(index=>!installed.has(index));

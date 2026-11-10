@@ -19,7 +19,8 @@ export function AdminSamplingEditor({deviceId,carbon=false}:{deviceId:string;car
       const result=await api.admin.updateSamplingProfile(deviceId,{...current,...values,expected_config_id:current.external_config_id,image_minute:values.image_minute??current.image_minute??0,image_upload_minute:values.image_upload_minute??current.image_upload_minute??0,image_hours:values.image_hours??(current.image_hours.length?current.image_hours:[0]),image_upload_hours:values.image_upload_hours??(current.image_upload_hours.length?current.image_upload_hours:[0])});
       for(const warning of result.warnings??[])void message.warning(warning.message);
       await client.invalidateQueries({predicate:q=>q.queryKey.includes("admin")&&q.queryKey.includes(deviceId)});
-      void message.success("采集计划已保存，请核对设备后续上报");
+      if (result.write_state?.source === "unchanged") void message.info("采集计划无变化，未下发配置");
+      else if (result.write_state?.platform !== "failed") void message.success("采集计划已保存，请核对设备后续上报");
     }catch(error){void message.error(formatApiError(error).message);throw error;}finally{setBusy(false);}
   }});
   return <Card title="采集与上传计划" loading={query.isLoading}>

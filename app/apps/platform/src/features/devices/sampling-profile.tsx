@@ -159,9 +159,9 @@ export function SamplingProfilePanel({ deviceId, workspaceId, carbon = false }: 
     };
     try {
       const updated = await api.devices.updateSamplingProfile(deviceId, payload);
-      const partial = Boolean(updated.write_state && updated.write_state.platform !== "synced");
+      const partial = updated.write_state?.platform === "failed";
       setNeedsRecovery(partial);
-      setMessage(partial ? "源端已接受配置，平台同步失败。请重新同步平台，不要重复下发。" : `源端已接受 · 配置版本 ${updated.external_config_id} · 设备是否应用尚未确认`);
+      setMessage(updated.write_state?.source === "unchanged" ? "采集计划无变化，未下发配置。" : partial ? "源端已接受配置，平台同步失败。请重新同步平台，不要重复下发。" : `源端已接受 · 配置版本 ${updated.external_config_id} · 设备是否应用尚未确认`);
       await query.refetch();
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {

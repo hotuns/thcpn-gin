@@ -138,7 +138,7 @@ func interactionFeatures(role, family string, telemetry, media bool) []string {
 			features = append(features, "sampling", "sensor_config", "logs")
 		}
 	case "carbon":
-		features = append(features, "carbon", "sampling")
+		features = append(features, "carbon", "sampling", "sensor_config")
 	case "lorawan_v2":
 		features = append(features, "sensor_config", "logs")
 	}

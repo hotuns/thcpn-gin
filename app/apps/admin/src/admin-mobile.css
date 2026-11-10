@@ -152,6 +152,8 @@
   .drawer-grid,
   .lora-log-filters { grid-template-columns: minmax(0, 1fr); }
   .admin-device-filters > .ant-input-search { width: 100% !important; }
+  .admin-device-filters.admin-device-list-filters { display: grid; }
+  .admin-device-list-filters > .ant-select { min-width: 0; }
   .admin-user-toolbar > :nth-child(4),
   .governance-toolbar > .ant-input-affix-wrapper { grid-column: auto; }
   .admin-list-toolbar,

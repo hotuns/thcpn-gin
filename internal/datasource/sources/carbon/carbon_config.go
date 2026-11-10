@@ -28,15 +28,7 @@ func (s *Service) updateCarbonDeviceConfig(ctx context.Context, input platform.U
 	if input.ExpectedConfigID <= 0 {
 		return platform.UpdateDeviceConfigResult{}, apperr.New(apperr.KindInvalidArgument, "expected_config_id is required")
 	}
-	dataJSON, err := platform.NormalizeConfigArrayJSON(input.DataJSON, "data_json")
-	if err != nil {
-		return platform.UpdateDeviceConfigResult{}, err
-	}
-	imageJSON, err := platform.NormalizeConfigArrayJSON(input.ImageJSON, "image_json")
-	if err != nil {
-		return platform.UpdateDeviceConfigResult{}, err
-	}
-	controlJSON, err := platform.NormalizeConfigObjectJSON(input.ControlJSON, "control_json")
+	dataJSON, imageJSON, controlJSON, err := platform.NormalizeDeviceConfigInput(input, false)
 	if err != nil {
 		return platform.UpdateDeviceConfigResult{}, err
 	}
@@ -61,6 +53,11 @@ func (s *Service) updateCarbonDeviceConfig(ctx context.Context, input platform.U
 	if previous.ID != input.ExpectedConfigID {
 		return platform.UpdateDeviceConfigResult{}, apperr.New(apperr.KindConflict, "device config has changed; reload and try again")
 	}
+	dataJSON, imageJSON, controlJSON = platform.PreserveConfigSections(carbonConfigForResponse(ref.ExternalDeviceID, previous), dataJSON, imageJSON, controlJSON)
+	audit := platform.SummarizeConfigChange(previous.ID, previous.Data, previous.Image, previous.Control, dataJSON, imageJSON, controlJSON)
+	if len(audit.ChangedSections) == 0 {
+		return platform.UnchangedDeviceConfigResult(input.DeviceID, ref.DataSourceID, carbonConfigForResponse(ref.ExternalDeviceID, previous), audit), nil
+	}
 	return s.WriteConfig(ctx, ref.DataSourceID, input, func() (platform.DeviceConfig, platform.ConfigAudit, error) {
 		inserted, err := insertCarbonDeviceConfig(ctx, tx, ref.ExternalDeviceID, previous.Misc, dataJSON, imageJSON, controlJSON)
 		if err != nil {
@@ -70,7 +67,6 @@ func (s *Service) updateCarbonDeviceConfig(ctx context.Context, input platform.U
 			return platform.DeviceConfig{}, platform.ConfigAudit{}, &platform.UnknownSourceWrite{Err: err}
 		}
 		committed = true
-		audit := platform.SummarizeConfigChange(previous.ID, previous.Data, previous.Image, previous.Control, dataJSON, imageJSON, controlJSON)
 		return carbonConfigForResponse(ref.ExternalDeviceID, inserted), audit, nil
 	}, func(config platform.DeviceConfig) (platform.UpdateDeviceConfigResult, error) {
 		snapshot, err := s.Queries.UpsertDeviceConfigSnapshot(ctx, sqlc.UpsertDeviceConfigSnapshotParams{DeviceID: input.DeviceID, DataSourceID: ref.DataSourceID, AdapterCode: platform.AdapterCarbonSink, ExternalDeviceID: ref.ExternalDeviceID, ExternalConfigID: config.ID, DataJson: config.DataJSON, ImageJson: config.ImageJSON, ControlJson: config.ControlJSON, SourceCreatedAt: platform.TimestamptzFromPtr(config.CreatedAt), SourceUpdatedAt: platform.TimestamptzFromPtr(config.UpdatedAt)})

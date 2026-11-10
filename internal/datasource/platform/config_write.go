@@ -14,9 +14,21 @@ type UnknownSourceWrite struct{ Err error }
 func (e *UnknownSourceWrite) Error() string { return e.Err.Error() }
 func (e *UnknownSourceWrite) Unwrap() error { return e.Err }
 
+func UnchangedDeviceConfigResult(deviceID, sourceID uuid.UUID, config DeviceConfig, audit ConfigAudit) UpdateDeviceConfigResult {
+	return UpdateDeviceConfigResult{
+		DeviceID: deviceID, DataSourceID: sourceID, ExternalDeviceID: config.DeviceID,
+		Config: config, Audit: audit, DataStreams: []SyncedDataStream{}, Bindings: []DataStreamBinding{},
+		WriteState: &ConfigWriteState{Source: "unchanged", Platform: "unchanged", Device: "not_sent"},
+	}
+}
+
 // WriteConfig tracks source and platform commits independently. apply must not write the source again.
 func (s *Service) WriteConfig(ctx context.Context, sourceID uuid.UUID, input UpdateDeviceConfigInput, write func() (DeviceConfig, ConfigAudit, error), apply func(DeviceConfig) (UpdateDeviceConfigResult, error)) (response UpdateDeviceConfigResult, err error) {
-	operationID, err := s.BeginSourceOperation(ctx, sourceID, &input.DeviceID, "config_update", "running", input, input.ActorUserID)
+	var operationRequest any = input
+	if input.CapturePatch {
+		operationRequest = map[string]any{"expected_config_id": input.ExpectedConfigID, "capture_patch": true}
+	}
+	operationID, err := s.BeginSourceOperation(ctx, sourceID, &input.DeviceID, "config_update", "running", operationRequest, input.ActorUserID)
 	if err != nil {
 		return response, err
 	}

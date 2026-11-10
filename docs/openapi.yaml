@@ -302,26 +302,27 @@ paths:
         - { in: query, name: page_size, schema: { type: integer, minimum: 1, maximum: 50 } }
       responses:
         "200":
-          description: Source configuration history or latest configuration; time history is unsupported
+          description: Source configuration history or latest configuration. The latest node sensor configuration is an empty object when no record exists.
           content:
             application/json:
               schema: { type: object, additionalProperties: true }
     post:
       tags: [Admin]
-      summary: Write source configuration and report source and platform stages separately
-      description: For LoRaWAN V2 sensor configuration use the templates or advanced discriminated request. Sensor edits reconcile only the selected node's platform metrics, preserving other nodes; they do not scan the full gateway. Gateway and time configurations retain their source-native object shape.
+      summary: Save configuration and report source and platform stages separately
+      description: For LoRaWAN V2 sensor configuration, use metrics to update only platform definitions, or templates/advanced to include native settings. The source receives a new version only when the native content or wait time differs. Each request reconciles only the selected node's platform metrics. Gateway and time configurations retain their source-native object shape.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              oneOf:
+              anyOf:
                 - { $ref: "#/components/schemas/LoRaWANV2TemplateSensorConfigRequest" }
                 - { $ref: "#/components/schemas/LoRaWANV2AdvancedSensorConfigRequest" }
+                - { $ref: "#/components/schemas/LoRaWANV2MetricOnlySensorConfigRequest" }
                 - { type: object, additionalProperties: true }
       responses:
         "200":
-          description: Source accepted; inspect write_state for platform result
+          description: Configuration saved. Inspect write_state to see whether a new source version was created and whether platform synchronization succeeded.
           content:
             application/json:
               schema:
@@ -2560,7 +2561,8 @@ paths:
     post:
       tags: [Admin]
       operationId: adminCreateLoRaWANV2NodeSensorConfig
-      summary: Create node sensor configuration from a JSON object
+      summary: Save native node sensor configuration from a JSON object
+      description: Returns the current source version when the native content and wait time are unchanged. This endpoint does not edit platform metric definitions.
       security: [{bearerAuth: []}, {devUserHeader: []}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}
       responses: {"200": {description: Node sensor configuration payload, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}, "400": {$ref: "#/components/responses/InvalidArgument"}, "401": {$ref: "#/components/responses/Unauthorized"}, "403": {$ref: "#/components/responses/PermissionDenied"}, "500": {$ref: "#/components/responses/Internal"}}
@@ -5170,6 +5172,70 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/devices/{device_id}/capture-config:
+    parameters: [{ $ref: "#/components/parameters/DeviceID" }]
+    get:
+      tags: [Devices]
+      operationId: getDeviceCaptureConfig
+      summary: Read workspace-editable sensor and camera settings
+      description: Requires device.configure on the selected device. Only supported settings are returned; connection details and the native control schedule stay private. Demo accounts cannot use this operation.
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      responses:
+        "200":
+          description: Current editable settings and their configuration version.
+          content: { application/json: { schema: { $ref: "#/components/schemas/DeviceCaptureConfig" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Devices]
+      operationId: updateDeviceCaptureConfig
+      summary: Update sensor or camera settings after confirmation
+      description: Requires device.configure on the selected device. Applies only editable fields against the version reviewed by the user. Unspecified settings and the capture schedule are preserved.
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/UpdateDeviceCaptureConfig" } } }
+      responses:
+        "200":
+          description: Save result. Source acceptance does not confirm application on the device.
+          content: { application/json: { schema: { $ref: "#/components/schemas/CaptureConfigSaveResult" } } }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/v1/devices/{device_id}/nodes/{node_index}/sensor-config:
+    parameters: [{ $ref: "#/components/parameters/DeviceID" }, { $ref: "#/components/parameters/LoRaWANV2NodeIndex" }]
+    get:
+      tags: [Devices]
+      operationId: getWorkspaceNodeSensorConfig
+      summary: Read sensor settings for a currently bound LoRaWAN V2 node
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      responses:
+        "200":
+          description: Native sensor configuration and platform metrics for the bound node.
+          content: { application/json: { schema: { $ref: "#/components/schemas/WorkspaceNodeSensorConfig" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Devices]
+      operationId: updateWorkspaceNodeSensorConfig
+      summary: Save sensor settings for a bound LoRaWAN V2 node after confirmation
+      description: Requires device.configure on the gateway. Checks the bound node SN and the latest native version. Platform metric changes do not send native configuration.
+      security: [{ bearerAuth: [] }, { devUserHeader: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/UpdateWorkspaceNodeSensorConfig" } } }
+      responses:
+        "200":
+          description: Configuration save result.
+          content: { application/json: { schema: { $ref: "#/components/schemas/CaptureConfigSaveResult" } } }
+        "400": { $ref: "#/components/responses/InvalidArgument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PermissionDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /api/v1/devices/{device_id}/sampling-profile:
     parameters:
       - $ref: "#/components/parameters/DeviceID"
@@ -11100,12 +11166,12 @@ components:
           $ref: "#/components/schemas/Timestamp"
     ConfigWriteState:
       type: object
-      required: [operation_id, source, platform, device]
+      required: [source, platform, device]
       properties:
         operation_id: { $ref: "#/components/schemas/UUID" }
-        source: { type: string, enum: [pending, accepted, failed, unknown] }
-        platform: { type: string, enum: [pending, synced, failed] }
-        device: { type: string, enum: [unknown] }
+        source: { type: string, enum: [pending, accepted, failed, unknown, unchanged] }
+        platform: { type: string, enum: [pending, synced, failed, unchanged] }
+        device: { type: string, enum: [unknown, not_sent] }
     SourceOperationList:
       type: object
       required: [items]
@@ -12249,6 +12315,8 @@ components:
         name: { type: string, minLength: 1, description: Chinese display name maintained by this platform }
         type: { type: string }
         unit: { type: string }
+        min: { type: number }
+        max: { type: number }
     LoRaWANV2TemplateInstance:
       type: object
       required: [template_id]
@@ -12281,6 +12349,16 @@ components:
           items: {}
         metrics:
           type: array
+          items: { $ref: "#/components/schemas/LoRaWANV2MetricSemantic" }
+    LoRaWANV2MetricOnlySensorConfigRequest:
+      type: object
+      additionalProperties: false
+      required: [mode, metrics]
+      properties:
+        mode: { type: string, enum: [metrics] }
+        metrics:
+          type: array
+          description: Platform metadata matching the target node's existing native metric keys and units. The target node's native configuration and wait time remain unchanged.
           items: { $ref: "#/components/schemas/LoRaWANV2MetricSemantic" }
     SensorTemplateListResponse:
       type: object
@@ -12413,6 +12491,85 @@ components:
           minItems: 1
           items: { type: integer, minimum: 0, maximum: 23 }
         expected_config_id: { type: integer, format: int64, minimum: 1 }
+    DeviceCaptureField:
+      type: object
+      required: [key, kind, value]
+      properties:
+        key: { type: string }
+        kind: { type: string, enum: [text, integer, number] }
+        value: { type: string }
+    DeviceCaptureItem:
+      type: object
+      required: [id, label, fields]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        fields: { type: array, items: { $ref: "#/components/schemas/DeviceCaptureField" } }
+        metrics:
+          type: array
+          items:
+            type: object
+            required: [number, label, fields]
+            properties:
+              number: { type: integer, minimum: 1 }
+              label: { type: string }
+              fields: { type: array, items: { $ref: "#/components/schemas/DeviceCaptureField" } }
+    DeviceCaptureConfig:
+      type: object
+      required: [version, sensors, cameras, has_cameras]
+      properties:
+        version: { type: integer, format: int64 }
+        sensors: { type: array, items: { $ref: "#/components/schemas/DeviceCaptureItem" } }
+        cameras: { type: array, items: { $ref: "#/components/schemas/DeviceCaptureItem" } }
+        has_cameras: { type: boolean }
+    UpdateDeviceCaptureConfig:
+      type: object
+      additionalProperties: false
+      required: [expected_version, risk_confirmed, changes]
+      properties:
+        expected_version: { type: integer, format: int64, minimum: 1 }
+        risk_confirmed: { type: boolean, enum: [true] }
+        changes:
+          type: array
+          minItems: 1
+          maxItems: 512
+          items:
+            type: object
+            additionalProperties: false
+            required: [section, item_id, fields]
+            properties:
+              section: { type: string, enum: [sensor, camera] }
+              item_id: { type: string }
+              metric: { type: integer, minimum: 1 }
+              fields: { type: object, additionalProperties: { type: string } }
+    WorkspaceNodeSensorConfig:
+      type: object
+      required: [version, node_sn, wait_time, content, metrics]
+      properties:
+        version: { type: integer, format: int64, minimum: 0, description: Zero when the bound node has no configuration yet. }
+        node_sn: { type: string }
+        wait_time: { type: integer, minimum: 0, maximum: 65535 }
+        content: { type: array, items: {} }
+        metrics: { type: array, items: { $ref: "#/components/schemas/LoRaWANV2MetricSemantic" } }
+    UpdateWorkspaceNodeSensorConfig:
+      type: object
+      additionalProperties: false
+      required: [expected_version, node_sn, risk_confirmed, mode, metrics]
+      properties:
+        expected_version: { type: integer, format: int64, minimum: 0 }
+        node_sn: { type: string }
+        risk_confirmed: { type: boolean, enum: [true] }
+        mode: { type: string, enum: [metrics, advanced] }
+        wait_time: { type: integer, minimum: 0, maximum: 65535, description: Required in advanced mode; omitted in metrics mode. }
+        content: { type: array, minItems: 1, items: {}, description: Required in advanced mode; omitted in metrics mode. }
+        metrics: { type: array, items: { $ref: "#/components/schemas/LoRaWANV2MetricSemantic" } }
+    CaptureConfigSaveResult:
+      type: object
+      required: [version, write_state]
+      properties:
+        version: { type: integer, format: int64 }
+        write_state: { $ref: "#/components/schemas/ConfigWriteState" }
+        warnings: { type: array, items: { $ref: "#/components/schemas/QueryWarning" } }
     UpdateDeviceConfigRequest:
       type: object
       required:
@@ -12445,7 +12602,6 @@ components:
         - data_source_id
         - external_device_id
         - config
-        - config_snapshot
         - data_streams
         - bindings
       properties:
