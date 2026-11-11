@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"thcpn-gin/internal/apperr"
@@ -222,14 +223,20 @@ func (s *Service) CarbonFlux(ctx context.Context, deviceID uuid.UUID, nodeID int
 	return CarbonFluxResponse{DeviceID: deviceID, NodeID: nodeID, Field: field, Start: start, End: end, Points: points}, nil
 }
 func (s *Service) CarbonPeriods(ctx context.Context, deviceID uuid.UUID, nodeID int, start, end time.Time) ([]CarbonPeriodSummary, error) {
+	return s.carbonPeriods(ctx, deviceID, nodeID, start, end, true)
+}
+
+// CarbonRawPeriods discovers sampling cycles without loading derived flux data.
+func (s *Service) CarbonRawPeriods(ctx context.Context, deviceID uuid.UUID, nodeID int, start, end time.Time) ([]CarbonPeriodSummary, error) {
+	return s.carbonPeriods(ctx, deviceID, nodeID, start, end, false)
+}
+
+func (s *Service) carbonPeriods(ctx context.Context, deviceID uuid.UUID, nodeID int, start, end time.Time, includeFlux bool) ([]CarbonPeriodSummary, error) {
 	if !end.After(start) || nodeID <= 0 {
 		return nil, apperr.New(apperr.KindInvalidArgument, "node_id and valid time range are required")
 	}
 	if err := s.ValidateDeviceHistory(ctx, deviceID, start); err != nil {
 		return nil, err
-	}
-	if nodeID <= 0 || !end.After(start) {
-		return nil, apperr.New(apperr.KindInvalidArgument, "node_id and valid time range are required")
 	}
 	var windowErr error
 	var include bool
@@ -246,13 +253,16 @@ func (s *Service) CarbonPeriods(ctx context.Context, deviceID uuid.UUID, nodeID 
 	}
 	dataTables, err := carbonExistingTables(ctx, db, "device_data_next", carbonMonthNames(start, end))
 	if err != nil {
-		return nil, err
+		return nil, carbonRawQueryError(ctx, err, "查询碳汇原始采样周期失败")
 	}
-	fluxTables, err := carbonExistingTables(ctx, db, "carbon_flux", carbonMonthNames(start, end))
+	periods, err := queryCarbonPeriodSummaries(ctx, db, dataTables, ref.ExternalID, nodeID, start, end)
 	if err != nil {
 		return nil, err
 	}
-	periods, err := queryCarbonPeriodSummaries(ctx, db, dataTables, ref.ExternalID, nodeID, start, end)
+	if !includeFlux {
+		return periods, nil
+	}
+	fluxTables, err := carbonExistingTables(ctx, db, "carbon_flux", carbonMonthNames(start, end))
 	if err != nil {
 		return nil, err
 	}
@@ -516,94 +526,110 @@ func decodeCarbonFlux(raw []byte) ([]carbonFluxJSONItem, error) {
 }
 func queryCarbonFluxFields(ctx context.Context, db *sql.DB, tables []string, deviceID int64, nodeID int, start, end time.Time) (map[string][]string, error) {
 	result := make(map[string][]string)
-	if len(tables) == 0 {
-		return result, nil
-	}
-	parts := make([]string, 0, len(tables))
-	args := make([]any, 0, len(tables)*4)
-	for _, table := range tables {
-		parts = append(parts, "SELECT period, data FROM `"+table+"` WHERE device_id=? AND node_id=? AND period_at>=? AND period_at<=? AND deleted_at IS NULL")
-		args = append(args, deviceID, nodeID, start, end)
-	}
-	rows, err := db.QueryContext(ctx, strings.Join(parts, " UNION ALL "), args...)
-	if err != nil {
-		return nil, apperr.Wrap(apperr.KindDataSource, "query carbon flux fields", err)
-	}
-	defer rows.Close()
 	seen := make(map[string]map[string]struct{})
-	for rows.Next() {
-		var period string
-		var raw []byte
-		if err := rows.Scan(&period, &raw); err != nil {
-			return nil, apperr.Wrap(apperr.KindDataSource, "scan carbon flux fields", err)
-		}
-		items, err := decodeCarbonFlux(raw)
+	for _, table := range tables {
+		rows, err := db.QueryContext(ctx, "SELECT DISTINCT period, data FROM `"+table+"` WHERE device_id=? AND node_id=? AND period_at>=? AND period_at<=? AND deleted_at IS NULL", deviceID, nodeID, start, end)
 		if err != nil {
-			return nil, err
+			return nil, apperr.Wrap(apperr.KindDataSource, "query carbon flux fields", err)
 		}
-		if seen[period] == nil {
-			seen[period] = make(map[string]struct{})
+		for rows.Next() {
+			var period string
+			var raw []byte
+			if err := rows.Scan(&period, &raw); err != nil {
+				rows.Close()
+				return nil, apperr.Wrap(apperr.KindDataSource, "scan carbon flux fields", err)
+			}
+			items, err := decodeCarbonFlux(raw)
+			if err != nil {
+				rows.Close()
+				return nil, err
+			}
+			if seen[period] == nil {
+				seen[period] = make(map[string]struct{})
+			}
+			for _, item := range items {
+				field := strings.TrimSpace(item.Field)
+				if field == "" {
+					continue
+				}
+				if _, ok := seen[period][field]; ok {
+					continue
+				}
+				seen[period][field] = struct{}{}
+				result[period] = append(result[period], field)
+			}
 		}
-		for _, item := range items {
-			field := strings.TrimSpace(item.Field)
-			if field == "" {
-				continue
-			}
-			if _, ok := seen[period][field]; ok {
-				continue
-			}
-			seen[period][field] = struct{}{}
-			result[period] = append(result[period], field)
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, apperr.Wrap(apperr.KindDataSource, "read carbon flux fields", err)
 		}
 	}
-	return result, rows.Err()
+	for period := range result {
+		sort.Strings(result[period])
+	}
+	return result, nil
 }
 func queryCarbonPeriodSummaries(ctx context.Context, db *sql.DB, tables []string, deviceID int64, nodeID int, start, end time.Time) ([]CarbonPeriodSummary, error) {
 	result := make([]CarbonPeriodSummary, 0)
-	if len(tables) == 0 {
-		return result, nil
-	}
-	parts := make([]string, 0, len(tables))
-	args := make([]any, 0, len(tables)*4)
-	for _, table := range tables {
-		parts = append(parts, "SELECT period, period_at, field FROM `"+table+"` WHERE device_id=? AND node_id=? AND period_at>=? AND period_at<=? AND deleted_at IS NULL AND type='data'")
-		args = append(args, deviceID, nodeID, start, end)
-	}
-	rows, err := db.QueryContext(ctx, strings.Join(parts, " UNION ALL ")+" ORDER BY period_at DESC, period", args...)
-	if err != nil {
-		return nil, apperr.Wrap(apperr.KindDataSource, "query carbon periods", err)
-	}
-	defer rows.Close()
 	byPeriod := make(map[string]*CarbonPeriodSummary)
 	fieldSeen := make(map[string]map[string]struct{})
-	for rows.Next() {
-		var period, field string
-		var at time.Time
-		if err := rows.Scan(&period, &at, &field); err != nil {
-			return nil, apperr.Wrap(apperr.KindDataSource, "scan carbon period", err)
+	for _, table := range tables {
+		// Sampling rows repeat each cycle for every sample and chamber. Reduce
+		// each shard before transferring it; never sort a UNION of raw rows.
+		readCtx, cancel := context.WithTimeout(ctx, carbonRawReadTimeout)
+		rows, err := db.QueryContext(readCtx, "SELECT DISTINCT period, period_at, field FROM `"+table+"` WHERE device_id=? AND node_id=? AND period_at>=? AND period_at<=? AND deleted_at IS NULL AND type='data'", deviceID, nodeID, start, end)
+		if err != nil {
+			err = carbonRawQueryError(readCtx, err, "查询碳汇原始采样周期失败")
+			cancel()
+			return nil, err
 		}
-		item := byPeriod[period]
-		if item == nil {
-			value := CarbonPeriodSummary{NodeID: nodeID, Period: period, PeriodAt: carbonWallTime(at), Fields: []string{}}
-			byPeriod[period] = &value
-			fieldSeen[period] = make(map[string]struct{})
-			item = &value
-			result = append(result, value)
-		}
-		field = strings.TrimSpace(field)
-		if field != "" {
-			if _, ok := fieldSeen[period][field]; !ok {
-				item.Fields = append(item.Fields, field)
-				fieldSeen[period][field] = struct{}{}
+		for rows.Next() {
+			var period, field string
+			var at time.Time
+			if err := rows.Scan(&period, &at, &field); err != nil {
+				rows.Close()
+				err = carbonRawQueryError(readCtx, err, "读取碳汇原始采样周期失败")
+				cancel()
+				return nil, err
+			}
+			at = carbonWallTime(at)
+			item := byPeriod[period]
+			if item == nil {
+				item = &CarbonPeriodSummary{NodeID: nodeID, Period: period, PeriodAt: at, Fields: []string{}}
+				byPeriod[period] = item
+				fieldSeen[period] = make(map[string]struct{})
+			} else if at.After(item.PeriodAt) {
+				item.PeriodAt = at
+			}
+			field = strings.TrimSpace(field)
+			if field != "" {
+				if _, ok := fieldSeen[period][field]; !ok {
+					item.Fields = append(item.Fields, field)
+					fieldSeen[period][field] = struct{}{}
+				}
 			}
 		}
-	}
-	for i := range result {
-		if item := byPeriod[result[i].Period]; item != nil {
-			result[i] = *item
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			err = carbonRawQueryError(readCtx, err, "读取碳汇原始采样周期失败")
+			cancel()
+			return nil, err
 		}
+		cancel()
 	}
-	return result, rows.Err()
+	for _, item := range byPeriod {
+		sort.Strings(item.Fields)
+		result = append(result, *item)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if !result[i].PeriodAt.Equal(result[j].PeriodAt) {
+			return result[i].PeriodAt.After(result[j].PeriodAt)
+		}
+		return result[i].Period < result[j].Period
+	})
+	return result, nil
 }
 func queryCarbonPeriodAt(ctx context.Context, db *sql.DB, deviceID int64, nodeID int, field, period string) (time.Time, error) {
 	months := carbonMonthNames(time.Now().In(CarbonLocation).AddDate(0, -18, 0), time.Now().In(CarbonLocation).AddDate(0, 1, 0))
@@ -626,9 +652,12 @@ func queryCarbonPeriodAt(ctx context.Context, db *sql.DB, deviceID int64, nodeID
 func queryCarbonRawPhases(ctx context.Context, db *sql.DB, tables []string, deviceID int64, nodeID int, field, period string) ([]CarbonRawPhase, error) {
 	result := make(map[string]*CarbonRawPhase)
 	for _, table := range tables {
-		rows, err := db.QueryContext(ctx, "SELECT room, ts, data FROM `"+table+"` WHERE device_id=? AND node_id=? AND field=? AND period=? AND deleted_at IS NULL AND type='data' ORDER BY ts", deviceID, nodeID, field, period)
+		readCtx, cancel := context.WithTimeout(ctx, carbonRawReadTimeout)
+		rows, err := db.QueryContext(readCtx, "SELECT room, ts, data FROM `"+table+"` WHERE device_id=? AND node_id=? AND field=? AND period=? AND deleted_at IS NULL AND type='data' ORDER BY ts", deviceID, nodeID, field, period)
 		if err != nil {
-			return nil, apperr.Wrap(apperr.KindDataSource, "query carbon raw phase", err)
+			err = carbonRawQueryError(readCtx, err, "查询碳汇原始采样数据失败")
+			cancel()
+			return nil, err
 		}
 		for rows.Next() {
 			var room string
@@ -636,7 +665,9 @@ func queryCarbonRawPhases(ctx context.Context, db *sql.DB, tables []string, devi
 			var raw []byte
 			if err := rows.Scan(&room, &ts, &raw); err != nil {
 				rows.Close()
-				return nil, apperr.Wrap(apperr.KindDataSource, "scan carbon raw sample", err)
+				err = carbonRawQueryError(readCtx, err, "读取碳汇原始采样数据失败")
+				cancel()
+				return nil, err
 			}
 			sample := decodeCarbonSample(raw, carbonWallTime(ts), room)
 			phase := result[room]
@@ -654,12 +685,16 @@ func queryCarbonRawPhases(ctx context.Context, db *sql.DB, tables []string, devi
 		}
 		if err := rows.Err(); err != nil {
 			rows.Close()
-			return nil, apperr.Wrap(apperr.KindDataSource, "read carbon raw phase", err)
+			err = carbonRawQueryError(readCtx, err, "读取碳汇原始采样数据失败")
+			cancel()
+			return nil, err
 		}
 		rows.Close()
+		cancel()
 	}
 	resultList := make([]CarbonRawPhase, 0, len(result))
 	for _, phase := range result {
+		sort.SliceStable(phase.Points, func(i, j int) bool { return phase.Points[i].TS.Before(phase.Points[j].TS) })
 		phase.Samples = len(phase.Points)
 		phase.Complete = phase.Samples > 0
 		resultList = append(resultList, *phase)
@@ -670,9 +705,23 @@ func queryCarbonRawPhases(ctx context.Context, db *sql.DB, tables []string, devi
 	if black := result["black"]; black == nil {
 		resultList = append(resultList, CarbonRawPhase{Room: "black", Field: field, Points: []CarbonSensorSample{}, Complete: false})
 	}
-	if len(resultList) > 1 && resultList[0].Room == "black" {
-		resultList[0], resultList[1] = resultList[1], resultList[0]
-	}
+	sort.Slice(resultList, func(i, j int) bool {
+		rank := func(room string) int {
+			switch room {
+			case "light":
+				return 0
+			case "black":
+				return 1
+			default:
+				return 2
+			}
+		}
+		left, right := rank(resultList[i].Room), rank(resultList[j].Room)
+		if left != right {
+			return left < right
+		}
+		return resultList[i].Room < resultList[j].Room
+	})
 	return resultList, nil
 }
 func queryCarbonFluxField(ctx context.Context, db *sql.DB, tables []string, deviceID int64, nodeID int, field, period string) (*CarbonFluxFieldResult, error) {

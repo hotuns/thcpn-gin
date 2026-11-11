@@ -1413,6 +1413,13 @@ func (p *Processor) renderCarbonStationZIP(ctx context.Context, job Job, cfg car
 		return err
 	}
 	for _, nodeID := range cfg.NodeIDs {
+		var rawPeriods []carbon.CarbonPeriodSummary
+		if cfg.IncludeRawSamples {
+			rawPeriods, err = carbonExportPeriods(ctx, p.dataSources.Carbon, device.ID, nodeID, cfg.StartTime, cfg.EndTime)
+			if err != nil {
+				return err
+			}
+		}
 		for _, rawField := range cfg.Fields {
 			field := strings.TrimSpace(rawField)
 			folder := path.Join(safeArchiveSegment(device.AssetNo), fmt.Sprintf("node-%d", nodeID), safeArchiveSegment(field))
@@ -1443,24 +1450,18 @@ func (p *Processor) renderCarbonStationZIP(ctx context.Context, job Job, cfg car
 				report = append(report, qualityReportRow{device.AssetNo, fmt.Sprintf("node-%d/%s", nodeID, field), "通量", "generated", len(points.Points), ""})
 			}
 			if cfg.IncludeRawSamples {
-				rawCfg := requestConfig{StartTime: cfg.StartTime, EndTime: cfg.EndTime, NodeID: nodeID, Field: field, Limit: p.cfg.MaxRows}
-				body, renderErr := p.renderCarbonRawCSV(ctx, device, rawCfg)
-				if renderErr != nil {
-					return renderErr
-				}
 				name := path.Join(folder, "raw-samples.csv")
-				if cfg.NodeNames != nil {
-					body, renderErr = appendNodeColumns(body, "", cfg.NodeNames[strconv.Itoa(nodeID)], false)
-					if renderErr != nil {
-						return renderErr
-					}
-				}
-				if err := writeBytesFile(zw, name, body); err != nil {
+				output, err := zw.Create(name)
+				if err != nil {
 					return err
 				}
-				count := bytes.Count(body, []byte("\n")) - 1
-				if count < 0 {
-					count = 0
+				var extra []exportCSVColumn
+				if cfg.NodeNames != nil {
+					extra = append(extra, exportCSVColumn{"node_name", cfg.NodeNames[strconv.Itoa(nodeID)]})
+				}
+				count, err := writeCarbonRawCSV(ctx, output, p.dataSources.Carbon, device.ID, device.AssetNo, nodeID, field, rawPeriods, extra...)
+				if err != nil {
+					return err
 				}
 				row := []string{device.AssetNo, device.Name, strconv.Itoa(nodeID), field, "raw_samples", name}
 				if cfg.NodeNames != nil {
@@ -1504,50 +1505,6 @@ func renderCarbonFluxCSV(assetNo string, points []carbon.CarbonFluxPoint) ([]byt
 	writer.Flush()
 	if err := writer.Error(); err != nil {
 		return nil, apperr.Wrap(apperr.KindInternal, "flush carbon flux csv", err)
-	}
-	return buf.Bytes(), nil
-}
-
-func (p *Processor) renderCarbonRawCSV(ctx context.Context, device device.Device, cfg requestConfig) ([]byte, error) {
-	periods, err := p.dataSources.Carbon.CarbonPeriods(ctx, device.ID, cfg.NodeID, cfg.StartTime, cfg.EndTime)
-	if err != nil {
-		return nil, err
-	}
-	var buf bytes.Buffer
-	writer := csv.NewWriter(&buf)
-	if err := writer.Write([]string{"asset_no", "node_id", "period", "period_at", "field", "room", "ts", "CO2", "tempL", "humiL", "tempB", "humiB", "stemp", "shumi"}); err != nil {
-		return nil, apperr.Wrap(apperr.KindInternal, "write carbon raw csv header", err)
-	}
-	rows := 0
-	for _, summary := range periods {
-		if rows >= cfg.Limit {
-			break
-		}
-		detail, err := p.dataSources.Carbon.CarbonPeriod(ctx, device.ID, cfg.NodeID, cfg.Field, summary.Period)
-		if err != nil {
-			if apperr.KindOf(err) == apperr.KindNotFound {
-				continue
-			}
-			return nil, err
-		}
-		for _, phase := range detail.Phases {
-			for _, sample := range phase.Points {
-				if rows >= cfg.Limit {
-					break
-				}
-				if err := writer.Write([]string{
-					device.AssetNo, strconv.Itoa(cfg.NodeID), detail.Period, exportTime(detail.PeriodAt), cfg.Field, phase.Room,
-					exportTime(sample.TS), carbonFloat(sample.CO2), carbonFloat(sample.TempL), carbonFloat(sample.HumiL), carbonFloat(sample.TempB), carbonFloat(sample.HumiB), carbonFloat(sample.STemp), carbonFloat(sample.SHumi),
-				}); err != nil {
-					return nil, apperr.Wrap(apperr.KindInternal, "write carbon raw csv row", err)
-				}
-				rows++
-			}
-		}
-	}
-	writer.Flush()
-	if err := writer.Error(); err != nil {
-		return nil, apperr.Wrap(apperr.KindInternal, "flush carbon raw csv", err)
 	}
 	return buf.Bytes(), nil
 }
