@@ -54,11 +54,13 @@ description: 提交并部署 thcpn-gin 原位生态云项目到既有 Docker Com
 7. 更新变更服务：
    docker compose -f docker-compose.yml -f .deploy/docker-compose.prebuilt.yml up -d --no-deps <services>
    后端改变更新 api/worker；前端改变更新 platform/admin。不要 docker compose down，不重启无关数据源或数据库。
+   api 或 admin 容器重建后，检查两套前端 nginx 的代理解析；旧镜像会缓存旧容器 IP，即使前端页面返回 200 也可能所有 API 502。对仍运行的前端执行 nginx -t 和 nginx -s reload，保持前端 nginx 使用 Docker DNS 动态解析服务名。代理配置变更使用 scripts/deploy/test-proxy-dns.py 在隔离网络验证 API 与后台容器更换 IP 后无需重启代理即可恢复。
 
 ## 上线验证与版本记录
 
 - API /healthz 与 /readyz，容器运行状态，必要的 processor 依赖。
 - 服务器本地 5173/login、5174/admin/login 和公网 HTTPS 返回正常。
+- 必须执行 python3 scripts/deploy/check-login-proxy.py --base https://ieswatch.com，检查公网策略接口 200、未登录 /api/v1/me 401，以及用户端和后台密码登录接口以空请求返回 JSON 400。空请求不使用真实账号；不以登录页或 API 直连健康检查替代此项。
 - 核对新静态资源或关键响应字段，不能只凭首页 200 认定业务变更生效。
 - 检查启动后的 API/Worker 错误日志；针对变更做非破坏性的业务验证。
 - 不用真实设备创建、固件发布、用户密码重置来验证部署，除非用户明确要求。
