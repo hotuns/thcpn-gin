@@ -1,7 +1,10 @@
 package objectstore
 
 import (
+	"mime"
 	"net/http"
+	"path"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -44,6 +47,9 @@ func (h *Handler) Download(c *gin.Context) {
 	contentType := result.ContentType
 	if contentType == "" {
 		contentType = "application/octet-stream"
+	}
+	if strings.HasPrefix(objectKey, "exports/") {
+		c.Header("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": path.Base(objectKey)}))
 	}
 	c.DataFromReader(http.StatusOK, -1, contentType, result.Body, nil)
 }

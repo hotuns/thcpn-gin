@@ -2,21 +2,22 @@ package export
 
 import (
 	"context"
-	"thcpn-gin/internal/device"
 	"time"
 
 	"github.com/google/uuid"
+
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/device"
 )
 
 // Gateway spreadsheets contain measurements; diagnostic history uses the status export.
 // A node is either a child device or an indexed target on the gateway itself.
-func (p *Processor) queryGatewayTelemetry(ctx context.Context, id uuid.UUID, start, end time.Time) ([]telemetrySeries, error) {
-	streams, err := p.queries.ListDataStreamsByDevice(ctx, id)
+func (p *Processor) queryGatewayTelemetry(ctx context.Context, gateway device.Device, start, end time.Time) ([]telemetrySeries, error) {
+	streams, err := p.queries.ListDataStreamsByDevice(ctx, gateway.ID)
 	if err != nil {
 		return nil, apperr.Wrap(apperr.KindInternal, "list gateway streams", err)
 	}
-	nodes, err := p.devices.ListGatewayNodes(ctx, id)
+	nodes, err := p.devices.ListGatewayNodes(ctx, gateway.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -57,13 +58,17 @@ func (p *Processor) queryGatewayTelemetry(ctx context.Context, id uuid.UUID, sta
 			return nil, err
 		}
 		item.MetricName = stream.Name
-		item.NodeKey = "gateway:" + id.String()
+		item.NodeKey = "gateway:" + gateway.ID.String()
 		item.NodeName = "网关"
+		item.GatewayAssetNo = gateway.AssetNo
 		if node, ok := targets[streamID]; ok {
 			item.NodeKey = node.Key
 			item.NodeName = node.Name
-			item.CurrentNodeSN = node.NodeSN
+			item.AssetNo = node.AssetNo
 			item.NodeIndex = node.Target.NodeIndex
+			if node.Target.Kind == "gateway_node" {
+				item.CurrentNodeSN = node.NodeSN
+			}
 		}
 		item.Name = labels[streamID]
 		result = append(result, item)

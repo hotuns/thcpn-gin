@@ -27,7 +27,7 @@ func TestNodeNameSnapshotSurvivesRename(t *testing.T) {
 	}
 	gateway, source, carbon := uuid.New(), uuid.New(), uuid.New()
 	must(`INSERT INTO data_sources(id,name,type,source_family,dsn_secret_ref,created_by) VALUES($1,'LoRa','http_api','lorawan_v2','env:NOT_USED',$2)`, source, admin)
-	must(`INSERT INTO devices(id,name,device_type) VALUES($1,'Gateway','gateway'),($2,'Carbon','carbon_sink')`, gateway, carbon)
+	must(`INSERT INTO devices(id,name,device_type,asset_no) VALUES($1,'Gateway','gateway','LR-70000001'),($2,'Carbon','carbon_sink','CS-70000001')`, gateway, carbon)
 	must(`INSERT INTO device_source_refs(device_id,data_source_id,adapter_code,external_key) VALUES($1,$2,'lorawan_v2','TEST')`, gateway, source)
 	must(`INSERT INTO device_metadata(device_id,key,name,value_type,value_json,created_by,updated_by) VALUES($1,'lorawan_v2_nodes_count','Nodes','number','2',$2,$2)`, gateway, admin)
 	for _, id := range []uuid.UUID{gateway, carbon} {
@@ -61,12 +61,15 @@ func TestNodeNameSnapshotSurvivesRename(t *testing.T) {
 		r, _ := file.Open()
 		b, _ := io.ReadAll(r)
 		r.Close()
-		if strings.Contains(string(b), "后来改名") || strings.Contains(string(b), "伪造名称") {
+		if strings.Contains(string(b), "后来改名") || strings.Contains(string(b), "伪造名称") || strings.Contains(string(b), gateway.String()) {
 			t.Fatalf("unstable snapshot %s", b)
 		}
-		if file.Name == "node-1/data.csv" && !strings.Contains(string(b), "node_index,node_name") {
-			t.Fatalf("node columns missing %s", b)
-		}
+	}
+	if data := readZipFile(t, zr, "LR-70000001-node-1/data.csv"); !strings.Contains(data, "node_index,node_name") {
+		t.Fatalf("node columns missing %s", data)
+	}
+	if meta := readZipFile(t, zr, "gateway.json"); !strings.Contains(meta, "创建时名称") || strings.Contains(meta, "current_node_asset_no") {
+		t.Fatalf("historical node lost its label or got an invented asset number: %s", meta)
 	}
 	if len(cfg.NodeNames) != 1 || cfg.NodeNames[target.Key()] != "创建时名称" {
 		t.Fatal(cfg.NodeNames)

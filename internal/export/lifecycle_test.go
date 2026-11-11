@@ -32,7 +32,7 @@ func TestInterruptedExportsAndCanceledFailure(t *testing.T) {
 		exec(`INSERT INTO export_jobs(id,workspace_id,requested_by,resource_type,resource_id,export_type,status,expires_at,started_at) VALUES($1,$2,$3,'device',$4,'media_zip','running',now()+interval '1 day',now())`, id, workspace, user, uuid.New())
 	}
 	exec(`UPDATE export_jobs SET updated_at=now()-interval '6 minutes' WHERE id=$1`, old)
-	p := &Processor{queries: sqlc.New(db), cfg: config.ExportConfig{TempDir: t.TempDir()}}
+	p := NewProcessor(db, nil, nil, nil, config.ExportConfig{TempDir: t.TempDir()}, nil)
 	// A heartbeat refresh preserves live executions while stale rows are reclaimed.
 	if n, err := p.queries.HeartbeatExportJob(ctx, sqlc.HeartbeatExportJobParams{ID: active, ProgressJson: []byte(`{"stage":"packing","packed_images":12,"packed_bytes":1024}`)}); err != nil || n != 1 {
 		t.Fatal("heartbeat did not update")

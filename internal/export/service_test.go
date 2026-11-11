@@ -147,6 +147,8 @@ func TestRenderTelemetryCSV(t *testing.T) {
 	body, err := renderTelemetryCSV([]telemetrySeries{{
 		DataStreamID: streamID,
 		DeviceID:     deviceID,
+		AssetNo:      "ZC-00000042",
+		DeviceName:   "测试站",
 		Code:         "soil_moisture_10",
 		Name:         "Soil moisture 10cm",
 		Unit:         "%",
@@ -159,8 +161,8 @@ func TestRenderTelemetryCSV(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render csv: %v", err)
 	}
-	expectedPrefix := "设备名称,设备ID,节点序号,时间（北京时间）,Soil moisture 10cm [soil_moisture_10] (%),Soil moisture 10cm [soil_moisture_10] 质量\n" +
-		"," + deviceID.String() + ",,2026-06-01 08:00:00,21.5,valid\n"
+	expectedPrefix := "设备名称,设备资产编号,节点序号,时间（北京时间）,Soil moisture 10cm [soil_moisture_10] (%),Soil moisture 10cm [soil_moisture_10] 质量\n" +
+		"测试站,ZC-00000042,,2026-06-01 08:00:00,21.5,valid\n"
 	if string(body) != expectedPrefix {
 		t.Fatalf("unexpected csv:\n%s", body)
 	}
@@ -185,6 +187,7 @@ func TestRenderTelemetryXLSX(t *testing.T) {
 	body, err := renderTelemetryXLSX([]telemetrySeries{{
 		DataStreamID: streamID,
 		DeviceID:     deviceID,
+		AssetNo:      "EC-00000042",
 		Code:         "soil_moisture_10",
 		Name:         "Soil & <moisture>",
 		Unit:         "%",
@@ -203,11 +206,11 @@ func TestRenderTelemetryXLSX(t *testing.T) {
 		t.Fatalf("open xlsx zip: %v", err)
 	}
 	sheet := readZipFile(t, reader, "xl/worksheets/sheet1.xml")
-	if !strings.Contains(sheet, `<t>设备ID</t>`) {
+	if !strings.Contains(sheet, `<t>设备资产编号</t>`) {
 		t.Fatalf("expected telemetry header in sheet xml:\n%s", sheet)
 	}
-	if !strings.Contains(sheet, `<t>`+deviceID.String()+`</t>`) {
-		t.Fatalf("expected stream id in sheet xml:\n%s", sheet)
+	if !strings.Contains(sheet, `<t>EC-00000042</t>`) || strings.Contains(sheet, deviceID.String()) || strings.Contains(sheet, streamID.String()) {
+		t.Fatalf("expected the asset number, without internal IDs in sheet xml:\n%s", sheet)
 	}
 	if !strings.Contains(sheet, `<t>Soil &amp; &lt;moisture&gt; [soil_moisture_10] (%)</t>`) {
 		t.Fatalf("expected escaped stream name in sheet xml:\n%s", sheet)
@@ -232,11 +235,11 @@ func TestMediaArchivePathSanitizesAndDeduplicates(t *testing.T) {
 		ObjectKey:    "raw/camera/photo.jpg",
 	}
 
-	first := mediaArchivePath(item, used)
-	second := mediaArchivePath(item, used)
+	first := mediaArchivePath("ZC-00000042", item, used)
+	second := mediaArchivePath("ZC-00000042", item, used)
 
-	expectedFirst := "可见光_相机/2026-09-15_08-11-04.123456789.jpg"
-	expectedSecond := "可见光_相机/2026-09-15_08-11-04.123456789_2.jpg"
+	expectedFirst := "ZC-00000042/可见光_相机/2026-09-15_08-11-04.123456789.jpg"
+	expectedSecond := "ZC-00000042/可见光_相机/2026-09-15_08-11-04.123456789_2.jpg"
 	if first != expectedFirst || second != expectedSecond {
 		t.Fatalf("unexpected archive paths: %q %q", first, second)
 	}
@@ -288,7 +291,7 @@ func readZipFile(t *testing.T, reader *zip.Reader, name string) string {
 
 func TestMediaArchivePathUsesCaptureTimeAndURLPath(t *testing.T) {
 	item := mediaExportItem{CameraName: "近红外", CapturedAt: time.Date(2026, 9, 15, 23, 59, 59, 0, time.UTC), ObjectKey: "https://example.test/photo.JPG?signature=a.b"}
-	got := mediaArchivePath(item, map[string]int{})
+	got := mediaArchivePath("", item, map[string]int{})
 	if got != "近红外/2026-09-16_07-59-59.jpg" {
 		t.Fatalf("unexpected archive path: %s", got)
 	}

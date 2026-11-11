@@ -337,6 +337,8 @@ func TestOSSStoreRejectsPathTraversalKey(t *testing.T) {
 func TestDownloadHandlerServesSignedFileObject(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
+	const filename = "ZC-71000001_20260630-080000.csv"
+	const key = "exports/workspace/job/" + filename
 	root := t.TempDir()
 	cfg := config.ObjectStoreConfig{
 		Provider:  "file",
@@ -350,14 +352,14 @@ func TestDownloadHandlerServesSignedFileObject(t *testing.T) {
 		return time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC)
 	}
 	if err := store.Put(t.Context(), PutInput{
-		ObjectKey:   "exports/job-001.csv",
+		ObjectKey:   key,
 		ContentType: "text/csv",
 		Body:        strings.NewReader("a,b\n1,2\n"),
 	}); err != nil {
 		t.Fatalf("put object: %v", err)
 	}
 
-	signed, err := signer.SignObjectURL("exports/job-001.csv", 15*time.Minute)
+	signed, err := signer.SignObjectURL(key, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("sign object URL: %v", err)
 	}
@@ -374,6 +376,9 @@ func TestDownloadHandlerServesSignedFileObject(t *testing.T) {
 	}
 	if rec.Body.String() != "a,b\n1,2\n" {
 		t.Fatalf("unexpected response body: %q", rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Disposition"); got != "attachment; filename="+filename {
+		t.Fatalf("wrong download filename: %q", got)
 	}
 }
 

@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"thcpn-gin/internal/datasource/platform"
 	"thcpn-gin/internal/datasource/sources/carbon"
 )
@@ -43,8 +42,8 @@ func TestDownloadTimesUseBeijing(t *testing.T) {
 		}
 	})
 	t.Run("carbon", func(t *testing.T) {
-		body, err := renderCarbonFluxCSV(uuid.New(), []carbon.CarbonFluxPoint{{PeriodAt: ts}})
-		if err != nil || !strings.Contains(string(body), want) {
+		body, err := renderCarbonFluxCSV("CS-00000025", []carbon.CarbonFluxPoint{{PeriodAt: ts}})
+		if err != nil || !strings.Contains(string(body), "CS-00000025,0,,"+want) {
 			t.Fatalf("CSV=%s err=%v", body, err)
 		}
 	})

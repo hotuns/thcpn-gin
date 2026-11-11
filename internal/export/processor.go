@@ -111,44 +111,47 @@ type carbonStationExportConfig struct {
 }
 
 type qualityReportRow struct {
-	DeviceID string
-	Scope    string
-	Name     string
-	Status   string
-	Count    int
-	Detail   string
+	AssetNo string
+	Scope   string
+	Name    string
+	Status  string
+	Count   int
+	Detail  string
 }
 
 type telemetrySeries struct {
-	CurrentNodeSN string
-	NodeKey       string
-	NodeName      string
-	NodeIndex     *int
-	MetricName    string
-	DataStreamID  uuid.UUID
-	DeviceID      uuid.UUID
-	Code          string
-	Name          string
-	Unit          string
-	Points        []platform.TelemetryPoint
+	AssetNo        string
+	DeviceName     string
+	GatewayAssetNo string
+	CurrentNodeSN  string
+	NodeKey        string
+	NodeName       string
+	NodeIndex      *int
+	MetricName     string
+	DataStreamID   uuid.UUID
+	DeviceID       uuid.UUID
+	Code           string
+	Name           string
+	Unit           string
+	Points         []platform.TelemetryPoint
 }
 
 type renderedExport struct {
-	ObjectKey   string
+	Extension   string
 	ContentType string
 	Body        []byte
 }
 
 type mediaExportItem struct {
-	DataStreamID       uuid.UUID
-	DeviceID           uuid.UUID
-	MediaID            string
-	MediaType          string
-	CameraName         string
-	CapturedAt         time.Time
-	ObjectKey          string
-	ThumbnailObjectKey string
-	ArchivePath        string
+	DataStreamID uuid.UUID
+	AssetNo      string
+	StreamCode   string
+	MediaID      string
+	MediaType    string
+	CameraName   string
+	CapturedAt   time.Time
+	ObjectKey    string
+	ArchivePath  string
 }
 
 type CleanupExpiredFilesResult struct {
@@ -377,6 +380,10 @@ func (p *Processor) processClaimed(ctx context.Context, job Job) (err error) {
 		status = "failed"
 		return err
 	}
+	objectKey, err := p.exportObjectKey(ctx, job, rendered.Extension)
+	if err != nil {
+		return err
+	}
 	if len(rendered.Body) > 0 {
 		if _, err = output.Write(rendered.Body); err != nil {
 			return err
@@ -391,11 +398,11 @@ func (p *Processor) processClaimed(ctx context.Context, job Job) (err error) {
 	}
 	progress.uploading.Store(true)
 	putCtx, putSpan := tracing.Start(ctx, "objectstore.put",
-		attribute.String("objectstore.key", rendered.ObjectKey),
+		attribute.String("objectstore.key", objectKey),
 		attribute.String("objectstore.content_type", rendered.ContentType),
 	)
 	putErr := p.store.Put(putCtx, objectstore.PutInput{
-		ObjectKey:   rendered.ObjectKey,
+		ObjectKey:   objectKey,
 		ContentType: rendered.ContentType,
 		Body:        file,
 	})
@@ -406,17 +413,17 @@ func (p *Processor) processClaimed(ctx context.Context, job Job) (err error) {
 	}
 	if _, err := p.queries.MarkExportJobSuccess(ctx, sqlc.MarkExportJobSuccessParams{
 		ID:            job.ID,
-		FileObjectKey: &rendered.ObjectKey,
+		FileObjectKey: &objectKey,
 		FileSizeBytes: pgtype.Int8{Int64: size, Valid: true},
 	}); err != nil {
 		cleanup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		_ = p.store.Delete(cleanup, rendered.ObjectKey)
+		_ = p.store.Delete(cleanup, objectKey)
 		status = "error"
 		return apperr.Wrap(apperr.KindInternal, "mark export job success", err)
 	}
 	if p.logger != nil {
-		p.logger.Info("export job processed", slog.String("job_id", job.ID.String()), slog.String("object_key", rendered.ObjectKey))
+		p.logger.Info("export job processed", slog.String("job_id", job.ID.String()), slog.String("object_key", objectKey))
 	}
 	return nil
 }
@@ -466,7 +473,7 @@ func (p *Processor) render(ctx context.Context, job Job, output io.Writer) (rend
 		if err != nil {
 			return renderedExport{}, err
 		}
-		return renderedExport{ObjectKey: exportObjectKey(job, "zip"), ContentType: contentTypeZIP}, nil
+		return renderedExport{Extension: "zip", ContentType: contentTypeZIP}, nil
 	case "telemetry_csv":
 		cfg, err := parseRequestConfig(job.RequestConfig, p.cfg.MaxRows)
 		if err != nil {
@@ -481,7 +488,7 @@ func (p *Processor) render(ctx context.Context, job Job, output io.Writer) (rend
 			return renderedExport{}, err
 		}
 		return renderedExport{
-			ObjectKey:   exportObjectKey(job, "csv"),
+			Extension:   "csv",
 			ContentType: contentTypeCSV,
 			Body:        body,
 		}, nil
@@ -499,7 +506,7 @@ func (p *Processor) render(ctx context.Context, job Job, output io.Writer) (rend
 			return renderedExport{}, err
 		}
 		return renderedExport{
-			ObjectKey:   exportObjectKey(job, "xlsx"),
+			Extension:   "xlsx",
 			ContentType: contentTypeXLSX,
 			Body:        body,
 		}, nil
@@ -509,7 +516,7 @@ func (p *Processor) render(ctx context.Context, job Job, output io.Writer) (rend
 			return renderedExport{}, err
 		}
 		return renderedExport{
-			ObjectKey:   exportObjectKey(job, "zip"),
+			Extension:   "zip",
 			ContentType: contentTypeZIP,
 		}, nil
 	case "standard_station_zip", "group_site_zip":
@@ -521,7 +528,7 @@ func (p *Processor) render(ctx context.Context, job Job, output io.Writer) (rend
 		if err != nil {
 			return renderedExport{}, err
 		}
-		return renderedExport{ObjectKey: exportObjectKey(job, "zip"), ContentType: contentTypeZIP}, nil
+		return renderedExport{Extension: "zip", ContentType: contentTypeZIP}, nil
 	case "media_zip":
 		cfg, err := parseRequestConfig(job.RequestConfig, p.cfg.MaxRows)
 		if err != nil {
@@ -532,7 +539,7 @@ func (p *Processor) render(ctx context.Context, job Job, output io.Writer) (rend
 			return renderedExport{}, err
 		}
 		return renderedExport{
-			ObjectKey:   exportObjectKey(job, "zip"),
+			Extension:   "zip",
 			ContentType: contentTypeZIP,
 		}, nil
 	default:
@@ -587,26 +594,36 @@ func (p *Processor) renderDeviceBatchZIP(ctx context.Context, job Job, cfg batch
 	if err := writeBytesFile(zw, "README.txt", []byte("IES Watch 生态感知云平台 · 数据导出\n时间均为北京时间（+08:00）；generation-report.csv 仅描述本次文件生成情况。\n")); err != nil {
 		return err
 	}
-	if strings.TrimSpace(cfg.GatewayID) != "" {
-		var gateway bytes.Buffer
-		writer := csv.NewWriter(&gateway)
-		_ = writer.Write([]string{"gateway_id", "gateway_name"})
-		_ = writer.Write([]string{cfg.GatewayID, cfg.GatewayName})
+	gatewayAssetNo := ""
+	if cfg.GatewayID != "" {
+		gatewayID, err := uuid.Parse(cfg.GatewayID)
+		if err != nil {
+			return err
+		}
+		gateway, err := p.devices.GetAsset(ctx, gatewayID)
+		if err != nil {
+			return err
+		}
+		gatewayAssetNo = gateway.AssetNo
+		var gatewayCSV bytes.Buffer
+		writer := csv.NewWriter(&gatewayCSV)
+		_ = writer.Write([]string{"gateway_asset_no", "gateway_name"})
+		_ = writer.Write([]string{gatewayAssetNo, cfg.GatewayName})
 		writer.Flush()
 		if err := writer.Error(); err != nil {
 			return err
 		}
-		if err := writeBytesFile(zw, "gateway.csv", gateway.Bytes()); err != nil {
+		if err := writeBytesFile(zw, "gateway.csv", gatewayCSV.Bytes()); err != nil {
 			return err
 		}
 	}
 	var deviceIndex bytes.Buffer
 	deviceWriter := csv.NewWriter(&deviceIndex)
-	if err := deviceWriter.Write([]string{"device_id", "device_name", "serial_no", "device_type", "folder"}); err != nil {
+	if err := deviceWriter.Write([]string{"asset_no", "device_name", "device_type", "folder"}); err != nil {
 		return err
 	}
 	seen := map[string]struct{}{}
-	for _, rawID := range cfg.DeviceIDs {
+	for index, rawID := range cfg.DeviceIDs {
 		id, err := uuid.Parse(strings.TrimSpace(rawID))
 		if err != nil || id == uuid.Nil {
 			return apperr.New(apperr.KindInvalidArgument, "invalid device_id in batch export")
@@ -615,39 +632,39 @@ func (p *Processor) renderDeviceBatchZIP(ctx context.Context, job Job, cfg batch
 			continue
 		}
 		seen[id.String()] = struct{}{}
-		device, err := p.queries.GetDevice(ctx, id)
+		device, err := p.devices.GetAsset(ctx, id)
 		if err != nil {
-			return mapNotFoundOrInternal(err, "batch device not found")
+			return err
 		}
 		if name, ok := cfg.NodeNames[id.String()]; ok {
 			device.Name = name
 		}
 		folder := "."
 		if len(cfg.DeviceIDs) > 1 {
-			folder = safeArchiveSegment(device.Name)
+			folder = safeArchiveSegment(device.AssetNo)
 			if folder == "" {
-				folder = "device"
+				folder = fmt.Sprintf("device-%d", index+1)
 			}
-			folder += "_" + id.String()[:8]
 		}
-		if err := deviceWriter.Write([]string{id.String(), device.Name, device.SerialNo, device.DeviceType, folder}); err != nil {
+		if err := deviceWriter.Write([]string{device.AssetNo, device.Name, device.DeviceType, folder}); err != nil {
 			return err
 		}
 
 		if cfg.IncludeData {
 			series, telemetryErr := p.queryDeviceTelemetryRaw(ctx, id, cfg.StartTime, cfg.EndTime)
 			if telemetryErr != nil {
-				quality = append(quality, qualityReportRow{id.String(), "telemetry", "遥测数据", "missing", 0, telemetryErr.Error()})
+				quality = append(quality, qualityReportRow{device.AssetNo, "telemetry", "遥测数据", "missing", 0, telemetryErr.Error()})
 			} else {
-				body, metadata, count, err := renderWideTelemetryCSV(series)
-				if err != nil {
-					return err
+				columns := []exportCSVColumn{{"asset_no", device.AssetNo}}
+				if gatewayAssetNo != "" {
+					columns = append(columns, exportCSVColumn{"gateway_asset_no", gatewayAssetNo})
 				}
 				if name, ok := cfg.NodeNames[id.String()]; ok {
-					body, err = appendNodeColumns(body, strconv.FormatInt(cfg.NodeIndices[id.String()], 10), name, true)
-					if err != nil {
-						return err
-					}
+					columns = append(columns, exportCSVColumn{"node_index", strconv.FormatInt(cfg.NodeIndices[id.String()], 10)}, exportCSVColumn{"node_name", name})
+				}
+				body, metadata, count, err := renderWideTelemetryCSV(series, columns...)
+				if err != nil {
+					return err
 				}
 				if err := writeBytesFile(zw, path.Join(folder, "data.csv"), body); err != nil {
 					return err
@@ -655,14 +672,14 @@ func (p *Processor) renderDeviceBatchZIP(ctx context.Context, job Job, cfg batch
 				if err := writeMetadataCSV(zw, path.Join(folder, "metadata.csv"), metadata); err != nil {
 					return err
 				}
-				quality = append(quality, qualityReportRow{id.String(), "telemetry", "遥测数据", "packed", count, ""})
+				quality = append(quality, qualityReportRow{device.AssetNo, "telemetry", "遥测数据", "packed", count, ""})
 			}
 		}
 
 		if cfg.IncludeImages {
-			items, mediaErr := p.queryDeviceMediaAll(ctx, id, cfg.StartTime, cfg.EndTime)
+			items, mediaErr := p.queryDeviceMediaAll(ctx, device, cfg.StartTime, cfg.EndTime)
 			if mediaErr != nil {
-				quality = append(quality, qualityReportRow{id.String(), "images", "图片", "missing", 0, mediaErr.Error()})
+				quality = append(quality, qualityReportRow{device.AssetNo, "images", "图片", "missing", 0, mediaErr.Error()})
 			} else {
 				packed := make([]mediaExportItem, 0, len(items))
 				used := map[string]int{}
@@ -673,10 +690,10 @@ func (p *Processor) renderDeviceBatchZIP(ctx context.Context, job Job, cfg batch
 						if getErr != nil {
 							detail = getErr.Error()
 						}
-						quality = append(quality, qualityReportRow{id.String(), "image", item.MediaID, "missing", 0, detail})
+						quality = append(quality, qualityReportRow{device.AssetNo, "image", item.CameraName + " " + exportTime(item.CapturedAt), "missing", 0, detail})
 						continue
 					}
-					archivePath := path.Join(folder, mediaArchivePath(item, used))
+					archivePath := mediaArchivePath(folder, item, used)
 					if writeErr := writeObjectFile(zw, archivePath, result.Body); writeErr != nil {
 						_ = result.Body.Close()
 						return writeErr
@@ -689,7 +706,7 @@ func (p *Processor) renderDeviceBatchZIP(ctx context.Context, job Job, cfg batch
 				if err := writeMediaManifestCSVNamed(zw, path.Join(folder, "image-index.csv"), packed); err != nil {
 					return err
 				}
-				quality = append(quality, qualityReportRow{id.String(), "images", "图片", "packed", len(packed), ""})
+				quality = append(quality, qualityReportRow{device.AssetNo, "images", "图片", "packed", len(packed), ""})
 			}
 		}
 	}
@@ -764,30 +781,30 @@ func (p *Processor) renderDatasetZIP(ctx context.Context, job Job, output io.Wri
 	zw := zip.NewWriter(output)
 	defer zw.Close()
 	if err := writeJSONFile(zw, "dataset.json", map[string]any{
-		"id":           dataset.ID,
-		"workspace_id": dataset.WorkspaceID,
-		"project_id":   dataset.ProjectID,
-		"name":         dataset.Name,
-		"description":  dataset.Description,
-		"data_type":    dataset.DataType,
-		"time_start":   pgTimeValue(dataset.TimeStart),
-		"time_end":     pgTimeValue(dataset.TimeEnd),
-		"status":       dataset.Status,
-		"created_by":   dataset.CreatedBy,
+		"name":        dataset.Name,
+		"description": dataset.Description,
+		"data_type":   dataset.DataType,
+		"time_start":  pgTimeValue(dataset.TimeStart),
+		"time_end":    pgTimeValue(dataset.TimeEnd),
+		"status":      dataset.Status,
 	}); err != nil {
-		return err
-	}
-	if err := writeSourcesCSV(zw, sources); err != nil {
 		return err
 	}
 
 	start := pgTimeValue(dataset.TimeStart)
 	end := pgTimeValue(dataset.TimeEnd)
+	sourceRows := make([]datasetExportSource, 0, len(sources))
 	mediaItems := make([]mediaExportItem, 0)
-	usedMediaPaths := map[string]int{}
+	usedPaths := map[string]int{}
 	for _, source := range sources {
+		entry := datasetExportSource{Type: source.SourceType}
 		switch source.SourceType {
 		case "device":
+			asset, err := p.devices.GetAsset(ctx, source.SourceID)
+			if err != nil {
+				return err
+			}
+			entry.AssetNo, entry.DeviceName = asset.AssetNo, asset.Name
 			series, err := p.queryTelemetry(ctx, "device", source.SourceID, start, end, p.cfg.MaxRows)
 			if err != nil {
 				return err
@@ -796,14 +813,15 @@ func (p *Processor) renderDatasetZIP(ctx context.Context, job Job, output io.Wri
 			if err != nil {
 				return err
 			}
-			if err := writeBytesFile(zw, "telemetry/device_"+source.SourceID.String()+".csv", body); err != nil {
+			entry.File = uniqueArchivePath(path.Join("telemetry", safeArchiveSegment(asset.AssetNo), "data.csv"), usedPaths)
+			if err := writeBytesFile(zw, entry.File, body); err != nil {
 				return err
 			}
 			items, err := p.queryMedia(ctx, "device", source.SourceID, start, end, p.cfg.MaxRows, "")
 			if err != nil {
 				return err
 			}
-			mediaItems, err = p.writeMediaItems(ctx, zw, items, mediaItems, usedMediaPaths)
+			mediaItems, err = p.writeMediaItems(ctx, zw, items, mediaItems, usedPaths)
 			if err != nil {
 				return err
 			}
@@ -812,6 +830,11 @@ func (p *Processor) renderDatasetZIP(ctx context.Context, job Job, output io.Wri
 			if err != nil {
 				return mapNotFoundOrInternal(err, "data stream source not found")
 			}
+			asset, err := p.devices.GetAsset(ctx, stream.DeviceID)
+			if err != nil {
+				return err
+			}
+			entry.AssetNo, entry.DeviceName, entry.StreamCode = asset.AssetNo, asset.Name, stream.Code
 			switch {
 			case stream.Type == "telemetry":
 				series, err := p.queryTelemetry(ctx, "data_stream", source.SourceID, start, end, p.cfg.MaxRows)
@@ -822,22 +845,25 @@ func (p *Processor) renderDatasetZIP(ctx context.Context, job Job, output io.Wri
 				if err != nil {
 					return err
 				}
-				if err := writeBytesFile(zw, "telemetry/data_stream_"+source.SourceID.String()+".csv", body); err != nil {
+				entry.File = uniqueArchivePath(path.Join("telemetry", safeArchiveSegment(asset.AssetNo), "stream-"+safeArchiveSegment(stream.Code)+".csv"), usedPaths)
+				if err := writeBytesFile(zw, entry.File, body); err != nil {
 					return err
 				}
 			case isMediaStreamType(stream.Type):
-				items, err := p.queryMediaStream(ctx, stream, start, end, p.cfg.MaxRows)
+				items, err := p.queryMediaStream(ctx, asset.AssetNo, stream, start, end, p.cfg.MaxRows)
 				if err != nil {
 					return err
 				}
-				mediaItems, err = p.writeMediaItems(ctx, zw, items, mediaItems, usedMediaPaths)
+				mediaItems, err = p.writeMediaItems(ctx, zw, items, mediaItems, usedPaths)
 				if err != nil {
 					return err
 				}
 			}
-		case "file":
-			continue
 		}
+		sourceRows = append(sourceRows, entry)
+	}
+	if err := writeSourcesCSV(zw, sourceRows); err != nil {
+		return err
 	}
 	if len(mediaItems) > 0 {
 		if err := writeMediaManifestCSVNamed(zw, "media/manifest.csv", mediaItems); err != nil {
@@ -888,7 +914,7 @@ func (p *Processor) writeMediaItems(ctx context.Context, zw *zip.Writer, items [
 		}
 		seen[key] = struct{}{}
 
-		archivePath := mediaArchivePath(items[i], usedPaths)
+		archivePath := mediaArchivePath(safeArchiveSegment(items[i].AssetNo), items[i], usedPaths)
 		items[i].ArchivePath = archivePath
 		result, err := fetchMediaObject(ctx, p.store, p.httpClient, items[i].ObjectKey)
 		if err != nil {
@@ -948,9 +974,9 @@ func (p *Processor) queryMedia(ctx context.Context, resourceType string, resourc
 
 	switch resourceType {
 	case "device":
-		device, err := p.queries.GetDevice(ctx, resourceID)
+		device, err := p.devices.GetAsset(ctx, resourceID)
 		if err != nil {
-			return nil, mapNotFoundOrInternal(err, "device not found")
+			return nil, err
 		}
 		streams, err := p.queries.ListDataStreamsByDevice(ctx, device.ID)
 		if err != nil {
@@ -964,7 +990,7 @@ func (p *Processor) queryMedia(ctx context.Context, resourceType string, resourc
 			if mediaType != "" && stream.Type != mediaType {
 				continue
 			}
-			streamItems, err := p.queryMediaStream(ctx, stream, start, end, remainingLimit(limit, len(items)))
+			streamItems, err := p.queryMediaStream(ctx, device.AssetNo, stream, start, end, remainingLimit(limit, len(items)))
 			if err != nil {
 				return nil, err
 			}
@@ -988,13 +1014,17 @@ func (p *Processor) queryMedia(ctx context.Context, resourceType string, resourc
 		if mediaType != "" && stream.Type != mediaType {
 			return nil, apperr.New(apperr.KindInvalidArgument, "data stream media type does not match")
 		}
-		return p.queryMediaStream(ctx, stream, start, end, limit)
+		asset, err := p.devices.GetAsset(ctx, stream.DeviceID)
+		if err != nil {
+			return nil, err
+		}
+		return p.queryMediaStream(ctx, asset.AssetNo, stream, start, end, limit)
 	default:
 		return nil, apperr.New(apperr.KindInvalidArgument, "media export requires device, data_stream or media resource")
 	}
 }
 
-func (p *Processor) queryMediaStream(ctx context.Context, stream sqlc.DataStream, start time.Time, end time.Time, limit int) ([]mediaExportItem, error) {
+func (p *Processor) queryMediaStream(ctx context.Context, assetNo string, stream sqlc.DataStream, start time.Time, end time.Time, limit int) ([]mediaExportItem, error) {
 	if limit <= 0 {
 		return nil, nil
 	}
@@ -1017,31 +1047,10 @@ func (p *Processor) queryMediaStream(ctx context.Context, stream sqlc.DataStream
 	if err != nil {
 		return nil, err
 	}
-	items := make([]mediaExportItem, 0, len(result.Items))
-	for _, record := range result.Items {
-		thumbnail := ""
-		if record.ThumbnailObjectKey != nil {
-			thumbnail = *record.ThumbnailObjectKey
-		}
-		items = append(items, mediaExportItem{
-			DataStreamID:       stream.ID,
-			DeviceID:           stream.DeviceID,
-			MediaID:            record.ID,
-			MediaType:          record.MediaType,
-			CameraName:         stream.Name,
-			CapturedAt:         record.CapturedAt,
-			ObjectKey:          record.ObjectKey,
-			ThumbnailObjectKey: thumbnail,
-		})
-	}
-	return items, nil
+	return appendMediaItems(nil, assetNo, stream, result.Items), nil
 }
 
-func (p *Processor) queryDeviceMediaAll(ctx context.Context, deviceID uuid.UUID, start, end time.Time) ([]mediaExportItem, error) {
-	device, err := p.queries.GetDevice(ctx, deviceID)
-	if err != nil {
-		return nil, mapNotFoundOrInternal(err, "device not found")
-	}
+func (p *Processor) queryDeviceMediaAll(ctx context.Context, device device.Device, start, end time.Time) ([]mediaExportItem, error) {
 	streams, err := p.queries.ListDataStreamsByDevice(ctx, device.ID)
 	if err != nil {
 		return nil, apperr.Wrap(apperr.KindInternal, "list data streams", err)
@@ -1067,15 +1076,19 @@ func (p *Processor) queryDeviceMediaAll(ctx context.Context, deviceID uuid.UUID,
 		if err != nil {
 			return nil, err
 		}
-		for _, record := range records {
-			thumbnail := ""
-			if record.ThumbnailObjectKey != nil {
-				thumbnail = *record.ThumbnailObjectKey
-			}
-			items = append(items, mediaExportItem{DataStreamID: stream.ID, DeviceID: stream.DeviceID, MediaID: record.ID, MediaType: record.MediaType, CameraName: stream.Name, CapturedAt: record.CapturedAt, ObjectKey: record.ObjectKey, ThumbnailObjectKey: thumbnail})
-		}
+		items = appendMediaItems(items, device.AssetNo, stream, records)
 	}
 	return items, nil
+}
+
+func appendMediaItems(items []mediaExportItem, assetNo string, stream sqlc.DataStream, records []platform.MediaRecord) []mediaExportItem {
+	for _, record := range records {
+		items = append(items, mediaExportItem{
+			DataStreamID: stream.ID, AssetNo: assetNo, StreamCode: stream.Code, CameraName: stream.Name,
+			MediaID: record.ID, MediaType: record.MediaType, CapturedAt: record.CapturedAt, ObjectKey: record.ObjectKey,
+		})
+	}
+	return items
 }
 
 func (p *Processor) queryTelemetry(ctx context.Context, resourceType string, resourceID uuid.UUID, start time.Time, end time.Time, limit int) ([]telemetrySeries, error) {
@@ -1088,16 +1101,34 @@ func (p *Processor) queryTelemetry(ctx context.Context, resourceType string, res
 	if limit <= 0 || limit > p.cfg.MaxRows {
 		limit = p.cfg.MaxRows
 	}
-	if resourceType == "device" {
-		target, err := p.queries.GetDevice(ctx, resourceID)
+	var asset device.Device
+	var stream sqlc.DataStream
+	var err error
+	switch resourceType {
+	case "device":
+		asset, err = p.devices.GetAsset(ctx, resourceID)
 		if err != nil {
-			return nil, mapNotFoundOrInternal(err, "device not found")
+			return nil, err
 		}
-		if target.DeviceType == "gateway" {
-			return p.queryGatewayTelemetry(ctx, resourceID, start, end)
+		if asset.DeviceType == "gateway" {
+			return p.queryGatewayTelemetry(ctx, asset, start, end)
 		}
+	case "data_stream":
+		stream, err = p.queries.GetDataStream(ctx, resourceID)
+		if err != nil {
+			return nil, mapNotFoundOrInternal(err, "data stream not found")
+		}
+		if stream.Type != "telemetry" || stream.Status != "active" {
+			return nil, apperr.New(apperr.KindInvalidArgument, "data stream is not active telemetry")
+		}
+		asset, err = p.devices.GetAsset(ctx, stream.DeviceID)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, apperr.New(apperr.KindInvalidArgument, "telemetry export requires device or data_stream resource")
 	}
-	if p.telemetry != nil && (resourceType == "device" || resourceType == "data_stream") {
+	if p.telemetry != nil {
 		input := telemetrysvc.QueryInput{StartTime: start, EndTime: end, Limit: limit}
 		if resourceType == "device" {
 			input.DeviceID = &resourceID
@@ -1123,53 +1154,33 @@ func (p *Processor) queryTelemetry(ctx context.Context, resourceType string, res
 			}
 			items = append(items, telemetrySeries{
 				DataStreamID: series.DataStreamID, DeviceID: result.DeviceID,
+				AssetNo: asset.AssetNo, DeviceName: asset.Name,
 				Code: series.Code, Name: series.Name, Unit: unit, Points: points,
 			})
 		}
 		return items, nil
 	}
 
-	switch resourceType {
-	case "device":
-		device, err := p.queries.GetDevice(ctx, resourceID)
-		if err != nil {
-			return nil, mapNotFoundOrInternal(err, "device not found")
-		}
-		streams, err := p.queries.ListDataStreamsByDevice(ctx, device.ID)
+	streams := []sqlc.DataStream{stream}
+	if resourceType == "device" {
+		streams, err = p.queries.ListDataStreamsByDevice(ctx, asset.ID)
 		if err != nil {
 			return nil, apperr.Wrap(apperr.KindInternal, "list data streams", err)
 		}
-		series := make([]telemetrySeries, 0)
-		for _, stream := range streams {
-			if stream.Type != "telemetry" || stream.Status != "active" {
-				continue
-			}
-			item, err := p.queryTelemetryStream(ctx, stream, start, end, limit)
-			if err != nil {
-				return nil, err
-			}
-			series = append(series, item)
-		}
-		return series, nil
-	case "data_stream":
-		stream, err := p.queries.GetDataStream(ctx, resourceID)
-		if err != nil {
-			return nil, mapNotFoundOrInternal(err, "data stream not found")
-		}
-		if stream.Type != "telemetry" {
-			return nil, apperr.New(apperr.KindInvalidArgument, "data stream is not telemetry")
-		}
-		if stream.Status != "active" {
-			return nil, apperr.New(apperr.KindInvalidArgument, "data stream is not active")
+	}
+	series := make([]telemetrySeries, 0, len(streams))
+	for _, stream := range streams {
+		if stream.Type != "telemetry" || stream.Status != "active" {
+			continue
 		}
 		item, err := p.queryTelemetryStream(ctx, stream, start, end, limit)
 		if err != nil {
 			return nil, err
 		}
-		return []telemetrySeries{item}, nil
-	default:
-		return nil, apperr.New(apperr.KindInvalidArgument, "telemetry export requires device or data_stream resource")
+		item.AssetNo, item.DeviceName = asset.AssetNo, asset.Name
+		series = append(series, item)
 	}
+	return series, nil
 }
 
 func (p *Processor) queryTelemetryStream(ctx context.Context, stream sqlc.DataStream, start time.Time, end time.Time, limit int) (telemetrySeries, error) {
@@ -1273,7 +1284,9 @@ type telemetryMetadataRow struct {
 	Type string
 }
 
-func renderWideTelemetryCSV(series []telemetrySeries) ([]byte, []telemetryMetadataRow, int, error) {
+type exportCSVColumn struct{ name, value string }
+
+func renderWideTelemetryCSV(series []telemetrySeries, identity ...exportCSVColumn) ([]byte, []telemetryMetadataRow, int, error) {
 	columns := make([]telemetrySeries, len(series))
 	copy(columns, series)
 	sort.Slice(columns, func(i, j int) bool { return columns[i].Code < columns[j].Code })
@@ -1304,6 +1317,9 @@ func renderWideTelemetryCSV(series []telemetrySeries) ([]byte, []telemetryMetada
 		}
 		header = append(header, name)
 	}
+	for _, column := range identity {
+		header = append(header, column.name)
+	}
 	if err := writer.Write(header); err != nil {
 		return nil, nil, 0, apperr.Wrap(apperr.KindInternal, "write wide telemetry header", err)
 	}
@@ -1316,6 +1332,9 @@ func renderWideTelemetryCSV(series []telemetrySeries) ([]byte, []telemetryMetada
 				continue
 			}
 			row = append(row, strconv.FormatFloat(point.Value, 'f', -1, 64))
+		}
+		for _, column := range identity {
+			row = append(row, column.value)
 		}
 		if err := writer.Write(row); err != nil {
 			return nil, nil, 0, apperr.Wrap(apperr.KindInternal, "write wide telemetry row", err)
@@ -1349,11 +1368,11 @@ func writeMetadataCSV(zw *zip.Writer, name string, rows []telemetryMetadataRow) 
 func writeQualityReportCSV(zw *zip.Writer, rows []qualityReportRow) error {
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
-	if err := writer.Write([]string{"device_id", "scope", "name", "status", "packed_count", "detail"}); err != nil {
+	if err := writer.Write([]string{"asset_no", "scope", "name", "status", "packed_count", "detail"}); err != nil {
 		return err
 	}
 	for _, row := range rows {
-		if err := writer.Write([]string{row.DeviceID, row.Scope, row.Name, row.Status, strconv.Itoa(row.Count), row.Detail}); err != nil {
+		if err := writer.Write([]string{row.AssetNo, row.Scope, row.Name, row.Status, strconv.Itoa(row.Count), row.Detail}); err != nil {
 			return err
 		}
 	}
@@ -1365,9 +1384,9 @@ func writeQualityReportCSV(zw *zip.Writer, rows []qualityReportRow) error {
 }
 
 func (p *Processor) renderCarbonStationZIP(ctx context.Context, job Job, cfg carbonStationExportConfig, output io.Writer) error {
-	device, err := p.queries.GetDevice(ctx, job.ResourceID)
+	device, err := p.devices.GetAsset(ctx, job.ResourceID)
 	if err != nil {
-		return mapNotFoundOrInternal(err, "carbon device not found")
+		return err
 	}
 	zw := zip.NewWriter(output)
 	defer zw.Close()
@@ -1376,7 +1395,7 @@ func (p *Processor) renderCarbonStationZIP(ctx context.Context, job Job, cfg car
 	}
 	var manifest bytes.Buffer
 	manifestWriter := csv.NewWriter(&manifest)
-	header := []string{"device_id", "device_name", "serial_no", "node_id", "field", "content", "file"}
+	header := []string{"asset_no", "device_name", "node_id", "field", "content", "file"}
 	if cfg.NodeNames != nil {
 		header = append(header, "node_name")
 	}
@@ -1384,27 +1403,25 @@ func (p *Processor) renderCarbonStationZIP(ctx context.Context, job Job, cfg car
 		return err
 	}
 	report := make([]qualityReportRow, 0)
-	deviceFolder := "."
 	metadata := []telemetryMetadataRow{
-		{Code: "device_id", Name: device.ID.String(), Type: "string"},
-		{Code: "serial_no", Name: device.SerialNo, Type: "string"},
+		{Code: "asset_no", Name: device.AssetNo, Type: "string"},
 		{Code: "device_type", Name: device.DeviceType, Type: "string"},
 		{Code: "start_time", Name: exportTime(cfg.StartTime), Type: "datetime"},
 		{Code: "end_time", Name: exportTime(cfg.EndTime), Type: "datetime"},
 	}
-	if err := writeMetadataCSV(zw, path.Join(deviceFolder, "metadata.csv"), metadata); err != nil {
+	if err := writeMetadataCSV(zw, "metadata.csv", metadata); err != nil {
 		return err
 	}
 	for _, nodeID := range cfg.NodeIDs {
 		for _, rawField := range cfg.Fields {
 			field := strings.TrimSpace(rawField)
-			folder := path.Join(deviceFolder, fmt.Sprintf("node-%d", nodeID), safeArchiveSegment(field))
+			folder := path.Join(safeArchiveSegment(device.AssetNo), fmt.Sprintf("node-%d", nodeID), safeArchiveSegment(field))
 			if cfg.IncludeFlux {
 				points, queryErr := p.dataSources.Carbon.CarbonFlux(ctx, job.ResourceID, nodeID, field, cfg.StartTime, cfg.EndTime)
 				if queryErr != nil {
 					return queryErr
 				}
-				body, renderErr := renderCarbonFluxCSV(job.ResourceID, points.Points)
+				body, renderErr := renderCarbonFluxCSV(device.AssetNo, points.Points)
 				if renderErr != nil {
 					return renderErr
 				}
@@ -1418,16 +1435,16 @@ func (p *Processor) renderCarbonStationZIP(ctx context.Context, job Job, cfg car
 				if err := writeBytesFile(zw, name, body); err != nil {
 					return err
 				}
-				row := []string{device.ID.String(), device.Name, device.SerialNo, strconv.Itoa(nodeID), field, "flux", name}
+				row := []string{device.AssetNo, device.Name, strconv.Itoa(nodeID), field, "flux", name}
 				if cfg.NodeNames != nil {
 					row = append(row, cfg.NodeNames[strconv.Itoa(nodeID)])
 				}
 				_ = manifestWriter.Write(row)
-				report = append(report, qualityReportRow{device.ID.String(), fmt.Sprintf("node-%d/%s", nodeID, field), "通量", "generated", len(points.Points), ""})
+				report = append(report, qualityReportRow{device.AssetNo, fmt.Sprintf("node-%d/%s", nodeID, field), "通量", "generated", len(points.Points), ""})
 			}
 			if cfg.IncludeRawSamples {
 				rawCfg := requestConfig{StartTime: cfg.StartTime, EndTime: cfg.EndTime, NodeID: nodeID, Field: field, Limit: p.cfg.MaxRows}
-				body, renderErr := p.renderCarbonRawCSV(ctx, job.ResourceID, rawCfg)
+				body, renderErr := p.renderCarbonRawCSV(ctx, device, rawCfg)
 				if renderErr != nil {
 					return renderErr
 				}
@@ -1445,12 +1462,12 @@ func (p *Processor) renderCarbonStationZIP(ctx context.Context, job Job, cfg car
 				if count < 0 {
 					count = 0
 				}
-				row := []string{device.ID.String(), device.Name, device.SerialNo, strconv.Itoa(nodeID), field, "raw_samples", name}
+				row := []string{device.AssetNo, device.Name, strconv.Itoa(nodeID), field, "raw_samples", name}
 				if cfg.NodeNames != nil {
 					row = append(row, cfg.NodeNames[strconv.Itoa(nodeID)])
 				}
 				_ = manifestWriter.Write(row)
-				report = append(report, qualityReportRow{device.ID.String(), fmt.Sprintf("node-%d/%s", nodeID, field), "原始采样", "generated", count, ""})
+				report = append(report, qualityReportRow{device.AssetNo, fmt.Sprintf("node-%d/%s", nodeID, field), "原始采样", "generated", count, ""})
 			}
 		}
 	}
@@ -1470,15 +1487,15 @@ func (p *Processor) renderCarbonStationZIP(ctx context.Context, job Job, cfg car
 	return nil
 }
 
-func renderCarbonFluxCSV(deviceID uuid.UUID, points []carbon.CarbonFluxPoint) ([]byte, error) {
+func renderCarbonFluxCSV(assetNo string, points []carbon.CarbonFluxPoint) ([]byte, error) {
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
-	if err := writer.Write([]string{"device_id", "node_id", "period", "period_at", "field", "nee", "er", "gpp", "unit"}); err != nil {
+	if err := writer.Write([]string{"asset_no", "node_id", "period", "period_at", "field", "nee", "er", "gpp", "unit"}); err != nil {
 		return nil, apperr.Wrap(apperr.KindInternal, "write carbon flux csv header", err)
 	}
 	for _, point := range points {
 		if err := writer.Write([]string{
-			deviceID.String(), strconv.Itoa(point.NodeID), point.Period, exportTime(point.PeriodAt), point.Field,
+			assetNo, strconv.Itoa(point.NodeID), point.Period, exportTime(point.PeriodAt), point.Field,
 			carbonFloat(point.NEE), carbonFloat(point.ER), carbonFloat(point.GPP), "μg CO₂·m⁻²·s⁻¹",
 		}); err != nil {
 			return nil, apperr.Wrap(apperr.KindInternal, "write carbon flux csv row", err)
@@ -1491,14 +1508,14 @@ func renderCarbonFluxCSV(deviceID uuid.UUID, points []carbon.CarbonFluxPoint) ([
 	return buf.Bytes(), nil
 }
 
-func (p *Processor) renderCarbonRawCSV(ctx context.Context, deviceID uuid.UUID, cfg requestConfig) ([]byte, error) {
-	periods, err := p.dataSources.Carbon.CarbonPeriods(ctx, deviceID, cfg.NodeID, cfg.StartTime, cfg.EndTime)
+func (p *Processor) renderCarbonRawCSV(ctx context.Context, device device.Device, cfg requestConfig) ([]byte, error) {
+	periods, err := p.dataSources.Carbon.CarbonPeriods(ctx, device.ID, cfg.NodeID, cfg.StartTime, cfg.EndTime)
 	if err != nil {
 		return nil, err
 	}
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
-	if err := writer.Write([]string{"device_id", "node_id", "period", "period_at", "field", "room", "ts", "CO2", "tempL", "humiL", "tempB", "humiB", "stemp", "shumi"}); err != nil {
+	if err := writer.Write([]string{"asset_no", "node_id", "period", "period_at", "field", "room", "ts", "CO2", "tempL", "humiL", "tempB", "humiB", "stemp", "shumi"}); err != nil {
 		return nil, apperr.Wrap(apperr.KindInternal, "write carbon raw csv header", err)
 	}
 	rows := 0
@@ -1506,7 +1523,7 @@ func (p *Processor) renderCarbonRawCSV(ctx context.Context, deviceID uuid.UUID, 
 		if rows >= cfg.Limit {
 			break
 		}
-		detail, err := p.dataSources.Carbon.CarbonPeriod(ctx, deviceID, cfg.NodeID, cfg.Field, summary.Period)
+		detail, err := p.dataSources.Carbon.CarbonPeriod(ctx, device.ID, cfg.NodeID, cfg.Field, summary.Period)
 		if err != nil {
 			if apperr.KindOf(err) == apperr.KindNotFound {
 				continue
@@ -1519,7 +1536,7 @@ func (p *Processor) renderCarbonRawCSV(ctx context.Context, deviceID uuid.UUID, 
 					break
 				}
 				if err := writer.Write([]string{
-					deviceID.String(), strconv.Itoa(cfg.NodeID), detail.Period, exportTime(detail.PeriodAt), cfg.Field, phase.Room,
+					device.AssetNo, strconv.Itoa(cfg.NodeID), detail.Period, exportTime(detail.PeriodAt), cfg.Field, phase.Room,
 					exportTime(sample.TS), carbonFloat(sample.CO2), carbonFloat(sample.TempL), carbonFloat(sample.HumiL), carbonFloat(sample.TempB), carbonFloat(sample.HumiB), carbonFloat(sample.STemp), carbonFloat(sample.SHumi),
 				}); err != nil {
 					return nil, apperr.Wrap(apperr.KindInternal, "write carbon raw csv row", err)
@@ -1542,14 +1559,16 @@ func carbonFloat(value *float64) string {
 	return strconv.FormatFloat(*value, 'f', -1, 64)
 }
 
-func writeSourcesCSV(zw *zip.Writer, sources []sqlc.DatasetSource) error {
+type datasetExportSource struct{ Type, AssetNo, DeviceName, StreamCode, File string }
+
+func writeSourcesCSV(zw *zip.Writer, sources []datasetExportSource) error {
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
-	if err := writer.Write([]string{"source_type", "source_id"}); err != nil {
+	if err := writer.Write([]string{"source_type", "asset_no", "device_name", "stream_code", "file"}); err != nil {
 		return apperr.Wrap(apperr.KindInternal, "write dataset sources header", err)
 	}
 	for _, source := range sources {
-		if err := writer.Write([]string{source.SourceType, source.SourceID.String()}); err != nil {
+		if err := writer.Write([]string{source.Type, source.AssetNo, source.DeviceName, source.StreamCode, source.File}); err != nil {
 			return apperr.Wrap(apperr.KindInternal, "write dataset sources row", err)
 		}
 	}
@@ -1567,19 +1586,17 @@ func writeMediaManifestCSV(zw *zip.Writer, items []mediaExportItem) error {
 func writeMediaManifestCSVNamed(zw *zip.Writer, name string, items []mediaExportItem) error {
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
-	if err := writer.Write([]string{"data_stream_id", "device_id", "media_id", "media_type", "captured_at", "object_key", "archive_path", "thumbnail_object_key"}); err != nil {
+	if err := writer.Write([]string{"asset_no", "stream_code", "camera_name", "media_type", "captured_at", "archive_path"}); err != nil {
 		return apperr.Wrap(apperr.KindInternal, "write media manifest header", err)
 	}
 	for _, item := range items {
 		if err := writer.Write([]string{
-			item.DataStreamID.String(),
-			item.DeviceID.String(),
-			item.MediaID,
+			item.AssetNo,
+			item.StreamCode,
+			item.CameraName,
 			item.MediaType,
 			exportTime(item.CapturedAt),
-			item.ObjectKey,
 			item.ArchivePath,
-			item.ThumbnailObjectKey,
 		}); err != nil {
 			return apperr.Wrap(apperr.KindInternal, "write media manifest row", err)
 		}
@@ -1627,18 +1644,14 @@ func writeObjectFile(zw *zip.Writer, name string, reader io.Reader) error {
 	return nil
 }
 
-func mediaArchivePath(item mediaExportItem, used map[string]int) string {
-	mediaID := safeArchiveSegment(item.MediaID)
-	if mediaID == "" {
-		mediaID = "media"
-	}
+func mediaArchivePath(folder string, item mediaExportItem, used map[string]int) string {
 	cameraName := safeArchiveSegment(item.CameraName)
 	if cameraName == "" {
 		cameraName = "图片"
 	}
-	filename := mediaID
+	filename := "media"
 	if !item.CapturedAt.IsZero() {
-		filename = item.CapturedAt.In(time.FixedZone("Asia/Shanghai", 8*60*60)).Format("2006-01-02_15-04-05.999999999")
+		filename = item.CapturedAt.In(exportLocation).Format("2006-01-02_15-04-05.999999999")
 	}
 	objectPath := item.ObjectKey
 	if parsed, err := url.Parse(item.ObjectKey); err == nil {
@@ -1648,13 +1661,22 @@ func mediaArchivePath(item mediaExportItem, used map[string]int) string {
 	if ext == "" || strings.Contains(ext, "/") || strings.Contains(ext, "\\") {
 		ext = ".bin"
 	}
-	base := path.Join(cameraName, filename+ext)
-	count := used[base]
-	used[base] = count + 1
-	if count == 0 {
+	return uniqueArchivePath(path.Join(folder, cameraName, filename+ext), used)
+}
+
+func uniqueArchivePath(base string, used map[string]int) string {
+	if used[base] == 0 {
+		used[base] = 1
 		return base
 	}
-	return strings.TrimSuffix(base, ext) + "_" + strconv.Itoa(count+1) + ext
+	ext := path.Ext(base)
+	for suffix := used[base] + 1; ; suffix++ {
+		candidate := strings.TrimSuffix(base, ext) + "_" + strconv.Itoa(suffix) + ext
+		if used[candidate] == 0 {
+			used[base], used[candidate] = suffix, 1
+			return candidate
+		}
+	}
 }
 
 func safeArchiveSegment(value string) string {
@@ -1671,17 +1693,6 @@ func safeArchiveSegment(value string) string {
 		}
 	}
 	return strings.Trim(b.String(), "_")
-}
-
-func exportObjectKey(job Job, ext string) string {
-	ext = strings.TrimPrefix(strings.TrimSpace(ext), ".")
-	if ext == "" {
-		ext = "bin"
-	}
-	if job.RequestedByAdmin != nil {
-		return path.Join("exports", "admin", job.RequestedByAdmin.String(), fmt.Sprintf("%s.%s", job.ID.String(), ext))
-	}
-	return path.Join("exports", job.WorkspaceID.String(), fmt.Sprintf("%s.%s", job.ID.String(), ext))
 }
 
 func truncateError(value string, max int) string {
@@ -1716,6 +1727,16 @@ func (p *Processor) renderIndexedNodeZIP(ctx context.Context, cfg batchExportCon
 	if err != nil {
 		return err
 	}
+	type archiveNode struct {
+		Index          int    `json:"node_index"`
+		Name           string `json:"node_name"`
+		CurrentAssetNo string `json:"current_node_asset_no,omitempty"`
+		Folder         string `json:"folder,omitempty"`
+	}
+	exportedNodes := make([]archiveNode, 0, len(selected))
+	if err := writeBytesFile(zw, "README.txt", []byte("IES Watch 生态感知云平台 · 节点数据导出\n时间均为北京时间（+08:00）；节点序号用于识别同一网关下的历史数据，当前节点资产编号和 SN 不代表历史记录的硬件归属。\n")); err != nil {
+		return err
+	}
 	for _, node := range nodes {
 		if !selected[node.Key] {
 			continue
@@ -1726,6 +1747,8 @@ func (p *Processor) renderIndexedNodeZIP(ctx context.Context, cfg batchExportCon
 		if snapshot, ok := cfg.NodeNames[node.Key]; ok {
 			name = snapshot
 		}
+		index := *node.Target.NodeIndex
+		entry := archiveNode{Index: index, Name: name, CurrentAssetNo: node.AssetNo}
 		for _, stream := range node.Streams {
 			purpose := stream.Purpose
 			wantData := cfg.IncludeData && purpose == "measurement"
@@ -1743,31 +1766,41 @@ func (p *Processor) renderIndexedNodeZIP(ctx context.Context, cfg batchExportCon
 			}
 			if wantStatus {
 				item.NodeKey, item.NodeName, item.NodeIndex, item.CurrentNodeSN = node.Key, name, node.Target.NodeIndex, node.NodeSN
+				item.AssetNo = node.AssetNo
 				item.Code = stream.Code
-				item.MetricName = strings.TrimPrefix(item.Name, fmt.Sprintf("节点 %d · ", *node.Target.NodeIndex))
+				item.MetricName = strings.TrimPrefix(item.Name, fmt.Sprintf("节点 %d · ", index))
 				statusSeries = append(statusSeries, item)
 			} else {
 				series = append(series, item)
 			}
 		}
 		if cfg.IncludeData {
-			folder := fmt.Sprintf("node-%d", *node.Target.NodeIndex)
-			body, metadata, count, err := renderWideTelemetryCSV(series)
+			entry.Folder = safeArchiveSegment(node.AssetNo)
+			if entry.Folder == "" {
+				entry.Folder = strings.TrimPrefix(fmt.Sprintf("%s-node-%d", safeArchiveSegment(gateway.AssetNo), index), "-")
+			}
+			body, metadata, count, err := renderWideTelemetryCSV(series,
+				exportCSVColumn{"gateway_asset_no", gateway.AssetNo},
+				exportCSVColumn{"current_node_asset_no", node.AssetNo},
+				exportCSVColumn{"node_index", strconv.Itoa(index)},
+				exportCSVColumn{"node_name", name},
+			)
 			if err != nil {
 				return err
 			}
-			body, err = appendNodeColumns(body, strconv.Itoa(*node.Target.NodeIndex), name, true)
-			if err != nil {
+			if err := writeBytesFile(zw, path.Join(entry.Folder, "data.csv"), body); err != nil {
 				return err
 			}
-			if err := writeBytesFile(zw, path.Join(folder, "data.csv"), body); err != nil {
+			if err := writeMetadataCSV(zw, path.Join(entry.Folder, "metadata.csv"), metadata); err != nil {
 				return err
 			}
-			if err := writeMetadataCSV(zw, path.Join(folder, "metadata.csv"), metadata); err != nil {
-				return err
+			assetNo := node.AssetNo
+			if assetNo == "" {
+				assetNo = gateway.AssetNo
 			}
-			report = append(report, qualityReportRow{gatewayID.String(), folder, name, "packed", count, ""})
+			report = append(report, qualityReportRow{assetNo, entry.Folder, name, "packed", count, ""})
 		}
+		exportedNodes = append(exportedNodes, entry)
 	}
 	if cfg.IncludeStatus {
 		streams, err := p.queries.ListDataStreamsByDevice(ctx, gatewayID)
@@ -1788,28 +1821,26 @@ func (p *Processor) renderIndexedNodeZIP(ctx context.Context, cfg batchExportCon
 			if err != nil {
 				return err
 			}
-			item.NodeKey, item.NodeName = gatewayID.String(), "网关"
+			item.NodeKey = gatewayID.String()
 			item.Code = strings.TrimPrefix(item.Code, "lora_gateway_")
 			item.MetricName = strings.TrimPrefix(item.Name, "网关 · ")
 			statusSeries = append(statusSeries, item)
 		}
-		body, err := renderV2StatusCSV(statusSeries, gateway.SerialNo)
+		body, err := renderV2StatusCSV(statusSeries, gateway.AssetNo)
 		if err != nil {
 			return err
 		}
 		if err := writeBytesFile(zw, "运行状态.csv", body); err != nil {
 			return err
 		}
-		report = append(report, qualityReportRow{gatewayID.String(), "status", "运行状态", "packed", len(gatewayWideRows(statusSeries)) - 1, ""})
+		report = append(report, qualityReportRow{gateway.AssetNo, "status", "运行状态", "packed", len(gatewayWideRows(statusSeries)) - 1, ""})
 	}
 	if len(selected) > 0 {
 		return apperr.New(apperr.KindInvalidArgument, "selected node no longer exists")
 	}
-	raw, err := json.MarshalIndent(map[string]any{"gateway_id": gatewayID, "gateway_name": cfg.GatewayName, "node_targets": cfg.NodeTargets, "node_names": cfg.NodeNames}, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := writeBytesFile(zw, "gateway.json", raw); err != nil {
+	if err := writeJSONFile(zw, "gateway.json", map[string]any{
+		"gateway_asset_no": gateway.AssetNo, "gateway_name": gateway.Name, "nodes": exportedNodes,
+	}); err != nil {
 		return err
 	}
 	if err := writeQualityReportCSV(zw, report); err != nil {

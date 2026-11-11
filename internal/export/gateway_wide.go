@@ -53,18 +53,28 @@ func gatewayWideRows(series []telemetrySeries) [][]xlsxCell {
 			}
 		}
 	}
-	header := []xlsxCell{stringCell("节点名称"), stringCell("节点标识"), stringCell("节点序号"), stringCell("时间（北京时间）")}
+	header := []xlsxCell{stringCell("节点名称"), stringCell("节点资产编号"), stringCell("节点序号"), stringCell("时间（北京时间）")}
 	if !gateway {
-		header = []xlsxCell{stringCell("设备名称"), stringCell("设备ID"), stringCell("节点序号"), stringCell("时间（北京时间）")}
+		header = []xlsxCell{stringCell("设备名称"), stringCell("设备资产编号"), stringCell("节点序号"), stringCell("时间（北京时间）")}
 	}
-	hasPhysical := false
+	hasPhysical, hasGatewayAsset := false, false
 	for _, s := range series {
 		if s.CurrentNodeSN != "" {
 			hasPhysical = true
 		}
+		if s.GatewayAssetNo != "" {
+			hasGatewayAsset = true
+		}
+		if gateway && s.NodeIndex != nil {
+			header[1] = stringCell("当前节点资产编号")
+		}
 	}
 	for _, c := range columns {
 		header = append(header, stringCell(c))
+	}
+	gatewayAssetColumn := len(header)
+	if hasGatewayAsset {
+		header = append(header, stringCell("网关资产编号"))
 	}
 	if hasPhysical {
 		header = append(header, stringCell("当前节点 SN（非历史归属）"))
@@ -81,13 +91,20 @@ func gatewayWideRows(series []telemetrySeries) [][]xlsxCell {
 			row, ok := rows[key]
 			if !ok {
 				row = make([]xlsxCell, len(header))
-				row[0] = stringCell(s.NodeName)
-				row[1] = stringCell(s.NodeKey)
+				name := s.DeviceName
+				if gateway {
+					name = s.NodeName
+				}
+				row[0] = stringCell(name)
+				row[1] = stringCell(s.AssetNo)
 				row[2] = stringCell("")
 				if s.NodeIndex != nil {
 					row[2] = numberCell(float64(*s.NodeIndex))
 				}
 				row[3] = stringCell(exportTime(p.Timestamp))
+				if hasGatewayAsset {
+					row[gatewayAssetColumn] = stringCell(s.GatewayAssetNo)
+				}
 				keys = append(keys, key)
 			}
 			row[4+columnIndex[metricKey(s)]] = numberCell(p.Value)
@@ -139,13 +156,13 @@ func renderGatewayWideCSV(series []telemetrySeries) ([]byte, error) {
 }
 
 // Status rows retain exact timestamps and identify the gateway and current physical node.
-func renderV2StatusCSV(series []telemetrySeries, gatewaySN string) ([]byte, error) {
+func renderV2StatusCSV(series []telemetrySeries, gatewayAssetNo string) ([]byte, error) {
 	rows := gatewayWideRows(series)
 	hasSN := len(rows[0]) > 0 && rows[0][len(rows[0])-1].value == "当前节点 SN（非历史归属）"
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
 	for i, row := range rows {
-		values := []string{gatewaySN}
+		values := []string{gatewayAssetNo}
 		for _, cell := range row {
 			values = append(values, cell.value)
 		}
@@ -153,7 +170,7 @@ func renderV2StatusCSV(series []telemetrySeries, gatewaySN string) ([]byte, erro
 			values = append(values, "")
 		}
 		if i == 0 {
-			values[0], values[1], values[2], values[3] = "网关SN", "节点名称", "节点标识", "节点序号"
+			values[0], values[1], values[2], values[3] = "网关资产编号", "节点名称", "当前节点资产编号", "节点序号"
 			values[len(values)-1] = "当前节点 SN（非历史归属）"
 		}
 		if err := writer.Write(values); err != nil {

@@ -28,10 +28,10 @@ func TestV2ExportSeparatesMeasurementsFromStatus(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	must(`INSERT INTO devices(id,name,serial_no,device_type) VALUES($1,'Gateway','GATEWAY-SN','gateway')`, gateway)
+	must(`INSERT INTO devices(id,name,serial_no,device_type,asset_no) VALUES($1,'Gateway','GATEWAY-SN','gateway','LR-70000001')`, gateway)
 	must(`INSERT INTO data_sources(id,name,type,source_family,dsn_secret_ref,created_by) VALUES($1,'v2','http_api','lorawan_v2','env:UNUSED',$2)`, source, admin)
 	must(`INSERT INTO device_source_refs(device_id,data_source_id,adapter_code,external_key) VALUES($1,$2,'lorawan_v2','GATEWAY-SN')`, gateway, source)
-	must(`INSERT INTO lorawan_physical_nodes(data_source_id,external_id,sn,gateway_device_id,node_index) VALUES($1,1,'NODE-SN',$2,1),($1,2,'UNSELECTED-NODE',$2,2)`, source, gateway)
+	must(`INSERT INTO lorawan_physical_nodes(data_source_id,external_id,sn,gateway_device_id,node_index,asset_no) VALUES($1,1,'NODE-SN',$2,1,'LR-70000002'),($1,2,'UNSELECTED-NODE',$2,2,'LR-70000003')`, source, gateway)
 	purposes := map[uuid.UUID]string{}
 	for _, tc := range []struct{ key, purpose, node string }{{"temp", "measurement", "1"}, {"battery", "status", "1"}, {"rssi", "status", "1"}, {"battery", "status", "2"}, {"battery", "status", ""}, {"longitude", "location", ""}} {
 		id := uuid.New()
@@ -87,12 +87,16 @@ func TestV2ExportSeparatesMeasurementsFromStatus(t *testing.T) {
 				body, _ := io.ReadAll(reader)
 				reader.Close()
 				files[f.Name] = string(body)
+				if strings.Contains(f.Name, gateway.String()) || strings.Contains(string(body), gateway.String()) {
+					t.Fatalf("export exposed a gateway UUID in %s", f.Name)
+				}
 			}
-			if _, ok := files["node-1/data.csv"]; ok != tc.data {
+			data, ok := files["LR-70000002/data.csv"]
+			if ok != tc.data {
 				t.Fatal("wrong measurement file selection")
 			}
-			if tc.data && strings.Contains(files["node-1/data.csv"], "battery") {
-				t.Fatal("status leaked into measurements")
+			if tc.data && (strings.Contains(data, "battery") || !strings.Contains(data, "LR-70000001,LR-70000002,1")) {
+				t.Fatalf("wrong measurement contents: %s", data)
 			}
 			status, ok := files["运行状态.csv"]
 			if ok != tc.status {
@@ -110,9 +114,15 @@ func TestV2ExportSeparatesMeasurementsFromStatus(t *testing.T) {
 				if len(rows) != wantRows || (!tc.noNodes && !strings.Contains(status, "NODE-SN")) || !strings.Contains(status, "longitude") || strings.Contains(status, "temp") {
 					t.Fatalf("wrong status wide table %s", status)
 				}
+				if rows[0][0] != "网关资产编号" || rows[0][2] != "当前节点资产编号" || strings.Contains(status, "GATEWAY-SN") {
+					t.Fatalf("wrong status identity columns: %s", status)
+				}
 				for _, row := range rows[1:] {
-					if row[0] != "GATEWAY-SN" || row[4] != "2026-11-01 08:00:00+08:00" && !strings.HasPrefix(row[4], "2026-11-01 08:00:00") {
+					if row[0] != "LR-70000001" || row[4] != "2026-11-01 08:00:00" {
 						t.Fatalf("identity/time lost: %v", row)
+					}
+					if row[3] == "1" && row[2] != "LR-70000002" || row[3] == "" && (row[1] != "" || row[2] != "") {
+						t.Fatalf("wrong node asset number for status row: %v", row)
 					}
 				}
 			}
