@@ -24,9 +24,14 @@ export function telemetryRows(series: TelemetrySeries[]) {
 export type OpsExportOptions = {
   start:string;end:string;format:"zip"|"telemetry_excel"|"telemetry_csv"|"media_zip";
   data:boolean;images:boolean;status?:boolean;nodes:GatewayNode[];carbonNodes:number[];fields:string[];
+  deviceIds?:string[];
 };
 
-export function operationsExportPayload(device:JsonRecord, options:OpsExportOptions): JsonRecord {
+type OpsExportPayload = {
+  resource_type:string;resource_id:string;export_type:string;request_config:JsonRecord;
+};
+
+export function operationsExportPayload(device:JsonRecord, options:OpsExportOptions): OpsExportPayload {
   const id=String(device.id ?? "");
   if (!id || !Number.isFinite(Date.parse(options.start)) || !(Date.parse(options.end)>Date.parse(options.start))) throw new Error("请选择设备和有效时间范围");
   const config:JsonRecord={start_time:options.start,end_time:options.end};
@@ -44,5 +49,5 @@ export function operationsExportPayload(device:JsonRecord, options:OpsExportOpti
     return {resource_type:"device_batch",resource_id:ids[0],export_type:"group_site_zip",request_config:{...config,gateway_id:id,gateway_name:device.name,device_ids:ids,node_targets:options.nodes.map(node=>node.target),include_data:options.data,include_images:options.images,...(device.source_family==="lorawan_v2"?{include_status:!!options.status}:{})}};
   }
   if (device.device_type!=="standalone") throw new Error("该设备请选择 Excel、CSV 或图片包导出");
-  return {resource_type:"device_batch",resource_id:id,export_type:"standard_station_zip",request_config:{...config,device_ids:[id],include_data:options.data,include_images:options.images}};
+  return {resource_type:"device_batch",resource_id:id,export_type:"standard_station_zip",request_config:{...config,device_ids:options.deviceIds??[id],include_data:options.data,include_images:options.images}};
 }
