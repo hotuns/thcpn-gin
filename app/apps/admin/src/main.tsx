@@ -7,6 +7,7 @@ import { BrowserRouter } from "react-router-dom";
 import { AdminAuthProvider } from "@thcpn/auth";
 import { AdminProvider } from "@thcpn/admin-ui";
 import { I18nProvider } from "@thcpn/i18n";
+import "dayjs/locale/zh-cn";
 import "antd/dist/reset.css";
 import "@thcpn/ui/styles.css";
 import "./admin.css";

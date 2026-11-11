@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Eye, FileText, HardDrive, RefreshCw, Search, Wrench } from "lucide-react";
-import { Button, Input, Modal, Select, Space, Table, Tag } from "@thcpn/admin-ui";
+import dayjs from "dayjs";
+import { Button, DatePicker, Input, Modal, Select, Space, Table, Tag } from "@thcpn/admin-ui";
 import { api, formatApiError, type JsonRecord } from "@thcpn/api";
 import { Badge, PageHeader, Panel, StateView } from "@thcpn/ui";
 
-const isoInput = (date: Date) => { const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000); return local.toISOString().slice(0, 16); };
 const displayTime = (value: unknown) => value ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "medium" }).format(new Date(String(value))) : "—";
 const text = (value: unknown, fallback: unknown = "—") => value === undefined || value === null || value === "" ? String(fallback) : String(value);
 const bytes = (value: unknown) => { const size = Number(value || 0); if (size >= 1024 ** 3) return `${(size / 1024 ** 3).toFixed(2)} GB`; if (size >= 1024 ** 2) return `${(size / 1024 ** 2).toFixed(1)} MB`; return `${Math.round(size / 1024)} KB`; };
@@ -13,8 +13,8 @@ const levelColor = (level: unknown) => ({ ERROR: "red", WARN: "orange", INFO: "b
 
 export function AdminLogsPage() {
   const client = useQueryClient();
-  const [start, setStart] = useState(() => isoInput(new Date(Date.now() - 86400000)));
-  const [end, setEnd] = useState(() => isoInput(new Date()));
+  const [start, setStart] = useState(() => dayjs().subtract(24, "hour").startOf("minute"));
+  const [end, setEnd] = useState(() => dayjs().startOf("minute"));
   const [level, setLevel] = useState("");
   const [service, setService] = useState("");
   const [actorId, setActorId] = useState("");
@@ -27,12 +27,12 @@ export function AdminLogsPage() {
   const [feedback, setFeedback] = useState("");
   const [filesOpen, setFilesOpen] = useState(false);
   const [downloading, setDownloading] = useState("");
-  const [filters, setFilters] = useState<JsonRecord>({ start: new Date(start).toISOString(), end: new Date(end).toISOString(), page: 1, page_size: 100 });
+  const [filters, setFilters] = useState<JsonRecord>({ start: start.toISOString(), end: end.toISOString(), page: 1, page_size: 100 });
   const query = useQuery({ queryKey: ["admin", "platform-logs", filters, page], queryFn: () => api.admin.platformLogs({ ...filters, page }) });
   const policy = useQuery({ queryKey: ["admin", "platform-log-policy"], queryFn: api.admin.platformLogPolicy });
   const files = useQuery({ queryKey: ["admin", "platform-log-files"], queryFn: api.admin.platformLogFiles, enabled: filesOpen });
   const rebuild = useMutation({ mutationFn: api.admin.rebuildPlatformLogIndex, onSuccess: async () => { setFeedback("日志索引已重建"); await client.invalidateQueries({ queryKey: ["admin", "platform-logs"] }); }, onError: (error) => setFeedback(formatApiError(error).message) });
-  const search = () => { setPage(1); setFilters({ start: new Date(start).toISOString(), end: new Date(end).toISOString(), level, service, actor_id: actorId.trim(), request_id: requestId.trim(), path: path.trim(), keyword: keyword.trim(), status, page_size: 100 }); };
+  const search = () => { setPage(1); setFilters({ start: start.startOf("minute").toISOString(), end: end.startOf("minute").toISOString(), level, service, actor_id: actorId.trim(), request_id: requestId.trim(), path: path.trim(), keyword: keyword.trim(), status, page_size: 100 }); };
   const p = policy.data ?? {};
   const saveBlob = (blob: Blob, name: string) => { const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = name; anchor.click(); URL.revokeObjectURL(url); };
   const exportFiltered = async () => { setDownloading("export"); try { saveBlob(await api.admin.exportPlatformLogs(filters), "platform-logs.ndjson"); } catch (error) { setFeedback(formatApiError(error).message); } finally { setDownloading(""); } };
@@ -45,8 +45,10 @@ export function AdminLogsPage() {
     </div>
     <Panel className="platform-log-panel">
       <div className="platform-log-filters">
-        <Input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
-        <Input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} />
+        <DatePicker aria-label="开始时间" allowClear={false} value={start} onChange={value => { if (value) setStart(value); }}
+          format="YYYY-MM-DD HH:mm" showTime={{ format: "HH:mm" }} style={{ width: "100%" }} />
+        <DatePicker aria-label="结束时间" allowClear={false} value={end} onChange={value => { if (value) setEnd(value); }}
+          format="YYYY-MM-DD HH:mm" showTime={{ format: "HH:mm" }} style={{ width: "100%" }} />
         <Select allowClear placeholder="全部级别" value={level || undefined} onChange={(value) => setLevel(value ?? "")} options={["ERROR", "WARN", "INFO", "DEBUG"].map((value) => ({ value, label: value }))} />
         <Select allowClear placeholder="全部服务" value={service || undefined} onChange={(value) => setService(value ?? "")} options={[{ value: "api", label: "API" }, { value: "worker", label: "Worker" }]} />
         <Input placeholder="用户 / 管理员 UUID" value={actorId} onChange={(e) => setActorId(e.target.value)} />
