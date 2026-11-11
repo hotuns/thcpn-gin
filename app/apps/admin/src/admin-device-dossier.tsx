@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, App, Button, Card, Cascader, Col, DatePicker, Descriptions, Divider, Drawer, Form, Input, Modal, Row, Select, Space, Tag, Typography } from "antd";
+import { Alert, App, Button, Card, Cascader, Checkbox, Col, DatePicker, Descriptions, Divider, Drawer, Form, Input, Modal, Row, Select, Space, Tag, Typography } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import { api, formatApiError, type DeviceInstallation, type DeviceInstallationInput, type JsonRecord, type ListResponse } from "@thcpn/api";
 import { opsTime } from "./admin-device-ops-model";
@@ -21,6 +21,8 @@ const deliveryLabels = {
 } as const;
 type DeliveryKey = keyof typeof deliveryLabels;
 type DeliveryDraft = Partial<Record<DeliveryKey, string>>;
+type DossierCopy = { delivery: DeliveryDraft; location?: string };
+const copyLabel = "从其他设备沿用交付信息和地址";
 
 function installationFields(record: DeviceInstallation) {
   return {
@@ -75,6 +77,7 @@ export function AdminDeviceDossier({ deviceId, lifecycle }: { deviceId: string; 
       title={<Space wrap>安装与交付档案{status}</Space>}
       loading={data.isLoading}
       extra={record && <Space wrap>
+        <Button onClick={() => open("copy")}>{copyLabel}</Button>
         <Button type={lifecycle === "inbound" && record.installed_on ? "default" : "primary"} onClick={() => open("edit")}>{hasDossier ? "编辑档案" : "填写档案"}</Button>
         {lifecycle === "inbound" && <Button type={record.installed_on ? "primary" : "default"} onClick={() => open("complete")}>完成安装</Button>}
       </Space>}
@@ -91,7 +94,7 @@ export function AdminDeviceDossier({ deviceId, lifecycle }: { deviceId: string; 
               { key: "retirement", label: "退役原因", children: display(record.retirement_reason) },
             ] : []),
           ]}/>
-          <Descriptions title="交付与运维" extra={<Button size="small" onClick={() => open("copy")}>从其他设备沿用交付信息</Button>} column={{ xs: 1, sm: 2, lg: 2 }} size="small" bordered items={[
+          <Descriptions title="交付与运维" column={{ xs: 1, sm: 2, lg: 2 }} size="small" bordered items={[
             { key: "organization", label: "所属单位", children: display(record.organization) },
             { key: "project", label: "项目名称", children: display(record.project_name) },
             { key: "contact", label: "联系人", children: display(record.contact_name) },
@@ -153,6 +156,7 @@ function DossierEditor({ record, pending, error, copyInitiallyOpen, onSave }: {
 }) {
   const [form] = Form.useForm<DossierFields>();
   const [copyOpen, setCopyOpen] = useState(copyInitiallyOpen);
+  const [copiedAddress, setCopiedAddress] = useState<string>();
   const { message } = App.useApp();
   const address = splitInstallationAddress(record.location_text);
   const initialValues: DossierFields = {
@@ -162,9 +166,12 @@ function DossierEditor({ record, pending, error, copyInitiallyOpen, onSave }: {
     description: record.description ?? "",
   };
   return <Form<DossierFields> id="installation-dossier-form" form={form} layout="vertical" disabled={pending} initialValues={initialValues} onFinish={values => {
-    // Keep historical free text as stored unless the operator edits one of the address fields.
-    const addressChanged = (values.region ?? []).join(",") !== address.region.join(",") || (values.detail ?? "") !== address.detail;
-    const location = addressChanged ? formatInstallationAddress(values.region, values.detail) : record.location_text ?? "";
+    // Keep the original or copied address as stored unless the operator edits it.
+    const baseAddress = copiedAddress ?? record.location_text ?? "";
+    const baseFields = copiedAddress === undefined ? address : splitInstallationAddress(copiedAddress);
+    const addressEdited = (values.region ?? []).join(",") !== baseFields.region.join(",") || (values.detail ?? "") !== baseFields.detail;
+    const location = addressEdited ? formatInstallationAddress(values.region, values.detail) : baseAddress;
+    const addressChanged = location !== (record.location_text ?? "");
     const description = values.description?.trim() ?? "";
     if (addressChanged && Array.from(location).length > 500) {
       form.setFields([{ name: "detail", errors: ["省市区县与详细地址合计最多 500 个字符"] }]);
@@ -181,12 +188,16 @@ function DossierEditor({ record, pending, error, copyInitiallyOpen, onSave }: {
     });
   }}>
     <Space orientation="vertical" style={{ display: "flex", marginBottom: 24 }}>
-      <Button aria-expanded={copyOpen} onClick={() => setCopyOpen(!copyOpen)}>{copyOpen ? "收起交付信息选择" : "从其他设备沿用交付信息"}</Button>
-      {copyOpen && <DeliveryInfoSource record={record} onApply={values => {
-        form.setFieldsValue(values);
+      <Button aria-expanded={copyOpen} onClick={() => setCopyOpen(!copyOpen)}>{copyOpen ? "收起来源设备选择" : copyLabel}</Button>
+      {copyOpen && <DossierSource record={record} onApply={({ delivery, location }) => {
+        form.setFieldsValue(delivery);
+        if (location !== undefined) {
+          setCopiedAddress(location);
+          form.setFieldsValue(splitInstallationAddress(location));
+        }
         setCopyOpen(false);
-        requestAnimationFrame(() => form.scrollToField("organization", { block: "nearest" }));
-        void message.success("已带入交付信息，保存档案后生效");
+        requestAnimationFrame(() => form.scrollToField(location !== undefined ? "region" : "organization", { block: "nearest" }));
+        void message.success("已带入所选内容，保存档案后生效");
       }} />}
     </Space>
     <Form.Item name="installed_on" label="安装日期"><DatePicker style={{ width: "100%" }}/></Form.Item>
@@ -210,11 +221,13 @@ function DossierEditor({ record, pending, error, copyInitiallyOpen, onSave }: {
   </Form>;
 }
 
-function DeliveryInfoSource({ record, onApply }: {
+function DossierSource({ record, onApply }: {
   record: DeviceInstallation;
-  onApply: (fields: DeliveryDraft) => void;
+  onApply: (fields: DossierCopy) => void;
 }) {
   const [sourceId, setSourceId] = useState<string>();
+  const [copyDelivery, setCopyDelivery] = useState(true);
+  const [copyAddress, setCopyAddress] = useState(true);
   const devices = useQuery({ queryKey: ["admin", "devices"], queryFn: api.admin.devices, staleTime: 30_000 });
   const source = useQuery({
     queryKey: ["admin", "device", sourceId, "installation"],
@@ -236,7 +249,15 @@ function DeliveryInfoSource({ record, onApply }: {
       fields.contact_phone = contact_phone?.trim() ?? "";
     }
   }
-  const preview = (Object.keys(deliveryLabels) as DeliveryKey[]).filter(key => fields[key] !== undefined);
+  const deliveryPreview = (Object.keys(deliveryLabels) as DeliveryKey[]).filter(key => fields[key] !== undefined).map(key => ({
+    key, label: deliveryLabels[key], children: display(fields[key]),
+  }));
+  const location = source.data?.location_text?.trim() ? source.data.location_text : undefined;
+  const preview = location ? [
+    ...deliveryPreview, { key: "address", label: "安装地址", span: "filled" as const, children: display(location) },
+  ] : deliveryPreview;
+  const includeDelivery = copyDelivery && deliveryPreview.length > 0;
+  const includeAddress = copyAddress && location !== undefined;
   const error = devices.error ?? source.error;
 
   return <Space orientation="vertical" style={{ width: "100%" }}>
@@ -249,15 +270,20 @@ function DeliveryInfoSource({ record, onApply }: {
       loading={devices.isLoading}
       options={options}
       value={sourceId}
-      onChange={setSourceId}
+      onChange={value => { setSourceId(value); setCopyDelivery(true); setCopyAddress(true); }}
       style={{ width: "100%" }}
     />
-    {error ? <Alert type="error" title="交付信息读取失败" description={formatApiError(error).message}
+    {error ? <Alert type="error" title="来源档案读取失败" description={formatApiError(error).message}
       action={<Button size="small" onClick={() => void (devices.error ? devices.refetch() : source.refetch())}>重试</Button>} />
-      : preview.length > 0 ? <Descriptions size="small" bordered column={{ xs: 1, sm: 2 }} items={preview.map(key => ({
-        key, label: deliveryLabels[key], children: display(fields[key]),
-      }))} /> : source.data && <Alert type="info" title="这台设备没有可沿用的交付信息" />}
-    <Button disabled={!preview.length || !!error} loading={!!sourceId && source.isLoading} onClick={() => onApply(fields)}>带入表单</Button>
+      : preview.length > 0 ? <>
+        <Descriptions size="small" bordered column={{ xs: 1, sm: 2 }} items={preview}/>
+        <Space wrap>
+          {deliveryPreview.length > 0 && <Checkbox checked={copyDelivery} onChange={event => setCopyDelivery(event.target.checked)}>交付信息</Checkbox>}
+          {location && <Checkbox checked={copyAddress} onChange={event => setCopyAddress(event.target.checked)}>安装地址</Checkbox>}
+        </Space>
+      </> : source.data && <Alert type="info" title="这台设备没有可沿用的交付信息或安装地址" />}
+    <Button disabled={(!includeDelivery && !includeAddress) || !!error} loading={!!sourceId && source.isLoading}
+      onClick={() => onApply({ delivery: includeDelivery ? fields : {}, location: includeAddress ? location : undefined })}>带入表单</Button>
   </Space>;
 }
 
