@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/csv"
 	"sort"
-	"strconv"
 	"time"
 )
 
@@ -130,14 +129,7 @@ func gatewayWideRows(series []telemetrySeries) [][]xlsxCell {
 	return result
 }
 func xlsxGatewayWideSheet(series []telemetrySeries) string {
-	var buf bytes.Buffer
-	buf.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" state="frozen"/></sheetView></sheetViews><sheetData>`)
-	rows := gatewayWideRows(series)
-	for i, row := range rows {
-		writeXLSXRow(&buf, i+1, row)
-	}
-	buf.WriteString(`</sheetData><autoFilter ref="A1:` + xlsxColumnName(len(rows[0])) + strconv.Itoa(len(rows)) + `"/></worksheet>`)
-	return buf.String()
+	return xlsxTabularSheet(gatewayWideRows(series))
 }
 func renderGatewayWideCSV(series []telemetrySeries) ([]byte, error) {
 	var buf bytes.Buffer

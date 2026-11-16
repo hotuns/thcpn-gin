@@ -445,6 +445,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	admin.GET("/cameras/:device_id", cameraHandler.AdminGet)
 	admin.PATCH("/cameras/:device_id", cameraHandler.AdminUpdate)
 	admin.GET("/devices", deviceHandler.AdminListSystemAssets)
+	admin.POST("/devices/export", exportHandler.AdminDownloadDeviceInventory)
 	admin.GET("/device-map", deviceClassificationHandler.AdminMap)
 	inspectionService := &inspection.Service{DB: deps.Postgres}
 	admin.GET("/device-inspection", inspectionService.Overview)

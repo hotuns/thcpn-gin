@@ -3,30 +3,60 @@ package export
 import (
 	"archive/zip"
 	"bytes"
+	"fmt"
 	"math"
 	"strconv"
 	"time"
 )
 
 func renderTelemetryXLSX(series []telemetrySeries) ([]byte, error) {
+	return renderXLSX(xlsxSheet{name: "telemetry", body: xlsxTelemetrySheetXML(series)})
+}
+
+type xlsxSheet struct {
+	name string
+	body string
+}
+
+func renderXLSX(sheets ...xlsxSheet) ([]byte, error) {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
+	var types, workbook, rels bytes.Buffer
+	types.WriteString(xlsxContentTypesStart)
+	workbook.WriteString(xlsxWorkbookStart)
+	rels.WriteString(xlsxWorkbookRelsStart)
+	for i, sheet := range sheets {
+		n := i + 1
+		fmt.Fprintf(&types, `<Override PartName="/xl/worksheets/sheet%d.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`, n)
+		workbook.WriteString(`<sheet name="`)
+		writeXMLText(&workbook, sheet.name)
+		fmt.Fprintf(&workbook, `" sheetId="%d" r:id="rId%d"/>`, n, n)
+		fmt.Fprintf(&rels, `<Relationship Id="rId%d" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet%d.xml"/>`, n, n)
+	}
+	types.WriteString(`</Types>`)
+	workbook.WriteString(`</sheets></workbook>`)
+	fmt.Fprintf(&rels, `<Relationship Id="rId%d" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`, len(sheets)+1)
 
 	files := []struct {
 		name string
 		body []byte
 	}{
-		{name: "[Content_Types].xml", body: []byte(xlsxContentTypesXML)},
+		{name: "[Content_Types].xml", body: types.Bytes()},
 		{name: "_rels/.rels", body: []byte(xlsxRootRelsXML)},
 		{name: "docProps/app.xml", body: []byte(xlsxAppXML)},
 		{name: "docProps/core.xml", body: []byte(xlsxCoreXML(time.Now().UTC()))},
-		{name: "xl/workbook.xml", body: []byte(xlsxWorkbookXML)},
-		{name: "xl/_rels/workbook.xml.rels", body: []byte(xlsxWorkbookRelsXML)},
+		{name: "xl/workbook.xml", body: workbook.Bytes()},
+		{name: "xl/_rels/workbook.xml.rels", body: rels.Bytes()},
 		{name: "xl/styles.xml", body: []byte(xlsxStylesXML)},
-		{name: "xl/worksheets/sheet1.xml", body: []byte(xlsxTelemetrySheetXML(series))},
 	}
 	for _, file := range files {
 		if err := writeBytesFile(zw, file.name, file.body); err != nil {
+			_ = zw.Close()
+			return nil, err
+		}
+	}
+	for i, sheet := range sheets {
+		if err := writeBytesFile(zw, fmt.Sprintf("xl/worksheets/sheet%d.xml", i+1), []byte(sheet.body)); err != nil {
 			_ = zw.Close()
 			return nil, err
 		}
@@ -39,6 +69,24 @@ func renderTelemetryXLSX(series []telemetrySeries) ([]byte, error) {
 
 func xlsxTelemetrySheetXML(series []telemetrySeries) string {
 	return xlsxGatewayWideSheet(series)
+}
+
+func xlsxTabularSheet(rows [][]xlsxCell, columnWidths ...int) string {
+	var buf bytes.Buffer
+	buf.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" state="frozen"/></sheetView></sheetViews>`)
+	if len(columnWidths) > 0 {
+		buf.WriteString(`<cols>`)
+		for i, width := range columnWidths {
+			fmt.Fprintf(&buf, `<col min="%d" max="%d" width="%d" customWidth="1"/>`, i+1, i+1, width)
+		}
+		buf.WriteString(`</cols>`)
+	}
+	buf.WriteString(`<sheetData>`)
+	for i, row := range rows {
+		writeXLSXRow(&buf, i+1, row)
+	}
+	buf.WriteString(`</sheetData><autoFilter ref="A1:` + xlsxColumnName(len(rows[0])) + strconv.Itoa(len(rows)) + `"/></worksheet>`)
+	return buf.String()
 }
 
 type xlsxCell struct {
@@ -149,16 +197,14 @@ func xlsxCoreXML(now time.Time) string {
 		`</cp:coreProperties>`
 }
 
-const xlsxContentTypesXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+const xlsxContentTypesStart = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
   <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
-</Types>`
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>`
 
 const xlsxRootRelsXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -172,18 +218,12 @@ const xlsxAppXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   <Application>IES Watch</Application>
 </Properties>`
 
-const xlsxWorkbookXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+const xlsxWorkbookStart = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <sheets>
-    <sheet name="telemetry" sheetId="1" r:id="rId1"/>
-  </sheets>
-</workbook>`
+  <sheets>`
 
-const xlsxWorkbookRelsXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-</Relationships>`
+const xlsxWorkbookRelsStart = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`
 
 const xlsxStylesXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">

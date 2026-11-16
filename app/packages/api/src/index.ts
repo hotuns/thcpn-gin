@@ -484,15 +484,15 @@ async function anonymousRequest<T>(path: string, init: RequestInit = {}): Promis
   return body as T;
 }
 
-async function download(path: string): Promise<Blob> {
-  const headers = new Headers();
+async function download(path: string, init: RequestInit = {}): Promise<Blob> {
+  const headers = new Headers(init.headers);
   const storage = isAdminContext() ? adminAuthStorage : authStorage;
   const tokens = storage.read();
   if (tokens?.accessToken)
     headers.set("Authorization", `Bearer ${tokens.accessToken}`);
   let response: Response;
   try {
-    response = await fetch(`${baseUrl}${path}`, { headers });
+    response = await fetch(`${baseUrl}${path}`, { ...init, headers });
   } catch (error) {
     notifyApiError(error);
     throw error;
@@ -1438,6 +1438,9 @@ export const api = {
       request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/infos${queryString(input as Record<string, string | number | boolean>)}`),
     devices: () =>
       request<ListResponse<Record<string, unknown>>>("/api/v1/admin/devices"),
+    downloadDeviceInventory: (deviceIds: string[]) => download("/api/v1/admin/devices/export", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ device_ids: deviceIds }),
+    }),
     firmwareReleases: (filters: Record<string, string | number | boolean | undefined> = {}) =>
       request<ListResponse<FirmwareRelease>>(`/api/v1/admin/firmware-releases${queryString(filters)}`),
     firmwareRelease: (id: string) =>

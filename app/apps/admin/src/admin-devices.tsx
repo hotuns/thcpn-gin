@@ -6,6 +6,7 @@ import { LoRaGatewayStatus } from "./lorawan-gateway-status";
 import { confirmManualSync } from "./manual-sync-confirm";
 import { LoRaWANGatewayDetailsEditor } from "./lorawan-gateway-details";
 import { AdminDeviceBulkEdit } from "./admin-device-bulk-edit";
+import { AdminDeviceInventoryExport } from "./admin-device-inventory-export";
 import { invalidateNodeNames } from "@thcpn/workspace";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -251,6 +252,8 @@ export function AdminDevicesPage() {
     const keys = new Set(selectedRowKeys.map(String));
     return topLevelRows.filter((item) => keys.has(value(item.id, "")));
   }, [selectedRowKeys, topLevelRows]);
+  const selectedInventoryRows = selectedRows.filter(item => matchesAdminDeviceCategory(item, category, categoryOf(item)));
+  const inventoryRows = selectedInventoryRows.length ? selectedInventoryRows : rows;
 
   const open = (next: Exclude<Mode, null>, record: JsonRecord) => {
     if (next === "firmware") { setFirmwareDevice(record); return; }
@@ -660,7 +663,12 @@ export function AdminDevicesPage() {
         eyebrow="System / devices"
         title="设备列表"
         description="按设备体系分类维护资产与节点。"
-        actions={<Space><Button type="primary" onClick={openDeviceCreate}>创建设备</Button><Button onClick={() => void query.refetch()}>刷新</Button></Space>}
+        actions={<Space wrap>
+          <Button type="primary" onClick={openDeviceCreate}>创建设备</Button>
+          <AdminDeviceInventoryExport ids={inventoryRows.map(item => String(item.id))} selected={selectedInventoryRows.length > 0}
+            includesV2Gateways={category === "lorawan_v2"} disabled={query.isLoading || Boolean(query.error)} />
+          <Button onClick={() => void query.refetch()}>刷新</Button>
+        </Space>}
       />
       <Card>
         {categoryTabs}
