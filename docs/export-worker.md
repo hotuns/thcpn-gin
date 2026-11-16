@@ -10,7 +10,7 @@
 - `EXPORT_MIN_FREE_MB`：默认 256；创建前和写入期间检查剩余空间。检查不预留整个 ZIP 所需空间，也不能保证其他进程不占用磁盘；不足时明确失败。
 - `EXPORT_MAX_CONCURRENT_JOBS`：每个 Worker 默认仅执行一个导出；其他已领取的队列消息等待容量后才将数据库任务标为 running。多副本总并发为各副本之和。
 
-既有生产服务器不应直接覆盖主 Compose 文件。可将 `scripts/deploy/docker-compose.release.yml` 与 `Dockerfile.frontend-prebuilt` 复制到服务器 `.deploy/`，命令追加 `-f .deploy/docker-compose.release.yml`；该 overlay 添加 Worker 临时卷，并使用本地从提交版本构建、放在 `.deploy/frontend/platform` 和 `.deploy/frontend/admin` 的静态产物构建前端镜像，避免在空间紧张的服务器执行 npm 安装。保留现有 `.env`、主 Compose 与后端 prebuilt override。之后的部署、重建和回滚均应继续带上此 overlay。
+既有生产服务器不应直接覆盖主 Compose 文件。将 `scripts/deploy/docker-compose.release.yml` 复制到服务器 `.deploy/`，命令追加 `-f .deploy/docker-compose.release.yml`；该 overlay 添加 Worker 临时卷，并通过 `legacy-frontend` profile 默认禁用旧 Nginx 前端。两套前端由主机 Caddy 直接托管，发布流程见[域名部署文档](deployment-domain.md#caddy-直接托管前后台)。保留现有 `.env`、主 Compose 与后端 prebuilt override。之后的部署、重建和回滚均应继续带上此 overlay，并按运行值传入 `EXPORT_MAX_CONCURRENT_JOBS`，避免 overlay 默认值改变现有导出并发。
 
 ## 状态与进度
 

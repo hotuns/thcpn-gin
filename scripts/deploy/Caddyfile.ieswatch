@@ -2,13 +2,41 @@
 # insitueco.com / www.insitueco.com blocks; preserve every unrelated service.
 # New domains use TLS-ALPN-01 on public TCP 443 because HTTP-01 is blocked
 # upstream with HTTP 403. Caddy still manages issuance and renewal.
+(ieswatch_frontend) {
+	root * {$IESWATCH_WEB_ROOT:/srv/ieswatch/current}
+	request_body {
+		max_size 10MiB
+	}
+
+	@api path /api /api/* /healthz /readyz
+	handle @api {
+		reverse_proxy {$IESWATCH_API_UPSTREAM:127.0.0.1:18081} {
+			header_up X-Real-IP {remote_host}
+			transport http {
+				response_header_timeout 1800s
+				read_timeout 1800s
+			}
+		}
+	}
+
+	redir /admin /admin/?{query} 308
+	handle /admin/* {
+		try_files {path} /admin/index.html
+		file_server
+	}
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+}
+
 ieswatch.com {
 	tls {
 		issuer acme {
 			disable_http_challenge
 		}
 	}
-	reverse_proxy 127.0.0.1:5173
+	import ieswatch_frontend
 }
 
 www.ieswatch.com {

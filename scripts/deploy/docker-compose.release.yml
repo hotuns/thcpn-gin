@@ -1,5 +1,6 @@
 # Optional production overlay; merge after the existing production/prebuilt files.
-# Frontend distributions must be built from the release commit into .deploy/frontend.
+# Host Caddy serves frontend distributions from /srv/ieswatch/current.
+# The legacy frontend profile is only for explicit rollback to nginx.
 services:
   worker:
     environment:
@@ -9,10 +10,12 @@ services:
     volumes:
       - export_tmp:/var/lib/thcpn/export-tmp
   platform:
+    profiles: ["legacy-frontend"]
     build:
       dockerfile: .deploy/Dockerfile.frontend-prebuilt
       target: platform
   admin:
+    profiles: ["legacy-frontend"]
     build:
       dockerfile: .deploy/Dockerfile.frontend-prebuilt
       target: admin

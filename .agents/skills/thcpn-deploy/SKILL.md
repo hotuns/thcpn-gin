@@ -7,6 +7,17 @@ description: 提交并部署 thcpn-gin 原位生态云项目到既有 Docker Com
 
 用于本仓库已有服务器。用户只要求提交时，仅提交；只要求检查时，执行只读检查；要求提交并部署时可继续推送和上线。技能本身不授权部署其他项目、清理用户文件、重置账号或更改生产配置。
 
+## 生产入口：Caddy 静态托管
+
+当前生产使用主机 Caddy 直接托管前后台。以下规则替代本文后续所有生产前端 Nginx 构建、启动、5173/5174 检查及 reload 指令；独立 Docker 部署仍可使用旧方式。
+
+- 前端根为 `/srv/ieswatch/current`，后台位于 `current/admin/`，API 直连 `127.0.0.1:18081`。持久配置仍为 `/etc/caddy/Caddyfile`，模板在 `scripts/deploy/Caddyfile.ieswatch`。
+- 继续使用三个 Compose 文件，包括 `.deploy/docker-compose.release.yml`，保留 Worker 卷及运行中的 EXPORT_*。release overlay 将 `platform/admin` 放入 `legacy-frontend` profile，默认不运行 Nginx；常规部署不要显式启动这两项服务。
+- 从已提交源码构建两套前端，保留生产 VITE_*，仅上传 dist 到 `.deploy/frontend/platform` 和 `.deploy/frontend/admin`。运行 `bash scripts/deploy/publish-frontend.sh <完整SHA> .deploy/frontend`，它规范公开文件权限并原子切换 `current`；普通静态发布不需要 reload Caddy。
+- 首次切换及入口配置变更遵循 `docs/deployment-domain.md`：备份完整主机 Caddyfile、overlay、版本标记及旧前端镜像；运行 `python3 scripts/deploy/test-caddy.py`，validate 合并配置，持久安装后 reload，保留其他站点。验证后再停止并删除旧前端容器，不执行 compose down。
+- 验证前后台登录与深层路径、静态资源内容、健康接口，并执行 `python3 scripts/deploy/check-login-proxy.py --base https://ieswatch.com`。前端发布成功后记录 platform/admin 标记，入口变更成功后记录 `.deploy/caddy-deployed-commit`；后端没更新时不改 `.deploy/deployed-commit`。
+- 前端回滚通过 `/srv/ieswatch/current` 原子切回已有 release；首次迁移回滚先恢复旧前端容器，再恢复原 Caddyfile。不存在日常 Nginx DNS 刷新步骤。
+
 ## 已验证的环境
 
 - 仓库通常位于 /Users/hotuns/code/thcpn-gin；用 git rev-parse 确认实际路径。

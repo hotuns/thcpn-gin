@@ -13,6 +13,34 @@
 - 保存不会自动修改 DNS、证书、代理规则、天地图 Token 白名单或设备固件配置；先使新域名可访问，再切换生成链接的地址。
 - 已经发出的邮件和印刷二维码不能重写，因此需要保留旧域名跳转。浏览器登录信息按域名隔离，新域名首次使用需要重新登录。
 
+## Caddy 直接托管前后台
+
+生产入口使用主机 Caddy，不经过 Nginx 容器：
+
+- `/srv/ieswatch/current/index.html` 和同目录资源为用户端；`/admin/` 对应 `current/admin/`。两套应用各自回退到自己的 `index.html`，支持直接打开及刷新深层页面。
+- `/api`、`/api/*`、`/healthz`、`/readyz` 直接转发至 `127.0.0.1:18081`，保留方法、查询参数、认证头和响应。Caddy 设置转发协议、主机和客户端 IP；保留请求体 10 MiB 上限及 API 1800 秒响应头/读取超时。
+- `/admin` 跳转到 `/admin/` 并保留查询参数。主域名、旧域名跳转与 TLS 验证方式不变。
+- `scripts/deploy/docker-compose.release.yml` 将 `platform`、`admin` 放入 `legacy-frontend` profile；默认启动只运行后端依赖。不要在日常更新中显式启动这些前端服务。
+
+### 首次切换
+
+1. 从待发布的已提交版本 `git archive` 导出源码，在 `app` 执行 `npm ci`、`npm run generate:api` 和两个 workspace 的 build。构建时保留生产 `VITE_TIANDITU_TOKEN`、`VITE_PLATFORM_URL`，不要输出或提交密钥。
+2. 将两个 `dist/` 的内容上传至 `.deploy/frontend/platform/`、`.deploy/frontend/admin/`。由管理员一次性创建 `/srv/ieswatch/releases`，使部署账号可写、Caddy 可遍历（目录 `0755`）；例如 `sudo install -d -o hotuns -g hotuns -m 755 /srv/ieswatch /srv/ieswatch/releases`。只将公开静态产物放入该目录。
+3. 备份完整 `/etc/caddy/Caddyfile`、原 release overlay、前端版本标记和镜像。在运行目录执行 `bash scripts/deploy/publish-frontend.sh <完整提交SHA> .deploy/frontend`。脚本建立 `releases/<SHA>/`，设置目录 `0755`、文件 `0644`，再原子切换 `current`。
+4. 合并 [Caddy 配置](../scripts/deploy/Caddyfile.ieswatch) 的 `ieswatch_frontend` snippet 与主站块，保留其他站点。默认静态根为 `/srv/ieswatch/current`，默认 API 地址为 `127.0.0.1:18081`；测试可用 `IESWATCH_WEB_ROOT` 和 `IESWATCH_API_UPSTREAM` 覆盖。先运行 `python3 scripts/deploy/test-caddy.py`，它只启动临时 loopback 服务，验证页面回退、资源、API、上传/下载和发布切换。
+5. 对合并后的文件执行 `caddy validate --config <候选文件> --adapter caddyfile`；安装到 `/etc/caddy/Caddyfile` 后执行 `caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile`。权限受限时由管理员完成持久文件安装；不能只更新内存配置而留下重启会恢复的旧文件。
+6. 检查用户端、后台的登录页和深层路径，比较线上 JS/CSS 与发布产物，检查 `/healthz`、`/readyz`，执行 `python3 scripts/deploy/check-login-proxy.py --base https://ieswatch.com`。确认匿名上传/导出接口仍拒绝未授权访问，旧域名仍保留路径与查询跳转。
+7. 验证成功后执行 `docker compose -f docker-compose.yml -f .deploy/docker-compose.prebuilt.yml -f .deploy/docker-compose.release.yml stop platform admin`，再用同一组文件执行 `rm -f platform admin` 删除已停止容器。此时 `5173`、`5174` 不再监听。不要执行 `compose down`，不需要重启 API、Worker、数据库或采集服务。
+8. 验证公网仍正常后，记录 `.deploy/platform-deployed-commit`、`.deploy/admin-deployed-commit` 及 `.deploy/caddy-deployed-commit`；后端未变时保留原 `.deploy/deployed-commit`。
+
+### 后续更新与回滚
+
+前端更新只需从提交构建、上传后再次运行 `publish-frontend.sh`。脚本输出上一版链接，保留旧版本目录；正常发布不需 reload Caddy。API 重建后仍绑定同一 loopback 端口，不依赖前端容器中的 DNS 缓存。
+
+静态文件回滚可在 `/srv/ieswatch` 中执行 `ln -s releases/<旧SHA> current.rollback && mv -Tf current.rollback current`，随后验证页面与资源并恢复两套前端版本标记。首次迁移若需回滚到 Nginx，先使用三个 Compose 文件和 `--profile legacy-frontend up -d --no-deps --no-build platform admin` 恢复原前端镜像，再恢复备份的 Caddyfile 并 validate/reload；验证后恢复原 overlay 和版本标记。不要回滚数据库或重启无关服务。
+
+配置依据：[Caddy SPA 路由](https://caddyserver.com/docs/caddyfile/patterns#single-page-apps-spas)、[请求体限制](https://caddyserver.com/docs/caddyfile/directives/request_body)、[反向代理头与超时](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)。
+
 ## 切换前只读核查（2026-11-07）
 
 - `ieswatch.com` 和 `www.ieswatch.com` 在服务器 DNS 查询中均指向现有服务器 `8.131.103.198`。

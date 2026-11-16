@@ -16,7 +16,7 @@ IES Watch 生态感知云平台是基于野外原位站点感知数据的生态�
 | `postgres` | 平台主数据库 | `5432` |
 | `redis` | 队列与缓存 | `6379` |
 
-## Docker Compose 部署
+## Docker Compose 独立部署（可选）
 
 部署以 Docker Compose 为主。服务器需要安装 Docker Engine 与 Compose v2。
 
@@ -88,47 +88,35 @@ docker compose down -v
 
 ### 4. 当前生产服务器更新流程
 
-生产服务器 `8.131.103.198` 的部署目录为 `/home/hotuns/thcpn-gin`，使用服务器上的 `.deploy/docker-compose.prebuilt.yml` 加载预编译的 Go 二进制。同步代码和 `.deploy` 产物后，在服务器执行：
+生产服务器 `8.131.103.198` 的部署目录为 `/home/hotuns/thcpn-gin`。主机 Caddy 直接托管 `/srv/ieswatch/current` 中的用户端和 `/admin/` 后台，并将 `/api/*`、`/healthz`、`/readyz` 转发到 `127.0.0.1:18081`。生产无需前端容器；`5173`、`5174` 仅用于上面的独立部署或本地开发。
+
+后端部署继续使用三个 Compose 文件，并保留 Worker 当前导出并发配置：
 
 ```bash
 cd /home/hotuns/thcpn-gin
-
-# 更新后端服务
-docker compose \
+EXPORT_MAX_CONCURRENT_JOBS=3 docker compose \
   -f docker-compose.yml \
   -f .deploy/docker-compose.prebuilt.yml \
-  up -d --build api worker
-
-# API 容器重建后必须重启两个 Nginx 前端，刷新 api 服务地址
-docker compose restart platform admin
+  -f .deploy/docker-compose.release.yml \
+  up -d --no-deps --build api worker
 ```
 
-如果本次包含前端改动，则直接重建前端，并同时完成 API 地址刷新：
+前端从已提交的版本构建，分别上传到 `.deploy/frontend/platform` 和 `.deploy/frontend/admin`，再发布：
 
 ```bash
-docker compose \
-  -f docker-compose.yml \
-  -f .deploy/docker-compose.prebuilt.yml \
-  up -d --build platform admin
-```
-
-部署完成后必须验证容器状态、API 直连和公网反向代理：
-
-```bash
-docker compose ps
-curl -fsS http://127.0.0.1:18081/healthz
+bash scripts/deploy/publish-frontend.sh <完整提交SHA> .deploy/frontend
+python3 scripts/deploy/check-login-proxy.py --base https://ieswatch.com
 curl -fsS https://ieswatch.com/healthz
-curl -sS -o /tmp/login.out -w '%{http_code}\n' \
-  -X POST https://ieswatch.com/api/v1/auth/password/login \
-  -H 'Content-Type: application/json' \
-  --data '{}'
-cat /tmp/login.out
+curl -fsS https://ieswatch.com/readyz
 ```
 
-健康检查应返回 `200`。空参数登录应返回业务校验错误 `400`，如果返回 `502`，先检查 `platform`、`admin` 和 `api` 日志，不要把部署视为完成：
+发布脚本保留每版静态文件，通过 `current` 软链接原子切换，普通前端发布不需要重启 Caddy 或后端。首次切换、权限、配置验证及回滚步骤见[域名部署与迁移](docs/deployment-domain.md#caddy-直接托管前后台)。生产 release overlay 默认禁用 `platform` 和 `admin`；`legacy-frontend` profile 只保留给明确的 Nginx 回滚。
+
+空参数登录应返回 JSON `400`，未登录身份接口应返回 JSON `401`；不能仅凭首页 `200` 判定部署完成。出现入口问题时，检查 Caddy 运行日志及 API 日志：
 
 ```bash
-docker compose logs --since=5m platform admin api
+journalctl -u caddy --since "10 minutes ago"
+docker compose logs --since=10m api
 ```
 
 ## 本地开发
