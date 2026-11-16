@@ -5,7 +5,7 @@ import { useAdminMobile } from "./admin-mobile";
 import { nodeHistoryNotice } from "@thcpn/api";
 import { Tooltip } from "antd";
 import { useSearchParams } from "react-router-dom";
-import { nodeOptionLabel } from "@thcpn/api";
+import { isCurrentGatewayNode, nodeOptionLabel } from "@thcpn/api";
 import { adminFullTelemetry } from "./admin-full-telemetry";
 import { isMeasurement, streamPurpose } from "@thcpn/api";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
@@ -37,8 +37,8 @@ export function AdminDeviceData({device,nodeKey,onNodeChange,onExport}:{device:J
   const [nodeScope,setNodeScope]=useState(params.get("node_scope")==="history"?"history":"bound");
 
   const nodes=useQuery({queryKey:["admin","device",id,"nodes","operations","all"],queryFn:()=>api.admin.deviceNodes(id,"all"),enabled:gateway});
-  const visibleNodes=(nodes.data?.items??[]).filter(node=>!lora || (nodeScope==="bound"?node.bound:!node.bound));
-  useEffect(()=>{if(!lora)return;const selected=nodes.data?.items.find(node=>node.key===nodeKey);setNodeScope(selected ? selected.bound?"bound":"history" : params.get("node_scope")==="history"?"history":"bound");},[nodes.data,nodeKey,lora,params]);
+  const visibleNodes=(nodes.data?.items??[]).filter(node=>!lora || (nodeScope==="bound"?isCurrentGatewayNode(node):!isCurrentGatewayNode(node)));
+  useEffect(()=>{if(!lora)return;const selected=nodes.data?.items.find(node=>node.key===nodeKey);setNodeScope(selected ? isCurrentGatewayNode(selected)?"bound":"history" : params.get("node_scope")==="history"?"history":"bound");},[nodes.data,nodeKey,lora,params]);
   const selectedNodeKey=lora&&purpose==="measurement"&&!nodeKey ? visibleNodes[0]?.key??"" : nodeKey;
   const node=nodes.data?.items.find(item=>item.key===selectedNodeKey);
   const selectionTarget=`${id}:${selectedNodeKey}:${purpose}`;
@@ -68,11 +68,11 @@ export function AdminDeviceData({device,nodeKey,onNodeChange,onExport}:{device:J
   const errors=[streams.error,nodes.error,telemetry.error].filter(Boolean);
   const pointWarnings=(telemetry.data?.series??[]).flatMap(series=>series.warnings?.map(warning=>`${series.name}：${warning.message}`)??[]);
   const partial=telemetry.data?.series.some(series=>!series.complete);
-  return <Card title={purpose==="status"?"运行状态":"设备与节点数据"} extra={<Space>{lora&&node?.bound&&<Button onClick={()=>setStatusOpen(true)}>查看运行状态</Button>}<Button onClick={onExport}>导出与下载任务</Button></Space>}>
+  return <Card title={purpose==="status"?"运行状态":"设备与节点数据"} extra={<Space>{lora&&isCurrentGatewayNode(node)&&<Button onClick={()=>setStatusOpen(true)}>查看运行状态</Button>}<Button onClick={onExport}>导出与下载任务</Button></Space>}>
     <Modal title={`${node?.name??"节点"} · 运行状态`} open={statusOpen} onCancel={()=>setStatusOpen(false)} footer={null} destroyOnHidden>{statusOpen&&node&&<AdminNodeStatus showTime deviceId={id} node={node}/>}</Modal>
     <>
     <Space className="admin-query-toolbar" wrap align="end" style={{marginBottom:16,width:"100%"}}>
-      {lora&&<Select aria-label="节点范围" value={nodeScope} onChange={scope=>{setNodeScope(scope);setParams(previous=>{const next=new URLSearchParams(previous);next.set("node_scope",scope);next.set("node",(nodes.data?.items??[]).find(node=>scope==="bound"?node.bound:!node.bound)?.key??"");return next;},{replace:true});}} style={{width:150}} options={[{value:"bound",label:"当前节点"},{value:"history",label:"历史数据"}]}/>}
+      {lora&&<Select aria-label="节点范围" value={nodeScope} onChange={scope=>{setNodeScope(scope);setParams(previous=>{const next=new URLSearchParams(previous);next.set("node_scope",scope);next.set("node",(nodes.data?.items??[]).find(node=>scope==="bound"?isCurrentGatewayNode(node):!isCurrentGatewayNode(node))?.key??"");return next;},{replace:true});}} style={{width:150}} options={[{value:"bound",label:"当前节点"},{value:"history",label:"历史数据"}]}/>}
       {gateway&&<Space orientation="vertical"><Typography.Text>查询节点</Typography.Text><Select value={selectedNodeKey} style={{width:260}} showSearch optionFilterProp="label" loading={nodes.isFetching} onChange={key=>{onNodeChange(key);setPage(1);setMediaStream(undefined);}} options={[...(!lora||purpose==="status"?[{value:"",label:"网关自身"}]:[]),...visibleNodes.map(item=>({value:item.key,label:nodeOptionLabel(item)}))]}/></Space>}
       <Space orientation="vertical"><Typography.Text>时间范围（北京时间）</Typography.Text><AdminTimeRange value={range} onChange={setRange} presets={[6,24,72,168].map(hours=>({label:hours<24?`${hours} 小时`:`${hours/24} 天`,value:[dayjs().subtract(hours,"hour"),dayjs()] as [Dayjs,Dayjs]}))}/></Space>
       <Select aria-label="数据阶段" value={phase} style={{width:160}} onChange={value=>{setPhase(value);setPage(1);}} options={[{value:"all",label:"全部数据"},{value:"formal",label:"正式观测数据"},{value:"testing",label:"调试数据"}]}/>

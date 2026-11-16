@@ -154,13 +154,13 @@ func selectRuntimeNodes(nodes []device.GatewayNode, raw []string) ([]device.Gate
 	}
 	result := []device.GatewayNode{}
 	for _, node := range nodes {
-		if node.Bound && node.Target.Kind == "gateway_node" && node.Target.NodeIndex != nil && wanted[*node.Target.NodeIndex] {
+		if node.IsCurrent() && node.Target.Kind == "gateway_node" && node.Target.NodeIndex != nil && wanted[*node.Target.NodeIndex] {
 			result = append(result, node)
 			delete(wanted, *node.Target.NodeIndex)
 		}
 	}
 	if len(wanted) > 0 {
-		return nil, apperr.New(apperr.KindInvalidArgument, "请求的节点未绑定到当前网关，请刷新节点列表")
+		return nil, apperr.New(apperr.KindInvalidArgument, "请求的节点不在本网关的当前节点列表，请刷新后重试")
 	}
 	return result, nil
 }

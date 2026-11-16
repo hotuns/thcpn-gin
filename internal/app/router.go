@@ -655,6 +655,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	authed.GET("/devices/:device_id/children", deviceHandler.Children)
 	admin.GET("/devices/:device_id/nodes", deviceHandler.AdminNodes)
 	admin.GET("/devices/:device_id/nodes/runtime", dataSourceHandler.NodeRuntime)
+	admin.GET("/devices/:device_id/lorawan-v2/node-discoveries", dataSourceHandler.AdminLoRaWANNodeDiscoveries)
 	admin.GET("/devices/:device_id/lorawan-v2/physical-nodes", dataSourceHandler.AdminLoRaWANPhysicalNodes)
 	admin.POST("/devices/:device_id/lorawan-v2/physical-nodes", dataSourceHandler.AdminLoRaWANPhysicalNodes)
 	admin.PATCH("/devices/:device_id/nodes/:node_index", deviceHandler.AdminRenameNode)

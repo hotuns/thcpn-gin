@@ -112,7 +112,14 @@ func run() int {
 	processingEngine := processing.NewEngine(pg, processorClient, media.NewService(pg, dataSourceService, datasource.NewRuntime(nil, pg), objectstore.NewSigner(cfg.ObjectStore, cfg.Auth.JWTSecret), cfg.QueryLimits, objectstore.NewStore(cfg.ObjectStore)), objectstore.NewStore(cfg.ObjectStore))
 
 	inspectionService := &inspection.Service{DB: pg, Sources: dataSourceService, Telemetry: telemetryService}
+	reconcileLoRaWANNodes := func(ctx context.Context) error {
+		_, err := dataSourceService.LoRaWAN.ReconcileDiscoveredNodes(ctx)
+		return err
+	}
 	if envBool("WORKER_RUN_ONCE") {
+		if err := reconcileLoRaWANNodes(ctx); err != nil {
+			log.Warn("refresh discovered LoRaWAN nodes", slog.Any("error", err))
+		}
 		if err := processor.RecoverInterrupted(ctx); err != nil {
 			log.Error("recover interrupted exports", slog.Any("error", err))
 			return 1
@@ -151,6 +158,7 @@ func run() int {
 	defer taskClient.Close()
 	startProcessingScan(ctx, taskClient, log, time.Duration(cfg.Processing.PollSeconds)*time.Second)
 	startAlertScan(ctx, taskClient, log, time.Minute)
+	startMinuteScan(ctx, reconcileLoRaWANNodes, log, time.Minute, "refresh discovered LoRaWAN nodes")
 	startMinuteScan(ctx, taskClient.EnqueueInspectionScan, log, time.Minute, "enqueue device inspection scan")
 	startExpiredAccessCleanup(ctx, accessGrantService, log, time.Hour)
 	startExpiredExportFileCleanup(ctx, processor, log, time.Hour)

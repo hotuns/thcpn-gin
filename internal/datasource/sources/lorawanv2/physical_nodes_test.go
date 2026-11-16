@@ -33,6 +33,7 @@ func TestPhysicalNodeRefreshPreservesPositionAndAssetIdentity(t *testing.T) {
 	must(`INSERT INTO devices(id,name,device_type) VALUES($1,'Gateway','gateway')`, gateway)
 	must(`INSERT INTO device_source_refs(device_id,data_source_id,adapter_code,external_key) VALUES($1,$2,'lorawan_v2','GW')`, gateway, source)
 	must(`INSERT INTO node_profiles(device_id,node_index,name,latitude,longitude,updated_by,updated_by_type) VALUES($1,3,'样地三',30,120,$2,'system_admin')`, gateway, actor)
+	must(`INSERT INTO lorawan_legacy_nodes(gateway_device_id,node_index) VALUES($1,3)`, gateway)
 	current := `[{"id":10,"sn":"NODE-A","gateway_sn":"GW","node_index":3}]`
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" && r.URL.Path == "/nodes" {
@@ -87,6 +88,10 @@ func TestPhysicalNodeRefreshPreservesPositionAndAssetIdentity(t *testing.T) {
 	if err != nil || len(nodes) != 1 || nodes[0].Name != "样地三" || nodes[0].NodeSN != "NODE-A" || *nodes[0].Target.NodeIndex != 3 {
 		t.Fatalf("sparse bindings generated phantom nodes: %+v %v", nodes, err)
 	}
+	var legacyMarkerCount int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM lorawan_legacy_nodes WHERE gateway_device_id=$1 AND node_index=3`, gateway).Scan(&legacyMarkerCount); err != nil || legacyMarkerCount != 0 || nodes[0].IndexedOnly {
+		t.Fatalf("physical binding did not consume explicit legacy marker: %d %v", legacyMarkerCount, err)
+	}
 	key, originalAsset := nodes[0].Key, nodes[0].AssetNo
 	if !strings.HasPrefix(originalAsset, "LR-") {
 		t.Fatal("bound node lacks an asset number")
@@ -114,7 +119,7 @@ func TestPhysicalNodeRefreshPreservesPositionAndAssetIdentity(t *testing.T) {
 	current = "[]"
 	refresh()
 	nodes, err = device.NewService(db).ListGatewayNodes(ctx, gateway)
-	if err != nil || len(nodes) != 1 || nodes[0].Bound || nodes[0].Key != key {
+	if err != nil || len(nodes) != 1 || nodes[0].IsCurrent() || nodes[0].Key != key {
 		t.Fatalf("unbinding deleted historical position: %+v %v", nodes, err)
 	}
 	current = `[{"id":13,"sn":"NODE-C","gateway_sn":"GW","node_index":3}]`

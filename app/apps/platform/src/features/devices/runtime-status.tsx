@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Battery, Signal, HardDrive, Radio } from "lucide-react";
-import { api, formatApiError, nodeSnapshot, nodeStatusKeys, statusMetrics, statusValue, statusHistory, nodeHistoryNotice, type StatusMetric, type StatusSnapshot } from "@thcpn/api";
+import { api, formatApiError, nodeSnapshot, nodeStatusKeys, statusMetrics, statusValue, statusHistory, isCurrentGatewayNode, nodeHistoryNotice, type StatusMetric, type StatusSnapshot } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, SelectInput, StateView, Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from "../../shared/ui";
 import { initialQueryRange, DeviceQueryToolbar } from "./device-query-toolbar";
@@ -37,7 +37,7 @@ function StatusHistoryBody({deviceId,workspaceId,keys,snapshot,metric,onMetric}:
 
 export function NodeRuntimeDetails({deviceId,workspaceId,node,reading,loading=false}:{deviceId:string;workspaceId:string;node:import("@thcpn/api").GatewayNode;reading?:import("@thcpn/api").NodeRuntime;loading?:boolean}){
   const index=node.target.kind==="gateway_node"?node.target.node_index:0;
-  const query=useQuery({queryKey:workspaceQueryKey(workspaceId,"device",deviceId,"node-status-detail",String(index)),queryFn:()=>api.devices.nodeRuntime(deviceId,[index]),enabled:!!node.bound&&!!index&&!reading&&!loading,staleTime:Infinity,refetchOnWindowFocus:false,retry:false});
+  const query=useQuery({queryKey:workspaceQueryKey(workspaceId,"device",deviceId,"node-status-detail",String(index)),queryFn:()=>api.devices.nodeRuntime(deviceId,[index]),enabled:isCurrentGatewayNode(node)&&!!index&&!reading&&!loading,staleTime:Infinity,refetchOnWindowFocus:false,retry:false});
   const value=reading??query.data?.items.find(item=>item.key===node.key);
-  return <>{!reading&&<Button variant="secondary" disabled={!node.bound||query.isFetching} onClick={()=>void query.refetch()}>刷新状态</Button>}<RuntimeStatusCards deviceId={deviceId} workspaceId={workspaceId} name={node.name} sn={node.node_sn} keys={nodeStatusKeys} snapshot={nodeSnapshot(value)} loading={loading||query.isFetching} error={query.error?formatApiError(query.error).message:undefined}/><div>状态更新时间 {gatewayStatusTime(value?.sampled_at)}</div></>;
+  return <>{!reading&&<Button variant="secondary" disabled={!isCurrentGatewayNode(node)||query.isFetching} onClick={()=>void query.refetch()}>刷新状态</Button>}<RuntimeStatusCards deviceId={deviceId} workspaceId={workspaceId} name={node.name} sn={node.node_sn} keys={nodeStatusKeys} snapshot={nodeSnapshot(value)} loading={loading||query.isFetching} error={query.error?formatApiError(query.error).message:undefined}/><div>状态更新时间 {gatewayStatusTime(value?.sampled_at)}</div></>;
 }

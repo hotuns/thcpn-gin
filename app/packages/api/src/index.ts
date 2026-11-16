@@ -3,7 +3,7 @@ export type { InspectionDevice, InspectionEvent, InspectionKind, InspectionMetri
 export * from "./runtime-status";
 export * from "./dashboard";
 import type { DashboardOverview } from "./dashboard";
-export { nodeOptionLabel, nodeHistoryNotice } from "./node-display";
+export { isCurrentGatewayNode, nodeOptionLabel, nodeHistoryNotice } from "./node-display";
 export { isMeasurement, streamPurpose, streamPurposeLabel } from "./stream-purpose";
 import { formatLimitError } from "./limit-errors";
 import { publicErrorMessages } from "./error-messages";
@@ -47,6 +47,8 @@ export type DeviceMapItem = { device_id: string; gateway_device_id?: string; nod
 export type DeviceMapResult = { items: DeviceMapItem[]; total: number; located: number; unlocated: number; unclassified: number };
 export type SourceOperation = Schema<"SourceOperation">;
 export type GatewayNode = Schema<"GatewayNode">;
+export type LoRaWANNodeDiscoveryList = operations["listAdminLoRaWANNodeDiscoveries"]["responses"][200]["content"]["application/json"];
+export type LoRaWANNodeDiscovery = LoRaWANNodeDiscoveryList["data"][number];
 export type LoRaWANV2TimeConfig = Schema<"LoRaWANV2TimeConfig">;
 export type LoRaWANGatewayDetails = Schema<"LoRaWANGatewayDetails">;
 export type ObservationStarts = Schema<"ObservationStarts">;
@@ -1424,6 +1426,8 @@ export const api = {
     registerPhysicalNode: (sourceId:string,input:JsonRecord) => jsonRequest<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(sourceId)}/lorawan-v2/nodes`,"POST",input),
     physicalNodeGateways: (sourceId:string) => request<{items:Array<{id:string;name:string;sn:string}>}>(`/api/v1/admin/data-sources/${encodeURIComponent(sourceId)}/lorawan-v2/node-gateways`),
     previewPhysicalNodeCSV: (csv:string, skipFirstRow=false) => jsonRequest<{items:Array<{line:number;sn:string;node_index:number;error?:string}>}>("/api/v1/admin/lorawan-v2/nodes/csv-preview","POST",{csv,skip_first_row:skipFirstRow}),
+    nodeDiscoveries: (id: string, page = 1, pageSize = 20) =>
+      request<LoRaWANNodeDiscoveryList>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/node-discoveries${queryString({ page, page_size: pageSize })}`),
     physicalNodes: (id:string, input:JsonRecord={}) => request<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/physical-nodes${queryString(input as Record<string,string|number|boolean>)}`),
     changePhysicalNode: (id:string, input:JsonRecord) => jsonRequest<JsonRecord>(`/api/v1/admin/devices/${encodeURIComponent(id)}/lorawan-v2/physical-nodes`,"POST",input),
     deviceLoRaWANV2Context: (id: string) =>

@@ -1,7 +1,7 @@
 import { NodeRuntimeDetails } from "./runtime-status";
 import { nodeHistoryNotice } from "@thcpn/api";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../shared/ui";
-import { nodeOptionLabel } from "@thcpn/api";
+import { isCurrentGatewayNode, nodeOptionLabel } from "@thcpn/api";
 import { isMeasurement, streamPurpose } from "@thcpn/api";
 import { ObservationStartInfo } from "./observation-start-info";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -32,7 +32,7 @@ export function GatewayNodeData({ gateway, workspaceId, purpose = "measurement" 
   const streamsQuery = useQuery({queryKey:workspaceQueryKey(workspaceId,"device",gateway.id,"streams","runtime"),queryFn:()=>api.dataStreams.list(gateway.id),enabled:purpose === "status"});
   const nodes = useMemo(() => {
     const raw = nodesQuery.data?.items ?? [];
-    const result = raw.filter(node=>gateway.source_family!=="lorawan_v2" || (nodeScope==="bound"?node.bound:!node.bound)).map(node=>({...node,streams:node.streams.filter(stream=>purpose === "measurement" ? isMeasurement(stream) : streamPurpose(stream) === "status")}));
+    const result = raw.filter(node=>gateway.source_family!=="lorawan_v2" || (nodeScope==="bound"?isCurrentGatewayNode(node):!isCurrentGatewayNode(node))).map(node=>({...node,streams:node.streams.filter(stream=>purpose === "measurement" ? isMeasurement(stream) : streamPurpose(stream) === "status")}));
     if (purpose === "status") {
       const childIds = new Set(raw.flatMap(node=>node.streams.map(stream=>stream.id)));
       result.unshift({key:`device:${gateway.id}`,name:"网关自身",custom_name:"",can_rename:false,bound:true,target:{kind:"device",device_id:gateway.id},streams:(streamsQuery.data?.items??[]).filter(stream=>stream.status === "active" && streamPurpose(stream) === "status" && !childIds.has(stream.id))});
@@ -40,7 +40,7 @@ export function GatewayNodeData({ gateway, workspaceId, purpose = "measurement" 
     return result;
   },[nodesQuery.data,streamsQuery.data,gateway.id,gateway.source_family,purpose,nodeScope]);
   const requestedNode = params.get("node") ?? "";
-  useEffect(()=>{if(nodesQuery.data?.items.some(node=>node.key===requestedNode && node.target.kind==="gateway_node" && !node.bound))setNodeScope("history");},[nodesQuery.data,requestedNode]);
+  useEffect(()=>{if(nodesQuery.data?.items.some(node=>node.key===requestedNode && node.target.kind==="gateway_node" && !isCurrentGatewayNode(node)))setNodeScope("history");},[nodesQuery.data,requestedNode]);
   const selectedNode = nodes.some((node) => node.key === requestedNode) ? requestedNode : nodes[0]?.key ?? "";
   const currentNode = nodes.find(node=>node.key===selectedNode);
   const indexed = gateway.source_family === "lorawan_v2";
@@ -140,13 +140,13 @@ export function GatewayNodeData({ gateway, workspaceId, purpose = "measurement" 
     {purpose === "measurement"&&indexed&&currentNode?.target.kind==="gateway_node"&&<Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}><DialogContent><DialogHeader><DialogTitle>节点时间配置</DialogTitle><DialogDescription>{currentNode.name}</DialogDescription></DialogHeader>{scheduleOpen&&<LoRaWANNodeTimeConfig deviceId={gateway.id} workspaceId={workspaceId} nodeIndex={currentNode.target.node_index}/>}</DialogContent></Dialog>}
     {indexed&&currentNode&&<Dialog open={statusOpen} onOpenChange={setStatusOpen}><DialogContent aria-describedby={undefined}><DialogHeader><DialogTitle>{currentNode.name} · 运行状态</DialogTitle></DialogHeader>{statusOpen&&<NodeRuntimeDetails deviceId={gateway.id} workspaceId={workspaceId} node={currentNode}/>}</DialogContent></Dialog>}
     <Panel className="gateway-node-query">
-      <div className="panel-header"><div><h2 className="panel-title">{purpose === "status" ? "运行状态" : "节点采集数据"}</h2></div><div className="header-actions">{indexed&&currentNode?.bound&&<Button variant="secondary" onClick={()=>setStatusOpen(true)}>查看运行状态</Button>}{purpose === "measurement"&&indexed&&mode==="node"&&currentNode&&<Button variant="secondary" onClick={()=>setScheduleOpen(true)}>查看采集时间</Button>}{dirty && <Badge tone="warning">条件未应用</Badge>}<Button disabled={invalid || !selected.length || loading || !selectedNode} onClick={search}><Search size={14}/>{loading ? "查询中…" : dirty ? "查询" : "刷新"}</Button></div></div>
+      <div className="panel-header"><div><h2 className="panel-title">{purpose === "status" ? "运行状态" : "节点采集数据"}</h2></div><div className="header-actions">{indexed&&isCurrentGatewayNode(currentNode)&&<Button variant="secondary" onClick={()=>setStatusOpen(true)}>查看运行状态</Button>}{purpose === "measurement"&&indexed&&mode==="node"&&currentNode&&<Button variant="secondary" onClick={()=>setScheduleOpen(true)}>查看采集时间</Button>}{dirty && <Badge tone="warning">条件未应用</Badge>}<Button disabled={invalid || !selected.length || loading || !selectedNode} onClick={search}><Search size={14}/>{loading ? "查询中…" : dirty ? "查询" : "刷新"}</Button></div></div>
       {purpose === "measurement"&&currentNode&&<ObservationStartInfo deviceId={currentNode.target.kind==="device"?currentNode.target.device_id:gateway.id} nodeIndex={currentNode.target.kind==="gateway_node"?currentNode.target.node_index:0}/>}
       {(nodesQuery.error || streamsQuery.error) && <StateView type="error" title="节点加载失败" description={formatApiError(nodesQuery.error || streamsQuery.error).message} />}
       <DeviceQueryEditor summary={`${currentNode?.name ?? "节点"} · ${mode === "compare" ? "节点对比" : "节点数据"} · 已选 ${selected.length} 个指标 · ${range.start.replace("T", " ")} 至 ${range.end.replace("T", " ")}`}>
       {(nodesQuery.isLoading || purpose === "status" && streamsQuery.isLoading) ? <StateView type="loading" title="正在加载节点" description="正在读取节点与指标。" /> : <>
         <div className="gateway-node-query-fields">
-          {indexed&&<label className="field"><span className="field-label">节点范围</span><SelectInput value={nodeScope} onChange={event=>{const scope=event.target.value as "bound"|"history";setNodeScope(scope);const first=nodesQuery.data?.items.find(node=>scope==="bound"?node.bound:!node.bound);setParams(previous=>{const next=new URLSearchParams(previous);next.set("node_scope",scope);if(first)next.set("node",first.key);else next.delete("node");return next;},{replace:true});}}><option value="bound">当前节点</option><option value="history">历史数据</option></SelectInput></label>}
+          {indexed&&<label className="field"><span className="field-label">节点范围</span><SelectInput value={nodeScope} onChange={event=>{const scope=event.target.value as "bound"|"history";setNodeScope(scope);const first=nodesQuery.data?.items.find(node=>scope==="bound"?isCurrentGatewayNode(node):!isCurrentGatewayNode(node));setParams(previous=>{const next=new URLSearchParams(previous);next.set("node_scope",scope);if(first)next.set("node",first.key);else next.delete("node");return next;},{replace:true});}}><option value="bound">当前节点</option><option value="history">历史数据</option></SelectInput></label>}
 
           <label className="field"><span className="field-label">查询方式</span><SelectInput value={mode} onChange={(event) => setMode(event.target.value as "node" | "compare")}><option value="node">节点数据</option><option value="compare">节点对比</option></SelectInput></label>
           {mode === "node" && <label className="field"><span className="field-label">{purpose === "status" ? "设备" : "节点"}</span><SelectInput value={selectedNode} onChange={(event) => selectNode(event.target.value)} disabled={!nodes.length}>{nodes.map((node) => <option key={node.key} value={node.key}>{nodeOptionLabel(node)}</option>)}</SelectInput></label>}

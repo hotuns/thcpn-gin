@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import dayjs, {type Dayjs} from "dayjs";
 import { Alert, Button, Empty, Modal, Select, Segmented, Space, Spin, Table, Tooltip, Typography } from "antd";
 import { ThunderboltOutlined, WifiOutlined, DatabaseOutlined, DashboardOutlined } from "@ant-design/icons";
-import { api, formatApiError, nodeSnapshot, nodeStatusKeys, statusMetrics, statusValue, statusHistory, nodeHistoryNotice, type StatusMetric, type StatusSnapshot, type GatewayNode, type NodeRuntime } from "@thcpn/api";
+import { api, formatApiError, nodeSnapshot, nodeStatusKeys, statusMetrics, statusValue, statusHistory, isCurrentGatewayNode, nodeHistoryNotice, type StatusMetric, type StatusSnapshot, type GatewayNode, type NodeRuntime } from "@thcpn/api";
 import { adminFullTelemetry } from "./admin-full-telemetry";
 import { Curve } from "./admin-data-charts";
 import { opsTime,telemetryRows } from "./admin-device-ops-model";
@@ -31,7 +31,7 @@ function AdminStatusHistory({deviceId,keys,snapshot,metric,onMetric}:{deviceId:s
 }
 export function AdminNodeStatus({deviceId,node,reading,loading=false,error,showTime=false}:{deviceId:string;node:GatewayNode;reading?:NodeRuntime;loading?:boolean;error?:string;showTime?:boolean}){
  const index=node.target.kind==="gateway_node"?node.target.node_index:0;
- const query=useQuery({queryKey:["admin","device",deviceId,"node-status-detail",index],queryFn:()=>api.admin.nodeRuntime(deviceId,[index]),enabled:!!index&&!!node.bound&&!reading&&!loading&&!error,refetchOnWindowFocus:false,retry:false,staleTime:Infinity});
+ const query=useQuery({queryKey:["admin","device",deviceId,"node-status-detail",index],queryFn:()=>api.admin.nodeRuntime(deviceId,[index]),enabled:!!index&&isCurrentGatewayNode(node)&&!reading&&!loading&&!error,refetchOnWindowFocus:false,retry:false,staleTime:Infinity});
  const value=reading??query.data?.items.find(item=>item.key===node.key);
- return <>{!reading&&<Button disabled={!node.bound||query.isFetching} onClick={()=>void query.refetch()} style={{marginBottom:8}}>刷新状态</Button>}<AdminRuntimeCards deviceId={deviceId} name={node.name} sn={node.node_sn} keys={nodeStatusKeys} snapshot={nodeSnapshot(value)} loading={loading||query.isFetching} error={error||(query.error?formatApiError(query.error).message:undefined)}/>{showTime&&<Typography.Text>状态更新时间 {opsTime(value?.sampled_at)}</Typography.Text>}</>;
+ return <>{!reading&&<Button disabled={!isCurrentGatewayNode(node)||query.isFetching} onClick={()=>void query.refetch()} style={{marginBottom:8}}>刷新状态</Button>}<AdminRuntimeCards deviceId={deviceId} name={node.name} sn={node.node_sn} keys={nodeStatusKeys} snapshot={nodeSnapshot(value)} loading={loading||query.isFetching} error={error||(query.error?formatApiError(query.error).message:undefined)}/>{showTime&&<Typography.Text>状态更新时间 {opsTime(value?.sampled_at)}</Typography.Text>}</>;
 }

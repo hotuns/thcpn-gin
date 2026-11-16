@@ -36,6 +36,7 @@ type GatewayNode struct {
 	PhysicalNodeID *uuid.UUID              `json:"physical_node_id,omitempty"`
 	NodeSN         string                  `json:"node_sn,omitempty"`
 	Bound          bool                    `json:"bound"`
+	IndexedOnly    bool                    `json:"indexed_only,omitempty"`
 	Latitude       *float64                `json:"latitude,omitempty"`
 	Longitude      *float64                `json:"longitude,omitempty"`
 	CustomName     string                  `json:"custom_name"`
@@ -45,6 +46,8 @@ type GatewayNode struct {
 	Target         NodeTarget              `json:"target"`
 	Streams        []datastream.DataStream `json:"streams"`
 }
+
+func (n GatewayNode) IsCurrent() bool { return n.Bound || n.IndexedOnly }
 
 func (s *Service) withInteraction(ctx context.Context, item Device) (Device, error) {
 	items, err := s.withInteractions(ctx, []Device{item})
@@ -81,7 +84,9 @@ func (s *Service) withInteractions(ctx context.Context, items []Device) ([]Devic
 	}
 	rows, err := s.db.Query(ctx, `SELECT d.id, COALESCE(src.source_family,''), COALESCE(src.status,''),
         COALESCE(ref.external_key,''), COALESCE(ref.adapter_code,''),
-        CASE WHEN src.source_family='lorawan_v2' THEN (SELECT count(*) FROM lorawan_physical_nodes WHERE gateway_device_id=d.id)
+        CASE WHEN src.source_family='lorawan_v2' THEN (
+             SELECT count(*) FROM (SELECT node_index FROM lorawan_physical_nodes WHERE gateway_device_id=d.id
+                UNION SELECT node_index FROM lorawan_legacy_nodes WHERE gateway_device_id=d.id) current_nodes)
              ELSE (SELECT count(*) FROM device_relations WHERE parent_device_id=d.id AND relation_type='gateway_node' AND status='active') END,
         EXISTS (SELECT 1 FROM data_streams WHERE device_id=d.id AND status='active' AND type='telemetry'),
         EXISTS (SELECT 1 FROM data_streams WHERE device_id=d.id AND status='active' AND type='image'), d.iccid, COALESCE(d.asset_no,''), d.hardware_sn
@@ -232,14 +237,24 @@ func (s *Service) listIndexedNodes(ctx context.Context, gateway Device) ([]Gatew
 	if registryErr != nil {
 		return nil, registryErr
 	}
-	slots, err := s.db.Query(ctx, `SELECT node_index FROM lorawan_physical_nodes WHERE gateway_device_id=$1 UNION SELECT node_index FROM node_profiles WHERE device_id=$1 UNION SELECT (b.adapter_config_json->>'node_index')::int FROM data_streams ds JOIN data_stream_bindings b ON b.data_stream_id=ds.id WHERE ds.device_id=$1 AND b.adapter_code='lorawan_v2' AND b.adapter_config_json ? 'node_index' ORDER BY 1`, gateway.ID)
+	slots, err := s.db.Query(ctx, `WITH legacy AS (
+        SELECT node_index FROM lorawan_legacy_nodes WHERE gateway_device_id=$1
+    ), slots AS (
+        SELECT node_index FROM lorawan_physical_nodes WHERE gateway_device_id=$1
+        UNION SELECT node_index FROM node_profiles WHERE device_id=$1
+        UNION SELECT (b.adapter_config_json->>'node_index')::int FROM data_streams ds JOIN data_stream_bindings b ON b.data_stream_id=ds.id
+              WHERE ds.device_id=$1 AND b.adapter_code='lorawan_v2' AND b.adapter_config_json ? 'node_index'
+        UNION SELECT node_index FROM legacy
+    )
+    SELECT slots.node_index, legacy.node_index IS NOT NULL FROM slots LEFT JOIN legacy USING (node_index) ORDER BY slots.node_index`, gateway.ID)
 	if err != nil {
 		return nil, err
 	}
 	byIndex := map[int]int{}
 	for slots.Next() {
 		var index int
-		if err := slots.Scan(&index); err != nil {
+		var indexedOnly bool
+		if err := slots.Scan(&index, &indexedOnly); err != nil {
 			slots.Close()
 			return nil, err
 		}
@@ -248,6 +263,7 @@ func (s *Service) listIndexedNodes(ctx context.Context, gateway Device) ([]Gatew
 		}
 		target := NodeTarget{Kind: "gateway_node", GatewayDeviceID: &gateway.ID, NodeIndex: &index}
 		node := bound[index]
+		node.IndexedOnly = indexedOnly && !node.Bound
 		node.Latitude = positions[index][0]
 		node.Longitude = positions[index][1]
 		node.Key = target.Key()
@@ -315,7 +331,7 @@ func (s *Service) ListGatewayNodesInScope(ctx context.Context, gatewayID uuid.UU
 	result := make([]GatewayNode, 0, len(nodes))
 	for _, node := range nodes {
 		if node.Target.Kind == "gateway_node" {
-			if scope == "bound" && !node.Bound || scope == "history" && node.Bound {
+			if scope == "bound" && !node.IsCurrent() || scope == "history" && node.IsCurrent() {
 				continue
 			}
 		} else if scope == "history" {

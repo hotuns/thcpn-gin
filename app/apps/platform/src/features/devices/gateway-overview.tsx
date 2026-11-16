@@ -1,7 +1,7 @@
 import { RuntimeStatusCards, NodeRuntimeDetails } from "./runtime-status";
 import { nodeSnapshot, nodeStatusKeys } from "@thcpn/api";
 import { GatewayReportedDetails } from "./lorawan-data-view";
-import { isMeasurement } from "@thcpn/api";
+import { isCurrentGatewayNode, isMeasurement } from "@thcpn/api";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
@@ -21,10 +21,10 @@ export function GatewayOverview({ device, workspaceId }: { device: Device; works
   const [detailKey, setDetailKey] = useState<string | null>(null);
   const nodes = useQuery({ queryKey: workspaceQueryKey(workspaceId, "device", device.id, "nodes"), queryFn: () => api.devices.nodes(device.id) });
   const rows = nodes.data?.items ?? [];
-  const boundRows = lora ? rows.filter(node=>node.bound) : rows;
+  const currentRows = lora ? rows.filter(isCurrentGatewayNode) : rows;
   const current = rows.find(n => n.key === detailKey);
   const recent = (node: GatewayNode) => { const ts = readings.get(node.key)?.sampled_at; const age = ts ? Date.now() - Date.parse(ts) : -1; return age >= 0 && age <= 3 * 86400000; };
-  const visible = rows.filter(n => [n.name, n.asset_no, n.node_sn, n.target.kind === "gateway_node" ? String(n.target.node_index) : ""].some(value => value?.toLowerCase().includes(search.toLowerCase())));
+  const visible = currentRows.filter(n => [n.name, n.asset_no, n.node_sn, n.target.kind === "gateway_node" ? String(n.target.node_index) : ""].some(value => value?.toLowerCase().includes(search.toLowerCase())));
   const [page,setPage]=useState(1);
   const pageCount=Math.max(1,Math.ceil(visible.length/20));
   const currentPage=Math.min(page,pageCount);
@@ -40,8 +40,8 @@ export function GatewayOverview({ device, workspaceId }: { device: Device; works
     {lora && <GatewayReportedDetails deviceId={device.id} workspaceId={workspaceId} name={device.name} sn={device.serial_no}/>}
     {nodes.error ? <StateView type="error" title="节点读取失败" description={formatApiError(nodes.error).message} action={<div className="header-actions">{actions}</div>} /> : nodes.isLoading ? <StateView type="loading" title="正在读取节点" description="正在汇总节点与指标。" /> : <>
       <div className="gateway-overview-kpis">
-        <div><span>{lora ? "当前安装节点" : "节点设备"}</span><strong>{lora ? rows.filter(n => n.bound).length : rows.length}</strong></div>
-        <div><span>指标数量</span><strong>{boundRows.reduce((sum, n) => sum + n.streams.filter(isMeasurement).length, 0)}</strong></div>
+        <div><span>{lora ? "当前节点" : "节点设备"}</span><strong>{currentRows.length}</strong></div>
+        <div><span>指标数量</span><strong>{currentRows.reduce((sum, n) => sum + n.streams.filter(isMeasurement).length, 0)}</strong></div>
         <div><span>本页最近有数据</span><strong>{pageRows.filter(recent).length}</strong></div>
         <div><span>本页读取失败</span><strong>{pageRows.filter(n => readings.get(n.key)?.error).length}</strong></div>
       </div>
@@ -55,7 +55,7 @@ export function GatewayOverview({ device, workspaceId }: { device: Device; works
         <div className="gateway-node-grid-scroll"><Table><TableHeader><TableRow>
           <TableHead>节点</TableHead>{!lora&&<TableHead>数据状态</TableHead>}<TableHead>{lora?"节点状态":"电量 / 信号"}</TableHead><TableHead>指标</TableHead><TableHead>状态更新时间</TableHead><TableHead>操作</TableHead>
         </TableRow></TableHeader><TableBody>{pageRows.map(node => { const reading = readings.get(node.key); return <TableRow key={node.key}>
-          <TableCell><div className="gateway-node-cell"><strong>{node.name}</strong>{node.asset_no&&<small>{node.asset_no}</small>}<small>{node.target.kind === "gateway_node" ? `序号 ${node.target.node_index}` : "独立节点设备"}</small></div></TableCell>
+          <TableCell><div className="gateway-node-cell"><strong>{node.name}</strong>{node.asset_no&&<small>{node.asset_no}</small>}<small>{node.target.kind === "gateway_node" ? `序号 ${node.target.node_index}${node.indexed_only ? " · 按序号接入" : ""}` : "独立节点设备"}</small></div></TableCell>
           {!lora&&<TableCell><Badge tone={reading?.error ? "warning" : recent(node) ? "success" : "neutral"}>{reading?.error ? "读取失败" : recent(node) ? "有数据" : "无近期数据"}</Badge></TableCell>}
           <TableCell>{lora?<RuntimeStatusCards deviceId={device.id} workspaceId={workspaceId} name={node.name} sn={node.node_sn} keys={nodeStatusKeys} snapshot={nodeSnapshot(reading)} loading={runtime.isFetching} error={runtime.error?formatApiError(runtime.error).message:undefined}/>:<NodeVitals item={reading} loading={runtime.isLoading} error={runtime.isError} />}</TableCell><TableCell>{node.streams.filter(isMeasurement).length}</TableCell><TableCell><time>{formatTime(reading?.sampled_at)}</time></TableCell>
           <TableCell><div className="header-actions"><Button variant="ghost" onClick={() => setDetailKey(node.key)}>节点资料</Button><Button variant="secondary" onClick={() => openData(node)}>查看数据</Button></div></TableCell>

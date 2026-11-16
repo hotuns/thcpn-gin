@@ -415,12 +415,64 @@ paths:
         "200": {description: Parsed rows with line, sn, node_index and optional error; duplicate SN and indexes are marked on all affected rows, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}
         "400": {$ref: "#/components/responses/InvalidArgument"}
         "401": {$ref: "#/components/responses/Unauthorized"}
+  /api/v1/admin/devices/{device_id}/lorawan-v2/node-discoveries:
+    parameters:
+      - $ref: "#/components/parameters/DeviceID"
+    get:
+      tags: [Admin]
+      summary: 查看本网关上报的待确认节点
+      operationId: listAdminLoRaWANNodeDiscoveries
+      description: 系统管理员专用。网关由路径设备关联确定，不接受客户端跨网关筛选。首次无冲突上报由源端自动绑定；冲突在此展示，通过已有 physical-nodes 绑定或更换操作确认，不自动抢占其他网关节点。不向硬件下发配置。
+      security: [{bearerAuth: []}]
+      parameters:
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: page_size, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 20}}
+      responses:
+        "200":
+          description: 源端待确认发现及当前实际绑定；名称、坐标、指标等业务资料仍由平台维护。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  pagination:
+                    type: object
+                    required: [current_page, page_size, total_page, total_count]
+                    properties:
+                      current_page: {type: integer}
+                      page_size: {type: integer}
+                      total_page: {type: integer}
+                      total_count: {type: integer}
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, node_sn, gateway_sn, node_index, status, reason, current_node_sn, bound_gateway_sn, bound_node_index, first_seen_at, last_seen_at, seen_count, resolved_at]
+                      properties:
+                        id: {type: integer}
+                        node_sn: {type: string}
+                        gateway_sn: {type: string}
+                        node_index: {type: integer, minimum: 1, maximum: 254}
+                        status: {type: string, enum: [pending]}
+                        reason: {type: string, nullable: true, enum: [slot_occupied, node_bound_elsewhere, manually_unbound, null]}
+                        current_node_sn: {type: string, nullable: true, description: 该网关序号当前登记的节点 SN}
+                        bound_gateway_sn: {type: string, nullable: true, description: 上报节点当前所属网关}
+                        bound_node_index: {type: integer, nullable: true}
+                        first_seen_at: {type: string, format: date-time}
+                        last_seen_at: {type: string, format: date-time}
+                        seen_count: {type: integer}
+                        resolved_at: {type: string, format: date-time, nullable: true}
+        "400": {$ref: "#/components/responses/InvalidArgument"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "502": {description: 源端发现列表查询失败，已有节点目录不受影响}
   /api/v1/admin/devices/{device_id}/lorawan-v2/physical-nodes:
     parameters:
       - $ref: "#/components/parameters/DeviceID"
     get:
       tags: [Admin]
-      summary: Refresh bound physical nodes or query source inventory
+      summary: Refresh current node bindings and their platform metrics, or query source inventory
       security: [{bearerAuth: []}]
       parameters:
         - {name: inventory, in: query, schema: {type: boolean}}
@@ -465,7 +517,7 @@ paths:
           schema: { $ref: "#/components/schemas/UUID" }
         - in: query
           name: scope
-          description: Default lists installed V2 physical nodes only; history lists retained unbound node-number records, without implying actual telemetry exists. all combines both. THCPN device nodes remain unchanged for bound/all.
+          description: Default lists bound V2 nodes and explicitly registered current indices without a physical SN; history lists non-current positions without implying telemetry exists. all combines both. THCPN device nodes remain unchanged for bound/all.
           schema: {type: string, enum: [bound, history, all], default: bound}
       responses:
         "200":
@@ -499,7 +551,7 @@ paths:
           schema: { $ref: "#/components/schemas/UUID" }
         - in: query
           name: scope
-          description: Default lists installed V2 physical nodes only; history lists retained unbound node-number records, without implying actual telemetry exists. all combines both. THCPN device nodes remain unchanged for bound/all.
+          description: Default lists bound V2 nodes and explicitly registered current indices without a physical SN; history lists non-current positions without implying telemetry exists. all combines both. THCPN device nodes remain unchanged for bound/all.
           schema: {type: string, enum: [bound, history, all], default: bound}
       responses:
         "200":
@@ -511,7 +563,7 @@ paths:
     get:
       tags: [Devices]
       summary: Read latest gateway node diagnostics
-      description: LoRaWAN V2 reads only currently bound physical nodes from the dedicated /node/{node_index}/latest endpoint without a history window and retains the original sampled_at time. THCPN keeps its existing three-day diagnostics policy. Missing readings are omitted; individual source failures remain per-node errors.
+      description: LoRaWAN V2 reads current nodes (bound physical nodes and explicitly registered legacy indices) from the dedicated /node/{node_index}/latest endpoint without a history window and retains the original sampled_at time. THCPN keeps its existing three-day diagnostics policy. Missing readings are omitted; individual source failures remain per-node errors.
       parameters:
         - in: path
           name: device_id
@@ -519,7 +571,7 @@ paths:
           schema: { $ref: "#/components/schemas/UUID" }
         - in: query
           name: node_indices
-          description: Comma-separated currently bound node indices; omitted means all bound nodes. Validated before upstream access.
+          description: Comma-separated current node indices; omitted means all current nodes. Validated before upstream access.
           schema: {type: string, example: "3,100"}
       responses:
         "200":
@@ -7638,7 +7690,7 @@ paths:
     get:
       tags: [Devices]
       summary: Read latest gateway node diagnostics
-      description: LoRaWAN V2 reads only currently bound physical nodes from the dedicated /node/{node_index}/latest endpoint without a history window and retains the original sampled_at time. THCPN keeps its existing three-day diagnostics policy. Missing readings are omitted; individual source failures remain per-node errors.
+      description: LoRaWAN V2 reads current nodes (bound physical nodes and explicitly registered legacy indices) from the dedicated /node/{node_index}/latest endpoint without a history window and retains the original sampled_at time. THCPN keeps its existing three-day diagnostics policy. Missing readings are omitted; individual source failures remain per-node errors.
       parameters:
         - in: path
           name: device_id
@@ -7646,7 +7698,7 @@ paths:
           schema: { $ref: "#/components/schemas/UUID" }
         - in: query
           name: node_indices
-          description: Comma-separated currently bound node indices; omitted means all bound nodes. Validated before upstream access.
+          description: Comma-separated current node indices; omitted means all current nodes. Validated before upstream access.
           schema: {type: string, example: "3,100"}
       responses:
         "200":
@@ -11248,7 +11300,8 @@ components:
         hardware_sn: {type: string, description: Registered factory serial number}
         node_sn: {type: string, description: Current physical node only; does not attribute historical samples}
         physical_node_id: {$ref: "#/components/schemas/UUID"}
-        bound: {type: boolean}
+        bound: {type: boolean, description: A physical SN is currently bound to this gateway and node index.}
+        indexed_only: {type: boolean, description: Explicitly registered current V2 node whose physical SN is unknown.}
         latitude: { type: number, format: double, minimum: -90, maximum: 90 }
         longitude: { type: number, format: double, minimum: -180, maximum: 180 }
         key: { type: string, description: Internal stable query identity; not a UI node label. }

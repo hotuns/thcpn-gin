@@ -953,6 +953,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/devices/{device_id}/lorawan-v2/node-discoveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * 查看本网关上报的待确认节点
+         * @description 系统管理员专用。网关由路径设备关联确定，不接受客户端跨网关筛选。首次无冲突上报由源端自动绑定；冲突在此展示，通过已有 physical-nodes 绑定或更换操作确认，不自动抢占其他网关节点。不向硬件下发配置。
+         */
+        get: operations["listAdminLoRaWANNodeDiscoveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/devices/{device_id}/lorawan-v2/physical-nodes": {
         parameters: {
             query?: never;
@@ -963,7 +986,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Refresh bound physical nodes or query source inventory */
+        /** Refresh current node bindings and their platform metrics, or query source inventory */
         get: {
             parameters: {
                 query?: {
@@ -1065,7 +1088,7 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
-                    /** @description Default lists installed V2 physical nodes only; history lists retained unbound node-number records, without implying actual telemetry exists. all combines both. THCPN device nodes remain unchanged for bound/all. */
+                    /** @description Default lists bound V2 nodes and explicitly registered current indices without a physical SN; history lists non-current positions without implying telemetry exists. all combines both. THCPN device nodes remain unchanged for bound/all. */
                     scope?: "bound" | "history" | "all";
                 };
                 header?: never;
@@ -1144,7 +1167,7 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
-                    /** @description Default lists installed V2 physical nodes only; history lists retained unbound node-number records, without implying actual telemetry exists. all combines both. THCPN device nodes remain unchanged for bound/all. */
+                    /** @description Default lists bound V2 nodes and explicitly registered current indices without a physical SN; history lists non-current positions without implying telemetry exists. all combines both. THCPN device nodes remain unchanged for bound/all. */
                     scope?: "bound" | "history" | "all";
                 };
                 header?: never;
@@ -1183,12 +1206,12 @@ export interface paths {
         };
         /**
          * Read latest gateway node diagnostics
-         * @description LoRaWAN V2 reads only currently bound physical nodes from the dedicated /node/{node_index}/latest endpoint without a history window and retains the original sampled_at time. THCPN keeps its existing three-day diagnostics policy. Missing readings are omitted; individual source failures remain per-node errors.
+         * @description LoRaWAN V2 reads current nodes (bound physical nodes and explicitly registered legacy indices) from the dedicated /node/{node_index}/latest endpoint without a history window and retains the original sampled_at time. THCPN keeps its existing three-day diagnostics policy. Missing readings are omitted; individual source failures remain per-node errors.
          */
         get: {
             parameters: {
                 query?: {
-                    /** @description Comma-separated currently bound node indices; omitted means all bound nodes. Validated before upstream access. */
+                    /** @description Comma-separated current node indices; omitted means all current nodes. Validated before upstream access. */
                     node_indices?: string;
                 };
                 header?: never;
@@ -6242,12 +6265,12 @@ export interface paths {
         };
         /**
          * Read latest gateway node diagnostics
-         * @description LoRaWAN V2 reads only currently bound physical nodes from the dedicated /node/{node_index}/latest endpoint without a history window and retains the original sampled_at time. THCPN keeps its existing three-day diagnostics policy. Missing readings are omitted; individual source failures remain per-node errors.
+         * @description LoRaWAN V2 reads current nodes (bound physical nodes and explicitly registered legacy indices) from the dedicated /node/{node_index}/latest endpoint without a history window and retains the original sampled_at time. THCPN keeps its existing three-day diagnostics policy. Missing readings are omitted; individual source failures remain per-node errors.
          */
         get: {
             parameters: {
                 query?: {
-                    /** @description Comma-separated currently bound node indices; omitted means all bound nodes. Validated before upstream access. */
+                    /** @description Comma-separated current node indices; omitted means all current nodes. Validated before upstream access. */
                     node_indices?: string;
                 };
                 header?: never;
@@ -8536,7 +8559,10 @@ export interface components {
             /** @description Current physical node only; does not attribute historical samples */
             node_sn?: string;
             physical_node_id?: components["schemas"]["UUID"];
+            /** @description A physical SN is currently bound to this gateway and node index. */
             bound?: boolean;
+            /** @description Explicitly registered current V2 node whose physical SN is unknown. */
+            indexed_only?: boolean;
             /** Format: double */
             latitude?: number;
             /** Format: double */
@@ -10219,6 +10245,71 @@ export interface operations {
         responses: {
             /** @description Archived */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listAdminLoRaWANNodeDiscoveries: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Device UUID. */
+                device_id: components["parameters"]["DeviceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 源端待确认发现及当前实际绑定；名称、坐标、指标等业务资料仍由平台维护。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        pagination: {
+                            current_page: number;
+                            page_size: number;
+                            total_page: number;
+                            total_count: number;
+                        };
+                        data: {
+                            id: number;
+                            node_sn: string;
+                            gateway_sn: string;
+                            node_index: number;
+                            /** @enum {string} */
+                            status: "pending";
+                            /** @enum {string|null} */
+                            reason: "slot_occupied" | "node_bound_elsewhere" | "manually_unbound" | null;
+                            /** @description 该网关序号当前登记的节点 SN */
+                            current_node_sn: string | null;
+                            /** @description 上报节点当前所属网关 */
+                            bound_gateway_sn: string | null;
+                            bound_node_index: number | null;
+                            /** Format: date-time */
+                            first_seen_at: string;
+                            /** Format: date-time */
+                            last_seen_at: string;
+                            seen_count: number;
+                            /** Format: date-time */
+                            resolved_at: string | null;
+                        }[];
+                    };
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description 源端发现列表查询失败，已有节点目录不受影响 */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

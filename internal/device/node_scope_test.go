@@ -15,7 +15,7 @@ import (
 )
 
 func TestV2NodeScopesDoNotTreatCapacityOrLegacyPositionsAsInstalled(t *testing.T) {
-	db := testdb.Open(t, 0)
+	db := testdb.Open(t, 58)
 	ctx := t.Context()
 	admin := testdb.Admin(t, db)
 	source, gateway := uuid.New(), uuid.New()
@@ -33,6 +33,9 @@ func TestV2NodeScopesDoNotTreatCapacityOrLegacyPositionsAsInstalled(t *testing.T
 	for _, index := range []int{3, 100} {
 		must(`INSERT INTO lorawan_physical_nodes(data_source_id,external_id,sn,gateway_device_id,node_index) VALUES($1,$2,$3,$4,$5)`, source, index, fmt.Sprint("SN-", index), gateway, index)
 	}
+	// Upgrade an existing database. Even with 254 profiles, no legacy slot
+	// becomes current unless the reviewed position is explicitly entered.
+	testdb.Apply(t, db, "../../migrations/000059_lorawan_legacy_nodes.up.sql")
 	service := NewService(db)
 	asset, err := service.GetAsset(ctx, gateway)
 	if err != nil || asset.ChildCount != 2 {
@@ -85,5 +88,36 @@ func TestV2NodeScopesDoNotTreatCapacityOrLegacyPositionsAsInstalled(t *testing.T
 	}
 	if history[2].Key != originalKey {
 		t.Fatal("unbinding changed historical query identity")
+	}
+
+	must(`INSERT INTO lorawan_legacy_nodes(gateway_device_id,node_index) VALUES($1,55)`, gateway)
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest("GET", "/devices/"+gateway.String()+"/nodes", nil))
+	var result struct {
+		Items []GatewayNode `json:"items"`
+	}
+	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &result) != nil || len(result.Items) != 2 {
+		t.Fatalf("explicit legacy node not listed: %d %s", response.Code, response.Body.String())
+	}
+	legacy := result.Items[0]
+	if !legacy.IndexedOnly || legacy.Bound || legacy.NodeSN != "" || legacy.PhysicalNodeID != nil || *legacy.Target.NodeIndex != 55 {
+		t.Fatalf("legacy position reported a physical identity: %+v", legacy)
+	}
+	asset, err = service.GetAsset(ctx, gateway)
+	if err != nil || asset.ChildCount != 2 {
+		t.Fatalf("legacy position not included in current count: %d %v", asset.ChildCount, err)
+	}
+
+	// The rollback removes only explicit markers. Physical registrations and
+	// historical position records survive a down/up round trip.
+	testdb.Apply(t, db, "../../migrations/000059_lorawan_legacy_nodes.down.sql")
+	testdb.Apply(t, db, "../../migrations/000059_lorawan_legacy_nodes.up.sql")
+	current, err = service.ListGatewayNodesInScope(ctx, gateway, "bound")
+	if err != nil || len(current) != 1 || *current[0].Target.NodeIndex != 100 {
+		t.Fatalf("migration round trip damaged existing bindings: %+v %v", current, err)
+	}
+	all, err := service.ListGatewayNodesInScope(ctx, gateway, "all")
+	if err != nil || len(all) != 254 || all[2].Key != originalKey {
+		t.Fatalf("migration round trip damaged historical positions: %d %v", len(all), err)
 	}
 }

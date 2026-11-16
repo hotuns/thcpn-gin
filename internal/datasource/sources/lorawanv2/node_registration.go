@@ -145,6 +145,11 @@ func (s *Service) RegisterPhysicalNode(ctx context.Context, source, actor uuid.U
 			return result, apperr.New(apperr.KindInvalidArgument, "网关不属于当前数据源")
 		}
 		gatewaySN = ref.GatewaySN
+		unlock, e := s.waitForNodeSyncLock(ctx, source.String()+"/lorawan_v2/"+gatewaySN)
+		if e != nil {
+			return result, e
+		}
+		defer unlock()
 		nodes, e := readPhysicalNodes(ctx, client, ref.GatewaySN)
 		if e != nil {
 			return result, e
@@ -213,7 +218,7 @@ func (s *Service) RegisterPhysicalNode(ctx context.Context, source, actor uuid.U
 		result.Bound = true
 		result.Payload = raw
 		if cacheErr == nil {
-			_, cacheErr = s.DB.Exec(ctx, `UPDATE lorawan_physical_nodes SET gateway_device_id=$3,node_index=$4,synced_at=now() WHERE data_source_id=$1 AND external_id=$2`, source, node.ID, *input.GatewayDeviceID, input.NodeIndex)
+			cacheErr = rememberPhysicalNodeBinding(ctx, s.DB, source, *input.GatewayDeviceID, node)
 		}
 	}
 	result.Status = "completed"

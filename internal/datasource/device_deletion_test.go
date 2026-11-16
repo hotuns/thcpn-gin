@@ -26,7 +26,7 @@ func TestDeviceDeletionProtectsBusinessHistory(t *testing.T) {
 	user, workspace := uuid.New(), uuid.New()
 	exec("INSERT INTO users(id,name,email) VALUES($1,'fixture',$2)", user, user.String()+"@test.invalid")
 	exec("INSERT INTO workspaces(id,type,name,owner_user_id) VALUES($1,'personal','fixture',$2)", workspace, user)
-	for _, kind := range []string{"unused", "previewed", "retired", "child", "removed_assignment", "dataset"} {
+	for _, kind := range []string{"unused", "previewed", "retired", "child", "legacy_gateway", "removed_assignment", "dataset"} {
 		t.Run(kind, func(t *testing.T) {
 			id := uuid.New()
 			exec("INSERT INTO devices(id,name,serial_no,device_type) VALUES($1,$2,$2,'camera')", id, kind)
@@ -43,6 +43,9 @@ func TestDeviceDeletionProtectsBusinessHistory(t *testing.T) {
 				dataset := uuid.New()
 				exec("INSERT INTO datasets(id,workspace_id,name,data_type,time_start,time_end,created_by) VALUES($1,$2,'fixture','telemetry',now()-interval '1 day',now(),$3)", dataset, workspace, user)
 				exec("INSERT INTO dataset_sources(dataset_id,source_type,source_id) VALUES($1,'device',$2)", dataset, id)
+			case "legacy_gateway":
+				exec("UPDATE devices SET device_type='gateway' WHERE id=$1", id)
+				exec("INSERT INTO lorawan_legacy_nodes(gateway_device_id,node_index) VALUES($1,55)", id)
 			case "child":
 				child := uuid.New()
 				exec("INSERT INTO devices(id,name,serial_no,device_type) VALUES($1,'node','test-child','gateway_node')", child)

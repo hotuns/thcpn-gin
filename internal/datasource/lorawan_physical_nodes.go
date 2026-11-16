@@ -42,7 +42,7 @@ func (h *Handler) AdminLoRaWANPhysicalNodes(c *gin.Context) {
 			writeLoRaWANV2Payload(c, 200, raw)
 			return
 		}
-		result, err := h.service.LoRaWAN.SyncPhysicalNodes(c.Request.Context(), id)
+		result, err := h.service.LoRaWAN.RefreshDiscoveredNodes(c.Request.Context(), id)
 		if err != nil {
 			httpx.WriteAppError(c, err)
 			return

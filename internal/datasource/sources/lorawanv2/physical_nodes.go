@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/datasource/platform"
+	"thcpn-gin/internal/db/sqlc"
 )
 
 type PhysicalNode struct {
@@ -56,29 +57,64 @@ func (s *Service) SyncPhysicalNodes(ctx context.Context, deviceID uuid.UUID) (Ph
 	if err != nil {
 		return PhysicalNodes{}, err
 	}
-	nodes, err := readPhysicalNodes(ctx, client, ref.GatewaySN)
+	unlock, err := s.waitForNodeSyncLock(ctx, source.ID.String()+"/lorawan_v2/"+ref.GatewaySN)
+	if err != nil {
+		return PhysicalNodes{}, err
+	}
+	defer unlock()
+	return s.syncPhysicalNodes(ctx, deviceID, source.ID, ref.GatewaySN, client)
+}
+
+// Call with the existing per-gateway source sync lock held.
+func (s *Service) syncPhysicalNodes(ctx context.Context, deviceID, sourceID uuid.UUID, gatewaySN string, client *LoraWANV2Client) (PhysicalNodes, error) {
+	nodes, err := readPhysicalNodes(ctx, client, gatewaySN)
 	if err != nil {
 		return nodes, err
+	}
+	return nodes, s.persistPhysicalNodes(ctx, deviceID, sourceID, nodes)
+}
+
+func (s *Service) persistPhysicalNodes(ctx context.Context, deviceID, sourceID uuid.UUID, nodes PhysicalNodes) error {
+	raw, err := json.Marshal(nodes.Data)
+	if err != nil {
+		return err
 	}
 	tx, err := s.DB.Begin(ctx)
 	if err != nil {
-		return nodes, err
+		return err
 	}
 	defer tx.Rollback(context.Background())
-	if _, err = tx.Exec(ctx, `UPDATE lorawan_physical_nodes SET gateway_device_id=NULL,node_index=NULL,synced_at=now() WHERE gateway_device_id=$1`, deviceID); err != nil {
-		return nodes, err
+	if _, err = tx.Exec(ctx, `UPDATE lorawan_physical_nodes p SET gateway_device_id=NULL,node_index=NULL,synced_at=now()
+        WHERE gateway_device_id=$1 AND NOT EXISTS (
+            SELECT 1 FROM jsonb_to_recordset($2::jsonb) AS n(id bigint,sn text,node_index int)
+            WHERE n.id=p.external_id AND n.sn=p.sn AND n.node_index=p.node_index
+        )`, deviceID, raw); err != nil {
+		return err
 	}
 	for _, n := range nodes.Data {
-		_, err = tx.Exec(ctx, `INSERT INTO lorawan_physical_nodes(data_source_id,external_id,sn,gateway_device_id,node_index) VALUES($1,$2,$3,$4,$5) ON CONFLICT(data_source_id,external_id) DO UPDATE SET sn=EXCLUDED.sn,gateway_device_id=EXCLUDED.gateway_device_id,node_index=EXCLUDED.node_index,synced_at=now()`, ref.DataSourceID, n.ID, n.SN, deviceID, *n.NodeIndex)
-		if err != nil {
-			return nodes, err
+		if err = rememberPhysicalNodeBinding(ctx, tx, sourceID, deviceID, n); err != nil {
+			return err
 		}
 	}
-	_, err = tx.Exec(ctx, `UPDATE device_metadata SET value_json=$2::jsonb,updated_at=now() WHERE device_id=$1 AND key='lorawan_v2_nodes_count'`, deviceID, strconv.Itoa(len(nodes.Data)))
+	_, err = tx.Exec(ctx, `UPDATE device_metadata SET value_json=$2::jsonb,updated_at=now() WHERE device_id=$1 AND key='lorawan_v2_nodes_count' AND value_json IS DISTINCT FROM $2::jsonb`, deviceID, strconv.Itoa(len(nodes.Data)))
 	if err != nil {
-		return nodes, err
+		return err
 	}
-	return nodes, tx.Commit(ctx)
+	return tx.Commit(ctx)
+}
+
+// Once the physical SN is known, a later unbind leaves only historical data.
+func rememberPhysicalNodeBinding(ctx context.Context, db sqlc.DBTX, sourceID, deviceID uuid.UUID, node PhysicalNode) error {
+	_, err := db.Exec(ctx, `WITH binding AS (
+        INSERT INTO lorawan_physical_nodes(data_source_id,external_id,sn,gateway_device_id,node_index) VALUES($1,$2,$3,$4,$5)
+        ON CONFLICT(data_source_id,external_id) DO UPDATE SET sn=EXCLUDED.sn,gateway_device_id=EXCLUDED.gateway_device_id,node_index=EXCLUDED.node_index,
+            synced_at=CASE WHEN (lorawan_physical_nodes.sn,lorawan_physical_nodes.gateway_device_id,lorawan_physical_nodes.node_index)
+                IS DISTINCT FROM (EXCLUDED.sn,EXCLUDED.gateway_device_id,EXCLUDED.node_index) THEN now() ELSE lorawan_physical_nodes.synced_at END
+        RETURNING gateway_device_id,node_index
+    )
+    DELETE FROM lorawan_legacy_nodes legacy USING binding
+    WHERE legacy.gateway_device_id=binding.gateway_device_id AND legacy.node_index=binding.node_index`, sourceID, node.ID, node.SN, deviceID, *node.NodeIndex)
+	return err
 }
 
 func (s *Service) RememberRegisteredNode(ctx context.Context, sourceID uuid.UUID, raw json.RawMessage) error {
