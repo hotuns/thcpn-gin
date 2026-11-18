@@ -1,9 +1,8 @@
 import "./subscription-mobile.css";
 import { policyLimit } from "../../shared/config/system-policy";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, Copy, ExternalLink, KeyRound, Sparkles, Trash2 } from "lucide-react";
+import { Check, Copy, ExternalLink, KeyRound, Sparkles, Trash2 } from "lucide-react";
 import { api, formatApiError } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, Input, PageHeader, Panel, StateView } from "../../shared/ui";
@@ -14,7 +13,6 @@ const bytes = (value: unknown) => `${(Number(value ?? 0) / GB).toFixed(1)} GB`;
 const date = (value: unknown) => value ? new Date(String(value)).toLocaleDateString("zh-CN") : "—";
 
 export function SubscriptionPage() {
-  const navigate = useNavigate();
   const { currentId, current } = useWorkspace();
   const client = useQueryClient();
   const [keyName, setKeyName] = useState("");
@@ -34,7 +32,7 @@ export function SubscriptionPage() {
   const createKey = async () => { if (!keyName.trim()) return; try { const item = await api.workspaces.createApiKey(currentId, { name: keyName.trim() }); setCreatedSecret(text(item.secret, "")); setKeyName(""); setMessage(""); await client.invalidateQueries({ queryKey: workspaceQueryKey(currentId, "api-keys") }); } catch (error) { setMessage(formatApiError(error).message); } };
   const revokeKey = async (keyId: string) => { try { await api.workspaces.revokeApiKey(currentId, keyId); await client.invalidateQueries({ queryKey: workspaceQueryKey(currentId, "api-keys") }); } catch (error) { setMessage(formatApiError(error).message); } };
   return <>
-    <PageHeader eyebrow="组织 / 订阅" title="订阅与用量" description={`${current?.name ?? "当前组织"}的套餐权益、下载用量与开放 API。`} actions={<Button variant="secondary" onClick={() => navigate("/workspaces")}><ArrowLeft size={14} />返回组织</Button>} />
+    <PageHeader eyebrow="组织 / 订阅" title="订阅与用量" description={`${current?.name ?? "当前组织"}的套餐权益、下载用量与开放 API。`} />
     <div className="subscription-page">
       {(value.notices ?? []).map((notice) => <div key={notice.code} className={`notice ${notice.level}`}>{notice.message}{notice.code === "professional_expiring" ? `，剩余 ${value.days_until_expiry} 天` : ""}</div>)}
       <section className={`subscription-hero ${professional ? "is-pro" : ""}`}>

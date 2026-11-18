@@ -9,11 +9,11 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
-import { ArrowLeft, BellRing } from "lucide-react";
+import { BellRing } from "lucide-react";
 import { api, deviceLifecycleLabel, deviceStatusLabel, formatApiError, type Device } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, Panel, StateView } from "../../shared/ui";
+import { Badge, Button, Panel, StateView, Tabs, TabsContent, TabsList, TabsTrigger } from "../../shared/ui";
 import { CameraLive } from "./device-media";
 import { DeviceDataPage } from "./device-data-page";
 import { DeviceProfileTab } from "./device-profile";
@@ -99,9 +99,6 @@ export function DeviceCenterDetailPage() {
           requestId={
             detail.error ? formatApiError(detail.error).requestId : undefined
           }
-          action={
-            <Button onClick={() => navigate("/devices")}>返回设备列表</Button>
-          }
         />
       </Panel>
     );
@@ -113,7 +110,6 @@ export function DeviceCenterDetailPage() {
           type="error"
           title="设备缺少组织信息"
           description="当前设备没有可用的组织分配或共享授权。"
-          action={<Button onClick={() => navigate("/devices")}>返回设备列表</Button>}
         />
       </Panel>
     );
@@ -185,6 +181,11 @@ export function DeviceCenterDetailPage() {
           { id: "activity", label: "记录" },
         ]
   ) as Array<{ id: DeviceTab; label: string }>;
+  const selectTab = (nextTab: string) => setParams((current) => {
+    const next = new URLSearchParams(current);
+    next.set("tab", nextTab);
+    return next;
+  });
   return (
     <>
       <div className="device-detail-heading">
@@ -213,94 +214,71 @@ export function DeviceCenterDetailPage() {
           <Link to={`/alerts?new=1&device=${device.id}`}>
             <Button variant="secondary"><BellRing size={14}/>创建预警</Button>
           </Link>
-          <Link to="/devices">
-            <Button variant="secondary">
-              <ArrowLeft size={14} />
-              设备列表
-            </Button>
-          </Link>
         </div>
       </div>
 
-      <DeviceDetailTabs tabs={tabs} activeTab={tab} onChange={(nextTab) => setParams((current) => { const next = new URLSearchParams(current); next.set("tab", nextTab); return next; })} />
-      {feedback && (
-        <div className="command-note device-feedback">{feedback}</div>
-      )}
-      <div className="device-detail-tab-content" key={tab}>
-      {carbonDevice && tab === "data" ? (
-        <CarbonDevicePage device={device} />
-      ) : tab === "overview" ? (
-        <DeviceOverview
-          device={device}
-          workspaceId={detailWorkspaceId}
-          onOpenData={() => setParams((current) => { const next = new URLSearchParams(current); next.set("tab", "data"); return next; })}
-        />
-      ) : tab === "data" && deviceCategory(device) === "gateway" ? (
-        device.source_family === "lorawan_v2" ? <LoRaWANDataView gateway={device} workspaceId={detailWorkspaceId}/> : <GatewayNodeData gateway={device} workspaceId={detailWorkspaceId} />
-      ) : tab === "data" ? (
-        <DeviceDataPage deviceId={device.id} embedded />
-      ) : tab === "video" ? (
-        <CameraLive device={device} />
-      ) : tab === "profile" ? (
-        <DeviceProfileTab
-          workspaceId={detailWorkspaceId}
-          device={device}
-          projects={projects.data?.items ?? []}
-          sites={sites.data?.items ?? []}
-          operational={<DeviceProfileOperational workspaceId={detailWorkspaceId} device={device} />}
-        />
-      ) : tab === "sharing" ? (
-        <DeviceSharingTab workspaceId={detailWorkspaceId} device={device} />
-      ) : tab === "activity" ? (
-        <DeviceActivity device={device} workspaceId={detailWorkspaceId} />
-      ) : (
-        <DeviceConfig
-          device={device}
-          currentWorkspaceId={detailWorkspaceId}
-          workspaces={workspaces.map((item) => ({
-            id: item.id,
-            name: item.name,
-          }))}
-          systemAdmin={false}
-          run={run}
-        />
-      )}
-      </div>
+      <Tabs value={tab} onValueChange={selectTab} activationMode="manual">
+        <DeviceDetailTabs tabs={tabs} activeTab={tab} />
+        {feedback && (
+          <div className="command-note device-feedback">{feedback}</div>
+        )}
+        <TabsContent className="device-detail-tab-content" key={tab} value={tab}>
+          {carbonDevice && tab === "data" ? (
+            <CarbonDevicePage device={device} />
+          ) : tab === "overview" ? (
+            <DeviceOverview
+              device={device}
+              workspaceId={detailWorkspaceId}
+              onOpenData={() => selectTab("data")}
+            />
+          ) : tab === "data" && deviceCategory(device) === "gateway" ? (
+            device.source_family === "lorawan_v2" ? <LoRaWANDataView gateway={device} workspaceId={detailWorkspaceId}/> : <GatewayNodeData gateway={device} workspaceId={detailWorkspaceId} />
+          ) : tab === "data" ? (
+            <DeviceDataPage deviceId={device.id} embedded />
+          ) : tab === "video" ? (
+            <CameraLive device={device} />
+          ) : tab === "profile" ? (
+            <DeviceProfileTab
+              workspaceId={detailWorkspaceId}
+              device={device}
+              projects={projects.data?.items ?? []}
+              sites={sites.data?.items ?? []}
+              operational={<DeviceProfileOperational workspaceId={detailWorkspaceId} device={device} />}
+            />
+          ) : tab === "sharing" ? (
+            <DeviceSharingTab workspaceId={detailWorkspaceId} device={device} />
+          ) : tab === "activity" ? (
+            <DeviceActivity device={device} workspaceId={detailWorkspaceId} />
+          ) : (
+            <DeviceConfig
+              device={device}
+              currentWorkspaceId={detailWorkspaceId}
+              workspaces={workspaces.map((item) => ({
+                id: item.id,
+                name: item.name,
+              }))}
+              systemAdmin={false}
+              run={run}
+            />
+          )}
+        </TabsContent>
+      </Tabs>
     </>
   );
 }
 
-function DeviceDetailTabs({ tabs, activeTab, onChange }: { tabs: Array<{ id: DeviceTab; label: string }>; activeTab: DeviceTab; onChange: (tab: DeviceTab) => void }) {
-  const barRef = useRef<HTMLDivElement>(null);
-  const pillRef = useRef<HTMLSpanElement>(null);
-  const movePill = (animate: boolean) => {
-    const bar = barRef.current;
-    const pill = pillRef.current;
-    const active = bar?.querySelector<HTMLButtonElement>("button.active");
-    if (!bar || !pill || !active) return;
-    if (!animate) pill.style.transition = "none";
-    pill.style.transform = `translateX(${active.offsetLeft}px)`;
-    pill.style.width = `${active.offsetWidth}px`;
-    if (!animate) {
-      void pill.offsetWidth;
-      pill.style.transition = "";
-    }
-  };
+function DeviceDetailTabs({ tabs, activeTab }: { tabs: Array<{ id: DeviceTab; label: string }>; activeTab: DeviceTab }) {
+  const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      movePill(false);
-      const bar = barRef.current;
-      const active = bar?.querySelector<HTMLButtonElement>("button.active");
-      if (bar && active && bar.scrollWidth > bar.clientWidth) {
-        bar.scrollTo?.({ left: Math.max(0, active.offsetLeft - (bar.clientWidth - active.offsetWidth) / 2) });
-      }
-    });
-    const onResize = () => movePill(false);
-    window.addEventListener("resize", onResize);
-    return () => { cancelAnimationFrame(frame); window.removeEventListener("resize", onResize); };
+    const list = listRef.current;
+    const selected = list?.querySelector<HTMLButtonElement>('[aria-selected="true"]');
+    if (list && selected && list.scrollWidth > list.clientWidth) {
+      list.scrollLeft = selected.offsetLeft - (list.clientWidth - selected.offsetWidth) / 2;
+    }
   }, [activeTab, tabs.length]);
-  return <div ref={barRef} className="settings-tabs device-detail-tabs t-tabs" data-onboarding="device-tabs">
-    <span ref={pillRef} className="t-tabs-pill" aria-hidden="true" />
-    {tabs.map((item) => <button type="button" role="tab" aria-selected={activeTab === item.id} key={item.id} className={activeTab === item.id ? "active t-tab" : "t-tab"} onClick={() => onChange(item.id)}>{item.label}</button>)}
-  </div>;
+  return (
+    <TabsList ref={listRef} variant="underline" className="device-detail-tabs" aria-label="设备详情" data-onboarding="device-tabs">
+      {tabs.map((item) => <TabsTrigger key={item.id} value={item.id}>{item.label}</TabsTrigger>)}
+    </TabsList>
+  );
 }

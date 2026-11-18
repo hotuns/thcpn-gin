@@ -1,5 +1,5 @@
 import "./exports-mobile.css";
-import { type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Network, Sprout } from "lucide-react";
 import { type JsonRecord } from "@thcpn/api";
 import { Button, Tabs, TabsList, TabsTrigger } from "../../shared/ui";
@@ -62,10 +62,18 @@ export function ExportSystemChooser({
 export type FormCommon = {
   chooser: ReactNode;
   params: URLSearchParams;
+  busy: boolean;
   onClose: () => void;
   onCreate: (payload: JsonRecord) => Promise<boolean>;
+  onDirtyChange: (dirty: boolean) => void;
   feedback?: string;
 };
+
+export function useExportFormDirty(draft: unknown, onDirtyChange: FormCommon["onDirtyChange"]) {
+  const current = JSON.stringify(draft);
+  const [initial] = useState(current);
+  useEffect(() => onDirtyChange(current !== initial), [current, initial, onDirtyChange]);
+}
 
 export function FormFooter({
   count,
@@ -111,7 +119,7 @@ export function FormFooter({
       {rangeTooLong && <div className="form-error" role="alert">请缩短时间范围{includesImages ? "，或取消勾选图片" : ""}。</div>}
       {feedback && <div className="form-error" role="alert">{feedback}</div>}
       <div className="export-builder-actions mobile-form-actions">
-        <Button type="button" variant="secondary" onClick={onClose}>取消</Button>
+        <Button type="button" variant="secondary" disabled={busy} onClick={onClose}>取消</Button>
         <Button type="submit" disabled={busy || count === 0 || invalid || rangeTooLong || !validDataRange(start, end)}>{busy ? "创建中…" : label}</Button>
       </div>
       <p className="export-review-hint" role="status" hidden={rangeTooLong}>{t(busy ? "exportEditor.creating" : !count ? "exportEditor.missing" : invalid ? "exportEditor.invalidSettings" : !validDataRange(start, end) ? "exportEditor.invalidRange" : "exportEditor.ready")}</p>

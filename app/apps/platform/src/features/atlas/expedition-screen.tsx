@@ -33,10 +33,12 @@ export function ExpeditionScreen(props: AtlasScreenProps) {
     <div className="expedition-map-stage">{props.map}</div>
     <div className="expedition-atmosphere" aria-hidden="true"/>
     <header className="expedition-header">
-      <div className="expedition-wordmark"><i/><span>FIELD OBSERVATORY</span><h1>{props.title}</h1></div>
+      <div className="expedition-heading">
+        <button type="button" className="atlas-screen-back" onClick={props.onBack} aria-label={props.backLabel} title={props.backLabel}><ArrowLeft size={18}/></button>
+        <div className="expedition-wordmark"><i/><span>FIELD OBSERVATORY</span><h1>{props.title}</h1></div>
+      </div>
       <ExpeditionStatistics workspaceId={props.workspaceId} scoped={!!props.config.device_ids?.length} devices={props.devices} motionEnabled={props.motion.enabled}/>
       <nav className="expedition-actions" aria-label="大屏操作">
-        <button type="button" onClick={props.onBack} aria-label="返回一张图管理" title="返回管理"><ArrowLeft size={18}/></button>
         {props.canManage && <button type="button" onClick={props.onEdit} aria-label="编辑大屏" title="编辑大屏"><Settings2 size={18}/></button>}
         <button type="button" onClick={() => window.open(window.location.href, "_blank", "noopener,noreferrer")} aria-label="新窗口打开" title="新窗口打开"><ExternalLink size={17}/></button>
         <button type="button" onClick={props.motion.toggle} disabled={props.motion.reduced} aria-label={props.motion.paused ? "播放动画" : "暂停动画"} title={props.motion.paused ? "播放动画" : "暂停动画"}>{props.motion.paused ? <Play size={17}/> : <Pause size={17}/>}</button>

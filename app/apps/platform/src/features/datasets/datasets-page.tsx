@@ -1,21 +1,32 @@
 import "./datasets-mobile.css";
 import "../../shared/data/mobile-data.css";
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Download, Eye, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { api, formatApiError } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
+import { useNavigationSource } from "../../app/platform-navigation";
+import { useWorkspaceListFilters } from "../../shared/data/use-workspace-list-filters";
 import { Badge, Button, IconButton, Input, PageHeader, Panel, SelectInput, StateView, Table } from "../../shared/ui";
 import { datasetDetailPath, datasetEditPath } from "./dataset-model";
 import { datasetTypeLabel, datasetStatusLabel, displayTime } from "./dataset-format";
 import { DatasetSourceSummary } from "./dataset-sources";
+import { exportCreatedState } from "../exports/export-model";
+
+const defaultFilters = { projectFilter: "", keyword: "" };
+const filterMemory = new Map<string, typeof defaultFilters>();
 
 export function DatasetsPage() {
   const { currentId } = useWorkspace();
+  return <DatasetsList key={currentId} currentId={currentId} />;
+}
+
+function DatasetsList({ currentId }: { currentId: string | null }) {
+  const client = useQueryClient();
   const navigate = useNavigate();
-  const [projectFilter, setProjectFilter] = useState("");
-  const [keyword, setKeyword] = useState("");
+  const source = useNavigationSource();
+  const [{ projectFilter, keyword }, setFilters] = useWorkspaceListFilters(currentId, filterMemory, defaultFilters);
   const [feedback, setFeedback] = useState("");
   const projects = useQuery({
     queryKey: workspaceQueryKey(currentId, "projects"),
@@ -41,19 +52,19 @@ export function DatasetsPage() {
       ),
     [keyword, query.data],
   );
-  const run = async (action: () => Promise<unknown>, message: string) => {
+  const run = async <T,>(action: () => Promise<T>, message: string): Promise<T | null> => {
     setFeedback("");
     try {
-      await action();
+      const result = await action();
       setFeedback(message);
       await query.refetch();
-      return true;
+      return result;
     } catch (error) {
       const item = formatApiError(error);
       setFeedback(
         `${item.message}${item.requestId ? ` · request id ${item.requestId}` : ""}`,
       );
-      return false;
+      return null;
     }
   };
   if (!currentId)
@@ -85,7 +96,7 @@ export function DatasetsPage() {
               <RefreshCw size={14} />
               刷新
             </Button>
-            <Button data-onboarding="dataset-create" onClick={() => navigate("/datasets/new")}>
+            <Button data-onboarding="dataset-create" onClick={() => navigate("/datasets/new", { state: source })}>
               <Plus size={14} />
               创建数据集
             </Button>
@@ -98,13 +109,13 @@ export function DatasetsPage() {
             <Input
               aria-label="搜索数据集"
               value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
+              onChange={(event) => setFilters({ projectFilter, keyword: event.target.value })}
               placeholder="搜索名称、描述或 ID"
             />
           </div>
           <SelectInput
             value={projectFilter}
-            onChange={(event) => setProjectFilter(event.target.value)}
+            onChange={(event) => setFilters({ projectFilter: event.target.value, keyword })}
           >
             <option value="">全部项目</option>
             {projects.data?.items.map((item) => (
@@ -151,7 +162,7 @@ export function DatasetsPage() {
                       <button
                         type="button"
                         className="dataset-title-link"
-                        onClick={() => navigate(datasetDetailPath(dataset.id))}
+                        onClick={() => navigate(datasetDetailPath(dataset.id), { state: source })}
                       >
                         {dataset.name}
                       </button>
@@ -196,7 +207,7 @@ export function DatasetsPage() {
                         <Button
                           variant="secondary"
                           onClick={() =>
-                            navigate(datasetDetailPath(dataset.id))
+                            navigate(datasetDetailPath(dataset.id), { state: source })
                           }
                         >
                           <Eye size={13} />
@@ -204,7 +215,7 @@ export function DatasetsPage() {
                         </Button>
                         <IconButton
                           label="编辑数据集"
-                          onClick={() => navigate(datasetEditPath(dataset.id))}
+                          onClick={() => navigate(datasetEditPath(dataset.id), { state: source })}
                         >
                           <Pencil size={13} />
                         </IconButton>
@@ -219,7 +230,10 @@ export function DatasetsPage() {
                                   }),
                                 "导出任务已创建",
                               );
-                              if (created) navigate("/exports");
+                              if (created) {
+                                void client.invalidateQueries({ queryKey: workspaceQueryKey(currentId, "exports") });
+                                navigate("/exports", { state: exportCreatedState(currentId, created.id) });
+                              }
                             })()
                           }
                         >

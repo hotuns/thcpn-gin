@@ -11,7 +11,7 @@ vi.mock("@thcpn/workspace", () => ({
   useWorkspace: () => ({ currentId: "forest", current: { name: "森林工作区" } }),
   workspaceQueryKey: (id: string, ...parts: string[]) => ["workspace", id, ...parts],
 }));
-vi.mock("@thcpn/i18n", () => ({ useLocale: () => ({ locale: "zh-CN", t: (key: string) => key.startsWith("atlas.") ? atlasZh[key.slice(6) as keyof typeof atlasZh] ?? key : key }) }));
+vi.mock("@thcpn/i18n", () => ({ useLocale: () => ({ locale: "zh-CN", formatNumber: String, t: (key: string) => key.startsWith("atlas.") ? atlasZh[key.slice(6) as keyof typeof atlasZh] ?? key : key }) }));
 vi.mock("../../apps/platform/src/shared/observatory/observatory-decoration", () => ({
   ObservatoryMasthead: () => null, ObservatoryPanelFrame: () => null,
   ObservatoryTitle: ({ title }: { title: string }) => <h1>{title}</h1>,
@@ -41,7 +41,7 @@ function view(id: string, name: string, presentation: "deep-blue" | "technology"
 const devices: DeviceMapItem[] = ["standalone", "gateway", "gateway_node", "carbon_sink", "camera"].map((role, index) => ({ device_id: `device-${index}`, serial_no: `SN-${index}`, name: `${role}设备`, device_type: role, status: "active", location_source: "device", child_count: 0, latitude: 30 + index / 10, longitude: 110, environment: { observation_objects: [], purposes: [], research_tags: [] } }));
 let views: AtlasView[];
 let canManage: boolean;
-function Location() { return <output data-testid="route">{useLocation().pathname}</output>; }
+function Location() { const location = useLocation(); return <output data-testid="route" data-search={location.search}>{location.pathname}</output>; }
 function visibleButtons(scope: ParentNode = document) { return Array.from(scope.querySelectorAll<HTMLButtonElement>("button")).filter(button => !button.closest("[hidden]")); }
 function button(text: string, scope: ParentNode = document) { const found = visibleButtons(scope).find(item => item.textContent === text || item.getAttribute("aria-label") === text); expect(found, `button ${text}`).toBeTruthy(); return found!; }
 async function click(text: string, scope: ParentNode = document) { await act(async () => button(text, scope).click()); }
@@ -63,17 +63,28 @@ beforeEach(() => {
 it("separates saved atlases, registered templates and curated topics, and searches saved views", async () => {
   const { host } = await mount();
   await eventually(() => expect(host.querySelectorAll(".atlas-saved-card")).toHaveLength(2));
-  expect(host.querySelector('[aria-labelledby="atlas-saved-title"]')?.hasAttribute("hidden")).toBe(false);
-  await input(host.querySelector<HTMLInputElement>('[aria-label="搜索名称或简介"]')!, "青山");
+  const tabs = host.querySelector('[role="tablist"]')!;
+  const saved = button("我的一张图2", tabs);
+  const templates = button("模板3", tabs);
+  const topics = button("专题1", tabs);
+  expect(saved.getAttribute("aria-selected")).toBe("true");
+  const searchInput = host.querySelector<HTMLInputElement>('[aria-label="搜索名称或简介"]')!;
+  await input(searchInput, "青山");
   expect(host.querySelectorAll(".atlas-saved-card")).toHaveLength(1);
   expect(host.querySelector(".atlas-saved-card")?.textContent).toContain("青山观测");
-  await click("模板3", host);
+  await act(async () => templates.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })));
+  expect(templates.getAttribute("aria-selected")).toBe("true");
   expect(host.querySelector(".atlas-home-templates")?.closest("[hidden]")).toBeNull();
   expect(host.querySelectorAll(".atlas-home-template")).toHaveLength(3);
   expect(host.querySelector(".atlas-home-template")?.textContent).toContain("深蓝科技");
-  await click("专题1", host);
+  await act(async () => topics.focus());
+  expect(topics.getAttribute("aria-selected")).toBe("true");
   expect(host.querySelector(".atlas-custom-showcase")?.closest("[hidden]")).toBeNull();
   expect(host.querySelector(".atlas-home-templates")?.closest("[hidden]")).not.toBeNull();
+  await act(async () => saved.focus());
+  expect(saved.getAttribute("aria-selected")).toBe("true");
+  expect(searchInput.value).toBe("青山");
+  expect(host.querySelector('[data-testid="route"]')?.textContent).toBe("/atlas");
 });
 
 it("creates a deep-blue atlas through the save API and opens that same saved view", async () => {
@@ -100,6 +111,19 @@ it("hides management actions for viewers and does not fetch management-only devi
   await click("打开视图", host);
   await eventually(() => expect(host.querySelector(".eco-screen")).not.toBeNull());
   expect(visibleButtons(host).some(item => item.textContent === "编辑大屏")).toBe(false);
+});
+
+it("returns from a saved atlas to the same management search and template filter", async () => {
+  const { host } = await mount("/atlas?q=青山&template=deep-blue");
+  await eventually(() => expect(host.querySelectorAll(".atlas-saved-card")).toHaveLength(1));
+  await click("打开视图", host);
+  await eventually(() => expect(host.querySelector(".eco-screen")).not.toBeNull());
+  await click("返回一张图", host);
+  await eventually(() => expect(host.querySelector('[data-testid="route"]')?.textContent).toBe("/atlas"));
+  const params = new URLSearchParams(host.querySelector('[data-testid="route"]')?.getAttribute("data-search") ?? "");
+  expect(params.get("q")).toBe("青山");
+  expect(params.get("template")).toBe("deep-blue");
+  expect(host.querySelectorAll(".atlas-saved-card")).toHaveLength(1);
 });
 
 it("filters by topology category and preserves inspector state after editing in place", async () => {

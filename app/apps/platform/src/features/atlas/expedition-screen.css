@@ -18,6 +18,8 @@
 .expedition-atmosphere { pointer-events:none; position:absolute; inset:0; z-index:-1; background:linear-gradient(90deg,#101611e8 0,#1117119e 17%,#11171118 40%,#11171100 80%),linear-gradient(#11150fe6 0,#11150f00 23%,#11150f00 50%,#11150fd9 70%,#11150ff5 100%); }
 .expedition-atmosphere::after { content:""; position:absolute; inset:0; opacity:.2; background:repeating-linear-gradient(0deg,transparent 0,transparent 3px,#b09c6522 4px); mask-image:linear-gradient(90deg,black,transparent 55%); }
 .expedition-header { position:absolute; inset:0 0 auto; height:100px; display:flex; align-items:center; gap:36px; padding:22px 30px; border-bottom:1px solid #a3865a33; background:linear-gradient(#111811ee,#11181122); z-index:5; }
+.expedition-heading { display:flex; align-items:center; gap:12px; flex:1; min-width:0; }
+.expedition-heading > .atlas-screen-back { --atlas-back-border:#b58d5680; --atlas-back-surface:#191e16; }
 .expedition-wordmark { position:relative; padding-left:22px; flex:1; min-width:0; }
 .expedition-wordmark > i { position:absolute; left:0; top:5px; width:6px; height:42px; background:#dfad6d; box-shadow:0 0 22px #dfad6d55; }
 .expedition-wordmark > span { display:block; font-size:9px; letter-spacing:.38em; color:#cbb38c; margin-bottom:7px; }

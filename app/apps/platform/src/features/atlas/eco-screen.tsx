@@ -24,9 +24,9 @@ export function EcoScreen(props: Props) {
         <path className="eco-trace-upper" d="M280 26H530L565 52H594M1078 52H1107L1142 26H1392"/>
         {[0,1,2,3].map(index => <g key={index}><path className="eco-header-slash" d={`M${267+index*14} 24h10l-11 12h-10z`}/><path className="eco-header-slash" d={`M${1345+index*14} 24h10l11 12h-10z`}/></g>)}
       </svg>
+      <button type="button" className="atlas-screen-back" onClick={props.onBack} aria-label={props.backLabel} title={props.backLabel}><ArrowLeft size={18}/></button>
       <div className="eco-brand">生态感知 · 全域协同</div>
       <nav className="eco-maintenance" aria-label="大屏操作">
-        <button type="button" onClick={props.onBack} aria-label="返回一张图管理" title="返回管理"><ArrowLeft size={18}/></button>
         {props.canManage && <button type="button" onClick={props.onEdit} aria-label="编辑大屏" title="编辑大屏"><Settings2 size={18}/></button>}
         <button type="button" onClick={() => window.open(window.location.href, "_blank", "noopener,noreferrer")} aria-label="新窗口打开" title="新窗口打开"><ExternalLink size={17}/></button>
         <button type="button" onClick={props.motion.toggle} disabled={props.motion.reduced} aria-label={props.motion.paused ? "播放动画" : "暂停动画"} title={props.motion.paused ? "播放动画" : "暂停动画"}>{props.motion.paused ? <Play size={17}/> : <Pause size={17}/>}</button>

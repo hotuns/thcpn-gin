@@ -1,8 +1,8 @@
 import "./account-mobile.css";
 import { policyLimit } from "../../shared/config/system-policy";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useState, type FormEvent } from "react";
-import { ArrowLeft, Check, Mail, Moon, Palette, Pencil, Phone, Sun, UserRound } from "lucide-react";
+import { Check, Mail, Moon, Palette, Pencil, Phone, Sun, UserRound } from "lucide-react";
 import { api, commonStatusLabel, formatApiError } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
 import { Badge, Button, CopyId, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, PageHeader, Panel, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsContent, TabsList, TabsTrigger } from "../../shared/ui";
@@ -19,7 +19,6 @@ const formatTime = (input?: string) =>
     : "—";
 
 export function AccountPage() {
-  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") === "security" ? "security" : params.get("tab") === "preferences" ? "preferences" : "profile";
   const { t } = useLocale();
@@ -29,10 +28,9 @@ export function AccountPage() {
         eyebrow={t("platform:navigation.account")}
         title={t("platform:navigation.account")}
         description={t("preferences")}
-        actions={<Button variant="secondary" onClick={() => navigate("/dashboard")}><ArrowLeft size={14} />{t("backToOverview")}</Button>}
       />
       <Tabs value={tab} onValueChange={(value) => setParams({ tab: value })}>
-        <TabsList className="account-tabs">
+        <TabsList variant="underline" className="account-tabs" aria-label={t("platform:navigation.account")}>
           <TabsTrigger value="profile">{t("platform:account.profile")}</TabsTrigger>
           <TabsTrigger value="security">{t("platform:account.security")}</TabsTrigger>
           <TabsTrigger value="preferences">{t("preferences")}</TabsTrigger>

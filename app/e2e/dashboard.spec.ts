@@ -35,7 +35,9 @@ for (const english of [false, true]) {
     await expect(page.locator(".overview-chart-readout")).not.toContainText(/部分统计|完整|Partial|Complete/);
     await expect(page.locator(".overview-bar-target").nth(3)).not.toHaveAccessibleName(/部分统计|完整|Partial|Complete/);
     const mark = await page.locator(".overview-bar").first().evaluate(el => ({ color: getComputedStyle(el).backgroundColor, width: el.getBoundingClientRect().width }));
-    expect(mark.color).toBe(english ? "rgb(57, 135, 229)" : "rgb(42, 120, 214)");
+    expect(mark.color).toBe(english ? "rgb(177, 169, 154)" : "rgb(99, 93, 80)");
+    await expect(page.locator(".overview-bar-target").nth(3).locator(".overview-bar"))
+      .toHaveCSS("background-color", english ? "rgb(255, 135, 89)" : "rgb(245, 78, 0)");
     expect(mark.width).toBeLessThanOrEqual(24);
     await noPageOverflow(page);
     await page.locator(".overview-trend").click({ position: { x: 10, y: 10 } });

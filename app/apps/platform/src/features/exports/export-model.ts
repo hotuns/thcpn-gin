@@ -15,6 +15,10 @@ export type ExportDraft = {
 
 export type ExportSystem = "standard" | "group" | "carbon";
 
+export function exportCreatedState(workspaceId: string, jobId: string) {
+  return { createdExport: { workspaceId, jobId } };
+}
+
 const localTime = (input: Date | string) => {
   const date = new Date(input);
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
@@ -26,6 +30,15 @@ export const defaultRange = () => ({
   start: localTime(new Date(Date.now() - 7 * 86_400_000)),
   end: localTime(new Date()),
 });
+
+export function initialExportRange(params: URLSearchParams) {
+  const fallback = defaultRange();
+  const readTime = (key: "start" | "end") => {
+    const time = params.get(key);
+    return time && Number.isFinite(Date.parse(time)) ? localTime(time) : fallback[key];
+  };
+  return { start: readTime("start"), end: readTime("end") };
+}
 
 export const value = (item: JsonRecord, key: string) => String(item[key] ?? "");
 

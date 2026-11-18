@@ -95,8 +95,12 @@
   display: flex;
   gap: 12px;
   align-items: center;
+  padding: 0;
+  border: 0;
   color: #a6c6d4;
-  text-decoration: none;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
 }
 .dp-back > svg:nth-child(2) {
   color: #6bc6db;

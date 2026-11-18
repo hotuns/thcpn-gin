@@ -647,6 +647,9 @@
 .export-page .export-jobs-table tbody tr:not(.export-detail-row):hover td {
   background: var(--export-hover);
 }
+.export-page .export-jobs-table tbody .export-created-row td {
+  background: var(--surface-selected);
+}
 .export-page .export-jobs-table td {
   height: 54px;
 }

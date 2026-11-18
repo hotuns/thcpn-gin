@@ -17,7 +17,14 @@ import "./research-screen.css";
 
 export function ResearchScreen(props: AtlasScreenProps) {
   return <div className={`research-screen${props.config.layout === "map" ? " research-map-priority" : ""}`} data-motion={props.motion.enabled ? "running" : "paused"}>
-    <header className="research-header"><div className="research-title"><span>FIELD NOTES / ECOLOGICAL OBSERVATORY</span><h1>{props.title}</h1></div><div className="research-edition">科研工作台<span>RESEARCH EDITION</span></div><nav aria-label="大屏操作"><button type="button" onClick={props.onBack}><ArrowLeft size={15} />管理</button>{props.canManage && <button type="button" onClick={props.onEdit}><Settings2 size={15} />配置</button>}<button type="button" onClick={props.motion.toggle} disabled={props.motion.reduced} aria-label={props.motion.paused ? "播放动画" : "暂停动画"}>{props.motion.paused ? <Play size={15} /> : <Pause size={15} />}</button><button type="button" onClick={props.onFullscreen} aria-label={props.presenting ? "退出全屏" : "全屏"}>{props.presenting ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button></nav></header>
+    <header className="research-header">
+      <div className="research-heading">
+        <button type="button" className="atlas-screen-back" onClick={props.onBack} aria-label={props.backLabel} title={props.backLabel}><ArrowLeft size={18} /></button>
+        <div className="research-title"><span>FIELD NOTES / ECOLOGICAL OBSERVATORY</span><h1>{props.title}</h1></div>
+      </div>
+      <div className="research-edition">科研工作台<span>RESEARCH EDITION</span></div>
+      <nav aria-label="大屏操作">{props.canManage && <button type="button" onClick={props.onEdit}><Settings2 size={15} />配置</button>}<button type="button" onClick={props.motion.toggle} disabled={props.motion.reduced} aria-label={props.motion.paused ? "播放动画" : "暂停动画"}>{props.motion.paused ? <Play size={15} /> : <Pause size={15} />}</button><button type="button" onClick={props.onFullscreen} aria-label={props.presenting ? "退出全屏" : "全屏"}>{props.presenting ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button></nav>
+    </header>
     <ResearchOverview {...props} />
     <div className="research-body"><ResearchCatalog {...props} />{props.selectedDevice ? <ResearchWorkingArea key={props.selectedDevice.device_id} {...props} device={props.selectedDevice} /> : <><main className="research-workspace" data-trends={props.config.show_trends !== false}><section className="research-map-paper"><header><h2>观测空间</h2><span>SPATIAL FIELD</span></header><div className="research-map-region">{props.map}</div></section><div className="research-empty">选择设备以查看观测序列</div></main><aside className="research-observations"><h2>观测记录</h2><div className="research-empty">请选择设备</div></aside></>}</div>
     {props.warning && <div className="research-warning" role="alert">{props.warning}</div>}{props.settings}

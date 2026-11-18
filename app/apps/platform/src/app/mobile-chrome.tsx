@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useLocale } from "@thcpn/i18n";
-import { BrandLogo } from "@thcpn/ui";
 import { useWorkspace } from "@thcpn/workspace";
 import { AlertTriangle, ArrowLeft, Bell, Boxes, Building2, Check, ChevronDown, Gauge, Grid2X2, Layers3 } from "lucide-react";
-import { Command, CommandEmpty, CommandInput, CommandItem, CommandList, IconButton, Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "../shared/ui";
-import { mobileParent, mobileSection } from "./mobile-navigation";
+import { BrandLogo, Command, CommandEmpty, CommandInput, CommandItem, CommandList, IconButton, Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "../shared/ui";
+import { useNavigationSource, type usePlatformReturn } from "./platform-navigation";
+import { findPlatformRoute } from "./platform-routes";
 
 const tabs = [
   { section: "overview", to: "/dashboard", label: "platform:navigation.overview", icon: Gauge },
@@ -15,23 +15,25 @@ const tabs = [
   { section: "more", to: "/more", label: "mobile.more", icon: Grid2X2 },
 ] as const;
 
-export function MobileHeader({ title, unread }: { title: string; unread: number }) {
+export function MobileHeader({ title, unread, returnLink, onSwitchWorkspace }: {
+  title: string;
+  unread: number;
+  returnLink?: ReturnType<typeof usePlatformReturn>;
+  onSwitchWorkspace: (id: string) => boolean;
+}) {
   const { t } = useLocale();
   const workspace = useWorkspace();
   const location = useLocation();
-  const navigate = useNavigate();
+  const source = useNavigationSource();
+  const notifications = findPlatformRoute(location.pathname)?.key === "notifications";
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
-  const parent = mobileParent(location.pathname);
   return <Sheet open={workspaceOpen} onOpenChange={setWorkspaceOpen}>
     <header className="mobile-app-header">
-      {parent ? <IconButton label={t("back")} onClick={() => {
-        if (window.history.state?.idx > 0) void navigate(-1);
-        else void navigate(parent, { replace: true, state: { restoreScroll: true } });
-      }}><ArrowLeft size={22} /></IconButton> : <span className="mobile-brand-mark"><BrandLogo /></span>}
+      {returnLink?.key ? <IconButton label={t("mobile.backTo", { page: t(`platform:navigation.${returnLink.key}`) })} onClick={returnLink.back}><ArrowLeft size={20} /></IconButton> : <span className="mobile-brand-mark"><BrandLogo /></span>}
       <SheetTrigger asChild><button type="button" className="mobile-context-trigger" aria-label={t("mobile.workspacePicker")}>
         <strong>{title}</strong><span>{workspace.current?.name ?? t("mobile.noWorkspace")}<ChevronDown size={12} aria-hidden="true" /></span>
       </button></SheetTrigger>
-      <Link className="mobile-notification" to="/notifications" aria-label={t("mobile.openNotifications")}><Bell size={21} />{unread > 0 && <span>{unread > 99 ? "99+" : unread}</span>}</Link>
+      <Link className="mobile-notification" to="/notifications" replace={notifications} state={notifications ? location.state : source} aria-label={t("mobile.openNotifications")}><Bell size={21} />{unread > 0 && <span>{unread > 99 ? "99+" : unread}</span>}</Link>
     </header>
       <SheetContent side="bottom" className="mobile-workspace-sheet">
         <SheetHeader><SheetTitle>{t("mobile.workspacePicker")}</SheetTitle></SheetHeader>
@@ -40,8 +42,7 @@ export function MobileHeader({ title, unread }: { title: string; unread: number 
           <CommandList>
             <CommandEmpty>{t("mobile.noWorkspaceMatch")}</CommandEmpty>
             {workspace.workspaces.map(item => <CommandItem key={item.id} value={item.id} keywords={[item.name]} onSelect={() => {
-              if (item.id !== workspace.currentId) workspace.setCurrentId(item.id);
-              setWorkspaceOpen(false);
+              if (onSwitchWorkspace(item.id)) setWorkspaceOpen(false);
             }} className="mobile-workspace-option"><Building2 size={19} /><span>{item.name}</span>{item.id === workspace.currentId && <Check size={18} aria-label={t("mobile.currentWorkspace")} />}</CommandItem>)}
           </CommandList>
         </Command>
@@ -53,7 +54,7 @@ export function MobileHeader({ title, unread }: { title: string; unread: number 
 export function MobileNavigation() {
   const { t } = useLocale();
   const { pathname } = useLocation();
-  const section = mobileSection(pathname);
+  const section = findPlatformRoute(pathname)?.mobileSection ?? "more";
   return <nav className="mobile-app-navigation" aria-label={t("mobile.mobileNavigation")}>
     {tabs.map(({ section: key, to, label, icon: Icon }) => <Link key={key} to={to} aria-current={section === key ? "page" : undefined} className={section === key ? "active" : undefined}><Icon size={22} aria-hidden="true" /><span>{t(label)}</span></Link>)}
   </nav>;

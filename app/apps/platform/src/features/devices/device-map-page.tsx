@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, ChevronDown, ChevronRight, Leaf, LocateFixed, MapPinned, Satellite, SlidersHorizontal, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Leaf, LocateFixed, MapPinned, Minus, Plus, Satellite, SlidersHorizontal, X } from "lucide-react";
 import { api, deviceTopologyRoleLabel, formatApiError, type DeviceMapItem, type DeviceTaxonomyTerm } from "@thcpn/api";
 import { DeviceMap, iconifyIconUrl, tiandituImageryStyle } from "@thcpn/device-map";
 import { Button, StateView, Switch } from "../../shared/ui";
@@ -17,6 +17,7 @@ export function DeviceMapPage() {
   const [toolsOpen, setToolsOpen] = useState(false);
   const selectDevice = (id: string) => { setSelectedId(id); if (mobile) { setMobilePanel("inspector"); setToolsOpen(false); } };
   const [mapInstance, setMapInstance] = useState<LibreMap | null>(null);
+  const [readyMap, setReadyMap] = useState<LibreMap | null>(null);
   const { currentId, current } = useWorkspace();
   const [includeChildren, setIncludeChildren] = useState(false);
   const [ecosystem, setEcosystem] = useState("");
@@ -24,6 +25,8 @@ export function DeviceMapPage() {
   const [consoleCollapsed, setConsoleCollapsed] = useState(
     () => localStorage.getItem("ecocloud:device-map-console-collapsed") === "true",
   );
+  const filterPanelId = useId();
+  const filtersOpen = mobile ? mobilePanel === "directory" : !consoleCollapsed;
   const catalog = useQuery({ queryKey: ["device-taxonomy"], queryFn: api.devices.taxonomy, staleTime: DEVICE_LIST_STALE_TIME });
   const query = useQuery({
     queryKey: workspaceQueryKey(currentId, "device-map", String(includeChildren)),
@@ -54,10 +57,42 @@ export function DeviceMapPage() {
     localStorage.setItem("ecocloud:device-map-console-collapsed", String(consoleCollapsed));
   }, [consoleCollapsed]);
 
+  const filterPanel = (
+    <section id={filterPanelId} hidden={!filtersOpen} className="device-map-console" aria-label="地图筛选">
+      {(filtersOpen || mobile) && <>
+        <div className="device-map-console-head">
+          <div className="device-map-title-mark"><Satellite size={15} /></div>
+          <div>
+            <span>{current?.name ?? "当前组织"}</span>
+            <h1>设备地图</h1>
+          </div>
+          <Button type="button" variant="ghost" size="icon" aria-label="收起地图筛选" title="收起地图筛选" onClick={() => mobile ? setMobilePanel("") : setConsoleCollapsed(true)}><X size={16} /></Button>
+        </div>
+        <div className="device-map-summary" data-onboarding="map-summary" aria-label="设备统计">
+          <div><strong>{rows.length}</strong><span>设备</span></div>
+          <div><strong>{located}</strong><span>已定位</span></div>
+          <div><strong>{rows.length - located}</strong><span>未定位</span></div>
+          <div><strong>{unclassified}</strong><span>未分类</span></div>
+        </div>
+        <div className="device-map-filters" data-onboarding="map-filters">
+          <MapDeviceTypeSelect value={ecosystem} options={terms.filter((term) => term.kind === "ecosystem")} onChange={setEcosystem} />
+          <label className="device-map-child-toggle">
+            <Switch checked={includeChildren} onCheckedChange={setIncludeChildren} aria-label="显示子节点" />
+            <span>显示子节点</span>
+          </label>
+        </div>
+        {mobile && <div className="mobile-device-directory" aria-label="设备目录">{rows.map(item => <Button key={item.device_id} variant="ghost" aria-pressed={selectedId === item.device_id} onClick={() => selectDevice(item.device_id)}><span>{item.name}</span><small>{item.latitude === undefined || item.longitude === undefined ? "未定位" : item.serial_no}</small></Button>)}</div>}
+        {!token && !import.meta.env.VITE_MAP_STYLE_URL ? <div className="device-map-token-note">配置天地图 Token 后显示影像底图</div> : null}
+      </>}
+    </section>
+  );
+
   return (
     <div className="immersive-device-map" data-onboarding="map-canvas">
       <DeviceMap
-        onMapReady={setMapInstance}
+        onMapCreated={setMapInstance}
+        onMapReady={setReadyMap}
+        showNavigation={false}
         height={mobile ? (mobilePanel === "directory" || (mobilePanel === "inspector" && selected) ? "calc(60% - 64px)" : "calc(100% - 64px)") : "100%"}
         styleUrl={token ? undefined : import.meta.env.VITE_MAP_STYLE_URL}
         mapStyle={mapStyle}
@@ -66,44 +101,27 @@ export function DeviceMapPage() {
         onSelect={selectDevice}
       />
       {mobile && <MobileMapPanels value={mobilePanel} onChange={value => { setMobilePanel(value); if (value) setToolsOpen(false); }} options={[{ value: "directory", label: "目录与筛选" }, { value: "inspector", label: "设备详情", disabled: !selected }]} />}
-      <div className="device-map-controls">
-      <section hidden={mobile && mobilePanel !== "directory"} className={`device-map-console t-resize ${!mobile && consoleCollapsed ? "is-collapsed" : ""}`} aria-label="地图筛选">
-        {!mobile && consoleCollapsed ? (
-          <button type="button" className="device-map-console-toggle" aria-expanded="false" aria-label="展开地图筛选" title="展开地图筛选" onClick={() => setConsoleCollapsed(false)}>
-            <SlidersHorizontal size={18} />
-          </button>
-        ) : (
-          <>
-            <div className="device-map-console-head">
-              <div className="device-map-title-mark"><Satellite size={15} /></div>
-              <div>
-                <span>{current?.name ?? "当前组织"}</span>
-                <h1>设备地图</h1>
-              </div>
-              <button type="button" className="device-map-console-collapse" aria-expanded="true" aria-label="收起地图筛选" title="收起地图筛选" onClick={() => mobile ? setMobilePanel("") : setConsoleCollapsed(true)}>
-                <ChevronRight size={17} />
-              </button>
+      <MapTools
+        map={readyMap}
+        open={toolsOpen}
+        onOpenChange={open => { setToolsOpen(open); if (mobile && open) setMobilePanel(""); }}
+        renderLayout={(toolsTrigger, toolsPanel) => (
+          <div className="device-map-controls">
+            <div className="device-map-toolbar" role="group" aria-label="地图控件">
+              <MapZoomButtons map={mapInstance} />
+              <span className="device-map-toolbar-divider" aria-hidden="true" />
+              {!mobile && (
+                <Button type="button" variant="ghost" aria-label="地图筛选" title="地图筛选" aria-expanded={filtersOpen} aria-controls={filterPanelId} onClick={() => setConsoleCollapsed(collapsed => !collapsed)}>
+                  <SlidersHorizontal size={18} />
+                </Button>
+              )}
+              {toolsTrigger}
             </div>
-            <div className="device-map-summary" data-onboarding="map-summary" aria-label="设备统计">
-              <div><strong>{rows.length}</strong><span>设备</span></div>
-              <div><strong>{located}</strong><span>已定位</span></div>
-              <div><strong>{rows.length - located}</strong><span>未定位</span></div>
-              <div><strong>{unclassified}</strong><span>未分类</span></div>
-            </div>
-            <div className="device-map-filters" data-onboarding="map-filters">
-              <MapDeviceTypeSelect value={ecosystem} options={terms.filter((term) => term.kind === "ecosystem")} onChange={setEcosystem} />
-              <label className="device-map-child-toggle">
-                <Switch checked={includeChildren} onCheckedChange={setIncludeChildren} aria-label="显示子节点" />
-                <span>显示子节点</span>
-              </label>
-            </div>
-            {mobile && <div className="mobile-device-directory" aria-label="设备目录">{rows.map(item => <Button key={item.device_id} variant="ghost" aria-pressed={selectedId === item.device_id} onClick={() => selectDevice(item.device_id)}><span>{item.name}</span><small>{item.latitude === undefined || item.longitude === undefined ? "未定位" : item.serial_no}</small></Button>)}</div>}
-            {!token && !import.meta.env.VITE_MAP_STYLE_URL ? <div className="device-map-token-note">配置天地图 Token 后显示影像底图</div> : null}
-          </>
+            {filterPanel}
+            {toolsPanel}
+          </div>
         )}
-      </section>
-      <MapTools map={mapInstance} open={toolsOpen} onOpenChange={open => { setToolsOpen(open); if (mobile && open) setMobilePanel(""); }} />
-      </div>
+      />
 
       {query.isLoading ? <div className="device-map-state"><StateView type="loading" title="正在加载设备地图" description="正在读取设备位置。" /></div> : null}
       {query.error ? <div className="device-map-state"><StateView type="error" title="设备地图加载失败" description={formatApiError(query.error).message} requestId={formatApiError(query.error).requestId} /></div> : null}
@@ -116,6 +134,27 @@ export function DeviceMapPage() {
       </div>
     </div>
   );
+}
+
+function MapZoomButtons({ map }: { map: LibreMap | null }) {
+  const [atMax, setAtMax] = useState(false);
+  const [atMin, setAtMin] = useState(false);
+
+  useEffect(() => {
+    if (!map) return;
+    const update = () => {
+      setAtMax(map.getZoom() >= map.getMaxZoom());
+      setAtMin(map.getZoom() <= map.getMinZoom());
+    };
+    update();
+    map.on("zoom", update);
+    return () => { map.off("zoom", update); };
+  }, [map]);
+
+  return <>
+    <Button type="button" variant="ghost" aria-label="放大" title="放大" disabled={!map || atMax} onClick={event => map?.zoomIn({}, { originalEvent: event.nativeEvent })}><Plus size={18} /></Button>
+    <Button type="button" variant="ghost" aria-label="缩小" title="缩小" disabled={!map || atMin} onClick={event => map?.zoomOut({}, { originalEvent: event.nativeEvent })}><Minus size={18} /></Button>
+  </>;
 }
 
 function MapDeviceTypeSelect({ value, options, onChange }: { value: string; options: DeviceTaxonomyTerm[]; onChange: (value: string) => void }) {

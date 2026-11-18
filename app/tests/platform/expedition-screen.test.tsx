@@ -12,7 +12,7 @@ const device: DeviceMapItem = { device_id: "station", name: "青山标准站", s
 function props(): AtlasScreenProps {
   return {
     title: "生态观测一张图", workspaceId: "forest", boardId: "expedition", config: { trend_hours: 24, presentation: "panorama", layout: "balanced", device_ids: [device.device_id], metric_defaults: { "device:standalone": metrics.map(stream => stream.code) }, show_trends: true, show_images: false },
-    devices: [device], selectedDevice: device, selectedNodeKey: "gateway", kind: "all", onKindChange: vi.fn(), onSelect: vi.fn(), onSelectNode: vi.fn(), map: <div data-testid="map"/>, canManage: true, onEdit: vi.fn(), onBack: vi.fn(), presenting: false, onFullscreen: vi.fn(), motion: { enabled: false, paused: true, reduced: false, toggle: vi.fn() },
+    devices: [device], selectedDevice: device, selectedNodeKey: "gateway", kind: "all", onKindChange: vi.fn(), onSelect: vi.fn(), onSelectNode: vi.fn(), map: <div data-testid="map"/>, canManage: true, onEdit: vi.fn(), onBack: vi.fn(), backLabel: "返回一张图", presenting: false, onFullscreen: vi.fn(), motion: { enabled: false, paused: true, reduced: false, toggle: vi.fn() },
   };
 }
 
@@ -42,6 +42,6 @@ it("keeps device type, fullscreen, back and edit actions connected to the shared
   await click('.expedition-categories button:nth-child(2)');
   expect(options.onKindChange).toHaveBeenCalledWith("network");
   await click('[aria-label="全屏"]'); expect(options.onFullscreen).toHaveBeenCalled();
-  await click('[aria-label="返回一张图管理"]'); expect(options.onBack).toHaveBeenCalled();
+  await click('[aria-label="返回一张图"]'); expect(options.onBack).toHaveBeenCalled();
   await click('[aria-label="编辑大屏"]'); expect(options.onEdit).toHaveBeenCalled();
 });
