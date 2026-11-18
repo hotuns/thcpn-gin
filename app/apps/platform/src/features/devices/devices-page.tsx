@@ -5,13 +5,14 @@ import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
 import "./device-mobile.css";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronDown, ChevronRight, Clock3, Eye, FileText, RefreshCw, ScanLine, Search, Settings2, X } from "lucide-react";
+import { useNavigationSource } from "../../app/platform-navigation";
+import { ChevronDown, ChevronRight, Clock3, Eye, FileText, ListFilter, RefreshCw, ScanLine, Settings2, X } from "lucide-react";
 import { api, formatApiError, type Device, type DeviceTaxonomyTerm, type THCPNLatestAttributesResponse } from "@thcpn/api";
 import { iconifyIconUrl } from "@thcpn/device-map";
 import { useAuth } from "@thcpn/auth";
 import { useLocale } from "@thcpn/i18n";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, Input, Panel, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, StateView, Table, Tabs, TabsContent, TabsList, TabsTrigger } from "../../shared/ui";
+import { Badge, Button, PageHeader, Panel, SearchInput, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, StateView, Table, Tabs, TabsContent, TabsList, TabsTrigger } from "../../shared/ui";
 import {
   DEVICE_LIST_GC_TIME,
   DEVICE_LIST_STALE_TIME,
@@ -24,6 +25,8 @@ import { DeviceVitalIndicators } from "./device-vital-indicators";
 import { DeviceChildren } from "./device-children";
 
 type Category = "all" | Exclude<DeviceCategory, "gateway_node">;
+
+const deviceCategories: Category[] = ["all", "standalone", "gateway", "carbon_sink", "camera"];
 
 type FilterOption = { value: string; label: string };
 
@@ -69,10 +72,12 @@ export function DevicesPage() {
 }
 
 function DeviceList() {
+  const { t, formatNumber } = useLocale();
   const queryClient = useQueryClient();
   const { currentId } = useWorkspace();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const source = useNavigationSource();
   const [listParams] = useSearchParams();
   const mobile = useIsMobile();
   const [saved] = useState(() => readListMemory(currentId));
@@ -91,7 +96,7 @@ function DeviceList() {
   const rememberScroll = () => { scrollY.current = window.scrollY; persistList(); };
   const openDevice = (id: string, tab?: string) => {
     rememberScroll();
-    navigate(`/devices/${encodeURIComponent(id)}${tab ? `?tab=${tab}` : ""}`);
+    navigate(`/devices/${encodeURIComponent(id)}${tab ? `?tab=${tab}` : ""}`, { state: source });
   };
   const projects = useQuery({
     queryKey: workspaceQueryKey(currentId, "projects"),
@@ -220,171 +225,186 @@ function DeviceList() {
       projects.data?.items.find((item) => item.id === id)?.name,
       id ? id.slice(0, 8) : "未分配项目",
     );
+  const activeFilters = [projectId, siteId, deviceTypeId].filter(Boolean).length;
+  const resetFilters = () => {
+    setProjectId("");
+    setSiteId("");
+    setDeviceTypeId("");
+  };
+  const refreshDevices = () => {
+    void query.refetch();
+    void queryClient.invalidateQueries({
+      predicate: ({ queryKey }) => ["lorawan-info", "lorawan-connection", "lorawan-activity"].some((key) => queryKey.includes(key)),
+    });
+    void mapQuery.refetch();
+    if (runtimeDeviceIDs.length) void runtime.refetch();
+  };
   const filterControls = (
-          <div className="device-filter-scope-row">
-            <DeviceFilterSelect
-              label="筛选项目"
-              value={projectId}
-              options={[{ value: "", label: "全部项目" }, ...(projects.data?.items ?? []).map((item) => ({ value: text(item.id), label: text(item.name) }))]}
-              onChange={(value) => {
-                setProjectId(value);
-                setSiteId("");
-              }}
-            />
-            <DeviceFilterSelect
-              label="筛选站点"
-              value={siteId}
-              options={[{ value: "", label: "全部站点" }, ...(sites.data?.items ?? []).map((item) => ({ value: text(item.id), label: text(item.name) }))]}
-              onChange={setSiteId}
-            />
-            <DeviceFilterSelect
-              label="筛选生态分类"
-              value={deviceTypeId}
-              options={[
-                { value: "", label: "全部生态分类" },
-                ...(taxonomy.data?.items ?? [])
-                  .filter((item) => item.kind === "ecosystem")
-                  .map((item) => ({ value: item.id, label: item.name_zh })),
-              ]}
-              onChange={setDeviceTypeId}
-            />
-            {(projectId || siteId || deviceTypeId) && <button type="button" className="device-filter-reset" onClick={() => { setProjectId(""); setSiteId(""); setDeviceTypeId(""); }}><X size={13} />重置筛选</button>}
-          </div>
+    <div className="device-filter-scope-row">
+      <DeviceFilterSelect
+        label={t("platform:deviceList.filterProject")}
+        value={projectId}
+        options={[
+          { value: "", label: t("platform:deviceList.allProjects") },
+          ...(projects.data?.items ?? []).map((item) => ({ value: text(item.id), label: text(item.name) })),
+        ]}
+        onChange={(value) => {
+          setProjectId(value);
+          setSiteId("");
+        }}
+      />
+      <DeviceFilterSelect
+        label={t("platform:deviceList.filterSite")}
+        value={siteId}
+        options={[
+          { value: "", label: t("platform:deviceList.allSites") },
+          ...(sites.data?.items ?? []).map((item) => ({ value: text(item.id), label: text(item.name) })),
+        ]}
+        onChange={setSiteId}
+      />
+      <DeviceFilterSelect
+        label={t("platform:deviceList.filterEcosystem")}
+        value={deviceTypeId}
+        options={[
+          { value: "", label: t("platform:deviceList.allEcosystems") },
+          ...(taxonomy.data?.items ?? [])
+            .filter((item) => item.kind === "ecosystem")
+            .map((item) => ({ value: item.id, label: item.name_zh })),
+        ]}
+        onChange={setDeviceTypeId}
+      />
+      {activeFilters > 0 && (
+        <Button variant="ghost" className="device-filter-reset" onClick={resetFilters}>
+          <X size={14} aria-hidden="true" />{t("platform:deviceList.reset")}
+        </Button>
+      )}
+    </div>
   );
   const deviceRows = rows.map((device, index) => (
-                  <DeviceRows
-                    key={device.id}
-                    device={device}
-                    sequence={index + 1}
-                    mobile={mobile}
-                    deviceType={deviceTypeByDevice.get(device.id)}
-                    workspaceId={currentId}
-                    runtime={runtimeByDevice.get(device.id)}
-                    runtimeLoading={runtime.isLoading}
-                    tags={device.tags ?? []}
-                    expanded={expandedId === device.id}
-                    projectName={device.source_project_name || projectName(device.project_id)}
-                    siteName={device.source_site_name || device.source_workspace_name || siteName(device.site_id)}
-                    onExpand={() =>
-                      setExpandedId(expandedId === device.id ? "" : device.id)
-                    }
-                    onOpen={(id = device.id, tab) =>
-                      openDevice(id, tab)
-                    }
-                  />
-                ));
+    <DeviceRows
+      key={device.id}
+      device={device}
+      sequence={index + 1}
+      mobile={mobile}
+      deviceType={deviceTypeByDevice.get(device.id)}
+      workspaceId={currentId}
+      runtime={runtimeByDevice.get(device.id)}
+      runtimeLoading={runtime.isLoading}
+      tags={device.tags ?? []}
+      expanded={expandedId === device.id}
+      projectName={device.source_project_name || projectName(device.project_id)}
+      siteName={device.source_site_name || device.source_workspace_name || siteName(device.site_id)}
+      onExpand={() => setExpandedId(expandedId === device.id ? "" : device.id)}
+      onOpen={(id = device.id, tab) => openDevice(id, tab)}
+    />
+  ));
+
   return (
     <>
-      <Panel onClickCapture={(event) => { if ((event.target as HTMLElement).closest('a[href^="/devices/"]')) rememberScroll(); }}>
-        {listParams.get("notice") && (
-          <div className="command-note device-feedback">
-            {listParams.get("notice")}
-          </div>
-        )}
-        <div className="device-filter-bar" data-onboarding="device-filters">
-          <div className="device-filter-main-row">
-            <div className="filter-input">
-              <Search size={15} />
-              <Input
-                type="search"
-                aria-label="搜索设备"
+      <PageHeader
+        title={t("platform:navigation.devices")}
+        actions={<>
+          <Button variant="secondary" onClick={refreshDevices} disabled={query.isFetching}>
+            <RefreshCw size={15} aria-hidden="true" />{t("platform:deviceList.refresh")}
+          </Button>
+          {!user?.is_demo && <Button data-onboarding="claim-entry" onClick={() => navigate("/claim", { state: source })}>
+            <ScanLine size={16} aria-hidden="true" />{t("platform:deviceList.add")}
+          </Button>}
+        </>}
+      />
+      <Panel className="device-inventory" data-onboarding="device-list" onClickCapture={(event) => {
+        if ((event.target as HTMLElement).closest('a[href^="/devices/"]')) rememberScroll();
+      }}>
+        {listParams.get("notice") && <div className="command-note device-feedback">{listParams.get("notice")}</div>}
+        <Tabs value={category} onValueChange={(value) => setCategory(value as Category)}>
+          <TabsList variant="underline" className="device-categories" aria-label={t("platform:deviceList.categories")}>
+            {deviceCategories.map((id) => (
+              <TabsTrigger key={id} value={id}>
+                <span>{t(`platform:deviceList.category.${id}`)}</span>
+                <span className="ui-count-badge">{formatNumber(counts[id])}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <div className="device-filter-bar" data-onboarding="device-filters">
+            <div className="device-filter-controls">
+              <SearchInput
+                className="device-filter-search"
+                aria-label={t("platform:deviceList.search")}
                 value={keyword}
                 onChange={(event) => setKeyword(event.target.value)}
-                placeholder="搜索名称、序列号、ID 或标签"
+                placeholder={t("platform:deviceList.searchPlaceholder")}
               />
+              {mobile ? <Sheet>
+                <SheetTrigger asChild>
+                  <Button variant="secondary" className="device-show-filters">
+                    <ListFilter size={17} aria-hidden="true" />{t("platform:deviceList.filters")}
+                    {activeFilters > 0 && <span className="ui-count-badge">{activeFilters}</span>}
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="bottom" className="device-filter-sheet">
+                  <SheetHeader><SheetTitle>{t("platform:deviceList.filterTitle")}</SheetTitle></SheetHeader>
+                  {filterControls}
+                  <SheetClose asChild><Button>{t("platform:deviceList.apply")}</Button></SheetClose>
+                </SheetContent>
+              </Sheet> : filterControls}
             </div>
-            <div className="device-filter-actions">
-              <Button variant="secondary" onClick={() => {
-                void query.refetch();
-                void queryClient.invalidateQueries({ predicate: query => ["lorawan-info","lorawan-connection","lorawan-activity"].some(key=>query.queryKey.includes(key)) });
-                void mapQuery.refetch();
-                if (runtimeDeviceIDs.length) void runtime.refetch();
-              }}>
-                <RefreshCw size={14} />
-                刷新
-              </Button>
-              {!user?.is_demo && <Button data-onboarding="claim-entry" onClick={() => navigate("/claim")}>
-                <ScanLine size={14} />
-                添加设备
-              </Button>}
-            </div>
+            {mobile && activeFilters > 0 && <div className="device-active-filters">
+              <span>{[projectId && projectName(projectId), siteId && siteName(siteId), taxonomy.data?.items.find((item) => item.id === deviceTypeId)?.name_zh].filter(Boolean).join(" · ")}</span>
+              <Button variant="ghost" onClick={resetFilters}>{t("platform:deviceList.reset")}</Button>
+            </div>}
           </div>
-          {mobile ? <Sheet><SheetTrigger asChild><Button variant="secondary">筛选 · {[projectId, siteId, deviceTypeId].filter(Boolean).length}</Button></SheetTrigger><SheetContent side="bottom" className="device-filter-sheet"><SheetHeader><SheetTitle>筛选设备</SheetTitle></SheetHeader>{filterControls}<SheetClose asChild><Button>完成筛选</Button></SheetClose></SheetContent></Sheet> : filterControls}
-          {mobile && (projectId || siteId || deviceTypeId) && <div className="device-active-filters"><span>{[projectId && projectName(projectId), siteId && siteName(siteId), taxonomy.data?.items.find(item => item.id === deviceTypeId)?.name_zh].filter(Boolean).join(" · ")}</span><Button variant="ghost" onClick={() => { setProjectId(""); setSiteId(""); setDeviceTypeId(""); }}>重置筛选</Button></div>}
-        </div>
-        <Tabs value={category} onValueChange={(value) => setCategory(value as Category)}>
-        <TabsList className="device-categories" aria-label="设备分类">
-          {(
-            [
-              { id: "all", label: "全部" },
-              { id: "standalone", label: "标准站" },
-              { id: "gateway", label: "组网站" },
-              { id: "carbon_sink", label: "碳汇站" },
-              { id: "camera", label: "视频站" },
-            ] as Array<{ id: Category; label: string }>
-          ).map((item) => (
-            <TabsTrigger
-              key={item.id}
-              value={item.id}
-              className={category === item.id ? "active" : ""}
-            >
-              <span>{item.label}</span>
-              <strong>{counts[item.id]}</strong>
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        <TabsContent value={category} className="device-category-content" style={{ marginTop: 0 }}>
-        {query.isLoading ? (
-          <StateView
-            type="loading"
-            title="正在加载设备"
-            description="正在读取当前组织设备资产。"
-          />
-        ) : query.error && !query.data ? (
-          <StateView
-            type="error"
-            title="设备加载失败"
-            description={formatApiError(query.error).message}
-            requestId={formatApiError(query.error).requestId}
-          />
-        ) : rows.length ? (mobile ? <div className="device-mobile-list">{deviceRows}</div> :
-          <div className="table-wrap">
-            <Table className="data-table device-table">
-              <colgroup>
-                <col className="device-table-sequence" />
-                <col className="device-table-name" />
-                <col className="device-table-vitals" />
-                <col className="device-table-report" />
-                <col className="device-table-assignment" />
-                <col className="device-table-actions" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th scope="col">序号</th>
-                  <th>设备</th>
-                  <th>电量 / 信号</th>
-                  <th>连接 / 最近活动</th>
-                  <th>项目 / 站点</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {deviceRows}
-              </tbody>
-            </Table>
-          </div>
-        ) : (
-          <StateView
-            type="empty"
-            title="没有匹配的设备"
-            description={
-              keyword || category !== "all" || projectId || siteId || deviceTypeId
-                ? "请调整搜索或筛选条件。"
-                : "当前组织尚未分配系统设备。"
-            }
-          />
-        )}
-        </TabsContent>
+          <TabsContent value={category} className="device-category-content">
+            {query.isLoading ? (
+              <StateView
+                type="loading"
+                title="正在加载设备"
+                description="正在读取当前组织设备资产。"
+              />
+            ) : query.error && !query.data ? (
+              <StateView
+                type="error"
+                title="设备加载失败"
+                description={formatApiError(query.error).message}
+                requestId={formatApiError(query.error).requestId}
+              />
+            ) : rows.length ? (mobile ? <div className="device-mobile-list">{deviceRows}</div> :
+              <div className="table-wrap device-table-wrap">
+                <Table className="data-table device-table">
+                  <colgroup>
+                    <col className="device-table-sequence" />
+                    <col className="device-table-name" />
+                    <col className="device-table-vitals" />
+                    <col className="device-table-report" />
+                    <col className="device-table-assignment" />
+                    <col className="device-table-actions" />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th scope="col">序号</th>
+                      <th scope="col">设备</th>
+                      <th scope="col">电量 / 信号</th>
+                      <th scope="col">连接 / 最近活动</th>
+                      <th scope="col">项目 / 站点</th>
+                      <th scope="col">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deviceRows}
+                  </tbody>
+                </Table>
+              </div>
+            ) : (
+              <StateView
+                type="empty"
+                title="没有匹配的设备"
+                description={
+                  keyword || category !== "all" || projectId || siteId || deviceTypeId
+                    ? "请调整搜索或筛选条件。"
+                    : "当前组织尚未分配系统设备。"
+                }
+              />
+            )}
+          </TabsContent>
         </Tabs>
       </Panel>
     </>
@@ -454,6 +474,7 @@ function DeviceRows({
             {gateway ? (
               <button
                 aria-label={expanded ? "收起子节点" : "展开子节点"}
+                aria-expanded={expanded}
                 onClick={onExpand}
               >
                 {expanded ? (
@@ -502,11 +523,12 @@ function DeviceRows({
         </td>
         <td>
           <div className="device-actions">
-            <Button aria-label={camera ? "查看视频" : "查看数据"} title={camera ? "查看视频" : "查看数据"} data-onboarding={camera ? undefined : "device-data-entry"} data-onboarding-route={camera ? undefined : `/devices/${encodeURIComponent(device.id)}?tab=data`} onClick={() => onOpen(undefined,camera?"video":"data")}>
-              <Eye size={13} />
+            <Button size="sm" aria-label={camera ? "查看视频" : "查看数据"} title={camera ? "查看视频" : "查看数据"} data-onboarding={camera ? undefined : "device-data-entry"} data-onboarding-route={camera ? undefined : `/devices/${encodeURIComponent(device.id)}?tab=data`} onClick={() => onOpen(undefined,camera?"video":"data")}>
+              <Eye size={15} aria-hidden="true" />
+              {camera ? "视频" : "数据"}
             </Button>
-            <Button aria-label="查看设备资料" title="查看设备资料" variant="secondary" onClick={() => onOpen(undefined,"profile")}><FileText size={13}/></Button>
-            {!camera?<Button aria-label="查看设备配置" title="查看设备配置" variant="secondary" onClick={() => onOpen(undefined,"config")}><Settings2 size={13}/></Button>:null}
+            <Button size="icon" aria-label="查看设备资料" title="查看设备资料" variant="secondary" onClick={() => onOpen(undefined,"profile")}><FileText size={13}/></Button>
+            {!camera?<Button size="icon" aria-label="查看设备配置" title="查看设备配置" variant="secondary" onClick={() => onOpen(undefined,"config")}><Settings2 size={13}/></Button>:null}
           </div>
         </td>
       </tr>

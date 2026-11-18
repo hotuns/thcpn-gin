@@ -6,22 +6,24 @@ import { Alert, AlertDescription, AlertTitle } from "../../shared/ui/primitives/
 import { Button, CheckboxInput, SearchInput, SelectInput } from "../../shared/ui";
 import { DataRangeFields as RangeFields, validDataRange } from "../../shared/data/data-builder";
 import { ExportDevicePicker, ExportContents } from "./export-device-picker";
-import { defaultRange, value, arrayParam, buildGroupExportPayload } from "./export-model";
-import { type FormCommon, FormFooter } from "./export-form-layout";
+import { initialExportRange, value, arrayParam, buildGroupExportPayload } from "./export-model";
+import { type FormCommon, FormFooter, useExportFormDirty } from "./export-form-layout";
 
 export function GroupExportForm({
   devices,
   tagsByDevice,
   params,
   chooser,
+  busy,
   onClose,
   onCreate,
+  onDirtyChange,
   feedback,
 }: { devices: Device[]; tagsByDevice: Map<string, string[]> } & FormCommon) {
   const gateways = devices.filter(
     (item) => value(item, "device_type") === "gateway",
   );
-  const range = defaultRange();
+  const range = initialExportRange(params);
   const [gatewayId, setGatewayId] = useState(params.get("gateway") ?? "");
   const [keyword, setKeyword] = useState("");
   const [nodeScope,setNodeScope]=useState<"bound"|"history">(params.get("node_scope")==="history"?"history":"bound");
@@ -43,12 +45,12 @@ export function GroupExportForm({
   const [selected, setSelected] = useState<string[] | null>(
     params.has("nodes") ? requested : null,
   );
-  const [start, setStart] = useState(params.get("start") ?? range.start);
-  const [end, setEnd] = useState(params.get("end") ?? range.end);
+  const [start, setStart] = useState(range.start);
+  const [end, setEnd] = useState(range.end);
   const [images, setImages] = useState(true);
   const [data, setData] = useState(params.get("data") !== "0");
   const [status, setStatus] = useState(params.get("status") === "1");
-  const [busy, setBusy] = useState(false);
+  useExportFormDirty({ gatewayId, nodeScope, selected, start, end, images, data, status }, onDirtyChange);
   const chooseGateway = (id: string) => {
     setGatewayId(id);
     setSelected(null);
@@ -58,14 +60,12 @@ export function GroupExportForm({
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (busy || (!effective.length && (data || !(lorawan && status))) || (!data && !(lorawan && status) && (lorawan || !images)) || !validDataRange(start, end)) return;
-    setBusy(true);
     const chosen = nodeItems.filter((node) => effective.includes(node.key));
     await onCreate(buildGroupExportPayload({
       nodeTargets: chosen.map((node) => node.target),
       gateway: { id: gatewayId, name: value(gateway ?? {}, "name") },
       start, end, lorawan, images, data, status,
     }));
-    setBusy(false);
   };
   return (
     <div className="export-system-form">

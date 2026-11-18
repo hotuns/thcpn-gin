@@ -1,21 +1,26 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useParams, useSearchParams } from "react-router-dom";
 import { api, formatApiError } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Button, PageHeader, Panel, StateView } from "../../shared/ui";
+import { PageHeader, Panel, StateView } from "../../shared/ui";
+import { useEditorNavigation } from "../../app/platform-navigation";
 import { type DatasetPrefill, localTime, datasetDetailPath } from "./dataset-model";
 import { DatasetForm } from "./dataset-form";
 
 export function DatasetEditorPage() {
   const { currentId } = useWorkspace();
   const { datasetId = "" } = useParams();
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  return <DatasetEditor key={`${currentId}:${datasetId}:${searchParams}`} currentId={currentId} datasetId={datasetId} searchParams={searchParams} />;
+}
+
+function DatasetEditor({ currentId, datasetId, searchParams }: { currentId: string | null; datasetId: string; searchParams: URLSearchParams }) {
+  const client = useQueryClient();
   const creating = !datasetId;
   const [formBusy, setFormBusy] = useState(false);
   const [formDirty, setFormDirty] = useState(false);
+  const { cancel, complete } = useEditorNavigation(formDirty, formBusy);
   const prefill = useMemo<DatasetPrefill | undefined>(() => {
     if (!creating) return undefined;
     const sources = (searchParams.get("sources") ?? "")
@@ -58,21 +63,10 @@ export function DatasetEditorPage() {
     enabled: Boolean(currentId),
   });
   const [feedback, setFeedback] = useState("");
-  const returnPath = datasetId ? datasetDetailPath(datasetId) : "/datasets";
-  const requestBack = () => {
-    if (formDirty && !window.confirm("当前数据集有未保存修改，确定离开吗？")) return;
-    navigate(returnPath);
-  };
-  const back = (
-    <Button variant="secondary" onClick={requestBack}>
-      <ArrowLeft size={14} />
-      {datasetId ? "返回详情" : "返回数据集"}
-    </Button>
-  );
   if (!currentId)
     return (
       <>
-        <PageHeader title={creating ? "创建数据集" : "编辑数据集"} actions={back} />
+        <PageHeader title={creating ? "创建数据集" : "编辑数据集"} />
         <Panel>
           <StateView type="empty" title="请选择组织" description="请先选择组织，再管理数据集。" />
         </Panel>
@@ -81,7 +75,7 @@ export function DatasetEditorPage() {
   if (!creating && dataset.isLoading)
     return (
       <>
-        <PageHeader title="编辑数据集" actions={back} />
+        <PageHeader title="编辑数据集" />
         <Panel>
           <StateView type="loading" title="正在加载数据集" description="正在读取数据集定义和数据来源。" />
         </Panel>
@@ -90,14 +84,13 @@ export function DatasetEditorPage() {
   if (!creating && (dataset.error || !dataset.data))
     return (
       <>
-        <PageHeader title="编辑数据集" actions={back} />
+        <PageHeader title="编辑数据集" />
         <Panel>
           <StateView
             type="error"
             title="数据集加载失败"
             description={formatApiError(dataset.error).message}
             requestId={formatApiError(dataset.error).requestId}
-            action={back}
           />
         </Panel>
       </>
@@ -108,12 +101,6 @@ export function DatasetEditorPage() {
         eyebrow="组织 / 数据集"
         title={creating ? "创建数据集" : dataset.data?.name ?? "编辑数据集"}
         description={creating ? "定义数据来源、时间范围和数据类型。" : "修改数据集定义；预览页面只展示已保存的范围。"}
-        actions={creating ? back : <div className="header-actions">
-          <Button className="dataset-desktop-save" type="submit" form="dataset-form" disabled={formBusy}>
-            {formBusy ? "保存中…" : "保存数据集"}
-          </Button>
-          {back}
-        </div>}
       />
       {feedback && <div className="command-note section-gap">{feedback}</div>}
       <DatasetForm
@@ -127,11 +114,14 @@ export function DatasetEditorPage() {
         feedback={feedback}
         onBusyChange={setFormBusy}
         onDirtyChange={setFormDirty}
+        onCancel={cancel}
         onSaved={async (action, message) => {
           setFeedback("");
           try {
             const saved = await action();
-            navigate(datasetDetailPath(saved.id), { replace: true });
+            client.setQueryData(workspaceQueryKey(currentId, "dataset", saved.id), saved);
+            void client.invalidateQueries({ queryKey: workspaceQueryKey(currentId, "datasets") });
+            complete(datasetDetailPath(saved.id));
             return true;
           } catch (error) {
             const item = formatApiError(error);

@@ -62,8 +62,13 @@
   justify-content: space-between;
   min-height: 64px;
   padding: 0 max(20px, calc((100vw - 1180px) / 2));
-  background: #fff;
+  background: var(--panel);
   border-bottom: 1px solid var(--line);
+}
+.public-device-page > header .brand .brand-name {
+  color: var(--ink);
+  font-weight: 400;
+  letter-spacing: -.03em;
 }
 .public-device-page > header > div:last-child {
   display: flex;
@@ -272,11 +277,6 @@
   .public-device-page > header .brand {
     gap: 8px;
     padding: 0;
-  }
-  .public-device-page > header .brand-mark {
-    width: 28px;
-    height: 28px;
-    border-radius: 7px;
   }
   .public-device-page > header .brand-name {
     font-size: var(--font-size-body);

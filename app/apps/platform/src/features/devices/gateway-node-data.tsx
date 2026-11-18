@@ -7,6 +7,7 @@ import { ObservationStartInfo } from "./observation-start-info";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useSearchParams, Link } from "react-router-dom";
+import { useNavigationSource } from "../../app/platform-navigation";
 import { Check, GripVertical, Search } from "lucide-react";
 import { api, formatApiError, type Device, type GatewayNode, type TelemetrySeries } from "@thcpn/api";
 import { fullTelemetry } from "../../shared/telemetry/full-telemetry";
@@ -18,12 +19,21 @@ import { TelemetryLoading } from "../../shared/telemetry/telemetry-loading";
 import { DeviceQueryEditor, MetricOption, MetricOrderControls } from "./device-mobile-controls";
 import { DeviceQueryToolbar, initialQueryRange } from "./device-query-toolbar";
 import { LoRaWANNodeTimeConfig } from "./lorawan-node-time-config";
+import { restoredDeviceRange, withDeviceQuerySource } from "./device-query-return";
 
 export const nodeDeviceId = (node: GatewayNode) => node.target.kind === "device" ? node.target.device_id : node.target.gateway_device_id;
 export const nodeMetricKey = (stream: GatewayNode["streams"][number]) => `${stream.code}\u0000${stream.unit ?? ""}`;
 
 export function GatewayNodeData({ gateway, workspaceId, purpose = "measurement" }: { gateway: Device; workspaceId: string; purpose?: "measurement" | "status" }) {
   const [params, setParams] = useSearchParams();
+  const source = useNavigationSource();
+  const restoredRange = restoredDeviceRange(params);
+  const restoredSelection = useRef({
+    gatewayId: gateway.id,
+    node: params.get("node"),
+    mode: params.get("query_mode") === "compare" ? "compare" as const : "node" as const,
+    metrics: params.has("query_metrics") ? params.getAll("query_metrics").filter(Boolean) : null,
+  });
   const [nodeScope,setNodeScope]=useState<"bound"|"history">(params.get("node_scope")==="history"?"history":"bound");
   const nodesQuery = useQuery({
     queryKey: workspaceQueryKey(workspaceId, "device", gateway.id, "nodes", "all"),
@@ -46,14 +56,18 @@ export function GatewayNodeData({ gateway, workspaceId, purpose = "measurement" 
   const indexed = gateway.source_family === "lorawan_v2";
   const [scheduleOpen,setScheduleOpen]=useState(false);
   const [statusOpen,setStatusOpen]=useState(false);
-  const [mode, setMode] = useState<"node" | "compare">("node");
-  const [range, setRange] = useState(() => initialQueryRange(gateway.source_family === "lorawan_v2" ? 6 : 168));
+  const [mode, setMode] = useState(restoredSelection.current.mode);
+  const [range, setRange] = useState(() => restoredRange ?? initialQueryRange(gateway.source_family === "lorawan_v2" ? 6 : 168));
   const draggedMetric = useRef<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [draggedMetricKey, setDraggedMetricKey] = useState("");
   const [dragOverMetricKey, setDragOverMetricKey] = useState("");
   const draggedMetricRef = useRef(false);
-  const [applied, setApplied] = useState<{ mode: "node" | "compare"; node: string; metrics: string[]; start: string; end: string } | null>(null);
+  const [applied, setApplied] = useState<{ mode: "node" | "compare"; node: string; metrics: string[]; start: string; end: string } | null>(() =>
+    restoredRange && params.get("query_run") === "1" && restoredSelection.current.metrics
+      ? { ...restoredRange, mode, node: requestedNode, metrics: restoredSelection.current.metrics } : null,
+  );
+  const previousGateway = useRef(gateway.id);
 
   const [view, setView] = useState<"chart" | "table">("chart");
   const availableNodes = mode === "node" ? nodes.filter((node) => node.key === selectedNode) : nodes;
@@ -69,9 +83,20 @@ export function GatewayNodeData({ gateway, workspaceId, purpose = "measurement" 
   }, [availableNodes]);
   const signature = metrics.map((metric) => metric.key).join("\u0001");
   useEffect(() => {
-    setSelected(mode === "compare" ? metrics.slice(0, 1).map((metric) => metric.key) : metrics.map((metric) => metric.key));
-  }, [gateway.id, selectedNode, mode, signature]);
-  useEffect(() => { setApplied(null); }, [gateway.id]);
+    const restored = restoredSelection.current;
+    if (restored.metrics && !nodesQuery.isSuccess) return;
+    if (restored.metrics && restored.gatewayId === gateway.id && restored.node === selectedNode && restored.mode === mode) {
+      setSelected(restored.metrics.filter((key) => metrics.some((metric) => metric.key === key)));
+    } else {
+      restored.metrics = null;
+      setSelected((mode === "compare" ? metrics.slice(0, 1) : metrics).map((metric) => metric.key));
+    }
+  }, [gateway.id, selectedNode, mode, signature, nodesQuery.isSuccess]);
+  useEffect(() => {
+    if (previousGateway.current === gateway.id) return;
+    previousGateway.current = gateway.id;
+    setApplied(null);
+  }, [gateway.id]);
 
   const queryGroups = useMemo(() => {
     const groups = new Map<string, { deviceId: string; streams: Array<{ node: GatewayNode; id: string }> }>();
@@ -135,6 +160,25 @@ export function GatewayNodeData({ gateway, workspaceId, purpose = "measurement" 
   };
   const selectNode = (key: string) => setParams((current) => { const next = new URLSearchParams(current); next.set("node", key); return next; }, { replace: true });
   const points = series.flatMap((item) => item.points.map((point) => ({ ...point, series: item })));
+  const exportNodes = mode === "node" ? nodes.filter((node) => node.key === selectedNode) : nodes;
+  const exportParams = new URLSearchParams({
+    system: "group",
+    gateway: gateway.id,
+    nodes: exportNodes.filter((node) => node.target.kind !== "device" || node.target.device_id !== gateway.id).map((node) => node.key).join(","),
+    start: range.start,
+    end: range.end,
+    node_scope: nodeScope,
+    ...(purpose === "status" ? { status: "1", data: "0" } : {}),
+  });
+  const querySource = withDeviceQuerySource(source, {
+    node: selectedNode,
+    node_scope: nodeScope,
+    query_start: range.start,
+    query_end: range.end,
+    query_metrics: selected,
+    query_mode: mode,
+    query_run: dirty ? "0" : "1",
+  });
 
   return <div className="device-data-layout"><div className="device-data-content gateway-node-data">
     {purpose === "measurement"&&indexed&&currentNode?.target.kind==="gateway_node"&&<Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}><DialogContent><DialogHeader><DialogTitle>节点时间配置</DialogTitle><DialogDescription>{currentNode.name}</DialogDescription></DialogHeader>{scheduleOpen&&<LoRaWANNodeTimeConfig deviceId={gateway.id} workspaceId={workspaceId} nodeIndex={currentNode.target.node_index}/>}</DialogContent></Dialog>}
@@ -163,7 +207,14 @@ export function GatewayNodeData({ gateway, workspaceId, purpose = "measurement" 
     </Panel>
     <Panel className="section-gap gateway-node-chart-panel">
 
-      <div className="panel-header"><h2 className="panel-title">{applied?.mode === "compare" ? "节点对比" : "数据结果"}</h2>{indexed&&<TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost">历史归属</Button></TooltipTrigger><TooltipContent>{nodeHistoryNotice}</TooltipContent></Tooltip></TooltipProvider>}<div className="header-actions"><Button variant="secondary" asChild><Link to={`/exports?${new URLSearchParams({system:"group",gateway:gateway.id,nodes:(mode === "node" ? nodes.filter(node=>node.key===selectedNode) : nodes).filter(node=>node.target.kind!=="device" || node.target.device_id!==gateway.id).map(node=>node.key).join(","),start:range.start,end:range.end,node_scope:nodeScope,...(purpose === "status" ? {status:"1",data:"0"} : {})})}`}>导出</Link></Button><Button variant="secondary" onClick={() => setView(view === "chart" ? "table" : "chart")}>{view === "chart" ? "查看表格" : "查看曲线"}</Button></div></div>
+      <div className="panel-header">
+        <h2 className="panel-title">{applied?.mode === "compare" ? "节点对比" : "数据结果"}</h2>
+        {indexed && <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost">历史归属</Button></TooltipTrigger><TooltipContent>{nodeHistoryNotice}</TooltipContent></Tooltip></TooltipProvider>}
+        <div className="header-actions">
+          <Button variant="secondary" asChild><Link to={`/exports/new?${exportParams}`} state={querySource}>导出</Link></Button>
+          <Button variant="secondary" onClick={() => setView(view === "chart" ? "table" : "chart")}>{view === "chart" ? "查看表格" : "查看曲线"}</Button>
+        </div>
+      </div>
       {failures.map((failure) => <Alert key={failure.label} variant="destructive" className="request-error-inline"><AlertTitle>{failure.label}读取失败</AlertTitle><AlertDescription><p>{formatApiError(failure.error).message}</p></AlertDescription></Alert>)}
       {series.filter((item) => item.error).map((item) => <Alert key={item.data_stream_id} variant="destructive" className="request-error-inline"><AlertTitle>{item.name}读取失败</AlertTitle><AlertDescription><p>{item.error}</p></AlertDescription></Alert>)}
       {series.some((item) => !item.complete && !item.error) && <div className="command-note">部分指标数据不完整，请缩小时间范围后重试。</div>}

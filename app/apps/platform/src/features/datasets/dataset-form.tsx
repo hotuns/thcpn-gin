@@ -23,6 +23,7 @@ export function DatasetForm({
   feedback,
   onBusyChange,
   onDirtyChange,
+  onCancel,
   onSaved,
 }: {
   workspaceId: string;
@@ -34,6 +35,7 @@ export function DatasetForm({
   feedback?: string;
   onBusyChange: (busy: boolean) => void;
   onDirtyChange: (dirty: boolean) => void;
+  onCancel: () => void;
   onSaved: (
     action: () => Promise<Dataset>,
     message: string,
@@ -420,9 +422,12 @@ export function DatasetForm({
             <div><dt>关联项目</dt><dd>{projects.find((item) => String(item.id) === projectId)?.name?.toString() ?? "未关联"}</dd></div>
           </dl>
           {(error || feedback) && <Alert variant="destructive"><AlertTitle>无法保存数据集</AlertTitle><AlertDescription>{error || feedback}</AlertDescription></Alert>}
-          <div className={`mobile-form-actions${dataset ? " dataset-mobile-save" : ""}`}><Button type="submit" disabled={busy || !name.trim() || !sources.length || !validDataRange(startTime, endTime)}>
-            {busy ? "保存中…" : dataset ? "保存数据集" : "创建数据集"}
-          </Button></div>
+          <div className="dataset-builder-actions mobile-form-actions">
+            <Button type="button" variant="secondary" disabled={busy} onClick={onCancel}>取消</Button>
+            <Button type="submit" disabled={busy || !name.trim() || !sources.length || !validDataRange(startTime, endTime)}>
+              {busy ? "保存中…" : dataset ? "保存数据集" : "创建数据集"}
+            </Button>
+          </div>
         </aside>
       </form>
     </div>

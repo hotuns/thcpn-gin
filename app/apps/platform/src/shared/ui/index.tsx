@@ -9,6 +9,7 @@ import { Checkbox } from "./primitives/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./primitives/select";
 
 export * from "@thcpn/ui";
+export { Brand, BrandLogo } from "./brand";
 export * from "./primitives/dialog";
 export * from "./primitives/tabs";
 export * from "./primitives/select";

@@ -20,6 +20,7 @@ export type AtlasScreenProps = {
   canManage: boolean;
   onEdit: () => void;
   onBack: () => void;
+  backLabel: string;
   presenting: boolean;
   onFullscreen: () => void;
   motion: { enabled: boolean; paused: boolean; reduced: boolean; toggle: () => void };

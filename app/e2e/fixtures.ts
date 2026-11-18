@@ -19,6 +19,7 @@ export type Harness = { unmatched: string[]; requests: { method: string; path: s
 export const test = base.extend<{ apiMock: Harness }>({
   apiMock: [async ({ page }, use, testInfo) => {
     const state: Harness = { unmatched: [], requests: [], mode: 'data' };
+    let createdTask: typeof task | undefined;
     const pageErrors: string[] = [];
     page.on('pageerror', error => pageErrors.push(error.message));
     const en = testInfo.project.name.includes('en-dark');
@@ -73,7 +74,12 @@ export const test = base.extend<{ apiMock: Harness }>({
         if (path === '/datasets') return reply(list(empty ? [] : [dataset]));
         if (path === '/export-jobs') return reply(list([]));
         if (path === '/processing/plans') return reply(list([plan]));
-        if (/^\/workspaces\/workspace-[12]\/processing-tasks$/.test(path)) return reply(list(empty ? [] : [task]));
+        if (/^\/workspaces\/workspace-[12]\/processing-tasks$/.test(path)) return reply(list(empty ? [] : createdTask ? [createdTask, task] : [task]));
+        const taskDetail = path.match(/^\/workspaces\/workspace-1\/processing-tasks\/([^/]+)(\/executions)?$/);
+        if (taskDetail) {
+          const selectedTask = [task, createdTask].find(item => item?.id === taskDetail[1]);
+          if (selectedTask) return reply(taskDetail[2] ? list([]) : selectedTask);
+        }
         if (/^\/workspaces\/workspace-[12]\/alert-rules$/.test(path)) return reply(list(empty ? [] : [rule]));
         if (/^\/workspaces\/workspace-[12]\/alert-events$/.test(path)) return reply(list([]));
         if (/^\/workspaces\/workspace-[12]\/members$/.test(path)) return reply(list([{ status: 'active', user: { id: 'user-e2e', name: '验收接收成员', email: 'test@example.invalid' } }]));
@@ -96,7 +102,10 @@ export const test = base.extend<{ apiMock: Harness }>({
       // A deliberate save rejection exercises payload validation without any real write.
       if (method === 'POST' && path === '/admin/cameras') return reply({ error: { code: 'CONFLICT', message: '验收模拟序列号冲突', request_id: 'e2e-admin-save' } }, 409);
       if (method === 'POST' && path === '/datasets') return reply({ ...dataset, ...(request.postDataJSON() ?? {}), id: 'dataset-created' });
-      if (method === 'POST' && path === '/workspaces/workspace-1/processing-tasks') return reply({ ...task, ...(request.postDataJSON() ?? {}), id: 'task-created' });
+      if (method === 'POST' && path === '/workspaces/workspace-1/processing-tasks') {
+        createdTask = { ...task, ...(request.postDataJSON() ?? {}), id: 'task-created' };
+        return reply(createdTask);
+      }
       if (method === 'POST' && path === '/workspaces/workspace-1/alert-rules') return reply({ ...rule, ...(request.postDataJSON() ?? {}), id: 'rule-created' });
       if (method === 'PATCH' && path === '/workspaces/workspace-1/alert-rules/rule-1') return reply({ ...rule, ...(request.postDataJSON() ?? {}) });
       state.unmatched.push(`${method} ${path}${url.search}`);

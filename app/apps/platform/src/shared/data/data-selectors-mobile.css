@@ -1,6 +1,5 @@
 .device-quick-switch-control.device-selector-field,
 .device-quick-switch-control.device-selector-inline { width: 100%; min-width: 0; max-width: 100%; flex: 1 1 auto; }
-.device-selector-field > .device-quick-switch-input { height: var(--control-height); font-size: var(--font-size-input); }
 .device-selector-inline { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); }
 .device-selector-command { min-width: 0; }
 .device-quick-switch-menu .device-selector-command { max-height: var(--radix-popover-content-available-height); }
@@ -30,8 +29,7 @@
   .device-selector-command .device-option-child { padding-left: 26px; }
   .device-selector-command .device-option-item > span { min-width: 0; }
   .device-selector-command .device-option-item strong, .device-selector-command .device-option-item small { white-space: normal; overflow-wrap: anywhere; }
-  .device-quick-switch-control, .device-quick-switch-input, .device-quick-switch-value { min-width: 0; max-width: 100%; }
-  .device-selector-field > .device-quick-switch-input, .device-selector-compact > .device-quick-switch-input { min-height: 44px; }
+  .device-quick-switch-control { min-width: 0; max-width: 100%; }
   .device-selector-inline .device-option-results { max-height: 45dvh; }
   .device-selector-toolbar .shadcn-button, .device-selector-footer .shadcn-button { min-height: 44px; }
   .data-quick-nav-toggle { bottom: calc(var(--mobile-nav-height, 64px) + var(--mobile-safe-bottom, env(safe-area-inset-bottom, 0px)) + 12px); }

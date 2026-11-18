@@ -39,6 +39,22 @@
   padding: 0;
   max-width: none;
 }
+.atlas-screen-back {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: var(--control-icon-size);
+  height: var(--control-icon-size);
+  padding: 0;
+  border: 1px solid var(--atlas-back-border, var(--line));
+  border-radius: var(--control-radius);
+  color: inherit;
+  background: var(--atlas-back-surface, var(--panel));
+  cursor: pointer;
+}
+.atlas-screen-back:hover {
+  background: color-mix(in srgb, var(--atlas-back-surface, var(--panel)) 87%, currentColor);
+}
 .atlas-shell {
   --panel: #102331;
   --ink: #e5eff5;

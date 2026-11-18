@@ -1,8 +1,8 @@
 import "./settings-mobile.css";
-import { ArrowLeft, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useSystemPolicy } from "../../shared/config/system-policy";
-import { Button, PageHeader, Tabs, TabsList, TabsTrigger } from "../../shared/ui";
+import { Button, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from "../../shared/ui";
 import { AccessControlTab } from "./access-control";
 import { AuditTab } from "./audit-tab";
 import { ResourcesTab } from "./resources-tab";
@@ -29,24 +29,23 @@ export function SettingsPage() {
         title="组织设置"
         description="管理当前组织的基础资料、协作关系和审计记录。"
         actions={
-          <div className="header-actions">
-            <Button variant="secondary" onClick={() => navigate("/workspaces")}><ArrowLeft size={14} />返回组织</Button>
-            <Button variant="secondary" onClick={() => navigate("/workspaces?action=create")}><Plus size={14} />新建组织</Button>
-          </div>
+          <Button variant="secondary" onClick={() => navigate("/workspaces?action=create")}><Plus size={14} />新建组织</Button>
         }
       />
-      <Tabs className="section-tabs" value={tab} onValueChange={(value) => setParams({ tab: value })}>
-        <TabsList>
+      <Tabs value={tab} onValueChange={(value) => setParams({ tab: value })}>
+        <TabsList variant="underline" aria-label="组织设置">
           {tabs.map((item) => <TabsTrigger key={item.id} value={item.id}>{item.label}</TabsTrigger>)}
         </TabsList>
+        <TabsContent value={tab}>
+          {tab === "resources" ? (
+            <ResourcesTab />
+          ) : tab === "access" ? (
+            <AccessControlTab />
+          ) : (
+            <AuditTab />
+          )}
+        </TabsContent>
       </Tabs>
-      {tab === "resources" ? (
-        <ResourcesTab />
-      ) : tab === "access" ? (
-        <AccessControlTab />
-      ) : (
-        <AuditTab />
-      )}
     </>
   );
 }

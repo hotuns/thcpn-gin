@@ -5,6 +5,7 @@
 .research-screen button:disabled { cursor:default; opacity:.35; }
 .research-screen button:focus-visible,.research-screen select:focus-visible,.research-screen input:focus-visible { outline:2px solid #719a75; outline-offset:3px; }
 .research-header { display:flex; align-items:center; gap:40px; padding:16px 28px 15px; background:#fffef7; border-bottom:1px solid var(--research-line); }
+.research-heading { display:flex; align-items:center; gap:12px; min-width:0; }
 .research-title > span { color:#81917b; font-size:9px; font-weight:650; letter-spacing:2.3px; }
 .research-title h1 { font-family:"Songti SC","Noto Serif SC",serif; font-size:29px; font-weight:650; letter-spacing:2px; margin:4px 0 0; }
 .research-edition { border-left:1px solid #c8d3c4; padding-left:24px; font-size:13px; color:#516d54; }

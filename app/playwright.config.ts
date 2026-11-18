@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: ["**/core-flows.spec.ts", "**/dashboard.spec.ts"],
+  testMatch: ["**/core-flows.spec.ts", "**/dashboard.spec.ts", "**/data-flows.spec.ts"],
   timeout: 30_000,
   expect: { timeout: 8_000 },
   fullyParallel: true,

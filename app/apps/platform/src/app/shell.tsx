@@ -1,7 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import {
-  api
-} from "@thcpn/api";
+import { api } from "@thcpn/api";
 import { useAuth } from "@thcpn/auth";
 import { LanguageSwitcher, useLocale } from "@thcpn/i18n";
 import {
@@ -16,18 +14,18 @@ import {
   Building2,
   CreditCard,
   Download,
-  Gauge,
   HelpCircle,
   MapPinned,
   PanelLeftClose,
   PanelLeftOpen,
+  Radar,
+  ScanLine,
   Table2,
   Workflow
 } from "lucide-react";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   Link,
-  NavLink,
   Outlet,
   useLocation
 } from "react-router-dom";
@@ -43,21 +41,18 @@ import {
   IconButton
 } from "../shared/ui";
 import { OnboardingTour } from "./onboarding-tour";
-import { platformBreadcrumbs } from "./platform-breadcrumbs";
+import { findPlatformRoute, platformBreadcrumbs } from "./platform-routes";
+import { restoreScroll, useNavigationSource, usePlatformReturn, type PlatformOutletContext } from "./platform-navigation";
 import { RequestErrorToasts } from "./request-error-toasts";
 import { AccountMenu, WorkspaceMenu } from "./shell-menus";
 import { useIsMobile } from "../shared/hooks/use-mobile";
 import { ConnectionStatus, MobileHeader, MobileNavigation, useMobileKeyboard } from "./mobile-chrome";
-import { mobileEditor, mobileWorkbench } from "./mobile-navigation";
 import { useRouteScroll } from "./use-route-scroll";
-
-
-
 const navGroups = [
   {
     key: "operations",
     items: [
-      { to: "/dashboard", key: "overview", icon: Gauge },
+      { to: "/dashboard", key: "overview", icon: Radar },
       { to: "/devices", key: "devices", icon: Boxes },
       { to: "/device-map", key: "deviceMap", icon: MapPinned },
       { to: "/alerts", key: "alerts", icon: AlertTriangle },
@@ -70,7 +65,7 @@ const navGroups = [
       { to: "/datasets", key: "datasets", icon: Table2 },
       { to: "/processing", key: "processing", icon: Workflow },
       { to: "/exports", key: "exports", icon: Download },
-      { to: "/atlas", key: "wallboards", icon: MapPinned },
+      { to: "/atlas", key: "wallboards", icon: ScanLine },
     ],
   },
   {
@@ -81,9 +76,10 @@ const navGroups = [
     ],
   },
 ];
+const sidebarKeys = new Set(navGroups.flatMap(group => group.items.map(item => item.key)));
 
 export function Shell() {
- const billingEnabled=useSystemPolicy().data?.billing_enabled;
+  const billingEnabled = useSystemPolicy().data?.billing_enabled;
   const { t } = useLocale();
   const [onboardingSession, setOnboardingSession] = useState(0);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
@@ -94,12 +90,24 @@ export function Shell() {
   >(null);
   const { user, signOut } = useAuth();
   const workspace = useWorkspace();
+  const exitEditorForWorkspace = useRef<(() => boolean) | null>(null);
+  const switchWorkspace = (nextId: string) => {
+    if (nextId === workspace.currentId) return true;
+    if (exitEditorForWorkspace.current && !exitEditorForWorkspace.current()) return false;
+    workspace.setCurrentId(nextId);
+    return true;
+  };
   const location = useLocation();
+  const route = findPlatformRoute(location.pathname);
+  const returnLink = usePlatformReturn();
+  const source = useNavigationSource();
   const breadcrumbs = platformBreadcrumbs(location.pathname);
+  const immersive = route?.presentation === "immersive";
+  const sidebarKey = route?.key === "notifications" ? undefined : breadcrumbs.slice().reverse().find(item => sidebarKeys.has(item.key))?.key;
   const isMobile = useIsMobile();
   const keyboardOpen = useMobileKeyboard();
-  const focusedPage = mobileEditor(location.pathname) || mobileWorkbench(location.pathname);
-  const mobileTitle = location.pathname === "/data" ? t("mobile.data") : location.pathname === "/more" ? t("mobile.more") : t(`platform:navigation.${breadcrumbs.at(-1)?.key ?? "overview"}`);
+  const focusedPage = Boolean(route?.editor || route?.presentation);
+  const mobileTitle = route?.key === "dataHub" ? t("mobile.data") : t(`platform:navigation.${route?.key ?? "overview"}`);
   useRouteScroll(workspace.currentId);
   useEffect(() => {
     setActiveSidebarMenu(null);
@@ -124,6 +132,8 @@ export function Shell() {
             <IconButton
               label={sidebarCollapsed ? t("openNavigation") : t("closeNavigation")}
               onClick={() => setSidebarCollapsed((current) => !current)}
+              aria-expanded={!sidebarCollapsed}
+              aria-controls="platform-sidebar-navigation"
             >
               {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
             </IconButton>
@@ -140,28 +150,30 @@ export function Shell() {
             )
           }
           onClose={() => setActiveSidebarMenu(null)}
-          onSwitch={workspace.setCurrentId}
+          onSwitch={switchWorkspace}
           onNavigate={() => setActiveSidebarMenu(null)}
         />
-        <nav className="sidebar-navigation" aria-label={t("mainNavigation")}>
-          {navGroups.map(group=>({...group,items:group.items.filter(item=>item.key!=="subscription"||billingEnabled)})).map((group) => (
+        <nav id="platform-sidebar-navigation" className="sidebar-navigation" aria-label={t("mainNavigation")}>
+          {navGroups.map((group) => (
             <div className="nav-group" key={group.key}>
               <div className="nav-title">{t(`platform:navigationGroups.${group.key}`)}</div>
-              {group.items.map((item) => {
+              {group.items.filter((item) => item.key !== "subscription" || billingEnabled).map((item) => {
                 const Icon = item.icon;
+                const label = t(`platform:navigation.${item.key}`);
+                const active = item.key === sidebarKey;
                 return (
-                  <NavLink
+                  <Link
                     key={item.to}
                     to={item.to}
                     data-onboarding={item.key}
-                    className={({ isActive }) =>
-                      `nav-item ${isActive ? "active" : ""}`
-                    }
-                    title={t(`platform:navigation.${item.key}`)}
+                    className={`nav-item ${active ? "active" : ""}`}
+                    aria-current={active ? (item.key === route?.key ? "page" : "location") : undefined}
+                    aria-label={label}
+                    title={label}
                   >
-                    <Icon size={16} />
-                    <span>{t(`platform:navigation.${item.key}`)}</span>
-                  </NavLink>
+                    <Icon size={17} aria-hidden="true" />
+                    <span>{label}</span>
+                  </Link>
                 );
               })}
             </div>
@@ -189,21 +201,29 @@ export function Shell() {
   return (
     <div className={`app-shell platform-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${focusedPage ? "mobile-focused-page" : ""}`} data-keyboard-open={keyboardOpen || undefined}>
       <a className="skip-navigation" href="#main-content">{t("platform:shell.skipNavigation")}</a>
-      {!isMobile && <aside className="sidebar" aria-label={t("mainNavigation")}>{sidebarContent}</aside>}
+      {!isMobile && <aside className="sidebar platform-sidebar" aria-label={t("mainNavigation")}>{sidebarContent}</aside>}
       <div className="main-area">
-        {isMobile ? <MobileHeader title={mobileTitle} unread={notificationSummary.data ?? 0} /> : <header className="topbar">
+        {isMobile ? <MobileHeader title={mobileTitle} unread={notificationSummary.data ?? 0} returnLink={immersive ? undefined : returnLink} onSwitchWorkspace={switchWorkspace} /> : <header className="topbar">
           <div className="topbar-left">
-            <div className="desktop-sidebar-open">
-              <IconButton
-                label={t("openNavigation")}
-                onClick={() => setSidebarCollapsed(false)}
-              >
-                <PanelLeftOpen size={18} />
-              </IconButton>
-            </div>
             <Breadcrumb className="topbar-context">
               <BreadcrumbList>
-                {breadcrumbs.map((item,index)=><Fragment key={`${item.key}-${index}`}>{index>0&&<BreadcrumbSeparator/>}<BreadcrumbItem>{item.to?<BreadcrumbLink to={item.to}>{t(`platform:navigation.${item.key}`)}</BreadcrumbLink>:<BreadcrumbPage>{t(`platform:navigation.${item.key}`)}</BreadcrumbPage>}</BreadcrumbItem></Fragment>)}
+                {breadcrumbs.map((item, index) => {
+                  const isParent = index === breadcrumbs.length - 2;
+                  const label = t(`platform:navigation.${isParent ? returnLink.key ?? item.key : item.key}`);
+                  const to = isParent ? returnLink.target : item.to;
+                  return <Fragment key={`${item.key}-${index}`}>
+                    {index > 0 && <BreadcrumbSeparator />}
+                    <BreadcrumbItem>
+                      {to && !immersive ? (
+                        <BreadcrumbLink to={to} state={restoreScroll} onClick={event => {
+                          if (!isParent || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                          event.preventDefault();
+                          returnLink.back();
+                        }}>{label}</BreadcrumbLink>
+                      ) : item.to ? <span>{label}</span> : <BreadcrumbPage>{label}</BreadcrumbPage>}
+                    </BreadcrumbItem>
+                  </Fragment>;
+                })}
               </BreadcrumbList>
             </Breadcrumb>
           </div>
@@ -212,7 +232,7 @@ export function Shell() {
             <IconButton label={t("openGuide")} onClick={() => setOnboardingSession((current) => current + 1)}>
               <HelpCircle size={18} />
             </IconButton>
-            <Link className="topbar-notification" to="/notifications" aria-label={t("platform:navigation.notifications")}>
+            <Link className="topbar-notification" to="/notifications" replace={route?.key === "notifications"} state={route?.key === "notifications" ? location.state : source} aria-label={t("platform:navigation.notifications")}>
               <Bell size={18} />
               {(notificationSummary.data ?? 0) > 0 && <span>{Math.min(notificationSummary.data ?? 0, 99)}</span>}
             </Link>
@@ -220,7 +240,7 @@ export function Shell() {
         </header>}
         <ConnectionStatus />
         <main id="main-content" className="page" tabIndex={-1}>
-          <Outlet context={{ openGuide: () => setOnboardingSession(current => current + 1) }} />
+          <Outlet context={{ openGuide: () => setOnboardingSession(current => current + 1), exitEditorForWorkspace } satisfies PlatformOutletContext} />
         </main>
       </div>
       {isMobile && !focusedPage && !keyboardOpen && <MobileNavigation />}

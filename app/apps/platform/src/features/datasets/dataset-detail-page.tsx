@@ -1,19 +1,23 @@
 import "./datasets-mobile.css";
 import { useState } from "react";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Download, GitCompareArrows, Pencil } from "lucide-react";
+import { Download, GitCompareArrows, Pencil } from "lucide-react";
 import { api, formatApiError } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
+import { useNavigationSource } from "../../app/platform-navigation";
 import { Button, PageHeader, Panel, StateView } from "../../shared/ui";
 import { dataComparisonPath } from "../../shared/data/data-workflow";
 import { localTime, datasetEditPath } from "./dataset-model";
 import { DatasetPreview } from "./dataset-preview";
+import { exportCreatedState } from "../exports/export-model";
 
 export function DatasetDetailPage() {
   const { currentId } = useWorkspace();
   const { datasetId = "" } = useParams();
   const navigate = useNavigate();
+  const client = useQueryClient();
+  const source = useNavigationSource();
   const [actionError, setActionError] = useState("");
   const dataset = useQuery({
     queryKey: workspaceQueryKey(currentId, "dataset", datasetId),
@@ -68,16 +72,10 @@ export function DatasetDetailPage() {
   const comparisonLoading = comparisonSources.some(
     (query) => query.isLoading || query.isFetching,
   );
-  const back = (
-    <Button variant="secondary" onClick={() => navigate("/datasets")}>
-      <ArrowLeft size={14} />
-      返回数据集
-    </Button>
-  );
   if (!currentId)
     return (
       <>
-        <PageHeader title="数据集详情" actions={back} />
+        <PageHeader title="数据集详情" />
         <Panel>
           <StateView type="empty" title="请选择组织" description="请先选择组织，再查看数据集详情。" />
         </Panel>
@@ -86,7 +84,7 @@ export function DatasetDetailPage() {
   if (dataset.isLoading)
     return (
       <>
-        <PageHeader title="数据集详情" actions={back} />
+        <PageHeader title="数据集详情" />
         <Panel>
           <StateView type="loading" title="正在加载数据集" description="正在读取数据集定义和数据来源。" />
         </Panel>
@@ -95,14 +93,13 @@ export function DatasetDetailPage() {
   if (dataset.error || !dataset.data)
     return (
       <>
-        <PageHeader title="数据集详情" actions={back} />
+        <PageHeader title="数据集详情" />
         <Panel>
           <StateView
             type="error"
             title="数据集加载失败"
             description={formatApiError(dataset.error).message}
             requestId={formatApiError(dataset.error).requestId}
-            action={back}
           />
         </Panel>
       </>
@@ -138,10 +135,11 @@ export function DatasetDetailPage() {
               onClick={async () => {
                 setActionError("");
                 try {
-                  await api.datasets.export(dataset.data.id, {
+                  const job = await api.datasets.export(dataset.data.id, {
                     export_type: "dataset_zip",
                   });
-                  navigate("/exports");
+                  void client.invalidateQueries({ queryKey: workspaceQueryKey(currentId, "exports") });
+                  navigate("/exports", { state: exportCreatedState(currentId, job.id) });
                 } catch (error) {
                   const item = formatApiError(error);
                   setActionError(
@@ -155,12 +153,11 @@ export function DatasetDetailPage() {
             </Button>
             <Button
               variant="secondary"
-              onClick={() => navigate(datasetEditPath(dataset.data.id))}
+              onClick={() => navigate(datasetEditPath(dataset.data.id), { state: source })}
             >
               <Pencil size={14} />
               编辑
             </Button>
-            {back}
           </div>
         }
       />

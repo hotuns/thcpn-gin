@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Navigate, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, CheckCircle2, Link2, ScanLine } from "lucide-react";
+import { useNavigate, useParams } from "react-router-dom";
+import { CheckCircle2, Link2, ScanLine } from "lucide-react";
 import {
   api,
   formatApiError,
@@ -94,7 +94,6 @@ export function DeviceClaimPage() {
       <header className="device-claim-header">
         <ScanLine size={24} />
         <div><h1>认领设备</h1><p>将网关或标准站加入你的组织</p></div>
-        <Button variant="secondary" onClick={() => navigate("/devices")}><ArrowLeft size={14} />返回设备</Button>
       </header>
       {error ? <StateView type="error" title="无法认领此设备" description={formatApiError(error).message} requestId={formatApiError(error).requestId} /> : null}
       {!resolved && !claimSlug ? (

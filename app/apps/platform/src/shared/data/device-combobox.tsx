@@ -189,10 +189,19 @@ export function DeviceCombobox(props: DeviceComboboxProps) {
     </Command>
   );
   const trigger = (
-    <Button type="button" variant="outline" className="device-quick-switch-input" role="combobox" aria-haspopup={isMobile ? "dialog" : "listbox"} aria-label={ariaLabel} aria-expanded={open} disabled={disabled} title={summary}>
+    <button
+      type="button"
+      className="shadcn-select-trigger device-quick-switch-input"
+      role="combobox"
+      aria-haspopup={isMobile ? "dialog" : "listbox"}
+      aria-label={ariaLabel}
+      aria-expanded={open}
+      disabled={disabled}
+      title={summary}
+    >
       <span className={`device-quick-switch-value${selectedIds.length ? "" : " placeholder"}`}>{loading && !selectedIds.length ? "正在加载设备…" : summary}</span>
-      <ChevronsUpDown size={14} aria-hidden="true" />
-    </Button>
+      <ChevronsUpDown size={15} aria-hidden="true" />
+    </button>
   );
   return <div className={`device-quick-switch-control device-selector-${variant} ${className}`.trim()}>
     {variant === "inline" ? content : isMobile ? <Dialog open={open} onOpenChange={changeOpen}>

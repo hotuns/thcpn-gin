@@ -1,27 +1,31 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { api, formatApiError, type JsonRecord } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Button, PageHeader, Panel, StateView } from "../../shared/ui";
-import { type ExportSystem } from "./export-model";
+import { PageHeader, Panel, StateView } from "../../shared/ui";
+import { useEditorNavigation } from "../../app/platform-navigation";
+import { exportCreatedState, type ExportSystem } from "./export-model";
 import { ExportSystemChooser } from "./export-form-layout";
 import { StandardExportForm } from "./standard-export-form";
 import { GroupExportForm } from "./group-export-form";
 import { CarbonExportForm } from "./carbon-export-form";
 
 export function ExportEditorPage() {
-  const navigate = useNavigate();
-  const location = useLocation();
   const { currentId } = useWorkspace();
   const [params] = useSearchParams();
-  const requestedSystem = params.get("system") as ExportSystem | null;
-  const [system, setSystem] = useState<ExportSystem>(
-    ["standard", "group", "carbon"].includes(requestedSystem ?? "")
-      ? requestedSystem!
-      : "standard",
-  );
-  const [feedback, setFeedback] = useState(location.state?.exportCreated ? "导出任务已创建" : "");
+  return <ExportEditor key={`${currentId}:${params}`} currentId={currentId} params={params} />;
+}
+
+function ExportEditor({ currentId, params }: { currentId: string | null; params: URLSearchParams }) {
+  const client = useQueryClient();
+  const requestedSystem = params.get("system");
+  const initialSystem = requestedSystem === "group" || requestedSystem === "carbon" ? requestedSystem : "standard";
+  const [system, setSystem] = useState<ExportSystem>(initialSystem);
+  const [formDirty, setFormDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const { cancel, complete } = useEditorNavigation(formDirty || system !== initialSystem, busy);
   const devices = useQuery({
     queryKey: workspaceQueryKey(currentId, "devices"),
     queryFn: () => api.devices.list(currentId!),
@@ -41,11 +45,13 @@ export function ExportEditorPage() {
     [devices.data?.items, tagsByDevice],
   );
   const runCreate = async (payload: JsonRecord) => {
+    if (!currentId || busy) return false;
+    setBusy(true);
     setFeedback("");
     try {
-      await api.exports.create(payload);
-      setFeedback("导出任务已创建");
-      navigate("/exports", { replace: true, state: { exportCreated: true } });
+      const job = await api.exports.create(payload);
+      void client.invalidateQueries({ queryKey: workspaceQueryKey(currentId, "exports") });
+      complete("/exports", exportCreatedState(currentId, job.id));
       return true;
     } catch (error) {
       const item = formatApiError(error);
@@ -53,6 +59,8 @@ export function ExportEditorPage() {
         `${item.message}${item.requestId ? ` · request id ${item.requestId}` : ""}`,
       );
       return false;
+    } finally {
+      setBusy(false);
     }
   };
   if (!currentId)
@@ -69,50 +77,36 @@ export function ExportEditorPage() {
       </>
     );
 
+  const chooseSystem = (next: ExportSystem) => {
+    if (busy || next === system) return;
+    if (formDirty && !window.confirm("切换导出类型会清空已填条件，确定切换吗？")) return;
+    setFormDirty(false);
+    setFeedback("");
+    setSystem(next);
+  };
+  const formProps = {
+    devices: exportDevices,
+    chooser: <ExportSystemChooser selected={system} onSelect={chooseSystem} />,
+    params,
+    busy,
+    onClose: cancel,
+    onCreate: runCreate,
+    onDirtyChange: setFormDirty,
+    feedback,
+  };
+
   return (
     <div className="export-page dataset-editor-page export-editor-page">
       <PageHeader
         eyebrow="组织 / 数据导出"
         title="新建导出"
         description="标准站、组网站和碳汇站使用各自的创建流程，任务统一在这里生成和下载。"
-        actions={
-          <div className="header-actions">
-            <Button variant="secondary" onClick={() => navigate("/exports")}>返回导出列表</Button>
-          </div>
-        }
       />
-      {feedback && <div className="command-note section-gap">{feedback}</div>}
-        <div className="export-create-shell section-gap">
-          {system === "standard" ? (
-            <StandardExportForm
-              devices={exportDevices}
-              chooser={<ExportSystemChooser selected={system} onSelect={setSystem} />}
-              params={params}
-              onClose={() => navigate("/exports")}
-              onCreate={runCreate}
-              feedback={feedback}
-            />
-          ) : system === "group" ? (
-            <GroupExportForm
-              devices={exportDevices}
-              tagsByDevice={tagsByDevice}
-              chooser={<ExportSystemChooser selected={system} onSelect={setSystem} />}
-              params={params}
-              onClose={() => navigate("/exports")}
-              onCreate={runCreate}
-              feedback={feedback}
-            />
-          ) : (
-            <CarbonExportForm
-              devices={exportDevices}
-              chooser={<ExportSystemChooser selected={system} onSelect={setSystem} />}
-              params={params}
-              onClose={() => navigate("/exports")}
-              onCreate={runCreate}
-              feedback={feedback}
-            />
-          )}
-        </div>
+      <div className="export-create-shell section-gap">
+        {system === "standard" ? <StandardExportForm {...formProps} /> :
+          system === "group" ? <GroupExportForm {...formProps} tagsByDevice={tagsByDevice} /> :
+            <CarbonExportForm {...formProps} />}
+      </div>
     </div>
   );
 }

@@ -24,47 +24,40 @@
   color: var(--muted);
   font-size: var(--font-size-small);
 }
-.processing-dialog {
-  position: fixed;
-  z-index: 80;
-  inset: 0;
-  padding: 16px;
-  background: rgba(15, 23, 42, 0.52);
-}
 .processing-editor {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  overflow: hidden;
+  --processing-editor-padding: 22px;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.3);
+  border-radius: var(--control-radius);
 }
 .processing-stepper {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1px;
-  padding: 0 18px 14px;
-  background: var(--panel);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  margin: 0;
+  padding: 12px var(--processing-editor-padding);
   border-bottom: 1px solid var(--soft-line);
+  list-style: none;
 }
-.processing-stepper span {
-  padding: 9px 12px;
+.processing-stepper li {
+  padding: 9px 5px;
   color: var(--muted);
   background: var(--surface-muted);
+  border-radius: 4px;
   font-size: var(--font-size-caption);
   text-align: center;
 }
-.processing-stepper span.is-active,
-.processing-stepper span.is-done {
-  color: var(--blue-dark);
-  background: var(--blue-soft);
+.processing-stepper li.is-done {
+  color: var(--ink);
+}
+.processing-stepper li[aria-current="step"] {
+  color: var(--ink);
+  background: var(--surface-selected);
+  box-shadow: inset 0 -2px var(--ring);
 }
 .processing-plan-options {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   gap: 12px;
 }
 .processing-plan-options > button {
@@ -80,9 +73,9 @@
   border-radius: 8px;
   cursor: pointer;
 }
-.processing-plan-options > button.is-active {
-  border-color: var(--blue);
-  box-shadow: 0 0 0 2px var(--blue-soft);
+.processing-plan-options > button[aria-pressed="true"] {
+  border-color: var(--ring);
+  background: var(--surface-selected);
 }
 .processing-plan-options span,
 .processing-plan-options small {
@@ -94,15 +87,9 @@
   display: grid;
   gap: 16px;
 }
-.processing-editor > .panel-header {
-  min-height: 64px;
-  background: var(--panel);
-}
 .processing-form {
-  min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  overflow: hidden;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 28%);
 }
 .processing-form-main,
 .processing-form-side {
@@ -110,15 +97,31 @@
   display: grid;
   align-content: start;
   gap: 18px;
-  overflow: auto;
-  padding: 22px;
+  padding: var(--processing-editor-padding);
 }
+.processing-form-main:focus-visible { outline-offset: -2px; }
 .processing-form-side {
   border-left: 1px solid var(--soft-line);
   background: var(--surface-muted);
 }
-.processing-form-side .form-grid.two {
-  grid-template-columns: 1fr;
+.processing-actions,
+.processing-step-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.processing-actions {
+  justify-content: space-between;
+  padding: 12px var(--processing-editor-padding);
+  border-top: 1px solid var(--soft-line);
+}
+.processing-step-actions {
+  justify-content: flex-end;
+  margin-inline-start: auto;
+}
+.processing-submit-error {
+  margin: 0 var(--processing-editor-padding) 12px;
 }
 .processing-inputs {
   display: grid;
@@ -130,10 +133,7 @@
 }
 .processing-input-row {
   display: grid;
-  grid-template-columns: minmax(140px, 0.8fr) minmax(150px, 1fr) minmax(
-      180px,
-      1.2fr
-    );
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1.2fr);
   gap: 10px;
   align-items: center;
   padding: 12px;
@@ -141,7 +141,7 @@
   background: var(--surface-muted);
 }
 .processing-input-row.without-device {
-  grid-template-columns: minmax(140px, 0.8fr) minmax(180px, 2.2fr);
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 2.2fr);
 }
 .processing-input-binding .processing-input-row {
   border: 0;
@@ -150,6 +150,7 @@
   min-width: 0;
   display: grid;
   gap: 4px;
+  overflow-wrap: anywhere;
 }
 .processing-input-row strong {
   font-size: var(--font-size-small);
@@ -170,7 +171,7 @@
 }
 .processor-contract {
   display: grid;
-  grid-template-columns: 18px 1fr;
+  grid-template-columns: 18px minmax(0, 1fr);
   gap: 10px;
   padding: 14px;
   color: var(--blue-dark);
@@ -180,6 +181,7 @@
 .processor-contract > div {
   display: grid;
   gap: 4px;
+  overflow-wrap: anywhere;
 }
 .processor-contract strong {
   font-size: var(--font-size-small);
@@ -354,47 +356,7 @@
   white-space: pre-wrap;
 }
 .processing-view-tabs {
-  min-height: var(--control-height);
-  display: flex;
-  align-items: end;
-  gap: 4px;
   margin-top: 18px;
-  border-bottom: 1px solid var(--line);
-}
-.processing-view-tabs button {
-  min-height: var(--control-height);
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 0 14px;
-  color: var(--muted);
-  background: transparent;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--font-size-small);
-  font-weight: var(--font-weight-semibold);
-}
-.processing-view-tabs button:hover {
-  color: var(--ink);
-  background: var(--surface-muted);
-}
-.processing-view-tabs button[aria-selected="true"] {
-  color: var(--blue-dark);
-  border-bottom-color: var(--blue);
-}
-.processing-view-tabs button > span {
-  min-width: 20px;
-  height: 18px;
-  display: inline-grid;
-  place-items: center;
-  padding: 0 5px;
-  color: var(--muted);
-  background: var(--surface-muted);
-  border: 1px solid var(--soft-line);
-  border-radius: 8px;
-  font-size: var(--font-size-caption);
 }
 .processing-outcomes-panel {
   overflow: hidden;
@@ -924,11 +886,6 @@
 @media (max-width: 900px) {
   .processing-form {
     grid-template-columns: 1fr;
-    overflow: auto;
-  }
-  .processing-form-main,
-  .processing-form-side {
-    overflow: visible;
   }
   .processing-form-side {
     border-top: 1px solid var(--soft-line);
@@ -936,22 +893,12 @@
   }
 }
 @media (max-width: 720px) {
-  .processing-dialog {
-    padding: 0;
-  }
-  .processing-editor {
-    border: 0;
-    border-radius: 0;
-  }
   .processing-summary {
     grid-template-columns: 1fr;
   }
   .processing-summary > div {
     border-right: 0;
     border-bottom: 1px solid var(--soft-line);
-  }
-  .processing-input-row {
-    grid-template-columns: 1fr;
   }
   .processing-detail-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -980,12 +927,6 @@
   }
   .processing-execution-meta {
     flex-wrap: wrap;
-  }
-  .processing-view-tabs {
-    overflow-x: auto;
-  }
-  .processing-view-tabs button {
-    flex: 0 0 auto;
   }
   .processing-outcome-toolbar {
     grid-template-columns: 1fr;
