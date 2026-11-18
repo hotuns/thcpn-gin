@@ -464,6 +464,11 @@ func (p *Processor) fail(ctx context.Context, jobID uuid.UUID, cause error) erro
 
 func (p *Processor) render(ctx context.Context, job Job, output io.Writer) (renderedExport, error) {
 	switch job.ExportType {
+	case adminDeviceBundleZIP:
+		if err := p.renderAdminBundleZIP(ctx, job, output); err != nil {
+			return renderedExport{}, err
+		}
+		return renderedExport{Extension: "zip", ContentType: contentTypeZIP}, nil
 	case "carbon_station_zip":
 		cfg, err := parseCarbonStationExportConfig(job.RequestConfig)
 		if err != nil {

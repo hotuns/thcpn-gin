@@ -45,7 +45,7 @@ export function AdminExportCreate({ open, onClose, onCreated, device, devices, d
   const [carbonSelections, setCarbonSelections] = useState<Record<string, number[]>>({});
   const [fieldSelections, setFieldSelections] = useState<Record<string, string[]>>({});
   const [busy, setBusy] = useState(false);
-  const [errors, setErrors] = useState<string[]>([]);
+  const [createError, setCreateError] = useState("");
 
   const { candidatesById, deviceOptions } = useMemo(() => {
     const candidates = device || !category ? [] : devices.filter(item => matchesAdminDeviceCategory(item, category, String(item.topology_role || item.device_type)));
@@ -62,8 +62,8 @@ export function AdminExportCreate({ open, onClose, onCreated, device, devices, d
   const lora = device ? device.source_family === "lorawan_v2" : category === "lorawan_v2";
   const carbon = kind === "carbon_sink";
   const gateway = kind === "gateway" || kind === "lorawan_v2";
-  const combined = kind === "standalone" && format === "zip";
-  const taskCount = combined && selected.length ? 1 : selected.length;
+  const combinedStandardZip = kind === "standalone" && format === "zip";
+  const multiDevice = selected.length > 1;
   const gatewayTargets = useQueries({ queries: open && gateway && format === "zip" ? selected.map(item => ({
     queryKey: ["admin", "device", deviceId(item), "nodes", "exports", nodeScope],
     queryFn: () => api.admin.deviceNodes(deviceId(item), nodeScope),
@@ -77,7 +77,7 @@ export function AdminExportCreate({ open, onClose, onCreated, device, devices, d
   function changeCategory(next: ExportCategory) {
     setCategory(next);
     setIds([]);
-    setErrors([]);
+    setCreateError("");
     setNodeScope("bound");
     setNodeSelections({});
     setCarbonSelections({});
@@ -89,62 +89,57 @@ export function AdminExportCreate({ open, onClose, onCreated, device, devices, d
   }
 
   async function create() {
-    if (!range || !selected.length || targetsUnavailable) return;
-    setErrors([]);
+    if (!range || !selected.length || targetsUnavailable || busy) return;
+    setCreateError("");
     setBusy(true);
     try {
-      const requests = (combined ? selected.slice(0, 1) : selected).map((item, index) => {
+      const start = range[0].toISOString();
+      const end = range[1].toISOString();
+      const requests = (combinedStandardZip ? selected.slice(0, 1) : selected).map((item, index) => {
         const id = deviceId(item);
         const nodes = gatewayTargets[index]?.data?.items ?? [];
         const chosen = nodeSelections[id];
         const carbonNodes = carbonTargets[index]?.data?.nodes.map(node => Number(node.node_id)) ?? [];
         try {
           const payload = operationsExportPayload(item, {
-            start: range[0].toISOString(), end: range[1].toISOString(), format,
+            start, end, format,
             data: includeData, images: includeImages, status: includeStatus,
             nodes: chosen ? nodes.filter(node => chosen.includes(node.key)) : nodes,
             carbonNodes: carbonSelections[id] ?? carbonNodes,
             fields: fieldSelections[id] ?? carbonFields,
-            deviceIds: combined ? selected.map(deviceId) : undefined,
+            deviceIds: combinedStandardZip ? selected.map(deviceId) : undefined,
           });
-          return { item, payload: { ...payload, request_config: { ...payload.request_config, data_phase: phase } } };
-        } catch (err) {
-          throw new Error(combined ? formatApiError(err).message : `${exportDeviceLabel(item)}：${formatApiError(err).message}`);
-        }
-      });
-      const failed: { id: string; error: string }[] = [];
-      for (const { item, payload } of requests) {
-        try {
-          await api.admin.createExport(payload);
+          return { ...payload, request_config: { ...payload.request_config, data_phase: phase } };
         } catch (err) {
           const description = formatApiError(err).message;
-          failed.push({ id: deviceId(item), error: combined ? description : `${exportDeviceLabel(item)}：${description}` });
+          throw new Error(multiDevice && !combinedStandardZip ? `${exportDeviceLabel(item)}：${description}` : description);
         }
-      }
-      const created = requests.length - failed.length;
-      if (created) onCreated();
-      if (!failed.length) {
-        void message.success(`已创建 ${created} 个导出任务`);
-        if (!device) setIds([]);
-        onClose();
-      } else {
-        if (created) setIds(failed.map(item => item.id));
-        setErrors([...(created ? [`已创建 ${created} 个任务，下方只保留未创建的设备。`] : []), ...failed.map(item => item.error)]);
-      }
+      });
+      const payload = multiDevice && !combinedStandardZip ? {
+        resource_type: "device_batch",
+        resource_id: deviceId(selected[0]),
+        export_type: "admin_device_bundle_zip",
+        request_config: { start_time: start, end_time: end, data_phase: phase, parts: requests },
+      } : requests[0];
+      await api.admin.createExport(payload);
+      onCreated();
+      void message.success("导出任务已创建");
+      if (!device) setIds([]);
+      onClose();
     } catch (err) {
-      setErrors([formatApiError(err).message]);
+      setCreateError(formatApiError(err).message);
     } finally {
       setBusy(false);
     }
   }
 
   return <Modal title="新建后台导出" open={open} width={720} onCancel={() => {
-    if (!busy) { setErrors([]); onClose(); }
-  }} onOk={() => void create()} confirmLoading={busy} okText={taskCount > 1 ? `创建 ${taskCount} 个任务` : "创建任务"}
+    if (!busy) { setCreateError(""); onClose(); }
+  }} onOk={() => void create()} confirmLoading={busy} okText="创建任务"
     okButtonProps={{ disabled: !selected.length || !range || targetsUnavailable }} destroyOnHidden styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}>
     <Form layout="vertical" disabled={busy}>
       <Alert type="info" title="后台任务仅管理员可见" style={{ marginBottom: 16 }} />
-      {errors.length > 0 && <Alert type="error" title="未能创建全部导出任务" description={<ul style={{ margin: 0, paddingInlineStart: 20 }}>{errors.map((error, index) => <li key={index}>{error}</li>)}</ul>} style={{ marginBottom: 16 }} />}
+      {createError && <Alert type="error" title="导出任务创建失败" description={createError} style={{ marginBottom: 16 }} />}
       {device ? <Form.Item label="设备">{exportDeviceLabel(device)}</Form.Item> : <>
         {devicesError && <Alert type="error" title="设备列表加载失败" description={formatApiError(devicesError).message} action={<Button size="small" onClick={reloadDevices}>重试</Button>} style={{ marginBottom: 16 }} />}
         <Flex align="start" gap={12} wrap>
@@ -153,7 +148,7 @@ export function AdminExportCreate({ open, onClose, onCreated, device, devices, d
           </Form.Item>
           <Form.Item label={selected.length ? `设备（已选 ${selected.length} 台）` : "设备"} required style={{ flex: 1, minWidth: 230 }}>
             <Select mode="multiple" allowClear maxTagCount="responsive" loading={devicesLoading} disabled={!category || devicesLoading}
-              showSearch={{ optionFilterProp: "label" }} value={ids} onChange={value => { setIds(value); setErrors([]); }}
+              showSearch={{ optionFilterProp: "label" }} value={ids} onChange={value => { setIds(value); setCreateError(""); }}
               placeholder={category ? "搜索设备名称或资产编号，可多选" : "请先选择设备分类"} notFoundContent="没有匹配的设备"
               options={deviceOptions} />
           </Form.Item>
@@ -197,7 +192,11 @@ export function AdminExportCreate({ open, onClose, onCreated, device, devices, d
         {!lora && <Checkbox checked={includeImages} onChange={event => setIncludeImages(event.target.checked)}>{carbon ? "原始采样" : "采集图片"}</Checkbox>}
         {lora && <Checkbox checked={includeStatus} onChange={event => setIncludeStatus(event.target.checked)}>运行状态</Checkbox>}
       </Space></Form.Item>}
-      {selected.length > 1 && <Typography.Text type="secondary">{combined ? `将 ${selected.length} 台设备打包到一个 ZIP 任务` : `按设备分别创建 ${taskCount} 个任务`}</Typography.Text>}
+      {multiDevice && <Typography.Text type="secondary">
+        {format === "telemetry_excel" || format === "telemetry_csv"
+          ? `每台设备生成一份 ${format === "telemetry_excel" ? "Excel" : "CSV"} 文件，统一打包为一份 ZIP。`
+          : `将 ${selected.length} 台设备的所选内容打包为一份 ZIP。`}
+      </Typography.Text>}
     </Form>
   </Modal>;
 }

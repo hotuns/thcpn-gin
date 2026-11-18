@@ -3412,7 +3412,7 @@ export interface paths {
         put?: never;
         /**
          * Download a device inventory workbook
-         * @description Requires an administrator session. The workbook includes the selected platform assets and a separate sheet of current nodes for selected gateways. LoRaWAN V2 node SN is blank for legacy nodes known only by their index. This does not export observations or create a download job.
+         * @description Requires an administrator session. Select the columns of the device sheet and the optional sheet of current gateway nodes. LoRaWAN V2 node SN is blank for legacy nodes known only by their index. Binding codes are included only when explicitly selected and only for devices with existing codes. This does not export observations or create a download job.
          */
         post: operations["adminDownloadDeviceInventory"];
         delete?: never;
@@ -6402,7 +6402,7 @@ export interface paths {
         put?: never;
         /**
          * Export data without workspace assignment or user subscription requirements
-         * @description Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+         * @description Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation. A device bundle queues one job for multiple selected devices and downloads as one ZIP.
          */
         post: operations["adminCreateOperationsExport"];
         delete?: never;
@@ -9669,8 +9669,8 @@ export interface components {
             requested_by_admin?: components["schemas"]["UUID"];
             resource_type: components["schemas"]["ExportResourceType"];
             resource_id: components["schemas"]["UUID"];
-            export_type: components["schemas"]["ExportType"];
-            /** @description Worker input. Group exports require gateway_id, node_targets (DeviceNodeTarget array), matching device_ids, start_time and end_time. Indexed LoRaWAN nodes do not support include_images. */
+            export_type: components["schemas"]["ExportType"] | "admin_device_bundle_zip";
+            /** @description Worker input. Group exports require gateway_id, node_targets (DeviceNodeTarget array), matching device_ids, start_time and end_time. Indexed LoRaWAN nodes do not support include_images. Administrator device bundles contain normalized parts and the selected device_ids computed by the server. */
             request_config?: {
                 [key: string]: unknown;
             };
@@ -9720,6 +9720,34 @@ export interface components {
                 [key: string]: unknown;
             };
             expires_at?: components["schemas"]["Timestamp"];
+        };
+        AdminDeviceBundleExportRequest: {
+            /** @enum {string} */
+            resource_type: "device_batch";
+            /** @description Platform UUID of the first selected device or gateway. */
+            resource_id: components["schemas"]["UUID"];
+            /** @enum {string} */
+            export_type: "admin_device_bundle_zip";
+            request_config: {
+                start_time: components["schemas"]["Timestamp"];
+                end_time: components["schemas"]["Timestamp"];
+                /**
+                 * @default all
+                 * @enum {string}
+                 */
+                data_phase: "all" | "formal" | "testing";
+                parts: {
+                    /** @enum {string} */
+                    resource_type: "device" | "device_batch";
+                    resource_id: components["schemas"]["UUID"];
+                    /** @enum {string} */
+                    export_type: "telemetry_csv" | "telemetry_excel" | "media_zip" | "group_site_zip" | "carbon_station_zip";
+                    /** @description Per-device options for the selected format. Supplies gateway and node targets or carbon nodes and fields where applicable. All parts use the shared time range and data phase. */
+                    request_config: {
+                        [key: string]: unknown;
+                    };
+                }[];
+            };
         };
         DatasetExportRequest: {
             /**
@@ -13677,6 +13705,10 @@ export interface operations {
             content: {
                 "application/json": {
                     device_ids: string[];
+                    /** @description Device columns in display order. Omit to use the original columns, which exclude binding codes. */
+                    fields?: ("asset_no" | "name" | "device_type" | "hardware_sn" | "collection_id" | "gateway_sn" | "lifecycle_status" | "status" | "workspace" | "project" | "site" | "binding_code" | "address" | "iccid" | "installed_on" | "installer" | "customer_org" | "delivery_project" | "contact_name" | "contact_phone" | "ops_tags")[];
+                    /** @description Gateway node columns in display order. Omit to use the original columns. An empty array omits the gateway node sheet. */
+                    node_fields?: ("gateway_asset_no" | "gateway_name" | "gateway_sn" | "asset_no" | "name" | "node_sn" | "node_index")[];
                 };
             };
         };
@@ -18861,7 +18893,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateExportJobRequest"];
+                "application/json": components["schemas"]["CreateExportJobRequest"] | components["schemas"]["AdminDeviceBundleExportRequest"];
             };
         };
         responses: {

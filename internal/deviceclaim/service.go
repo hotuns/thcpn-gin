@@ -176,6 +176,34 @@ func (s *Service) GetAdminCredential(ctx context.Context, deviceID uuid.UUID) (C
 	return result, nil
 }
 
+// ListExistingManualCodes reads only the binding codes already issued for the selected devices.
+func (s *Service) ListExistingManualCodes(ctx context.Context, deviceIDs []uuid.UUID) (map[uuid.UUID]string, error) {
+	rows, err := s.db.Query(ctx, `
+		SELECT device_id, manual_code_ciphertext, manual_code_nonce
+		FROM device_claim_credentials WHERE device_id = ANY($1::uuid[])`, deviceIDs)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindInternal, "读取设备绑定码失败", err)
+	}
+	defer rows.Close()
+	codes := make(map[uuid.UUID]string)
+	for rows.Next() {
+		var id uuid.UUID
+		var ciphertext, nonce []byte
+		if err := rows.Scan(&id, &ciphertext, &nonce); err != nil {
+			return nil, apperr.Wrap(apperr.KindInternal, "读取设备绑定码失败", err)
+		}
+		code, err := s.decrypt(ciphertext, nonce)
+		if err != nil {
+			return nil, apperr.Wrap(apperr.KindInternal, "解密设备绑定码失败", err)
+		}
+		codes[id] = formatManualCode(code)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, apperr.Wrap(apperr.KindInternal, "读取设备绑定码失败", err)
+	}
+	return codes, nil
+}
+
 func (s *Service) MarkPrinted(ctx context.Context, deviceID uuid.UUID) error {
 	tag, err := s.db.Exec(ctx, `UPDATE device_claim_credentials SET printed_at=now(), updated_at=now() WHERE device_id=$1`, deviceID)
 	if err != nil {

@@ -3071,7 +3071,7 @@ paths:
       tags: [Admin]
       operationId: adminDownloadDeviceInventory
       summary: Download a device inventory workbook
-      description: Requires an administrator session. The workbook includes the selected platform assets and a separate sheet of current nodes for selected gateways. LoRaWAN V2 node SN is blank for legacy nodes known only by their index. This does not export observations or create a download job.
+      description: Requires an administrator session. Select the columns of the device sheet and the optional sheet of current gateway nodes. LoRaWAN V2 node SN is blank for legacy nodes known only by their index. Binding codes are included only when explicitly selected and only for devices with existing codes. This does not export observations or create a download job.
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -3087,6 +3087,17 @@ paths:
                   maxItems: 10000
                   uniqueItems: true
                   items: { type: string, format: uuid }
+                fields:
+                  description: Device columns in display order. Omit to use the original columns, which exclude binding codes.
+                  type: array
+                  minItems: 1
+                  uniqueItems: true
+                  items: { type: string, enum: [asset_no, name, device_type, hardware_sn, collection_id, gateway_sn, lifecycle_status, status, workspace, project, site, binding_code, address, iccid, installed_on, installer, customer_org, delivery_project, contact_name, contact_phone, ops_tags] }
+                node_fields:
+                  description: Gateway node columns in display order. Omit to use the original columns. An empty array omits the gateway node sheet.
+                  type: array
+                  uniqueItems: true
+                  items: { type: string, enum: [gateway_asset_no, gateway_name, gateway_sn, asset_no, name, node_sn, node_index] }
       responses:
         "200":
           description: Device inventory Excel file.
@@ -7856,13 +7867,16 @@ paths:
       tags: [Admin]
       operationId: adminCreateOperationsExport
       summary: Export data without workspace assignment or user subscription requirements
-      description: Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation.
+      description: Requires a system administrator bearer session. Workspace assignment and user subscriptions do not restrict this operation. A device bundle queues one job for multiple selected devices and downloads as one ZIP.
       security: [{bearerAuth: []}]
       requestBody:
         required: true
         content:
           application/json:
-            schema: {$ref: "#/components/schemas/CreateExportJobRequest"}
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/CreateExportJobRequest"
+                - $ref: "#/components/schemas/AdminDeviceBundleExportRequest"
       responses:
         "201":
           description: Administrator export queued for worker processing.
@@ -13277,11 +13291,13 @@ components:
         resource_id:
           $ref: "#/components/schemas/UUID"
         export_type:
-          $ref: "#/components/schemas/ExportType"
+          oneOf:
+            - $ref: "#/components/schemas/ExportType"
+            - {type: string, enum: [admin_device_bundle_zip]}
         request_config:
           type: object
           additionalProperties: true
-          description: Worker input. Group exports require gateway_id, node_targets (DeviceNodeTarget array), matching device_ids, start_time and end_time. Indexed LoRaWAN nodes do not support include_images.
+          description: Worker input. Group exports require gateway_id, node_targets (DeviceNodeTarget array), matching device_ids, start_time and end_time. Indexed LoRaWAN nodes do not support include_images. Administrator device bundles contain normalized parts and the selected device_ids computed by the server.
         progress:
           type: object
           description: Best-effort progress, refreshed approximately every 15 seconds while running. No heartbeat for five minutes marks a job failed. Missing counters mean execution has not yet reported progress.
@@ -13356,6 +13372,36 @@ components:
           description: Advanced worker input. Batch station exports use `device_ids`, `start_time`, `end_time`, `include_data`, and `include_images`. V2 group exports additionally accept `include_status` (boolean, default false); data.csv contains measurements only and 运行状态.csv contains gateway and selected node status plus gateway coordinates.
         expires_at:
           $ref: "#/components/schemas/Timestamp"
+    AdminDeviceBundleExportRequest:
+      type: object
+      required: [resource_type, resource_id, export_type, request_config]
+      properties:
+        resource_type: {type: string, enum: [device_batch]}
+        resource_id:
+          description: Platform UUID of the first selected device or gateway.
+          allOf: [{$ref: "#/components/schemas/UUID"}]
+        export_type: {type: string, enum: [admin_device_bundle_zip]}
+        request_config:
+          type: object
+          required: [start_time, end_time, parts]
+          properties:
+            start_time: {$ref: "#/components/schemas/Timestamp"}
+            end_time: {$ref: "#/components/schemas/Timestamp"}
+            data_phase: {type: string, enum: [all, formal, testing], default: all}
+            parts:
+              type: array
+              minItems: 2
+              items:
+                type: object
+                required: [resource_type, resource_id, export_type, request_config]
+                properties:
+                  resource_type: {type: string, enum: [device, device_batch]}
+                  resource_id: {$ref: "#/components/schemas/UUID"}
+                  export_type: {type: string, enum: [telemetry_csv, telemetry_excel, media_zip, group_site_zip, carbon_station_zip]}
+                  request_config:
+                    type: object
+                    additionalProperties: true
+                    description: Per-device options for the selected format. Supplies gateway and node targets or carbon nodes and fields where applicable. All parts use the shared time range and data phase.
     DatasetExportRequest:
       type: object
       properties:

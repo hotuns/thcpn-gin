@@ -269,6 +269,7 @@ func registerAPIV1(router *gin.Engine, deps Dependencies, cfg config.Config) err
 	mediaHandler := media.NewHandler(mediaService, permissionChecker, auditService)
 	publicDeviceHandler := publicdevice.NewHandler(publicDeviceService, telemetryService, mediaService, permissionChecker, auditService, deps.Redis, cfg.Auth.JWTSecret)
 	exportHandler := export.NewHandler(exportService, permissionChecker, auditService)
+	exportHandler.SetDeviceClaimService(deviceClaimService)
 	processingHandler := processing.NewHandler(processingService, permissionChecker, billingService, auditService)
 	wallboardHandler := wallboard.NewHandler(wallboardService, permissionChecker)
 	notificationHandler := notification.NewHandler(notificationService)

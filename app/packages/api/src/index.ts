@@ -17,6 +17,9 @@ type Schema<Name extends keyof components["schemas"]> =
 
 export type User = Schema<"UserProfile"> & { is_demo?: boolean };
 export type NodeRuntime = Schema<"NodeRuntime">;
+type DeviceInventoryRequest = operations["adminDownloadDeviceInventory"]["requestBody"]["content"]["application/json"];
+export type InventoryDeviceField = NonNullable<DeviceInventoryRequest["fields"]>[number];
+export type InventoryNodeField = NonNullable<DeviceInventoryRequest["node_fields"]>[number];
 export type SendCodeResponse = Schema<"SendCodeResponse">;
 export type MfaStatus = Schema<"MfaStatusResponse">;
 export type TotpSetup = Schema<"TotpSetupResponse">;
@@ -1438,8 +1441,8 @@ export const api = {
       request<JsonRecord>(`/api/v1/admin/data-sources/${encodeURIComponent(id)}/lorawan-v2/gateways/${encodeURIComponent(sn)}/infos${queryString(input as Record<string, string | number | boolean>)}`),
     devices: () =>
       request<ListResponse<Record<string, unknown>>>("/api/v1/admin/devices"),
-    downloadDeviceInventory: (deviceIds: string[]) => download("/api/v1/admin/devices/export", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ device_ids: deviceIds }),
+    downloadDeviceInventory: (deviceIds: string[], options?: Omit<DeviceInventoryRequest, "device_ids">) => download("/api/v1/admin/devices/export", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...options, device_ids: deviceIds }),
     }),
     firmwareReleases: (filters: Record<string, string | number | boolean | undefined> = {}) =>
       request<ListResponse<FirmwareRelease>>(`/api/v1/admin/firmware-releases${queryString(filters)}`),

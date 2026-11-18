@@ -95,8 +95,6 @@ const deviceModelLabel = (item: JsonRecord) =>
       ? "LoRa V2 网关"
       : "THCPN 组网站网关"
     : deviceTopologyRoleLabel(value(item.device_type, ""));
-const deviceModelOf = (item: JsonRecord) =>
-  value(item.source_family, "") === "lorawan_v2" ? "lorawan_v2" : categoryOf(item);
 const deviceSortOptions = [
   { value: "created_desc", label: "创建时间：最新优先" },
   { value: "created_asc", label: "创建时间：最早优先" },
@@ -131,7 +129,10 @@ export function AdminDevicesPage() {
   const queryClient = useQueryClient();
   const [listParams,setListParams]=useSearchParams();
   const category=listParams.get("kind")||"standalone";
-  const setCategory=(key:string)=>{setListParams({kind:key},{replace:true});setDeviceModel("");setSelectedRowKeys([]);};
+  const setCategory = (key: string) => {
+    setListParams({ kind: key }, { replace: true });
+    setSelectedRowKeys([]);
+  };
   const query = useQuery({
     queryKey: ["admin", "devices"],
     queryFn: api.admin.devices,
@@ -172,7 +173,6 @@ export function AdminDevicesPage() {
     enabled: Boolean(detailDevice) && isCarbonDetail,
   });
   const [keyword, setKeyword] = useState("");
-  const [deviceModel, setDeviceModel] = useState("");
   const [status, setStatus] = useState("");
   const [lifecycle, setLifecycle] = useState("");
   const [assignment, setAssignment] = useState("");
@@ -225,7 +225,6 @@ export function AdminDevicesPage() {
             .includes(keyword.toLowerCase());
         return (
           searchable &&
-          (!deviceModel || deviceModelOf(item) === deviceModel) &&
           (!status || item.status === status) &&
           (!lifecycle || item.lifecycle_status === lifecycle) &&
           (!assignment ||
@@ -235,13 +234,13 @@ export function AdminDevicesPage() {
           matchesAdminDeviceCategory(item,category,categoryOf(item))
         );
       }).sort((a, b) => compareDevices(a, b, sort)),
-    [topLevelRows, keyword, deviceModel, status, lifecycle, assignment, category, sort, tagsByDevice],
+    [topLevelRows, keyword, status, lifecycle, assignment, category, sort, tagsByDevice],
   );
   const id = value(selected?.id, "");
 
   useEffect(() => {
     setPage(1);
-  }, [keyword, deviceModel, status, lifecycle, assignment, category, sort]);
+  }, [keyword, status, lifecycle, assignment, category, sort]);
 
   useEffect(() => {
     const lastPage = Math.max(1, Math.ceil(rows.length / pageSize));
@@ -666,7 +665,8 @@ export function AdminDevicesPage() {
         actions={<Space wrap>
           <Button type="primary" onClick={openDeviceCreate}>创建设备</Button>
           <AdminDeviceInventoryExport ids={inventoryRows.map(item => String(item.id))} selected={selectedInventoryRows.length > 0}
-            includesV2Gateways={category === "lorawan_v2"} disabled={query.isLoading || Boolean(query.error)} />
+            includesGateways={category === "gateway" || category === "lorawan_v2"} includesV2Gateways={category === "lorawan_v2"}
+            disabled={query.isLoading || Boolean(query.error)} />
           <Button onClick={() => void query.refetch()}>刷新</Button>
         </Space>}
       />
@@ -674,19 +674,6 @@ export function AdminDevicesPage() {
         {categoryTabs}
         <div className="admin-device-filters admin-device-list-filters">
           <Input.Search value={keyword} onChange={event=>setKeyword(event.target.value)} placeholder="搜索设备名称、序列号、ID 或标签" allowClear />
-          <Select
-            allowClear
-            placeholder="设备类型"
-            value={deviceModel || undefined}
-            onChange={(item) => setDeviceModel(item ?? "")}
-            options={[
-              { value: "standalone", label: "标准站" },
-              { value: "gateway", label: "THCPN 组网站网关" },
-              { value: "lorawan_v2", label: "LoRa V2 网关" },
-              { value: "carbon_sink", label: "碳汇站" },
-              { value: "camera", label: "视频站" },
-            ]}
-          />
           <Select
             allowClear
             placeholder="资产状态"

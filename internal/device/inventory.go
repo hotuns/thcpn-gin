@@ -22,6 +22,15 @@ type InventoryAsset struct {
 	WorkspaceName   string
 	ProjectName     string
 	SiteName        string
+	Address         string
+	ICCID           string
+	InstalledOn     string
+	Installer       string
+	CustomerOrg     string
+	DeliveryProject string
+	ContactName     string
+	ContactPhone    string
+	OpsTags         string
 }
 
 type InventoryNode struct {
@@ -36,10 +45,13 @@ type InventoryNode struct {
 
 // LoadInventory reads the requested assets and their current node relationships.
 // It does not read telemetry, pending discoveries, or unbound historical positions.
-func (s *Service) LoadInventory(ctx context.Context, ids []uuid.UUID) ([]InventoryAsset, []InventoryNode, error) {
+func (s *Service) LoadInventory(ctx context.Context, ids []uuid.UUID, includeNodes bool) ([]InventoryAsset, []InventoryNode, error) {
 	assets, err := s.loadInventoryAssets(ctx, ids)
 	if err != nil {
 		return nil, nil, err
+	}
+	if !includeNodes {
+		return assets, nil, nil
 	}
 	nodes, err := s.loadInventoryNodes(ctx, assets)
 	if err != nil {
@@ -53,7 +65,12 @@ func (s *Service) loadInventoryAssets(ctx context.Context, ids []uuid.UUID) ([]I
 		SELECT d.id, COALESCE(d.asset_no, ''), d.name, d.device_type,
 		       COALESCE(src.source_family, ''), COALESCE(ref.external_key, ''),
 		       COALESCE(d.hardware_sn, ''), d.lifecycle_status, d.status,
-		       COALESCE(w.name, ''), COALESCE(p.name, ''), COALESCE(site.name, '')
+		       COALESCE(w.name, ''), COALESCE(p.name, ''), COALESCE(site.name, ''),
+		       COALESCE(profile.location_text, ''), COALESCE(d.iccid, ''),
+		       COALESCE(to_char(dossier.installed_on, 'YYYY-MM-DD'), ''), COALESCE(installer.name, ''),
+		       COALESCE(dossier.organization, ''), COALESCE(NULLIF(p.name, ''), dossier.project_name, ''),
+		       COALESCE(dossier.contact_name, ''), COALESCE(dossier.contact_phone, ''),
+		       COALESCE(array_to_string(dossier.ops_tags, '、'), '')
 		FROM unnest($1::uuid[]) WITH ORDINALITY AS selected(id, ordinal)
 		JOIN devices d ON d.id = selected.id
 		LEFT JOIN device_source_refs ref ON ref.device_id = d.id AND ref.status = 'active'
@@ -62,6 +79,9 @@ func (s *Service) loadInventoryAssets(ctx context.Context, ids []uuid.UUID) ([]I
 		LEFT JOIN workspaces w ON w.id = a.workspace_id
 		LEFT JOIN projects p ON p.id = a.project_id
 		LEFT JOIN sites site ON site.id = a.site_id
+		LEFT JOIN device_profiles profile ON profile.device_id = d.id
+		LEFT JOIN device_installation_records dossier ON dossier.device_id = d.id
+		LEFT JOIN system_admins installer ON installer.id = dossier.installer_id
 		ORDER BY selected.ordinal`, ids)
 	if err != nil {
 		return nil, apperr.Wrap(apperr.KindInternal, "读取设备清单失败", err)
@@ -72,7 +92,9 @@ func (s *Service) loadInventoryAssets(ctx context.Context, ids []uuid.UUID) ([]I
 		var item InventoryAsset
 		if err := rows.Scan(&item.ID, &item.AssetNo, &item.Name, &item.DeviceType,
 			&item.SourceFamily, &item.ExternalKey, &item.HardwareSN, &item.LifecycleStatus,
-			&item.Status, &item.WorkspaceName, &item.ProjectName, &item.SiteName); err != nil {
+			&item.Status, &item.WorkspaceName, &item.ProjectName, &item.SiteName, &item.Address,
+			&item.ICCID, &item.InstalledOn, &item.Installer, &item.CustomerOrg, &item.DeliveryProject,
+			&item.ContactName, &item.ContactPhone, &item.OpsTags); err != nil {
 			return nil, apperr.Wrap(apperr.KindInternal, "读取设备清单失败", err)
 		}
 		assets = append(assets, item)

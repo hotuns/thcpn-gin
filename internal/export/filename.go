@@ -20,6 +20,14 @@ func (p *Processor) exportObjectKey(ctx context.Context, job Job, extension stri
 			}
 			id = stream.DeviceID
 		case "device_batch":
+			if job.ExportType == adminDeviceBundleZIP {
+				cfg, err := parseAdminBundleConfig(job.RequestConfig)
+				if err != nil {
+					return "", err
+				}
+				id, deviceCount = cfg.DeviceIDs[0], len(cfg.DeviceIDs)
+				break
+			}
 			cfg, err := parseBatchExportConfig(job.RequestConfig)
 			if err != nil {
 				return "", err

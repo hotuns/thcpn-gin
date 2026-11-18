@@ -24,43 +24,13 @@ func (s *Service) CreateAdmin(ctx context.Context, adminID uuid.UUID, input Crea
 	if input.ResourceID == uuid.Nil {
 		return Job{}, apperr.New(apperr.KindInvalidArgument, "resource_id is required")
 	}
-	if _, _, err := resolveAction(input.ResourceType, input.ExportType); err != nil {
-		return Job{}, err
+	var cfg []byte
+	var err error
+	if input.ExportType == adminDeviceBundleZIP {
+		cfg, err = s.prepareAdminBundle(ctx, input)
+	} else {
+		cfg, err = s.prepareAdminExport(ctx, input)
 	}
-	if input.ResourceType == "dataset" {
-		return Job{}, apperr.New(apperr.KindInvalidArgument, "select a device or data stream for an operations export")
-	}
-	deviceID := input.ResourceID
-	if input.ResourceType == "data_stream" || input.ResourceType == "media" {
-		stream, err := s.queries.GetDataStream(ctx, input.ResourceID)
-		if err != nil {
-			return Job{}, mapNotFoundOrInternal(err, "data stream not found")
-		}
-		deviceID = stream.DeviceID
-	}
-	asset, err := s.queries.GetDevice(ctx, deviceID)
-	if err != nil {
-		return Job{}, mapNotFoundOrInternal(err, "device not found")
-	}
-	cfg, err := normalizeRequestConfig(input.RequestConfig)
-	if err != nil {
-		return Job{}, err
-	}
-	switch input.ExportType {
-	case "standard_station_zip", "group_site_zip":
-		err = s.validateDeviceBatch(ctx, uuid.Nil, uuid.Nil, input.ResourceID, input.ExportType, cfg, true)
-	case "carbon_station_zip":
-		if asset.DeviceType != "carbon_sink" {
-			return Job{}, apperr.New(apperr.KindInvalidArgument, "carbon export requires a carbon sink device")
-		}
-		err = validateCarbonStationConfig(cfg)
-	default:
-		_, err = parseRequestConfig(cfg, s.cfg.MaxRows)
-	}
-	if err != nil {
-		return Job{}, err
-	}
-	cfg, err = s.snapshotNodeNames(ctx, input.ResourceType, input.ResourceID, cfg)
 	if err != nil {
 		return Job{}, err
 	}
@@ -70,6 +40,46 @@ func (s *Service) CreateAdmin(ctx context.Context, adminID uuid.UUID, input Crea
 		return Job{}, mapWriteError(err, "create administrator export")
 	}
 	return jobFromSQL(row), nil
+}
+
+func (s *Service) prepareAdminExport(ctx context.Context, input CreateInput) ([]byte, error) {
+	if _, _, err := resolveAction(input.ResourceType, input.ExportType); err != nil {
+		return nil, err
+	}
+	if input.ResourceType == "dataset" {
+		return nil, apperr.New(apperr.KindInvalidArgument, "select a device or data stream for an operations export")
+	}
+	deviceID := input.ResourceID
+	if input.ResourceType == "data_stream" || input.ResourceType == "media" {
+		stream, err := s.queries.GetDataStream(ctx, input.ResourceID)
+		if err != nil {
+			return nil, mapNotFoundOrInternal(err, "data stream not found")
+		}
+		deviceID = stream.DeviceID
+	}
+	asset, err := s.queries.GetDevice(ctx, deviceID)
+	if err != nil {
+		return nil, mapNotFoundOrInternal(err, "device not found")
+	}
+	cfg, err := normalizeRequestConfig(input.RequestConfig)
+	if err != nil {
+		return nil, err
+	}
+	switch input.ExportType {
+	case "standard_station_zip", "group_site_zip":
+		err = s.validateDeviceBatch(ctx, uuid.Nil, uuid.Nil, input.ResourceID, input.ExportType, cfg, true)
+	case "carbon_station_zip":
+		if asset.DeviceType != "carbon_sink" {
+			return nil, apperr.New(apperr.KindInvalidArgument, "carbon export requires a carbon sink device")
+		}
+		err = validateCarbonStationConfig(cfg)
+	default:
+		_, err = parseRequestConfig(cfg, s.cfg.MaxRows)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s.snapshotNodeNames(ctx, input.ResourceType, input.ResourceID, cfg)
 }
 
 func adminActor(c *gin.Context) (auth.Actor, bool) {

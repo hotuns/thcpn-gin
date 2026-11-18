@@ -6,7 +6,7 @@ import { AdminExportCreate, exportDeviceName } from "./admin-export-create";
 import { opsTime } from "./admin-device-ops-model";
 
 const labels:Record<string,string>={pending:"排队中",running:"生成中",success:"已完成",failed:"失败",expired:"已过期"};
-const formats:Record<string,string>={standard_station_zip:"标准站 ZIP",group_site_zip:"组网站 ZIP",carbon_station_zip:"碳汇 ZIP",telemetry_excel:"Excel",telemetry_csv:"CSV",media_zip:"图片包",dataset_zip:"数据集 ZIP"};
+const formats:Record<string,string>={admin_device_bundle_zip:"批量导出 ZIP",standard_station_zip:"标准站 ZIP",group_site_zip:"组网站 ZIP",carbon_station_zip:"碳汇 ZIP",telemetry_excel:"Excel",telemetry_csv:"CSV",media_zip:"图片包",dataset_zip:"数据集 ZIP"};
 export function AdminExportsPage({ device }: {device?:JsonRecord}) {
   const {message}=App.useApp();
   const [open,setOpen]=useState(false);
@@ -16,10 +16,16 @@ export function AdminExportsPage({ device }: {device?:JsonRecord}) {
   const jobs=useQuery({queryKey:["admin","exports",device?.id??"all"],queryFn:()=>api.admin.exportJobs(device ? String(device.id) : undefined),refetchInterval:query=>query.state.data?.items.some(job=>job.status==="pending"||job.status==="running")?5000:false});
   const rows=(jobs.data?.items??[]).filter(job=>!status||job.status===status);
   const names=useMemo(()=>new Map((devices.data?.items??[]).map(item=>[String(item.id),exportDeviceName(item)])),[devices.data]);
-  const taskName=(job:ExportJob)=>{
+  const taskDeviceNames=(job:ExportJob)=>{
     const cfg=(job.request_config??{}) as JsonRecord;
     const ids=Array.isArray(cfg.device_ids)?cfg.device_ids as string[]:[job.resource_id];
-    return String(cfg.gateway_name||ids.map(id=>names.get(id)||id).join("、"));
+    return typeof cfg.gateway_name === "string" && cfg.gateway_name ? [cfg.gateway_name] : ids.map(id=>names.get(id)||id);
+  };
+  const taskName=(job:ExportJob)=>{
+    const devices=taskDeviceNames(job);
+    return job.export_type === "admin_device_bundle_zip" && devices.length > 2
+      ? `${devices.slice(0,2).join("、")} 等 ${devices.length} 台`
+      : devices.join("、");
   };
   const download=async(job:ExportJob)=>{
     try {const result=await api.admin.exportDownload(job.id);window.open(result.url,"_blank","noopener,noreferrer");}catch(err){void message.error(formatApiError(err).message);}
@@ -38,7 +44,20 @@ export function AdminExportsPage({ device }: {device?:JsonRecord}) {
     <AdminExportCreate open={open} onClose={()=>setOpen(false)} onCreated={()=>void jobs.refetch()} device={device}
       devices={devices.data?.items??[]} devicesLoading={devices.isLoading} devicesError={devices.error} reloadDevices={()=>void devices.refetch()}/>
     <Drawer title="导出任务详情" open={!!detail} width={720} onClose={()=>setDetail(null)}>
-      {detail&&<><Descriptions column={1} bordered items={[{key:"id",label:"任务 ID",children:<Typography.Text copyable>{detail.id}</Typography.Text>},{key:"device",label:"设备",children:taskName(detail)},{key:"status",label:"状态",children:labels[detail.status]},{key:"error",label:"失败原因",children:detail.error_message||"—"},{key:"end",label:"完成时间",children:opsTime(detail.finished_at)},{key:"expiry",label:"下载到期",children:opsTime(detail.expires_at)}]}/><Typography.Title level={5}>设备 / 节点与导出参数</Typography.Title><Input.TextArea readOnly value={JSON.stringify(detail.request_config,null,2)} autoSize={{minRows:8,maxRows:22}}/></>}
+      {detail&&<>
+        <Descriptions column={1} bordered items={[
+          {key:"id",label:"任务 ID",children:<Typography.Text copyable>{detail.id}</Typography.Text>},
+          {key:"device",label:"设备",children:detail.export_type === "admin_device_bundle_zip"
+            ? <ul style={{margin:0,paddingInlineStart:20}}>{taskDeviceNames(detail).map((name,index)=><li key={index}>{name}</li>)}</ul>
+            : taskName(detail)},
+          {key:"status",label:"状态",children:labels[detail.status]},
+          {key:"error",label:"失败原因",children:detail.error_message||"—"},
+          {key:"end",label:"完成时间",children:opsTime(detail.finished_at)},
+          {key:"expiry",label:"下载到期",children:opsTime(detail.expires_at)},
+        ]}/>
+        <Typography.Title level={5}>设备 / 节点与导出参数</Typography.Title>
+        <Input.TextArea readOnly value={JSON.stringify(detail.request_config,null,2)} autoSize={{minRows:8,maxRows:22}}/>
+      </>}
     </Drawer>
   </Card>;
 }

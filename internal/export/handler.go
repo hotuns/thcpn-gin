@@ -16,6 +16,7 @@ import (
 	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/audit"
 	"thcpn-gin/internal/auth"
+	"thcpn-gin/internal/deviceclaim"
 	"thcpn-gin/internal/httpx"
 	"thcpn-gin/internal/permission"
 )
@@ -27,6 +28,7 @@ type Handler struct {
 	checker  *permission.Checker
 	audit    *audit.Service
 	enqueuer JobEnqueuer
+	claims   *deviceclaim.Service
 }
 
 type JobEnqueuer interface {
@@ -60,6 +62,10 @@ func NewHandler(service *Service, checker *permission.Checker, auditServices ...
 
 func (h *Handler) SetJobEnqueuer(enqueuer JobEnqueuer) {
 	h.enqueuer = enqueuer
+}
+
+func (h *Handler) SetDeviceClaimService(service *deviceclaim.Service) {
+	h.claims = service
 }
 
 func (h *Handler) List(c *gin.Context) {
