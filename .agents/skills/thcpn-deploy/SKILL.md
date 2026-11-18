@@ -59,18 +59,22 @@ description: 提交并部署 thcpn-gin 原位生态云项目到既有 Docker Com
    docker compose -f docker-compose.yml -f .deploy/docker-compose.prebuilt.yml build <services>
    构建输出写入 .deploy/<commit>-build.log，按需读取尾部。失败时保留现有运行容器。
    服务器磁盘紧张时使用 scripts/deploy/ 中的 docker-compose.release.yml 与 Dockerfile.frontend-prebuilt，复制到 .deploy/ 并追加 overlay。前端在本地 git archive 的已提交源码目录 npm ci/build，产物分别放 .deploy/frontend/platform、admin；构建时保留生产 VITE_TIANDITU_TOKEN 与 VITE_PLATFORM_URL，密钥只传给构建进程，不回显或提交。新 overlay 提供 export_tmp 卷，不覆盖已有生产配置；后续仍需带上它。macOS 传 tar 可使用 --no-xattrs 避免无意义的扩展属性警告。
+   镜像仓库不可用且本次无基础镜像或系统依赖变更时，可用已备份的运行镜像作为本地基础，覆盖本次二进制、相关文档或前端产物。使用独立候选标签，校验镜像内容后再切换，不改生产 Compose 配置。
 6. 有迁移时，镜像构建成功后再使用服务器配置执行：
-   docker compose -f docker-compose.yml -f .deploy/docker-compose.prebuilt.yml run --rm migrate-init
+   docker compose -f docker-compose.yml -f .deploy/docker-compose.prebuilt.yml run --rm --no-deps -T migrate-init </dev/null
    核对 schema_migrations 的版本和 dirty 状态。迁移失败不启动新程序，不自行清 dirty。
+   通过 SSH 把脚本传给 bash -s 时，必须隔离迁移命令的标准输入，避免 Compose 读取后续脚本；迁移和服务切换也可分成两次 SSH 执行。
 7. 更新变更服务：
    docker compose -f docker-compose.yml -f .deploy/docker-compose.prebuilt.yml up -d --no-deps <services>
    后端改变更新 api/worker；前端改变更新 platform/admin。不要 docker compose down，不重启无关数据源或数据库。
+   api 或 admin 容器重建后，检查两套前端 nginx 的代理解析；旧镜像会缓存旧容器 IP，即使前端页面返回 200 也可能所有 API 502。对仍运行的前端执行 nginx -t 和 nginx -s reload，保持前端 nginx 使用 Docker DNS 动态解析服务名。代理配置变更使用 scripts/deploy/test-proxy-dns.py 在隔离网络验证 API 与后台容器更换 IP 后无需重启代理即可恢复。
    api 或 admin 容器重建后，检查两套前端 nginx 的代理解析；旧镜像会缓存旧容器 IP，即使前端页面返回 200 也可能所有 API 502。对仍运行的前端执行 nginx -t 和 nginx -s reload，保持前端 nginx 使用 Docker DNS 动态解析服务名。代理配置变更使用 scripts/deploy/test-proxy-dns.py 在隔离网络验证 API 与后台容器更换 IP 后无需重启代理即可恢复。
 
 ## 上线验证与版本记录
 
 - API /healthz 与 /readyz，容器运行状态，必要的 processor 依赖。
 - 服务器本地 5173/login、5174/admin/login 和公网 HTTPS 返回正常。
+- 必须执行 python3 scripts/deploy/check-login-proxy.py --base https://ieswatch.com，检查公网策略接口 200、未登录 /api/v1/me 401，以及用户端和后台密码登录接口以空请求返回 JSON 400。空请求不使用真实账号；不以登录页或 API 直连健康检查替代此项。
 - 必须执行 python3 scripts/deploy/check-login-proxy.py --base https://ieswatch.com，检查公网策略接口 200、未登录 /api/v1/me 401，以及用户端和后台密码登录接口以空请求返回 JSON 400。空请求不使用真实账号；不以登录页或 API 直连健康检查替代此项。
 - 核对新静态资源或关键响应字段，不能只凭首页 200 认定业务变更生效。
 - 检查启动后的 API/Worker 错误日志；针对变更做非破坏性的业务验证。

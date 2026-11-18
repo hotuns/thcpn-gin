@@ -90,6 +90,9 @@ type TelemetryBatchQuery struct {
 	Limit        int
 	Adaptive     bool
 	TargetPoints int
+	// FirstOnly allows adapters to return only their first valid point across
+	// the requested bindings. Adapters without this optimization use the usual query.
+	FirstOnly bool
 }
 type TelemetryBatchResult struct {
 	Errors         map[uuid.UUID]string

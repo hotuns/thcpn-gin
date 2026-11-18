@@ -16,7 +16,7 @@ func (r *Runtime) QueryBatch(ctx context.Context, source platform.DataSource, re
 		if err != nil {
 			return result, err
 		}
-		if !supportsTHCPNTelemetryBatch(cfg) {
+		if !req.FirstOnly && !supportsTHCPNTelemetryBatch(cfg) {
 			item, err := r.QueryThcpnLegacyMySQLTelemetry(ctx, source, platform.TelemetryQuery{Binding: binding, Start: req.Start, End: req.End, Limit: req.Limit, Adaptive: req.Adaptive, TargetPoints: req.TargetPoints})
 			if err != nil {
 				result.Errors[binding.DataStreamID] = apperr.MessageOf(err)
@@ -28,10 +28,17 @@ func (r *Runtime) QueryBatch(ctx context.Context, source platform.DataSource, re
 			continue
 		}
 		key := thcpnTelemetryBatchGroupKey(cfg)
+		if req.FirstOnly {
+			key += "\x00" + cfg.IDField
+		}
 		groups[key] = append(groups[key], thcpnBatchMetric{Binding: binding, Config: cfg})
 	}
+	read := r.queryThcpnLegacyMySQLTelemetryBatch
+	if req.FirstOnly {
+		read = r.queryEarliestTelemetry
+	}
 	for _, group := range groups {
-		batch, err := r.queryThcpnLegacyMySQLTelemetryBatch(ctx, source, req, group)
+		batch, err := read(ctx, source, req, group)
 		if err != nil {
 			for _, metric := range group {
 				result.Errors[metric.Binding.DataStreamID] = apperr.MessageOf(err)

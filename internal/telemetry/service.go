@@ -149,7 +149,9 @@ func (s *Service) query(ctx context.Context, input QueryInput, administrator boo
 	if input.DataStreamID != nil {
 		return s.queryDataStream(ctx, *input.DataStreamID, input.DeviceID, input.StartTime, input.EndTime, limit, input.Adaptive, targetPoints)
 	}
-	return s.queryDevice(ctx, *input.DeviceID, input.DataStreamIDs, input.StartTime, input.EndTime, limit, input.Adaptive, targetPoints)
+	return s.queryDevice(ctx, *input.DeviceID, input.DataStreamIDs, platform.TelemetryBatchQuery{
+		Start: input.StartTime, End: input.EndTime, Limit: limit, Adaptive: input.Adaptive, TargetPoints: targetPoints,
+	})
 }
 
 func (s *Service) validateHistoryWindowForQuery(ctx context.Context, input QueryInput, administrator bool) error {
@@ -202,26 +204,25 @@ func (s *Service) QueryInternal(ctx context.Context, input QueryInput) (QueryRes
 	if input.DataStreamID != nil {
 		return s.queryDataStream(ctx, *input.DataStreamID, input.DeviceID, input.StartTime, input.EndTime, input.Limit, input.Adaptive, input.TargetPoints)
 	}
-	return s.queryDevice(ctx, *input.DeviceID, input.DataStreamIDs, input.StartTime, input.EndTime, input.Limit, input.Adaptive, input.TargetPoints)
+	return s.queryDevice(ctx, *input.DeviceID, input.DataStreamIDs, platform.TelemetryBatchQuery{
+		Start: input.StartTime, End: input.EndTime, Limit: input.Limit, Adaptive: input.Adaptive, TargetPoints: input.TargetPoints,
+	})
 }
 
 // EarliestDeviceData finds the oldest valid telemetry point across a device's
-// active streams. The query is administrator-only and intentionally bypasses
-// workspace history windows; adapters return only a small result while
-// locating the first point.
+// active raw streams. The query is administrator-only and includes commissioning data.
 func (s *Service) EarliestDeviceData(ctx context.Context, deviceID uuid.UUID) (EarliestDeviceData, error) {
 	ctx = observation.WithPhase(ctx, observation.All)
 	if deviceID == uuid.Nil {
 		return EarliestDeviceData{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
 	}
-	end := time.Now().UTC()
-	result, err := s.QueryInternal(ctx, QueryInput{
-		DeviceID:     &deviceID,
-		StartTime:    time.Unix(0, 0).UTC(),
-		EndTime:      end,
+	result, err := s.queryDevice(ctx, deviceID, nil, platform.TelemetryBatchQuery{
+		Start:        time.Unix(0, 0).UTC(),
+		End:          time.Now().UTC(),
 		Limit:        2,
 		Adaptive:     true,
 		TargetPoints: 2,
+		FirstOnly:    true,
 	})
 	if err != nil {
 		return EarliestDeviceData{}, err
@@ -255,7 +256,7 @@ func (s *Service) EarliestDeviceData(ctx context.Context, deviceID uuid.UUID) (E
 	return earliest, nil
 }
 
-func (s *Service) queryDevice(ctx context.Context, deviceID uuid.UUID, requestedIDs []uuid.UUID, start time.Time, end time.Time, limit int, adaptive bool, targetPoints int) (QueryResult, error) {
+func (s *Service) queryDevice(ctx context.Context, deviceID uuid.UUID, requestedIDs []uuid.UUID, query platform.TelemetryBatchQuery) (QueryResult, error) {
 	if deviceID == uuid.Nil {
 		return QueryResult{}, apperr.New(apperr.KindInvalidArgument, "device id is required")
 	}
@@ -288,8 +289,8 @@ func (s *Service) queryDevice(ctx context.Context, deviceID uuid.UUID, requested
 	if len(requested) > 0 {
 		return QueryResult{}, apperr.New(apperr.KindInvalidArgument, "data_stream_ids contains a stream that is not active telemetry on this device")
 	}
-	result := QueryResult{DeviceID: device.ID, StartTime: start, EndTime: end, Limit: limit, Series: make([]Series, 0, len(selected))}
-	series, err := s.querySelectedSeries(ctx, selected, streams, start, end, limit, adaptive, targetPoints)
+	result := QueryResult{DeviceID: device.ID, StartTime: query.Start, EndTime: query.End, Limit: query.Limit, Series: make([]Series, 0, len(selected))}
+	series, err := s.querySelectedSeries(ctx, selected, streams, query)
 	if err != nil {
 		return QueryResult{}, err
 	}
@@ -339,9 +340,9 @@ func (s *Service) queryDataStream(ctx context.Context, dataStreamID uuid.UUID, d
 	}, nil
 }
 
-func (s *Service) querySelectedSeries(ctx context.Context, selected, all []sqlc.DataStream, start time.Time, end time.Time, limit int, adaptive bool, targetPoints int) ([]Series, error) {
+func (s *Service) querySelectedSeries(ctx context.Context, selected, all []sqlc.DataStream, query platform.TelemetryBatchQuery) ([]Series, error) {
 	if s.computed == nil {
-		return s.querySeriesBatch(ctx, selected, start, end, limit, adaptive, targetPoints)
+		return s.querySeriesBatch(ctx, selected, query)
 	}
 	definitions, err := s.computed.DefinitionMap(ctx, selectedDeviceID(selected, all))
 	if err != nil {
@@ -353,9 +354,9 @@ func (s *Service) querySelectedSeries(ctx context.Context, selected, all []sqlc.
 			rawSelected = append(rawSelected, stream)
 		}
 	}
-	rawSeries, err := s.querySeriesBatch(ctx, rawSelected, start, end, limit, adaptive, targetPoints)
-	if err != nil {
-		return nil, err
+	rawSeries, err := s.querySeriesBatch(ctx, rawSelected, query)
+	if err != nil || query.FirstOnly {
+		return rawSeries, err
 	}
 	rawByID := make(map[uuid.UUID]Series, len(rawSeries))
 	for _, series := range rawSeries {
@@ -368,7 +369,7 @@ func (s *Service) querySelectedSeries(ctx context.Context, selected, all []sqlc.
 			result = append(result, rawByID[stream.ID])
 			continue
 		}
-		series, err := s.queryComputedSeriesWithStreams(ctx, definition, all, start, end, limit, adaptive, targetPoints)
+		series, err := s.queryComputedSeriesWithStreams(ctx, definition, all, query.Start, query.End, query.Limit, query.Adaptive, query.TargetPoints)
 		if err != nil {
 			return nil, err
 		}
@@ -408,7 +409,7 @@ func (s *Service) queryComputedSeriesWithStreams(ctx context.Context, definition
 		}
 		dependencies = append(dependencies, stream)
 	}
-	dependencySeries, err := s.querySeriesBatch(ctx, dependencies, start, end, limit, false, 0)
+	dependencySeries, err := s.querySeriesBatch(ctx, dependencies, platform.TelemetryBatchQuery{Start: start, End: end, Limit: limit})
 	if err != nil {
 		return Series{}, err
 	}
@@ -515,12 +516,12 @@ func (s *Service) querySeries(ctx context.Context, stream sqlc.DataStream, start
 	return seriesFromDatasource(stream, points), nil
 }
 
-func (s *Service) querySeriesBatch(ctx context.Context, streams []sqlc.DataStream, start time.Time, end time.Time, limit int, adaptive bool, targetPoints int) ([]Series, error) {
+func (s *Service) querySeriesBatch(ctx context.Context, streams []sqlc.DataStream, query platform.TelemetryBatchQuery) ([]Series, error) {
 	batchRuntime, supportsBatch := s.runtime.(batchTelemetryRuntime)
 	if !supportsBatch {
 		items := make([]Series, 0, len(streams))
 		for _, stream := range streams {
-			series, err := s.querySeries(ctx, stream, start, end, limit, adaptive, targetPoints)
+			series, err := s.querySeries(ctx, stream, query.Start, query.End, query.Limit, query.Adaptive, query.TargetPoints)
 			if err != nil {
 				return nil, err
 			}
@@ -554,9 +555,9 @@ func (s *Service) querySeriesBatch(ctx context.Context, streams []sqlc.DataStrea
 	results := make(map[uuid.UUID]platform.TelemetryResult, len(streams))
 	failures := map[uuid.UUID]string{}
 	for _, group := range groups {
-		batch, err := batchRuntime.QueryTelemetryBatch(ctx, group.source, platform.TelemetryBatchQuery{
-			Bindings: group.bindings, Start: start, End: end, Limit: limit, Adaptive: adaptive, TargetPoints: targetPoints,
-		})
+		batchQuery := query
+		batchQuery.Bindings = group.bindings
+		batch, err := batchRuntime.QueryTelemetryBatch(ctx, group.source, batchQuery)
 		if err != nil {
 			for _, stream := range group.streams {
 				failures[stream.ID] = apperr.MessageOf(err)

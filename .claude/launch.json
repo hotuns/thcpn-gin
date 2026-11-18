@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["SERVER_ADDR=127.0.0.1:18081", "go", "run", "./cmd/api"],
+      "port": 18081
+    },
+    {
+      "name": "platform",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["VITE_API_PROXY_TARGET=http://127.0.0.1:18081", "npm", "--prefix", "app/apps/platform", "run", "dev", "--", "--host", "127.0.0.1", "--port", "5173", "--strictPort"],
+      "port": 5173
+    },
+    {
+      "name": "admin",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["VITE_API_PROXY_TARGET=http://127.0.0.1:18081", "npm", "--prefix", "app/apps/admin", "run", "dev", "--", "--host", "127.0.0.1", "--port", "5174", "--strictPort"],
+      "port": 5174
+    }
+  ]
+}

@@ -2,6 +2,7 @@ package thcpn
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -100,16 +101,28 @@ func readTHCPNStatistics(ctx context.Context, db platform.StatisticsQuerier, ide
 }
 
 func thcpnStatisticsTables(ctx context.Context, db platform.StatisticsQuerier, strategy string, lower, end time.Time) (map[string][]statisticsSpan, error) {
+	return thcpnHistoryTables(ctx, db, thcpnLegacyBindingConfig{
+		ShardStrategy: strategy, TableIndex: defaultTHCPNTableIndexField, TableNameField: defaultTHCPNTableNameField,
+		IndexStartField: defaultTHCPNIndexStartField, IndexEndField: defaultTHCPNIndexEndField,
+	}, lower, end)
+}
+
+// thcpnHistoryTables enumerates existing partitions on either side of the
+// monthly cutover. It is used by whole-history operations, not chart queries.
+func thcpnHistoryTables(ctx context.Context, db platform.StatisticsQuerier, cfg thcpnLegacyBindingConfig, lower, end time.Time) (map[string][]statisticsSpan, error) {
 	result := map[string][]statisticsSpan{}
 	cutover := time.Date(2026, 7, 1, 0, 0, 0, 0, platform.LegacySourceLocation)
 	indexEnd := end
-	if strategy != thcpnShardStrategyIndex && cutover.Before(indexEnd) {
+	if cfg.ShardStrategy != thcpnShardStrategyIndex && cutover.Before(indexEnd) {
 		indexEnd = cutover
 	}
 	if lower.Before(indexEnd) {
 		// Enumerate real indexed tables, with no telemetry helper's 8-table cap.
 		// An indexed but missing table is a dependency failure, not empty history.
-		rows, err := db.QueryContext(ctx, "SELECT COALESCE(t.table_name, '') FROM device_data_index i LEFT JOIN information_schema.tables t ON t.table_schema=DATABASE() AND t.table_name=i.tb_name WHERE i.start_at < ? AND i.end_at >= ?", platform.StatisticsWallTime(indexEnd), platform.StatisticsWallTime(lower))
+		query := fmt.Sprintf("SELECT COALESCE(t.table_name, '') FROM %s i LEFT JOIN information_schema.tables t ON t.table_schema=DATABASE() AND t.table_name=i.%s WHERE i.%s < ? AND i.%s >= ?",
+			platform.QuoteMySQLIdentifier(cfg.TableIndex), platform.QuoteMySQLIdentifier(cfg.TableNameField),
+			platform.QuoteMySQLIdentifier(cfg.IndexStartField), platform.QuoteMySQLIdentifier(cfg.IndexEndField))
+		rows, err := db.QueryContext(ctx, query, platform.StatisticsWallTime(indexEnd), platform.StatisticsWallTime(lower))
 		if err != nil {
 			return nil, platform.StatisticsSourceError()
 		}
@@ -128,7 +141,7 @@ func thcpnStatisticsTables(ctx context.Context, db platform.StatisticsQuerier, s
 			return nil, platform.StatisticsSourceError()
 		}
 	}
-	if strategy == thcpnShardStrategyIndex || !end.After(cutover) {
+	if cfg.ShardStrategy == thcpnShardStrategyIndex || !end.After(cutover) {
 		return result, nil
 	}
 	monthlyStart := lower
