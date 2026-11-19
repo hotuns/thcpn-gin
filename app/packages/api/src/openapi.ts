@@ -986,7 +986,10 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Refresh current node bindings and their platform metrics, or query source inventory */
+        /**
+         * Read platform node bindings, or query source inventory
+         * @description By default, returns the physical node bindings already stored in the platform without accessing the source or synchronizing metrics. Worker discovery and explicit reconcile refresh the platform directory. Set inventory=true to query the source inventory, including unbound nodes.
+         */
         get: {
             parameters: {
                 query?: {
@@ -1005,7 +1008,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Physical node inventory; binding refresh preserves position data and profiles */
+                /** @description Platform physical node bindings or source inventory when inventory=true */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1027,7 +1030,7 @@ export interface paths {
         put?: never;
         /**
          * Register, bind, unbind or replace a physical node
-         * @description Administrator only. Registration and binding do not send firmware instructions. Data and configuration stay with gateway plus index. Unknown writes must be checked before retry; partial means source accepted but platform needs synchronization.
+         * @description Administrator only. Registration and binding do not send firmware instructions. Data and configuration stay with gateway plus index. Bind and replace synchronize metrics for the affected node only. Explicit reconcile synchronizes the whole gateway. Unknown writes must be checked before retry; partial means source accepted but platform needs synchronization.
          */
         post: {
             parameters: {

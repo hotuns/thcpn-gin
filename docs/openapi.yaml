@@ -472,7 +472,8 @@ paths:
       - $ref: "#/components/parameters/DeviceID"
     get:
       tags: [Admin]
-      summary: Refresh current node bindings and their platform metrics, or query source inventory
+      summary: Read platform node bindings, or query source inventory
+      description: By default, returns the physical node bindings already stored in the platform without accessing the source or synchronizing metrics. Worker discovery and explicit reconcile refresh the platform directory. Set inventory=true to query the source inventory, including unbound nodes.
       security: [{bearerAuth: []}]
       parameters:
         - {name: inventory, in: query, schema: {type: boolean}}
@@ -481,13 +482,13 @@ paths:
         - {$ref: "#/components/parameters/Page"}
         - {$ref: "#/components/parameters/PageSize"}
       responses:
-        "200": {description: Physical node inventory; binding refresh preserves position data and profiles, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}
+        "200": {description: Platform physical node bindings or source inventory when inventory=true, content: {application/json: {schema: {$ref: "#/components/schemas/LoRaWANV2Payload"}}}}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "502": {description: Upstream query failed}
     post:
       tags: [Admin]
       summary: Register, bind, unbind or replace a physical node
-      description: Administrator only. Registration and binding do not send firmware instructions. Data and configuration stay with gateway plus index. Unknown writes must be checked before retry; partial means source accepted but platform needs synchronization.
+      description: Administrator only. Registration and binding do not send firmware instructions. Data and configuration stay with gateway plus index. Bind and replace synchronize metrics for the affected node only. Explicit reconcile synchronizes the whole gateway. Unknown writes must be checked before retry; partial means source accepted but platform needs synchronization.
       security: [{bearerAuth: []}]
       requestBody:
         required: true

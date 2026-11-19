@@ -120,12 +120,12 @@ describe("physical node CSV import submission boundaries", () => {
     await openAndPreview(uploaded);
     await confirmImport();
 
-    await eventually(() => expect(api.admin.changePhysicalNode).toHaveBeenCalledTimes(1));
+    await eventually(() => expect(api.admin.registerPhysicalNode).toHaveBeenCalledTimes(2));
     expect(vi.mocked(api.admin.registerPhysicalNode).mock.calls).toEqual([
       ["source-1", { sn: "NODE-A", node_index: 3, gateway_device_id: "gateway-1" }],
       ["source-1", { sn: "NODE-B", node_index: 8, gateway_device_id: "gateway-1" }],
     ]);
-    expect(api.admin.changePhysicalNode).toHaveBeenCalledWith("gateway-1", { action: "reconcile" });
+    expect(api.admin.changePhysicalNode).not.toHaveBeenCalled();
     await eventually(() => {
       expect(row("NODE-A").textContent).toContain("已新建并安装");
       expect(row("NODE-B").textContent).toContain("已新建并安装");
@@ -146,7 +146,7 @@ describe("physical node CSV import submission boundaries", () => {
     expect(api.admin.changePhysicalNode).not.toHaveBeenCalled();
   });
 
-  it("keeps a rejected row failed while continuing other rows and synchronizing successful installs", async () => {
+  it("keeps a rejected row failed while continuing other rows without a gateway sync", async () => {
     vi.mocked(api.admin.registerPhysicalNode)
       .mockRejectedValueOnce(new Error("节点位置已占用"))
       .mockResolvedValueOnce({ status: "completed", bound: true, message: "第二行已安装" });
@@ -159,7 +159,7 @@ describe("physical node CSV import submission boundaries", () => {
       expect(row("NODE-B").textContent).toContain("已新建并安装");
     });
     expect(api.admin.registerPhysicalNode).toHaveBeenCalledTimes(2);
-    expect(api.admin.changePhysicalNode).toHaveBeenCalledTimes(1);
+    expect(api.admin.changePhysicalNode).not.toHaveBeenCalled();
     expect(button("开始新建并安装", importDialog()).disabled).toBe(true);
   });
 
@@ -181,18 +181,21 @@ describe("physical node CSV import submission boundaries", () => {
     expect(button("开始新建并安装", importDialog()).disabled).toBe(true);
   });
 
-  it("preserves installed row results and prevents another import if the final platform sync fails", async () => {
-    vi.mocked(api.admin.changePhysicalNode).mockRejectedValueOnce(new Error("同步超时"));
+  it("preserves partial installation results without retrying or adding a gateway sync", async () => {
+    vi.mocked(api.admin.registerPhysicalNode).mockResolvedValueOnce({
+      status: "partial", bound: true, message: "源端已接受，平台投影失败，请同步平台，不要再次新建。",
+    });
     await openAndPreview();
     await confirmImport();
 
-    await eventually(() => expect(importDialog().textContent).toContain("平台指标同步失败"));
-    expect(row("NODE-A").textContent).toContain("已新建并安装");
-    expect(row("NODE-B").textContent).toContain("已新建并安装");
-    expect(importDialog().textContent).toContain("不要重复导入");
+    await eventually(() => {
+      expect(row("NODE-A").textContent).toContain("部分完成，请核对");
+      expect(row("NODE-A").textContent).toContain("不要再次新建");
+      expect(row("NODE-B").textContent).toContain("已新建并安装");
+    });
     expect(button("开始新建并安装", importDialog()).disabled).toBe(true);
     await click(button("开始新建并安装", importDialog()));
     expect(api.admin.registerPhysicalNode).toHaveBeenCalledTimes(2);
-    expect(api.admin.changePhysicalNode).toHaveBeenCalledTimes(1);
+    expect(api.admin.changePhysicalNode).not.toHaveBeenCalled();
   });
 });

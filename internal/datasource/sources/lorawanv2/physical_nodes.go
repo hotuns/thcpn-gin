@@ -24,6 +24,34 @@ type PhysicalNodes struct {
 	Data           []PhysicalNode `json:"data"`
 }
 
+// ListPhysicalNodes reads the platform directory. Source discovery is handled
+// by the worker or an explicit synchronization, not by viewing a node list.
+func (s *Service) ListPhysicalNodes(ctx context.Context, deviceID uuid.UUID) (PhysicalNodes, error) {
+	ref, err := s.LoRaWANV2GatewayForDevice(ctx, deviceID)
+	if err != nil {
+		return PhysicalNodes{}, err
+	}
+	result := PhysicalNodes{GatewaySN: ref.GatewaySN, Data: []PhysicalNode{}}
+	rows, err := s.DB.Query(ctx, `SELECT external_id,sn,node_index FROM lorawan_physical_nodes
+		WHERE data_source_id=$1 AND gateway_device_id=$2 ORDER BY node_index`, ref.DataSourceID, deviceID)
+	if err != nil {
+		return result, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		node := PhysicalNode{GatewaySN: &result.GatewaySN}
+		if err := rows.Scan(&node.ID, &node.SN, &node.NodeIndex); err != nil {
+			return result, err
+		}
+		result.Data = append(result.Data, node)
+	}
+	if err := rows.Err(); err != nil {
+		return result, err
+	}
+	result.BoundNodeCount = len(result.Data)
+	return result, nil
+}
+
 func readPhysicalNodes(ctx context.Context, client *LoraWANV2Client, sn string) (PhysicalNodes, error) {
 	raw, err := client.Request(ctx, http.MethodGet, "/device/"+url.PathEscape(sn)+"/nodes", nil, nil)
 	var result PhysicalNodes

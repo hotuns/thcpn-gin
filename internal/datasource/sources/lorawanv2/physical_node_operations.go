@@ -100,7 +100,7 @@ func (s *Service) OperatePhysicalNode(ctx context.Context, id, actor uuid.UUID, 
 		_, syncErr = s.SyncPhysicalNodes(ctx, id)
 	}
 	if syncErr == nil && (input.Action == "bind" || input.Action == "replace") {
-		_, syncErr = s.SyncLoRaWANV2Gateway(ctx, SyncLoRaWANV2GatewayInput{DataSourceID: ref.DataSourceID, GatewaySN: ref.GatewaySN, ActorUserID: actor})
+		syncErr = s.syncLoRaWANV2Node(ctx, SyncLoRaWANV2GatewayInput{DataSourceID: ref.DataSourceID, GatewaySN: ref.GatewaySN, ActorUserID: actor}, input.NodeIndex)
 	}
 	result.Status = "completed"
 	result.Message = "节点登记与绑定已完成，不发送硬件指令；同一网关、序号的名称、坐标、配置与历史数据保留。"

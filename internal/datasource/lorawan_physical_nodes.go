@@ -21,33 +21,33 @@ func (h *Handler) AdminLoRaWANPhysicalNodes(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if c.Request.Method == http.MethodGet && c.Query("inventory") != "true" {
+		result, err := h.service.LoRaWAN.ListPhysicalNodes(c.Request.Context(), id)
+		if err != nil {
+			httpx.WriteAppError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, result)
+		return
+	}
 	ref, err := h.service.LoRaWAN.LoRaWANV2GatewayForDevice(c.Request.Context(), id)
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
 	}
 	if c.Request.Method == http.MethodGet {
-		if c.Query("inventory") == "true" {
-			q := loraWANV2PageQueryFromContext(c)
-			for _, key := range []string{"sn", "bound"} {
-				if c.Query(key) != "" {
-					q.Set(key, c.Query(key))
-				}
+		q := loraWANV2PageQueryFromContext(c)
+		for _, key := range []string{"sn", "bound"} {
+			if c.Query(key) != "" {
+				q.Set(key, c.Query(key))
 			}
-			raw, err := h.service.LoRaWAN.LoRaWANV2Request(c.Request.Context(), ref.DataSourceID, http.MethodGet, "/nodes", q, nil)
-			if err != nil {
-				httpx.WriteAppError(c, err)
-				return
-			}
-			writeLoRaWANV2Payload(c, 200, raw)
-			return
 		}
-		result, err := h.service.LoRaWAN.RefreshDiscoveredNodes(c.Request.Context(), id)
+		raw, err := h.service.LoRaWAN.LoRaWANV2Request(c.Request.Context(), ref.DataSourceID, http.MethodGet, "/nodes", q, nil)
 		if err != nil {
 			httpx.WriteAppError(c, err)
 			return
 		}
-		c.JSON(200, result)
+		writeLoRaWANV2Payload(c, http.StatusOK, raw)
 		return
 	}
 	var input lorawanv2.PhysicalNodeCommand
