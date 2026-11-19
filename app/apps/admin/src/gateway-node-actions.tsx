@@ -24,10 +24,6 @@ export function GatewayNodeActions({ deviceId, node, onDetails, onConfig }: { de
       setFeedback({ type: partial ? "warning" : "success", text: String(result.message) });
       if(partial)void message.warning(String(result.message),8);else void message.success(String(result.message));
       setAction(null);
-      if (!partial && input.action !== "reconcile") {
-        try { await api.admin.changePhysicalNode(deviceId, { action: "reconcile" }); }
-        catch (error) { void message.warning("源端操作已完成，平台同步失败，请使用同步网关节点信息核对。",8);setFeedback({ type: "warning", text: `源端操作已完成，平台指标同步失败：${formatApiError(error).message}。请使用“同步网关节点信息”，不要重复提交安装或更换。` }); }
-      }
       await refresh();
     } catch (error) { void message.error(formatApiError(error).message);setFeedback({ type: "error", text: `${formatApiError(error).message}。请刷新核对当前关系后再操作。` }); }
     finally { setBusy(false); }

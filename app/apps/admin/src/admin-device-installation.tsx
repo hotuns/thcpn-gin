@@ -98,7 +98,7 @@ export function AdminDeviceNodes({device,onData,onTopology,onConfig,onHistory,co
   const [pageSize,setPageSize]=useState(20);
   const [search,setSearch]=useState("");
   const [detailKey,setDetailKey]=useState<string|null>(null);
-  const nodes=useQuery({queryKey:["admin","device",id,"nodes","operations"],queryFn:async()=>{if(lora)await api.admin.physicalNodes(id);return api.admin.deviceNodes(id);}});
+  const nodes=useQuery({queryKey:["admin","device",id,"nodes","operations"],queryFn:()=>api.admin.deviceNodes(id)});
   const rows=nodes.data?.items??[];
   const detail=rows.find(node=>node.key===detailKey);
   const visible=rows.filter(n=>[n.name,n.asset_no,lora?undefined:n.hardware_sn,n.node_sn,n.target.kind==="gateway_node"?String(n.target.node_index):""].some(v=>v?.toLowerCase().includes(search.toLowerCase())));
