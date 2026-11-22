@@ -10,7 +10,7 @@ export type InspectionDevice = {
 };
 export type InspectionEvent = {
   id: string; device_id: string; device_name: string; asset_no: string; family: string;
-  kind: InspectionKind; metric: string; data_stream_id: string | null; node_index: number | null; detail: string;
+  kind: InspectionKind; severity: "warning" | "critical"; metric: string; data_stream_id: string | null; node_index: number | null; detail: string;
   started_at: string; last_seen_at: string; resolved_at: string | null;
   acknowledged_at: string | null; acknowledged_by: string; note: string;
 };

@@ -12,7 +12,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"thcpn-gin/internal/apperr"
 	"thcpn-gin/internal/datasource"
 	"thcpn-gin/internal/telemetry"
 )
@@ -24,6 +23,11 @@ type Service struct {
 }
 
 const carbonFluxUnit = "μg CO₂·m⁻²·s⁻¹"
+
+const (
+	lateWarning  = 24 * time.Hour
+	lateCritical = 3 * lateWarning
+)
 
 const eligible = `WITH eligible AS (
  SELECT DISTINCT ON (d.id) d.id,d.name,d.asset_no,src.source_family AS family,d.device_type,
@@ -45,8 +49,8 @@ const eligible = `WITH eligible AS (
 type progress struct {
 	Start         time.Time
 	Window        time.Time
+	SampleWindow  time.Time
 	ProfileAt     time.Time
-	ProfileError  string
 	DecodedLatest time.Time
 	Upload        string
 	Latest        map[int]time.Time
@@ -63,6 +67,7 @@ type target struct {
 
 type finding struct {
 	Key, Kind, Metric, Detail string
+	Severity                  string
 	Node                      *int
 	Since, At                 time.Time
 	Active                    bool
@@ -160,52 +165,30 @@ func (s *Service) inspect(ctx context.Context, t target, templates []Template, n
 	readCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 	var checks []finding
-	if p.ProfileAt.IsZero() || now.Sub(p.ProfileAt) >= time.Hour {
-		cfg, err := s.Sources.GetDeviceConfig(readCtx, t.ID)
-		p.ProfileError = ""
-		p.Upload = ""
-		if err != nil {
-			if apperr.KindOf(err) != apperr.KindNotFound {
-				p.ProfileError = "采样计划读取失败"
-			}
-		} else {
-			var control struct {
-				Upload string `json:"data_upload_invl"`
-			}
-			if json.Unmarshal(cfg.LatestConfig.ControlJSON, &control) == nil {
-				p.Upload = control.Upload
-			}
-		}
-		p.ProfileAt = now
-	}
-	issue := p.ProfileError
+	var issue string
 	slots := parseSchedule(p.Upload)
-	lateBoundary := slots.missedAfter(now, 3)
-	from := now.Add(-36 * time.Hour)
-	if !p.Window.IsZero() {
-		// Read an overlap for data uploaded in batches; counters consume each timestamp once.
-		overlap := 2 * time.Hour
-		if earlier := slots.missedAfter(now, 1); !earlier.IsZero() {
-			overlap = max(overlap, now.Sub(earlier))
-		}
-		from = maxTime(from, p.Window.Add(-overlap))
+	// Read an overlap for data uploaded in batches; counters consume each timestamp once.
+	overlap := 2 * time.Hour
+	if earlier := slots.missedAfter(now, 1); !earlier.IsZero() {
+		overlap = max(overlap, now.Sub(earlier))
 	}
-	from = maxTime(from, t.Start)
+	from := maxTime(maxTime(now.Add(-36*time.Hour), p.Window.Add(-overlap)), t.Start)
+	// The raw timestamp check can catch up across outages without widening metric queries.
+	sampleFrom := maxTime(maxTime(now.Add(-lateCritical), p.SampleWindow.Add(-overlap)), t.Start)
 	end := now.Add(-uploadGrace)
 	if end.After(from) {
 		if t.Family == "carbon" {
-			nodes, err := s.Sources.Carbon.InspectionSampleTimes(readCtx, t.ID, from, now)
+			nodes, err := s.Sources.Carbon.InspectionSampleTimes(readCtx, t.ID, sampleFrom, now)
 			if err != nil {
 				issue = joinIssue(issue, "碳汇采样读取失败")
 			} else {
+				p.SampleWindow = now
 				for index, sample := range nodes {
 					if sample.Start.After(p.Latest[index]) {
 						delete(p.Latest, index)
 					}
 					p.Latest[index] = maxTime(p.Latest[index], sample.At)
-					if !lateBoundary.IsZero() {
-						checks = append(checks, lateFinding(index, p.Latest[index], lateBoundary, maxTime(t.Start, sample.Start), now))
-					}
+					checks = append(checks, lateFinding(index, p.Latest[index], maxTime(t.Start, sample.Start), now))
 				}
 				p.Window = end
 			}
@@ -261,24 +244,28 @@ func (s *Service) inspect(ctx context.Context, t target, templates []Template, n
 				}
 			}
 			rawOK := true
-			if p.DecodedLatest.Before(p.Window.Add(-5*time.Minute)) || !p.Latest[0].After(lateBoundary) {
-				at, rawErr := s.Sources.THCPN.InspectionSampleTime(readCtx, t.ID, t.DeviceType, from, end)
+			if p.DecodedLatest.Before(p.Window.Add(-5*time.Minute)) || !p.Latest[0].After(now.Add(-lateWarning)) {
+				at, rawErr := s.Sources.THCPN.InspectionSampleTime(readCtx, t.ID, t.DeviceType, sampleFrom, now)
 				if rawErr != nil {
 					issue = joinIssue(issue, "原始上报读取失败")
 					rawOK = false
 				} else {
+					p.SampleWindow = now
 					p.Latest[0] = maxTime(p.Latest[0], at)
-					if len(streams) > 0 && at.After(p.DecodedLatest) {
+					if err == nil && len(streams) == 0 {
+						p.Window = end
+					}
+					if len(streams) > 0 && !at.After(end) && at.After(p.DecodedLatest) {
 						issue = joinIssue(issue, "有原始上报，最新记录没有可用指标值")
 					}
 				}
 			}
-			if rawOK && !lateBoundary.IsZero() {
+			if rawOK {
 				switch {
 				case t.DeviceType == "gateway" && len(streams) == 0 && p.Latest[0].IsZero():
 					issue = joinIssue(issue, "网关没有独立采样记录，所属节点分别巡检")
 				default:
-					checks = append(checks, lateFinding(0, p.Latest[0], lateBoundary, t.Start, now))
+					checks = append(checks, lateFinding(0, p.Latest[0], t.Start, now))
 				}
 			}
 			runtime, err := s.runtimeChecks(readCtx, t, templates, &p, now)
@@ -288,6 +275,21 @@ func (s *Service) inspect(ctx context.Context, t target, templates []Template, n
 				checks = append(checks, runtime...)
 			}
 		}
+	}
+	// The upload plan only tunes the scan cadence and overlap. Fetch it after
+	// the data checks so a slow or missing plan cannot prevent a late finding.
+	if p.ProfileAt.IsZero() || now.Sub(p.ProfileAt) >= time.Hour {
+		cfg, err := s.Sources.GetDeviceConfig(readCtx, t.ID)
+		if err == nil {
+			var control struct {
+				Upload string `json:"data_upload_invl"`
+			}
+			if json.Unmarshal(cfg.LatestConfig.ControlJSON, &control) == nil {
+				p.Upload = control.Upload
+			}
+		}
+		p.ProfileAt = now
+		slots = parseSchedule(p.Upload)
 	}
 	every := 15 * time.Minute
 	if len(slots) > 0 {
@@ -317,15 +319,28 @@ func joinIssue(a, b string) string {
 	return a + "；" + b
 }
 
-func lateFinding(index int, last, boundary, start, now time.Time) finding {
-	item := finding{Key: fmt.Sprintf("late:%d", index), Kind: "late", Metric: "采集数据", Since: now, At: now}
+func lateFinding(index int, last, start, now time.Time) finding {
+	item := finding{Key: fmt.Sprintf("late:%d", index), Kind: "late", Metric: "采集数据", At: now}
 	if index > 0 {
 		item.Node = &index
 	}
-	item.Active = start.Before(boundary) && !last.After(boundary)
-	item.Detail = "按上传计划已连续错过 3 个上报窗口"
-	if !last.IsZero() {
-		item.Detail += "；最后采样 " + last.In(beijing).Format("01-02 15:04")
+	baseline := maxTime(start, last)
+	if baseline.IsZero() || now.Sub(baseline) < lateWarning {
+		return item
+	}
+	item.Active = true
+	item.Since = baseline.Add(lateWarning)
+	if now.Sub(baseline) >= lateCritical {
+		item.Severity = "critical"
+		item.Detail = "已连续 3 天未收到采集数据"
+	} else {
+		item.Severity = "warning"
+		item.Detail = "已连续 1 天未收到采集数据"
+	}
+	if !last.IsZero() && !last.Before(start) {
+		item.Detail += "，最近采集于 " + last.In(beijing).Format("01-02 15:04")
+	} else {
+		item.Detail += "，本次查询范围内暂无采集记录"
 	}
 	return item
 }
@@ -484,7 +499,7 @@ func (s *Service) persist(ctx context.Context, id uuid.UUID, p progress, checks 
 	defer tx.Rollback(ctx)
 	var latest *time.Time
 	for _, v := range p.Latest {
-		if latest == nil || v.After(*latest) {
+		if !v.IsZero() && (latest == nil || v.After(*latest)) {
 			a := v
 			latest = &a
 		}
@@ -497,9 +512,11 @@ func (s *Service) persist(ctx context.Context, id uuid.UUID, p progress, checks 
 	}
 	for _, f := range checks {
 		if f.Active {
-			_, err = tx.Exec(ctx, `INSERT INTO device_inspection_events(device_id,event_key,kind,metric,node_index,detail,started_at,last_seen_at)
- VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(device_id,event_key) WHERE resolved_at IS NULL
- DO UPDATE SET last_seen_at=GREATEST(device_inspection_events.last_seen_at,EXCLUDED.last_seen_at),detail=EXCLUDED.detail`, id, f.Key, f.Kind, f.Metric, f.Node, f.Detail, f.Since, f.At)
+			_, err = tx.Exec(ctx, `INSERT INTO device_inspection_events AS current_event(device_id,event_key,kind,severity,metric,node_index,detail,started_at,last_seen_at)
+ VALUES($1,$2,$3,COALESCE(NULLIF($4,''),'warning'),$5,$6,$7,$8,$9) ON CONFLICT(device_id,event_key) WHERE resolved_at IS NULL
+ DO UPDATE SET last_seen_at=GREATEST(current_event.last_seen_at,EXCLUDED.last_seen_at),detail=EXCLUDED.detail,severity=EXCLUDED.severity,
+ acknowledged_at=CASE WHEN current_event.severity='warning' AND EXCLUDED.severity='critical' THEN NULL ELSE current_event.acknowledged_at END,
+ acknowledged_by=CASE WHEN current_event.severity='warning' AND EXCLUDED.severity='critical' THEN NULL ELSE current_event.acknowledged_by END`, id, f.Key, f.Kind, f.Severity, f.Metric, f.Node, f.Detail, f.Since, f.At)
 		} else {
 			_, err = tx.Exec(ctx, `UPDATE device_inspection_events SET resolved_at=GREATEST(started_at,$3) WHERE device_id=$1 AND event_key=$2 AND resolved_at IS NULL AND last_seen_at<$3`, id, f.Key, f.At)
 		}
