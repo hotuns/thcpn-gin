@@ -2,36 +2,36 @@ import { useState, type FormEvent } from "react";
 import { type Device } from "@thcpn/api";
 import { DataRangeFields as RangeFields, validDataRange } from "../../shared/data/data-builder";
 import { ExportDevicePicker, ExportContents } from "./export-device-picker";
-import { defaultRange, value, arrayParam, buildBatchExportPayload } from "./export-model";
-import { type FormCommon, FormFooter } from "./export-form-layout";
+import { initialExportRange, value, arrayParam, buildBatchExportPayload } from "./export-model";
+import { type FormCommon, FormFooter, useExportFormDirty } from "./export-form-layout";
 
 export function StandardExportForm({
   devices,
   params,
   chooser,
+  busy,
   onClose,
   onCreate,
+  onDirtyChange,
   feedback,
 }: { devices: Device[] } & FormCommon) {
   const list = devices.filter(
     (item) => value(item, "device_type") === "standalone",
   );
-  const initial = arrayParam(params.get("devices"));
-  const range = defaultRange();
+  const initial = arrayParam(params.get("devices") ?? params.get("nodes")).map((id) => id.replace(/^device:/, ""));
+  const range = initialExportRange(params);
   const [selected, setSelected] = useState<string[]>(initial);
-  const [start, setStart] = useState(params.get("start") ?? range.start);
-  const [end, setEnd] = useState(params.get("end") ?? range.end);
+  const [start, setStart] = useState(range.start);
+  const [end, setEnd] = useState(range.end);
   const [images, setImages] = useState(true);
   const [data, setData] = useState(true);
-  const [busy, setBusy] = useState(false);
+  useExportFormDirty({ selected, start, end, images, data }, onDirtyChange);
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (busy || !selected.length || (!data && !images) || !validDataRange(start, end)) return;
-    setBusy(true);
     await onCreate(
       buildBatchExportPayload("standard", selected, start, end, images, undefined, data),
     );
-    setBusy(false);
   };
   return (
     <div className="export-system-form">
@@ -58,7 +58,7 @@ export function StandardExportForm({
             selectedIds={selected}
             onChange={setSelected}
             mode="multiple"
-            searchPlaceholder="搜索标准站名称或序列号"
+            searchPlaceholder="搜索标准站名称或资产编号"
           />
         </div>
         <RangeFields

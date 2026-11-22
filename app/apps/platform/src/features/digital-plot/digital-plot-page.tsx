@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useIsMobile } from "../../shared/hooks/use-mobile";
 import { MobileMapPanels } from "../../shared/maps/mobile-map-panels";
-import { Link } from "react-router-dom";
+import { usePlatformReturn } from "../../app/platform-navigation";
 import { useLocale } from "@thcpn/i18n";
 import {
   ArrowLeft,
@@ -99,6 +99,7 @@ function Range({
 }
 export function DigitalPlotPage() {
   const mobile = useIsMobile();
+  const { back } = usePlatformReturn();
   const [mobilePanel, setMobilePanel] = useState("");
   const selectParcel = (id: string) => { setSelected(id); if (mobile) setMobilePanel("inspector"); };
   const [overrides, setOverrides] = useState<ParcelOverrides>(() => { try { return parseParcelOverrides(localStorage.getItem(parcelStorageKey)); } catch { return {}; } });
@@ -202,11 +203,11 @@ export function DigitalPlotPage() {
     >
       <header className="dp-header">
         <ObservatoryMasthead />
-        <Link to="/atlas" className="dp-back" title={d("back")}>
+        <button type="button" className="dp-back" onClick={back} aria-label={d("back")} title={d("back")}>
           <ArrowLeft size={17} />
           <Mountain size={28} />
           <span>{d("category")}</span>
-        </Link>
+        </button>
         <ObservatoryTitle className="dp-title" title={d("title")} />
         <div className="dp-header-tools">
           <span className="dp-demo">{d("demo")}</span>

@@ -1,30 +1,51 @@
 import "./exports-mobile.css";
 import "../../shared/data/mobile-data.css";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Check, FileArchive, Plus, RefreshCw, X } from "lucide-react";
 import { api, formatApiError, type ExportJob, type JsonRecord } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { Button, PageHeader, Panel, SelectInput, StateView, Table } from "../../shared/ui";
+import { SummaryCards } from "../../shared/ui/summary-cards";
 import { useLocale } from "@thcpn/i18n";
+import { useNavigationSource } from "../../app/platform-navigation";
+import { useWorkspaceListFilters } from "../../shared/data/use-workspace-list-filters";
 import { resolveExportTargets } from "./export-targets";
 import { type ExportSystem } from "./export-model";
 import { displayTime, exportResourceLabel, ExportProgress, ExportRowActions, ExportStatus, ExportDetail } from "./export-job";
 
+const defaultFilters = { mine: true, statusFilter: "" };
+const filterMemory = new Map<string, typeof defaultFilters>();
+
 export function ExportsPage() {
-  const { t } = useLocale();
-  const navigate = useNavigate();
-  const location = useLocation();
   const { currentId } = useWorkspace();
+  const location = useLocation();
   const [params] = useSearchParams();
   const requestedSystem = params.get("system") as ExportSystem | null;
-  const [mine, setMine] = useState(true);
-  const [statusFilter, setStatusFilter] = useState("");
-  const [feedback, setFeedback] = useState(location.state?.exportCreated ? "导出任务已创建" : "");
+  if (requestedSystem && ["standard", "group", "carbon"].includes(requestedSystem)) {
+    return <Navigate to={`/exports/new?${params.toString()}`} replace state={location.state} />;
+  }
+  const result = location.state?.createdExport;
+  const createdId = result?.workspaceId === currentId && typeof result?.jobId === "string" ? result.jobId : "";
+  return <ExportList key={`${currentId}:${createdId}`} currentId={currentId} createdId={createdId} />;
+}
+
+function ExportList({ currentId, createdId }: { currentId: string | null; createdId: string }) {
+  const { t } = useLocale();
+  const navigate = useNavigate();
+  const source = useNavigationSource();
+  const [{ mine, statusFilter }, setFilters] = useWorkspaceListFilters(currentId, filterMemory, defaultFilters);
+  const [feedback, setFeedback] = useState(createdId ? "导出任务已创建" : "");
   const [downloading, setDownloading] = useState("");
   const [retrying,setRetrying]=useState("");
-  const [detailId, setDetailId] = useState("");
+  const [detailId, setDetailId] = useState(createdId);
+  const [highlightedId, setHighlightedId] = useState(createdId);
+  const createdRow = useRef<HTMLTableRowElement>(null);
+  const changeFilters = (filters: typeof defaultFilters) => {
+    setHighlightedId("");
+    setFilters(filters);
+  };
   const query = useQuery({
     queryKey: workspaceQueryKey(
       currentId,
@@ -43,10 +64,18 @@ export function ExportsPage() {
   const jobs = useMemo(
     () =>
       (query.data?.items ?? []).filter(
-        (item) => !statusFilter || item.status === statusFilter,
+        (item) => item.id === highlightedId || !statusFilter || item.status === statusFilter,
       ),
-    [query.data, statusFilter],
+    [query.data, statusFilter, highlightedId],
   );
+  const hasCreatedRow = !query.error && jobs.some((job) => job.id === highlightedId);
+  useEffect(() => {
+    if (!hasCreatedRow) return;
+    const frame = requestAnimationFrame(() => {
+      createdRow.current?.scrollIntoView({ block: "nearest" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [hasCreatedRow]);
   const retry = async (job:ExportJob) => {
     if (retrying) return;
     setRetrying(job.id);
@@ -72,7 +101,6 @@ export function ExportsPage() {
       setDownloading("");
     }
   };
-  if (requestedSystem && ["standard", "group", "carbon"].includes(requestedSystem)) return <Navigate to={`/exports/new?${params.toString()}`} replace />;
   if (!currentId)
     return (
       <>
@@ -102,55 +130,19 @@ export function ExportsPage() {
               <RefreshCw size={14} />
               刷新
             </Button>
-            <Button data-onboarding="export-create" onClick={() => navigate("/exports/new")}>
+            <Button data-onboarding="export-create" onClick={() => navigate("/exports/new", { state: source })}>
               <Plus size={14} />
               新建导出
             </Button>
           </div>
         }
       />
-      <div className="export-summary" data-onboarding="export-summary">
-        <div>
-          <span className="export-summary-icon">
-            <FileArchive size={16} />
-          </span>
-          <span>
-            <small>全部任务</small>
-            <strong>{all.length}</strong>
-          </span>
-        </div>
-        <div>
-          <span className="export-summary-icon is-running">
-            <RefreshCw size={16} />
-          </span>
-          <span>
-            <small>处理中</small>
-            <strong>{active}</strong>
-          </span>
-        </div>
-        <div>
-          <span className="export-summary-icon is-success">
-            <Check size={16} />
-          </span>
-          <span>
-            <small>已完成</small>
-            <strong>
-              {all.filter((item) => item.status === "success").length}
-            </strong>
-          </span>
-        </div>
-        <div>
-          <span className="export-summary-icon is-failed">
-            <X size={16} />
-          </span>
-          <span>
-            <small>失败</small>
-            <strong>
-              {all.filter((item) => item.status === "failed").length}
-            </strong>
-          </span>
-        </div>
-      </div>
+      <SummaryCards onboarding="export-summary" items={[
+        { label: "全部任务", value: all.length, icon: FileArchive },
+        { label: "处理中", value: active, icon: RefreshCw, tone: "running" },
+        { label: "已完成", value: all.filter((item) => item.status === "success").length, icon: Check, tone: "success" },
+        { label: "失败", value: all.filter((item) => item.status === "failed").length, icon: X, tone: "failed" },
+      ]} />
       {feedback && <div className="command-note section-gap">{feedback}</div>}
       <Panel className="section-gap export-list-panel" data-onboarding="export-list">
         <div className="export-toolbar">
@@ -158,13 +150,13 @@ export function ExportsPage() {
             <div className="export-view-switch">
               <button
                 className={mine ? "active" : ""}
-                onClick={() => setMine(true)}
+                onClick={() => changeFilters({ mine: true, statusFilter })}
               >
                 我的导出
               </button>
               <button
                 className={!mine ? "active" : ""}
-                onClick={() => setMine(false)}
+                onClick={() => changeFilters({ mine: false, statusFilter })}
               >
                 组织全部
               </button>
@@ -176,7 +168,7 @@ export function ExportsPage() {
             <SelectInput
               className="is-compact"
               value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
+              onChange={(event) => changeFilters({ mine, statusFilter: event.target.value })}
             >
               <option value="">全部状态</option>
               {["pending", "running", "success", "failed", "expired"].map(
@@ -222,11 +214,12 @@ export function ExportsPage() {
               <tbody>
                 {jobs.map((job) => {
                   const expanded = detailId === job.id;
+                  const highlighted = job.id === highlightedId;
                   const config = (job.request_config ?? {}) as JsonRecord;
                   const targets = resolveExportTargets(job, devices.data?.items ?? []);
                   return (
                     <Fragment key={job.id}>
-                      <tr>
+                      <tr className={highlighted ? "export-created-row" : undefined} ref={highlighted ? createdRow : undefined}>
                         <td data-label="任务" className="mobile-cell-title mono">{job.id.slice(0, 12)}</td>
                         <td data-label="设备体系">{exportResourceLabel(job)}</td>
                         <td data-label="目标" className="mobile-cell-wide export-target-cell">

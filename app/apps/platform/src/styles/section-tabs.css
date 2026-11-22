@@ -1,0 +1,69 @@
+.shadcn-tabs-list.shadcn-tabs-underline {
+  position: relative;
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  gap: 18px;
+  padding: 0 var(--section-tab-gutter, 0);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  border-width: 0 0 1px;
+  border-radius: 0;
+  background: transparent;
+}
+
+.shadcn-tabs-underline .shadcn-tabs-trigger {
+  min-height: 49px;
+  flex: 0 0 auto;
+  gap: 6px;
+  padding: 0 2px;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  white-space: nowrap;
+}
+
+.shadcn-tabs-underline .shadcn-tabs-trigger[data-state="active"] {
+  color: var(--ink);
+  background: transparent;
+  border-bottom-color: var(--selection-indicator, var(--theme-accent));
+  box-shadow: none;
+}
+
+.shadcn-tabs-underline .shadcn-tabs-trigger:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.shadcn-tabs-underline ~ .shadcn-tabs-content:focus-visible,
+.notification-toolbar ~ .shadcn-tabs-content:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.ui-count-badge {
+  min-width: 22px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface-subtle);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.shadcn-tabs-underline [data-state="active"] .ui-count-badge {
+  color: var(--blue-dark);
+  background: var(--blue-soft);
+}
+
+.device-detail-tab-content.shadcn-tabs-content { margin-top: 20px; }
+.notification-toolbar > .shadcn-tabs-underline {
+  width: auto;
+  flex: 1 1 auto;
+}
+
+@media (max-width: 767px) {
+  .shadcn-tabs-list.shadcn-tabs-underline { gap: 14px; }
+}

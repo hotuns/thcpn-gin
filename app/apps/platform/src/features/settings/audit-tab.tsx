@@ -86,7 +86,7 @@ export function AuditTab() {
       addResource(["site"], item.id, item.name),
     );
     (devices.data?.items ?? []).forEach((item) =>
-      addResource(["device"], item.id, `${item.name} · SN ${item.serial_no}`),
+      addResource(["device"], item.id, item.asset_no ? `${item.name} · 资产编号 ${item.asset_no}` : item.name),
     );
     (datasets.data?.items ?? []).forEach((item) =>
       addResource(["dataset"], item.id, item.name),

@@ -7,7 +7,7 @@ const node = (key: string, extra: Partial<GatewayNode> = {}): GatewayNode => ({
   target: { kind: "gateway_node", gateway_device_id: "gateway", node_index: 1 }, ...extra,
 });
 const child = (id: string, extra: Partial<DeviceMapItem> = {}): DeviceMapItem => ({
-  device_id: id, name: id, serial_no: id, device_type: "gateway_node", status: "active",
+  device_id: id, name: id, asset_no: id, device_type: "gateway_node", status: "active",
   location_source: "manual", child_count: 0, environment: { research_tags: [], observation_objects: [], purposes: [] }, ...extra,
 });
 

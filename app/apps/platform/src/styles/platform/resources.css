@@ -119,29 +119,6 @@
     transition: none !important;
   }
 }
-.settings-tabs {
-  display: flex;
-  gap: 4px;
-  margin: -8px 0 20px;
-  padding-bottom: 1px;
-  border-bottom: 1px solid var(--line);
-  overflow-x: auto;
-}
-.settings-tabs button {
-  min-height: 38px;
-  padding: 0 14px;
-  color: var(--muted);
-  background: transparent;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  font-size: var(--font-size-small);
-  font-weight: var(--font-weight-semibold);
-  white-space: nowrap;
-}
-.settings-tabs button.active {
-  color: var(--blue);
-  border-bottom-color: var(--blue);
-}
 .inline-create {
   display: grid;
   grid-template-columns: 1fr auto;

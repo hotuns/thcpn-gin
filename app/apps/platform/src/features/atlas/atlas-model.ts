@@ -35,7 +35,7 @@ export function filterDevices(
     (d) =>
       (!ids.length || ids.includes(d.device_id)) &&
       (kind === "all" || d.device_type === kind) &&
-      (!q || `${d.name} ${d.serial_no}`.toLocaleLowerCase().includes(q)),
+      (!q || `${d.name} ${d.asset_no ?? ""}`.toLocaleLowerCase().includes(q)),
   );
 }
 export function streamCatalog(streams: DataStream[], nodes: GatewayNode[]) {

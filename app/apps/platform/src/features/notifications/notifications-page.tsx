@@ -1,8 +1,7 @@
 import "./notifications-mobile.css";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bell, CheckCheck, Megaphone } from "lucide-react";
+import { Bell, CheckCheck, Megaphone } from "lucide-react";
 import { api, formatApiError, type JsonRecord } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { Badge, Button, PageHeader, Panel, StateView, Tabs, TabsContent, TabsList, TabsTrigger } from "../../shared/ui";
@@ -15,7 +14,6 @@ const time = (input: unknown) => input ? new Date(String(input)).toLocaleString(
 const tone = (level: unknown) => level === "error" ? "danger" : level === "warning" ? "warning" : level === "success" ? "success" : "info";
 
 export function NotificationsPage() {
-  const navigate = useNavigate();
   const { currentId, current } = useWorkspace();
   const client = useQueryClient();
   const [tab, setTab] = useState<"notifications" | "announcements">("notifications");
@@ -39,12 +37,12 @@ export function NotificationsPage() {
   const query = tab === "notifications" ? notifications : announcements;
   const rows = items(query.data);
   return <>
-    <PageHeader eyebrow="Message center" title="通知中心" description={`${current?.name ?? "当前组织"}的业务提醒与平台公告。`} actions={<Button variant="secondary" onClick={() => navigate("/dashboard")}><ArrowLeft size={14} />返回总览</Button>} />
+    <PageHeader eyebrow="Message center" title="通知中心" description={`${current?.name ?? "当前组织"}的业务提醒与平台公告。`} />
     <Tabs value={tab} onValueChange={(next) => setTab(next as typeof tab)} className="notification-page">
       <div className="notification-toolbar">
-        <TabsList aria-label="消息类型">
-          <TabsTrigger value="notifications"><Bell size={16} />提醒{unread(notifications.data) > 0 && <Badge tone="info">{unread(notifications.data)}</Badge>}</TabsTrigger>
-          <TabsTrigger value="announcements"><Megaphone size={16} />公告{unread(announcements.data) > 0 && <Badge tone="info">{unread(announcements.data)}</Badge>}</TabsTrigger>
+        <TabsList variant="underline" aria-label="消息类型">
+          <TabsTrigger value="notifications"><Bell size={16} />提醒{unread(notifications.data) > 0 && <span className="ui-count-badge">{unread(notifications.data)}</span>}</TabsTrigger>
+          <TabsTrigger value="announcements"><Megaphone size={16} />公告{unread(announcements.data) > 0 && <span className="ui-count-badge">{unread(announcements.data)}</span>}</TabsTrigger>
         </TabsList>
         {tab === "notifications" && unread(notifications.data) > 0 && <Button variant="secondary" disabled={markRead.isPending} onClick={() => markRead.mutate({})}><CheckCheck size={15} />{markRead.isPending ? "正在更新…" : "全部已读"}</Button>}
       </div>

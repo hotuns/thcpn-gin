@@ -37,7 +37,7 @@ export function GatewayOverview({ device, workspaceId }: { device: Device; works
   const actions = <>{lora&&<Button variant="secondary" onClick={()=>setInfoOpen(true)}>网关上报信息</Button>}<Button variant="secondary" disabled={nodes.isFetching || runtime.isFetching} onClick={refresh}>刷新</Button></>;
   return <div className="gateway-overview">
     {lora && <Dialog open={infoOpen} onOpenChange={setInfoOpen}><DialogContent><DialogHeader><DialogTitle>网关上报信息</DialogTitle><DialogDescription>由设备上报的物联卡和固件信息，与平台人工登记资料区分。</DialogDescription></DialogHeader>{infoOpen&&<LoRaWANGatewayInfo deviceId={device.id} workspaceId={workspaceId}/>}</DialogContent></Dialog>}
-    {lora && <GatewayReportedDetails deviceId={device.id} workspaceId={workspaceId} name={device.name} sn={device.serial_no}/>}
+    {lora && <GatewayReportedDetails deviceId={device.id} workspaceId={workspaceId} name={device.name} sn={device.external_key}/>}
     {nodes.error ? <StateView type="error" title="节点读取失败" description={formatApiError(nodes.error).message} action={<div className="header-actions">{actions}</div>} /> : nodes.isLoading ? <StateView type="loading" title="正在读取节点" description="正在汇总节点与指标。" /> : <>
       <div className="gateway-overview-kpis">
         <div><span>{lora ? "当前节点" : "节点设备"}</span><strong>{currentRows.length}</strong></div>
@@ -71,7 +71,7 @@ export function GatewayOverview({ device, workspaceId }: { device: Device; works
         <dl className="gateway-node-facts">
           <div><dt>节点名称</dt><dd>{current.name}{current.can_rename && <NodeNameEditor name={current.custom_name} allowEmpty={current.target.kind !== "device"} onSave={async name => { if (current.target.kind === "device") await api.devices.update(current.target.device_id, { name }); else await api.devices.renameNode(device.id, current.target.node_index, name); await invalidateNodeNames(client); }} />}</dd></div>
           <div><dt>资产编号</dt><dd>{current.asset_no || "—"}</dd></div>
-          {lora&&<><div><dt>节点 SN</dt><dd>{current.node_sn || "—"}</dd></div><div><dt>所属网关</dt><dd>{device.name} · {device.asset_no || device.serial_no}</dd></div><div><dt>序号</dt><dd>{current.target.kind === "gateway_node" ? current.target.node_index : "—"}</dd></div></>}
+          {lora&&<><div><dt>节点 SN</dt><dd>{current.node_sn || "—"}</dd></div><div><dt>所属网关</dt><dd>{device.name} · {device.asset_no || "—"}</dd></div><div><dt>序号</dt><dd>{current.target.kind === "gateway_node" ? current.target.node_index : "—"}</dd></div></>}
           {!lora&&<div><dt>设备标识</dt><dd className="mono">{current.key}</dd></div>}
           <div><dt>指标数量</dt><dd>{current.streams.filter(isMeasurement).length}</dd></div><div><dt>最近采集时间</dt><dd>{formatTime(readings.get(current.key)?.sampled_at)}</dd></div>
           {current.target.kind === "gateway_node" && <div><dt>经纬度</dt><dd>{current.longitude != null ? `${current.longitude}, ${current.latitude}` : "未设置"}{current.can_rename && <NodeLocationEditor gatewayId={device.id} node={current} />}</dd></div>}

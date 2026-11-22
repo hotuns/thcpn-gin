@@ -14,7 +14,7 @@ export function LoRaWANV2GatewayConfigCopy({ deviceId, disabled, onCopy }: { dev
     read={async (source, target) => {
       const response = await api.admin.deviceSourceConfig(String(source.id), "gateway", { page: 1, page_size: 50 });
       const configuration = latestGatewayConfiguration(response);
-      const draft = gatewayConfigCopyDraft(configuration, String(target.external_key || target.serial_no || ""));
+      const draft = gatewayConfigCopyDraft(configuration, String(target.external_key || ""));
       return { draft, summary: `配置版本 ${String(configuration.id ?? "—")} · 已保留目标网关 SN，并移除源配置编号`, preview: draft };
     }} onCopy={onCopy} />;
 }

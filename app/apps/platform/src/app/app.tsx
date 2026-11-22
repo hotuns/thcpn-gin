@@ -47,6 +47,7 @@ const ExportEditorPage = lazy(() =>
   import("../features/exports/export-editor-page").then((module) => ({ default: module.ExportEditorPage })),
 );
 const ProcessingPage = lazy(() => import("../features/processing/processing-page").then((module) => ({ default: module.ProcessingPage })));
+const ProcessingTaskCreatePage = lazy(() => import("../features/processing/processing-page").then((module) => ({ default: module.ProcessingTaskCreatePage })));
 const ProcessingTaskDetailPage = lazy(() => import("../features/processing/processing-page").then((module) => ({ default: module.ProcessingTaskDetailPage })));
 const AtlasPage = lazy(() => import("../features/atlas/atlas-page").then((module) => ({ default: module.AtlasPage })));
 const DigitalPlotPage = lazy(() => import("../features/digital-plot/digital-plot-page").then((module) => ({ default: module.DigitalPlotPage })));
@@ -122,6 +123,7 @@ export function PlatformApp() {
             <Route path="/exports" element={<ExportsPage key="export-list" />} />
             <Route path="/exports/new" element={<ExportEditorPage />} />
             <Route path="/processing" element={<ProcessingPage />} />
+            <Route path="/processing/new" element={<ProcessingTaskCreatePage />} />
             <Route path="/processing/:taskId" element={<ProcessingTaskDetailPage />} />
             <Route path="/atlas" element={<AtlasPage />} />
             <Route path="/atlas/topics/digital-plot" element={<DigitalPlotPage />} />

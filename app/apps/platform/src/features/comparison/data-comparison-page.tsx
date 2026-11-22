@@ -21,6 +21,7 @@ import {
   type TelemetrySeries,
 } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
+import { useNavigationSource } from "../../app/platform-navigation";
 import { Alert, AlertDescription, AlertTitle, Badge, Button, Input, PageHeader, Panel, SelectInput, StateView, Table } from "../../shared/ui";
 import { DeviceCombobox } from "../../shared/data/device-combobox";
 import { DEVICE_LIST_GC_TIME, DEVICE_LIST_STALE_TIME, deviceListQueryKey } from "../../shared/data/device-list-cache";
@@ -151,6 +152,7 @@ export function DataComparisonPage() {
  const MAX_COMPARISONS=usePolicyLimit("comparison_items",8);
   const { currentId } = useWorkspace();
   const navigate = useNavigate();
+  const source = useNavigationSource();
   const [searchParams, setSearchParams] = useSearchParams();
   const [initialDrafts] = useState(() => createInitialDrafts(searchParams));
   const seeded = initialDrafts.some((item) => item.streamId);
@@ -390,6 +392,7 @@ export function DataComparisonPage() {
                         endTime: datasetEnd,
                         name: `数据对比 ${dateTimeLocal(new Date()).slice(0, 10)}`,
                       }),
+                      { state: source },
                     )
                   }
                 >

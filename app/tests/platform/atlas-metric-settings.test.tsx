@@ -9,7 +9,7 @@ import { render, eventually } from "../render";
 vi.mock("@thcpn/auth", () => ({ useAuth: () => ({ user: { id: "observer" } }) }));
 const stamp = "2026-11-03T00:00:00Z";
 const metrics: DataStream[] = Array.from({ length: 7 }, (_, index) => ({ id: `stream${index}`, name: `指标${index}`, code: `metric${index}`, type: "telemetry", status: "active", device_id: "gateway", computed: false, created_by: "observer", created_at: stamp, updated_at: stamp }));
-const device: DeviceMapItem = { device_id: "gateway", name: "青山组网站", serial_no: "GW001", device_type: "gateway", status: "active", location_source: "none", child_count: 1, environment: { observation_objects: [], purposes: [], research_tags: [] } };
+const device: DeviceMapItem = { device_id: "gateway", name: "青山组网站", asset_no: "GW001", device_type: "gateway", status: "active", location_source: "none", child_count: 1, environment: { observation_objects: [], purposes: [], research_tags: [] } };
 function App() {
   const [node, setNode] = useState("gateway");
   const [version, setVersion] = useState(0);

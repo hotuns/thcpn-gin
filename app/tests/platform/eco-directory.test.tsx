@@ -5,7 +5,7 @@ import { EcoDirectory } from "../../apps/platform/src/features/atlas/eco-directo
 import { render, eventually } from "../render";
 
 const device = (device_id: string, device_type: string, extra: Partial<DeviceMapItem> = {}): DeviceMapItem => ({
-  device_id, device_type, name: device_id, serial_no: `${device_id}-SN`, status: "active", location_source: "device", child_count: 0,
+  device_id, device_type, name: device_id, asset_no: `${device_id}-SN`, status: "active", location_source: "device", child_count: 0,
   environment: { research_tags: [], observation_objects: [], purposes: [] }, ...extra,
 });
 const gateway = device("gateway", "gateway");

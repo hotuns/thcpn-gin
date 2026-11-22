@@ -487,13 +487,19 @@ export function BrandLogo() {
   return <img src={new URL("./ies-watch.svg", import.meta.url).href} alt="" />;
 }
 
-export function Brand({ admin = false, showDescription = false }: { admin?: boolean; showDescription?: boolean }) {
+export function Brand({
+  admin = false,
+  showDescription = false,
+  mark,
+}: {
+  admin?: boolean;
+  showDescription?: boolean;
+  mark?: ReactNode;
+}) {
   const { locale, t } = useLocale();
   return (
     <div className="brand">
-      <div className="brand-mark">
-        <BrandLogo />
-      </div>
+      {mark ?? <div className="brand-mark"><BrandLogo /></div>}
       <div>
         <div className="brand-name">IES Watch</div>
         <div className="brand-sub">

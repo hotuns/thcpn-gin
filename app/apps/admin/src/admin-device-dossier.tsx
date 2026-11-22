@@ -236,7 +236,7 @@ function DossierSource({ record, onApply }: {
   });
   const options = (devices.data?.items ?? []).filter(device => device.id && device.id !== record.device_id).map(device => ({
     value: String(device.id),
-    label: [String(device.name || "未命名设备"), device.asset_no || device.serial_no].filter(Boolean).join(" · "),
+    label: [String(device.name || "未命名设备"), device.asset_no].filter(Boolean).join(" · "),
   }));
   const fields: DeliveryDraft = {};
   if (source.data) {

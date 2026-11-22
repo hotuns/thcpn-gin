@@ -240,8 +240,7 @@ export const filterQuickSwitchDevices = (devices: Device[], keyword: string) => 
   const normalized = keyword.trim().toLowerCase();
   if (!normalized) return devices;
   return devices.filter((device) =>
-    [device.name, device.serial_no, device.id]
-      .filter(Boolean)
+    [device.name, device.asset_no ?? "", device.id]
       .some((value) => value.toLowerCase().includes(normalized)),
   );
 };

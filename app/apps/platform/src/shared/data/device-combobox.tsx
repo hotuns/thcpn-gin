@@ -11,8 +11,8 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/primitives/popover";
 import { Tabs, TabsList, TabsTrigger } from "../ui/primitives/tabs";
 
-export type DeviceOption = Pick<Device, "id" | "name" | "serial_no" | "device_type"> &
-  Partial<Pick<Device, "topology_role" | "tags">> & { research_tags?: string[] };
+export type DeviceOption = Pick<Device, "id" | "name" | "device_type"> &
+  Partial<Pick<Device, "asset_no" | "topology_role" | "tags">> & { research_tags?: string[] };
 export type DeviceOptionCategory = "all" | "gateway" | "gateway_node" | "camera" | "carbon_sink" | "standalone";
 
 const categories: Array<{ id: DeviceOptionCategory; label: string }> = [
@@ -39,7 +39,7 @@ export function filterDeviceOptions(
   const normalized = keyword.trim().toLowerCase();
   return devices.filter((device) =>
     (category === "all" || deviceOptionCategory(device) === category) &&
-    (!normalized || [device.name, device.serial_no, device.id, ...(device.tags ?? []), ...(device.research_tags ?? []), ...(tagsByDevice.get(device.id) ?? [])]
+    (!normalized || [device.name, device.asset_no ?? "", device.id, ...(device.tags ?? []), ...(device.research_tags ?? []), ...(tagsByDevice.get(device.id) ?? [])]
       .some((item) => item.toLowerCase().includes(normalized))),
   );
 }
@@ -69,7 +69,7 @@ type DeviceComboboxProps = {
 export function DeviceCombobox(props: DeviceComboboxProps) {
   const {
     devices, ariaLabel = "选择设备", placeholder = "请选择设备",
-    searchPlaceholder = "搜索名称、序列号、ID 或标签", className = "",
+    searchPlaceholder = "搜索名称、资产编号、ID 或标签", className = "",
     variant = "field", includeNodes = false, disabled = false, loading = false,
   } = props;
   const { currentId } = useWorkspace();
@@ -147,7 +147,7 @@ export function DeviceCombobox(props: DeviceComboboxProps) {
       className={`device-option-item${child ? " device-option-child" : ""}${selectedSet.has(device.id) ? " selected" : ""}`}
       onSelect={() => selectDevice(device.id)}
     >
-      <span><strong>{device.name}</strong><small>{device.serial_no ? `SN ${device.serial_no}` : `ID ${device.id}`}</small></span>
+      <span><strong>{device.name}</strong>{device.asset_no && <small>资产编号 {device.asset_no}</small>}</span>
       <Check className="device-option-check" size={16} aria-hidden="true" />
     </CommandItem>
   );
@@ -189,10 +189,19 @@ export function DeviceCombobox(props: DeviceComboboxProps) {
     </Command>
   );
   const trigger = (
-    <Button type="button" variant="outline" className="device-quick-switch-input" role="combobox" aria-haspopup={isMobile ? "dialog" : "listbox"} aria-label={ariaLabel} aria-expanded={open} disabled={disabled} title={summary}>
+    <button
+      type="button"
+      className="shadcn-select-trigger device-quick-switch-input"
+      role="combobox"
+      aria-haspopup={isMobile ? "dialog" : "listbox"}
+      aria-label={ariaLabel}
+      aria-expanded={open}
+      disabled={disabled}
+      title={summary}
+    >
       <span className={`device-quick-switch-value${selectedIds.length ? "" : " placeholder"}`}>{loading && !selectedIds.length ? "正在加载设备…" : summary}</span>
-      <ChevronsUpDown size={14} aria-hidden="true" />
-    </Button>
+      <ChevronsUpDown size={15} aria-hidden="true" />
+    </button>
   );
   return <div className={`device-quick-switch-control device-selector-${variant} ${className}`.trim()}>
     {variant === "inline" ? content : isMobile ? <Dialog open={open} onOpenChange={changeOpen}>

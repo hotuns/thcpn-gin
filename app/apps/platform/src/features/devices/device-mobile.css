@@ -2,26 +2,25 @@
 .device-query-editor[hidden] { display: none; }
 
 @media (max-width: 767px) {
-  .device-mobile-list { display: grid; gap: 12px; min-width: 0; }
-  .device-mobile-card { display: grid; gap: 10px; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
-  .device-mobile-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-  .device-mobile-sequence { flex-shrink: 0; padding-top: 10px; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
-  .device-mobile-card-heading > .device-name-link { flex: 1; }
-  .device-mobile-card .device-name-link { min-width: 0; min-height: 44px; font-size: 17px; line-height: 1.4; text-align: left; overflow-wrap: anywhere; }
-  .device-mobile-meta { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+  .device-inventory { --panel-gutter: 13px; }
+  .device-filter-controls { flex-wrap: nowrap; }
+  .device-filter-search { flex: 1 1 auto; }
+  .device-show-filters { flex-shrink: 0; padding-inline: 10px; }
+  .device-mobile-list { display: grid; min-width: 0; }
+  .device-mobile-card { display: grid; gap: 9px; min-width: 0; padding: 13px; background: var(--panel); }
+  .device-mobile-card + .device-mobile-card { border-top: 1px solid var(--line); }
+  .device-mobile-card-heading { display: flex; align-items: center; gap: 8px; }
+  .device-mobile-sequence { flex-shrink: 0; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .device-mobile-card .device-name-link { flex: 1; min-width: 0; min-height: 44px; font-size: 16px; line-height: 1.35; text-align: left; overflow-wrap: anywhere; }
+  .device-mobile-meta { color: var(--muted); font-size: var(--font-size-caption); overflow-wrap: anywhere; }
   .device-mobile-status, .device-mobile-card-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .device-mobile-card-actions > button { flex: 1 1 auto; min-height: 44px; }
+  .device-mobile-card-actions { margin-top: 4px; }
+  .device-mobile-card-actions > button:first-child { flex: 1 1 auto; }
   .device-mobile-card .device-row-tags { flex-wrap: wrap; }
-  .device-filter-bar .device-filter-main-row { flex-wrap: wrap; gap: 10px; }
-  .device-filter-bar .filter-input { flex: 1 1 100%; min-width: 0; }
-  .device-filter-bar input { min-height: 44px; font-size: 16px; }
-  .device-filter-bar .device-filter-actions { flex-wrap: wrap; }
-  .device-filter-sheet .device-filter-scope-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; padding-block: 16px; }
-  .device-filter-sheet .device-filter-select, .device-filter-sheet .device-filter-select button { width: 100%; min-width: 0; min-height: 44px; }
-  .device-filter-sheet { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
-  .device-active-filters { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; overflow-wrap: anywhere; }
-  .device-categories { display: flex; flex-wrap: nowrap; max-width: 100%; overflow-x: auto; justify-content: flex-start; }
-  .device-categories > button { flex-shrink: 0; min-height: 44px; }
+  .device-filter-sheet .device-filter-scope-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding-block: 16px; }
+  .device-filter-sheet .device-filter-select { max-width: none; }
+  .device-filter-sheet > button.shadcn-button { width: 100%; }
+  .device-active-filters { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; color: var(--muted); font-size: var(--font-size-caption); overflow-wrap: anywhere; }
   .device-node-status > summary { cursor: pointer; min-height: 44px; padding-block: 12px; font-size: 14px; }
   .page .device-detail-heading { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; max-width: 100%; }
   .device-detail-heading .device-detail-title { min-width: 0; max-width: 100%; }
@@ -30,12 +29,8 @@
   .device-detail-heading .device-detail-actions { display: flex; flex-direction: row; flex-wrap: wrap; width: 100%; min-width: 0; gap: 8px; }
   .device-detail-actions .device-quick-switch { display: grid; grid-template-columns: minmax(0, 1fr); flex: 1 1 100%; min-width: 0; max-width: 100%; white-space: normal; }
   .device-detail-heading .device-quick-switch-control { flex: none; width: 100%; min-width: 0; max-width: 100%; }
-  .device-detail-heading .device-quick-switch-input { height: auto; min-height: 44px; white-space: normal; }
-  .device-detail-heading .device-quick-switch-value { white-space: normal; overflow-wrap: anywhere; overflow: visible; text-overflow: clip; }
   .device-detail-actions > a { flex: 1; }
   .device-detail-actions > a > button { width: 100%; min-height: 44px; }
-  .device-detail-tabs { display: flex; max-width: 100%; overflow-x: auto; flex-wrap: nowrap; white-space: nowrap; }
-  .device-detail-tabs > button { flex: 0 0 auto; min-height: 44px; }
   .device-detail-tab-content, .device-data-layout, .device-data-content { min-width: 0; max-width: 100%; }
   .device-query-summary { display: grid; gap: 10px; margin-block: 12px; }
   .device-query-summary p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--muted); overflow-wrap: anywhere; }

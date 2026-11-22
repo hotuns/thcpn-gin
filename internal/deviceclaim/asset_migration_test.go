@@ -1,9 +1,13 @@
 package deviceclaim
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"thcpn-gin/internal/testdb"
 )
@@ -47,10 +51,25 @@ func TestAssetNumberMigrationPreservesPrintedCredentials(t *testing.T) {
 	if !strings.HasPrefix(credential.AssetNo, "LR-") || credential.SerialNo != legacy || credential.ClaimSlug != slug || credential.ManualCode != formatManualCode(code) || credential.PrintedAt == nil {
 		t.Fatal("migration changed the printed identity or did not issue an LR asset number")
 	}
-	for _, input := range []ResolveInput{{ClaimSlug: slug}, {SerialNo: strings.ToLower(legacy), Code: code}, {SerialNo: credential.AssetNo, Code: code}} {
-		got, err := service.Resolve(ctx, input)
-		if err != nil || got.DeviceID != gateway {
-			t.Fatalf("printed or new identity did not resolve to the same device: %v", err)
+	router := gin.New()
+	router.POST("/resolve", NewHandler(service, nil, nil).Resolve)
+	for _, input := range []map[string]string{
+		{"claim_slug": slug},
+		{"asset_no": credential.AssetNo, "code": code},
+		{"asset_no": strings.ToLower(legacy), "code": code},
+		{"serial_no": legacy, "code": code},
+	} {
+		body, err := json.Marshal(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(http.MethodPost, "/resolve", strings.NewReader(string(body)))
+		req.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, req)
+		var got Credential
+		if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil || response.Code != http.StatusOK || got.DeviceID != gateway {
+			t.Fatalf("printed or new identity did not resolve to the same device: HTTP %d, %v", response.Code, err)
 		}
 	}
 

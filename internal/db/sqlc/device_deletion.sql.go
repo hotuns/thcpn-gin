@@ -197,13 +197,13 @@ func (q *Queries) ListPendingPhysicalNodeDeletions(ctx context.Context, dataSour
 }
 
 const lockDeviceForDeletion = `-- name: LockDeviceForDeletion :one
-SELECT id, name, serial_no, device_type, lifecycle_status FROM devices WHERE id=$1 FOR UPDATE
+SELECT id, name, COALESCE(asset_no, '') AS asset_no, device_type, lifecycle_status FROM devices WHERE id=$1 FOR UPDATE
 `
 
 type LockDeviceForDeletionRow struct {
 	ID              uuid.UUID `json:"id"`
 	Name            string    `json:"name"`
-	SerialNo        string    `json:"serial_no"`
+	AssetNo         string    `json:"asset_no"`
 	DeviceType      string    `json:"device_type"`
 	LifecycleStatus string    `json:"lifecycle_status"`
 }
@@ -214,7 +214,7 @@ func (q *Queries) LockDeviceForDeletion(ctx context.Context, id uuid.UUID) (Lock
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
-		&i.SerialNo,
+		&i.AssetNo,
 		&i.DeviceType,
 		&i.LifecycleStatus,
 	)

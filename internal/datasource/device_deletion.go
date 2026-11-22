@@ -165,7 +165,7 @@ func (s *Service) deleteAsset(ctx context.Context, t deletionTarget, input delet
 		if err != nil {
 			return result, platform.MapNotFoundOrInternal(err, "设备不存在")
 		}
-		result.Name, result.Confirmation, result.DeviceType = asset.Name, asset.SerialNo, asset.DeviceType
+		result.Name, result.Confirmation, result.DeviceType = asset.Name, asset.AssetNo, asset.DeviceType
 		if result.Confirmation == "" {
 			result.Confirmation = asset.ID.String()
 		}
@@ -226,7 +226,7 @@ func (s *Service) deleteAsset(ctx context.Context, t deletionTarget, input delet
 		return result, nil
 	}
 	if execute && strings.TrimSpace(input.Confirmation) != result.Confirmation {
-		return result, apperr.New(apperr.KindInvalidArgument, "确认内容与设备 SN 或 ID 不一致")
+		return result, apperr.New(apperr.KindInvalidArgument, "确认内容与要求的设备标识不一致")
 	}
 	var opID uuid.UUID
 	if sourceCheck != nil {

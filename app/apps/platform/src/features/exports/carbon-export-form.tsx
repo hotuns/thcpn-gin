@@ -5,21 +5,23 @@ import { api, formatApiError, type Device } from "@thcpn/api";
 import { CheckboxInput, StateView } from "../../shared/ui";
 import { DataRangeFields as RangeFields, validDataRange } from "../../shared/data/data-builder";
 import { ExportDevicePicker, ExportContentToggle as ChoiceCard } from "./export-device-picker";
-import { defaultRange, value, arrayParam, buildCarbonExportPayload } from "./export-model";
-import { type FormCommon, FormFooter } from "./export-form-layout";
+import { initialExportRange, value, arrayParam, buildCarbonExportPayload } from "./export-model";
+import { type FormCommon, FormFooter, useExportFormDirty } from "./export-form-layout";
 
 export function CarbonExportForm({
   devices,
   params,
   chooser,
+  busy,
   onClose,
   onCreate,
+  onDirtyChange,
   feedback,
 }: { devices: Device[] } & FormCommon) {
   const stations = devices.filter(
     (item) => value(item, "device_type") === "carbon_sink",
   );
-  const range = defaultRange();
+  const range = initialExportRange(params);
   const [deviceId, setDeviceId] = useState(params.get("device") ?? "");
   const overview = useQuery({
     queryKey: ["carbon", deviceId, "overview"],
@@ -35,11 +37,11 @@ export function CarbonExportForm({
     requestedNodes.length ? requestedNodes : null,
   );
   const [fields, setFields] = useState<string[]>(["A", "B", "C", "D"]);
-  const [start, setStart] = useState(params.get("start") ?? range.start);
-  const [end, setEnd] = useState(params.get("end") ?? range.end);
+  const [start, setStart] = useState(range.start);
+  const [end, setEnd] = useState(range.end);
   const [flux, setFlux] = useState(true);
   const [raw, setRaw] = useState(true);
-  const [busy, setBusy] = useState(false);
+  useExportFormDirty({ deviceId, nodes, fields, start, end, flux, raw }, onDirtyChange);
   const effectiveNodes = (nodes ?? allNodes).filter(id => allNodes.includes(id));
   const toggleField = (field: string) =>
     setFields((now) =>
@@ -57,11 +59,9 @@ export function CarbonExportForm({
     e.preventDefault();
     if (busy || !validDataRange(start, end)) return;
     if (!effectiveNodes.length || !fields.length || (!flux && !raw) || overview.isLoading || overview.error) return;
-    setBusy(true);
     await onCreate(buildCarbonExportPayload({
       deviceId, nodeIds: effectiveNodes, fields, start, end, flux, raw,
     }));
-    setBusy(false);
   };
   return (
     <div className="export-system-form">
@@ -89,7 +89,7 @@ export function CarbonExportForm({
             setDeviceId(ids[0] ?? "");
             setNodes(null);
           }}
-          searchPlaceholder="搜索碳汇站名称或序列号"
+          searchPlaceholder="搜索碳汇站名称或资产编号"
         />
         {overview.error && <StateView type="error" title="设备数据加载失败" description={formatApiError(overview.error).message} />}
         <div className="carbon-export-selector">

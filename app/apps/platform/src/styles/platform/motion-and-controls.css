@@ -8,13 +8,6 @@
   --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out: ease-in-out;
   --ease-linear: linear;
-  --control-radius: 7px;
-  --tabs-dur: 250ms;
-  --tabs-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --tabs-text-muted: var(--muted);
-  --tabs-text-active: var(--blue-dark);
-  --tabs-bar-bg: var(--surface-subtle);
-  --tabs-pill-bg: var(--blue-soft);
   --dropdown-open-dur: 250ms;
   --dropdown-close-dur: 150ms;
   --dropdown-pre-scale: 0.97;
@@ -100,114 +93,6 @@ body::-webkit-scrollbar-corner,
 .public-device-page *::-webkit-scrollbar-corner {
   background: transparent;
 }
-.auth-visual-carousel,
-.auth-visual-shade {
-  position: absolute;
-  inset: 0;
-}
-.auth-layout {
-  position: relative;
-  display: block;
-  overflow: hidden;
-  background: var(--panel);
-}
-.auth-visual {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  width: 100%;
-  -webkit-mask-image: none;
-  mask-image: none;
-}
-.auth-form-side {
-  position: relative;
-  z-index: 2;
-  width: min(42vw, 620px);
-  min-height: 100vh;
-  margin-left: auto;
-  padding: 34px 48px;
-  border: 0;
-  background: transparent;
-}
-.auth-card {
-  padding: 38px 40px;
-  border: 1px solid rgba(255, 255, 255, 0.56);
-  border-radius: 26px;
-  background: color-mix(in srgb, var(--panel) 84%, transparent);
-  box-shadow: 0 24px 70px rgba(5, 18, 28, 0.24);
-  backdrop-filter: blur(28px) saturate(1.12);
-}
-.auth-visual-carousel img {
-  position: absolute;
-  inset: -2%;
-  width: 104%;
-  height: 104%;
-  object-fit: cover;
-  opacity: 0;
-  transform: translateX(var(--distance-base)) scale(1.035);
-  transition:
-    opacity var(--duration-very-slow) var(--ease-smooth-out),
-    transform 7s var(--ease-smooth-out);
-  will-change: opacity, transform;
-}
-.auth-visual-carousel img.is-active {
-  opacity: 1;
-  transform: translateX(0) scale(1);
-}
-.auth-visual-shade {
-  z-index: 0;
-  background: linear-gradient(110deg, rgba(8, 24, 37, 0.44) 0%, rgba(11, 35, 52, 0.2) 58%, rgba(5, 18, 28, 0.28) 100%);
-}
-.auth-visual:has(.auth-visual-carousel) .brand,
-.auth-visual:has(.auth-visual-carousel) .auth-language,
-.auth-visual:has(.auth-visual-carousel) .auth-copy {
-  position: relative;
-  z-index: 1;
-  color: white;
-}
-.auth-visual:has(.auth-visual-carousel) .auth-lede {
-  color: rgba(255,255,255,.82);
-}
-@media (prefers-reduced-motion: reduce) {
-  .auth-visual-carousel img { transition: none !important; transform: none !important; }
-}
-@media (max-width: 920px) {
-  .auth-layout {
-    display: grid;
-  }
-  .auth-visual {
-    position: relative;
-    inset: auto;
-    width: 100%;
-    -webkit-mask-image: none;
-    mask-image: none;
-  }
-  .auth-form-side {
-    width: auto;
-    min-height: 620px;
-    margin: -28px 16px 16px;
-    padding-left: 34px;
-    border-radius: 24px;
-    background: color-mix(in srgb, var(--panel) 94%, transparent);
-    box-shadow: 0 -18px 50px rgba(8, 24, 37, 0.14);
-    backdrop-filter: blur(24px) saturate(1.08);
-  }
-  .auth-card {
-    padding: 0;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-    backdrop-filter: none;
-  }
-}
-@media (max-width: 680px) {
-  .auth-form-side {
-    margin: -20px 10px 10px;
-    border-radius: 20px;
-  }
-}
-
 /* Keep native form semantics while removing browser-default presentation. */
 .app-shell input:not([type="checkbox"]):not([type="radio"]),
 .app-shell select,
@@ -265,17 +150,10 @@ body::-webkit-scrollbar-corner,
 .app-shell input[type="radio"]:checked {
   box-shadow: inset 0 0 0 4px var(--control), 0 0 0 3px color-mix(in srgb, var(--blue) 12%, transparent);
 }
-.app-shell input:focus-visible,
-.app-shell select:focus-visible,
-.app-shell textarea:focus-visible,
-.app-shell button:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--blue) 20%, transparent);
-  outline-offset: 1px;
+.app-shell :where(input, select, textarea, button):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
-.app-shell .settings-tabs > button,
-.app-shell .device-detail-tabs > button,
-.app-shell .notification-tabs > button,
-.app-shell .processing-view-tabs > button,
 .app-shell .media-image-tabs > button,
 .app-shell .public-image-tabs > button {
   position: relative;
@@ -283,56 +161,6 @@ body::-webkit-scrollbar-corner,
     color var(--duration-fast) var(--ease-smooth-out),
     background-color var(--duration-fast) var(--ease-smooth-out),
     border-color var(--duration-fast) var(--ease-smooth-out);
-}
-.app-shell .device-detail-tabs.t-tabs {
-  position: relative;
-  display: inline-flex;
-  width: max-content;
-  max-width: 100%;
-  gap: 3px;
-  margin-bottom: 20px;
-  padding: 3px;
-  overflow-x: auto;
-  border: 0;
-  border-radius: 10px;
-  background: var(--tabs-bar-bg);
-}
-.app-shell .device-detail-tabs.t-tabs .t-tab {
-  position: relative;
-  z-index: 1;
-  min-height: 34px;
-  padding: 4px 14px;
-  color: var(--muted);
-  background: transparent;
-  border: 0;
-  border-radius: 7px;
-  transition: color var(--tabs-dur) var(--tabs-ease);
-}
-.app-shell .device-detail-tabs.t-tabs .t-tab:not([aria-selected="true"]):hover,
-.app-shell .device-detail-tabs.t-tabs .t-tab[aria-selected="true"] {
-  color: var(--tabs-text-active);
-}
-.app-shell .device-detail-tabs.t-tabs .t-tab.active {
-  color: var(--blue-dark);
-  border: 0;
-  animation: none;
-}
-.app-shell .device-detail-tabs.t-tabs .t-tabs-pill {
-  position: absolute;
-  z-index: 0;
-  top: 3px;
-  left: 0;
-  width: 0;
-  height: 34px;
-  border-radius: 7px;
-  background: var(--tabs-pill-bg);
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--blue-dark) 12%, transparent);
-  transform: translateX(0);
-  transition:
-    transform var(--tabs-dur) var(--tabs-ease),
-    width var(--tabs-dur) var(--tabs-ease);
-  will-change: transform, width;
-  pointer-events: none;
 }
 .t-dropdown {
   transform-origin: top left;
@@ -412,9 +240,6 @@ body::-webkit-scrollbar-corner,
   .t-shimmer::before { animation: none !important; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .app-shell .device-detail-tabs.t-tabs .t-tabs-pill {
-    transition: none !important;
-  }
   .app-shell button,
   .app-shell input,
   .app-shell select,

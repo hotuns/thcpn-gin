@@ -54,7 +54,7 @@ export function AdminDeviceDeletion({ target, onDeleted, onChanged, pending = fa
   }
 
   const recovery = result?.state === "partial";
-  const reasonLabel = result?.confirmation === ("deviceId" in target ? target.deviceId : undefined) ? "设备 ID" : "SN";
+  const confirmationLabel = "sn" in target ? "节点 SN" : "确认编号";
   return <>
     <Button danger onClick={() => { setOpen(true); setConfirmation(""); setReason(""); void check(); }}>
       {pending ? `检查待清理节点 · ${"sn" in target ? target.sn : ""}` : "删除设备"}
@@ -70,14 +70,14 @@ export function AdminDeviceDeletion({ target, onDeleted, onChanged, pending = fa
           <Descriptions size="small" column={1} items={[
             { key: "name", label: "名称", children: result.name },
             { key: "type", label: "设备类型", children: "label" in target ? target.label : result.device_type },
-            { key: "sn", label: reasonLabel, children: result.confirmation },
+            { key: "confirmation", label: confirmationLabel, children: result.confirmation },
             { key: "scope", label: "删除范围", children: result.scope || "当前设备不可删除" },
           ]} />
           {recovery && <Alert type="warning" title="源端已删除，平台待清理" />}
           {result.reasons.length > 0 && <Alert type="warning" title={result.state === "unknown" ? "删除结果待核对" : "删除检查结果"}
             description={<ul>{result.reasons.map(item => <li key={item}>{item}</li>)}</ul>} />}
           {result.allowed && result.state !== "unknown" && <Form layout="vertical">
-            <Form.Item label={`输入完整${reasonLabel}`} required><Input value={confirmation} onChange={event => setConfirmation(event.target.value)} /></Form.Item>
+            <Form.Item label={`输入完整${confirmationLabel}`} required><Input value={confirmation} onChange={event => setConfirmation(event.target.value)} /></Form.Item>
             <Form.Item label="删除原因" required><Input.TextArea value={reason} maxLength={300} rows={3} onChange={event => setReason(event.target.value)} /></Form.Item>
           </Form>}
         </>}

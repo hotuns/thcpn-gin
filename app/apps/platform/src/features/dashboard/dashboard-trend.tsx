@@ -35,23 +35,25 @@ export function DashboardTrend({ days, onDaysChange, data, busy, placeholder, er
   const ticks = Array.from({ length: tickCount + 1 }, (_, index) => top * (tickCount - index) / tickCount);
 
   return <Panel className="overview-trend" aria-labelledby="overview-trend-title">
-    <div className="overview-section-heading"><div><h2 id="overview-trend-title">{t("platform:overview.trend")}</h2><p>{t("platform:overview.trendScope")}</p></div></div>
+    <h2 id="overview-trend-title">{t("platform:overview.trend")}</h2>
     <div className="overview-trend-controls">
       <div className="overview-segment" role="group" aria-label={t("platform:overview.range")}>{([7, 30] as const).map((range) => <Button key={range} variant="ghost" aria-pressed={range === days} onClick={() => onDaysChange(range)}>{t(`platform:overview.days${range}`)}</Button>)}</div>
       <div className="overview-segment" role="group" aria-label={t("platform:overview.measure")}>{(["records", "images"] as const).map((key) => <Button key={key} variant="ghost" aria-pressed={measure === key} onClick={() => setMeasure(key)}>{t(`platform:overview.${key === "records" ? "trendRecords" : "trendImages"}`)}</Button>)}</div>
       <div className="overview-segment" role="group" aria-label={t("platform:overview.view")}>{(["chart", "table"] as const).map((key) => <Button key={key} variant="ghost" aria-pressed={view === key} onClick={() => setView(key)}>{t(`platform:overview.${key}`)}</Button>)}</div>
     </div>
-    <div className="overview-trend-caption"><strong>{t("platform:overview.trendTitle", { metric })}</strong>{rows.length > 0 && <span>{date(rows[0].date)} – {date(rows[rows.length - 1].date)}</span>}</div>
+    {rows.length > 0 && <div className="overview-trend-caption">
+      {view === "chart" && <div className="overview-chart-readout" id={tooltipId} role="status" aria-live="polite">
+        {point && <><strong>{number(point[measure])}</strong><span>{metric} · {date(point.date)}</span></>}
+      </div>}
+      <span className="overview-trend-dates">{date(rows[0].date)} – {date(rows[rows.length - 1].date)}</span>
+    </div>}
     {error != null && <div className="overview-notice" role="alert"><span>{t("platform:overview.trendUnavailable")}</span><Button variant="secondary" disabled={busy} onClick={onRetry}>{t("platform:overview.retry")}</Button></div>}
-    <div className="overview-trend-feedback" role="status">{placeholder ? t("platform:overview.previousRange") : busy ? t(`platform:overview.${data ? "refreshing" : "loading"}`) : t("platform:overview.trendMissing")}</div>
+    <div className="sr-only" role="status">{placeholder ? t("platform:overview.previousRange") : busy ? t(`platform:overview.${data ? "refreshing" : "loading"}`) : ""}</div>
     <div className={`overview-trend-frame${busy && data ? " is-refreshing" : ""}`} aria-busy={busy} data-testid="overview-trend-frame">
       {view === "table" ? <div className="overview-table-scroll"><table className="overview-trend-table">
-        <caption>{t("platform:overview.trend")}</caption><thead><tr><th scope="col">{t("platform:overview.date")}</th><th scope="col">{t("platform:overview.trendRecords")}</th><th scope="col">{t("platform:overview.trendImages")}</th></tr></thead>
+        <caption className="sr-only">{t("platform:overview.trend")}</caption><thead><tr><th scope="col">{t("platform:overview.date")}</th><th scope="col">{t("platform:overview.trendRecords")}</th><th scope="col">{t("platform:overview.trendImages")}</th></tr></thead>
         <tbody>{rows.map((row) => <tr key={row.date}><th scope="row">{date(row.date)}</th>{(["records", "images"] as const).map((key) => <td key={key}>{number(row[key])}</td>)}</tr>)}</tbody>
       </table>{rows.length === 0 && <p className="overview-chart-empty">{t(`platform:overview.${busy ? "loading" : error ? "trendUnavailable" : "trendEmpty"}`)}</p>}</div> : <>
-        <div className="overview-chart-readout" id={tooltipId} role="status" aria-live="polite">
-          {point ? <><strong>{number(point[measure])}</strong><span>{metric} · {date(point.date)}</span></> : <span>{t("platform:overview.pointHint")}</span>}
-        </div>
         <div className="overview-chart-layout">
           <div className="overview-chart-axis" aria-hidden="true">{ticks.map((tick) => <span key={tick}>{formatNumber(tick, { notation: "compact", maximumFractionDigits: 1 })}</span>)}</div>
           <div className="overview-chart-scroll">
@@ -74,6 +76,7 @@ export function DashboardTrend({ days, onDaysChange, data, busy, placeholder, er
         </div>
       </>}
     </div>
-    <p className="overview-chart-help">{t("platform:overview.trendHelp")}</p>
+    {view === "chart" && rows.some((row) => row[measure] === null || row[measure] === 0)
+      && <p className="overview-chart-help">{t("platform:overview.trendMissing")}</p>}
   </Panel>;
 }

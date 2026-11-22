@@ -49,7 +49,7 @@ function ConfigCopyDialog<T>({ onClose, onCopied, ...props }: Props<T> & { onClo
   });
   const error = devices.error ?? parts.error ?? configuration.error;
   const ready = Boolean(source && target && contextValid && configuration.data && !configuration.isFetching && !parts.isFetching && !devices.isFetching && !error && !props.disabled);
-  const sourceLabel = source ? String(source.name || source.serial_no || source.id) : "";
+  const sourceLabel = source ? String(source.name || source.asset_no || "未命名设备") : "";
   const contextLabel = options.find(part => part.value === context)?.label;
   return <Modal open title={`复制${props.configKind}`} width={720} onCancel={onClose}
     okText="复制并替换当前草稿" cancelText="取消" okButtonProps={{ disabled: !ready }}
@@ -60,7 +60,7 @@ function ConfigCopyDialog<T>({ onClose, onCopied, ...props }: Props<T> & { onClo
       {devices.isLoading ? <span role="status">正在加载同类型设备…</span> : !devices.error && !candidates.length ? <Empty description="暂无可复制配置的同类型设备" /> : null}
       <label className="config-copy-field">来源设备
         <Select aria-label="配置来源设备" showSearch optionFilterProp="label" allowClear value={sourceId} loading={devices.isFetching}
-          placeholder="按设备名称或序列号搜索" options={candidates.map(device => ({ value: String(device.id), label: `${String(device.name || "未命名设备")} · ${String(device.serial_no || device.id)}` }))}
+          placeholder="按设备名称或资产编号搜索" options={candidates.map(device => ({ value: String(device.id), label: `${String(device.name || "未命名设备")} · ${String(device.asset_no || "—")}` }))}
           onChange={id => { setSourceId(id); setContext(undefined); }} />
       </label>
       {source && props.contexts ? <label className="config-copy-field">来源节点

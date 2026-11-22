@@ -1,17 +1,19 @@
 import "./processing-mobile.css";
 import { useIsMobile } from "../../shared/hooks/use-mobile";
-import { Dialog, DialogContent, DialogTitle } from "../../shared/ui/primitives/dialog";
 import "../../shared/data/mobile-data.css";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { PhotoSlider } from "react-photo-view";
 import "react-photo-view/dist/react-photo-view.css";
-import { Activity, Archive, ArrowLeft, ChartNoAxesCombined, ChevronDown, CirclePause, CirclePlay, Eye, FileImage, ListTree, Plus, RefreshCw, Workflow, X } from "lucide-react";
+import { Activity, Archive, ChartNoAxesCombined, ChevronDown, CirclePause, CirclePlay, Eye, FileImage, ListTree, Plus, RefreshCw, Workflow } from "lucide-react";
 import { api, formatApiError, type Device, type JsonRecord, type MediaItem, type ProcessingExecution, type ProcessingPlan, type ProcessingProcessor, type ProcessingResult, type ProcessingTask } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, Input, PageHeader, Panel, SelectInput, StateView, Table } from "../../shared/ui";
+import { useEditorNavigation, useNavigationSource } from "../../app/platform-navigation";
+import { Badge, Button, Input, PageHeader, Panel, SelectInput, StateView, Table, Tabs, TabsContent, TabsList, TabsTrigger } from "../../shared/ui";
+import { SummaryCards } from "../../shared/ui/summary-cards";
 import { renderPhotoToolbar } from "../devices/device-media";
 import { DeviceCombobox } from "../../shared/data/device-combobox";
 
@@ -21,8 +23,8 @@ const statusTone = (status: string) => status === "active" ? "success" : status 
 export function ProcessingPage() {
   const { currentId } = useWorkspace();
   const navigate = useNavigate();
+  const source = useNavigationSource();
   const client = useQueryClient();
-  const [creating, setCreating] = useState(false);
   const [feedback, setFeedback] = useState("");
   const plans = useQuery({ queryKey: ["processing", "plans"], queryFn: api.processing.plans });
   const tasks = useQuery({ queryKey: workspaceQueryKey(currentId, "processing-tasks"), queryFn: () => api.processing.list(currentId!), enabled: Boolean(currentId) });
@@ -34,13 +36,13 @@ export function ProcessingPage() {
     catch (error) { setFeedback(formatApiError(error).message); }
   };
   return <>
-    <PageHeader eyebrow="数据" title="数据处理" description="配置系统内置处理器，将设备数据转为可追溯的派生指标和文件。" actions={<Button data-onboarding="processing-create" onClick={() => setCreating(true)}><Plus size={15}/>创建处理任务</Button>} />
+    <PageHeader eyebrow="数据" title="数据处理" description="配置系统内置处理器，将设备数据转为可追溯的派生指标和文件。" actions={<Button data-onboarding="processing-create" onClick={() => navigate("/processing/new", { state: source })}><Plus size={15}/>创建处理任务</Button>} />
     {feedback && <div className="command-note">{feedback}</div>}
-    <div className="processing-summary" data-onboarding="processing-summary">
-      <div><strong>{tasks.data?.items.filter((item) => item.status === "active").length ?? "—"}</strong><span>运行中</span></div>
-      <div><strong>{plans.data?.items.length ?? "—"}</strong><span>可用方案</span></div>
-      <div><strong>{tasks.data?.items.length ?? "—"}</strong><span>全部任务</span></div>
-    </div>
+    <SummaryCards onboarding="processing-summary" items={[
+      { label: "运行中", value: tasks.data?.items.filter((item) => item.status === "active").length ?? "—", icon: RefreshCw, tone: "running" },
+      { label: "可用方案", value: plans.data?.items.length ?? "—", icon: Workflow },
+      { label: "全部任务", value: tasks.data?.items.length ?? "—", icon: ListTree },
+    ]} />
     <Panel className="section-gap" data-onboarding="processing-list">
       <div className="panel-header"><div><h2 className="panel-title">处理任务</h2></div><Workflow size={17}/></div>
       {tasks.isLoading ? <StateView type="loading" title="正在加载处理任务" description="" /> : tasks.isError ? <StateView type="error" title="处理任务加载失败" description={formatApiError(tasks.error).message} /> : !tasks.data?.items.length ? <StateView type="empty" title="暂无处理任务" description="创建任务后，系统会从指定起点自动处理新增数据。" /> :
@@ -49,10 +51,9 @@ export function ProcessingPage() {
         <td data-label="处理器" className="mobile-cell-wide"><div className="cell-title">{task.plan_name || "历史直接配置任务"}</div><div className="cell-sub mono">{task.processor_code}@{task.processor_version}</div></td>
         <td data-label="目标" className="mobile-cell-wide"><div className="cell-title">{task.target_name || (task.target_type === "device" ? "未命名设备" : "未命名站点")}</div><div className="cell-sub">{task.target_type === "device" ? "设备" : "站点"} · <span className="mono">{task.target_id}</span></div></td>
         <td data-label="版本">v{task.current_version}<div className="cell-sub">{task.last_execution_status ? `最近执行：${task.last_execution_status}` : "等待输入"}</div></td><td data-label="状态" className="mobile-cell-status"><Badge tone={statusTone(task.status) as any}>{statusLabel[task.status]}</Badge></td>
-        <td data-label="操作" className="mobile-cell-actions"><div className="table-actions"><Button variant="secondary" onClick={() => navigate(`/processing/${task.id}`)}><Eye size={14}/>查看</Button>{task.status === "active" ? <Button variant="secondary" onClick={() => void updateStatus(task, "paused")}><CirclePause size={14}/>暂停</Button> : task.status === "paused" ? <Button variant="secondary" onClick={() => void updateStatus(task, "active")}><CirclePlay size={14}/>启用</Button> : null}{task.status !== "archived" && <Button variant="secondary" onClick={() => window.confirm(`确认归档 ${task.name}？`) && void updateStatus(task, "archived")}><Archive size={14}/>归档</Button>}</div></td>
+        <td data-label="操作" className="mobile-cell-actions"><div className="table-actions"><Button variant="secondary" onClick={() => navigate(`/processing/${task.id}`, { state: source })}><Eye size={14}/>查看</Button>{task.status === "active" ? <Button variant="secondary" onClick={() => void updateStatus(task, "paused")}><CirclePause size={14}/>暂停</Button> : task.status === "paused" ? <Button variant="secondary" onClick={() => void updateStatus(task, "active")}><CirclePlay size={14}/>启用</Button> : null}{task.status !== "archived" && <Button variant="secondary" onClick={() => window.confirm(`确认归档 ${task.name}？`) && void updateStatus(task, "archived")}><Archive size={14}/>归档</Button>}</div></td>
       </tr>)}</tbody></Table></div>}
     </Panel>
-    {creating && currentId && <CreateProcessingTask workspaceId={currentId} plans={plans.data?.items ?? []} onClose={() => setCreating(false)} onCreated={async () => { setCreating(false); setFeedback("处理任务已创建，Worker 将自动发现并处理输入数据"); await refresh(); }} />}
   </>;
 }
 
@@ -62,7 +63,6 @@ const displayTime = (input?: string) => input ? new Intl.DateTimeFormat(document
 
 export function ProcessingTaskDetailPage() {
   const { taskId = "" } = useParams();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { currentId } = useWorkspace();
   const task = useQuery({ queryKey: workspaceQueryKey(currentId, "processing-task", taskId), queryFn: () => api.processing.get(currentId!, taskId), enabled: Boolean(currentId && taskId) });
@@ -70,7 +70,7 @@ export function ProcessingTaskDetailPage() {
   const refresh = () => Promise.all([task.refetch(), executions.refetch()]);
   if (!currentId) return <Panel><StateView type="empty" title="请选择组织" description="请先选择组织，再查看处理任务。" /></Panel>;
   if (task.isLoading) return <Panel><StateView type="loading" title="正在加载处理任务" description="" /></Panel>;
-  if (task.error) return <Panel><StateView type="error" title="处理任务加载失败" description={formatApiError(task.error).message} action={<Button variant="secondary" onClick={() => navigate("/processing")}><ArrowLeft size={14}/>返回</Button>} /></Panel>;
+  if (task.error) return <Panel><StateView type="error" title="处理任务加载失败" description={formatApiError(task.error).message} action={<Button variant="secondary" onClick={() => void refresh()}>重试</Button>} /></Panel>;
   const item = task.data!;
   const outputNames = new Map((item.outputs ?? []).map((output) => [output.code, output.name]));
   const executionItems = executions.data?.items ?? [];
@@ -83,18 +83,25 @@ export function ProcessingTaskDetailPage() {
     setSearchParams(next, { replace: true });
   };
   return <>
-    <PageHeader eyebrow="数据 / 数据处理" title={item.name} description={item.description || "自动增量处理任务"} actions={<div className="header-actions"><Button variant="secondary" onClick={() => navigate("/processing")}><ArrowLeft size={14}/>返回</Button><Button variant="secondary" onClick={() => void refresh()}><RefreshCw size={14}/>刷新</Button></div>} />
+    <PageHeader eyebrow="数据 / 数据处理" title={item.name} description={item.description || "自动增量处理任务"} actions={<Button variant="secondary" onClick={() => void refresh()}><RefreshCw size={14}/>刷新</Button>} />
     <div className="processing-detail-summary"><div><span>处理方案</span><strong>{item.plan_name || "历史直接配置任务"}</strong></div><div><span>任务状态</span><Badge tone={statusTone(item.status) as any}>{statusLabel[item.status]}</Badge></div><div><span>处理起点</span><strong>{displayTime(item.start_at)}</strong></div><div><span>执行次数</span><strong>{executions.data?.items.length ?? "—"}</strong></div></div>
     <details className="panel section-gap processing-task-config"><summary className="processing-config-toggle"><div><strong>任务配置</strong><span>{item.target_name || item.target_id} · {(item.inputs ?? []).length} 个输入 · 每个输入触发</span></div><ChevronDown size={17}/></summary>
       <div className="processing-config-overview"><div><span>目标资源</span><strong>{item.target_name || item.target_id}</strong><small>{item.target_type === "device" ? "设备" : "站点"} · <span className="mono">{item.target_id}</span></small></div><div><span>处理器版本</span><strong>{item.processor_code}</strong><small className="mono">{item.processor_version}</small></div><div><span>触发方式</span><strong>{String(item.trigger?.mode ?? "each_input") === "each_input" ? "每个输入触发" : String(item.trigger?.mode)}</strong><small>任务版本 v{item.current_version}</small></div></div>
       <div className="processing-config-section"><h3>输入绑定</h3><div className="processing-config-inputs">{(item.inputs ?? []).map((input, index) => { const binding = input as JsonRecord; return <div key={String(binding.slot_code ?? index)}><div><strong>{String(binding.device_name || binding.source_name || "输入源")}</strong><span>{String(binding.source_name || binding.source_type || "")}</span></div><code>{String(binding.slot_code)} · {String(binding.source_id || binding.source_task_id || "—")}</code></div>; })}</div></div>
     </details>
-    <div className="processing-view-tabs section-tabs" role="tablist" aria-label="数据处理视图"><button type="button" role="tab" aria-selected={activeView === "results"} onClick={() => selectView("results")}><ChartNoAxesCombined size={15}/>成果数据</button><button type="button" role="tab" aria-selected={activeView === "executions"} onClick={() => selectView("executions")}><ListTree size={15}/>执行记录{executionItems.length > 0 && <span>{executionItems.length}</span>}</button></div>
-    {activeView === "results" ? <Panel className="processing-outcomes-panel"><div className="panel-header"><div><h2 className="panel-title">成果数据</h2></div><ChartNoAxesCombined size={17}/></div>
-      {executions.isLoading ? <StateView type="loading" title="正在加载成果数据" description="" /> : executions.error ? <StateView type="error" title="成果数据加载失败" description={formatApiError(executions.error).message} /> : <ProcessingResultsView executions={executionItems} outputNames={outputNames}/>}
-    </Panel> : <Panel className="processing-executions-panel"><div className="panel-header"><div><h2 className="panel-title">执行记录</h2><div className="panel-kicker">{executionItems.length ? `${successCount} 次成功${failedCount ? ` · ${failedCount} 次失败` : ""}` : "最新记录显示在最前"}</div></div><Workflow size={17}/></div>
-      {executions.isLoading ? <StateView type="loading" title="正在加载执行记录" description="" /> : executions.error ? <StateView type="error" title="执行记录加载失败" description={formatApiError(executions.error).message} /> : !executions.data?.items.length ? <StateView type="empty" title="暂无执行记录" description="任务获得符合条件的输入后，执行记录会显示在这里。" /> : <div className="processing-execution-list">{executions.data.items.map((execution, index) => <ExecutionRow key={execution.id} execution={execution} outputNames={outputNames} initiallyOpen={index === 0} />)}</div>}
-    </Panel>}
+    <Tabs value={activeView} onValueChange={(value) => selectView(value as typeof activeView)} activationMode="manual">
+      <TabsList variant="underline" className="processing-view-tabs" aria-label="数据处理视图">
+        <TabsTrigger value="results"><ChartNoAxesCombined size={15}/>成果数据</TabsTrigger>
+        <TabsTrigger value="executions"><ListTree size={15}/>执行记录{executionItems.length > 0 && <span className="ui-count-badge">{executionItems.length}</span>}</TabsTrigger>
+      </TabsList>
+      <TabsContent key={activeView} value={activeView}>
+        {activeView === "results" ? <Panel className="processing-outcomes-panel"><div className="panel-header"><div><h2 className="panel-title">成果数据</h2></div><ChartNoAxesCombined size={17}/></div>
+          {executions.isLoading ? <StateView type="loading" title="正在加载成果数据" description="" /> : executions.error ? <StateView type="error" title="成果数据加载失败" description={formatApiError(executions.error).message} /> : <ProcessingResultsView executions={executionItems} outputNames={outputNames}/>}
+        </Panel> : <Panel className="processing-executions-panel"><div className="panel-header"><div><h2 className="panel-title">执行记录</h2><div className="panel-kicker">{executionItems.length ? `${successCount} 次成功${failedCount ? ` · ${failedCount} 次失败` : ""}` : "最新记录显示在最前"}</div></div><Workflow size={17}/></div>
+          {executions.isLoading ? <StateView type="loading" title="正在加载执行记录" description="" /> : executions.error ? <StateView type="error" title="执行记录加载失败" description={formatApiError(executions.error).message} /> : !executions.data?.items.length ? <StateView type="empty" title="暂无执行记录" description="任务获得符合条件的输入后，执行记录会显示在这里。" /> : <div className="processing-execution-list">{executions.data.items.map((execution, index) => <ExecutionRow key={execution.id} execution={execution} outputNames={outputNames} initiallyOpen={index === 0} />)}</div>}
+        </Panel>}
+      </TabsContent>
+    </Tabs>
   </>;
 }
 
@@ -199,49 +206,265 @@ function ResultArtwork({ url, eyebrow, name, prepare = false }: { url?: string; 
 const recordLabels: Record<string, string> = { method: "识别方法", threshold: "判定阈值", total_pixels: "总像素", vegetation_pixels: "植物像素" };
 const recordFieldLabel = (key: string) => recordLabels[key] ?? key.replaceAll("_", " ");
 
-function CreateProcessingTask({ workspaceId, plans, onClose, onCreated }: { workspaceId: string; plans: ProcessingPlan[]; onClose: () => void; onCreated: () => Promise<void> }) {
+export function ProcessingTaskCreatePage() {
+  const { currentId } = useWorkspace();
+  const plans = useQuery({
+    queryKey: ["processing", "plans"],
+    queryFn: api.processing.plans,
+    enabled: Boolean(currentId),
+  });
+
+  return <>
+    <PageHeader title="创建处理任务" />
+    {!currentId ? (
+      <Panel><StateView type="empty" title="请选择组织" description="请先选择组织，再创建处理任务。" /></Panel>
+    ) : plans.isLoading ? (
+      <Panel><StateView type="loading" title="正在加载处理方案" description="" /></Panel>
+    ) : !plans.data && plans.error ? (
+      <Panel>
+        <StateView
+          type="error"
+          title="处理方案加载失败"
+          description={formatApiError(plans.error).message}
+          action={<Button variant="secondary" onClick={() => void plans.refetch()}>重试</Button>}
+        />
+      </Panel>
+    ) : !plans.data?.items.length ? (
+      <Panel><StateView type="empty" title="暂无可用方案" description="" /></Panel>
+    ) : (
+      <CreateProcessingTask key={currentId} workspaceId={currentId} plans={plans.data.items} />
+    )}
+  </>;
+}
+
+const processingSteps = ["选择方案", "绑定输入", "图像配置", "确认创建"];
+
+function CreateProcessingTask({ workspaceId, plans }: { workspaceId: string; plans: ProcessingPlan[] }) {
+  const client = useQueryClient();
   const isMobile = useIsMobile();
-  const [step,setStep]=useState(1);
+  const [step, setStep] = useState(1);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [planId,setPlanId]=useState(plans[0]?.id??"");
-  const [targetType, setTargetType] = useState<"device"|"site">("device");
+  const [planId, setPlanId] = useState(plans[0]?.id ?? "");
+  const [targetType, setTargetType] = useState<"device" | "site">("device");
   const [targetId, setTargetId] = useState("");
   const [startMode, setStartMode] = useState("now");
   const [startAt, setStartAt] = useState("");
-  const [sourceDevices, setSourceDevices] = useState<Record<string,string>>({});
-  const [sourceStreams, setSourceStreams] = useState<Record<string,string>>({});
-  const [sourceConfigs, setSourceConfigs] = useState<Record<string,JsonRecord>>({});
-  const [roi,setRoi]=useState<CalibrationBoard>();
+  const [sourceDevices, setSourceDevices] = useState<Record<string, string>>({});
+  const [sourceStreams, setSourceStreams] = useState<Record<string, string>>({});
+  const [sourceConfigs, setSourceConfigs] = useState<Record<string, JsonRecord>>({});
+  const [roi, setRoi] = useState<CalibrationBoard>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const dirty = Boolean(
+    name || description || planId !== plans[0]?.id || targetType !== "device" || targetId ||
+    startMode !== "now" || startAt || roi || Object.values(sourceDevices).some(Boolean) ||
+    Object.values(sourceStreams).some(Boolean)
+  );
+  const { cancel, complete } = useEditorNavigation(dirty, busy);
+  const stepContent = useRef<HTMLElement>(null);
   const devices = useQuery({ queryKey: workspaceQueryKey(workspaceId, "devices"), queryFn: () => api.devices.list(workspaceId) });
   const sites = useQuery({ queryKey: workspaceQueryKey(workspaceId, "sites"), queryFn: () => api.sites.list(workspaceId) });
-  const selected = useMemo(() => plans.find((item) => item.id === planId), [plans, planId]);
+  const selected = plans.find((item) => item.id === planId);
   const slots = selected?.processor_manifest.inputs ?? [];
-  const returnFocus = useRef(document.activeElement as HTMLElement | null);
-  useEffect(() => { if (targetType === "device" && targetId) setSourceDevices(Object.fromEntries(slots.map((slot) => [slot.code, targetId]))); }, [targetId, targetType, planId]);
-  const submit = async (event: FormEvent) => {
-    event.preventDefault(); if (busy || step !== 4 || !selected || !targetId || !name.trim()) return;
-    setBusy(true); setError("");
-    try {
-      await api.processing.create(workspaceId, { name, description, plan_id: selected.id, target_type: targetType, target_id: targetId, interaction: roi ? {roi} : {}, start_at: startMode === "now" ? new Date().toISOString() : new Date(startAt).toISOString(), inputs: slots.map((slot) => ({ slot_code: slot.code, source_type: "data_stream", source_id: sourceStreams[slot.code], config: sourceConfigs[slot.code] ?? {} })) });
-      await onCreated();
-    } catch (value) { setError(formatApiError(value).message); } finally { setBusy(false); }
+  const requiresRoi = selected?.processor_manifest.ui?.analysis_roi?.required;
+  const calibrationSlots = slots.filter((slot) => slot.ui?.calibration_board);
+  const finalStep = processingSteps.length;
+
+  useEffect(() => {
+    if (targetType === "device" && targetId) {
+      setSourceDevices(Object.fromEntries(slots.map((slot) => [slot.code, targetId])));
+    }
+  }, [targetId, targetType, planId]);
+
+  const selectPlan = (id: string) => {
+    if (planId === id) return;
+    setPlanId(id);
+    setTargetId("");
+    setSourceDevices({});
+    setSourceStreams({});
+    setSourceConfigs({});
+    setRoi(undefined);
   };
-  return <Dialog open onOpenChange={open => !open && !busy && onClose()}><DialogContent className="processing-modal" aria-describedby={undefined} onCloseAutoFocus={event => { event.preventDefault(); returnFocus.current?.focus(); }} onPointerDownOutside={event => event.preventDefault()} onEscapeKeyDown={event => { if (busy) event.preventDefault(); }}><form className="processing-editor" onSubmit={submit}>
-    <div className="panel-header"><div><DialogTitle className="panel-title">创建处理任务</DialogTitle><div className="panel-kicker">步骤 {step} / 4 · 基于运维发布的处理方案</div></div><Button type="button" variant="secondary" disabled={busy} onClick={onClose}><X size={14}/>关闭</Button></div>
-    <div className="processing-stepper">{["选择方案","绑定输入","图像配置","确认创建"].map((label,index)=><span key={label} className={step===index+1?"is-active":step>index+1?"is-done":""}>{index+1}. {label}</span>)}</div>
-    <div className="processing-form"><div className="processing-form-main">
-    {step===1&&<div className="processing-plan-options">{plans.map((plan)=><button type="button" key={plan.id} className={planId===plan.id?"is-active":""} onClick={()=>{setPlanId(plan.id);setTargetId("");setSourceStreams({});setSourceConfigs({});setRoi(undefined)}}><strong>{plan.name}</strong><span>{plan.description}</span><small>{plan.processor_code}@{plan.processor_version} · 输出 {(plan.processor_manifest.outputs??[]).map(item=>item.name).join("、")}</small></button>)}</div>}
-    {step===2&&<><div className="form-grid two"><label className="field"><span className="field-label">结果目标</span><SelectInput value={targetType} onChange={(e) => { setTargetType(e.target.value as any); setTargetId(""); }}><option value="device">设备</option><option value="site">站点</option></SelectInput></label><label className="field"><span className="field-label">目标资源</span>{targetType==="device"?<DeviceCombobox devices={devices.data?.items??[]} value={targetId} onChange={setTargetId} includeNodes loading={devices.isLoading} ariaLabel="搜索目标设备"/>:<SelectInput required value={targetId} onChange={(e) => setTargetId(e.target.value)}><option value="">请选择</option>{sites.data?.items.map((item: any) => <option key={item.id} value={item.id}>{item.name}</option>)}</SelectInput>}</label></div><div className="processing-inputs"><div className="section-label">输入绑定</div>{slots.map((slot) => <InputBinding key={slot.code} slot={slot} devices={devices.data?.items ?? []} deviceId={sourceDevices[slot.code] ?? ""} streamId={sourceStreams[slot.code] ?? ""} config={sourceConfigs[slot.code] ?? {}} showDevice={targetType === "site"} showCalibration={false} onDevice={(value) => setSourceDevices((current) => ({...current, [slot.code]: value}))} onStream={(value) => { setSourceStreams((current) => ({...current, [slot.code]: value})); setSourceConfigs((current) => ({...current, [slot.code]: {}})); }} onConfig={(value) => setSourceConfigs((current) => ({...current, [slot.code]: value}))}/>)}</div></>}
-    {step===3&&<div className="processing-image-workbench">{selected?.processor_manifest.ui?.analysis_roi?.required&&sourceStreams[slots[0]?.code]&&<CalibrationBoardPicker streamId={sourceStreams[slots[0].code]} label="共享分析 ROI" value={roi} onChange={setRoi}/>} {slots.filter(slot=>slot.ui?.calibration_board).map(slot=><CalibrationBoardPicker key={slot.code} streamId={sourceStreams[slot.code]} label={slot.ui?.calibration_board?.label??"标定板"} value={sourceConfigs[slot.code]?.calibration_board as CalibrationBoard|undefined} onChange={(value)=>setSourceConfigs(current=>({...current,[slot.code]:{...(current[slot.code]??{}),calibration_board:value}}))}/>) } {!selected?.processor_manifest.ui?.analysis_roi?.required&&!slots.some(slot=>slot.ui?.calibration_board)&&<StateView type="empty" title="无需图像区域配置" description="该方案会直接处理所选输入。"/>}</div>}
-    {step===4&&<><div className="form-grid two"><label className="field"><span className="field-label">任务名称</span><Input required value={name} onChange={(e) => setName(e.target.value)}/></label><label className="field"><span className="field-label">处理起点</span><SelectInput value={startMode} onChange={(e) => setStartMode(e.target.value)}><option value="now">从现在开始</option><option value="history">从指定时间开始</option></SelectInput></label></div>{startMode === "history" && <label className="field"><span className="field-label">开始时间</span><Input required type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)}/></label>}<label className="field"><span className="field-label">说明</span><Input value={description} onChange={(e) => setDescription(e.target.value)}/></label><div className="processor-contract"><Activity size={15}/><div><strong>{selected?.name}</strong><span>{selected?.description}</span><small>{targetType==="device"?"设备":"站点"} · {slots.length} 个输入 · 输出 {(selected?.processor_manifest.outputs??[]).map(item=>item.name).join("、")}</small></div></div></>}
+
+  const changeStep = (next: number) => {
+    setStep(next);
+    stepContent.current?.focus();
+  };
+
+  const canContinue = Boolean(selected)
+    && (step !== 2 || Boolean(targetId) && slots.every((slot) => sourceStreams[slot.code]))
+    && (step !== 3 || (!requiresRoi || Boolean(roi)) && calibrationSlots.every((slot) =>
+      !slot.ui?.calibration_board?.required || Boolean(sourceConfigs[slot.code]?.calibration_board)));
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (busy || step !== finalStep || !selected || !targetId || !name.trim()) return;
+    setBusy(true);
+    setError("");
+    try {
+      const task = await api.processing.create(workspaceId, {
+        name,
+        description,
+        plan_id: selected.id,
+        target_type: targetType,
+        target_id: targetId,
+        interaction: roi ? { roi } : {},
+        start_at: startMode === "now" ? new Date().toISOString() : new Date(startAt).toISOString(),
+        inputs: slots.map((slot) => ({
+          slot_code: slot.code,
+          source_type: "data_stream",
+          source_id: sourceStreams[slot.code],
+          config: sourceConfigs[slot.code] ?? {},
+        })),
+      });
+      client.setQueryData(workspaceQueryKey(workspaceId, "processing-task", task.id), task);
+      void client.invalidateQueries({ queryKey: workspaceQueryKey(workspaceId, "processing-tasks") });
+      complete(`/processing/${task.id}`);
+      toast.success("处理任务已创建");
+    } catch (value) {
+      setError(formatApiError(value).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <form className="processing-editor" aria-label="创建处理任务" onSubmit={submit}>
+    <ol className="processing-stepper" aria-label="创建步骤">
+      {processingSteps.map((label, index) => (
+        <li key={label} aria-current={step === index + 1 ? "step" : undefined} className={step > index + 1 ? "is-done" : undefined}>
+          {index + 1}. {label}
+        </li>
+      ))}
+    </ol>
+    <div className="processing-form">
+      <section className="processing-form-main" aria-label={processingSteps[step - 1]} ref={stepContent} tabIndex={-1}>
+        {step === 1 && (
+          <div className="processing-plan-options">
+            {plans.map((plan) => (
+              <button type="button" key={plan.id} aria-pressed={planId === plan.id} onClick={() => selectPlan(plan.id)}>
+                <strong>{plan.name}</strong>
+                <span>{plan.description}</span>
+                <small>{plan.processor_code}@{plan.processor_version} · 输出 {(plan.processor_manifest.outputs ?? []).map((output) => output.name).join("、")}</small>
+              </button>
+            ))}
+          </div>
+        )}
+        {step === 2 && <>
+          <div className="form-grid two">
+            <label className="field">
+              <span className="field-label">结果目标</span>
+              <SelectInput value={targetType} onChange={(event) => { setTargetType(event.target.value as typeof targetType); setTargetId(""); }}>
+                <option value="device">设备</option><option value="site">站点</option>
+              </SelectInput>
+            </label>
+            <label className="field">
+              <span className="field-label">目标资源</span>
+              {targetType === "device" ? (
+                <DeviceCombobox devices={devices.data?.items ?? []} value={targetId} onChange={setTargetId} includeNodes loading={devices.isLoading} ariaLabel="搜索目标设备" />
+              ) : (
+                <SelectInput required value={targetId} onChange={(event) => setTargetId(event.target.value)}>
+                  <option value="">请选择</option>
+                  {sites.data?.items.map((site) => <option key={String(site.id)} value={String(site.id)}>{String(site.name)}</option>)}
+                </SelectInput>
+              )}
+            </label>
+          </div>
+          <div className="processing-inputs">
+            <div className="section-label">输入绑定</div>
+            {slots.map((slot) => (
+              <InputBinding
+                key={slot.code}
+                slot={slot}
+                devices={devices.data?.items ?? []}
+                deviceId={sourceDevices[slot.code] ?? ""}
+                streamId={sourceStreams[slot.code] ?? ""}
+                config={sourceConfigs[slot.code] ?? {}}
+                showDevice={targetType === "site"}
+                showCalibration={false}
+                onDevice={(value) => setSourceDevices((current) => ({ ...current, [slot.code]: value }))}
+                onStream={(value) => {
+                  setSourceStreams((current) => ({ ...current, [slot.code]: value }));
+                  setSourceConfigs((current) => ({ ...current, [slot.code]: {} }));
+                }}
+                onConfig={(value) => setSourceConfigs((current) => ({ ...current, [slot.code]: value }))}
+              />
+            ))}
+          </div>
+        </>}
+        {step === 3 && (
+          <div className="processing-image-workbench">
+            {requiresRoi && sourceStreams[slots[0]?.code] && (
+              <CalibrationBoardPicker streamId={sourceStreams[slots[0].code]} label="共享分析 ROI" value={roi} onChange={setRoi} />
+            )}
+            {calibrationSlots.map((slot) => (
+              <CalibrationBoardPicker
+                key={slot.code}
+                streamId={sourceStreams[slot.code]}
+                label={slot.ui?.calibration_board?.label ?? "标定板"}
+                value={sourceConfigs[slot.code]?.calibration_board as CalibrationBoard | undefined}
+                onChange={(value) => setSourceConfigs((current) => ({
+                  ...current, [slot.code]: { ...current[slot.code], calibration_board: value },
+                }))}
+              />
+            ))}
+            {!requiresRoi && !calibrationSlots.length && (
+              <StateView type="empty" title="无需图像区域配置" description="该方案会直接处理所选输入。" />
+            )}
+          </div>
+        )}
+        {step === finalStep && <>
+          <div className="form-grid two">
+            <label className="field"><span className="field-label">任务名称</span><Input required value={name} onChange={(event) => setName(event.target.value)} /></label>
+            <label className="field">
+              <span className="field-label">处理起点</span>
+              <SelectInput value={startMode} onChange={(event) => setStartMode(event.target.value)}>
+                <option value="now">从现在开始</option><option value="history">从指定时间开始</option>
+              </SelectInput>
+            </label>
+          </div>
+          {startMode === "history" && (
+            <label className="field"><span className="field-label">开始时间</span><Input required type="datetime-local" value={startAt} onChange={(event) => setStartAt(event.target.value)} /></label>
+          )}
+          <label className="field"><span className="field-label">说明</span><Input value={description} onChange={(event) => setDescription(event.target.value)} /></label>
+          <div className="processor-contract">
+            <Activity size={15}/>
+            <div>
+              <strong>{selected?.name}</strong>
+              <small>{targetType === "device" ? "设备" : "站点"} · {slots.length} 个输入 · 输出 {(selected?.processor_manifest.outputs ?? []).map((output) => output.name).join("、")}</small>
+            </div>
+          </div>
+        </>}
+      </section>
+      {selected && (
+        <aside className="processing-form-side">
+          <details className="processing-plan-review" open={!isMobile}>
+            <summary>{selected.name}<ChevronDown size={14} /></summary>
+            <div className="processor-contract">
+              <Activity size={15} />
+              <div>
+                <strong>{selected.name}</strong>
+                <span>{selected.description}</span>
+                <small>方案 v{selected.published_version} · {selected.processor_manifest.category === "timeseries" ? "数值处理" : "图像处理"}</small>
+              </div>
+            </div>
+          </details>
+        </aside>
+      )}
     </div>
-    <aside className="processing-form-side">
-    {selected && <details className="processing-plan-review" open={!isMobile}><summary>{selected.name}<ChevronDown size={14}/></summary><div className="processor-contract"><Activity size={15}/><div><strong>{selected.name}</strong><span>{selected.description}</span><small>方案 v{selected.published_version} · {selected.processor_manifest.category==="timeseries"?"数值处理":"图像处理"}</small></div></div></details>}
-    {error && <div className="form-error" role="alert">{error}</div>}<div className="form-actions mobile-form-actions">{step>1&&<Button type="button" variant="secondary" disabled={busy} onClick={()=>setStep(step-1)}>上一步</Button>}{step<4?<Button type="button" disabled={(step===1&&!selected)||(step===2&&(!targetId||slots.some(slot=>!sourceStreams[slot.code])))||(step===3&&((selected?.processor_manifest.ui?.analysis_roi?.required&&!roi)||slots.some(slot=>slot.ui?.calibration_board?.required&&!sourceConfigs[slot.code]?.calibration_board)))} onClick={()=>setStep(step+1)}>下一步</Button>:<Button type="submit" disabled={busy || !name}>{busy ? "创建中…" : "创建任务"}</Button>}</div></aside></div>
-  </form></DialogContent></Dialog>;
+    {error && <div className="form-error processing-submit-error" role="alert">{error}</div>}
+    <footer className="processing-actions mobile-form-actions">
+      <Button type="button" variant="ghost" disabled={busy} onClick={cancel}>取消</Button>
+      <div className="processing-step-actions">
+        {step > 1 && <Button type="button" variant="secondary" disabled={busy} onClick={() => changeStep(step - 1)}>上一步</Button>}
+        {step < finalStep ? (
+          <Button key="next" type="button" disabled={!canContinue} onClick={() => changeStep(step + 1)}>下一步</Button>
+        ) : (
+          <Button key="submit" type="submit" disabled={busy || !name.trim()}>{busy ? "创建中…" : "创建任务"}</Button>
+        )}
+      </div>
+    </footer>
+  </form>;
 }
 
 type InputSlot = NonNullable<ProcessingProcessor["manifest"]["inputs"]>[number];

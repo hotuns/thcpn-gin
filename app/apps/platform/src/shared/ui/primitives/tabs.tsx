@@ -3,8 +3,18 @@ import { Tabs as TabsPrimitive } from "radix-ui";
 import { cn } from "@thcpn/ui";
 
 export const Tabs = TabsPrimitive.Root;
-export const TabsList = forwardRef<ElementRef<typeof TabsPrimitive.List>, ComponentPropsWithoutRef<typeof TabsPrimitive.List>>(
-  ({ className, ...props }, ref) => <TabsPrimitive.List ref={ref} className={cn("shadcn-tabs-list", className)} {...props} />,
+type TabsListProps = ComponentPropsWithoutRef<typeof TabsPrimitive.List> & {
+  variant?: "segmented" | "underline";
+};
+
+export const TabsList = forwardRef<ElementRef<typeof TabsPrimitive.List>, TabsListProps>(
+  ({ className, variant = "segmented", ...props }, ref) => (
+    <TabsPrimitive.List
+      ref={ref}
+      className={cn("shadcn-tabs-list", variant === "underline" && "shadcn-tabs-underline", className)}
+      {...props}
+    />
+  ),
 );
 TabsList.displayName = "TabsList";
 export const TabsTrigger = forwardRef<ElementRef<typeof TabsPrimitive.Trigger>, ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>>(

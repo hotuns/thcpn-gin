@@ -6,7 +6,7 @@ import { render, eventually } from "../render";
 vi.mock("@thcpn/auth", () => ({ useAuth: () => ({ user: { id: "observer" } }) }));
 const stamp = "2026-11-03T00:00:00Z";
 const metrics: DataStream[] = Array.from({ length: 6 }, (_, index) => ({ id: `stream${index}`, name: `指标${index}`, unit: index === 0 ? "°C" : "%", code: `metric${index}`, type: "telemetry", status: "active", device_id: "station", computed: false, created_by: "observer", created_at: stamp, updated_at: stamp }));
-const device: DeviceMapItem = { device_id: "station", name: "青山标准站", serial_no: "ST001", device_type: "station", status: "active", location_source: "none", child_count: 0, environment: { observation_objects: [], purposes: [], research_tags: [] } };
+const device: DeviceMapItem = { device_id: "station", name: "青山标准站", asset_no: "ST001", device_type: "station", status: "active", location_source: "none", child_count: 0, environment: { observation_objects: [], purposes: [], research_tags: [] } };
 it("renders compact metric rows and pages every chosen metric through one shared plot", async () => {
   vi.spyOn(api.dataStreams, "list").mockResolvedValue({ items: metrics });
   vi.spyOn(api.telemetry, "dataStream").mockResolvedValue({ device_id: "station", start_time: stamp, end_time: stamp, limit: 1, series: [] });

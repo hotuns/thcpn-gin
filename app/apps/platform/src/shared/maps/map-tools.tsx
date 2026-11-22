@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { Map } from "maplibre-gl";
 import { Download, Layers3, Ruler, Shapes, X } from "lucide-react";
 import { deviceKinds, deviceKindLabels, deviceSymbolSvg, symbolStates, type SymbolState } from "@thcpn/device-map";
@@ -7,7 +7,13 @@ import { exportCanvas, geometryMeasure, mapSourceCredit } from "./map-tools-mode
 import type { MapDraw } from "./map-draw-session";
 import "./map-tools.css";
 
-export function MapTools({ map, open: controlledOpen, onOpenChange }: { map: Map | null; open?: boolean; onOpenChange?: (open: boolean) => void }) {
+export function MapTools({ map, open: controlledOpen, onOpenChange, renderLayout }: {
+  map: Map | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  renderLayout?: (trigger: ReactNode, panel: ReactNode) => ReactNode;
+}) {
+  const panelId = useId();
   const [internalOpen, setInternalOpen] = useState(false); const [legend, setLegend] = useState(false);
   const open = controlledOpen ?? internalOpen;
   const setOpen = (next: boolean) => { setInternalOpen(next); onOpenChange?.(next); };
@@ -39,9 +45,8 @@ export function MapTools({ map, open: controlledOpen, onOpenChange }: { map: Map
   };
   const stop = () => { pending.current++; draw.current?.stop(); draw.current = null; setMode(""); setMeasure(""); };
   useEffect(() => { if (!open) stop(); }, [open]);
-  return <div className="map-tools" aria-label="地图工具">
-    <Button variant="secondary" aria-label="地图工具" title="地图工具" aria-expanded={open} disabled={!map} onClick={() => { setOpen(!open); if (!open) refreshLayers(); }}><Layers3 size={17} /></Button>
-    {open && <section className="map-tools-panel">
+  const trigger = <Button type="button" variant={renderLayout ? "ghost" : "secondary"} aria-label="地图工具" title="地图工具" aria-expanded={open} aria-controls={open ? panelId : undefined} disabled={!map} onClick={() => { setOpen(!open); if (!open) refreshLayers(); }}><Layers3 size={18} /></Button>;
+  const panel = open && <section id={panelId} className="map-tools-panel">
       <header><strong>地图工具</strong><Button variant="ghost" aria-label="关闭地图工具" onClick={() => { setOpen(false); stop(); }}><X size={14} /></Button></header>
       <div className="map-tools-actions"><Button variant="secondary" aria-pressed={mode === "linestring"} onClick={() => void start("linestring")}><Ruler size={14} />测距离</Button><Button variant="secondary" aria-pressed={mode === "polygon"} onClick={() => void start("polygon")}><Shapes size={14} />测面积</Button></div>
       {mode && <><small>点击地图添加点，完成后点击“完成绘制”；测量为地表估算，不作为测绘依据。</small><output aria-live="polite">{measure || "请在地图上绘制"}</output><div className="map-tools-actions">{mode !== "select" && <Button variant="secondary" onClick={() => { if (draw.current?.finishDrawing()) { setMode("select"); setError(""); } else setError("请至少添加两个距离点或三个面积点后完成绘制"); }}>完成绘制</Button>}<Button variant="ghost" onClick={stop}>{mode === "select" ? "清除测量" : "取消绘制"}</Button></div></>}
@@ -50,7 +55,9 @@ export function MapTools({ map, open: controlledOpen, onOpenChange }: { map: Map
       <Button variant="secondary" onClick={() => { try { map!.triggerRepaint(); map!.once("render", async () => { try { await exportCanvas(map!.getCanvas(), "ies-watch-map.png", `IES Watch · ${mapSourceCredit(map!.getStyle())}`); } catch { setError("截图失败：底图资源不允许跨域导出"); } }); } catch { setError("地图尚未准备就绪"); } }}><Download size={14} />导出地图 PNG</Button>
       <Button variant="ghost" onClick={() => setLegend(true)}>设备图标图例</Button>
       {error && <p role="alert">{error}</p>}
-    </section>}
+    </section>;
+  return <>
+    {renderLayout ? renderLayout(trigger, panel) : <div className="map-tools" aria-label="地图工具">{trigger}{panel}</div>}
     <Dialog open={legend} onOpenChange={setLegend}><DialogContent className="map-symbol-dialog"><DialogHeader><DialogTitle>设备图标规范</DialogTitle></DialogHeader><p>轮廓和符号表示设备类别，右上角表示资产状态；启用不等于在线。青色双边框表示选中。</p><div className="map-symbol-gallery">{deviceKinds.map(kind => <div key={kind}><img alt={deviceKindLabels[kind]} src={`data:image/svg+xml,${encodeURIComponent(deviceSymbolSvg(kind, "active"))}`} /><strong>{deviceKindLabels[kind]}</strong></div>)}</div><div className="map-symbol-status">{Object.entries(symbolStates).map(([state, meta]) => <div key={state}><img alt="" src={`data:image/svg+xml,${encodeURIComponent(deviceSymbolSvg("gateway", state as SymbolState))}`} /><span>{meta.label}</span></div>)}<div><img alt="" src={`data:image/svg+xml,${encodeURIComponent(deviceSymbolSvg("gateway", "active", true))}`} /><span>当前选中</span></div></div></DialogContent></Dialog>
-  </div>;
+  </>;
 }

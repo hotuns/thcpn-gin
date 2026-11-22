@@ -71,7 +71,7 @@ export function AtlasNetwork({ map, gateway, nodes, devices, selectedNodeKey, on
           <g className="eco-network-gateway-label" transform="translate(0 -236)">
             <path className="eco-network-label-box" d="M-100 0 H100 V55 L90 65 H-100 V10 Z" />
             <text y="28" textAnchor="middle">{label(gateway.name, 9)}</text>
-            <text className="eco-network-serial" y="51" textAnchor="middle">{label(gateway.serial_no, 22)}</text>
+            <text className="eco-network-serial" y="51" textAnchor="middle">{label(gateway.asset_no || "—", 22)}</text>
           </g>
           <g className="eco-network-badge" transform="translate(0 39)">
             <path className="eco-network-label-box" d="M-112 0 H112 V27 L104 35 H-112 V8 Z" />

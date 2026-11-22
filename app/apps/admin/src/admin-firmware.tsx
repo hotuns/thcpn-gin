@@ -76,7 +76,7 @@ export function AdminFirmwarePage() {
     onError: error => setPublishError(formatApiError(error).message),
   });
   const archive = useMutation({ mutationFn: (item: FirmwareArtifact) => api.admin.archiveFirmware(item.id, !item.archived), onSettled: () => client.invalidateQueries({ queryKey: ["admin", "firmware-library"] }) });
-  const option = (device: FirmwareCandidate) => ({ value: device.id, label: `${device.name} · ${device.serial_no} · ${device.data_source_name}` });
+  const option = (device: FirmwareCandidate) => ({ value: device.id, label: `${device.name} · ${device.asset_no} · ${device.data_source_name}` });
   const fmt = (value: string) => new Date(value).toLocaleString(locale);
   const close = () => { if (!create.isPending) { setOpen(false); resetForm(); } };
 
@@ -145,7 +145,7 @@ export function AdminFirmwarePage() {
         {formError ? <Alert type="error" showIcon message={formError} /> : null}
       </Form>
     </Modal>
-    <Modal open={!!selected} title={t("admin:firmware.selectFirmware")} okText={t("admin:firmware.publishExisting")} cancelText={t("cancel")} width={720} confirmLoading={publish.isPending} okButtonProps={{ disabled: !publishIds.length || compatible.isFetching || !!compatible.error }} onCancel={() => { if (!publish.isPending) setSelected(null); }} onOk={() => modal.confirm({ title: t("admin:firmware.confirmPublish"), content: <><p>{t("admin:firmware.summary", { filename: selected?.original_filename, version: selected?.version, count: publishIds.length })}</p>{compatible.data?.items.filter(d => publishIds.includes(d.id)).map(d => <p key={d.id}>{d.name} · {d.serial_no}</p>)}</>, onOk: () => publish.mutateAsync(), okText: t("admin:firmware.publishExisting"), cancelText: t("cancel") })}>
+    <Modal open={!!selected} title={t("admin:firmware.selectFirmware")} okText={t("admin:firmware.publishExisting")} cancelText={t("cancel")} width={720} confirmLoading={publish.isPending} okButtonProps={{ disabled: !publishIds.length || compatible.isFetching || !!compatible.error }} onCancel={() => { if (!publish.isPending) setSelected(null); }} onOk={() => modal.confirm({ title: t("admin:firmware.confirmPublish"), content: <><p>{t("admin:firmware.summary", { filename: selected?.original_filename, version: selected?.version, count: publishIds.length })}</p>{compatible.data?.items.filter(d => publishIds.includes(d.id)).map(d => <p key={d.id}>{d.name} · {d.asset_no}</p>)}</>, onOk: () => publish.mutateAsync(), okText: t("admin:firmware.publishExisting"), cancelText: t("cancel") })}>
       <Space orientation="vertical" style={{ width: "100%" }} size="middle">
         <Alert type="info" showIcon message={`${selected?.original_filename ?? ""} · ${selected?.version ?? ""}`} description={`${selected?.data_source_name ?? ""} — ${t("admin:firmware.compatibleHint")}`} />
         <Select mode="multiple" showSearch allowClear style={{ width: "100%" }} value={publishIds} options={compatible.data?.items.map(option) ?? []} optionFilterProp="label" onChange={setPublishIds} loading={compatible.isFetching} disabled={publish.isPending} placeholder={t("admin:firmware.selectDevices")} />

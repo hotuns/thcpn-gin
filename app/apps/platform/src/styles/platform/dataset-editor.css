@@ -550,27 +550,3 @@
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
-.export-summary {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  background: white;
-  border: 1px solid var(--line);
-}
-.export-summary > div {
-  display: flex;
-  align-items: baseline;
-  gap: 9px;
-  padding: 16px 20px;
-  border-right: 1px solid var(--soft-line);
-}
-.export-summary > div:last-child {
-  border-right: 0;
-}
-.export-summary strong {
-  color: var(--blue-dark);
-  font: var(--font-weight-bold) var(--font-size-title)/1 var(--font-family-ui);
-}
-.export-summary span {
-  color: var(--muted);
-  font-size: var(--font-size-small);
-}

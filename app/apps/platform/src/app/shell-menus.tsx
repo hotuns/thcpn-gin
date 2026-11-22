@@ -80,11 +80,10 @@ export function WorkspaceMenu({
             aria-label={`${t("platform:workspace.switch")}：${current?.name ?? t("platform:workspace.none")}`}
             disabled={loading}
           >
-            <Building2 className="workspace-trigger-icon" size={18} aria-hidden="true" />
+            <span className="workspace-trigger-icon"><Building2 size={16} aria-hidden="true" /></span>
             <span className="workspace-trigger-copy">
-              <span className="workspace-label">{t("platform:workspace.current")}</span>
               <strong>{loading ? t("platform:workspace.loading") : current?.name ?? t("platform:workspace.none")}</strong>
-              {current && <small>{labels.role(current.membership.role.code, current.membership.role.name)}</small>}
+              <small>{current ? labels.role(current.membership.role.code, current.membership.role.name) : t("platform:workspace.current")}</small>
             </span>
             <ChevronsUpDown size={15} aria-hidden="true" />
           </Button>

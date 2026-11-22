@@ -76,9 +76,9 @@ describe("group export targets", () => {
           "device:standalone": "Removed probe at export time",
         },
       },
-    }, [{ id: "gateway-a", name: "Renamed station", serial_no: "SN-001" }]);
+    }, [{ id: "gateway-a", name: "Renamed station", asset_no: "LR-00000001" }]);
 
-    expect(result.station).toMatchObject({ key: "gateway-a", name: "North station at export time" });
+    expect(result.station).toMatchObject({ key: "gateway-a", name: "North station at export time", description: "资产编号 LR-00000001" });
     expect(result.items.map(({ key, name }) => ({ key, name }))).toEqual([
       { key: "gateway:gateway-a:node:0", name: "North probe" },
       { key: "gateway:gateway-b:node:0", name: "South probe" },

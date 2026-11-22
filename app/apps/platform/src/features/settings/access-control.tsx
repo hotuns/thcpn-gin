@@ -590,7 +590,7 @@ const scopeLabel = (row: JsonRecord, resources: ResourceMap) => {
   const type = text(row.scope_type);
   const id = text(row.scope_id);
   const resource = (resources[type] ?? []).find((item) => text(item.id) === id);
-  return `${scopeTypeLabel(type)} · ${text(resource?.name, text(resource?.serial_no, id.slice(0, 8)))}`;
+  return `${scopeTypeLabel(type)} · ${text(resource?.name, text(resource?.asset_no, id.slice(0, 8)))}`;
 };
 
 function AccessForm({
@@ -696,8 +696,8 @@ function AccessForm({
     );
   const deviceOptions = (resources.device ?? []).map((item) => ({
     id: text(item.id),
-    name: text(item.name, text(item.serial_no, item.id)),
-    serial_no: text(item.serial_no, ""),
+    name: text(item.name, text(item.asset_no, item.id)),
+    asset_no: text(item.asset_no, ""),
     device_type: text(item.device_type),
     tags: Array.isArray(item.tags) ? item.tags.filter((tag): tag is string => typeof tag === "string") : [],
   }));
@@ -873,7 +873,7 @@ function AccessForm({
                     <option value="">选择资源</option>
                     {(resources[scopeType] ?? []).map((item) => (
                       <option key={text(item.id)} value={text(item.id)}>
-                        {text(item.name, text(item.serial_no, item.id))}
+                        {text(item.name, text(item.asset_no, item.id))}
                       </option>
                     ))}
                   </SelectInput>}

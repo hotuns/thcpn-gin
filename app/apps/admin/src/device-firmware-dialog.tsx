@@ -5,8 +5,8 @@ import { Alert, Button, Modal, Space, Table, Tag } from "@thcpn/admin-ui";
 import { useLocale } from "@thcpn/i18n";
 
 // Mounted per operation: request keys and selection must never leak to another device.
-export function DeviceFirmwareDialog({ deviceId, deviceName, serialNo, onClose }: {
-  deviceId: string; deviceName: string; serialNo: string; onClose: () => void;
+export function DeviceFirmwareDialog({ deviceId, deviceName, assetNo, onClose }: {
+  deviceId: string; deviceName: string; assetNo: string; onClose: () => void;
 }) {
   const { t } = useLocale();
   const client = useQueryClient();
@@ -27,7 +27,7 @@ export function DeviceFirmwareDialog({ deviceId, deviceName, serialNo, onClose }
   const error = publish.error ?? retry.error;
   const confirm = () => modal.confirm({
     title: t("admin:firmware.confirmPublish"),
-    content: <Space orientation="vertical"><strong>{deviceName} · {serialNo}</strong><span>{selected?.original_filename} · {selected?.version}</span><span>{selected?.data_source_name}</span></Space>,
+    content: <Space orientation="vertical"><strong>{deviceName} · {assetNo}</strong><span>{selected?.original_filename} · {selected?.version}</span><span>{selected?.data_source_name}</span></Space>,
     okText: t("admin:firmware.publishExisting"), cancelText: t("cancel"),
     onOk: () => publish.mutateAsync(),
   });
@@ -37,7 +37,7 @@ export function DeviceFirmwareDialog({ deviceId, deviceName, serialNo, onClose }
       : !result ? <Button type="primary" loading={publish.isPending} disabled={!selected || selected.archived || library.isFetching || !!library.error} onClick={() => void confirm()}>{t("admin:firmware.publishExisting")}</Button> : null}
   </Space>}>
     <Space orientation="vertical" size="middle" style={{ width: "100%" }}>
-      <Alert type="info" showIcon title={`${deviceName} · ${serialNo}`} description={t("admin:firmware.deviceUpgradeHint")} />
+      <Alert type="info" showIcon title={`${deviceName} · ${assetNo}`} description={t("admin:firmware.deviceUpgradeHint")} />
       {library.error ? <Alert type="error" showIcon title={formatApiError(library.error).message} action={<Button onClick={() => void library.refetch()}>{t("admin:firmware.refresh")}</Button>} /> : null}
       {error ? <Alert type="error" showIcon title={formatApiError(error).message} /> : null}
       {result ? <Alert type={result.status === "completed" ? "success" : target?.status === "failed" ? "error" : "warning"} showIcon title={t(`admin:firmware.${result.status}`)} description={target?.error_message || t("admin:firmware.registeredHint")} /> : null}

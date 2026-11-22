@@ -103,7 +103,7 @@ LEFT JOIN device_assignments AS da ON da.device_id = d.id AND da.status = 'activ
 WHERE dr.parent_device_id = $1
   AND dr.relation_type = 'gateway_node'
   AND dr.status = 'active'
-ORDER BY d.name ASC, d.serial_no ASC, dr.id ASC;
+ORDER BY d.name ASC, d.asset_no ASC, dr.id ASC;
 
 -- name: ListVisibleDeviceChildren :many
 SELECT
@@ -142,7 +142,7 @@ JOIN device_assignments AS parent_da ON parent_da.device_id = dr.parent_device_i
 WHERE dr.parent_device_id = $1
   AND dr.relation_type = 'gateway_node'
   AND dr.status = 'active'
-ORDER BY d.name ASC, d.serial_no ASC, dr.id ASC;
+ORDER BY d.name ASC, d.asset_no ASC, dr.id ASC;
 
 -- name: MarkMissingDeviceRelationsRemoved :many
 UPDATE device_relations

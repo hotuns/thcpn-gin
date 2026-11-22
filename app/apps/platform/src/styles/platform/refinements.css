@@ -220,3 +220,10 @@
 .device-detail-heading .device-detail-actions { flex:0 1 auto; flex-wrap:wrap; }
 .device-detail-meta { flex-wrap:wrap; }
 .device-detail-meta > span { white-space:nowrap; }
+
+.notification-icon { color: var(--blue-dark); background: var(--blue-soft); }
+.notification-icon.success { color: var(--green); background: var(--green-soft); }
+.notification-icon.warning { color: var(--orange); background: var(--orange-soft); }
+.notification-icon.danger { color: var(--red); background: var(--red-soft); }
+.notification-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.notification-tab-content.shadcn-tabs-content { margin-top: 0; }

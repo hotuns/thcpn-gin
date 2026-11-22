@@ -1,5 +1,4 @@
 @media (max-width: 767px) {
-  .export-page .export-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .export-toolbar, .export-toolbar > div, .export-toolbar-filter { flex-wrap: wrap; gap: 12px; }
   .export-toolbar-filter { width: 100%; }
   .export-toolbar-filter > .shadcn-select-trigger { flex: 1; min-width: 0; }

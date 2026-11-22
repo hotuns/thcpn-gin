@@ -41,12 +41,22 @@ function defaultStyle(): StyleSpecification {
   };
 }
 
-export function DeviceMap({ points, onSelect, selectedDeviceId, height = 520, styleUrl, mapStyle, showNavigation = true, onMapReady }: { points: DeviceMapPoint[]; onSelect?: (id: string) => void; selectedDeviceId?: string; height?: number | string; styleUrl?: string; mapStyle?: StyleSpecification; showNavigation?: boolean; onMapReady?: (map: MapLibreMap | null) => void }) {
+export function DeviceMap({ points, onSelect, selectedDeviceId, height = 520, styleUrl, mapStyle, showNavigation = true, onMapCreated, onMapReady }: {
+  points: DeviceMapPoint[];
+  onSelect?: (id: string) => void;
+  selectedDeviceId?: string;
+  height?: number | string;
+  styleUrl?: string;
+  mapStyle?: StyleSpecification;
+  showNavigation?: boolean;
+  onMapCreated?: (map: MapLibreMap | null) => void;
+  onMapReady?: (map: MapLibreMap | null) => void;
+}) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
   const layer = useRef<NativeDeviceLayer | null>(null);
-  const current = useRef({ points, selectedDeviceId, onSelect, onMapReady });
-  current.current = { points, selectedDeviceId, onSelect, onMapReady };
+  const current = useRef({ points, selectedDeviceId, onSelect, onMapCreated, onMapReady });
+  current.current = { points, selectedDeviceId, onSelect, onMapCreated, onMapReady };
   const cameraState = useRef<{ map: MapLibreMap; locations: string; selected?: string } | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -61,7 +71,16 @@ export function DeviceMap({ points, onSelect, selectedDeviceId, height = 520, st
     fit(instance, current.current.points);
     const observer = new ResizeObserver(() => instance.resize());
     observer.observe(container.current);
-    return () => { observer.disconnect(); current.current.onMapReady?.(null); layer.current?.dispose(); layer.current = null; instance.remove(); map.current = null; };
+    current.current.onMapCreated?.(instance);
+    return () => {
+      observer.disconnect();
+      current.current.onMapCreated?.(null);
+      current.current.onMapReady?.(null);
+      layer.current?.dispose();
+      layer.current = null;
+      instance.remove();
+      map.current = null;
+    };
   }, [styleUrl, mapStyle, showNavigation]);
   useEffect(() => {
     const instance = map.current;

@@ -72,7 +72,7 @@ export function EcoDirectory({ workspaceId, devices, selectedDevice, selectedNod
   const term = search.trim().toLocaleLowerCase();
   const choices = physical.filter(device =>
     (kind === "all" || (kind === "network" ? ["gateway", "gateway_node"].includes(device.device_type) : device.device_type === kind)) &&
-    (!term || `${device.name} ${device.serial_no}`.toLocaleLowerCase().includes(term)));
+    (!term || `${device.name} ${device.asset_no ?? ""}`.toLocaleLowerCase().includes(term)));
   const options = selectedDevice && !choices.some(device => device.device_id === selectedDevice.device_id) ? [selectedDevice, ...choices] : choices;
   const error = (scoped ? runtime.error : overview.error) || nodes.error || nodeRuntime.error;
   const retry = () => { if (scoped) void runtime.refetch(); else void overview.refetch(); if (gateway) void nodes.refetch(); if (indices.length) void nodeRuntime.refetch(); };
@@ -94,15 +94,15 @@ export function EcoDirectory({ workspaceId, devices, selectedDevice, selectedNod
     <section className="eco-panel eco-device-panel t-panel-slide" data-open={revealed || !motionEnabled} aria-label={gateway ? "组网设备" : "观测设备"}>
       <h2 className="eco-panel-title">{gateway ? "组网设备" : "观测设备"}</h2>
       <div className="eco-device-picker">
-        <label className="eco-device-search"><Search size={13}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="搜索设备 / SN" aria-label="搜索设备"/></label>
+        <label className="eco-device-search"><Search size={13}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="搜索设备 / 资产编号" aria-label="搜索设备"/></label>
         <select aria-label="选择观测设备" value={selectedDevice?.device_id ?? ""} onChange={event => onSelect(event.target.value)}>
           {!selectedDevice && <option value="">选择设备</option>}
-          {options.map(device => <option key={device.device_id} value={device.device_id}>{device.name} · {device.serial_no}</option>)}
+          {options.map(device => <option key={device.device_id} value={device.device_id}>{device.name} · {device.asset_no}</option>)}
         </select>
       </div>
       {gateway ? <>
         <button type="button" className="eco-gateway" aria-pressed={selectedNodeKey === "gateway"} onClick={() => onSelectNode("gateway")}>
-          <RadioTower size={35} strokeWidth={1.3}/><span><strong>{gateway.name}</strong><small>{gateway.serial_no}</small></span>
+          <RadioTower size={35} strokeWidth={1.3}/><span><strong>{gateway.name}</strong><small>{gateway.asset_no}</small></span>
         </button>
         <div className="eco-gateway-counts"><span>网关 <b>1</b></span><span>节点 <b>{nodes.data?.items.length ?? "—"}</b></span><span>信号质量 <b>—</b></span></div>
         <ObservatoryAutoScroll className="eco-node-table-wrap" label="组网节点列表" paused={!motionEnabled} resetKey={`${gateway.device_id}:${selectedNodeKey}:${search}:${nodes.data?.items.map(node => node.key).join(",") ?? ""}`}><table className="eco-node-table"><thead><tr><th>节点名称</th><th>信号</th><th>状态</th><th>节点 ID</th></tr></thead><tbody>
@@ -120,7 +120,7 @@ export function EcoDirectory({ workspaceId, devices, selectedDevice, selectedNod
             </tr>;
           })}
         </tbody></table>{nodes.isLoading ? <div className="eco-directory-empty">加载节点…</div> : nodes.data && !nodes.data.items.length ? <div className="eco-directory-empty">暂无节点</div> : null}</ObservatoryAutoScroll>
-      </> : <ObservatoryAutoScroll className="eco-device-rows" label="观测设备列表" paused={!motionEnabled} resetKey={`${selectedDevice?.device_id ?? ""}:${kind}:${search}:${choices.map(device => device.device_id).join(",")}`}>{choices.length ? choices.map(device => <button type="button" key={device.device_id} onClick={() => onSelect(device.device_id)} aria-pressed={selectedDevice?.device_id === device.device_id}><RadioTower size={19}/><span><strong>{device.name}</strong><small>{device.serial_no}</small></span><span>›</span></button>) : <div className="eco-directory-empty">暂无匹配设备</div>}</ObservatoryAutoScroll>}
+      </> : <ObservatoryAutoScroll className="eco-device-rows" label="观测设备列表" paused={!motionEnabled} resetKey={`${selectedDevice?.device_id ?? ""}:${kind}:${search}:${choices.map(device => device.device_id).join(",")}`}>{choices.length ? choices.map(device => <button type="button" key={device.device_id} onClick={() => onSelect(device.device_id)} aria-pressed={selectedDevice?.device_id === device.device_id}><RadioTower size={19}/><span><strong>{device.name}</strong><small>{device.asset_no}</small></span><span>›</span></button>) : <div className="eco-directory-empty">暂无匹配设备</div>}</ObservatoryAutoScroll>}
       {error && <button type="button" className="eco-directory-error" onClick={retry} title={formatApiError(error).message}>数据读取失败 · 重试</button>}
     </section>
     <section className="eco-panel eco-distribution t-panel-slide" data-open={revealed || !motionEnabled} aria-label="设备分布">

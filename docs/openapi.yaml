@@ -9892,11 +9892,12 @@ components:
         traffic_pack_price_cents: { type: integer, format: int64 }
     OpenApiDevice:
       type: object
-      required: [id, name, serial_no, device_type, status, lifecycle_status]
+      required: [id, name, asset_no, serial_no, device_type, status, lifecycle_status]
       properties:
         id: { $ref: "#/components/schemas/UUID" }
         name: { type: string }
-        serial_no: { type: string }
+        asset_no: { type: string, description: Stable platform asset number }
+        serial_no: { type: string, deprecated: true, description: Legacy platform serial number. Use asset_no. }
         device_type: { type: string, enum: [standalone, gateway, gateway_node, camera, carbon_sink] }
         status: { type: string }
         lifecycle_status: { type: string }
@@ -10564,6 +10565,8 @@ components:
           type: string
         serial_no:
           type: string
+          deprecated: true
+          description: Legacy platform serial number. Use asset_no to identify the asset in platform clients.
         name:
           type: string
         status:
@@ -10598,7 +10601,8 @@ components:
       type: object
       properties:
         claim_slug: { type: string }
-        serial_no: { type: string, description: Platform asset number or original printed serial, used with the binding code }
+        asset_no: { type: string, description: Platform asset number or the original number printed on an existing label, used with the binding code }
+        serial_no: { type: string, deprecated: true, description: Legacy request field retained for older clients. Use asset_no. }
         code: { type: string }
     ClaimDeviceRequest:
       allOf:
@@ -10617,7 +10621,7 @@ components:
         device_id: { $ref: "#/components/schemas/UUID" }
         device_name: { type: string }
         device_type: { $ref: "#/components/schemas/DeviceTopologyRole" }
-        serial_no: { type: string }
+        serial_no: { type: string, deprecated: true, description: Legacy platform serial number. Use asset_no for display and printing. }
         claim_slug: { type: string }
         claim_path: { type: string }
         manual_code: { type: string }
@@ -10779,13 +10783,14 @@ components:
         overridden_fields: { type: array, items: { type: string } }
     DeviceMapItem:
       type: object
-      required: [device_id, name, serial_no, device_type, status, location_source, child_count, environment]
+      required: [device_id, name, asset_no, device_type, status, location_source, child_count, environment]
       properties:
         gateway_device_id: { $ref: "#/components/schemas/UUID", description: Parent gateway for a virtual LoRaWAN V2 node; device_id is a stable map marker ID, not an independent device. }
         node_index: { type: integer, minimum: 1, maximum: 254 }
+        node_sn: { type: string, description: Physical LoRaWAN V2 node SN }
         device_id: { $ref: "#/components/schemas/UUID" }
         name: { type: string }
-        serial_no: { type: string }
+        asset_no: { type: string, description: Platform asset number of the device or physical node }
         device_type: { type: string }
         status: { type: string }
         workspace_id: { $ref: "#/components/schemas/UUID" }
@@ -11929,11 +11934,11 @@ components:
         updated_at: {$ref: "#/components/schemas/Timestamp"}
     FirmwareCandidate:
       type: object
-      required: [id, name, serial_no, data_source_id, data_source_name, source_family, device_type]
+      required: [id, name, asset_no, data_source_id, data_source_name, source_family, device_type]
       properties:
         id: {$ref: "#/components/schemas/UUID"}
         name: {type: string}
-        serial_no: {type: string}
+        asset_no: {type: string, description: Platform asset number}
         data_source_id: {$ref: "#/components/schemas/UUID"}
         data_source_name: {type: string}
         source_family: {type: string, enum: [thcpn, carbon, lorawan_v2]}

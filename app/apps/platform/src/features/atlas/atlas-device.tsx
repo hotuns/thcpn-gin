@@ -100,7 +100,7 @@ export function AtlasDevice({
           <span className="atlas-overline">{a("explore")}</span>
           <h2>{node?.name ?? device.name}</h2>
           <p>
-            {node ? device.name : device.serial_no} <span>·</span>{" "}
+            {node ? device.name : device.asset_no} <span>·</span>{" "}
             {device.environment.ecosystem?.[
               locale === "en-US" ? "name_en" : "name_zh"
             ] || a("devices")}

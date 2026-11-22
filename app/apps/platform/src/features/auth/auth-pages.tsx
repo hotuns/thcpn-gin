@@ -1,3 +1,4 @@
+import "./auth-page.css";
 import { policyLimit } from "../../shared/config/system-policy";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
@@ -223,7 +224,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
     navigate({ pathname: location.pathname, search: params.toString() ? `?${params}` : "" }, { replace: true });
   };
   return (
-    <div className="auth-layout">
+    <div className="auth-layout platform-auth">
       <section className="auth-visual">
         {visuals.data?.items.length ? <LoginVisualCarousel items={visuals.data.items}/> : null}
         {visuals.data?.items.length ? <div className="auth-visual-shade" aria-hidden="true" /> : null}
@@ -232,17 +233,6 @@ export function AuthPage({ register = false }: { register?: boolean }) {
       </section>
       <section className="auth-form-side">
         <div className="auth-card">
-          <div className="eyebrow">
-            {initialPasswordToken
-              ? "FIRST PASSWORD"
-              : forgotPassword
-              ? "RESET PASSWORD"
-              : register
-              ? "CREATE ACCESS"
-              : mfaRequired
-                ? "SECOND FACTOR"
-                : "SECURE SIGN IN"}
-          </div>
           <h1 className="auth-heading">
             {initialPasswordToken
               ? t("platform:auth.setupPassword")
@@ -258,14 +248,14 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             <div className="auth-mode">
               <button
                 type="button"
-                className={mode === "password" ? "active" : ""}
+                aria-pressed={mode === "password"}
                 onClick={() => switchMode("password")}
               >
                 {t("platform:auth.passwordLogin")}
               </button>
               <button
                 type="button"
-                className={mode === "sms" ? "active" : ""}
+                aria-pressed={mode === "sms"}
                 onClick={() => switchMode("sms")}
               >
                 {t("platform:auth.smsLogin")}
@@ -415,7 +405,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             )}
             </>}
             {message && (
-              <div className={success ? "command-note" : "form-error"}>
+              <div role={success ? "status" : "alert"} className={success ? "command-note" : "form-error"}>
                 {message}
               </div>
             )}

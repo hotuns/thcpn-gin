@@ -68,7 +68,6 @@
 .data-builder-validation { margin: 0; color: var(--red); font-size: var(--font-size-small); }
 .data-builder-empty { padding: 24px 16px; margin: 0; text-align: center; color: var(--muted); }
 .data-builder-hint { color: var(--muted); font-size: var(--font-size-small); line-height: 1.6; }
-.export-page .export-summary[hidden] { display: none; }
 .export-page .export-system-form { overflow: visible; }
 .export-page .export-system-form form.export-builder { grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; padding: 24px; background: var(--panel); align-items: start; }
 .export-page .export-builder-main { padding: 0; gap: 24px; }

@@ -1,12 +1,12 @@
-import "./dashboard-mobile.css";
+import "./dashboard.css";
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Info, RefreshCw } from "lucide-react";
+import { Activity, ArrowUpRight, Bell, Camera, Database, Info, RadioTower, RefreshCw, type LucideIcon } from "lucide-react";
 import { api, formatApiError } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { useLocale } from "@thcpn/i18n";
-import { Button, PageHeader, Panel, StateView, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../shared/ui";
+import { Button, PageHeader, Panel, StateView } from "../../shared/ui";
 import { DashboardTrend } from "./dashboard-trend";
 
 export function DashboardPage() {
@@ -15,7 +15,7 @@ export function DashboardPage() {
   if (!current || error) {
     const failure = error ? formatApiError(error) : null;
     return <div className="observation-overview">
-      <PageHeader title={t("platform:overview.title")} description={t("platform:overview.description")} />
+      <PageHeader title={t("platform:overview.title")} />
       <Panel><StateView type={failure ? "error" : loading ? "loading" : "empty"}
         title={t(`platform:overview.${failure ? "workspaceFailed" : loading ? "loading" : "noWorkspace"}`)}
         description={failure?.message ?? (loading ? "" : t("platform:overview.noWorkspaceHelp"))}
@@ -60,41 +60,39 @@ function WorkspaceOverview({ workspaceId, workspaceName }: { workspaceId: string
 
   return <div className="observation-overview">
     <PageHeader eyebrow={t("platform:overview.workspace", { name: workspaceName })}
-      title={t("platform:overview.title")} description={t("platform:overview.description")}
-      actions={<><Button variant="secondary" disabled={busy} onClick={refresh}><RefreshCw size={16} aria-hidden="true" />{t(`platform:overview.${busy ? data ? "refreshing" : "loadingValue" : "refresh"}`)}</Button>{preparing && <PreparingHint message={t("platform:overview.preparing")} />}</>} />
+      title={t("platform:overview.title")}
+      actions={<Button variant="secondary" disabled={busy} onClick={refresh}><RefreshCw size={16} aria-hidden="true" />{t(`platform:overview.${busy ? data ? "refreshing" : "loadingValue" : "refresh"}`)}</Button>} />
     {error && <div className="overview-notice" role="alert">
       <strong>{t(`platform:overview.${data ? "refreshFailed" : "failed"}`)}</strong>
       <span>{error.message}</span>
       {error.requestId && <span>{t("common:requestId", { id: error.requestId })}</span>}
       <Button variant="secondary" onClick={refresh} disabled={busy}>{t("platform:overview.retry")}</Button>
     </div>}
-    {busy && <p className="overview-notice" role="status">{t(`platform:overview.${data ? "refreshing" : "loading"}`)}</p>}
+    {busy && <p className="sr-only" role="status">{t(`platform:overview.${data ? "refreshing" : "loading"}`)}</p>}
     {data?.devices.total === 0 && <div className="overview-notice"><strong>{t("platform:overview.noDevices")}</strong><span>{t("platform:overview.noDevicesHelp")}</span></div>}
     {allUnknown && !preparing && <p className="overview-notice" role="status">{t("platform:overview.allUnknown")}</p>}
 
-    <Panel className="overview-statistics" aria-busy={busy}>
+    <section className="overview-statistics" aria-busy={busy}>
       <div className="overview-metrics">
-        <Metric id="records" label={t("platform:overview.records")} value={count(data?.records.total.value)} hero>
+        <Metric id="records" icon={Database} label={t("platform:overview.records")} value={count(data?.records.total.value)} featured>
           <p>{t("platform:overview.recordsHelp")}</p>
           {data && <p>{data.records.first_observed_at ? t("platform:overview.firstObserved", { time: time(data.records.first_observed_at) }) : t("platform:overview.firstUnknown")}</p>}
         </Metric>
-        <Metric id="images" label={t("platform:overview.images")} value={count(data?.images.total.value)}>
-          <p>{t("platform:overview.imagesHelp")}</p>
-        </Metric>
-        <Metric id="today" label={t("platform:overview.today")} value={count(data?.records.today.value)}>
+        <Metric id="images" icon={Camera} label={t("platform:overview.images")} value={count(data?.images.total.value)} />
+        <Metric id="today" icon={Activity} label={t("platform:overview.today")} value={count(data?.records.today.value)}>
           <p>{t("platform:overview.todayImages", { value: count(data?.images.today.value) })}</p>
         </Metric>
-        <Metric id="reporting" label={t("platform:overview.reporting")} value={count(reportingUnknown ? null : data?.devices.reporting)}>
-          {data && !reportingUnknown && <p>{t("platform:overview.confirmed")}</p>}
+        <Metric id="reporting" icon={RadioTower} label={t("platform:overview.reporting")} value={count(reportingUnknown ? null : data?.devices.reporting)}>
           {data && <p>{t("platform:overview.deviceCounts", { total: formatNumber(data.devices.total), unknown: formatNumber(data.devices.unknown), inactive: formatNumber(data.devices.inactive) })}</p>}
           <details className="overview-status-help"><summary>{t("platform:overview.reportingHelpTitle")}</summary><p>{t("platform:overview.reportingHelp")}</p></details>
         </Metric>
       </div>
       <div className="overview-metadata">
         <span>{t("platform:overview.timezone", { timezone: data?.timezone ?? t("platform:overview.unknown") })}</span>
-        <span>{data?.statistics_updated_at ? t("platform:overview.updated", { time: time(data.statistics_updated_at) }) : t("platform:overview.updatedUnknown")}</span>
+        <span><Activity size={14} aria-hidden="true" />{data?.statistics_updated_at ? t("platform:overview.updated", { time: time(data.statistics_updated_at) }) : t("platform:overview.updatedUnknown")}</span>
       </div>
-    </Panel>
+    </section>
+    {preparing && <p className="overview-notice" role="status"><Info size={16} aria-hidden="true" />{t("platform:overview.preparing")}</p>}
 
     <div className="overview-content">
       <DashboardTrend days={days} onDaysChange={setDays} data={data} busy={busy}
@@ -102,37 +100,35 @@ function WorkspaceOverview({ workspaceId, workspaceName }: { workspaceId: string
 
       <div className="overview-bottom">
         <Panel className="overview-attention">
-          <div className="overview-section-heading"><div><h2>{t("platform:overview.attention")}</h2><p>{t("platform:overview.attentionHelp")}</p></div><Link to="/devices">{t("platform:overview.viewDevices")}</Link></div>
+          <div className="overview-section-heading">
+            <h2>{t("platform:overview.attention")}</h2>
+            <Link className="overview-section-link" to="/devices">{t("platform:overview.viewDevices")}<ArrowUpRight size={15} aria-hidden="true" /></Link>
+          </div>
           {!data ? <p>{t(`platform:overview.${error ? "attentionUnavailable" : "loading"}`)}</p> : <>
             {(allUnknown || data.devices.unknown > 0) && <p className="overview-notice">{t(`platform:overview.${allUnknown ? "attentionUnavailable" : "attentionUnknown"}`)}</p>}
             {data.attention.length ? <ul className="overview-device-list">{data.attention.map((device) => <li key={device.id}>
               <div><Link to={`/devices/${encodeURIComponent(device.device_id)}`}>{device.name || device.device_id}</Link><p>{device.last_observed_at ? t("platform:overview.lastObserved", { time: time(device.last_observed_at) }) : t("platform:overview.lastUnknown")}</p>
-                {device.kind === "unavailable" && <p>{t("platform:overview.unavailableHelp")}</p>}
                 {device.threshold_seconds != null && <p>{t("platform:overview.threshold", { seconds: formatNumber(device.threshold_seconds) })}</p>}</div>
-              <span className="overview-device-state">{t(`platform:overview.${device.kind}`)}</span>
+              <span className="overview-device-state" data-kind={device.kind}>{t(`platform:overview.${device.kind}`)}</span>
             </li>)}</ul> : !allUnknown && data.devices.unknown === 0 && <p>{t("platform:overview.noAttention")}</p>}
           </>}
         </Panel>
-        <Panel className="overview-alerts"><h2>{t("platform:overview.alerts")}</h2><div className="overview-alert-count">{count(data?.active_alerts)}</div><p>{t("platform:overview.alertsHelp")}</p><Link to="/alerts">{t("platform:overview.viewAlerts")}</Link></Panel>
+        <Panel className="overview-alerts">
+          <div className="overview-section-heading">
+            <h2><span className="overview-metric-icon"><Bell size={17} aria-hidden="true" /></span>{t("platform:overview.alerts")}</h2>
+            <Link className="overview-section-link" to="/alerts">{t("platform:overview.viewAlerts")}<ArrowUpRight size={15} aria-hidden="true" /></Link>
+          </div>
+          <div className="overview-alert-count">{count(data?.active_alerts)}</div>
+        </Panel>
       </div>
     </div>
   </div>;
 }
 
-function PreparingHint({ message }: { message: string }) {
-  const [open, setOpen] = useState(false);
-  return <TooltipProvider delayDuration={200}><Tooltip open={open} onOpenChange={setOpen}>
-    <TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" aria-label={message} onClick={event => {
-      // Keep the tooltip open on tap as well as hover and keyboard focus.
-      event.preventDefault();
-      setOpen(current => !current);
-    }}><Info size={17} aria-hidden="true" /></Button></TooltipTrigger>
-    <TooltipContent side="bottom" align="end" style={{ maxWidth: 280 }}>{message}</TooltipContent>
-  </Tooltip></TooltipProvider>;
-}
-
-function Metric({ id, label, value, hero, children }: { id: string; label: string; value: string; hero?: boolean; children: ReactNode }) {
-  return <section className={`overview-metric${hero ? " overview-hero" : ""}`} aria-labelledby={`overview-${id}-label`}>
-    <h2 id={`overview-${id}-label`}>{label}</h2><div className="overview-value" data-testid={`overview-${id}`}>{value}</div><div className="overview-metric-notes">{children}</div>
+function Metric({ id, icon: Icon, label, value, featured, children }: { id: string; icon: LucideIcon; label: string; value: string; featured?: boolean; children?: ReactNode }) {
+  return <section className={`overview-metric${featured ? " overview-metric-featured" : ""}`} aria-labelledby={`overview-${id}-label`}>
+    <h2 id={`overview-${id}-label`}><span className="overview-metric-icon"><Icon size={17} aria-hidden="true" /></span>{label}</h2>
+    <div key={value} className="overview-value" data-testid={`overview-${id}`}>{value}</div>
+    {children && <div className="overview-metric-notes">{children}</div>}
   </section>;
 }

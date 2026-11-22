@@ -6,22 +6,24 @@ import { Alert, AlertDescription, AlertTitle } from "../../shared/ui/primitives/
 import { Button, CheckboxInput, SearchInput, SelectInput } from "../../shared/ui";
 import { DataRangeFields as RangeFields, validDataRange } from "../../shared/data/data-builder";
 import { ExportDevicePicker, ExportContents } from "./export-device-picker";
-import { defaultRange, value, arrayParam, buildGroupExportPayload } from "./export-model";
-import { type FormCommon, FormFooter } from "./export-form-layout";
+import { initialExportRange, value, arrayParam, buildGroupExportPayload } from "./export-model";
+import { type FormCommon, FormFooter, useExportFormDirty } from "./export-form-layout";
 
 export function GroupExportForm({
   devices,
   tagsByDevice,
   params,
   chooser,
+  busy,
   onClose,
   onCreate,
+  onDirtyChange,
   feedback,
 }: { devices: Device[]; tagsByDevice: Map<string, string[]> } & FormCommon) {
   const gateways = devices.filter(
     (item) => value(item, "device_type") === "gateway",
   );
-  const range = defaultRange();
+  const range = initialExportRange(params);
   const [gatewayId, setGatewayId] = useState(params.get("gateway") ?? "");
   const [keyword, setKeyword] = useState("");
   const [nodeScope,setNodeScope]=useState<"bound"|"history">(params.get("node_scope")==="history"?"history":"bound");
@@ -33,9 +35,15 @@ export function GroupExportForm({
   const gateway = gateways.find((item) => value(item, "id") === gatewayId);
   const lorawan = value(gateway ?? {}, "source_family") === "lorawan_v2";
   const nodeItems = children.data?.items ?? [];
-  const nodes = nodeItems.map((node) => ({ id: node.key, name: nodeOptionLabel(node), serial_no: node.target.kind === "device" ? `ID ${node.target.device_id.slice(0, 8)}` : `节点 ${node.target.node_index}` }));
+  const nodes = nodeItems.map((node) => ({
+    id: node.key,
+    name: nodeOptionLabel(node),
+    asset_no: node.asset_no,
+    node_sn: node.node_sn,
+    description: [node.asset_no ? `资产编号 ${node.asset_no}` : "", node.node_sn ? `SN ${node.node_sn}` : "", node.target.kind === "gateway_node" ? `序号 ${node.target.node_index}` : ""].filter(Boolean).join(" · "),
+  }));
   const filteredNodes = nodes.filter((item) =>
-    `${value(item, "name")} ${value(item, "serial_no")} ${(tagsByDevice.get(value(item, "id")) ?? []).join(" ")}`
+    `${value(item, "name")} ${value(item, "description")} ${(tagsByDevice.get(value(item, "id")) ?? []).join(" ")}`
       .toLowerCase()
       .includes(keyword.toLowerCase()),
   );
@@ -43,12 +51,12 @@ export function GroupExportForm({
   const [selected, setSelected] = useState<string[] | null>(
     params.has("nodes") ? requested : null,
   );
-  const [start, setStart] = useState(params.get("start") ?? range.start);
-  const [end, setEnd] = useState(params.get("end") ?? range.end);
+  const [start, setStart] = useState(range.start);
+  const [end, setEnd] = useState(range.end);
   const [images, setImages] = useState(true);
   const [data, setData] = useState(params.get("data") !== "0");
   const [status, setStatus] = useState(params.get("status") === "1");
-  const [busy, setBusy] = useState(false);
+  useExportFormDirty({ gatewayId, nodeScope, selected, start, end, images, data, status }, onDirtyChange);
   const chooseGateway = (id: string) => {
     setGatewayId(id);
     setSelected(null);
@@ -58,14 +66,12 @@ export function GroupExportForm({
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (busy || (!effective.length && (data || !(lorawan && status))) || (!data && !(lorawan && status) && (lorawan || !images)) || !validDataRange(start, end)) return;
-    setBusy(true);
     const chosen = nodeItems.filter((node) => effective.includes(node.key));
     await onCreate(buildGroupExportPayload({
       nodeTargets: chosen.map((node) => node.target),
       gateway: { id: gatewayId, name: value(gateway ?? {}, "name") },
       start, end, lorawan, images, data, status,
     }));
-    setBusy(false);
   };
   return (
     <div className="export-system-form">
@@ -91,15 +97,15 @@ export function GroupExportForm({
             devices={gateways}
             selectedIds={gatewayId ? [gatewayId] : []}
             onChange={(ids) => chooseGateway(ids[0] ?? "")}
-            searchPlaceholder="搜索组网站名称或序列号"
+            searchPlaceholder="搜索组网站名称或资产编号"
           />
           <section className="export-target-picker">
             {lorawan&&<SelectInput aria-label="导出节点范围" value={nodeScope} onChange={event=>{setNodeScope(event.target.value as "bound"|"history");setSelected(null);}}><option value="bound">当前节点</option><option value="history">历史数据</option></SelectInput>}
 
             {(nodes.length > 5 || keyword) && <SearchInput
               className="export-node-search"
-              aria-label="搜索节点名称或序列号"
-              placeholder="搜索节点名称或序列号"
+              aria-label="搜索节点名称、资产编号、SN 或序号"
+              placeholder="搜索节点名称、资产编号、SN 或序号"
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
             />}
@@ -143,7 +149,7 @@ export function GroupExportForm({
                     />
                     <span>
                       <strong>{value(item, "name")}</strong>
-                      {value(item, "serial_no") && <small>{value(item, "serial_no")}</small>}
+                      {value(item, "description") && <small>{value(item, "description")}</small>}
                     </span>
                   </label>
                 );
