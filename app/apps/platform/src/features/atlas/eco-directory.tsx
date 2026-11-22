@@ -105,7 +105,7 @@ export function EcoDirectory({ workspaceId, devices, selectedDevice, selectedNod
           <RadioTower size={35} strokeWidth={1.3}/><span><strong>{gateway.name}</strong><small>{gateway.asset_no}</small></span>
         </button>
         <div className="eco-gateway-counts"><span>网关 <b>1</b></span><span>节点 <b>{nodes.data?.items.length ?? "—"}</b></span><span>信号质量 <b>—</b></span></div>
-        <ObservatoryAutoScroll className="eco-node-table-wrap" label="组网节点列表" paused={!motionEnabled} resetKey={`${gateway.device_id}:${selectedNodeKey}:${search}:${nodes.data?.items.map(node => node.key).join(",") ?? ""}`}><table className="eco-node-table"><thead><tr><th>节点名称</th><th>信号</th><th>状态</th><th>节点 ID</th></tr></thead><tbody>
+        <ObservatoryAutoScroll className="eco-node-table-wrap" label="组网节点列表" paused={!motionEnabled} resetKey={`${gateway.device_id}:${selectedNodeKey}:${search}:${nodes.data?.items.map(node => node.key).join(",") ?? ""}`}><table className="eco-node-table"><thead><tr><th>节点名称</th><th>信号</th><th>状态</th><th>资产编号</th></tr></thead><tbody>
           {nodes.data?.items.map(node => {
             const reading = nodeRuntime.data?.items.find(item => item.key === node.key);
             const signal = nodeRuntime.isError || reading?.error ? undefined : reading?.rssi;
@@ -116,7 +116,7 @@ export function EcoDirectory({ workspaceId, devices, selectedDevice, selectedNod
               <td><button type="button" onClick={() => onSelectNode(node.key)} aria-pressed={selectedNodeKey === node.key} title={node.name}><i/>{node.name}</button></td>
               <td title={signal == null ? "未知" : `${signal}${signal < 0 ? " dBm" : ""}`}>{signal == null ? "—" : <Icon size={18}/>}</td>
               <td><span className="eco-node-status" data-current={current}>{current && <i/>}{current ? "已上报" : "—"}</span></td>
-              <td title={node.node_sn}>{node.node_sn || "—"}</td>
+              <td title={node.asset_no}>{node.asset_no || "—"}</td>
             </tr>;
           })}
         </tbody></table>{nodes.isLoading ? <div className="eco-directory-empty">加载节点…</div> : nodes.data && !nodes.data.items.length ? <div className="eco-directory-empty">暂无节点</div> : null}</ObservatoryAutoScroll>
