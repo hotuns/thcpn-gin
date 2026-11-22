@@ -44,7 +44,7 @@ export function AtlasNetwork({ map, gateway, nodes, devices, selectedNodeKey, on
         onClick={() => onSelectNode(node.key)}
         onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectNode(node.key); } }}
       >
-        <title>{node.name}{node.node_sn ? ` · ${node.node_sn}` : ""}</title>
+        <title>{node.name}{node.asset_no ? ` · ${node.asset_no}` : ""}{node.node_sn ? ` · 节点 SN ${node.node_sn}` : ""}</title>
         <circle className="atlas-network-node-hit" r={deepBlue ? 23 : 15} />
         {deepBlue && <ellipse className="eco-network-halo" rx="30" ry="10" />}
         <ellipse className="atlas-network-ground" rx={deepBlue ? 20 : 13} ry={deepBlue ? 7 : 5} />
