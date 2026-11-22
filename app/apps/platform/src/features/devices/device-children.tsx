@@ -63,13 +63,13 @@ export function DeviceChildren({
       {!mobile && <div className="child-device-head" aria-hidden="true"><span>序号</span><span>节点名称</span><span>资产编号</span>{lora && <span>节点编号</span>}<span>指标数</span><span>{lora ? "节点状态" : "电量 / 信号"}</span><span>操作</span></div>}
       {nodes.map((node, index) => {
         const sequence = (lora ? (currentPage - 1) * 20 : 0) + index + 1;
-        const hardwareSN = node.node_sn || node.hardware_sn;
+        const nodeSN = lora ? node.node_sn : node.hardware_sn;
         const runtimeView = lora?<RuntimeStatusCards compact deviceId={deviceId} workspaceId={workspaceId} name={node.name} sn={node.node_sn} keys={nodeStatusKeys} snapshot={nodeSnapshot(runtime.data?.items.find(item=>item.key===node.key))} loading={runtime.isFetching} error={runtime.error?formatApiError(runtime.error).message:undefined}/>:<NodeVitals item={runtime.data?.items.find(item => item.key === node.key)} loading={runtime.isLoading} error={runtime.isError}/>;
         return (
         <div key={node.key} className="child-device-row">
           <span className="child-device-sequence" aria-label={`序号 ${sequence}`}>{sequence}</span>
           <div className="child-device-name cell-title">{node.name}</div>
-          <div className="child-device-sn"><span className="child-device-label">资产编号 </span>{node.asset_no || "—"}{hardwareSN && <div>硬件 SN {hardwareSN}</div>}</div>
+          <div className="child-device-sn"><span className="child-device-label">资产编号 </span>{node.asset_no || "—"}{nodeSN && <div>{lora ? "节点 SN" : "硬件 SN"} {nodeSN}</div>}</div>
           {lora && <div className="child-device-index"><span className="child-device-label">节点编号 </span>{node.target.kind === "gateway_node" ? node.target.node_index : "—"}</div>}
           <div className="child-device-metrics"><span className="child-device-label">指标数 </span>{node.streams.filter(isMeasurement).length}</div>
           <div className="child-device-runtime">
