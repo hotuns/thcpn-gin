@@ -9,7 +9,7 @@ import { sourceDateValue } from "./source-date";
 const queryKey = ["admin", "device-inspection"];
 const formatter = new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", dateStyle: "short", timeStyle: "short" });
 const formatTime = (value?: string | null) => value ? formatter.format(new Date(value)) : "—";
-const kinds: Record<InspectionKind, string> = { late: "上报超时", missing: "指标缺值", range: "超出量程", invalid: "协议无效值", zero: "疑似卡零" };
+const kinds: Record<InspectionKind, string> = { late: "停报", missing: "指标缺值", range: "超出量程", invalid: "协议无效值", zero: "疑似卡零" };
 const families: Record<string,string> = { thcpn: "标准站 / THCPN 组网", carbon: "碳汇" };
 const deviceTypes: Record<string,string> = {all:"全部类型",standalone:"标准站",gateway:"组网网关",gateway_node:"组网节点"};
 const eventPath = (item: InspectionEvent, tab: string) => {
@@ -23,6 +23,14 @@ const eventPath = (item: InspectionEvent, tab: string) => {
   return `/admin/devices/${item.device_id}?${params}`;
 };
 const renderError = (error: unknown) => error ? <Alert type="error" showIcon title={formatApiError(error).message} /> : null;
+
+function InspectionEventTag({ event }: { event: InspectionEvent }) {
+  if (event.kind === "late") {
+    if (event.severity === "critical") return <Tag color="red">停报报警</Tag>;
+    if (event.severity === "warning") return <Tag color="gold">停报提醒</Tag>;
+  }
+  return <Tag color={event.kind === "zero" ? "gold" : "orange"}>{kinds[event.kind]}</Tag>;
+}
 
 export function AdminInspectionPage() {
   const cache = useQueryClient();
@@ -38,9 +46,9 @@ export function AdminInspectionPage() {
     {renderError(overview.error)}
     <Row gutter={[12,12]}>
       {[
-        ["纳入巡检",counts?.eligible],["已检查",counts?.checked],["周期未知",counts?.unknown_schedule],
+        ["纳入巡检",counts?.eligible],["已检查",counts?.checked],
         ["检查有误",counts?.failed],["检查积压",counts?.overdue],["当前待处理",counts?.unacknowledged],
-      ].map(([label,value]) => <Col key={label} xs={12} sm={8} xl={4}><Card size="small" loading={overview.isLoading}><Statistic title={label} value={value ?? "—"}/></Card></Col>)}
+      ].map(([label,value]) => <Col key={label} xs={12} sm={8} xl={{ flex: 1 }}><Card size="small" loading={overview.isLoading}><Statistic title={label} value={value ?? "—"}/></Card></Col>)}
     </Row>
     <Card size="small" title="每日汇总（北京时间）" extra={<DatePicker value={dayjs(date)} allowClear={false} onChange={(value) => { if (value) setDate(value.format("YYYY-MM-DD")); }}/>}>
       <Space size="large"><Statistic title="新增异常" value={counts?.new_events ?? "—"}/><Statistic title="已恢复" value={counts?.resolved_events ?? "—"}/></Space>
@@ -77,7 +85,7 @@ function InspectionEvents() {
       pagination={{current:page,total:query.data?.total??0,pageSize:50,showSizeChanger:false,onChange:setPage}}
       columns={[
         {title:"设备",render:(_,item)=><><Link to={`/admin/devices/${item.device_id}`}>{item.device_name}</Link><br/><Typography.Text type="secondary">{item.asset_no}{item.node_index ? ` · 节点 ${item.node_index}` : ""}</Typography.Text></>},
-        {title:"异常",render:(_,item)=><><Tag color={item.kind==="zero"?"gold":"orange"}>{kinds[item.kind]}</Tag>{item.metric}<br/><Typography.Text type="secondary">{item.detail}</Typography.Text></>},
+        {title:"异常",render:(_,item)=><><InspectionEventTag event={item}/>{item.metric}<br/><Typography.Text type="secondary">{item.detail}</Typography.Text></>},
         {title:"首次异常",dataIndex:"started_at",render:formatTime},
         {title:"状态",render:(_,item)=>item.resolved_at?<Tag color="green">已恢复</Tag>:item.acknowledged_at?<Tag color="blue">已确认</Tag>:<Tag color="orange">待处理</Tag>},
         {title:"操作",render:(_,item)=><Space wrap>
@@ -90,7 +98,7 @@ function InspectionEvents() {
       footer={open?.acknowledged_at ? null : undefined} confirmLoading={save.isPending} onOk={()=>{if(open)save.mutate(open);}}>
       {open&&<Space orientation="vertical" style={{width:"100%"}}>
         <Descriptions column={1} size="small" items={[
-          {key:"issue",label:"异常",children:`${kinds[open.kind]} · ${open.metric}`},
+          {key:"issue",label:"异常",children:<><InspectionEventTag event={open}/>{open.metric}</>},
           {key:"evidence",label:"依据",children:open.detail},
           {key:"since",label:"首次异常",children:formatTime(open.started_at)},
           {key:"last",label:"最近确认异常",children:formatTime(open.last_seen_at)},
@@ -111,7 +119,7 @@ function InspectionDevices() {
   const query=useQuery({queryKey:[...queryKey,"devices",state,q,page],queryFn:()=>api.admin.inspectionDevices({state,q,page})});
   return <Space orientation="vertical" style={{width:"100%"}}>
     <Space wrap><Select aria-label="巡检覆盖状态" value={state} onChange={(v)=>{setState(v);setPage(1);}} options={[
-      {value:"attention",label:"待关注"},{value:"all",label:"全部设备"},{value:"pending",label:"等待首次检查"},{value:"unknown",label:"周期未知"},{value:"error",label:"检查有误"},{value:"overdue",label:"检查积压"},
+      {value:"attention",label:"待关注"},{value:"all",label:"全部设备"},{value:"pending",label:"等待首次检查"},{value:"error",label:"检查有误"},{value:"overdue",label:"检查积压"},
     ]}/><Input.Search aria-label="搜索设备" placeholder="设备名称或资产编号" allowClear onSearch={(v)=>{setSearch(v.trim());setPage(1);}}/></Space>
     {renderError(query.error)}
     <Table size="small" rowKey="device_id" dataSource={query.data?.items??[]} loading={query.isFetching} scroll={{x:730}}
@@ -119,7 +127,7 @@ function InspectionDevices() {
       columns={[
         {title:"设备",render:(_,d)=><Link to={`/admin/devices/${d.device_id}`}>{d.name} · {d.asset_no}</Link>},
         {title:"设备体系",render:(_,d)=>families[d.family]??d.family},
-        {title:"状态",render:(_,d)=>!d.checked_at?<Tag>等待首次检查</Tag>:d.error?<><Tag color="red">检查有误</Tag>{d.error}</>:d.overdue?<Tag color="gold">检查积压</Tag>:d.schedule_known?<Tag color="green">已检查</Tag>:<Tag color="gold">周期未知</Tag>},
+        {title:"状态",render:(_,d)=>!d.checked_at?<Tag>等待首次检查</Tag>:d.error?<><Tag color="red">检查有误</Tag>{d.error}</>:d.overdue?<Tag color="gold">检查积压</Tag>:<Tag color="green">已检查</Tag>},
         {title:"最近采样",dataIndex:"latest_sample_at",render:formatTime},
         {title:"检查时间",dataIndex:"checked_at",render:formatTime},
       ]}/>

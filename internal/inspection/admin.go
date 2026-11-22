@@ -142,7 +142,7 @@ func (s *Service) Devices(c *gin.Context) {
 	rows, err := s.DB.Query(ctx, eligible+`
  SELECT e.id,e.name,e.asset_no,e.family,st.checked_at,st.latest_sample_at,COALESCE(st.schedule_known,false),COALESCE(st.error,''),COALESCE(st.next_check_at < now()-interval '5 minutes',false),count(*) OVER()
  FROM eligible e LEFT JOIN device_inspection_state st ON st.device_id=e.id
- WHERE ($1='all' OR ($1='attention' AND (st.checked_at IS NULL OR NOT st.schedule_known OR st.error<>'' OR st.next_check_at < now()-interval '5 minutes')) OR
+ WHERE ($1='all' OR ($1='attention' AND (st.checked_at IS NULL OR st.error<>'' OR st.next_check_at < now()-interval '5 minutes')) OR
  ($1='overdue' AND st.next_check_at < now()-interval '5 minutes') OR ($1='error' AND st.error<>'') OR ($1='pending' AND st.checked_at IS NULL) OR ($1='unknown' AND st.checked_at IS NOT NULL AND NOT st.schedule_known))
  AND ($2='' OR e.name ILIKE '%'||$2||'%' OR e.asset_no ILIKE '%'||$2||'%')
  ORDER BY st.checked_at DESC NULLS FIRST,e.name,e.id LIMIT 50 OFFSET $3`, state, search(c), offset(c))
@@ -203,6 +203,7 @@ type Event struct {
 	AssetNo        string     `json:"asset_no"`
 	Family         string     `json:"family"`
 	Kind           string     `json:"kind"`
+	Severity       string     `json:"severity"`
 	Metric         string     `json:"metric"`
 	StreamID       *uuid.UUID `json:"data_stream_id"`
 	Node           *int       `json:"node_index"`
@@ -226,7 +227,7 @@ func (s *Service) Events(c *gin.Context) {
 	rows, err := s.DB.Query(c.Request.Context(), eligible+`
  SELECT x.id,x.device_id,d.name,d.asset_no,COALESCE((SELECT src.source_family FROM device_source_refs ref JOIN data_sources src ON src.id=ref.data_source_id
  WHERE ref.device_id=d.id ORDER BY (ref.status='active') DESC,ref.updated_at DESC LIMIT 1),''),
- x.kind,x.metric,(SELECT ds.id FROM data_streams ds WHERE ds.device_id=x.device_id
+ x.kind,x.severity,x.metric,(SELECT ds.id FROM data_streams ds WHERE ds.device_id=x.device_id
    AND ds.id::text=CASE WHEN x.kind='missing' THEN split_part(x.event_key,':',2)
    WHEN x.kind IN ('range','invalid','zero') THEN split_part(x.event_key,':',3) ELSE '' END LIMIT 1),x.node_index,x.detail,x.started_at,x.last_seen_at,x.resolved_at,x.acknowledged_at,COALESCE(a.name,''),x.note,count(*) OVER()
  FROM device_inspection_events x JOIN devices d ON d.id=x.device_id LEFT JOIN system_admins a ON a.id=x.acknowledged_by
@@ -243,7 +244,7 @@ func (s *Service) Events(c *gin.Context) {
 	var total int
 	for rows.Next() {
 		var e Event
-		if writeError(c, rows.Scan(&e.ID, &e.DeviceID, &e.DeviceName, &e.AssetNo, &e.Family, &e.Kind, &e.Metric, &e.StreamID, &e.Node, &e.Detail, &e.Started, &e.LastSeen, &e.Resolved, &e.Acknowledged, &e.AcknowledgedBy, &e.Note, &total)) {
+		if writeError(c, rows.Scan(&e.ID, &e.DeviceID, &e.DeviceName, &e.AssetNo, &e.Family, &e.Kind, &e.Severity, &e.Metric, &e.StreamID, &e.Node, &e.Detail, &e.Started, &e.LastSeen, &e.Resolved, &e.Acknowledged, &e.AcknowledgedBy, &e.Note, &total)) {
 			return
 		}
 		items = append(items, e)

@@ -15,22 +15,36 @@ import (
 	"thcpn-gin/internal/testdb"
 )
 
-func TestUploadDeadlineUsesBeijingSchedule(t *testing.T) {
+func TestNoUploadSeverityUsesElapsedTime(t *testing.T) {
 	t.Parallel()
-	day := time.Date(2026, 11, 10, 10, 17, 0, 0, beijing)
-	boundary := parseSchedule("0,5,10,15 *").missedAfter(day, 3)
-	if want := day.Add(-17 * time.Minute); !boundary.Equal(want) {
-		t.Fatalf("boundary %v, want %v", boundary, want)
-	}
-	if !lateFinding(0, boundary, boundary, boundary.Add(-time.Hour), day).Active {
-		t.Fatal("three missed uploads were not detected")
-	}
-	if lateFinding(0, boundary, boundary, boundary.Add(time.Minute), day).Active {
-		t.Fatal("recently commissioned equipment should not be reported late")
-	}
-	night := time.Date(2026, 11, 11, 7, 0, 0, 0, beijing)
-	if got := parseSchedule("0 8,16").missedAfter(night, 0); got.Day() != 10 || got.Hour() != 16 {
-		t.Fatalf("overnight schedule %v", got)
+	now := time.Date(2026, 11, 10, 10, 17, 0, 0, beijing)
+	oldStart := now.Add(-10 * 24 * time.Hour)
+	for _, tt := range []struct {
+		name         string
+		last, start  time.Time
+		wantSeverity string
+	}{
+		{name: "just short of 1 day", last: now.Add(-24*time.Hour + time.Nanosecond), start: oldStart},
+		{name: "exactly 1 day", last: now.Add(-24 * time.Hour), start: oldStart, wantSeverity: "warning"},
+		{name: "just short of 3 days", last: now.Add(-72*time.Hour + time.Nanosecond), start: oldStart, wantSeverity: "warning"},
+		{name: "exactly 3 days", last: now.Add(-72 * time.Hour), start: oldStart, wantSeverity: "critical"},
+		{name: "never reported after commissioning yesterday", start: now.Add(-24 * time.Hour), wantSeverity: "warning"},
+		{name: "never reported for over 3 days", start: oldStart, wantSeverity: "critical"},
+		{name: "test samples predate commissioning", last: now.Add(-7 * 24 * time.Hour), start: now.Add(-2 * time.Hour)},
+		{name: "commissioning starts later", last: now.Add(-7 * 24 * time.Hour), start: now.Add(time.Hour)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := lateFinding(2, tt.last, tt.start, now)
+			if got.Active != (tt.wantSeverity != "") || got.Severity != tt.wantSeverity {
+				t.Fatalf("active %t, severity %q, want %q", got.Active, got.Severity, tt.wantSeverity)
+			}
+			if got.Kind != "late" || got.Key != "late:2" || got.Node == nil || *got.Node != 2 {
+				t.Fatalf("lost the node or existing event identity: %#v", got)
+			}
+			if got.Active && (!got.Since.Equal(maxTime(tt.last, tt.start).Add(24*time.Hour)) || !got.At.Equal(now)) {
+				t.Fatalf("wrong event timestamps: started %v, checked %v", got.Since, got.At)
+			}
+		})
 	}
 }
 
@@ -77,6 +91,8 @@ func TestMissingAndZeroUseNewSamples(t *testing.T) {
 
 func TestInspectionMigrationAndAdminViews(t *testing.T) {
 	db := testdb.Open(t, 58)
+	const severityUp = "../../migrations/000061_inspection_event_severity.up.sql"
+	const severityDown = "../../migrations/000061_inspection_event_severity.down.sql"
 	ctx := t.Context()
 	actor := testdb.Admin(t, db)
 	s := &Service{DB: db}
@@ -88,11 +104,16 @@ func TestInspectionMigrationAndAdminViews(t *testing.T) {
 	}
 	id, excluded, source := uuid.New(), uuid.New(), uuid.New()
 	must(`INSERT INTO data_sources(id,name,type,source_family,dsn_secret_ref,created_by) VALUES ($1,'test','mysql','thcpn','env:NOT_USED',$2)`, source, actor)
-	must(`INSERT INTO devices(id,name,device_type,lifecycle_status) VALUES ($1,'Running','standalone','online'),($2,'Retired','standalone','retired')`, id, excluded)
+	must(`INSERT INTO devices(id,name,device_type,lifecycle_status,created_at)
+ VALUES ($1,'Running','standalone','online',now()-interval '7 days'),($2,'Retired','standalone','retired',now()-interval '7 days')`, id, excluded)
 	must(`INSERT INTO device_source_refs(device_id,data_source_id,adapter_code,external_key) VALUES($1,$3,'thcpn_legacy_mysql','101'),($2,$3,'thcpn_legacy_mysql','102')`, id, excluded, source)
-	now := time.Now()
+	now := time.Now().UTC()
+	start, sample := now.Add(-7*24*time.Hour), now.Add(-24*time.Hour)
+	must(`INSERT INTO device_inspection_events(device_id,event_key,kind,metric,detail,started_at,last_seen_at)
+ VALUES ($1,'late:0','late','采集数据','旧规则',$2,$2)`, id, now)
+	testdb.Apply(t, db, severityUp)
 	for i := 0; i < 2; i++ {
-		if err := s.persist(ctx, id, progress{}, []finding{{Key: "late:0", Kind: "late", Metric: "data", Since: now, At: now, Active: true}}, now, time.Minute, true, ""); err != nil {
+		if err := s.persist(ctx, id, progress{}, []finding{lateFinding(0, sample, start, now)}, now, time.Minute, false, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -121,6 +142,7 @@ func TestInspectionMigrationAndAdminViews(t *testing.T) {
 	request("GET", "/overview", "", http.StatusOK, `"eligible":1`)
 	request("GET", "/devices?state=all", "", http.StatusOK, `"total":1`)
 	request("GET", "/events", "", http.StatusOK, `"total":1`)
+	request("GET", "/events", "", http.StatusOK, `"severity":"warning"`)
 	request("GET", "/metrics", "", http.StatusOK, `"metric_code":"device_battery"`)
 	request("PUT", "/templates", `{"family":"thcpn","device_type":"standalone","metric_code":"device_battery","unit":"V","kind":"range","lower_value":11.3,"consecutive":3,"enabled":true}`, http.StatusOK, `"lower_value":11.3`)
 	request("GET", "/templates", "", http.StatusOK, `"device_type":"standalone"`)
@@ -131,6 +153,18 @@ func TestInspectionMigrationAndAdminViews(t *testing.T) {
 	request("POST", "/events/"+eventID.String()+"/acknowledge", `{"note":"检查供电"}`, http.StatusNoContent, "")
 	request("GET", "/events", "", http.StatusOK, `"total":0`)
 	request("GET", "/events?status=active", "", http.StatusOK, `"note":"检查供电"`)
+	criticalAt := sample.Add(72 * time.Hour)
+	if err := s.persist(ctx, id, progress{}, []finding{lateFinding(0, sample, start, criticalAt)}, criticalAt, time.Minute, false, ""); err != nil {
+		t.Fatal(err)
+	}
+	request("GET", "/events", "", http.StatusOK, `"severity":"critical"`)
+	request("GET", "/events", "", http.StatusOK, `"id":"`+eventID.String()+`"`)
+	request("POST", "/events/"+eventID.String()+"/acknowledge", `{"note":"处理停报报警"}`, http.StatusNoContent, "")
+	repeatAt := criticalAt.Add(time.Minute)
+	if err := s.persist(ctx, id, progress{}, []finding{lateFinding(0, sample, start, repeatAt)}, repeatAt, time.Minute, false, ""); err != nil {
+		t.Fatal(err)
+	}
+	request("GET", "/events", "", http.StatusOK, `"total":0`)
 	// A source that cannot be opened is visible as a failed check, not as a new offline event.
 	must(`UPDATE device_inspection_state SET next_check_at=now()-interval '1 minute',progress='{}' WHERE device_id=$1`, id)
 	s.Sources = datasource.NewService(db)
@@ -138,7 +172,18 @@ func TestInspectionMigrationAndAdminViews(t *testing.T) {
 		t.Fatalf("check unavailable source: %d %v", n, err)
 	}
 	request("GET", "/devices?state=error", "", http.StatusOK, `"total":1`)
+	request("GET", "/events?status=active", "", http.StatusOK, `"severity":"critical"`)
 	request("GET", "/events?status=all", "", http.StatusOK, `"total":1`)
+	recoveredAt := repeatAt.Add(time.Minute)
+	if err := s.persist(ctx, id, progress{}, []finding{lateFinding(0, recoveredAt, start, recoveredAt)}, recoveredAt, time.Minute, false, ""); err != nil {
+		t.Fatal(err)
+	}
+	request("GET", "/events?status=active", "", http.StatusOK, `"total":0`)
+	request("GET", "/events?status=resolved", "", http.StatusOK, `"severity":"critical"`)
+	testdb.Apply(t, db, severityDown)
+	testdb.Apply(t, db, severityUp)
+	request("GET", "/events?status=resolved", "", http.StatusOK, `"severity":"warning"`)
+	testdb.Apply(t, db, severityDown)
 	testdb.Apply(t, db, "../../migrations/000058_device_inspection.down.sql")
 	testdb.Apply(t, db, "../../migrations/000058_device_inspection.up.sql")
 }

@@ -3224,7 +3224,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List inspection events separately from workspace alerts */
+        /**
+         * List inspection events separately from workspace alerts
+         * @description A stopped-upload event (kind late) has severity warning after 24 hours without data and severity critical after 72 hours. Other events and pre-existing historical records have severity warning.
+         */
         get: operations["adminListInspectionEvents"];
         put?: never;
         post?: never;
