@@ -10,7 +10,6 @@
   .processing-editor .processing-actions { position: sticky; bottom: 0; background: var(--panel); padding-bottom: calc(12px + var(--mobile-safe-bottom)); }
   .processing-editor .form-grid.two,
   .processing-editor :is(.processing-input-row, .processing-input-row.without-device) { grid-template-columns: minmax(0, 1fr); }
-  .processing-summary > div { padding: 14px 10px; overflow-wrap: anywhere; }
   .processing-detail-summary, .processing-config-overview, .processing-config-inputs,
   .processing-outcome-media-grid, .processing-result-layout.has-visuals, .processing-result-layout.no-visuals { grid-template-columns: minmax(0, 1fr); }
   .processing-config-toggle, .processing-execution > summary, .processing-outcome-toolbar,

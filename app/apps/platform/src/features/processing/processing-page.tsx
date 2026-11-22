@@ -13,6 +13,7 @@ import { api, formatApiError, type Device, type JsonRecord, type MediaItem, type
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { useEditorNavigation, useNavigationSource } from "../../app/platform-navigation";
 import { Badge, Button, Input, PageHeader, Panel, SelectInput, StateView, Table, Tabs, TabsContent, TabsList, TabsTrigger } from "../../shared/ui";
+import { SummaryCards } from "../../shared/ui/summary-cards";
 import { renderPhotoToolbar } from "../devices/device-media";
 import { DeviceCombobox } from "../../shared/data/device-combobox";
 
@@ -37,11 +38,11 @@ export function ProcessingPage() {
   return <>
     <PageHeader eyebrow="数据" title="数据处理" description="配置系统内置处理器，将设备数据转为可追溯的派生指标和文件。" actions={<Button data-onboarding="processing-create" onClick={() => navigate("/processing/new", { state: source })}><Plus size={15}/>创建处理任务</Button>} />
     {feedback && <div className="command-note">{feedback}</div>}
-    <div className="processing-summary" data-onboarding="processing-summary">
-      <div><strong>{tasks.data?.items.filter((item) => item.status === "active").length ?? "—"}</strong><span>运行中</span></div>
-      <div><strong>{plans.data?.items.length ?? "—"}</strong><span>可用方案</span></div>
-      <div><strong>{tasks.data?.items.length ?? "—"}</strong><span>全部任务</span></div>
-    </div>
+    <SummaryCards onboarding="processing-summary" items={[
+      { label: "运行中", value: tasks.data?.items.filter((item) => item.status === "active").length ?? "—", icon: RefreshCw, tone: "running" },
+      { label: "可用方案", value: plans.data?.items.length ?? "—", icon: Workflow },
+      { label: "全部任务", value: tasks.data?.items.length ?? "—", icon: ListTree },
+    ]} />
     <Panel className="section-gap" data-onboarding="processing-list">
       <div className="panel-header"><div><h2 className="panel-title">处理任务</h2></div><Workflow size={17}/></div>
       {tasks.isLoading ? <StateView type="loading" title="正在加载处理任务" description="" /> : tasks.isError ? <StateView type="error" title="处理任务加载失败" description={formatApiError(tasks.error).message} /> : !tasks.data?.items.length ? <StateView type="empty" title="暂无处理任务" description="创建任务后，系统会从指定起点自动处理新增数据。" /> :

@@ -715,7 +715,6 @@
   .dataset-preview-grid,
   .dataset-preview-meta,
   .source-picker,
-  .export-summary,
   .export-form-grid,
   .export-detail-grid,
   .export-config,
@@ -733,7 +732,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .access-summary div,
-  .export-summary > div,
   .security-summary > div,
   .device-detail-summary > div,
   .export-detail-grid > div {
@@ -741,7 +739,6 @@
     border-bottom: 1px solid var(--soft-line);
   }
   .access-summary div:last-child,
-  .export-summary > div:last-child,
   .security-summary > div:last-child,
   .device-detail-summary > div:last-child {
     border-bottom: 0;

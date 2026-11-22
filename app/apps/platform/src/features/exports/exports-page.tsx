@@ -7,6 +7,7 @@ import { Check, FileArchive, Plus, RefreshCw, X } from "lucide-react";
 import { api, formatApiError, type ExportJob, type JsonRecord } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { Button, PageHeader, Panel, SelectInput, StateView, Table } from "../../shared/ui";
+import { SummaryCards } from "../../shared/ui/summary-cards";
 import { useLocale } from "@thcpn/i18n";
 import { useNavigationSource } from "../../app/platform-navigation";
 import { useWorkspaceListFilters } from "../../shared/data/use-workspace-list-filters";
@@ -136,48 +137,12 @@ function ExportList({ currentId, createdId }: { currentId: string | null; create
           </div>
         }
       />
-      <div className="export-summary" data-onboarding="export-summary">
-        <div>
-          <span className="export-summary-icon">
-            <FileArchive size={16} />
-          </span>
-          <span>
-            <small>全部任务</small>
-            <strong>{all.length}</strong>
-          </span>
-        </div>
-        <div>
-          <span className="export-summary-icon is-running">
-            <RefreshCw size={16} />
-          </span>
-          <span>
-            <small>处理中</small>
-            <strong>{active}</strong>
-          </span>
-        </div>
-        <div>
-          <span className="export-summary-icon is-success">
-            <Check size={16} />
-          </span>
-          <span>
-            <small>已完成</small>
-            <strong>
-              {all.filter((item) => item.status === "success").length}
-            </strong>
-          </span>
-        </div>
-        <div>
-          <span className="export-summary-icon is-failed">
-            <X size={16} />
-          </span>
-          <span>
-            <small>失败</small>
-            <strong>
-              {all.filter((item) => item.status === "failed").length}
-            </strong>
-          </span>
-        </div>
-      </div>
+      <SummaryCards onboarding="export-summary" items={[
+        { label: "全部任务", value: all.length, icon: FileArchive },
+        { label: "处理中", value: active, icon: RefreshCw, tone: "running" },
+        { label: "已完成", value: all.filter((item) => item.status === "success").length, icon: Check, tone: "success" },
+        { label: "失败", value: all.filter((item) => item.status === "failed").length, icon: X, tone: "failed" },
+      ]} />
       {feedback && <div className="command-note section-gap">{feedback}</div>}
       <Panel className="section-gap export-list-panel" data-onboarding="export-list">
         <div className="export-toolbar">
