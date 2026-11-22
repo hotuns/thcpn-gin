@@ -42,7 +42,7 @@ type ArtifactList struct {
 type Candidate struct {
 	ID             uuid.UUID `json:"id"`
 	Name           string    `json:"name"`
-	SerialNo       string    `json:"serial_no"`
+	AssetNo        string    `json:"asset_no"`
 	DataSourceID   uuid.UUID `json:"data_source_id"`
 	DataSourceName string    `json:"data_source_name"`
 	SourceFamily   string    `json:"source_family"`
@@ -71,7 +71,7 @@ func (s *Service) Candidates(ctx context.Context, firmwareID *uuid.UUID, page, s
 		sourceID = &artifact.DataSourceID
 		family = artifact.SourceFamily
 	}
-	rows, err := s.db.Query(ctx, `SELECT d.id,d.name,COALESCE(d.serial_no,''),s.id,s.name,s.source_family,d.device_type,d.product_id
+	rows, err := s.db.Query(ctx, `SELECT d.id,d.name,COALESCE(d.asset_no,''),s.id,s.name,s.source_family,d.device_type,d.product_id
  FROM devices d JOIN LATERAL (SELECT data_source_id,external_key FROM device_source_refs WHERE device_id=d.id AND status='active' ORDER BY created_at DESC,id DESC LIMIT 1) ref ON true
  JOIN data_sources s ON s.id=ref.data_source_id
  WHERE d.status='active' AND s.status='active' AND s.source_family IN ('lorawan_v2','thcpn','carbon')
@@ -86,7 +86,7 @@ func (s *Service) Candidates(ctx context.Context, firmwareID *uuid.UUID, page, s
 	items := []Candidate{}
 	for rows.Next() {
 		var c Candidate
-		if err := rows.Scan(&c.ID, &c.Name, &c.SerialNo, &c.DataSourceID, &c.DataSourceName, &c.SourceFamily, &c.DeviceType, &c.ProductID); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.AssetNo, &c.DataSourceID, &c.DataSourceName, &c.SourceFamily, &c.DeviceType, &c.ProductID); err != nil {
 			return nil, err
 		}
 		items = append(items, c)

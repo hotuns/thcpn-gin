@@ -59,7 +59,7 @@ export function SourceName({
     const device = devices.find((item) => String(item.id) === source.source_id);
     return (
       <span className="dataset-source-identity">
-        {String(device?.name ?? device?.serial_no ?? "未知设备")}
+        {String(device?.name ?? device?.asset_no ?? "未知设备")}
       </span>
     );
   }
@@ -71,14 +71,14 @@ export function SourceName({
     return <span className="dataset-source-identity">未命名数据指标</span>;
   const device = listedDevice ?? streamDevice.data;
   const deviceName = String(
-    device?.name ?? device?.serial_no ?? "未知设备",
+    device?.name ?? device?.asset_no ?? "未知设备",
   );
-  const serialNumber = device?.serial_no ? String(device.serial_no) : "";
+  const assetNumber = device?.asset_no ? String(device.asset_no) : "";
   return (
     <span className="dataset-source-identity">
       <strong>
         {deviceName}
-        {serialNumber ? ` · ${serialNumber}` : ""}
+        {assetNumber ? ` · ${assetNumber}` : ""}
       </strong>
       <small>
         {stream.data.computed ? "fx · " : ""}

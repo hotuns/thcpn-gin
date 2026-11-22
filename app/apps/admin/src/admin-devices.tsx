@@ -220,7 +220,7 @@ export function AdminDevicesPage() {
     () =>
       topLevelRows.filter((item) => {
         const searchable =
-          `${value(item.name)} ${value(item.asset_no)} ${value(item.hardware_sn)} ${value(item.external_key)} ${value(item.serial_no)} ${value(item.id)} ${(Array.isArray(item.ops_tags) ? item.ops_tags : []).join(" ")}`
+          `${value(item.name)} ${value(item.asset_no)} ${value(item.hardware_sn)} ${value(item.external_key)} ${value(item.id)} ${(Array.isArray(item.ops_tags) ? item.ops_tags : []).join(" ")}`
             .toLowerCase()
             .includes(keyword.toLowerCase());
         return (
@@ -625,7 +625,7 @@ export function AdminDevicesPage() {
 
   const managementOverlays = (
     <>
-      {firmwareDevice ? <DeviceFirmwareDialog key={String(firmwareDevice.id)} deviceId={String(firmwareDevice.id)} deviceName={value(firmwareDevice.name)} serialNo={value(firmwareDevice.serial_no)} onClose={() => setFirmwareDevice(null)} /> : null}
+      {firmwareDevice ? <DeviceFirmwareDialog key={String(firmwareDevice.id)} deviceId={String(firmwareDevice.id)} deviceName={value(firmwareDevice.name)} assetNo={value(firmwareDevice.asset_no)} onClose={() => setFirmwareDevice(null)} /> : null}
       {configResult ? <ConfigApplyResult result={configResult} onClose={() => setConfigResult(null)} /> : null}
       <Drawer title={drawerTitle(mode, selected)} open={Boolean(mode)} onClose={close} size={mode === "config" ? 1180 : 620} footer={<Space orientation="vertical" style={{ width: "100%" }}>{feedback && <Alert role="alert" type="error" showIcon title={feedback} />}{mode === "attributes" ? <Button onClick={close}>关闭</Button> : <Space><Button onClick={close}>取消</Button><Button type="primary" danger={mode === "config"} loading={busy} onClick={() => void (mode === "create-device" && createdSourceDevice?.sync_error ? retryCreatedSourceDevice() : submit())}>{mode === "create-device" && createdSourceDevice?.sync_error ? (createdSourceDevice.source_kind === "lorawan_v2" ? "重试默认配置" : "重试同步") : mode === "create-device" ? "创建设备" : "保存"}</Button></Space>}</Space>}>
         {mode === "config" && configConflict ? <Alert className="config-conflict-alert" type="warning" showIcon title="源配置已变化，当前草稿尚未保存" description="复制草稿后重新加载最新配置；系统不会强制覆盖其他操作写入的版本。" action={<Space orientation="vertical"><Button size="small" onClick={() => void navigator.clipboard.writeText(JSON.stringify(parseDeviceConfig(form.getFieldsValue() as DeviceConfigFields), null, 2))}>复制草稿</Button><Button size="small" type="primary" onClick={() => { setConfigConflict(false); void loadDetail("config", selected); }}>重新加载</Button></Space>} /> : null}
@@ -653,7 +653,7 @@ export function AdminDevicesPage() {
     if (!device) return <StateView type="empty" title="设备不存在" description="该设备可能已被删除或尚未同步。" action={<Button><Link to="/admin/devices">返回设备列表</Link></Button>} />;
     const isCamera = categoryOf(device) === "camera";
     const refreshDetail = () => void Promise.all([query.refetch(),queryClient.invalidateQueries({predicate:query=>query.queryKey.includes("admin")&&query.queryKey.includes(deviceId)})]);
-    return <><PageHeader eyebrow="System / devices / detail" title={value(device.name, "未命名设备")} description={`${value(device.asset_no, device.serial_no || device.id)} · ${deviceModelLabel(device)}`} actions={<Space><Button><Link to={`/admin/devices?kind=${device.source_family==="lorawan_v2"?"lorawan_v2":categoryOf(device)}`}>返回列表</Link></Button><Button onClick={refreshDetail}>刷新</Button></Space>} />{feedback && <div className="admin-feedback section-gap">{feedback}</div>}<DeviceDetailPanel key={String(device.id)} device={device} isCamera={isCamera} isCarbon={isCarbonDetail} carbonData={detailCarbonQuery.data as unknown as JsonRecord | undefined} carbonLoading={detailCarbonQuery.isLoading} carbonError={detailCarbonQuery.error} attributes={detailAttributesQuery.data as unknown as JsonRecord | undefined} attributesLoading={detailAttributesQuery.isLoading} attributesError={detailAttributesQuery.error} lifecycleData={detailLifecycleQuery.data as JsonRecord | undefined} lifecycleLoading={detailLifecycleQuery.isLoading} lifecycleError={detailLifecycleQuery.error} configData={detailConfigQuery.data as JsonRecord | undefined} configLoading={detailConfigQuery.isLoading} configError={detailConfigQuery.error} onOpen={(next) => open(next, device)} onUnassign={() => void unassign(device)} />{managementOverlays}</>;
+    return <><PageHeader eyebrow="System / devices / detail" title={value(device.name, "未命名设备")} description={`${value(device.asset_no)} · ${deviceModelLabel(device)}`} actions={<Space><Button><Link to={`/admin/devices?kind=${device.source_family==="lorawan_v2"?"lorawan_v2":categoryOf(device)}`}>返回列表</Link></Button><Button onClick={refreshDetail}>刷新</Button></Space>} />{feedback && <div className="admin-feedback section-gap">{feedback}</div>}<DeviceDetailPanel key={String(device.id)} device={device} isCamera={isCamera} isCarbon={isCarbonDetail} carbonData={detailCarbonQuery.data as unknown as JsonRecord | undefined} carbonLoading={detailCarbonQuery.isLoading} carbonError={detailCarbonQuery.error} attributes={detailAttributesQuery.data as unknown as JsonRecord | undefined} attributesLoading={detailAttributesQuery.isLoading} attributesError={detailAttributesQuery.error} lifecycleData={detailLifecycleQuery.data as JsonRecord | undefined} lifecycleLoading={detailLifecycleQuery.isLoading} lifecycleError={detailLifecycleQuery.error} configData={detailConfigQuery.data as JsonRecord | undefined} configLoading={detailConfigQuery.isLoading} configError={detailConfigQuery.error} onOpen={(next) => open(next, device)} onUnassign={() => void unassign(device)} />{managementOverlays}</>;
   }
 
   return (
@@ -673,7 +673,7 @@ export function AdminDevicesPage() {
       <Card>
         {categoryTabs}
         <div className="admin-device-filters admin-device-list-filters">
-          <Input.Search value={keyword} onChange={event=>setKeyword(event.target.value)} placeholder="搜索设备名称、序列号、ID 或标签" allowClear />
+          <Input.Search value={keyword} onChange={event=>setKeyword(event.target.value)} placeholder="搜索名称、资产编号、硬件 SN、采集标识或标签" allowClear />
           <Select
             allowClear
             placeholder="资产状态"
@@ -880,7 +880,7 @@ function DeviceDetailPanel({
     <section className="admin-detail-section">
       <div className="admin-detail-section-head"><div><h2>设备资料</h2><span>设备身份与资产状态</span></div><Button onClick={() => onOpen("edit")}>编辑</Button></div>
       <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }} items={[
-        { key: "assetNo", label: "资产编号", span: "filled", children: <Typography.Text strong copyable className="mono">{value(device.asset_no, device.serial_no)}</Typography.Text> },
+        { key: "assetNo", label: "资产编号", span: "filled", children: <Typography.Text strong copyable className="mono">{value(device.asset_no)}</Typography.Text> },
         ...(device.hardware_sn ? [{ key: "hardwareSN", label: "硬件 SN", children: <span className="mono">{value(device.hardware_sn)}</span> }] : []),
         { key: "iccid", label: "物联卡 ICCID", children: <span className="mono">{value(displayedICCID, "未记录")}</span> },
         { key: "type", label: "设备类型", children: deviceModelLabel(device) },
@@ -1005,7 +1005,7 @@ function DeviceDetailPanel({
     </section>
   </div>;
   return <Card className="admin-device-detail"><Tabs className="admin-device-detail-tabs" activeKey={activeTab} onChange={setActiveTab} items={[
-    { key: "overview", label: "设备信息", children: <>{device.source_family==="lorawan_v2"&&device.device_type==="gateway"&&<LoRaGatewayStatus deviceId={String(device.id)} name={String(device.name)} sn={String(device.serial_no)}/>} {overview}{device.source_family==="lorawan_v2"&&device.device_type==="gateway"&&<><LoRaWANGatewayDetailsEditor deviceId={String(device.id)}/><AdminReportedLocation deviceId={String(device.id)}/></>}{!isCamera&&device.source_family!=="lorawan_v2"&&!isCarbon&&runtime}</> },
+    { key: "overview", label: "设备信息", children: <>{device.source_family==="lorawan_v2"&&device.device_type==="gateway"&&<LoRaGatewayStatus deviceId={String(device.id)} name={String(device.name)} sn={value(device.external_key, "")}/>} {overview}{device.source_family==="lorawan_v2"&&device.device_type==="gateway"&&<><LoRaWANGatewayDetailsEditor deviceId={String(device.id)}/><AdminReportedLocation deviceId={String(device.id)}/></>}{!isCamera&&device.source_family!=="lorawan_v2"&&!isCarbon&&runtime}</> },
     { key: "installation", label: "安装档案", children: <AdminDeviceInstallation key={String(device.id)} device={device}/> },
     ...(device.device_type==="gateway" ? [{ key:"nodes",label:"节点管理",children:<AdminDeviceNodes device={device} onData={openData} onHistory={()=>setDetailParams({tab:"data",node:"",node_scope:"history"})} onConfig={(index,kind)=>setDetailParams({tab:"configuration",node_index:String(index),config_tab:kind??"sensor",node:`gateway:${device.id}:node:${index}`})} onTopology={device.source_family!=="lorawan_v2"?()=>onOpen("child"):undefined}/> }] : []),
     ...(isCarbon ? [{key:"carbon",label:"节点与状态",children:carbonManagement}] : []),
@@ -1033,19 +1033,19 @@ function ClaimCredentialSection({ device, date }: { device: JsonRecord; date: (i
     await query.refetch();
   };
   return <section className="admin-detail-section">
-    <div className="admin-detail-section-head"><div><h2>永久认领铭牌</h2><span>二维码和手动认领码永久有效，可在设备解绑后重复使用</span></div>{credential ? <Space><Button onClick={() => void navigator.clipboard.writeText(`${claimUrl}\n资产编号: ${credential.asset_no || credential.serial_no}\n认领码: ${credential.manual_code}`)}>复制</Button><Button type="primary" onClick={() => setPrintOpen(true)}>打印铭牌</Button></Space> : null}</div>
+    <div className="admin-detail-section-head"><div><h2>永久认领铭牌</h2><span>二维码和手动认领码永久有效，可在设备解绑后重复使用</span></div>{credential ? <Space><Button onClick={() => void navigator.clipboard.writeText(`${claimUrl}\n资产编号: ${credential.asset_no ?? ""}\n认领码: ${credential.manual_code}`)}>复制</Button><Button type="primary" onClick={() => setPrintOpen(true)}>打印铭牌</Button></Space> : null}</div>
     {query.isLoading ? <div className="admin-inline-loading">正在加载永久铭牌…</div> : query.error ? <Alert type="warning" showIcon title="永久铭牌加载失败" description={formatApiError(query.error).message} /> : credential ? <div className="admin-claim-credential">
       <QRCodeSVG id={`claim-qr-${deviceId}`} value={claimUrl} size={148} level="M" marginSize={2} />
       <Descriptions bordered size="small" column={1} items={[
         { key: "url", label: "认领地址", children: <span className="mono admin-break-value">{claimUrl}</span> },
-        { key: "assetNo", label: "资产编号", children: <span className="mono">{credential.asset_no || credential.serial_no}</span> },
+        { key: "assetNo", label: "资产编号", children: <span className="mono">{credential.asset_no ?? ""}</span> },
         { key: "code", label: "手动认领码", children: <strong className="mono">{credential.manual_code}</strong> },
         { key: "state", label: "当前状态", children: <Tag color={credential.is_claimable ? "green" : "blue"}>{credential.is_claimable ? "可认领" : "已分配，解绑后可再次认领"}</Tag> },
         { key: "printed", label: "最近打印", children: date(credential.printed_at) },
       ]} />
     </div> : null}
     {credential ? <DeviceClaimLabelPrint open={printOpen} onClose={() => setPrintOpen(false)}
-      claimUrl={claimUrl} assetNo={credential.asset_no || credential.serial_no} manualCode={credential.manual_code ?? ""} onPrinted={recordPrint} /> : null}
+      claimUrl={claimUrl} assetNo={credential.asset_no ?? ""} manualCode={credential.manual_code ?? ""} onPrinted={recordPrint} /> : null}
   </section>;
 }
 
@@ -1058,7 +1058,7 @@ function columns() {
         <div>
           <div className="cell-title"><Link to={`/admin/devices/${encodeURIComponent(value(row.id, ""))}`}>{value(row.name, "未命名设备")}</Link></div>
           <div className="cell-sub mono">
-            {value(row.asset_no, row.serial_no || row.id)}
+            {value(row.asset_no)}
           </div>
           {Array.isArray(row.ops_tags)&&<Space size={[4,4]} wrap>{row.ops_tags.map((tag:string)=><Tag key={tag}>{tag}</Tag>)}</Space>}
         </div>
@@ -1288,7 +1288,7 @@ function DeviceForm({
               .filter((item) => categoryFor(item) === "gateway_node")
               .map((item) => ({
                 value: value(item.id, ""),
-                label: `${value(item.name, "未命名")} · ${value(item.serial_no, String(item.id ?? "—"))}`,
+                label: `${value(item.name, "未命名")} · ${value(item.asset_no)}`,
               }))}
           />
         </Form.Item>
@@ -1426,7 +1426,7 @@ function ChildList({
             <div>
               <strong>{value(device.name, "未命名节点")}</strong>
               <span className="mono">
-                {value(device.serial_no, String(device.id ?? "—"))}
+                {value(device.asset_no)}
               </span>
             </div>
             <div>

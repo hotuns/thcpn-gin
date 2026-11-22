@@ -193,7 +193,7 @@ export function DeviceGifMaker({ device, stream, startTime, endTime, onClose }: 
   const download = () => {
     const anchor = document.createElement("a");
     anchor.href = resultUrl;
-    anchor.download = `${device.serial_no || device.name || "device"}-${stream.name}.gif`.replace(/[^\w\u4e00-\u9fff.-]+/g, "-");
+    anchor.download = `${device.asset_no || device.name || "device"}-${stream.name}.gif`.replace(/[^\w\u4e00-\u9fff.-]+/g, "-");
     anchor.click();
   };
   const openPreview = () => {

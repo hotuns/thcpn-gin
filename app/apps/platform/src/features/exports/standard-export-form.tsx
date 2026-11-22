@@ -58,7 +58,7 @@ export function StandardExportForm({
             selectedIds={selected}
             onChange={setSelected}
             mode="multiple"
-            searchPlaceholder="搜索标准站名称或序列号"
+            searchPlaceholder="搜索标准站名称或资产编号"
           />
         </div>
         <RangeFields

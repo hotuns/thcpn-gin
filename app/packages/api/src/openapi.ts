@@ -7685,6 +7685,12 @@ export interface components {
         OpenApiDevice: {
             id: components["schemas"]["UUID"];
             name: string;
+            /** @description Stable platform asset number */
+            asset_no: string;
+            /**
+             * @deprecated
+             * @description Legacy platform serial number. Use asset_no.
+             */
             serial_no: string;
             /** @enum {string} */
             device_type: "standalone" | "gateway" | "gateway_node" | "camera" | "carbon_sink";
@@ -8081,6 +8087,10 @@ export interface components {
             source_status?: string;
             features?: string[];
             product_id?: string;
+            /**
+             * @deprecated
+             * @description Legacy platform serial number. Use asset_no to identify the asset in platform clients.
+             */
             serial_no: string;
             name: string;
             status: components["schemas"]["DeviceStatus"];
@@ -8102,7 +8112,12 @@ export interface components {
         };
         ResolveDeviceClaimRequest: {
             claim_slug?: string;
-            /** @description Platform asset number or original printed serial */
+            /** @description Platform asset number or the original number printed on an existing label */
+            asset_no?: string;
+            /**
+             * @deprecated
+             * @description Legacy request field retained for older clients. Use asset_no.
+             */
             serial_no?: string;
             code?: string;
         };
@@ -8117,6 +8132,10 @@ export interface components {
             device_id: components["schemas"]["UUID"];
             device_name: string;
             device_type: components["schemas"]["DeviceTopologyRole"];
+            /**
+             * @deprecated
+             * @description Legacy platform serial number. Use asset_no for display and printing.
+             */
             serial_no: string;
             claim_slug?: string;
             claim_path?: string;
@@ -8244,9 +8263,12 @@ export interface components {
             /** @description Parent gateway for a virtual LoRaWAN V2 node; device_id is a stable map marker ID */
             gateway_device_id?: components["schemas"]["UUID"];
             node_index?: number;
+            /** @description Physical LoRaWAN V2 node SN */
+            node_sn?: string;
             device_id: components["schemas"]["UUID"];
             name: string;
-            serial_no: string;
+            /** @description Platform asset number of the device or physical node */
+            asset_no: string;
             device_type: string;
             status: string;
             workspace_id?: components["schemas"]["UUID"];
@@ -8926,7 +8948,8 @@ export interface components {
         FirmwareCandidate: {
             id: components["schemas"]["UUID"];
             name: string;
-            serial_no: string;
+            /** @description Platform asset number */
+            asset_no: string;
             data_source_id: components["schemas"]["UUID"];
             data_source_name: string;
             /** @enum {string} */

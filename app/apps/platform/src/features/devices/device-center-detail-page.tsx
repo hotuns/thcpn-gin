@@ -193,7 +193,7 @@ export function DeviceCenterDetailPage() {
           <h1>{device.name}</h1>
           <div className="device-detail-meta">
             <span>
-              资产编号 {device.asset_no || device.serial_no} · {deviceModelLabel(device)}
+              资产编号 {device.asset_no || "—"} · {deviceModelLabel(device)}
             </span>
             <Badge
               tone={device.lifecycle_status === "online" ? "success" : "warning"}

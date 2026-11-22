@@ -1,5 +1,5 @@
 -- name: LockDeviceForDeletion :one
-SELECT id, name, serial_no, device_type, lifecycle_status FROM devices WHERE id=$1 FOR UPDATE;
+SELECT id, name, COALESCE(asset_no, '') AS asset_no, device_type, lifecycle_status FROM devices WHERE id=$1 FOR UPDATE;
 
 -- name: DeviceDeletionSources :many
 SELECT r.data_source_id, r.external_key, r.adapter_code, r.status FROM device_source_refs r WHERE r.device_id=$1;

@@ -37,7 +37,7 @@ type Account struct {
 type Device struct {
 	ID            uuid.UUID  `json:"id"`
 	Name          string     `json:"name"`
-	SerialNo      string     `json:"serial_no"`
+	AssetNo       string     `json:"asset_no"`
 	DeviceType    string     `json:"device_type"`
 	Status        string     `json:"status"`
 	WorkspaceID   *uuid.UUID `json:"source_workspace_id,omitempty"`
@@ -215,10 +215,10 @@ func (s *Service) ListDevices(ctx context.Context, userID uuid.UUID, q string, l
 	}
 	q = strings.TrimSpace(q)
 	var total int
-	if err = s.db.QueryRow(ctx, `SELECT count(*) FROM devices d WHERE $1='' OR d.name ILIKE '%%'||$1||'%%' OR d.serial_no ILIKE '%%'||$1||'%%'`, q).Scan(&total); err != nil {
+	if err = s.db.QueryRow(ctx, `SELECT count(*) FROM devices d WHERE $1='' OR d.name ILIKE '%%'||$1||'%%' OR d.asset_no ILIKE '%%'||$1||'%%'`, q).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.db.Query(ctx, `SELECT d.id,d.name,d.serial_no,d.device_type,d.status,da.workspace_id,COALESCE(w.name,''),COALESCE(p.name,''),COALESCE(st.name,''),x.device_id IS NOT NULL,x.created_at FROM devices d LEFT JOIN device_assignments da ON da.device_id=d.id AND da.status='active' LEFT JOIN workspaces w ON w.id=da.workspace_id LEFT JOIN projects p ON p.id=da.project_id LEFT JOIN sites st ON st.id=da.site_id LEFT JOIN demo_showcase_devices x ON x.device_id=d.id AND x.workspace_id=$1 WHERE ($2='' OR d.name ILIKE '%%'||$2||'%%' OR d.serial_no ILIKE '%%'||$2||'%%') ORDER BY x.device_id IS NOT NULL DESC,d.name LIMIT $3 OFFSET $4`, account.WorkspaceID, q, limit, offset)
+	rows, err := s.db.Query(ctx, `SELECT d.id,d.name,COALESCE(d.asset_no,''),d.device_type,d.status,da.workspace_id,COALESCE(w.name,''),COALESCE(p.name,''),COALESCE(st.name,''),x.device_id IS NOT NULL,x.created_at FROM devices d LEFT JOIN device_assignments da ON da.device_id=d.id AND da.status='active' LEFT JOIN workspaces w ON w.id=da.workspace_id LEFT JOIN projects p ON p.id=da.project_id LEFT JOIN sites st ON st.id=da.site_id LEFT JOIN demo_showcase_devices x ON x.device_id=d.id AND x.workspace_id=$1 WHERE ($2='' OR d.name ILIKE '%%'||$2||'%%' OR d.asset_no ILIKE '%%'||$2||'%%') ORDER BY x.device_id IS NOT NULL DESC,d.name LIMIT $3 OFFSET $4`, account.WorkspaceID, q, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -226,7 +226,7 @@ func (s *Service) ListDevices(ctx context.Context, userID uuid.UUID, q string, l
 	items := []Device{}
 	for rows.Next() {
 		var v Device
-		if err = rows.Scan(&v.ID, &v.Name, &v.SerialNo, &v.DeviceType, &v.Status, &v.WorkspaceID, &v.WorkspaceName, &v.ProjectName, &v.SiteName, &v.Selected, &v.AddedAt); err != nil {
+		if err = rows.Scan(&v.ID, &v.Name, &v.AssetNo, &v.DeviceType, &v.Status, &v.WorkspaceID, &v.WorkspaceName, &v.ProjectName, &v.SiteName, &v.Selected, &v.AddedAt); err != nil {
 			return nil, 0, err
 		}
 		items = append(items, v)

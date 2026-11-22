@@ -11,7 +11,7 @@ const defaultDeviceFields: InventoryDeviceField[] = [
 
 const deviceFieldGroups: { title: string; fields: FieldOption<InventoryDeviceField>[] }[] = [
   { title: "基本信息", fields: [
-    { value: "asset_no", label: "序列号（平台资产编号）" }, { value: "name", label: "设备名称" },
+    { value: "asset_no", label: "资产编号" }, { value: "name", label: "设备名称" },
     { value: "device_type", label: "设备类型" }, { value: "hardware_sn", label: "硬件 SN" },
     { value: "collection_id", label: "采集设备标识" }, { value: "gateway_sn", label: "网关 SN（LoRaWAN V2）" },
     { value: "iccid", label: "登记 ICCID" }, { value: "ops_tags", label: "运维标签" },

@@ -81,7 +81,7 @@ export function DeviceMapPage() {
             <span>显示子节点</span>
           </label>
         </div>
-        {mobile && <div className="mobile-device-directory" aria-label="设备目录">{rows.map(item => <Button key={item.device_id} variant="ghost" aria-pressed={selectedId === item.device_id} onClick={() => selectDevice(item.device_id)}><span>{item.name}</span><small>{item.latitude === undefined || item.longitude === undefined ? "未定位" : item.serial_no}</small></Button>)}</div>}
+        {mobile && <div className="mobile-device-directory" aria-label="设备目录">{rows.map(item => <Button key={item.device_id} variant="ghost" aria-pressed={selectedId === item.device_id} onClick={() => selectDevice(item.device_id)}><span>{item.name}</span><small>{item.latitude === undefined || item.longitude === undefined ? "未定位" : item.asset_no}</small></Button>)}</div>}
         {!token && !import.meta.env.VITE_MAP_STYLE_URL ? <div className="device-map-token-note">配置天地图 Token 后显示影像底图</div> : null}
       </>}
     </section>
@@ -184,7 +184,7 @@ function DeviceMapDetail({ item, onClose }: { item: DeviceMapItem; onClose: () =
       <button type="button" className="device-map-detail-close" onClick={onClose} aria-label="关闭设备信息"><X size={16} /></button>
       <span className={`device-map-detail-status ${item.status === "active" ? "is-active" : ""}`}>{item.status === "active" ? "已启用资产" : item.status}</span>
       <h2>{item.name}</h2>
-      <p className="mono">SN {item.serial_no}</p>
+      <p className="mono">资产编号 {item.asset_no || "—"}</p>
       <dl>
         <div><dt>设备形态</dt><dd>{deviceTopologyRoleLabel(item.device_type)}</dd></div>
         <div><dt>设备类型</dt><dd>{deviceTypeIcon ? <img className="device-map-detail-type-icon" src={deviceTypeIcon} alt="" /> : null}{item.environment.ecosystem?.name_zh ?? "未分类"}</dd></div>

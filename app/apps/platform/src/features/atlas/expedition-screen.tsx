@@ -27,7 +27,7 @@ export function ExpeditionScreen(props: AtlasScreenProps) {
   useEffect(() => { const timer = window.setTimeout(() => setReady(true), 40); return () => clearTimeout(timer); }, []);
   const filtered = props.devices.filter(device =>
     (props.kind === "all" || (props.kind === "network" ? ["gateway", "gateway_node"].includes(device.device_type) : device.device_type === props.kind))
-    && `${device.name} ${device.serial_no}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
+    && `${device.name} ${device.asset_no ?? ""}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
   const hasCoordinates = props.selectedDevice && Number.isFinite(props.selectedDevice.latitude) && Number.isFinite(props.selectedDevice.longitude);
   return <main className="expedition-screen" data-motion={props.motion.enabled ? "running" : "paused"} data-ready={ready || !props.motion.enabled}><div className="expedition-canvas">
     <div className="expedition-map-stage">{props.map}</div>
@@ -48,9 +48,9 @@ export function ExpeditionScreen(props: AtlasScreenProps) {
     <aside className="expedition-rail">
       <div className="expedition-rail-heading"><span>01 / OBSERVATION SITES</span><h2>观测目录</h2></div>
       <div className="expedition-categories" role="group" aria-label="设备类型">{categories.map(({ key, name, Icon }) => <button type="button" key={key} aria-pressed={props.kind === key} onClick={() => props.onKindChange(props.kind === key ? "all" : key)}><Icon size={18}/>{name}</button>)}</div>
-      <label className="expedition-search"><Search size={14}/><input aria-label="搜索观测设备" placeholder="搜索名称 / SN" value={search} onChange={event => setSearch(event.target.value)}/></label>
+      <label className="expedition-search"><Search size={14}/><input aria-label="搜索观测设备" placeholder="搜索名称 / 资产编号" value={search} onChange={event => setSearch(event.target.value)}/></label>
       <ObservatoryAutoScroll className="expedition-site-list" label="观测设备列表" paused={!props.motion.enabled} resetKey={`${search}:${props.kind}:${props.selectedDevice?.device_id ?? ""}:${filtered.map(device => device.device_id).join(",")}`}>
-        {filtered.map((device, index) => <button type="button" key={device.device_id} aria-pressed={device.device_id === props.selectedDevice?.device_id} onClick={() => props.onSelect(device.device_id)}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{device.name}</strong><small>{device.serial_no}</small></div><ChevronRight size={13}/></button>)}
+        {filtered.map((device, index) => <button type="button" key={device.device_id} aria-pressed={device.device_id === props.selectedDevice?.device_id} onClick={() => props.onSelect(device.device_id)}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{device.name}</strong><small>{device.asset_no}</small></div><ChevronRight size={13}/></button>)}
         {!filtered.length && <div className="expedition-state">暂无匹配设备</div>}
       </ObservatoryAutoScroll>
       <div className="expedition-rail-count"><span>当前范围</span><strong>{filtered.length.toString().padStart(2, "0")}</strong></div>
@@ -58,7 +58,7 @@ export function ExpeditionScreen(props: AtlasScreenProps) {
     <div className="expedition-location">
       <div className="expedition-location-kicker"><span className="expedition-beacon"/>SELECTED OBSERVATION</div>
       <h2 key={props.selectedDevice?.device_id}>{props.selectedDevice?.name ?? "全域生态观测"}</h2>
-      <div className="expedition-location-details"><Compass size={15}/><span>{hasCoordinates ? `${Math.abs(props.selectedDevice!.latitude!).toFixed(5)}° ${props.selectedDevice!.latitude! < 0 ? "S" : "N"} / ${Math.abs(props.selectedDevice!.longitude!).toFixed(5)}° ${props.selectedDevice!.longitude! < 0 ? "W" : "E"}` : "区域视角"}</span><span>{props.selectedDevice?.serial_no}</span></div>
+      <div className="expedition-location-details"><Compass size={15}/><span>{hasCoordinates ? `${Math.abs(props.selectedDevice!.latitude!).toFixed(5)}° ${props.selectedDevice!.latitude! < 0 ? "S" : "N"} / ${Math.abs(props.selectedDevice!.longitude!).toFixed(5)}° ${props.selectedDevice!.longitude! < 0 ? "W" : "E"}` : "区域视角"}</span><span>{props.selectedDevice?.asset_no}</span></div>
     </div>
     <div className="expedition-map-reticle" aria-hidden="true"><span/><span/></div>
     <div className="expedition-scale-label"><i/>TERRAIN / OBSERVATION NETWORK</div>

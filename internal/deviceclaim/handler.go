@@ -23,8 +23,17 @@ type Handler struct {
 
 type resolveRequest struct {
 	ClaimSlug string `json:"claim_slug"`
+	AssetNo   string `json:"asset_no"`
 	SerialNo  string `json:"serial_no"`
 	Code      string `json:"code"`
+}
+
+func (r resolveRequest) input() ResolveInput {
+	identifier := strings.TrimSpace(r.AssetNo)
+	if identifier == "" {
+		identifier = r.SerialNo
+	}
+	return ResolveInput{ClaimSlug: r.ClaimSlug, Identifier: identifier, Code: r.Code}
 }
 
 type claimRequest struct {
@@ -53,9 +62,7 @@ func (h *Handler) Resolve(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "invalid request body"))
 		return
 	}
-	result, err := h.service.Resolve(c.Request.Context(), ResolveInput{
-		ClaimSlug: req.ClaimSlug, SerialNo: req.SerialNo, Code: req.Code,
-	})
+	result, err := h.service.Resolve(c.Request.Context(), req.input())
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -101,7 +108,7 @@ func (h *Handler) Claim(c *gin.Context) {
 		return
 	}
 	result, err := h.service.Claim(c.Request.Context(), ClaimInput{
-		ResolveInput: ResolveInput{ClaimSlug: req.ClaimSlug, SerialNo: req.SerialNo, Code: req.Code},
+		ResolveInput: req.input(),
 		UserID:       actor.UserID, WorkspaceID: workspaceID, ProjectID: projectID, SiteID: siteID,
 		IdempotencyKey: c.GetHeader("Idempotency-Key"),
 	})

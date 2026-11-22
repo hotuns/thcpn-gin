@@ -106,7 +106,8 @@ type MapItem struct {
 	NodeIndex       *int       `json:"node_index,omitempty"`
 	DeviceID        uuid.UUID  `json:"device_id"`
 	Name            string     `json:"name"`
-	SerialNo        string     `json:"serial_no"`
+	AssetNo         string     `json:"asset_no"`
+	NodeSN          string     `json:"node_sn,omitempty"`
 	DeviceType      string     `json:"device_type"`
 	Status          string     `json:"status"`
 	WorkspaceID     *uuid.UUID `json:"workspace_id,omitempty"`
@@ -356,7 +357,7 @@ func (s *Service) UpdateSite(ctx context.Context, input UpdateSiteInput) (SiteEn
 	return s.GetSite(ctx, input.SiteID)
 }
 
-const deviceMapQuery = `SELECT d.id,d.name,d.serial_no,d.device_type,d.status,COALESCE(own.workspace_id,parent_assignment.workspace_id),COALESCE(own.site_id,parent_assignment.site_id),
+const deviceMapQuery = `SELECT d.id,d.name,COALESCE(d.asset_no,''),d.device_type,d.status,COALESCE(own.workspace_id,parent_assignment.workspace_id),COALESCE(own.site_id,parent_assignment.site_id),
 	COALESCE(dp.latitude,st.latitude),
 	COALESCE(dp.longitude,st.longitude),
 	CASE WHEN dp.latitude IS NOT NULL AND dp.longitude IS NOT NULL THEN 'device' WHEN st.latitude IS NOT NULL AND st.longitude IS NOT NULL THEN 'site' ELSE 'none' END,
@@ -379,7 +380,7 @@ func (s *Service) Map(ctx context.Context, workspaceID *uuid.UUID, includeChildr
 	deviceIDs := make([]uuid.UUID, 0)
 	for rows.Next() {
 		var item MapItem
-		if err := rows.Scan(&item.DeviceID, &item.Name, &item.SerialNo, &item.DeviceType, &item.Status, &item.WorkspaceID, &item.SiteID, &item.Latitude, &item.Longitude, &item.LocationSource, &item.ChildCount); err != nil {
+		if err := rows.Scan(&item.DeviceID, &item.Name, &item.AssetNo, &item.DeviceType, &item.Status, &item.WorkspaceID, &item.SiteID, &item.Latitude, &item.Longitude, &item.LocationSource, &item.ChildCount); err != nil {
 			return MapResult{}, err
 		}
 		environment, envErr := s.getStored(ctx, item.DeviceID)
@@ -435,7 +436,7 @@ func (s *Service) appendIndexedNodeLocations(ctx context.Context, result *MapRes
 	for _, item := range result.Items {
 		parents[item.DeviceID] = item
 	}
-	rows, err := s.db.Query(ctx, `SELECT DISTINCT p.device_id,p.node_index,p.name,p.latitude,p.longitude,n.sn FROM node_profiles p
+	rows, err := s.db.Query(ctx, `SELECT DISTINCT p.device_id,p.node_index,p.name,p.latitude,p.longitude,COALESCE(n.asset_no,''),n.sn FROM node_profiles p
  JOIN lorawan_physical_nodes n ON n.gateway_device_id=p.device_id AND n.node_index=p.node_index
  JOIN device_source_refs r ON r.device_id=p.device_id AND r.adapter_code='lorawan_v2' AND r.status='active'
 
@@ -449,8 +450,8 @@ func (s *Service) appendIndexedNodeLocations(ctx context.Context, result *MapRes
 		var index int
 		var name string
 		var lat, lon *float64
-		var sn string
-		if err := rows.Scan(&id, &index, &name, &lat, &lon, &sn); err != nil {
+		var assetNo, sn string
+		if err := rows.Scan(&id, &index, &name, &lat, &lon, &assetNo, &sn); err != nil {
 			return err
 		}
 		item := parents[id]
@@ -461,7 +462,7 @@ func (s *Service) appendIndexedNodeLocations(ctx context.Context, result *MapRes
 			name = fmt.Sprintf("节点 %d", index)
 		}
 		item.Name = name
-		item.SerialNo = sn
+		item.AssetNo, item.NodeSN = assetNo, sn
 		item.DeviceType = "gateway_node"
 		item.Latitude = lat
 		item.Longitude = lon

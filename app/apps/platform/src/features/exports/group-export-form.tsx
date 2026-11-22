@@ -35,9 +35,15 @@ export function GroupExportForm({
   const gateway = gateways.find((item) => value(item, "id") === gatewayId);
   const lorawan = value(gateway ?? {}, "source_family") === "lorawan_v2";
   const nodeItems = children.data?.items ?? [];
-  const nodes = nodeItems.map((node) => ({ id: node.key, name: nodeOptionLabel(node), serial_no: node.target.kind === "device" ? `ID ${node.target.device_id.slice(0, 8)}` : `节点 ${node.target.node_index}` }));
+  const nodes = nodeItems.map((node) => ({
+    id: node.key,
+    name: nodeOptionLabel(node),
+    asset_no: node.asset_no,
+    node_sn: node.node_sn,
+    description: [node.asset_no ? `资产编号 ${node.asset_no}` : "", node.node_sn ? `SN ${node.node_sn}` : "", node.target.kind === "gateway_node" ? `序号 ${node.target.node_index}` : ""].filter(Boolean).join(" · "),
+  }));
   const filteredNodes = nodes.filter((item) =>
-    `${value(item, "name")} ${value(item, "serial_no")} ${(tagsByDevice.get(value(item, "id")) ?? []).join(" ")}`
+    `${value(item, "name")} ${value(item, "description")} ${(tagsByDevice.get(value(item, "id")) ?? []).join(" ")}`
       .toLowerCase()
       .includes(keyword.toLowerCase()),
   );
@@ -91,15 +97,15 @@ export function GroupExportForm({
             devices={gateways}
             selectedIds={gatewayId ? [gatewayId] : []}
             onChange={(ids) => chooseGateway(ids[0] ?? "")}
-            searchPlaceholder="搜索组网站名称或序列号"
+            searchPlaceholder="搜索组网站名称或资产编号"
           />
           <section className="export-target-picker">
             {lorawan&&<SelectInput aria-label="导出节点范围" value={nodeScope} onChange={event=>{setNodeScope(event.target.value as "bound"|"history");setSelected(null);}}><option value="bound">当前节点</option><option value="history">历史数据</option></SelectInput>}
 
             {(nodes.length > 5 || keyword) && <SearchInput
               className="export-node-search"
-              aria-label="搜索节点名称或序列号"
-              placeholder="搜索节点名称或序列号"
+              aria-label="搜索节点名称、资产编号、SN 或序号"
+              placeholder="搜索节点名称、资产编号、SN 或序号"
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
             />}
@@ -143,7 +149,7 @@ export function GroupExportForm({
                     />
                     <span>
                       <strong>{value(item, "name")}</strong>
-                      {value(item, "serial_no") && <small>{value(item, "serial_no")}</small>}
+                      {value(item, "description") && <small>{value(item, "description")}</small>}
                     </span>
                   </label>
                 );

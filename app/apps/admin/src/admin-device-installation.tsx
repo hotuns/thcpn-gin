@@ -135,7 +135,7 @@ export function AdminDeviceNodes({device,onData,onTopology,onConfig,onHistory,co
         {key:"asset",label:"资产编号",children:detail.asset_no||"—"},
         ...(!lora&&detail.hardware_sn?[{key:"hardware",label:"硬件 SN",children:detail.hardware_sn}]:[]),
         ...(lora?[{key:"sn",label:"节点 SN",children:detail.node_sn||(detail.indexed_only?"—":"未绑定")}]:[]),
-        {key:"gateway",label:"所属网关",children:`${device.name} · ${device.asset_no || device.serial_no}`},
+        {key:"gateway",label:"所属网关",children:`${device.name} · ${device.asset_no || "—"}`},
         {key:"location",label:"安装坐标",children:<Space>{detail.longitude!=null?`${detail.longitude}, ${detail.latitude}`:"未设置"}<AdminNodeLocationEditor deviceId={id} node={detail}/></Space>},
       ]}/>
         <Space><Button type="primary" onClick={()=>{onData(detail.key);setDetailKey(null);}}>查看节点数据</Button>{onConfig&&detail.bound&&detail.target.kind==="gateway_node"&&<Button onClick={()=>{if(detail.target.kind==="gateway_node")onConfig(detail.target.node_index);setDetailKey(null);}}>编辑采集配置</Button>}</Space>

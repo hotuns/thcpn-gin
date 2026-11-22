@@ -15,7 +15,7 @@ export function DeviceClaimPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { workspaces, currentId } = useWorkspace();
-  const [serialNo, setSerialNo] = useState("");
+  const [assetNumber, setAssetNumber] = useState("");
   const [code, setCode] = useState("");
   const [workspaceId, setWorkspaceId] = useState(currentId ?? "");
   const [projectId, setProjectId] = useState("");
@@ -24,8 +24,8 @@ export function DeviceClaimPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const credential = useMemo(
-    () => claimSlug ? { claim_slug: claimSlug } : { serial_no: serialNo.trim(), code: code.trim() },
-    [claimSlug, serialNo, code],
+    () => claimSlug ? { claim_slug: claimSlug } : { asset_no: assetNumber.trim(), code: code.trim() },
+    [claimSlug, assetNumber, code],
   );
   const projects = useQuery({
     queryKey: ["claim", "projects", workspaceId],
@@ -99,9 +99,9 @@ export function DeviceClaimPage() {
       {!resolved && !claimSlug ? (
         <Panel>
           <form className="device-claim-form" data-onboarding="claim-identity" onSubmit={resolve}>
-            <label className="field"><span className="field-label">资产编号或旧 SN</span><Input autoCapitalize="characters" value={serialNo} onChange={(event) => setSerialNo(event.target.value)} placeholder="铭牌上的编号" /></label>
+            <label className="field"><span className="field-label">资产编号</span><Input autoCapitalize="characters" value={assetNumber} onChange={(event) => setAssetNumber(event.target.value)} placeholder="铭牌上的编号" /></label>
             <label className="field"><span className="field-label">认领码</span><Input autoCapitalize="characters" value={code} onChange={(event) => setCode(event.target.value)} placeholder="XXXX-XXXX-XX" /></label>
-            <Button type="submit" disabled={busy || !serialNo.trim() || !code.trim()}><Link2 size={15} />验证设备</Button>
+            <Button type="submit" disabled={busy || !assetNumber.trim() || !code.trim()}><Link2 size={15} />验证设备</Button>
           </form>
         </Panel>
       ) : null}
@@ -109,7 +109,7 @@ export function DeviceClaimPage() {
         <Panel>
           <div className="device-claim-device">
             <CheckCircle2 size={22} />
-            <div><strong>{resolved.device_name}</strong><span>{resolved.device_type === "gateway" ? `网关 · 包含 ${resolved.child_count} 个节点` : "标准站"} · 资产编号尾号 {resolved.asset_no || resolved.serial_no}</span></div>
+            <div><strong>{resolved.device_name}</strong><span>{resolved.device_type === "gateway" ? `网关 · 包含 ${resolved.child_count} 个节点` : "标准站"} · 资产编号尾号 {resolved.asset_no || "—"}</span></div>
           </div>
           <div className="device-claim-form" data-onboarding="claim-assignment">
             <label className="field"><span className="field-label">目标组织</span><SelectInput value={workspaceId} onChange={(event) => { setWorkspaceId(event.target.value); setProjectId(""); setSiteId(""); }}>{workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</SelectInput></label>

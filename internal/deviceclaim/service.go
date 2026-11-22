@@ -44,9 +44,9 @@ type Credential struct {
 }
 
 type ResolveInput struct {
-	ClaimSlug string
-	SerialNo  string
-	Code      string
+	ClaimSlug  string
+	Identifier string
+	Code       string
 }
 
 type ClaimInput struct {
@@ -223,13 +223,13 @@ func (s *Service) Resolve(ctx context.Context, input ResolveInput) (Credential, 
 		if err != nil {
 			return Credential{}, genericUnavailable(err)
 		}
-	case strings.TrimSpace(input.SerialNo) != "" && normalizeManualCode(input.Code) != "":
+	case strings.TrimSpace(input.Identifier) != "" && normalizeManualCode(input.Code) != "":
 		err := s.db.QueryRow(ctx, `
 			SELECT c.device_id
 			FROM device_claim_credentials c
 			JOIN devices d ON d.id=c.device_id
 			WHERE (lower(d.serial_no)=lower($1) OR lower(d.asset_no)=lower($1)) AND c.manual_code_hash=$2`,
-			strings.TrimSpace(input.SerialNo), hash(normalizeManualCode(input.Code))).Scan(&deviceID)
+			strings.TrimSpace(input.Identifier), hash(normalizeManualCode(input.Code))).Scan(&deviceID)
 		if err != nil {
 			return Credential{}, genericUnavailable(err)
 		}

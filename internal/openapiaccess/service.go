@@ -51,6 +51,7 @@ type CreatedAPIKey struct {
 type OpenDevice struct {
 	ID              uuid.UUID  `json:"id"`
 	Name            string     `json:"name"`
+	AssetNo         string     `json:"asset_no"`
 	SerialNo        string     `json:"serial_no"`
 	DeviceType      string     `json:"device_type"`
 	Status          string     `json:"status"`
@@ -192,10 +193,10 @@ func (s *Service) DeviceBelongsToWorkspace(ctx context.Context, deviceID, worksp
 }
 
 func (s *Service) ListDevices(ctx context.Context, workspaceID uuid.UUID, deviceType, status string) ([]OpenDevice, error) {
-	rows, err := s.db.Query(ctx, `SELECT d.id,d.name,d.serial_no,d.device_type,d.status,d.lifecycle_status,da.project_id,da.site_id
+	rows, err := s.db.Query(ctx, `SELECT d.id,d.name,COALESCE(d.asset_no,''),d.serial_no,d.device_type,d.status,d.lifecycle_status,da.project_id,da.site_id
 		FROM device_assignments da JOIN devices d ON d.id=da.device_id
 		WHERE da.workspace_id=$1 AND da.unassigned_at IS NULL AND ($2='' OR d.device_type=$2) AND ($3='' OR d.status=$3)
-		ORDER BY d.name,d.serial_no LIMIT 500`, workspaceID, strings.TrimSpace(deviceType), strings.TrimSpace(status))
+		ORDER BY d.name,d.asset_no,d.id LIMIT 500`, workspaceID, strings.TrimSpace(deviceType), strings.TrimSpace(status))
 	if err != nil {
 		return nil, apperr.Wrap(apperr.KindInternal, "list open api devices", err)
 	}
@@ -203,7 +204,7 @@ func (s *Service) ListDevices(ctx context.Context, workspaceID uuid.UUID, device
 	items := []OpenDevice{}
 	for rows.Next() {
 		var item OpenDevice
-		if err = rows.Scan(&item.ID, &item.Name, &item.SerialNo, &item.DeviceType, &item.Status, &item.LifecycleStatus, &item.ProjectID, &item.SiteID); err != nil {
+		if err = rows.Scan(&item.ID, &item.Name, &item.AssetNo, &item.SerialNo, &item.DeviceType, &item.Status, &item.LifecycleStatus, &item.ProjectID, &item.SiteID); err != nil {
 			return nil, apperr.Wrap(apperr.KindInternal, "scan open api device", err)
 		}
 		items = append(items, item)
@@ -213,9 +214,9 @@ func (s *Service) ListDevices(ctx context.Context, workspaceID uuid.UUID, device
 
 func (s *Service) GetDevice(ctx context.Context, workspaceID, deviceID uuid.UUID) (OpenDevice, error) {
 	var item OpenDevice
-	err := s.db.QueryRow(ctx, `SELECT d.id,d.name,d.serial_no,d.device_type,d.status,d.lifecycle_status,da.project_id,da.site_id
+	err := s.db.QueryRow(ctx, `SELECT d.id,d.name,COALESCE(d.asset_no,''),d.serial_no,d.device_type,d.status,d.lifecycle_status,da.project_id,da.site_id
 		FROM device_assignments da JOIN devices d ON d.id=da.device_id WHERE da.workspace_id=$1 AND da.device_id=$2 AND da.unassigned_at IS NULL`, workspaceID, deviceID).
-		Scan(&item.ID, &item.Name, &item.SerialNo, &item.DeviceType, &item.Status, &item.LifecycleStatus, &item.ProjectID, &item.SiteID)
+		Scan(&item.ID, &item.Name, &item.AssetNo, &item.SerialNo, &item.DeviceType, &item.Status, &item.LifecycleStatus, &item.ProjectID, &item.SiteID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return item, apperr.New(apperr.KindNotFound, "device not found")
 	}

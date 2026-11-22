@@ -8,7 +8,7 @@ import { render, eventually } from "../render";
 vi.mock("@thcpn/auth", () => ({ useAuth: () => ({ user: { id: "observer" } }) }));
 const stamp = "2026-11-03T00:00:00Z";
 const metrics: DataStream[] = Array.from({ length: 6 }, (_, index) => ({ id: `stream${index}`, name: `指标${index}`, unit: index === 0 ? "°C" : "%", code: `metric${index}`, type: "telemetry", status: "active", device_id: "station", computed: false, created_by: "observer", created_at: stamp, updated_at: stamp }));
-const device: DeviceMapItem = { device_id: "station", name: "青山标准站", serial_no: "ST001", device_type: "standalone", status: "active", location_source: "device", latitude: -30, longitude: -110, child_count: 0, environment: { observation_objects: [], purposes: [], research_tags: [] } };
+const device: DeviceMapItem = { device_id: "station", name: "青山标准站", asset_no: "ST001", device_type: "standalone", status: "active", location_source: "device", latitude: -30, longitude: -110, child_count: 0, environment: { observation_objects: [], purposes: [], research_tags: [] } };
 function props(): AtlasScreenProps {
   return {
     title: "生态观测一张图", workspaceId: "forest", boardId: "expedition", config: { trend_hours: 24, presentation: "panorama", layout: "balanced", device_ids: [device.device_id], metric_defaults: { "device:standalone": metrics.map(stream => stream.code) }, show_trends: true, show_images: false },

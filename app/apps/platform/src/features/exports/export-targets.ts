@@ -13,7 +13,7 @@ export function resolveExportTargets(job: TargetJob, devices: JsonRecord[]) {
     return {
       key: id,
       name: savedName || String(device?.name || "设备名称暂不可用"),
-      description: device?.serial_no ? `SN ${device.serial_no}` : `设备 ID ${id}`,
+      description: device?.asset_no ? `资产编号 ${device.asset_no}` : `设备 ID ${id}`,
     };
   };
   const gatewayId = String(config.gateway_id || "");

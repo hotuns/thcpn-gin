@@ -379,7 +379,7 @@ export function DeviceDataPage({
               </label>
               <div className="camera-identity">
                 <Badge tone="info">海康视频</Badge>
-                <span className="mono">SN {selectedDevice.serial_no}</span>
+                <span className="mono">资产编号 {selectedDevice.asset_no || "—"}</span>
               </div>
             </div>
           </Panel>

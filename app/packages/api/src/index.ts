@@ -36,9 +36,9 @@ export type AccessibleWorkspace = Workspace & {
   membership: WorkspaceMembership;
 };
 
-export type Device = Omit<Schema<"Device">, "device_type"> & { device_type: string; source_workspace_name?: string; source_project_name?: string; source_site_name?: string };
+export type Device = Omit<Schema<"Device">, "device_type" | "serial_no"> & { device_type: string; source_workspace_name?: string; source_project_name?: string; source_site_name?: string };
 export type DemoAccount = { user_id: string; username: string; name: string; status: string; workspace_id: string; workspace_name: string; device_count: number; created_at: string };
-export type DemoAccountDevice = { id: string; name: string; serial_no: string; device_type: string; status: string; source_workspace_id?: string; source_workspace_name?: string; source_project_name?: string; source_site_name?: string; selected: boolean; added_at?: string };
+export type DemoAccountDevice = { id: string; name: string; asset_no: string; device_type: string; status: string; source_workspace_id?: string; source_workspace_name?: string; source_project_name?: string; source_site_name?: string; selected: boolean; added_at?: string };
 export type LoginVisual = { id: string; url: string; original_filename: string; created_at: string };
 export type DeviceProfile = Schema<"DeviceProfile">;
 export type DeviceProfileImage = Schema<"DeviceProfileImage">;
@@ -46,7 +46,7 @@ export type DeviceTaxonomyTerm = { id: string; kind: "ecosystem" | "observation_
 export type DeviceEnvironmentValues = { ecosystem?: DeviceTaxonomyTerm; observation_objects: DeviceTaxonomyTerm[]; purposes: DeviceTaxonomyTerm[]; management?: DeviceTaxonomyTerm; deployment?: DeviceTaxonomyTerm; altitude_m?: number; commissioned_year?: number; research_tags: string[] };
 export type DeviceEnvironment = { device_id: string; direct: DeviceEnvironmentValues; effective: DeviceEnvironmentValues; overridden_fields: string[]; sources: Record<string, string>; parent_device_id?: string; site_id?: string; updated_at?: string };
 export type SiteEnvironment = { site_id: string; values: DeviceEnvironmentValues; updated_at?: string };
-export type DeviceMapItem = { device_id: string; gateway_device_id?: string; node_index?: number; name: string; serial_no: string; device_type: string; status: string; workspace_id?: string; site_id?: string; latitude?: number; longitude?: number; location_source: string; child_count: number; environment: DeviceEnvironmentValues };
+export type DeviceMapItem = Schema<"DeviceMapItem">;
 export type DeviceMapResult = { items: DeviceMapItem[]; total: number; located: number; unlocated: number; unclassified: number };
 export type SourceOperation = Schema<"SourceOperation">;
 export type GatewayNode = Schema<"GatewayNode">;
@@ -130,7 +130,6 @@ export type DeviceClaimCredential = {
   device_id: string;
   device_name: string;
   device_type: string;
-  serial_no: string;
   claim_slug?: string;
   claim_path?: string;
   manual_code?: string;
@@ -185,7 +184,7 @@ export type FirmwareRelease = {
 export type FirmwareArtifact = Omit<FirmwareRelease, "firmware_id" | "status" | "targets" | "updated_at"> & {
   data_source_id: string; data_source_name: string; device_type: string; product_id?: string; archived: boolean;
 };
-export type FirmwareCandidate = { id: string; name: string; serial_no: string; data_source_id: string; data_source_name: string; source_family: FirmwareRelease["source_family"]; device_type: string; product_id?: string };
+export type FirmwareCandidate = Schema<"FirmwareCandidate">;
 export type JsonRecord = Record<string, unknown>;
 export type ProcessingProcessor = {
   code: string; version: string; name: string; description: string;
@@ -1027,12 +1026,12 @@ export const api = {
       anonymousRequest<{ login_required: boolean }>(
         `/api/v1/device-claims/${encodeURIComponent(slug)}`,
       ),
-    resolve: (payload: { claim_slug?: string; serial_no?: string; code?: string }) =>
+    resolve: (payload: { claim_slug?: string; asset_no?: string; code?: string }) =>
       jsonRequest<DeviceClaimCredential>("/api/v1/device-claims/resolve", "POST", payload),
     claim: (
       payload: {
         claim_slug?: string;
-        serial_no?: string;
+        asset_no?: string;
         code?: string;
         workspace_id: string;
         project_id?: string;

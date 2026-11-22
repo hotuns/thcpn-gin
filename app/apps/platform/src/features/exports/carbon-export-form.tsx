@@ -89,7 +89,7 @@ export function CarbonExportForm({
             setDeviceId(ids[0] ?? "");
             setNodes(null);
           }}
-          searchPlaceholder="搜索碳汇站名称或序列号"
+          searchPlaceholder="搜索碳汇站名称或资产编号"
         />
         {overview.error && <StateView type="error" title="设备数据加载失败" description={formatApiError(overview.error).message} />}
         <div className="carbon-export-selector">

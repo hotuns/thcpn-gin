@@ -62,6 +62,8 @@ func (f libraryFixture) publish(t *testing.T, a Artifact) Release {
 }
 func TestLibraryUploadReusesArtifactAcrossReleases(t *testing.T) {
 	f := fixture(t)
+	const assetNo = "LR-83000001"
+	execTest(t, f.db, `UPDATE devices SET asset_no=$2 WHERE id=$1`, f.device, assetNo)
 	a := f.upload(t)
 	if len(f.publisher.sourceCalls) != 0 || f.otherStore.puts != 0 || f.store.puts != 1 || !strings.HasPrefix(a.PublicURL, "https://lora.example.test/firmwares/") {
 		t.Fatal("upload dispatched to wrong store or device")
@@ -79,7 +81,7 @@ func TestLibraryUploadReusesArtifactAcrossReleases(t *testing.T) {
 		t.Fatalf("list: %#v %v", list, err)
 	}
 	targets, err := f.service.Candidates(t.Context(), &a.ID, 1, 100)
-	if err != nil || len(targets) != 1 {
+	if err != nil || len(targets) != 1 || targets[0].AssetNo != assetNo {
 		t.Fatalf("candidates: %#v %v", targets, err)
 	}
 	filtered, err := f.service.ListFirmwareForDevice(t.Context(), 1, 20, "", f.device)

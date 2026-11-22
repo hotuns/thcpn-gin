@@ -6,7 +6,7 @@ import type { AtlasScreenProps } from "../../apps/platform/src/features/atlas/at
 import { render, eventually } from "../render";
 vi.mock("@thcpn/auth", () => ({ useAuth: () => ({ user: { id: "observer" } }) }));
 const stamp = "2026-11-03T06:00:00Z";
-const device: DeviceMapItem = { device_id: "station", device_type: "standalone", name: "青山标准站", serial_no: "ST001", status: "active", location_source: "device", child_count: 0, environment: { research_tags: [], observation_objects: [], purposes: [] } };
+const device: DeviceMapItem = { device_id: "station", device_type: "standalone", name: "青山标准站", asset_no: "ST001", status: "active", location_source: "device", child_count: 0, environment: { research_tags: [], observation_objects: [], purposes: [] } };
 const count = (value: number) => ({ value, complete: true, covered_devices: 2, total_devices: 2 });
 const overview: DashboardOverview = { generated_at: stamp, statistics_updated_at: stamp, timezone: "Asia/Shanghai", days: 7, refresh_interval_seconds: 30, records: { total: count(900), today: count(24), first_observed_at: null }, images: { total: count(3), today: count(1) }, trend: [], devices: { total: 2, reporting: 1, delayed: 1, no_data: 0, unknown: 0, inactive: 0 }, attention: [], active_alerts: 0 };
 const metrics: DataStream[] = Array.from({ length: 6 }, (_, index) => ({ id: `s${index}`, code: `c${index}`, name: `指标${index}`, type: "telemetry", status: "active", device_id: "station", computed: false, created_by: "observer", created_at: stamp, updated_at: stamp }));

@@ -461,7 +461,28 @@ function SingleSyncResult({ result }: { result: JsonRecord }) {
   const bindings = (primary.bindings as JsonRecord[] | undefined) ?? [];
   const warnings = (result.warnings as Array<{ code?: string; message?: string }> | undefined) ?? [];
   const deviceID = string(device?.id, "");
-  return <section className="sync-result section-gap"><div className="panel-header"><div><h2 className="panel-title">同步结果</h2><div className="panel-kicker">{string(device?.name, "设备同步")} · {string(device?.serial_no, device?.id)}</div></div><Tag color={warnings.length ? "orange" : "green"}>{warnings.length ? `${warnings.length} 条警告` : "同步成功"}</Tag></div><div className="sync-result-metrics"><div><strong>{nodes.length || 1}</strong><span>{nodes.length ? "节点" : "设备"}</span></div><div><strong>{streams.length}</strong><span>DataStream</span></div><div><strong>{bindings.length}</strong><span>Binding</span></div><div><strong>{string(result.relations ? (result.relations as JsonRecord[]).length : 0)}</strong><span>拓扑关系</span></div></div>{deviceID ? <Link to={`/admin/devices/${encodeURIComponent(deviceID)}`}>查看设备详情</Link> : null}{nodes.length ? <div className="sync-node-list">{nodes.slice(0, 8).map((node, index) => { const item = node.device as JsonRecord | undefined; const id = string(item?.id, ""); return <div key={id || index}><span>{string(item?.name)}</span>{id ? <Link to={`/admin/devices/${encodeURIComponent(id)}`}>{string(item?.serial_no, id)}</Link> : <code>{string(item?.serial_no, item?.id)}</code>}</div>; })}</div> : null}{warnings.length ? <div className="sync-warnings">{warnings.map((warning, index) => <div key={`${warning.code}-${index}`}><strong>{warning.code ?? "warning"}</strong><span>{warning.message ?? "同步过程中返回警告"}</span></div>)}</div> : null}</section>;
+  return <section className="sync-result section-gap">
+    <div className="panel-header">
+      <div><h2 className="panel-title">同步结果</h2><div className="panel-kicker">{string(device?.name, "设备同步")}</div></div>
+      <Tag color={warnings.length ? "orange" : "green"}>{warnings.length ? `${warnings.length} 条警告` : "同步成功"}</Tag>
+    </div>
+    <div className="sync-result-metrics">
+      <div><strong>{nodes.length || 1}</strong><span>{nodes.length ? "节点" : "设备"}</span></div>
+      <div><strong>{streams.length}</strong><span>DataStream</span></div>
+      <div><strong>{bindings.length}</strong><span>Binding</span></div>
+      <div><strong>{string(result.relations ? (result.relations as JsonRecord[]).length : 0)}</strong><span>拓扑关系</span></div>
+    </div>
+    {deviceID ? <Link to={`/admin/devices/${encodeURIComponent(deviceID)}`}>查看设备详情</Link> : null}
+    {nodes.length ? <div className="sync-node-list">{nodes.slice(0, 8).map((node, index) => {
+      const item = node.device as JsonRecord | undefined;
+      const id = string(item?.id, "");
+      return <div key={id || index}>
+        <span>{string(item?.name)}</span>
+        {id ? <Link to={`/admin/devices/${encodeURIComponent(id)}`}>查看节点详情</Link> : null}
+      </div>;
+    })}</div> : null}
+    {warnings.length ? <div className="sync-warnings">{warnings.map((warning, index) => <div key={`${warning.code}-${index}`}><strong>{warning.code ?? "warning"}</strong><span>{warning.message ?? "同步过程中返回警告"}</span></div>)}</div> : null}
+  </section>;
 }
 
 function FullSyncResult({ result }: { result: JsonRecord }) {

@@ -118,7 +118,7 @@ export const resources = {
         refresh: "刷新",
         add: "添加设备",
         search: "搜索设备",
-        searchPlaceholder: "名称、序列号、ID 或标签",
+        searchPlaceholder: "名称、资产编号、ID 或标签",
         categories: "设备分类",
         category: { all: "全部", standalone: "标准站", gateway: "组网站", carbon_sink: "碳汇站", camera: "视频站" },
         filters: "筛选",
@@ -286,11 +286,11 @@ export const resources = {
           claim: { title: "添加设备", description: "认领设备并分配到项目和样地", steps: [
             { title: "从设备中心开始", description: "设备中心集中展示当前组织的全部设备。添加新设备前，可以先确认它是否已经存在。" },
             { title: "进入设备认领", description: "点击“认领设备”进入接入流程。教程只介绍入口，不会自动认领设备。" },
-            { title: "验证设备身份", description: "输入设备序列号与认领码，先验证设备是否可被当前账号认领。" },
+            { title: "验证设备身份", description: "输入铭牌上的编号与认领码，先验证设备是否可被当前账号认领。" },
             { title: "设置设备归属", description: "验证通过后选择目标组织、项目和样地，再由你确认认领。提交前不会产生任何变更。" },
           ] },
           deviceData: { title: "查看设备数据", description: "查询指标、明细和采集图片", steps: [
-            { title: "筛选目标设备", description: "可按名称、序列号、设备类型、项目和样地快速定位设备。" },
+            { title: "筛选目标设备", description: "可按名称、资产编号、设备类型、项目和样地快速定位设备。" },
             { title: "打开设备数据", description: "选择设备行中的“查看数据”，进入该设备的数据页面。教程会用当前列表中的第一台设备演示。" },
             { title: "切换设备功能", description: "设备详情按数据、资料、配置、分享和记录等页签组织，不同设备类型会显示适用的功能。" },
             { title: "设置数据查询条件", description: "在数据页选择时间范围、指标和图片通道并搜索；下方会分别展示趋势、明细与采集图片。" },
@@ -535,7 +535,7 @@ export const resources = {
         refresh: "Refresh",
         add: "Add device",
         search: "Search devices",
-        searchPlaceholder: "Search by name, serial, ID, or tag",
+        searchPlaceholder: "Search by name, asset number, ID, or tag",
         categories: "Device categories",
         category: { all: "All", standalone: "Standard stations", gateway: "Gateways", carbon_sink: "Carbon stations", camera: "Cameras" },
         filters: "Filters",
@@ -694,8 +694,8 @@ export const resources = {
       onboarding: {
         eyebrow: "QUICK START", title: "What would you like to learn?", introduction: "Choose a module to visit its page and learn the workflow. The tour never submits or changes data for you.", close: "Close guide", later: "Maybe later", exit: "Exit guide", previous: "Previous", next: "Next", finish: "Finish", unavailable: "This item is not available on the current page, possibly because there is no data or your account lacks permission. You can still continue the guide.",
         modules: {
-          claim: { title: "Add devices", description: "Claim devices and assign their location", steps: [{ title: "Start in Devices", description: "Devices lists all assets in the current organization. Check whether a device already exists before adding it." }, { title: "Open device claiming", description: "Use Claim device to start onboarding. The guide never claims a device automatically." }, { title: "Verify device identity", description: "Enter the serial number and claim code to verify that the device can be claimed." }, { title: "Assign the device", description: "After verification, choose its organization, project, and site, then confirm the claim yourself." }] },
-          deviceData: { title: "View device data", description: "Query metrics, details, and images", steps: [{ title: "Find a device", description: "Filter by name, serial number, device type, project, or site." }, { title: "Open device data", description: "Use View data on a device row. The guide uses the first visible device for the demonstration." }, { title: "Navigate device features", description: "Device details are organized into data, profile, configuration, sharing, and activity tabs as applicable." }, { title: "Set query conditions", description: "Choose a time range, metrics, and image channels, then search to load trends, details, and captured images." }] },
+          claim: { title: "Add devices", description: "Claim devices and assign their location", steps: [{ title: "Start in Devices", description: "Devices lists all assets in the current organization. Check whether a device already exists before adding it." }, { title: "Open device claiming", description: "Use Claim device to start onboarding. The guide never claims a device automatically." }, { title: "Verify device identity", description: "Enter the number on the device label and the claim code to verify that the device can be claimed." }, { title: "Assign the device", description: "After verification, choose its organization, project, and site, then confirm the claim yourself." }] },
+          deviceData: { title: "View device data", description: "Query metrics, details, and images", steps: [{ title: "Find a device", description: "Filter by name, asset number, device type, project, or site." }, { title: "Open device data", description: "Use View data on a device row. The guide uses the first visible device for the demonstration." }, { title: "Navigate device features", description: "Device details are organized into data, profile, configuration, sharing, and activity tabs as applicable." }, { title: "Set query conditions", description: "Choose a time range, metrics, and image channels, then search to load trends, details, and captured images." }] },
           map: { title: "Device map", description: "Explore locations and classification", steps: [{ title: "Explore device locations", description: "The map shows located devices in the current organization. Select a marker for details." }, { title: "Filter map devices", description: "Filter by device type, observation object, or child-node visibility." }, { title: "Review location status", description: "The summary separates located, unlocated, and unclassified devices." }] },
           compare: { title: "Compare data", description: "Analyze devices, metrics, and ranges", steps: [{ title: "Set comparison conditions", description: "Each item can use a different device, metric, and time range." }, { title: "Add comparison items", description: "Add more items and query them together to compare sites or periods." }, { title: "Read comparison results", description: "Review raw and normalized trends, statistics, and details." }] },
           datasets: { title: "Datasets", description: "Save reusable data queries", steps: [{ title: "Manage datasets", description: "Datasets preserve sources, ranges, and fields for preview, sharing, and export." }, { title: "Create a dataset", description: "Open the step-by-step editor. The guide never saves a dataset." }, { title: "Choose sources", description: "Select devices or streams and the metrics or image channels to include." }, { title: "Review and save", description: "Confirm the name, time range, and source summary before saving." }] },
