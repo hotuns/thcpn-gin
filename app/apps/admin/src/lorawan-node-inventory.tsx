@@ -1,23 +1,35 @@
 import { AdminDeviceDeletion } from "./admin-device-deletion";
 import { confirmManualSync } from "./manual-sync-confirm";
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, App, Button, Checkbox, Descriptions, Drawer, Form, Input, InputNumber, Modal, Progress, Select, Space, Table, Tag, Typography, Upload } from "antd";
 import { api, formatApiError, type JsonRecord } from "@thcpn/api";
+import type { NodeInventoryView } from "./admin-device-list-state";
 interface Node extends JsonRecord {id:number;sn:string;asset_no?:string;gateway_sn:string|null;node_index:number|null}
 interface ImportRow {line:number;sn:string;node_index:number;error?:string;status?:string;message?:string}
 type Operation={action:"register"|"bind"|"replace";node?:Node};
 const statusLabel:Record<string,string>={pending:"等待",running:"正在新建并安装",completed:"已新建并安装",partial:"部分完成，请核对",failed:"失败",unknown:"结果未确认"};
-export function LoRaWANNodeInventory(){
+export function LoRaWANNodeInventory({ initialView, onViewChange }: {
+ initialView?: NodeInventoryView;
+ onViewChange?: (view: NodeInventoryView) => void;
+}){
  const [params,setParams]=useSearchParams();const client=useQueryClient();const {modal}=App.useApp();const [form]=Form.useForm();
  const sources=useQuery({queryKey:["admin","sources","node-inventory"],queryFn:api.admin.sources});
  const availableSources=(sources.data?.items??[]).filter(s=>s.source_family==="lorawan_v2"&&s.status==="active");
  const incoming=params.get("gateway")??"";
- const context=useQuery({queryKey:["admin",incoming,"node-inventory-context"],queryFn:()=>api.admin.deviceLoRaWANV2Context(incoming),enabled:!!incoming&&!params.get("source")});
- const sourceId=params.get("source")||String(context.data?.data_source_id??(!incoming?availableSources[0]?.id??"":""));
- const [bound,setBound]=useState("all");const [search,setSearch]=useState("");const [sn,setSN]=useState("");const [page,setPage]=useState(1);
- const [gatewayId,setGatewayId]=useState(incoming);
+ const sourceParam = params.get("source") ?? "";
+ const context=useQuery({queryKey:["admin",incoming,"node-inventory-context"],queryFn:()=>api.admin.deviceLoRaWANV2Context(incoming),enabled:!!incoming&&!sourceParam});
+ const sourceId=sourceParam||String(context.data?.data_source_id??(!incoming?availableSources[0]?.id??"":""));
+ const restoredView = initialView?.sourceParam === sourceParam && initialView.gatewayParam === incoming ? initialView : undefined;
+ const [bound, setBound] = useState(restoredView?.bound ?? "all");
+ const [search, setSearch] = useState(restoredView?.search ?? "");
+ const [sn, setSN] = useState(restoredView?.sn ?? "");
+ const [page, setPage] = useState(restoredView?.page ?? 1);
+ const [gatewayId, setGatewayId] = useState(restoredView?.gatewayId ?? incoming);
+ useLayoutEffect(() => {
+  onViewChange?.({ sourceParam, gatewayParam: incoming, bound, search, sn, page, gatewayId });
+ }, [onViewChange, sourceParam, incoming, bound, search, sn, page, gatewayId]);
  const gateways=useQuery({queryKey:["admin",sourceId,"node-gateways"],queryFn:()=>api.admin.physicalNodeGateways(sourceId),enabled:!!sourceId});
  const gateway=gateways.data?.items.find(g=>g.id===gatewayId);
  const query=useQuery({queryKey:["admin",sourceId,"node-inventory",bound,sn,page,gatewayId],queryFn:()=>api.admin.sourcePhysicalNodes(sourceId,{page,page_size:20,...(bound==="all"?{}:{bound:bound==="bound"}),...(sn?{sn}:{}),...(gateway?{gateway_sn:gateway.sn}:{})}),enabled:!!sourceId&&gateways.isSuccess});

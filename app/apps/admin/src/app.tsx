@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { AdminNavigation } from "./admin-navigation";
+import { AdminDeviceListLayout } from "./admin-device-list-state";
 import { usePlatformBaseUrl } from "./deployment-address";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -591,9 +592,11 @@ function AdminRoot() {
       <Route path="/admin" element={<AdminGuard />}>
         <Route index element={<AdminOverview />} />
         <Route path="sources" element={<AdminSourcesPage />} />
-        <Route path="devices" element={<AdminDevicesPage />} />
-        <Route path="devices/:deviceId" element={<AdminDevicesPage />} />
-        <Route path="devices/:deviceId/nodes" element={<AdminGatewayNodesPage />} />
+        <Route path="devices" element={<AdminDeviceListLayout />}>
+          <Route index element={<AdminDevicesPage />} />
+          <Route path=":deviceId" element={<AdminDevicesPage />} />
+          <Route path=":deviceId/nodes" element={<AdminGatewayNodesPage />} />
+        </Route>
         <Route path="firmware" element={<AdminFirmwarePage />} />
         <Route path="exports" element={<AdminExportsPage />} />
         <Route path="sensors" element={<AdminSensorsPage key="v1" version="v1" />} />
