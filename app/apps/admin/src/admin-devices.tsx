@@ -90,6 +90,10 @@ const value = (input: unknown, fallback: unknown = "—"): string =>
     : String(input);
 const categoryOf = (item: JsonRecord) =>
   value(item.topology_role || item.device_type, "standalone");
+const deviceChildrenQuery = (id: string) => ({
+  queryKey: ["admin", "device", id, "children"] as const,
+  queryFn: () => api.admin.deviceChildren(id),
+});
 const deviceModelLabel = (item: JsonRecord) =>
   value(item.device_type) === "gateway"
     ? value(item.source_family, "") === "lorawan_v2"
@@ -119,7 +123,7 @@ export function AdminDevicesPage() {
   const { deviceId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { view, setView, children, setChildren, nodeInventoryView, setNodeInventoryView, listPath } = useAdminDeviceListState();
+  const { view, setView, nodeInventoryView, setNodeInventoryView, listPath } = useAdminDeviceListState();
   const { keyword, status, lifecycle, assignment, sort, pageSize, selectedRowKeys, expandedRowKeys } = view;
   const updateListView = (patch: Partial<typeof view>) => setView(current => ({ ...current, ...patch }));
   const [listParams, setListParams] = useSearchParams();
@@ -369,7 +373,7 @@ export function AdminDevicesPage() {
       const deviceId = value(record.id, "");
       const response =
         kind === "children"
-          ? await api.admin.deviceChildren(deviceId)
+          ? await queryClient.fetchQuery({ ...deviceChildrenQuery(deviceId), staleTime: 0 })
           : kind === "lifecycle"
             ? await api.admin.lifecycle(deviceId)
             : kind === "capabilities"
@@ -408,7 +412,10 @@ export function AdminDevicesPage() {
             ? { parameters: JSON.parse(fields.parameters) }
             : {}),
         });
-      if (mode === "child") await api.admin.addDeviceChild(id, fields);
+      if (mode === "child") {
+        await api.admin.addDeviceChild(id, fields);
+        void queryClient.invalidateQueries({ queryKey: deviceChildrenQuery(id).queryKey });
+      }
       if (mode === "lifecycle") {
         const occurredAt = fields.occurred_at?.toISOString?.();
         await api.admin.updateLifecycle(id, {
@@ -491,12 +498,6 @@ export function AdminDevicesPage() {
         return;
       }
       if (mode === "camera-edit") await api.admin.updateCamera(id, fields);
-      if (mode === "child")
-        setChildren((current) => {
-          const next = { ...current };
-          delete next[id];
-          return next;
-        });
       const completedMode = mode;
       setFeedback("操作已完成");
       close();
@@ -567,16 +568,6 @@ export function AdminDevicesPage() {
       setBusy(false);
     }
   };
-  const loadChildren = async (record: JsonRecord) => {
-    const deviceId = value(record.id, "");
-    if (children[deviceId]) return;
-    try {
-      const response = await api.admin.deviceChildren(deviceId);
-      setChildren((current) => ({ ...current, [deviceId]: response.items }));
-    } catch (error) {
-      showError(error);
-    }
-  };
   const removeChild = async (parentId: string, childId: string) => {
     try {
       await api.admin.removeDeviceChild(parentId, childId);
@@ -584,10 +575,7 @@ export function AdminDevicesPage() {
         items.filter(
           (item) => value(((item.device ?? item) as JsonRecord).id) !== childId,
         );
-      setChildren((current) => ({
-        ...current,
-        [parentId]: withoutChild(current[parentId] ?? []),
-      }));
+      void queryClient.invalidateQueries({ queryKey: deviceChildrenQuery(parentId).queryKey });
       setDetail((current: unknown) =>
         current &&
         typeof current === "object" &&
@@ -735,19 +723,16 @@ export function AdminDevicesPage() {
               expandedRowKeys,
               onExpandedRowsChange: (keys) => updateListView({ expandedRowKeys: [...keys] }),
               rowExpandable: (record) => categoryOf(record) === "gateway",
-              onExpand: (expanded, record) =>
-                expanded && record.source_family!=="lorawan_v2" && void loadChildren(record),
-              expandedRowRender: (record) => record.source_family==="lorawan_v2" ? <AdminDeviceNodes compact device={record}
+              expandedRowRender: (record, _index, _indent, expanded) => record.source_family==="lorawan_v2" ? <AdminDeviceNodes compact device={record}
                 onData={node=>navigate(`/admin/devices/${record.id}?${new URLSearchParams({tab:"data",node})}`)}
-                onConfig={(index,kind)=>navigate(`/admin/devices/${record.id}?${new URLSearchParams({tab:"configuration",node_index:String(index),config_tab:kind??"sensor",node:`gateway:${record.id}:node:${index}`})}`)}/>: (
-                <ChildList
-                  items={children[value(record.id, "")] ?? []}
-                  loading={!children[value(record.id, "")]}
+                onConfig={(index,kind)=>navigate(`/admin/devices/${record.id}?${new URLSearchParams({tab:"configuration",node_index:String(index),config_tab:kind??"sensor",node:`gateway:${record.id}:node:${index}`})}`)}/>: expanded ? (
+                <ExpandedChildList
+                  deviceId={value(record.id, "")}
                   onRemove={(childId) =>
                     void removeChild(value(record.id, ""), childId)
                   }
                 />
-              ),
+              ) : null,
             }}
             pagination={{
               current: page,
@@ -1384,16 +1369,15 @@ function DeviceForm({
 const categoryFor = (item: JsonRecord) =>
   value(item.topology_role || item.device_type, "standalone");
 
-function ChildList({
-  items,
-  loading,
+function ExpandedChildList({
+  deviceId,
   onRemove,
 }: {
-  items: JsonRecord[];
-  loading: boolean;
+  deviceId: string;
   onRemove: (id: string) => void;
 }) {
-  if (loading)
+  const query = useQuery(deviceChildrenQuery(deviceId));
+  if (query.isPending)
     return (
       <StateView
         type="loading"
@@ -1401,6 +1385,19 @@ function ChildList({
         description="正在读取网关拓扑关系。"
       />
     );
+  if (query.isError)
+    return (
+      <StateView
+        type="error"
+        title="子节点加载失败"
+        description={formatApiError(query.error).message}
+        action={<Button onClick={() => void query.refetch()}>重试</Button>}
+      />
+    );
+  return <ChildList items={query.data?.items ?? []} onRemove={onRemove} />;
+}
+
+function ChildList({ items, onRemove }: { items: JsonRecord[]; onRemove: (id: string) => void }) {
   if (!items.length)
     return (
       <StateView
@@ -1472,7 +1469,6 @@ function StructuredDetail({
         <h3>当前拓扑节点</h3>
         <ChildList
           items={(record.items as JsonRecord[]) ?? []}
-          loading={false}
           onRemove={onRemove}
         />
       </section>

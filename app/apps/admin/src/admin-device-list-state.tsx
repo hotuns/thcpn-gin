@@ -1,6 +1,5 @@
 import { useLayoutEffect, useRef, useState, type Dispatch, type Key, type SetStateAction } from "react";
 import { Outlet, useLocation, useMatch, useOutletContext } from "react-router-dom";
-import type { JsonRecord } from "@thcpn/api";
 
 export const deviceSortOptions = [
   { value: "created_desc", label: "创建时间：最新优先" },
@@ -38,8 +37,6 @@ export type NodeInventoryView = {
 type DeviceListContext = {
   view: DeviceListView;
   setView: Dispatch<SetStateAction<DeviceListView>>;
-  children: Record<string, JsonRecord[]>;
-  setChildren: Dispatch<SetStateAction<Record<string, JsonRecord[]>>>;
   nodeInventoryView: NodeInventoryView | undefined;
   setNodeInventoryView: Dispatch<SetStateAction<NodeInventoryView | undefined>>;
   listPath: string | null;
@@ -51,7 +48,6 @@ export function AdminDeviceListLayout() {
     keyword: "", status: "", lifecycle: "", assignment: "", sort: "created_desc",
     page: 1, pageSize: 20, selectedRowKeys: [], expandedRowKeys: [],
   });
-  const [children, setChildren] = useState<Record<string, JsonRecord[]>>({});
   const [nodeInventoryView, setNodeInventoryView] = useState<NodeInventoryView>();
   const [listPath, setListPath] = useState<string | null>(null);
   const scrollTop = useRef(0);
@@ -77,7 +73,7 @@ export function AdminDeviceListLayout() {
     return () => window.removeEventListener("scroll", rememberScroll);
   }, [isList, pathname]);
 
-  return <Outlet context={{ view, setView, children, setChildren, nodeInventoryView, setNodeInventoryView, listPath } satisfies DeviceListContext} />;
+  return <Outlet context={{ view, setView, nodeInventoryView, setNodeInventoryView, listPath } satisfies DeviceListContext} />;
 }
 
 export function useAdminDeviceListState() {
