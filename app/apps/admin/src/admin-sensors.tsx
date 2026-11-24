@@ -67,6 +67,7 @@ export function v1ToV2Content(item: Pick<SensorTemplate, "port" | "params"> & { 
   const port = (item.port ?? "").toLowerCase();
   if (port === "485") return [["485", [params.command ?? "", mappings]]];
   if (port === "ad") return [["ad", mappings, item.port_num ?? 0]];
+  if (port === "sdi") return [["sdi", [String(params.command ?? ""), metrics.map(metric => [metric.key, String(metric.decode ?? "")])]]];
   return [];
 }
 
@@ -541,7 +542,7 @@ export function AdminSensorsPage({ version = "v1" }: { version?: "v1" | "v2" }) 
           </Space>
         }
       >
-        {copyToV2 && <Alert type="warning" showIcon title="另存为独立的 V2 模板，不修改原模板或设备配置" description="已带入指标资料。485、AD 配置会生成转换草稿，请核对命令、解析规则及端口；其他协议需手动填写 V2 协议项，可在 JSON 模式查看原指标资料。V1 等待时间不会复制。" />}
+        {copyToV2 && <Alert type="warning" showIcon title="另存为独立的 V2 模板，不修改原模板或设备配置" description="已带入指标资料。485、AD、SDI 配置会生成转换草稿，请核对命令、解析规则、端口及地址；SDI 会带入原地址和数据项序号。其他协议需手动填写 V2 协议项，可在 JSON 模式查看原指标资料。V1 等待时间不会复制。" />}
         <Form form={form} layout="vertical" initialValues={initialValues}>
           <Form.Item
             name="sensor_type"
