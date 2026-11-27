@@ -268,7 +268,7 @@ export function AdminSourcesPage() {
         description="维护系统级连接，并同步已存在的源库设备。设备创建统一在设备列表页面完成。"
         actions={
           <Space>
-            <Button icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>
+            <Button icon={<RefreshCw size={14} />} loading={query.isFetching} onClick={() => void query.refetch()}>
               刷新
             </Button>
             <Button type="primary" icon={<Plus size={14} />} onClick={() => openSourceForm("create")}>
@@ -279,14 +279,14 @@ export function AdminSourcesPage() {
       />
       <Panel>
         <div className="admin-list-toolbar">
-          <div className="admin-search">
-            <Search size={15} />
-            <input
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-              placeholder="搜索名称、连接类型、业务类型或 ID"
-            />
-          </div>
+          <Input
+            allowClear
+            prefix={<Search size={15} />}
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            placeholder="搜索名称、连接类型、业务类型或 ID"
+            style={{ maxWidth: 360 }}
+          />
           <Badge tone="info">{rows.length} 个数据源</Badge>
         </div>
         {feedback && <div className="admin-feedback">{feedback}</div>}

@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, App as AntApp, Button, Form, Input, Modal, Space, Table, Tag } from "@thcpn/admin-ui";
-import { api, formatApiError } from "@thcpn/api";
+import { api, formatApiError, formatApiErrorText } from "@thcpn/api";
 import { useAdminAuth } from "@thcpn/auth";
 import { PageHeader, Panel, StateView } from "@thcpn/ui";
 import { KeyRound, LockKeyhole, LogOut, Plus, UserX } from "lucide-react";
@@ -21,8 +21,8 @@ export function SystemAdminsPage() {
   const [createForm] = Form.useForm();
   const [actionForm] = Form.useForm();
   const refresh = () => client.invalidateQueries({ queryKey: ["admin", "administrators"] });
-  const create = async () => { try { const values = await createForm.validateFields(); const result = await api.admin.administrators.create(values); setCreateOpen(false); createForm.resetFields(); setPassword(result.temporary_password); await refresh(); } catch (error) { if (!error?.errorFields) void message.error(formatApiError(error).message); } };
-  const run = async () => { try { const values = await actionForm.validateFields(); if (action === "status") await api.admin.administrators.updateStatus(target.id, { ...values, status: target.status === "active" ? "disabled" : "active", confirm_text: "确认" }); if (action === "unlock") await api.admin.administrators.unlock(target.id, values); if (action === "logout") await api.admin.administrators.revokeAllSessions(target.id, values); if (action === "password") { const result = await api.admin.administrators.temporaryPassword(target.id, { ...values, confirm_text: "重置密码" }); setPassword(result.temporary_password); } setAction(""); setTarget(null); actionForm.resetFields(); await refresh(); void message.success("操作已完成"); } catch (error) { if (!error?.errorFields) void message.error(formatApiError(error).message); } };
+  const create = async () => { try { const values = await createForm.validateFields(); const result = await api.admin.administrators.create(values); setCreateOpen(false); createForm.resetFields(); setPassword(result.temporary_password); await refresh(); } catch (error) { if (!error?.errorFields) void message.error(formatApiErrorText(error)); } };
+  const run = async () => { try { const values = await actionForm.validateFields(); if (action === "status") await api.admin.administrators.updateStatus(target.id, { ...values, status: target.status === "active" ? "disabled" : "active", confirm_text: "确认" }); if (action === "unlock") await api.admin.administrators.unlock(target.id, values); if (action === "logout") await api.admin.administrators.revokeAllSessions(target.id, values); if (action === "password") { const result = await api.admin.administrators.temporaryPassword(target.id, { ...values, confirm_text: "重置密码" }); setPassword(result.temporary_password); } setAction(""); setTarget(null); actionForm.resetFields(); await refresh(); void message.success("操作已完成"); } catch (error) { if (!error?.errorFields) void message.error(formatApiErrorText(error)); } };
   const openAction = (item, value) => { setTarget(item); setAction(value); actionForm.resetFields(); };
   const columns = [
     { title: "管理员", render: (_, item) => <div><strong>{item.name}</strong><div className="cell-sub">{item.email}{item.id === admin?.id ? " · 当前账号" : ""}</div></div> },

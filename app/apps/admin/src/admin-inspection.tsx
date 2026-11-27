@@ -41,7 +41,7 @@ export function AdminInspectionPage() {
   return <Space orientation="vertical" size="middle" style={{ width:"100%" }}>
     <Row justify="space-between" align="middle">
       <Typography.Title level={3} style={{ margin:0 }}>设备巡检</Typography.Title>
-      <Button onClick={() => void cache.invalidateQueries({ queryKey })}>刷新结果</Button>
+      <Button loading={overview.isFetching} onClick={() => void cache.invalidateQueries({ queryKey })}>刷新结果</Button>
     </Row>
     {renderError(overview.error)}
     <Row gutter={[12,12]}>
@@ -82,7 +82,7 @@ function InspectionEvents() {
     </Space>
     {renderError(query.error)}
     <Table<InspectionEvent> size="small" rowKey="id" loading={query.isFetching} dataSource={query.data?.items ?? []} scroll={{x:900}}
-      pagination={{current:page,total:query.data?.total??0,pageSize:50,showSizeChanger:false,onChange:setPage}}
+      pagination={{current:page,total:query.data?.total??0,pageSize:50,showSizeChanger:false,showTotal:(total)=>`共 ${total} 条事件`,onChange:setPage}}
       columns={[
         {title:"设备",render:(_,item)=><><Link to={`/admin/devices/${item.device_id}`}>{item.device_name}</Link><br/><Typography.Text type="secondary">{item.asset_no}{item.node_index ? ` · 节点 ${item.node_index}` : ""}</Typography.Text></>},
         {title:"异常",render:(_,item)=><><InspectionEventTag event={item}/>{item.metric}<br/><Typography.Text type="secondary">{item.detail}</Typography.Text></>},
@@ -123,7 +123,7 @@ function InspectionDevices() {
     ]}/><Input.Search aria-label="搜索设备" placeholder="设备名称或资产编号" allowClear onSearch={(v)=>{setSearch(v.trim());setPage(1);}}/></Space>
     {renderError(query.error)}
     <Table size="small" rowKey="device_id" dataSource={query.data?.items??[]} loading={query.isFetching} scroll={{x:730}}
-      pagination={{current:page,total:query.data?.total??0,pageSize:50,showSizeChanger:false,onChange:setPage}}
+      pagination={{current:page,total:query.data?.total??0,pageSize:50,showSizeChanger:false,showTotal:(total)=>`共 ${total} 台设备`,onChange:setPage}}
       columns={[
         {title:"设备",render:(_,d)=><Link to={`/admin/devices/${d.device_id}`}>{d.name} · {d.asset_no}</Link>},
         {title:"设备体系",render:(_,d)=>families[d.family]??d.family},

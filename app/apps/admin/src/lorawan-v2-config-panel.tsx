@@ -450,13 +450,20 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                           label: nodeOptionLabel(item),
                         }))}
                       onChange={(next) => {
-                        if (
-                          (sensorDirty || timeContent) &&
-                          !window.confirm(
-                            "切换节点将清除未提交的编辑，是否继续？",
-                          )
-                        )
+                        if (sensorDirty || timeContent) {
+                          modal.confirm({
+                            title: "切换节点？",
+                            content: "切换节点将清除未提交的编辑，是否继续？",
+                            okText: "继续切换",
+                            cancelText: "取消",
+                            okButtonProps: { danger: true },
+                            onOk: () => {
+                              selectNode(next);
+                              setTimeContent("");
+                            },
+                          });
                           return;
+                        }
                         selectNode(next);
                         setTimeContent("");
                       }}
@@ -576,13 +583,20 @@ function LoRaWANV2ConfigContent({ deviceId }: { deviceId: string }) {
                           label: nodeOptionLabel(item),
                         }))}
                       onChange={(next) => {
-                        if (
-                          (sensorDirty || timeContent) &&
-                          !window.confirm(
-                            "切换节点将清除未提交的编辑，是否继续？",
-                          )
-                        )
+                        if (sensorDirty || timeContent) {
+                          modal.confirm({
+                            title: "切换节点？",
+                            content: "切换节点将清除未提交的编辑，是否继续？",
+                            okText: "继续切换",
+                            cancelText: "取消",
+                            okButtonProps: { danger: true },
+                            onOk: () => {
+                              selectNode(next);
+                              setTimeContent("");
+                            },
+                          });
                           return;
+                        }
                         selectNode(next);
                         setTimeContent("");
                       }}

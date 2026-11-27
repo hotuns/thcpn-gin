@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Alert, App, Button, Card, Descriptions, Drawer, Input, Select, Space, Table, Tag, Typography } from "antd";
-import { api, formatApiError, type ExportJob, type JsonRecord } from "@thcpn/api";
+import { api, formatApiError, formatApiErrorText, type ExportJob, type JsonRecord } from "@thcpn/api";
 import { AdminExportCreate, exportDeviceName } from "./admin-export-create";
 import { opsTime } from "./admin-device-ops-model";
 
@@ -28,7 +28,7 @@ export function AdminExportsPage({ device }: {device?:JsonRecord}) {
       : devices.join("、");
   };
   const download=async(job:ExportJob)=>{
-    try {const result=await api.admin.exportDownload(job.id);window.open(result.url,"_blank","noopener,noreferrer");}catch(err){void message.error(formatApiError(err).message);}
+    try {const result=await api.admin.exportDownload(job.id);window.open(result.url,"_blank","noopener,noreferrer");}catch(err){void message.error(formatApiErrorText(err));}
   };
   return <Card title={device?"设备下载任务":"数据下载与导出"} extra={<Space><Button onClick={()=>void jobs.refetch()} loading={jobs.isFetching}>刷新</Button><Button type="primary" onClick={()=>setOpen(true)}>新建导出</Button></Space>}>
     <Space style={{marginBottom:16}}><Select allowClear placeholder="全部状态" value={status} onChange={setStatus} style={{width:150}} options={Object.entries(labels).map(([value,label])=>({value,label}))}/><Typography.Text type="secondary">后台创建的任务仅管理员可见，不会出现在用户端；此处也可查看用户发起的任务。</Typography.Text></Space>
@@ -39,7 +39,7 @@ export function AdminExportsPage({ device }: {device?:JsonRecord}) {
       {title:"状态 / 进度",width:160,render:(_,job)=><><Tag color={job.status==="failed"?"red":job.status==="success"?"green":"default"}>{labels[job.status]}</Tag>{job.progress?.stage&&<div>{job.progress.stage==="uploading"?"上传中":"打包中"} · {job.progress.packed_images??0} 张</div>}</>},
       {title:"时间范围",width:210,render:(_,job)=>{const cfg=(job.request_config??{}) as JsonRecord;return <>{opsTime(String(cfg.start_time||""))}<div>至 {opsTime(String(cfg.end_time||""))}</div></>;}},
       {title:"创建时间",width:180,render:(_,job)=>opsTime(job.created_at)},
-      {title:"操作",width:200,render:(_,job)=><Space><Button size="small" onClick={()=>setDetail(job)}>详情</Button><Button size="small" disabled={job.status!=="success"||Date.parse(job.expires_at)<=Date.now()} onClick={()=>void download(job)}>下载</Button>{job.status==="failed"&&job.resource_type!=="dataset"&&<Button size="small" onClick={()=>void api.admin.createExport({resource_type:job.resource_type,resource_id:job.resource_id,export_type:job.export_type,request_config:job.request_config??{}}).then(()=>jobs.refetch()).catch(err=>message.error(formatApiError(err).message))}>重新导出</Button>}</Space>},
+      {title:"操作",width:200,render:(_,job)=><Space><Button size="small" onClick={()=>setDetail(job)}>详情</Button><Button size="small" disabled={job.status!=="success"||Date.parse(job.expires_at)<=Date.now()} onClick={()=>void download(job)}>下载</Button>{job.status==="failed"&&job.resource_type!=="dataset"&&<Button size="small" onClick={()=>void api.admin.createExport({resource_type:job.resource_type,resource_id:job.resource_id,export_type:job.export_type,request_config:job.request_config??{}}).then(()=>jobs.refetch()).catch(err=>message.error(formatApiErrorText(err)))}>重新导出</Button>}</Space>},
     ]}/>
     <AdminExportCreate open={open} onClose={()=>setOpen(false)} onCreated={()=>void jobs.refetch()} device={device}
       devices={devices.data?.items??[]} devicesLoading={devices.isLoading} devicesError={devices.error} reloadDevices={()=>void devices.refetch()}/>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, App, Button, Card, Descriptions, Space } from "antd";
-import { api, formatApiError, type CameraLiveSession } from "@thcpn/api";
+import { api, formatApiErrorText, type CameraLiveSession } from "@thcpn/api";
 import { opsTime } from "./admin-device-ops-model";
 
 export function AdminDeviceCamera({deviceId,onEdit}:{deviceId:string;onEdit:()=>void}) {
@@ -20,7 +20,7 @@ export function AdminDeviceCamera({deviceId,onEdit}:{deviceId:string;onEdit:()=>
     }).catch(()=>setError("视频播放器加载失败，请刷新重试"));
     return ()=>{disposed=true;try { void player?.stop?.().catch(()=>{});player?.destroy?.(); } catch {} host.current?.replaceChildren();};
   },[session,deviceId]);
-  return <Card title="监控站视频调试" extra={<Space><Button onClick={onEdit}>编辑视频绑定</Button><Button type="primary" loading={busy} onClick={async()=>{setBusy(true);setError("");try{setSession(await api.admin.cameraLive(deviceId));}catch(error){void message.error(formatApiError(error).message);}finally{setBusy(false);}}}>{session?"重新连接":"开启视频预览"}</Button></Space>}>
+  return <Card title="监控站视频调试" extra={<Space><Button onClick={onEdit}>编辑视频绑定</Button><Button type="primary" loading={busy} onClick={async()=>{setBusy(true);setError("");try{setSession(await api.admin.cameraLive(deviceId));}catch(error){void message.error(formatApiErrorText(error));}finally{setBusy(false);}}}>{session?"重新连接":"开启视频预览"}</Button></Space>}>
     {error&&<Alert type="error" title={error}/>}
     {session&&<Descriptions size="small" items={[{key:"serial",label:"摄像机序列号",children:session.device_serial},{key:"channel",label:"通道",children:session.channel_no},{key:"expire",label:"会话到期",children:opsTime(session.expires_at)}]}/>}
     {!session&&<Alert type="info" title="直接在后台检查监控站画面，无需登录用户前端"/>}

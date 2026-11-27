@@ -224,17 +224,18 @@ function Capabilities() {
     <>
       <Panel>
         <div className="admin-list-toolbar">
-          <div className="admin-search">
-            <Search size={15} />
-            <input
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-              placeholder="搜索 code 或名称"
-            />
-          </div>
+          <Input
+            allowClear
+            prefix={<Search size={15} />}
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            placeholder="搜索 code 或名称"
+            style={{ maxWidth: 320 }}
+          />
           <Space>
             <Button
               icon={<RefreshCw size={14} />}
+              loading={query.isFetching}
               onClick={() => void query.refetch()}
             >
               刷新
@@ -417,16 +418,17 @@ function Roles() {
     <>
       <Panel>
         <div className="admin-list-toolbar">
-          <div className="admin-search">
-            <Search size={15} />
-            <input
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-              placeholder="搜索角色 code 或名称"
-            />
-          </div>
+          <Input
+            allowClear
+            prefix={<Search size={15} />}
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            placeholder="搜索角色 code 或名称"
+            style={{ maxWidth: 320 }}
+          />
           <Button
             icon={<RefreshCw size={14} />}
+            loading={query.isFetching}
             onClick={() => void query.refetch()}
           >
             刷新

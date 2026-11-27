@@ -1,4 +1,4 @@
-import { Alert, Modal, Space, Typography } from "antd";
+import { Alert, Space, Typography, getAdminModal } from "@thcpn/admin-ui";
 
 export const manualSyncNotice = "只有在通过本平台以外的方式修改了设备配置后，才需要手动同步。通过本平台修改配置会自动更新平台资料，无需额外同步。";
 
@@ -8,7 +8,7 @@ export function confirmManualSync({ title = "确认手动同步？", scope, reas
  reason?: "external" | "recovery" | "import";
 }): Promise<boolean> {
  return new Promise(resolve => {
-  Modal.confirm({
+  getAdminModal().confirm({
    title,
    content: <Space orientation="vertical" size="middle" style={{width:"100%"}}>
     <Alert type="info" title={manualSyncNotice}/>

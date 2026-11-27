@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, App, AutoComplete, Button, Descriptions, Drawer, Dropdown, Form, Input, InputNumber, Modal, Segmented, Space, Typography } from "antd";
-import { api, formatApiError, type GatewayNode, type JsonRecord } from "@thcpn/api";
+import { api, formatApiError, formatApiErrorText, type GatewayNode, type JsonRecord } from "@thcpn/api";
 
 type Action = "create" | "bind" | "replace";
 export function GatewayNodeActions({ deviceId, node, onDetails, onConfig }: { deviceId: string; node?: GatewayNode; onDetails?: () => void; onConfig?: (index: number, kind: "sensor" | "time") => void }) {
@@ -25,7 +25,7 @@ export function GatewayNodeActions({ deviceId, node, onDetails, onConfig }: { de
       if(partial)void message.warning(String(result.message),8);else void message.success(String(result.message));
       setAction(null);
       await refresh();
-    } catch (error) { void message.error(formatApiError(error).message);setFeedback({ type: "error", text: `${formatApiError(error).message}。请刷新核对当前关系后再操作。` }); }
+    } catch (error) { void message.error(formatApiErrorText(error));setFeedback({ type: "error", text: `${formatApiError(error).message}。请刷新核对当前关系后再操作。` }); }
     finally { setBusy(false); }
   };
   const submit = async () => {

@@ -12,13 +12,13 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import dayjs, { type Dayjs } from "dayjs";
 import { Alert, App, Button, Card, Descriptions, Empty, Image, Modal, Segmented, Select, Space, Spin, Table, Tabs, Tag, Typography } from "antd";
-import { api, formatApiError, type GatewayNode, type JsonRecord, type MediaItem } from "@thcpn/api";
+import { api, formatApiError, formatApiErrorText, type GatewayNode, type JsonRecord, type MediaItem } from "@thcpn/api";
 import { operationsStreams, opsTime, telemetryRows } from "./admin-device-ops-model";
 
 const AdminDataCharts = lazy(() => import("./admin-data-charts").then(module => ({default: module.AdminDataCharts})));
 
 export function AdminDeviceData({device,nodeKey,onNodeChange,onExport}:{device:JsonRecord;nodeKey:string;onNodeChange:(key:string)=>void;onExport:()=>void}) {
-  const {message}=App.useApp();
+  const {message,modal}=App.useApp();
   const mobile = useAdminMobile();
   const id=String(device.id);
   const gateway=device.device_type==="gateway";
@@ -61,9 +61,9 @@ export function AdminDeviceData({device,nodeKey,onNodeChange,onExport}:{device:J
   };
   const mediaDownload=async(item:MediaItem)=>{
     if(!item.download_url)return;
-    try{const result=await api.admin.downloadMedia(item.download_url);window.open(result.url,"_blank","noopener,noreferrer");}catch(err){void message.error(formatApiError(err).message);}
+    try{const result=await api.admin.downloadMedia(item.download_url);window.open(result.url,"_blank","noopener,noreferrer");}catch(err){void message.error(formatApiErrorText(err));}
   };
-  const removeImage=(item:MediaItem)=>Modal.confirm({title:"删除这张采集图片？",content:"这会删除源图片文件，无法撤销。",okText:"删除图片",okButtonProps:{danger:true},onOk:async()=>{if(!item.delete_url)return;await api.admin.deleteMedia(item.delete_url);await media.refetch();}});
+  const removeImage=(item:MediaItem)=>modal.confirm({title:"删除这张采集图片？",content:"这会删除源图片文件，无法撤销。",okText:"删除图片",okButtonProps:{danger:true},onOk:async()=>{if(!item.delete_url)return;await api.admin.deleteMedia(item.delete_url);await media.refetch();}});
   const loading=streams.isLoading||nodes.isLoading;
   const errors=[streams.error,nodes.error,telemetry.error].filter(Boolean);
   const pointWarnings=(telemetry.data?.series??[]).flatMap(series=>series.warnings?.map(warning=>`${series.name}：${warning.message}`)??[]);

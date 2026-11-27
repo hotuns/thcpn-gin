@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, App, Button, Card, Descriptions, Form, Input, Modal, Space, Typography } from "antd";
-import { api, formatApiError } from "@thcpn/api";
+import { api, formatApiError, formatApiErrorText } from "@thcpn/api";
 
 const settingsKey = ["admin", "system-settings"];
 const addressLabel = (value?: string) => value || "使用前端默认地址，未配置时随当前访问地址";
@@ -50,7 +50,7 @@ export function AdminDeploymentSettings({ onHistory }: { onHistory: () => void }
       form.setFieldValue("public_base_url", result.public_base_url);
       setConfirmation(null);
       void message.success("部署地址已保存，新生成的访问链接使用新地址");
-    } catch (error) { void message.error(formatApiError(error).message); }
+    } catch (error) { void message.error(formatApiErrorText(error)); }
     finally { setSaving(false); }
   };
 

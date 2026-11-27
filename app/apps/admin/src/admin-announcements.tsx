@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, App as AntApp, Button, Card, DatePicker, Form, Input, Modal, Select, Space, Table, Tabs, Tag } from "@thcpn/admin-ui";
-import { api, formatApiError } from "@thcpn/api";
+import { api, formatApiError, formatApiErrorText } from "@thcpn/api";
 import { PageHeader, Panel, StateView } from "@thcpn/ui";
 import { Bell, Megaphone, Plus, RefreshCw, Send } from "lucide-react";
 
@@ -32,7 +32,7 @@ export function AdminAnnouncementsPage() {
   const send = async () => {
     const values = await sendForm.validateFields(); setSending(true);
     try { const result = await api.admin.announcements.sendNotification({ ...values, user_id: values.target_type === "user" ? values.user_id : undefined, workspace_id: values.target_type === "workspace" ? values.workspace_id : undefined, expires_at: values.expires_at?.toISOString() }); sendForm.resetFields(); void message.success(`提醒已发送给 ${Number(result.created_count ?? 0)} 位用户`); }
-    catch (error) { void message.error(formatApiError(error).message); } finally { setSending(false); }
+    catch (error) { void message.error(formatApiErrorText(error)); } finally { setSending(false); }
   };
 
   return <>

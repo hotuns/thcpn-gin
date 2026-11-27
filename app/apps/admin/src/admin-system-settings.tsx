@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, App, Button, Card, Col, Drawer, Form, Input, InputNumber, Modal, Row, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
-import { api, formatApiError, type SystemSettingField, type SystemSettingsChange } from "@thcpn/api";
+import { api, formatApiError, formatApiErrorText, type SystemSettingField, type SystemSettingsChange } from "@thcpn/api";
 import { AdminDeploymentSettings } from "./admin-deployment-settings";
 
 const key = ["admin", "system-settings"];
@@ -37,7 +37,7 @@ export function AdminSystemSettings() {
       client.setQueryData(key, result);
       await client.invalidateQueries({ queryKey: [...key, "history"] });
       setConfirmation(null); void message.success("配置已保存，新请求和新导出任务使用新值");
-    } catch (error) { void message.error(formatApiError(error).message); }
+    } catch (error) { void message.error(formatApiErrorText(error)); }
     finally { setSaving(false); }
   };
   const fieldHelp = (field: SystemSettingField) => {

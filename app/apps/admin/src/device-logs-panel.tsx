@@ -1,9 +1,9 @@
 import { useSearchParams } from "react-router-dom";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Download, Eye, RefreshCw, Search } from "lucide-react";
+import { Download, Eye, RefreshCw, RotateCcw, Search } from "lucide-react";
 import dayjs from "dayjs";
-import { Button, DatePicker, Modal, Space, Table } from "@thcpn/admin-ui";
+import { Button, DatePicker, Input, Modal, Space, Table, Typography } from "@thcpn/admin-ui";
 import { api, formatApiError } from "@thcpn/api";
 import { Badge, StateView } from "@thcpn/ui";
 import { sourceDateValue } from "./source-date";
@@ -31,23 +31,44 @@ export function DeviceLogsPanel({ deviceId, deviceName }: { deviceId: string; de
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState("");
   const query = useQuery({ queryKey: ["admin", "device-logs", deviceId, submitted, page], queryFn: () => api.admin.deviceLogs(deviceId, { start_date: submitted.startDate, end_date: submitted.endDate, keyword: submitted.keyword, page, page_size: 50 }) });
-  const search = () => { setPage(1); setSubmitted({ keyword: keyword.trim(), startDate, endDate }); };
+  const search = (override?: { keyword?: string; startDate?: string; endDate?: string }) => {
+    setPage(1);
+    setSubmitted({
+      keyword: (override?.keyword ?? keyword).trim(),
+      startDate: override?.startDate ?? startDate,
+      endDate: override?.endDate ?? endDate,
+    });
+  };
+  const applyDays = (days: number) => {
+    const nextEnd = sourceDateValue(new Date());
+    const nextStart = sourceDateValue(new Date(Date.now() - days * 86400000));
+    setStartDate(nextStart);
+    setEndDate(nextEnd);
+    search({ startDate: nextStart, endDate: nextEnd });
+  };
   const showError = (error: unknown) => { const detail = formatApiError(error); setFeedback(`${detail.message}${detail.requestId ? ` · request id ${detail.requestId}` : ""}`); };
   const openPreview = async (item: any) => { setBusy(`preview:${item.uuid}`); setFeedback(""); try { setPreview(await api.admin.deviceLogPreview(deviceId, item.uuid)); } catch (error) { showError(error); } finally { setBusy(""); } };
   const download = async (item: any) => { setBusy(`download:${item.uuid}`); setFeedback(""); try { const blob = await api.admin.deviceLogDownload(deviceId, item.uuid); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = text(item.file_name, "device-log"); anchor.click(); URL.revokeObjectURL(url); } catch (error) { showError(error); } finally { setBusy(""); } };
   return <div className="admin-device-detail-content"><section className="admin-detail-section">
-    <div className="admin-detail-section-head"><div><h2>设备日志</h2><span>查询、预览和下载源数据库中的设备日志</span></div><Button icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>刷新</Button></div>
+    <div className="admin-detail-section-head"><div><h2>设备日志</h2><span>查询、预览和下载源数据库中的设备日志</span></div><Button icon={<RefreshCw size={14} />} loading={query.isFetching} onClick={() => void query.refetch()}>刷新</Button></div>
+    <Space wrap style={{ marginBottom: 10 }}>
+      <Typography.Text type="secondary">快捷范围：</Typography.Text>
+      <Button size="small" onClick={() => applyDays(7)}>近 7 天</Button>
+      <Button size="small" onClick={() => applyDays(30)}>近 30 天</Button>
+      <Button size="small" onClick={() => applyDays(90)}>近 90 天</Button>
+      {keyword && <Button size="small" icon={<RotateCcw size={12} />} onClick={() => { setKeyword(""); search({ keyword: "" }); }}>清空关键词</Button>}
+    </Space>
     <div className="admin-device-filters">
       <DatePicker aria-label="开始日期" placeholder="开始日期" value={startDate ? dayjs(startDate) : null} onChange={value => setStartDate(value?.format("YYYY-MM-DD") ?? "")} style={{ width: "100%" }} />
       <DatePicker aria-label="结束日期" placeholder="结束日期" value={endDate ? dayjs(endDate) : null} onChange={value => setEndDate(value?.format("YYYY-MM-DD") ?? "")} style={{ width: "100%" }} />
-      <div className="admin-search"><Search size={15} /><input value={keyword} onChange={(event) => setKeyword(event.target.value)} onKeyDown={(event) => event.key === "Enter" && search()} placeholder="搜索文件名、路径或 UUID" /></div>
-      <Button type="primary" icon={<Search size={14} />} onClick={search}>搜索</Button>
+      <Input.Search allowClear value={keyword} onChange={(event) => setKeyword(event.target.value)} onSearch={(val) => search({ keyword: val })} placeholder="搜索文件名、路径或 UUID" />
+      <Button type="primary" icon={<Search size={14} />} loading={query.isFetching} onClick={() => search()}>搜索</Button>
     </div>
     {feedback && <div className="admin-feedback">{feedback}</div>}
     {query.isLoading ? <StateView type="loading" title="正在加载日志" description="正在查询 THCPN 月分表。" /> : query.error ? <StateView type="error" title="日志加载失败" description={formatApiError(query.error).message} requestId={formatApiError(query.error).requestId} /> : <>
       <div className="admin-list-toolbar"><strong>{deviceName ?? deviceId}</strong><Badge tone="info">{query.data?.total ?? 0} 条日志</Badge></div>
-      <Table rowKey="uuid" dataSource={query.data?.items ?? []}
-        pagination={{ current: page, pageSize: 50, showSizeChanger: false, total: query.data?.total ?? 0, onChange: setPage }}
+      <Table rowKey="uuid" loading={query.isFetching} dataSource={query.data?.items ?? []}
+        pagination={{ current: page, pageSize: 50, showSizeChanger: false, showTotal: (total) => `共 ${total} 条日志`, total: query.data?.total ?? 0, onChange: setPage }}
         scroll={{ x: 920 }} columns={[
           { title: "日志文件", dataIndex: "file_name", ellipsis: true, render: value => text(value, "未命名日志") },
           { title: "日期", dataIndex: "date", width: 130, render: formatLogDate },

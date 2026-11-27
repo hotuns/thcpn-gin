@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ComponentRef, type FormEvent } from "react";
 import { AdminNavigation } from "./admin-navigation";
 import { AdminDeviceListLayout } from "./admin-device-list-state";
 import { usePlatformBaseUrl } from "./deployment-address";
@@ -47,9 +47,9 @@ import {
 	Workflow,
 	UsersRound,
 } from "lucide-react";
-import { Avatar, Dropdown, Input, Menu, Modal, Space, Tooltip, type MenuProps } from "antd";
+import { Alert, Avatar, Breadcrumb, Dropdown, FloatButton, Input, Menu, Modal, Select, Space, Tooltip, type MenuProps } from "antd";
 import { Button, IconButton } from "@thcpn/admin-ui";
-import { ApiError, api, formatApiError } from "@thcpn/api";
+import { api, formatApiError, formatApiErrorText } from "@thcpn/api";
 import { billingEnabled } from "./features";
 import { useAdminAuth } from "@thcpn/auth";
 import {
@@ -200,9 +200,32 @@ function AdminShell() {
   const selectedKey = selectedNav?.to ?? "";
   const selectedGroup = selectedNav?.group;
   const [openGroups, setOpenGroups] = useState<string[]>(() => [selectedGroup && selectedGroup !== "overview" ? selectedGroup : "operations"]);
+  const quickJumpRef = useRef<ComponentRef<typeof Select> | null>(null);
   useEffect(() => {
-    if (selectedGroup && selectedGroup !== "overview") setOpenGroups([selectedGroup]);
+    if (selectedGroup && selectedGroup !== "overview") {
+      setOpenGroups(prev => (prev.includes(selectedGroup) ? prev : [...prev, selectedGroup]));
+    }
   }, [selectedGroup]);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        quickJumpRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+  const quickJumpOptions = adminNav.map(item => {
+    const label = t(`admin:navigation.${item.key}`);
+    const groupLabel = item.group === "overview" ? t("admin:title") : t(`admin:navigationGroups.${item.group}`);
+    return {
+      value: item.to,
+      label: `${label} · ${groupLabel}`,
+      searchText: `${label} ${groupLabel} ${item.key} ${item.to}`.toLowerCase(),
+    };
+  });
+  const isDetailRoute = Boolean(selectedNav && selectedNav.to !== "/admin" && location.pathname !== selectedNav.to);
   const navigationItem = (item: typeof adminNav[number]) => ({ key: item.to, icon: <item.icon size={16} />, label: t(`admin:navigation.${item.key}`) });
   const groupedItems: MenuProps["items"] = [
     ...adminNav.filter(item => item.group === "overview").map(navigationItem),
@@ -248,7 +271,7 @@ function AdminShell() {
       await signOut();
       window.location.assign("/admin/login");
     } catch (error) {
-      setPasswordError(error instanceof ApiError && error.status === 401 ? "当前密码不正确" : formatApiError(error).message);
+      setPasswordError(formatApiErrorText(error));
     } finally {
       setPasswordBusy(false);
     }
@@ -280,10 +303,7 @@ function AdminShell() {
           items={groupedItems}
           selectedKeys={selectedKey ? [selectedKey] : []}
           openKeys={openGroups}
-          onOpenChange={keys => {
-            const newlyOpened = keys.find(key => !openGroups.includes(key));
-            setOpenGroups(newlyOpened ? [newlyOpened] : []);
-          }}
+          onOpenChange={keys => setOpenGroups(keys)}
           onClick={({ key }) => {
             navigate(key);
             setMobileOpen(false);
@@ -321,13 +341,37 @@ function AdminShell() {
                 <MenuIcon size={18} />
               </IconButton>
             </div>
-            <div className="topbar-context">
-              <span>{t("admin:title")}</span>
-              <span className="breadcrumb-separator">/</span>
-              <strong>{selectedNav ? t(`admin:navigation.${selectedNav.key}`) : t("admin:title")}</strong>
-            </div>
+            <Breadcrumb
+              className="topbar-context"
+              items={[
+                { title: <Link to="/admin">{t("admin:title")}</Link> },
+                ...(selectedNav && selectedNav.to !== "/admin"
+                  ? isDetailRoute
+                    ? [
+                        { title: <Link to={selectedNav.to}>{t(`admin:navigation.${selectedNav.key}`)}</Link> },
+                        { title: "详情" },
+                      ]
+                    : [{ title: t(`admin:navigation.${selectedNav.key}`) }]
+                  : [{ title: t("admin:navigation.overview") }]),
+              ]}
+            />
           </div>
           <Space>
+            <Select
+              ref={quickJumpRef}
+              showSearch
+              value={null}
+              placeholder="快速跳转页面 (⌘K)"
+              aria-label="快速跳转后台页面"
+              style={{ width: 210 }}
+              options={quickJumpOptions}
+              filterOption={(input, option) =>
+                String(option?.searchText ?? "").includes(input.trim().toLowerCase())
+              }
+              onSelect={(to) => {
+                if (typeof to === "string" && to) void navigate(to);
+              }}
+            />
             <Tooltip title={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")}>
               <IconButton
                 label={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")}
@@ -360,10 +404,11 @@ function AdminShell() {
           <label>当前密码<Input.Password required autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label>
           <label>新密码<Input.Password required minLength={8} maxLength={128} autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label>
           <label>确认新密码<Input.Password required autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>
-          {passwordError && <div className="admin-login-error">{passwordError}</div>}
-          <div className="admin-password-actions"><Button htmlType="button" onClick={closePassword}>取消</Button><Button type="primary" htmlType="submit" disabled={passwordBusy || !currentPassword || !newPassword || !confirmPassword}>{passwordBusy ? "保存中…" : "确认修改"}</Button></div>
+          {passwordError && <Alert type="error" showIcon message={passwordError} />}
+          <div className="admin-password-actions"><Button htmlType="button" onClick={closePassword}>取消</Button><Button type="primary" htmlType="submit" loading={passwordBusy} disabled={passwordBusy || !currentPassword || !newPassword || !confirmPassword}>{passwordBusy ? "保存中…" : "确认修改"}</Button></div>
         </form>
       </Modal>
+      <FloatButton.BackTop tooltip="返回顶部" />
     </div>
   );
 }
@@ -416,10 +461,10 @@ function AdminLoginPage() {
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setBusy(true); setError("");
     try { signIn(await api.adminAuth.login({ email, password })); window.location.assign("/admin"); }
-    catch (reason) { setError(formatApiError(reason).message); }
+    catch (reason) { setError(formatApiErrorText(reason)); }
     finally { setBusy(false); }
   };
-  return <main className="admin-auth-page"><div className="admin-auth-actions"><LanguageSwitcher compact /><Tooltip title={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")}><IconButton label={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")} onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>{resolvedTheme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</IconButton></Tooltip></div><section className="admin-auth-panel"><div className="brand-mark"><BrandLogo /></div><div className="eyebrow">IES Watch / SYSTEM CONTROL</div><h1>{t("admin:auth.title")}</h1><p>{t("admin:auth.copy")}</p><form onSubmit={submit}><label>{t("admin:auth.email")}<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required /></label><label>{t("admin:auth.password")}<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></label>{error && <div className="admin-login-error">{error}</div>}<Button type="primary" htmlType="submit" size="large" block loading={busy} disabled={busy}>{busy ? t("admin:auth.signingIn") : t("admin:auth.submit")}</Button></form><a href={`${platformUrl}/login`}>{t("admin:auth.back")}</a></section></main>;
+  return <main className="admin-auth-page"><div className="admin-auth-actions"><LanguageSwitcher compact /><Tooltip title={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")}><IconButton label={resolvedTheme === "dark" ? t("themeLight") : t("themeDark")} onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>{resolvedTheme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</IconButton></Tooltip></div><section className="admin-auth-panel"><div className="brand-mark"><BrandLogo /></div><div className="eyebrow">IES Watch / SYSTEM CONTROL</div><h1>{t("admin:auth.title")}</h1><p>{t("admin:auth.copy")}</p><form onSubmit={submit}><label>{t("admin:auth.email")}<Input type="email" size="large" allowClear value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required /></label><label>{t("admin:auth.password")}<Input.Password size="large" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></label>{error && <Alert type="error" showIcon message={error} />}<Button type="primary" htmlType="submit" size="large" block loading={busy} disabled={busy}>{busy ? t("admin:auth.signingIn") : t("admin:auth.submit")}</Button></form><a href={`${platformUrl}/login`}>{t("admin:auth.back")}</a></section></main>;
 }
 
 const overviewText = (input: unknown, fallback = "—") =>

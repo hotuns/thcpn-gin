@@ -15,7 +15,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { FormInstance } from "antd";
 import { Typography } from "antd";
 import dayjs from "dayjs";
-import { Battery, GitBranch, Radio, Search, Settings2, Trash2 } from "lucide-react";
+import { Battery, GitBranch, Radio, RotateCcw, Search, Settings2, Trash2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Alert,
@@ -36,6 +36,7 @@ import {
   Tag,
   Tabs,
   Tooltip,
+  getAdminModal,
 } from "@thcpn/admin-ui";
 import {
   api,
@@ -629,8 +630,11 @@ export function AdminDevicesPage() {
     if (!device) return <StateView type="empty" title="设备不存在" description="该设备可能已被删除或尚未同步。" action={returnButton} />;
     const isCamera = categoryOf(device) === "camera";
     const refreshDetail = () => void Promise.all([query.refetch(),queryClient.invalidateQueries({predicate:query=>query.queryKey.includes("admin")&&query.queryKey.includes(deviceId)})]);
-    return <><PageHeader eyebrow="System / devices / detail" title={value(device.name, "未命名设备")} description={`${value(device.asset_no)} · ${deviceModelLabel(device)}`} actions={<Space>{returnButton}<Button onClick={refreshDetail}>刷新</Button></Space>} />{feedback && <div className="admin-feedback section-gap">{feedback}</div>}<DeviceDetailPanel key={String(device.id)} device={device} isCamera={isCamera} isCarbon={isCarbonDetail} carbonData={detailCarbonQuery.data as unknown as JsonRecord | undefined} carbonLoading={detailCarbonQuery.isLoading} carbonError={detailCarbonQuery.error} attributes={detailAttributesQuery.data as unknown as JsonRecord | undefined} attributesLoading={detailAttributesQuery.isLoading} attributesError={detailAttributesQuery.error} lifecycleData={detailLifecycleQuery.data as JsonRecord | undefined} lifecycleLoading={detailLifecycleQuery.isLoading} lifecycleError={detailLifecycleQuery.error} configData={detailConfigQuery.data as JsonRecord | undefined} configLoading={detailConfigQuery.isLoading} configError={detailConfigQuery.error} returnListPath={returnListPath} onOpen={(next) => open(next, device)} onUnassign={() => void unassign(device)} />{managementOverlays}</>;
+    return <><PageHeader eyebrow="System / devices / detail" title={value(device.name, "未命名设备")} description={`${value(device.asset_no)} · ${deviceModelLabel(device)}`} actions={<Space>{returnButton}<Button loading={query.isFetching} onClick={refreshDetail}>刷新</Button></Space>} />{feedback && <div className="admin-feedback section-gap">{feedback}</div>}<DeviceDetailPanel key={String(device.id)} device={device} isCamera={isCamera} isCarbon={isCarbonDetail} carbonData={detailCarbonQuery.data as unknown as JsonRecord | undefined} carbonLoading={detailCarbonQuery.isLoading} carbonError={detailCarbonQuery.error} attributes={detailAttributesQuery.data as unknown as JsonRecord | undefined} attributesLoading={detailAttributesQuery.isLoading} attributesError={detailAttributesQuery.error} lifecycleData={detailLifecycleQuery.data as JsonRecord | undefined} lifecycleLoading={detailLifecycleQuery.isLoading} lifecycleError={detailLifecycleQuery.error} configData={detailConfigQuery.data as JsonRecord | undefined} configLoading={detailConfigQuery.isLoading} configError={detailConfigQuery.error} returnListPath={returnListPath} onOpen={(next) => open(next, device)} onUnassign={() => void unassign(device)} />{managementOverlays}</>;
   }
+
+  const hasDeviceFilters = Boolean(keyword || status || lifecycle || assignment);
+  const resetDeviceFilters = () => updateListView({ keyword: "", status: "", lifecycle: "", assignment: "", page: 1 });
 
   return (
     <>
@@ -643,7 +647,7 @@ export function AdminDevicesPage() {
           <AdminDeviceInventoryExport ids={inventoryRows.map(item => String(item.id))} selected={selectedInventoryRows.length > 0}
             includesGateways={category === "gateway" || category === "lorawan_v2"} includesV2Gateways={category === "lorawan_v2"}
             disabled={query.isLoading || Boolean(query.error)} />
-          <Button onClick={() => void query.refetch()}>刷新</Button>
+          <Button loading={query.isFetching} onClick={() => void query.refetch()}>刷新</Button>
         </Space>}
       />
       <Card>
@@ -681,7 +685,14 @@ export function AdminDevicesPage() {
             onChange={(item) => updateListView({ sort: item, page: 1 })}
             options={[...deviceSortOptions]}
           />
-          <Badge tone="info">{rows.length} 台设备</Badge>
+          <Space size="small">
+            <Badge tone="info">{rows.length} 台设备</Badge>
+            {hasDeviceFilters && (
+              <Button size="small" icon={<RotateCcw size={12} />} onClick={resetDeviceFilters}>
+                重置筛选
+              </Button>
+            )}
+          </Space>
         </div>
         {selectedRowKeys.length ? (
           <div className="admin-device-batch-toolbar">
@@ -758,6 +769,7 @@ export function AdminDevicesPage() {
                 ? "请调整搜索或筛选条件。"
                 : "请先从数据源同步设备资产。"
             }
+            action={hasDeviceFilters ? <Button icon={<RotateCcw size={14} />} onClick={resetDeviceFilters}>重置筛选</Button> : undefined}
           />
         )}
       </Card>
@@ -776,7 +788,7 @@ function confirmConfigSave(review: ConfigSaveReview) {
   return new Promise<boolean>((resolve) => {
     let settled = false;
     const finish = (value: boolean) => { if (!settled) { settled = true; resolve(value); } };
-    Modal.confirm({
+    getAdminModal().confirm({
       title: "保存设备配置？",
       width: 560,
       okText: "确认保存",
@@ -858,10 +870,10 @@ function DeviceDetailPanel({
       <div className="admin-detail-section-head"><div><h2>设备资料</h2><span>设备身份与资产状态</span></div><Button onClick={() => onOpen("edit")}>编辑</Button></div>
       <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }} items={[
         { key: "assetNo", label: "资产编号", span: "filled", children: <Typography.Text strong copyable className="mono">{value(device.asset_no)}</Typography.Text> },
-        ...(device.hardware_sn ? [{ key: "hardwareSN", label: "硬件 SN", children: <span className="mono">{value(device.hardware_sn)}</span> }] : []),
-        { key: "iccid", label: "物联卡 ICCID", children: <span className="mono">{value(displayedICCID, "未记录")}</span> },
+        ...(device.hardware_sn ? [{ key: "hardwareSN", label: "硬件 SN", children: <Typography.Text copyable className="mono">{value(device.hardware_sn)}</Typography.Text> }] : []),
+        { key: "iccid", label: "物联卡 ICCID", children: displayedICCID ? <Typography.Text copyable className="mono">{value(displayedICCID)}</Typography.Text> : <span className="mono">未记录</span> },
         { key: "type", label: "设备类型", children: deviceModelLabel(device) },
-        { key: "externalId", label: device.source_family === "lorawan_v2" ? "采集网关标识" : "采集服务设备 ID", children: <Tooltip title="用于关联采集数据源中的设备；LoRaWAN V2 使用网关 SN，THCPN/Carbon 使用源数据库编号。"><span className="mono">{value(device.source_family === "lorawan_v2" ? device.external_key : device.external_device_id, "未关联")}</span></Tooltip> },
+        { key: "externalId", label: device.source_family === "lorawan_v2" ? "采集网关标识" : "采集服务设备 ID", children: <Tooltip title="用于关联采集数据源中的设备；LoRaWAN V2 使用网关 SN，THCPN/Carbon 使用源数据库编号。">{(device.source_family === "lorawan_v2" ? device.external_key : device.external_device_id) ? <Typography.Text copyable className="mono">{value(device.source_family === "lorawan_v2" ? device.external_key : device.external_device_id)}</Typography.Text> : <span className="mono">未关联</span>}</Tooltip> },
         { key: "status", label: "资产状态", children: <Tag color={device.status === "active" ? "green" : "default"}>{deviceStatusLabel(value(device.status, ""))}</Tag> },
         { key: "created", label: "创建时间", children: date(device.created_at) },
         { key: "updated", label: "更新时间", children: date(device.updated_at) },
@@ -1751,6 +1763,8 @@ function DeviceCreateForm({
           rules={[{ required: true, message: "请选择数据源" }]}
         >
           <Select
+            showSearch
+            optionFilterProp="label"
             placeholder="请选择已启用的数据源"
             loading={sourcesLoading}
             disabled={noMatchingSource}

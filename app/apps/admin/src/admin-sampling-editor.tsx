@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, App, Button, Card, Descriptions, Form, InputNumber, Modal, Select, Space } from "antd";
-import { api, formatApiError } from "@thcpn/api";
+import { Alert, App, Button, Card, Descriptions, Form, InputNumber, Select, Space } from "antd";
+import { api, formatApiError, formatApiErrorText } from "@thcpn/api";
 
 export function AdminSamplingEditor({deviceId,carbon=false}:{deviceId:string;carbon?:boolean}) {
-  const {message}=App.useApp();
+  const {message,modal}=App.useApp();
   const client=useQueryClient();
   const [form]=Form.useForm();
   const [busy,setBusy]=useState(false);
@@ -12,7 +12,7 @@ export function AdminSamplingEditor({deviceId,carbon=false}:{deviceId:string;car
   const mode=Form.useWatch("mode",form);
   useEffect(()=>{if(query.data)form.setFieldsValue(query.data);},[query.data,form]);
   const options=(max:number)=>Array.from({length:max},(_,value)=>({value,label:String(value)}));
-  const save=(values:Record<string,unknown>)=>Modal.confirm({title:"保存并提交采集计划？",content:"将修改当前设备的采集与上传时刻。请在保存后核对设备上报时间确认实际执行情况。",onOk:async()=>{
+  const save=(values:Record<string,unknown>)=>modal.confirm({title:"保存并提交采集计划？",content:"将修改当前设备的采集与上传时刻。请在保存后核对设备上报时间确认实际执行情况。",onOk:async()=>{
     setBusy(true);
     try{
       const current=query.data!;
@@ -21,7 +21,7 @@ export function AdminSamplingEditor({deviceId,carbon=false}:{deviceId:string;car
       await client.invalidateQueries({predicate:q=>q.queryKey.includes("admin")&&q.queryKey.includes(deviceId)});
       if (result.write_state?.source === "unchanged") void message.info("采集计划无变化，未下发配置");
       else if (result.write_state?.platform !== "failed") void message.success("采集计划已保存，请核对设备后续上报");
-    }catch(error){void message.error(formatApiError(error).message);throw error;}finally{setBusy(false);}
+    }catch(error){void message.error(formatApiErrorText(error));throw error;}finally{setBusy(false);}
   }});
   return <Card title="采集与上传计划" loading={query.isLoading}>
     {query.error?<Alert type="error" title="采集计划读取失败" description={formatApiError(query.error).message}/>:<>

@@ -5,9 +5,9 @@ import { validateUserContact } from "./user-contact";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Alert, App as AntApp, Button, Card, Descriptions, Drawer, Form, Input, Modal, Select, Space, Table, Tabs, Tag, Tooltip } from "@thcpn/admin-ui";
-import { api, formatApiError } from "@thcpn/api";
+import { api, formatApiError, formatApiErrorText } from "@thcpn/api";
 import { PageHeader, Panel, StateView } from "@thcpn/ui";
-import { ArrowLeft, Copy, KeyRound, LockKeyhole, MonitorPlay, Plus, RefreshCw, Settings2, ShieldCheck, Trash2, UserRound, UserX } from "lucide-react";
+import { ArrowLeft, Copy, KeyRound, LockKeyhole, MonitorPlay, Plus, RefreshCw, RotateCcw, Settings2, ShieldCheck, Trash2, UserRound, UserX } from "lucide-react";
 
 const text = (value, fallback = "—") => value === undefined || value === null || value === "" ? fallback : String(value);
 const time = (value) => value ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "—";
@@ -34,6 +34,7 @@ function ReasonFields({ form, confirm, highRisk = false }) {
 
 export function AdminUsersPage() {
   const mobile = useAdminMobile();
+  const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
   const [keyword, setKeyword] = useState(params.get("q") ?? "");
   const [createOpen, setCreateOpen] = useState(false);
@@ -43,8 +44,10 @@ export function AdminUsersPage() {
   const filters = useMemo(() => ({ q: params.get("q") || undefined, status: params.get("status") || undefined, verification: params.get("verification") || undefined, mfa: params.get("mfa") || undefined, locked: params.get("locked") || undefined, login_status: params.get("login_status") || undefined, page: Number(params.get("page") || 1), page_size: 20 }), [params]);
   const query = useQuery({ queryKey: ["admin", "users", filters], queryFn: () => api.admin.users.list(filters) });
   const apply = (key, value) => { const next = new URLSearchParams(params); if (value) next.set(key, value); else next.delete(key); next.set("page", "1"); setParams(next); };
-  const submitSearch = () => apply("q", keyword.trim());
-  const create = async () => { try { const values = await form.validateFields(); const result = await api.admin.users.create(values); setCreateOpen(false); form.resetFields(); setPassword(String(result.temporary_password ?? "")); void message.success("用户已创建"); } catch (error) { if (!error?.errorFields) void message.error(formatApiError(error).message); } };
+  const submitSearch = (value) => apply("q", (value ?? keyword).trim());
+  const hasFilters = Boolean(params.get("q") || params.get("status") || params.get("verification") || params.get("mfa"));
+  const resetFilters = () => { setKeyword(""); setParams({}); };
+  const create = async () => { try { const values = await form.validateFields(); const result = await api.admin.users.create(values); setCreateOpen(false); form.resetFields(); setPassword(String(result.temporary_password ?? "")); await queryClient.invalidateQueries({ queryKey: ["admin", "users"] }); void message.success("用户已创建"); } catch (error) { if (!error?.errorFields) void message.error(formatApiErrorText(error)); } };
   const items = query.data?.items ?? [];
   const columns = [
     { title: "用户", fixed: mobile ? undefined : "left", width: 230, render: (_, item) => <Link className="admin-user-name" to={`/admin/users/${item.id}?tab=overview`}><strong>{text(item.name)}</strong><span>{text(item.email, text(item.phone))}</span></Link> },
@@ -61,16 +64,17 @@ export function AdminUsersPage() {
     <PageHeader eyebrow="SYSTEM / USERS" title="用户管理" description="管理普通平台用户账号；系统管理员账号保持独立，不在此列表中。" actions={<Button type="primary" icon={<Plus size={15} />} onClick={() => setCreateOpen(true)}>创建用户</Button>} />
     <Panel className="admin-user-list-panel">
       <div className="admin-user-toolbar">
-        <Input.Search value={keyword} onChange={(event) => setKeyword(event.target.value)} onSearch={submitSearch} placeholder="搜索姓名、邮箱、手机号或用户 ID" allowClear />
+        <Input.Search value={keyword} onChange={(event) => { const next = event.target.value; setKeyword(next); if (!next && params.get("q")) apply("q", ""); }} onSearch={submitSearch} placeholder="搜索姓名、邮箱、手机号或用户 ID" allowClear />
         <Select value={params.get("status") || undefined} onChange={(value) => apply("status", value)} placeholder="账号状态" allowClear options={[{ value: "active", label: "启用" }, { value: "disabled", label: "停用" }]} />
         <Select value={params.get("verification") || undefined} onChange={(value) => apply("verification", value)} placeholder="验证状态" allowClear options={[{ value: "verified", label: "已验证" }, { value: "unverified", label: "未验证" }]} />
         <Select value={params.get("mfa") || undefined} onChange={(value) => apply("mfa", value)} placeholder="MFA" allowClear options={[{ value: "enabled", label: "已启用 MFA" }, { value: "disabled", label: "未启用 MFA" }]} />
-        <Button icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>刷新</Button>
+        {hasFilters && <Button icon={<RotateCcw size={14} />} onClick={resetFilters}>重置</Button>}
+        <Button icon={<RefreshCw size={14} />} loading={query.isFetching} onClick={() => void query.refetch()}>刷新</Button>
       </div>
-      {query.isError ? <ErrorState error={query.error} /> : <Table rowKey="id" loading={query.isLoading} columns={columns} dataSource={items} scroll={{ x: 1180 }} pagination={{ current: filters.page, pageSize: 20, total: query.data?.total ?? 0, showSizeChanger: false, onChange: (page) => apply("page", String(page)) }} />}
+      {query.isError ? <ErrorState error={query.error} /> : <Table rowKey="id" loading={query.isLoading || query.isFetching} columns={columns} dataSource={items} scroll={{ x: 1180 }} pagination={{ current: filters.page, pageSize: 20, total: query.data?.total ?? 0, showSizeChanger: false, showTotal: (total) => `共 ${total} 位用户`, onChange: (page) => apply("page", String(page)) }} />}
     </Panel>
     <Modal title="创建平台用户" open={createOpen} onCancel={() => setCreateOpen(false)} onOk={() => void create()} okText="创建用户" destroyOnHidden><Alert type="info" showIcon message="手机号或邮箱至少填写一项，均可用于密码登录。系统会生成临时密码，用户首次登录必须修改。" style={{ marginBottom: 16 }} /><Form form={form} layout="vertical"><Form.Item name="name" label="姓名" rules={[{ required: true, message: "请输入姓名" }]}><Input /></Form.Item><Form.Item name="email" label="邮箱（与手机号至少填一项）" dependencies={["phone"]} normalize={value => value?.trim()} rules={[({ getFieldValue }) => ({ validator: (_, value) => { const error = validateUserContact("email", value, getFieldValue("phone")); return error ? Promise.reject(new Error(error)) : Promise.resolve(); } })]}><Input type="email" /></Form.Item><Form.Item name="phone" label="手机号（与邮箱至少填一项）" dependencies={["email"]} normalize={value => value?.trim()} rules={[({ getFieldValue }) => ({ validator: (_, value) => { const error = validateUserContact("phone", value, getFieldValue("email")); return error ? Promise.reject(new Error(error)) : Promise.resolve(); } })]}><Input /></Form.Item><Form.Item name="reason" label="创建原因" rules={[{ required: true, min: 5, message: "请填写至少 5 个字符的原因" }]}><Input.TextArea rows={3} /></Form.Item></Form></Modal>
-    <Modal title="临时密码仅显示一次" open={Boolean(password)} onCancel={() => setPassword("")} footer={<Button type="primary" onClick={() => { void navigator.clipboard.writeText(password); void message.success("临时密码已复制"); }}>复制并关闭</Button>}><Alert type="warning" showIcon message="请通过安全渠道交付给用户，关闭后无法再次查看。" /><div className="temporary-password">{password}</div></Modal>
+    <Modal title="临时密码仅显示一次" open={Boolean(password)} onCancel={() => setPassword("")} footer={<Button type="primary" onClick={() => { void navigator.clipboard.writeText(password); void message.success("临时密码已复制"); setPassword(""); }}>复制并关闭</Button>}><Alert type="warning" showIcon message="请通过安全渠道交付给用户，关闭后无法再次查看。" /><div className="temporary-password">{password}</div></Modal>
   </>;
 }
 
@@ -96,9 +100,9 @@ export function AdminUserDetailPage() {
   if (user.isLoading) return <div className="app-loading">正在加载用户…</div>;
   if (user.isError) return <ErrorState error={user.error} title="用户详情加载失败" />;
   const item = user.data;
-  const runAction = async (values) => { try { if (action === "status") await api.admin.users.updateStatus(userId, { status: item.status === "active" ? "disabled" : "active", ...values }); if (action === "logout") await api.admin.users.revokeAllSessions(userId, values); if (action === "unlock") await api.admin.users.unlock(userId, values); if (action === "mfa") await api.admin.users.resetMFA(userId, values); if (action === "password") { const result = await api.admin.users.temporaryPassword(userId, { ...values, confirm_text: "重置密码" }); setTempPassword(result.temporary_password); } if (action === "delete") await api.admin.users.remove(userId, { ...values, confirm_text: "删除用户" }); setAction(""); await client.invalidateQueries({ queryKey: ["admin", "user", userId] }); if (action === "delete") navigate("/admin/users"); else void message.success("操作已完成"); } catch (error) { void message.error(formatApiError(error).message); } };
+  const runAction = async (values) => { try { if (action === "status") await api.admin.users.updateStatus(userId, { status: item.status === "active" ? "disabled" : "active", ...values }); if (action === "logout") await api.admin.users.revokeAllSessions(userId, values); if (action === "unlock") await api.admin.users.unlock(userId, values); if (action === "mfa") await api.admin.users.resetMFA(userId, values); if (action === "password") { const result = await api.admin.users.temporaryPassword(userId, { ...values, confirm_text: "重置密码" }); setTempPassword(result.temporary_password); } if (action === "delete") await api.admin.users.remove(userId, { ...values, confirm_text: "删除用户" }); setAction(""); await client.invalidateQueries({ queryKey: ["admin", "user", userId] }); if (action === "delete") navigate("/admin/users"); else void message.success("操作已完成"); } catch (error) { void message.error(formatApiErrorText(error)); } };
   const openEdit = () => { editForm.setFieldsValue({ name: item.name, email: item.email ?? "", phone: item.phone ?? "" }); setEditOpen(true); };
-  const saveEdit = async () => { try { const values = await editForm.validateFields(); await api.admin.users.update(userId, values); setEditOpen(false); await client.invalidateQueries({ queryKey: ["admin", "user", userId] }); void message.success("用户资料已更新"); } catch (error) { if (!error?.errorFields) void message.error(formatApiError(error).message); } };
+  const saveEdit = async () => { try { const values = await editForm.validateFields(); await api.admin.users.update(userId, values); setEditOpen(false); await client.invalidateQueries({ queryKey: ["admin", "user", userId] }); void message.success("用户资料已更新"); } catch (error) { if (!error?.errorFields) void message.error(formatApiErrorText(error)); } };
   const tab = params.get("tab") || "overview";
   const setTab = (key) => { const next = new URLSearchParams(params); next.set("tab", key); setParams(next); };
   const actionTitle = ({ status: item.status === "active" ? "停用用户" : "启用用户", logout: "强制下线", unlock: "解除锁定", mfa: "重置 MFA", password: "生成临时密码", delete: "删除用户" }[action]);

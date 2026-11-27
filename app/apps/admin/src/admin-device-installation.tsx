@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Alert, App, Button, Card, Descriptions, Drawer, Form, Image, Input, InputNumber, Modal, Select, Space, Table, Tabs, Tag, Typography, Upload } from "antd";
-import { api, formatApiError, type DeviceProfileImage, type GatewayNode, type JsonRecord } from "@thcpn/api";
+import { api, formatApiError, formatApiErrorText, type DeviceProfileImage, type GatewayNode, type JsonRecord } from "@thcpn/api";
 import { AdminNodeLocationEditor } from "./node-location-editor";
 import { AdminNodeNameEditor } from "./node-name-editor";
 import { AdminNodeDiscoveries, nodeDiscoveriesKey } from "./node-discoveries";
@@ -26,7 +26,7 @@ export function AdminDeviceInstallation({device}:{device:JsonRecord}) {
   const profile=useQuery({queryKey:["admin","device",id,"profile"],queryFn:()=>api.admin.deviceProfile(id)});
   const refresh=async()=>{await client.invalidateQueries({predicate:query=>query.queryKey.includes("admin")&&(query.queryKey.includes(id)||query.queryKey.includes("device-map"))});};
   const execute=async(action:()=>Promise<unknown>,text:string)=>{
-    setBusy(true);try{await action();await refresh();void message.success(text);return true;}catch(error){void message.error(formatApiError(error).message);return false;}finally{setBusy(false);}
+    setBusy(true);try{await action();await refresh();void message.success(text);return true;}catch(error){void message.error(formatApiErrorText(error));return false;}finally{setBusy(false);}
   };
   const reorder=(imageId:string,offset:number)=>{
     const ids=(profile.data?.images??[]).map(item=>item.id);const index=ids.indexOf(imageId),next=index+offset;
@@ -64,11 +64,11 @@ export function AdminDeviceInstallation({device}:{device:JsonRecord}) {
       </Space> },
       { key:"observation", label:"正式观测", children:<AdminObservationStart device={device}/> },
       { key:"classification", label:"应用场景", children:<AdminDeviceScenes deviceId={id}/> },
-      { key:"photos", label:`安装照片（${current?.images.length ?? 0}）`, children:profileError || <Card title={`安装照片 · ${profile.data?.images.length??0} / 12`} extra={<Upload multiple showUploadList={false} accept="image/jpeg,image/png,image/webp" disabled={busy} beforeUpload={file=>{if(!["image/jpeg","image/png","image/webp"].includes(file.type)||file.size>10*1024*1024){void message.error("请选择不超过 10 MB 的 JPEG、PNG 或 WebP 图片");return Upload.LIST_IGNORE;}return true;}} customRequest={options=>{void api.admin.uploadDeviceImages(id,[options.file as File]).then(async response=>{options.onSuccess?.(response);await refresh();}).catch(error=>{options.onError?.(error);void message.error(formatApiError(error).message);});}}><Button>上传安装照片</Button></Upload>}>
+      { key:"photos", label:`安装照片（${current?.images.length ?? 0}）`, children:profileError || <Card title={`安装照片 · ${profile.data?.images.length??0} / 12`} extra={<Upload multiple showUploadList={false} accept="image/jpeg,image/png,image/webp" disabled={busy} beforeUpload={file=>{if(!["image/jpeg","image/png","image/webp"].includes(file.type)||file.size>10*1024*1024){void message.error("请选择不超过 10 MB 的 JPEG、PNG 或 WebP 图片");return Upload.LIST_IGNORE;}return true;}} customRequest={options=>{void api.admin.uploadDeviceImages(id,[options.file as File]).then(async response=>{options.onSuccess?.(response);await refresh();}).catch(error=>{options.onError?.(error);void message.error(formatApiErrorText(error));});}}><Button>上传安装照片</Button></Upload>}>
         <Image.PreviewGroup><Table rowKey="id" size="small" dataSource={profile.data?.images??[]} pagination={false} columns={[
           {title:"图片",width:150,render:(_,item)=><Image width={120} height={80} style={{objectFit:"cover"}} src={item.preview_url}/>},
           {title:"说明",render:(_,item)=><>{item.is_cover&&<Tag color="blue">封面</Tag>}{item.caption||item.original_filename}</>},
-          {title:"操作",render:(_,item,index)=><Space wrap><Button size="small" disabled={busy} onClick={()=>{setEditing(item);setCaption(item.caption??"");}}>编辑说明</Button><Button size="small" disabled={busy||item.is_cover} onClick={()=>void execute(()=>api.admin.updateDeviceImage(id,item.id,{is_cover:true}),"封面已更新")}>设为封面</Button><Button size="small" disabled={busy||index===0} onClick={()=>reorder(item.id,-1)}>前移</Button><Button size="small" disabled={busy||index===(profile.data?.images.length??0)-1} onClick={()=>reorder(item.id,1)}>后移</Button><Button size="small" danger disabled={busy} onClick={()=>Modal.confirm({title:"删除安装照片？",okButtonProps:{danger:true},onOk:()=>execute(()=>api.admin.deleteDeviceImage(id,item.id),"照片已删除")})}>删除</Button></Space>},
+          {title:"操作",render:(_,item,index)=><Space wrap><Button size="small" disabled={busy} onClick={()=>{setEditing(item);setCaption(item.caption??"");}}>编辑说明</Button><Button size="small" disabled={busy||item.is_cover} onClick={()=>void execute(()=>api.admin.updateDeviceImage(id,item.id,{is_cover:true}),"封面已更新")}>设为封面</Button><Button size="small" disabled={busy||index===0} onClick={()=>reorder(item.id,-1)}>前移</Button><Button size="small" disabled={busy||index===(profile.data?.images.length??0)-1} onClick={()=>reorder(item.id,1)}>后移</Button><Button size="small" danger disabled={busy} onClick={()=>modal.confirm({title:"删除安装照片？",okButtonProps:{danger:true},onOk:()=>execute(()=>api.admin.deleteDeviceImage(id,item.id),"照片已删除")})}>删除</Button></Space>},
         ]}/></Image.PreviewGroup>
       </Card> },
     ]}/>
