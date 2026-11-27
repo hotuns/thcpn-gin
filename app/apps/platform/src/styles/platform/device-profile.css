@@ -395,7 +395,7 @@
 .device-profile-image-card {
   min-width: 0;
   overflow: hidden;
-  background: white;
+  background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 6px;
 }
@@ -430,7 +430,7 @@
   height: 34px;
   padding: 0 9px;
   color: var(--ink);
-  background: white;
+  background: var(--panel);
   border: 0;
   border-top: 1px solid var(--soft-line);
   outline: 0;
@@ -450,7 +450,7 @@
   height: 34px;
   padding: 0 5px;
   color: var(--muted);
-  background: white;
+  background: var(--panel);
   border: 0;
   border-right: 1px solid var(--soft-line);
   font-size: var(--font-size-caption);

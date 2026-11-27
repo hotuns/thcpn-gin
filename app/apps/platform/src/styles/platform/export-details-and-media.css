@@ -96,7 +96,7 @@
   min-height: 36px;
   padding: 0 10px;
   color: var(--ink);
-  background: white;
+  background: var(--control);
   border: 1px solid var(--line);
   border-radius: 6px;
 }

@@ -20,7 +20,7 @@ import {
   type DeviceMetadataInput,
 } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, CheckboxInput, Input, Panel, SelectInput, Sheet, SheetContent, SheetTitle, StateView, Textarea } from "../../shared/ui";
+import { Badge, Button, CheckboxInput, Input, Panel, SelectInput, Sheet, SheetContent, SheetTitle, StateView, Textarea, useConfirm } from "../../shared/ui";
 
 const FORMULA_VARIABLE_PATTERN = /\b(?:stream|meta)\.[A-Za-z][A-Za-z0-9_]*\b/g;
 const FORMULA_HIGHLIGHT_PATTERN = /(?:stream|meta)\.[A-Za-z][A-Za-z0-9_]*|\b\d+(?:\.\d+)?\b|&&|\|\||==|!=|<=|>=|[()+\-*/<>!]/g;
@@ -151,6 +151,7 @@ export function ComputedStreamsPanel({
   streams: DataStream[];
 }) {
   const client = useQueryClient();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState<ComputedDataStream | "new" | null>(null);
   const [feedback, setFeedback] = useState("");
   const queryKey = workspaceQueryKey(workspaceId, "device", deviceId, "computed-streams");
@@ -173,7 +174,15 @@ export function ComputedStreamsPanel({
     ]);
   };
   const remove = async (item: ComputedDataStream) => {
-    if (!window.confirm(`确认删除计算指标“${item.name}”？原始数据不会受影响。`)) return;
+    if (
+      !(await confirm({
+        title: "删除计算指标",
+        description: `确认删除计算指标“${item.name}”？原始数据不会受影响。`,
+        confirmLabel: "删除",
+        tone: "danger",
+      }))
+    )
+      return;
     setFeedback("");
     try {
       await api.devices.deleteComputedStream(deviceId, item.data_stream_id);

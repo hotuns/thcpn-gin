@@ -1,7 +1,7 @@
 import { usePolicyLimit } from "../../shared/config/system-policy";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, formatApiError } from "@thcpn/api";
+import { api, formatApiError, formatApiErrorText } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
 import { Alert, AlertDescription, Badge, Button, Input, Panel } from "../../shared/ui";
 
@@ -14,7 +14,7 @@ export function DeviceDossier({deviceId,workspaceId,canEdit}:{deviceId:string;wo
  const query=useQuery({queryKey:key,queryFn:()=>api.devices.tags(deviceId,workspaceId),enabled:!!workspaceId,retry:false});
  useEffect(()=>{if(!editing)setTags(query.data?.tags??[]);},[query.data,editing]);
  const add=()=>{const value=input.trim();if(value&&!tags.includes(value))setTags([...tags,value]);setInput("");};
- const save=async()=>{setBusy(true);setError("");try{const value=input.trim();await api.devices.setTags(deviceId,workspaceId,value&&!tags.includes(value)?[...tags,value]:tags);await client.invalidateQueries({queryKey:key});await client.invalidateQueries({queryKey:workspaceQueryKey(workspaceId,"devices")});setInput("");setEditing(false);}catch(error){setError(formatApiError(error).message);}finally{setBusy(false);}};
+ const save=async()=>{setBusy(true);setError("");try{const value=input.trim();await api.devices.setTags(deviceId,workspaceId,value&&!tags.includes(value)?[...tags,value]:tags);await client.invalidateQueries({queryKey:key});await client.invalidateQueries({queryKey:workspaceQueryKey(workspaceId,"devices")});setInput("");setEditing(false);}catch(error){setError(formatApiErrorText(error));}finally{setBusy(false);}};
  return <Panel className="section-gap">
   <div className="panel-header"><h2 className="panel-title">安装信息与标签</h2>{canEdit&&!query.error&&<Button variant="secondary" disabled={busy} onClick={()=>{setEditing(!editing);setError("");}}> {editing?"取消":"编辑标签"}</Button>}</div>
   <div style={{padding:16,display:"grid",gap:16}}>

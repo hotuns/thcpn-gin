@@ -62,15 +62,6 @@
   border-color: var(--blue);
   box-shadow: 0 0 0 3px rgba(23, 105, 224, 0.1);
 }
-:root[data-theme="dark"] .field input,
-:root[data-theme="dark"] .field select,
-:root[data-theme="dark"] .field textarea,
-:root[data-theme="dark"] .search-input,
-:root[data-theme="dark"] .date-input {
-  color: var(--ink);
-  background: #121c26;
-  border-color: var(--line);
-}
 :root[data-theme="dark"] .modal-card,
 :root[data-theme="dark"] .command-note {
   background: var(--panel);
@@ -243,6 +234,10 @@
   border-right-color: var(--rail-line);
   backdrop-filter: none;
   --scrollbar-thumb: var(--rail-line);
+  transition:
+    width var(--duration-fast) var(--ease-smooth-out),
+    flex-basis var(--duration-fast) var(--ease-smooth-out),
+    padding-inline var(--duration-fast) var(--ease-smooth-out);
 }
 .platform-shell .sidebar-brand-row { min-height: 40px; padding-inline: 6px 0; }
 .platform-shell .sidebar .brand { min-width: 0; gap: 9px; padding: 0; }
@@ -287,6 +282,7 @@
   color: var(--rail-ink);
   background: var(--rail-active);
   border-color: transparent;
+  font-weight: 500;
   box-shadow: inset 2px 0 var(--rail-indicator);
 }
 .platform-shell .nav-item.active svg { color: var(--rail-accent); }
@@ -363,9 +359,9 @@
 .platform-shell .topbar-notification:hover,
 .platform-shell .topbar-actions .icon-btn:hover { background: var(--surface-muted); color: var(--ink); }
 .platform-shell .page {
-  --font-weight-medium: 400;
-  --font-weight-semibold: 400;
-  --font-weight-bold: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 600;
   width: 100%;
   max-width: 1300px;
   padding: 32px var(--page-gutter) 48px;
@@ -381,10 +377,10 @@
   from { opacity: 0; }
 }
 .platform-shell .page-header > div:first-child { min-width: 0; }
-.platform-shell .page-title { font-size: var(--font-size-title); line-height: 1.25; font-weight: 400; letter-spacing: -.0125em; }
+.platform-shell .page-title { font-size: var(--font-size-title); line-height: 1.25; font-weight: var(--font-weight-semibold); letter-spacing: -.015em; }
 .platform-shell .page-description { display: block; max-width: 65ch; margin: 7px 0 0; color: var(--muted); font-size: var(--font-size-small); line-height: 1.6; overflow-wrap: anywhere; }
-.platform-shell .topbar .shadcn-breadcrumb-page { font-weight: 400; }
-.platform-shell .panel-title { font-weight: 400; }
+.platform-shell .topbar .shadcn-breadcrumb-page { font-weight: var(--font-weight-medium); }
+.platform-shell .panel-title { font-weight: var(--font-weight-medium); }
 .platform-shell :is(.panel-header, .workspace-setting-row, .data-table th, .data-table td) { padding-inline: var(--panel-gutter); }
 
 @media (min-width: 768px) {
@@ -407,6 +403,7 @@
   .platform-shell .page-header { align-items: flex-start; flex-wrap: wrap; }
 }
 @media (prefers-reduced-motion: reduce) {
+  .platform-shell > .sidebar.platform-sidebar,
   .platform-shell .nav-item { transition: none; }
   .platform-shell .page-header { animation: none; }
 }

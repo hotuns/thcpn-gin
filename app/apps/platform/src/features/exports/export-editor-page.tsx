@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { api, formatApiError, type JsonRecord } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { PageHeader, Panel, StateView } from "../../shared/ui";
+import { PageHeader, Panel, StateView, useConfirm } from "../../shared/ui";
 import { useEditorNavigation } from "../../app/platform-navigation";
 import { exportCreatedState, type ExportSystem } from "./export-model";
 import { ExportSystemChooser } from "./export-form-layout";
@@ -19,6 +19,7 @@ export function ExportEditorPage() {
 
 function ExportEditor({ currentId, params }: { currentId: string | null; params: URLSearchParams }) {
   const client = useQueryClient();
+  const confirm = useConfirm();
   const requestedSystem = params.get("system");
   const initialSystem = requestedSystem === "group" || requestedSystem === "carbon" ? requestedSystem : "standard";
   const [system, setSystem] = useState<ExportSystem>(initialSystem);
@@ -77,9 +78,9 @@ function ExportEditor({ currentId, params }: { currentId: string | null; params:
       </>
     );
 
-  const chooseSystem = (next: ExportSystem) => {
+  const chooseSystem = async (next: ExportSystem) => {
     if (busy || next === system) return;
-    if (formDirty && !window.confirm("切换导出类型会清空已填条件，确定切换吗？")) return;
+    if (formDirty && !(await confirm({ title: "切换导出类型", description: "切换导出类型会清空已填条件，确定切换吗？", confirmLabel: "切换" }))) return;
     setFormDirty(false);
     setFeedback("");
     setSystem(next);

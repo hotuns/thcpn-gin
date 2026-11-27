@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 import { api, type Device } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, Panel } from "../../shared/ui";
+import { Badge, Button, Panel, useConfirm } from "../../shared/ui";
 import { SamplingProfilePanel } from "./sampling-profile";
 import { DeviceCaptureSettings } from "./device-capture-config";
 import { ComputedStreamsPanel, DeviceMetadataPanel } from "./device-computed-data";
@@ -25,6 +25,7 @@ export function DeviceConfig({
     leavesWorkspace?: boolean,
   ) => Promise<boolean>;
 }) {
+  const confirm = useConfirm();
   const streams = useQuery({ queryKey: workspaceQueryKey(currentWorkspaceId, "device", device.id, "streams", "config"), queryFn: () => api.dataStreams.list(device.id) });
   const context = useQuery({ queryKey: workspaceQueryKey(currentWorkspaceId, "device", device.id, "context"), queryFn: () => api.devices.context(device.id) });
   return (
@@ -47,10 +48,18 @@ export function DeviceConfig({
           </div>
           <Button
             variant="danger"
-            onClick={() =>
-              window.confirm(`确认解绑“${device.name}”？`) &&
-              void run(() => api.devices.unbind(device.id), "设备已解绑", true)
-            }
+            onClick={async () => {
+              if (
+                await confirm({
+                  title: "解绑设备",
+                  description: `确认解绑“${device.name}”？`,
+                  confirmLabel: "解绑",
+                  tone: "danger",
+                })
+              ) {
+                void run(() => api.devices.unbind(device.id), "设备已解绑", true);
+              }
+            }}
           >
             <Trash2 size={14} />
             解绑设备

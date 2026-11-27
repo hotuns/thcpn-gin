@@ -51,6 +51,7 @@
 .shadcn-button-ghost { color: var(--ink); background: transparent; }
 .shadcn-button-ghost:hover { background: var(--surface-subtle); }
 .shadcn-button-destructive { color: white; background: var(--red); }
+.shadcn-button-destructive:hover { background: color-mix(in srgb, var(--red) 88%, black); }
 .shadcn-button-sm { --button-height: var(--control-height-sm); padding: 4px 10px; font-size: var(--font-size-small); }
 .shadcn-button-icon { --button-height: var(--control-icon-size); width: var(--control-icon-size); height: var(--control-icon-size); padding: 0; flex-shrink: 0; }
 
@@ -64,7 +65,7 @@
 .shadcn-card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); box-shadow: 0 1px 2px rgb(38 37 30 / 4%); }
 .shadcn-input-shell { height: var(--control-height); min-height: var(--control-height); background: var(--control); box-shadow: 0 1px 2px rgb(0 0 0 / 3%); }
 :is(.ui-input, .ui-datetime) { border-radius: var(--control-radius); }
-:is(.ui-input, .ui-datetime):focus-within { border-color: var(--ring); box-shadow: none; }
+:is(.ui-input, .ui-datetime):focus-within { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 16%, transparent); }
 .shadcn-input { width: 100%; min-width: 0; height: var(--control-height); color: var(--ink); background: transparent; border: 0; outline: 0; font: 400 var(--font-size-input)/1.5 var(--font-family-ui); }
 .shadcn-input::placeholder { color: var(--muted); opacity: 1; }
 :root .shadcn-input-shell > .shadcn-input { height: 100%; min-height: 0; background: transparent; border: 0; font-size: var(--font-size-input); font-weight: 400; }
@@ -72,17 +73,21 @@
 :root :is(.field, .shadcn-dialog-form) input.shadcn-input:focus,
 .shadcn-textarea:focus {
   border-color: var(--ring);
-  box-shadow: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 16%, transparent);
   outline: none;
 }
 :root :is(.ui-input, .ui-datetime) input:focus { outline: none; box-shadow: none; }
 
-.shadcn-dialog-overlay { position: fixed; inset: 0; z-index: 80; background: rgb(7 16 25 / 58%); backdrop-filter: blur(3px); animation: shadcn-overlay-in 150ms ease-out; }
-.shadcn-dialog-content { position: fixed; top: 50%; left: 50%; z-index: 81; width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; padding: 24px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 24px 80px rgb(0 0 0 / 24%); transform: translate(-50%, -50%); animation: shadcn-dialog-in 180ms cubic-bezier(.16, 1, .3, 1); }
+.shadcn-dialog-overlay { position: fixed; inset: 0; z-index: 80; background: rgb(7 16 25 / 58%); backdrop-filter: blur(3px); animation: shadcn-overlay-in var(--duration-quick) var(--ease-smooth-out); }
+.shadcn-dialog-overlay[data-state="closed"] { animation: shadcn-overlay-out var(--duration-quick) ease-in forwards; }
+.shadcn-dialog-content { position: fixed; top: 50%; left: 50%; z-index: 81; width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; padding: 24px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 24px 80px rgb(0 0 0 / 24%); transform: translate(-50%, -50%); animation: shadcn-dialog-in var(--duration-fast) var(--ease-smooth-out); }
+.shadcn-dialog-content[data-state="closed"] { animation: shadcn-dialog-out var(--duration-quick) ease-in forwards; }
+.shadcn-confirm-dialog { width: min(440px, calc(100vw - 32px)); }
+.shadcn-confirm-description { white-space: pre-line; }
 .shadcn-dialog-close { position: absolute; top: 12px; right: 12px; display: grid; place-items: center; width: var(--control-icon-size); height: var(--control-icon-size); color: var(--muted); background: transparent; border: 0; border-radius: 7px; cursor: pointer; }
 .shadcn-dialog-close:hover { color: var(--ink); background: var(--surface-subtle); }
 .shadcn-dialog-header { display: grid; gap: 6px; padding-right: 38px; }
-.shadcn-dialog-title { margin: 0; font-size: var(--font-size-subtitle); font-weight: 400; line-height: 1.4; }
+.shadcn-dialog-title { margin: 0; font-size: var(--font-size-subtitle); font-weight: var(--font-weight-semibold, 600); line-height: 1.4; }
 .shadcn-dialog-description { margin: 0; color: var(--muted); font-size: var(--font-size-small); line-height: 1.6; }
 .shadcn-dialog-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 .shadcn-dialog-form { display: grid; gap: 16px; margin-top: 20px; }
@@ -103,10 +108,11 @@
 .radix-select-control > .shadcn-select-trigger { min-width:0; width:100%; height:100%; flex:1; }
 .radix-select-control.is-compact { height:var(--control-height-sm); }
 .radix-select-control.is-compact > .shadcn-select-trigger { height:100%; }
-.shadcn-select-trigger:is(:focus-visible, [data-state="open"]) { outline: none; box-shadow: none; border-color: var(--ring); }
+.shadcn-select-trigger:is(:focus-visible, [data-state="open"]) { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 16%, transparent); }
 .shadcn-select-trigger:disabled { opacity: .55; cursor: not-allowed; }
 /* Constrain the popup, then let Radix's viewport shrink and own scrolling. */
-.shadcn-select-content { z-index: 100; display: flex; flex-direction: column; min-width: var(--radix-select-trigger-width); max-height: min(320px, var(--radix-select-content-available-height, calc(100dvh - 16px))); overflow: hidden; color: var(--popover-foreground); background: var(--popover); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 12px 36px rgb(0 0 0 / 16%); animation: shadcn-menu-in 140ms ease-out; }
+.shadcn-select-content { z-index: 100; display: flex; flex-direction: column; min-width: var(--radix-select-trigger-width); max-height: min(320px, var(--radix-select-content-available-height, calc(100dvh - 16px))); overflow: hidden; color: var(--popover-foreground); background: var(--popover); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 12px 36px rgb(0 0 0 / 16%); animation: shadcn-menu-in var(--duration-quick) var(--ease-smooth-out); }
+.shadcn-select-content[data-state="closed"] { animation: shadcn-menu-out var(--duration-quick) ease-in forwards; }
 .shadcn-select-viewport { padding: 5px; min-height: 0; flex: 1 1 auto; overscroll-behavior: contain; }
 .shadcn-select-item { position: relative; display: flex; align-items: center; min-height: var(--control-height); padding: 8px 30px; line-height: 1.5; overflow-wrap: anywhere; border-radius: calc(var(--radius) - 4px); outline: none; cursor: default; user-select: none; }
 .shadcn-select-item[data-highlighted] { color: var(--accent-foreground); background: var(--accent); }
@@ -133,14 +139,16 @@
 .shadcn-switch-thumb { display: block; width: 16px; height: 16px; background: #fff; border-radius: 50%; box-shadow: 0 1px 3px rgb(0 0 0 / 22%); transition: transform 150ms ease; }
 .shadcn-switch-thumb[data-state="checked"] { transform: translateX(16px); }
 
-.shadcn-dropdown-content { z-index: 100; min-width: 190px; padding: 5px; color: var(--popover-foreground); background: var(--popover); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 14px 40px rgb(0 0 0 / 18%); animation: shadcn-menu-in 140ms ease-out; }
+.shadcn-dropdown-content { z-index: 100; min-width: 190px; padding: 5px; color: var(--popover-foreground); background: var(--popover); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 14px 40px rgb(0 0 0 / 18%); animation: shadcn-menu-in var(--duration-quick) var(--ease-smooth-out); }
+.shadcn-dropdown-content[data-state="closed"] { animation: shadcn-menu-out var(--duration-quick) ease-in forwards; }
 .shadcn-dropdown-item { display: flex; align-items: center; gap: 9px; min-height: var(--control-height); padding: 0 10px; border-radius: calc(var(--radius) - 4px); outline: none; cursor: pointer; }
 .shadcn-dropdown-item[data-highlighted] { background: var(--accent); }
 .shadcn-dropdown-item.danger { color: var(--destructive); }
 .shadcn-dropdown-separator { height: 1px; margin: 5px -5px; background: var(--border); }
 .account-dropdown-content { width: min(250px, calc(100vw - 24px)); }
 
-.shadcn-popover-content { z-index: 100; width: 288px; padding: 0; color: var(--popover-foreground); background: var(--popover); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 14px 40px rgb(0 0 0 / 18%); outline: none; transform-origin: var(--radix-popover-content-transform-origin); animation: shadcn-menu-in 140ms ease-out; }
+.shadcn-popover-content { z-index: 100; width: 288px; padding: 0; color: var(--popover-foreground); background: var(--popover); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 14px 40px rgb(0 0 0 / 18%); outline: none; transform-origin: var(--radix-popover-content-transform-origin); animation: shadcn-menu-in var(--duration-quick) var(--ease-smooth-out); }
+.shadcn-popover-content[data-state="closed"] { animation: shadcn-menu-out var(--duration-quick) ease-in forwards; }
 .shadcn-popover-content.device-quick-switch-menu { width: max(380px, var(--radix-popover-trigger-width)); max-width: min(560px, calc(100vw - 24px)); max-height: var(--radix-popover-content-available-height); }
 .shadcn-tabs-list.device-option-categories { border-radius: 0; }
 .shadcn-command { display: flex; flex-direction: column; overflow: hidden; color: var(--popover-foreground); background: var(--popover); border-radius: inherit; }
@@ -156,10 +164,26 @@
 .shadcn-command-item[data-disabled="true"] { pointer-events: none; opacity: .5; }
 .shadcn-command-separator { height: 1px; margin: 4px -4px; background: var(--border); }
 
-.shadcn-tooltip-content { z-index: 110; padding: 6px 9px; color: var(--primary-foreground); background: var(--primary); border-radius: 6px; font-size: var(--font-size-caption); box-shadow: 0 8px 24px rgb(0 0 0 / 16%); animation: shadcn-menu-in 120ms ease-out; }
-@keyframes shadcn-menu-in { from { opacity: 0; } }
-@keyframes shadcn-overlay-in { from { opacity: 0; } }
-@keyframes shadcn-dialog-in { from { opacity: 0; } }
+.shadcn-tooltip-content { z-index: 110; padding: 6px 9px; color: var(--primary-foreground); background: var(--primary); border-radius: 6px; font-size: var(--font-size-caption); box-shadow: 0 8px 24px rgb(0 0 0 / 16%); animation: shadcn-menu-in var(--duration-quick) var(--ease-smooth-out); }
+.shadcn-tooltip-content[data-state="closed"] { animation: shadcn-menu-out var(--duration-quick) ease-in forwards; }
+@keyframes shadcn-menu-in {
+  from { opacity: 0; transform: scale(var(--dropdown-pre-scale, 0.97)); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes shadcn-menu-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(var(--dropdown-closing-scale, 0.99)); }
+}
+@keyframes shadcn-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes shadcn-overlay-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes shadcn-dialog-in {
+  from { opacity: 0; transform: translate(-50%, -48%) scale(0.97); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes shadcn-dialog-out {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to { opacity: 0; transform: translate(-50%, -49%) scale(0.98); }
+}
 @media (prefers-reduced-motion: reduce) {
   .shadcn-button,
   .shadcn-dialog-overlay,

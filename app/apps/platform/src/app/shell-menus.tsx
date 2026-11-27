@@ -22,6 +22,7 @@ import {
   CommandSeparator,
 } from "../shared/ui/primitives/command";
 import { Popover, PopoverContent, PopoverTrigger } from "../shared/ui/primitives/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../shared/ui/primitives/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,6 +47,7 @@ export const filterWorkspaces = (
 
 export function WorkspaceMenu({
   open,
+  collapsed = false,
   workspaces,
   current,
   loading,
@@ -55,6 +57,7 @@ export function WorkspaceMenu({
   onNavigate,
 }: {
   open: boolean;
+  collapsed?: boolean;
   workspaces: AccessibleWorkspace[];
   current: AccessibleWorkspace | null;
   loading: boolean;
@@ -73,21 +76,28 @@ export function WorkspaceMenu({
       else onClose();
     }}>
       <div className="workspace-menu-container">
-        <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            className="workspace-switcher workspace-trigger"
-            aria-label={`${t("platform:workspace.switch")}：${current?.name ?? t("platform:workspace.none")}`}
-            disabled={loading}
-          >
-            <span className="workspace-trigger-icon"><Building2 size={16} aria-hidden="true" /></span>
-            <span className="workspace-trigger-copy">
-              <strong>{loading ? t("platform:workspace.loading") : current?.name ?? t("platform:workspace.none")}</strong>
-              <small>{current ? labels.role(current.membership.role.code, current.membership.role.name) : t("platform:workspace.current")}</small>
-            </span>
-            <ChevronsUpDown size={15} aria-hidden="true" />
-          </Button>
-        </PopoverTrigger>
+        <Tooltip open={collapsed && !open ? undefined : false}>
+          <TooltipTrigger asChild>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className="workspace-switcher workspace-trigger"
+                aria-label={`${t("platform:workspace.switch")}：${current?.name ?? t("platform:workspace.none")}`}
+                disabled={loading}
+              >
+                <span className="workspace-trigger-icon"><Building2 size={16} aria-hidden="true" /></span>
+                <span className="workspace-trigger-copy">
+                  <strong>{loading ? t("platform:workspace.loading") : current?.name ?? t("platform:workspace.none")}</strong>
+                  <small>{current ? labels.role(current.membership.role.code, current.membership.role.name) : t("platform:workspace.current")}</small>
+                </span>
+                <ChevronsUpDown size={15} aria-hidden="true" />
+              </Button>
+            </PopoverTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {loading ? t("platform:workspace.loading") : current?.name ?? t("platform:workspace.none")}
+          </TooltipContent>
+        </Tooltip>
         <PopoverContent className="workspace-command-popover" align="start" aria-label={t("platform:workspace.switch")}>
           <Command filter={(value, search, keywords) => `${value} ${(keywords ?? []).join(" ")}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()) ? 1 : 0}>
             <CommandInput placeholder={t("platform:workspace.search")} aria-label={t("platform:workspace.search")} />
@@ -141,6 +151,7 @@ export function WorkspaceMenu({
 
 export function AccountMenu({
   open,
+  collapsed = false,
   user,
   onToggle,
   onClose,
@@ -148,6 +159,7 @@ export function AccountMenu({
   onSignOut,
 }: {
   open: boolean;
+  collapsed?: boolean;
   user: User | null;
   onToggle: () => void;
   onClose: () => void;
@@ -165,20 +177,27 @@ export function AccountMenu({
       }}
     >
       <div className="account-menu-container">
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            className={`account-row account-trigger ${open ? "open" : ""}`}
-            aria-label={t("platform:account.openMenu")}
-          >
-            <span className="avatar">{(user?.name ?? "U").slice(0, 1)}</span>
-            <span className="account-name">
-              <strong>{user?.name ?? t("platform:account.currentUser")}</strong>
-              <small>{user?.email ?? user?.phone ?? t("platform:account.platformAccount")}</small>
-            </span>
-            <ChevronUp size={15} aria-hidden="true" />
-          </Button>
-        </DropdownMenuTrigger>
+        <Tooltip open={collapsed && !open ? undefined : false}>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                className={`account-row account-trigger ${open ? "open" : ""}`}
+                aria-label={t("platform:account.openMenu")}
+              >
+                <span className="avatar">{(user?.name ?? "U").slice(0, 1)}</span>
+                <span className="account-name">
+                  <strong>{user?.name ?? t("platform:account.currentUser")}</strong>
+                  <small>{user?.email ?? user?.phone ?? t("platform:account.platformAccount")}</small>
+                </span>
+                <ChevronUp size={15} aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {user?.name ?? t("platform:account.currentUser")}
+          </TooltipContent>
+        </Tooltip>
         <DropdownMenuContent className="account-dropdown-content" side="top" align="start">
           <DropdownMenuItem asChild>
             <Link to="/account?tab=profile" onClick={onNavigate}>

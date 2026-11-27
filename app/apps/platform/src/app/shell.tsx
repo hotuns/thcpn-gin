@@ -38,7 +38,10 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-  IconButton
+  IconButton,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
 } from "../shared/ui";
 import { OnboardingTour } from "./onboarding-tour";
 import { findPlatformRoute, platformBreadcrumbs } from "./platform-routes";
@@ -141,6 +144,7 @@ export function Shell() {
         </div>
         <WorkspaceMenu
           open={activeSidebarMenu === "workspace"}
+          collapsed={sidebarCollapsed}
           workspaces={workspace.workspaces}
           current={workspace.current}
           loading={workspace.loading}
@@ -161,7 +165,7 @@ export function Shell() {
                 const Icon = item.icon;
                 const label = t(`platform:navigation.${item.key}`);
                 const active = item.key === sidebarKey;
-                return (
+                const navLink = (
                   <Link
                     key={item.to}
                     to={item.to}
@@ -169,11 +173,18 @@ export function Shell() {
                     className={`nav-item ${active ? "active" : ""}`}
                     aria-current={active ? (item.key === route?.key ? "page" : "location") : undefined}
                     aria-label={label}
-                    title={label}
+                    title={sidebarCollapsed ? undefined : label}
                   >
                     <Icon size={17} aria-hidden="true" />
                     <span>{label}</span>
                   </Link>
+                );
+                if (!sidebarCollapsed) return navLink;
+                return (
+                  <Tooltip key={item.to}>
+                    <TooltipTrigger asChild>{navLink}</TooltipTrigger>
+                    <TooltipContent side="right">{label}</TooltipContent>
+                  </Tooltip>
                 );
               })}
             </div>
@@ -182,6 +193,7 @@ export function Shell() {
         <div className="sidebar-footer">
           <AccountMenu
             open={activeSidebarMenu === "account"}
+            collapsed={sidebarCollapsed}
             user={user}
             onToggle={() =>
               setActiveSidebarMenu((current) =>

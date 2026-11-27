@@ -191,9 +191,11 @@
   .overview-chart { min-width: calc(var(--day-count) * 44px); }
   .overview-chart-column { min-width: 44px; }
 }
+.overview-refresh-spin { animation: overview-spin 900ms linear infinite; }
+@keyframes overview-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   .overview-trend-frame { transition: none; }
-  :is(.overview-statistics, .overview-content, .overview-value, .overview-bar) { animation: none; }
+  :is(.overview-statistics, .overview-content, .overview-value, .overview-bar, .overview-refresh-spin) { animation: none; }
 }
 @media (forced-colors: active) {
   .overview-bar,

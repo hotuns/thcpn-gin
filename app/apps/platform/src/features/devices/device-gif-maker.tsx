@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { CalendarDays, Check, Clock3, Download, Film, HardDrive, Images, Maximize2, Timer, X } from "lucide-react";
 import { GIFEncoder, applyPalette, quantize } from "gifenc";
 import type { DataStream, Device, MediaItem } from "@thcpn/api";
-import { api, formatApiError } from "@thcpn/api";
+import { api, formatApiErrorText } from "@thcpn/api";
 import { Button, Input, SelectInput, StateView } from "../../shared/ui";
 
 type ImageSource = "thumbnail" | "original";
@@ -136,7 +136,7 @@ export function DeviceGifMaker({ device, stream, startTime, endTime, onClose }: 
         } while (hasMore);
         if (active) setItems(loaded.sort((a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()));
       } catch (cause) {
-        if (active) setError(formatApiError(cause).message);
+        if (active) setError(formatApiErrorText(cause));
       } finally {
         if (active) setLoading(false);
       }

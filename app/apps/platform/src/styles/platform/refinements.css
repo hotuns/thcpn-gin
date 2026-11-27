@@ -114,7 +114,7 @@
 .shadcn-breadcrumb-link:hover,.shadcn-breadcrumb-link:focus-visible { color:var(--ink); }
 .shadcn-breadcrumb-link:focus-visible { border-radius:4px; outline:2px solid var(--focus); outline-offset:3px; }
 .shadcn-breadcrumb-page { max-width:280px; overflow:hidden; color:var(--ink); font-weight:var(--font-weight-semibold); text-overflow:ellipsis; white-space:nowrap; }
-.shadcn-breadcrumb-separator { display:inline-flex; flex:0 0 auto; align-items:center; margin:0 7px; color:#9aa8b5; }
+.shadcn-breadcrumb-separator { display:inline-flex; flex:0 0 auto; align-items:center; margin:0 7px; color:var(--muted); }
 @media(max-width:640px){.shadcn-breadcrumb-list>li:first-child,.shadcn-breadcrumb-list>li:nth-child(2){display:none}.shadcn-breadcrumb-link,.shadcn-breadcrumb-page{max-width:42vw}}
 
 .alerts-page { display:grid; gap:20px; }

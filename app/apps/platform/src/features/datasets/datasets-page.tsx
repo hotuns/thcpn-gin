@@ -8,7 +8,7 @@ import { api, formatApiError } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { useNavigationSource } from "../../app/platform-navigation";
 import { useWorkspaceListFilters } from "../../shared/data/use-workspace-list-filters";
-import { Badge, Button, IconButton, Input, PageHeader, Panel, SelectInput, StateView, Table } from "../../shared/ui";
+import { Badge, Button, IconButton, Input, PageHeader, Panel, SelectInput, StateView, Table, useConfirm } from "../../shared/ui";
 import { datasetDetailPath, datasetEditPath } from "./dataset-model";
 import { datasetTypeLabel, datasetStatusLabel, displayTime } from "./dataset-format";
 import { DatasetSourceSummary } from "./dataset-sources";
@@ -24,6 +24,7 @@ export function DatasetsPage() {
 
 function DatasetsList({ currentId }: { currentId: string | null }) {
   const client = useQueryClient();
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const source = useNavigationSource();
   const [{ projectFilter, keyword }, setFilters] = useWorkspaceListFilters(currentId, filterMemory, defaultFilters);
@@ -242,15 +243,21 @@ function DatasetsList({ currentId }: { currentId: string | null }) {
                         <IconButton
                           label="删除数据集"
                           className="dataset-delete-action"
-                          onClick={() =>
-                            window.confirm(
-                              `确认删除数据集“${dataset.name}”？`,
-                            ) &&
-                            void run(
-                              () => api.datasets.remove(dataset.id),
-                              "数据集已删除",
-                            )
-                          }
+                          onClick={async () => {
+                            if (
+                              await confirm({
+                                title: "删除数据集",
+                                description: `确认删除数据集“${dataset.name}”？`,
+                                confirmLabel: "删除",
+                                tone: "danger",
+                              })
+                            ) {
+                              void run(
+                                () => api.datasets.remove(dataset.id),
+                                "数据集已删除",
+                              );
+                            }
+                          }}
                         >
                           <Trash2 size={13} />
                         </IconButton>

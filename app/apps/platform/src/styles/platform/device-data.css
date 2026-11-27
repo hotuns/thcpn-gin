@@ -257,7 +257,7 @@
   overflow: hidden;
   text-align: left;
   color: var(--ink);
-  background: white;
+  background: var(--panel);
   border: 0;
   cursor: zoom-in;
 }
@@ -481,7 +481,7 @@
   min-height: 42px;
   padding: 0 12px;
   color: var(--ink);
-  background: white;
+  background: var(--control);
   border: 1px solid var(--line);
   border-radius: 6px;
 }

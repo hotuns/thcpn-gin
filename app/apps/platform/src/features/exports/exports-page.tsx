@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Check, FileArchive, Plus, RefreshCw, X } from "lucide-react";
-import { api, formatApiError, type ExportJob, type JsonRecord } from "@thcpn/api";
+import { api, formatApiError, formatApiErrorText, type ExportJob, type JsonRecord } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { Button, PageHeader, Panel, SelectInput, StateView, Table } from "../../shared/ui";
 import { SummaryCards } from "../../shared/ui/summary-cards";
@@ -82,7 +82,7 @@ function ExportList({ currentId, createdId }: { currentId: string | null; create
     try {
       await api.exports.create({resource_type:job.resource_type,resource_id:job.resource_id,export_type:job.export_type,request_config:job.request_config ?? {}});
       await query.refetch();
-    } catch(error) {setFeedback(formatApiError(error).message);} finally {setRetrying("");}
+    } catch(error) {setFeedback(formatApiErrorText(error));} finally {setRetrying("");}
   };
   const download = async (job: ExportJob) => {
     setDownloading(job.id);
@@ -96,7 +96,7 @@ function ExportList({ currentId, createdId }: { currentId: string | null; create
       anchor.rel = "noopener";
       anchor.click();
     } catch (error) {
-      setFeedback(formatApiError(error).message);
+      setFeedback(formatApiErrorText(error));
     } finally {
       setDownloading("");
     }

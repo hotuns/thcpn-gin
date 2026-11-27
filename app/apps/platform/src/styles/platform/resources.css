@@ -135,7 +135,7 @@
   min-height: 36px;
   padding: 0 10px;
   color: var(--ink);
-  background: white;
+  background: var(--control);
   border: 1px solid var(--line);
   border-radius: 6px;
   outline: 0;
@@ -194,7 +194,7 @@
   min-height: 38px;
   padding: 0 10px;
   color: var(--ink);
-  background: white;
+  background: var(--control);
   border: 1px solid var(--line);
   border-radius: 6px;
   outline: 0;
@@ -218,7 +218,7 @@
   min-height: 36px;
   padding: 0 10px;
   color: var(--ink);
-  background: white;
+  background: var(--control);
   border: 1px solid var(--line);
   border-radius: 6px;
   outline: 0;
@@ -318,5 +318,5 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   border: 1px solid var(--line);
-  background: white;
+  background: var(--panel);
 }

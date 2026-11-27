@@ -61,7 +61,7 @@ function WorkspaceOverview({ workspaceId, workspaceName }: { workspaceId: string
   return <div className="observation-overview">
     <PageHeader eyebrow={t("platform:overview.workspace", { name: workspaceName })}
       title={t("platform:overview.title")}
-      actions={<Button variant="secondary" disabled={busy} onClick={refresh}><RefreshCw size={16} aria-hidden="true" />{t(`platform:overview.${busy ? data ? "refreshing" : "loadingValue" : "refresh"}`)}</Button>} />
+      actions={<Button variant="secondary" disabled={busy} onClick={refresh}><RefreshCw size={16} aria-hidden="true" className={busy ? "overview-refresh-spin" : undefined} />{t(`platform:overview.${busy ? data ? "refreshing" : "loadingValue" : "refresh"}`)}</Button>} />
     {error && <div className="overview-notice" role="alert">
       <strong>{t(`platform:overview.${data ? "refreshFailed" : "failed"}`)}</strong>
       <span>{error.message}</span>

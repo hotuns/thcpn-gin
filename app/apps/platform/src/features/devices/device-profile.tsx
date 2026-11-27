@@ -32,7 +32,7 @@ import {
   type JsonRecord,
 } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, CheckboxInput, Input, Panel, SelectInput, Sheet, SheetContent, SheetTitle, StateView, Switch, Textarea } from "../../shared/ui";
+import { Badge, Button, CheckboxInput, Input, Panel, SelectInput, Sheet, SheetContent, SheetTitle, StateView, Switch, Textarea, useConfirm } from "../../shared/ui";
 import { DeviceProfileGallery } from "./device-profile-gallery";
 import { iconifyIconUrl } from "@thcpn/device-map";
 import { renderPhotoToolbar } from "./device-media";
@@ -56,6 +56,7 @@ export function DeviceProfileTab({
   operational?: ReactNode;
 }) {
   const maxImages=usePolicyLimit("profile_images",12);
+  const confirm = useConfirm();
   const client = useQueryClient();
   const [editing, setEditing] = useState<false | "basic" | "observation">(false);
   const [placementEditing, setPlacementEditing] = useState(false);
@@ -322,10 +323,18 @@ export function DeviceProfileTab({
                         className="danger"
                         title="删除"
                         disabled={busy}
-                        onClick={() =>
-                          window.confirm("确认删除这张设备图片？") &&
-                          void run(() => api.devices.deleteProfileImage(device.id, image.id), "设备图片已删除")
-                        }
+                        onClick={async () => {
+                          if (
+                            await confirm({
+                              title: "删除设备图片",
+                              description: "确认删除这张设备图片？",
+                              confirmLabel: "删除",
+                              tone: "danger",
+                            })
+                          ) {
+                            void run(() => api.devices.deleteProfileImage(device.id, image.id), "设备图片已删除");
+                          }
+                        }}
                       ><Trash2 size={13} /><span>删除</span></button>
                     </div>
                   )}

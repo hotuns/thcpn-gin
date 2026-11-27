@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Download, Globe2, LockKeyhole, Pencil, Printer } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { api, formatApiError, type Device, type DevicePublicAccess } from "@thcpn/api";
-import { Alert, AlertDescription, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Panel, StateView, Switch } from "../../shared/ui";
+import { Alert, AlertDescription, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Panel, StateView, Switch, useConfirm } from "../../shared/ui";
 
 const formatTime = (value?: string) => value
   ? new Intl.DateTimeFormat(document.documentElement.lang || "zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
@@ -87,6 +87,7 @@ export function DevicePublicAccessPanel({ device }: { device: Device }) {
 }
 
 function PublicAccessEditor({ device, current, onClose, onSaved }: { device: Device; current?: DevicePublicAccess; onClose: () => void; onSaved: (value: DevicePublicAccess) => Promise<void> }) {
+  const confirm = useConfirm();
   const [enabled, setEnabled] = useState(Boolean(current?.enabled));
   const [passwordEnabled, setPasswordEnabled] = useState(Boolean(current?.password_enabled));
   const [password, setPassword] = useState("");
@@ -96,7 +97,7 @@ function PublicAccessEditor({ device, current, onClose, onSaved }: { device: Dev
     event.preventDefault();
     if (passwordEnabled && !current?.password_enabled && password.length < 8) { setError("访问密码至少需要 8 个字符"); return; }
     const action = enabled ? "应用公开访问设置" : "关闭设备公开访问";
-    if (!window.confirm(`确认${action}？`)) return;
+    if (!(await confirm({ title: enabled ? "应用公开访问设置" : "关闭公开访问", description: `确认${action}？`, confirmLabel: "确认", tone: enabled ? "default" : "danger" }))) return;
     setBusy(true); setError("");
     try {
       const result = await api.devices.updatePublicAccess(device.id, { enabled, password_enabled: passwordEnabled, ...(password ? { password } : {}) });

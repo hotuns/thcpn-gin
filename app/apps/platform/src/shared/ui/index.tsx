@@ -24,6 +24,7 @@ export * from "./primitives/alert";
 export * from "./primitives/table";
 export * from "./primitives/sheet";
 export * from "./primitives/textarea";
+export { ConfirmDialogProvider, useConfirm, type ConfirmOptions } from "./confirm-dialog";
 export { Input };
 
 export function Button({ variant = "primary", ...props }: Omit<ComponentProps<typeof ShadcnButton>, "variant"> & { variant?: "primary" | "secondary" | "ghost" | "danger" }) {

@@ -4,7 +4,7 @@ import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-quer
 import { useParams } from "react-router-dom";
 import { Eye, Image as ImageIcon, LockKeyhole, RefreshCw } from "lucide-react";
 import { PhotoSlider } from "react-photo-view";
-import { api, formatApiError, type MediaItem, type PublicDeviceStream } from "@thcpn/api";
+import { api, formatApiError, formatApiErrorText, type MediaItem, type PublicDeviceStream } from "@thcpn/api";
 import { Badge, Brand, Button, Input, Panel, StateView } from "../../shared/ui";
 import { renderPhotoToolbar } from "./device-media";
 import { TelemetryCharts } from "../../shared/telemetry/telemetry-charts";
@@ -44,7 +44,7 @@ export function PublicDevicePage() {
   const unlock = async (event: FormEvent) => {
     event.preventDefault(); setUnlocking(true); setUnlockError("");
     try { await api.publicDevices.unlock(publicSlug, password); setPassword(""); await metadata.refetch(); }
-    catch (error) { const item = formatApiError(error); setUnlockError(item.status === 429 ? "尝试次数过多，请稍后再试" : "密码不正确"); }
+    catch (error) { setUnlockError(formatApiErrorText(error)); }
     finally { setUnlocking(false); }
   };
   const refresh = async () => { await client.invalidateQueries({ queryKey: ["public-device", publicSlug] }); };

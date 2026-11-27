@@ -168,9 +168,12 @@ export function AuthPage({ register = false }: { register?: boolean }) {
         );
     } catch (error) {
       const value = formatApiError(error);
-      const rawMessage = error instanceof ApiError ? error.message : value.message;
+      const rawMessage = error instanceof ApiError ? error.message.trim() : value.message;
       if (!register && mfaRequiredMessage(rawMessage)) setMfaRequired(true);
-      const message = !register && mode === "password" && value.status === 401 && !mfaRequiredMessage(rawMessage)
+      const isInvalidCredentials =
+        rawMessage === "invalid identifier or password" ||
+        rawMessage === "invalid username or password";
+      const message = !register && mode === "password" && value.status === 401 && isInvalidCredentials
         ? t("platform:auth.invalidCredentials")
         : value.message;
       setMessage(

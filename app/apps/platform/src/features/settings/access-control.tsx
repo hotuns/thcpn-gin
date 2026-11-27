@@ -19,7 +19,7 @@ import {
   type JsonRecord,
 } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, CheckboxInput, CopyId, Input, Panel, SelectInput, Sheet, SheetContent, SheetTitle, StateView } from "../../shared/ui";
+import { Badge, Button, CheckboxInput, CopyId, Input, Panel, SelectInput, Sheet, SheetContent, SheetTitle, StateView, useConfirm } from "../../shared/ui";
 import { DeviceCombobox } from "../../shared/data/device-combobox";
 
 type FormMode = "member" | "edit-member" | "grant" | "invitation";
@@ -59,6 +59,7 @@ const scopeTypeLabel = (value: string) =>
 
 export function AccessControlTab() {
   const { currentId, current } = useWorkspace();
+  const confirm = useConfirm();
   const [params, setParams] = useSearchParams();
   const client = useQueryClient();
   const [formMode, setFormMode] = useState<FormMode | null>(null);
@@ -250,15 +251,21 @@ export function AccessControlTab() {
             rows={members.data?.items ?? []}
             resources={resources}
             onEdit={(row) => open("edit-member", row)}
-            onRemove={(row) =>
-              window.confirm(
-                `确认移除 ${text((row.user as JsonRecord)?.name, "该成员")}？`,
-              ) &&
-              void run(
-                () => api.members.remove(currentId, text(row.id)),
-                "成员已移除",
-              )
-            }
+            onRemove={async (row) => {
+              if (
+                await confirm({
+                  title: "移除成员",
+                  description: `确认移除 ${text((row.user as JsonRecord)?.name, "该成员")}？`,
+                  confirmLabel: "移除",
+                  tone: "danger",
+                })
+              ) {
+                void run(
+                  () => api.members.remove(currentId, text(row.id)),
+                  "成员已移除",
+                );
+              }
+            }}
           />
         </AccessPanel>
         <AccessPanel
@@ -276,13 +283,21 @@ export function AccessControlTab() {
           <GrantRows
             rows={grants.data?.items ?? []}
             resources={resources}
-            onRevoke={(row) =>
-              window.confirm("确认撤销该资源授权？") &&
-              void run(
-                () => api.accessGrants.revoke(text(row.id)),
-                "授权已撤销",
-              )
-            }
+            onRevoke={async (row) => {
+              if (
+                await confirm({
+                  title: "撤销资源授权",
+                  description: "确认撤销该资源授权？",
+                  confirmLabel: "撤销",
+                  tone: "danger",
+                })
+              ) {
+                void run(
+                  () => api.accessGrants.revoke(text(row.id)),
+                  "授权已撤销",
+                );
+              }
+            }}
           />
         </AccessPanel>
         <AccessPanel
@@ -300,10 +315,18 @@ export function AccessControlTab() {
           <InvitationRows
             rows={invitations.data?.items ?? []}
             resources={resources}
-            onRevoke={(row) =>
-              window.confirm("确认撤销该邀请？") &&
-              void run(() => api.invitations.revoke(text(row.id)), "邀请已撤销")
-            }
+            onRevoke={async (row) => {
+              if (
+                await confirm({
+                  title: "撤销邀请",
+                  description: "确认撤销该邀请？",
+                  confirmLabel: "撤销",
+                  tone: "danger",
+                })
+              ) {
+                void run(() => api.invitations.revoke(text(row.id)), "邀请已撤销");
+              }
+            }}
           />
         </AccessPanel>
         <AccessPanel

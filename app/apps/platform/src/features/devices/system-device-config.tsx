@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, configFieldsFromDetail, deviceLifecycleLabel, deviceLifecycleOptions, deviceStatusLabel, deviceStatusOptions, formatApiError, parseDeviceConfig, type Device, type JsonRecord, type DeviceConfigFields } from "@thcpn/api";
-import { Badge, Button, CheckboxInput, Input, Panel, SelectInput, StateView, Textarea } from "../../shared/ui";
+import { Badge, Button, CheckboxInput, Input, Panel, SelectInput, StateView, Textarea, useConfirm } from "../../shared/ui";
 import { text, isCameraDevice } from "./device-model";
 
 export function SystemDeviceConfig({
@@ -17,6 +17,7 @@ export function SystemDeviceConfig({
     leavesWorkspace?: boolean,
   ) => Promise<boolean>;
 }) {
+  const confirm = useConfirm();
   const lifecycle = useQuery({
     queryKey: ["admin", "device", device.id, "lifecycle"],
     queryFn: () => api.admin.lifecycle(device.id),
@@ -55,7 +56,13 @@ export function SystemDeviceConfig({
     setLocalError("");
     try {
       const payload = parseDeviceConfig(fields);
-      if (!window.confirm("确认写入 THCPN 外部设备库并刷新平台数据流？"))
+      if (
+        !(await confirm({
+          title: "应用外部设备配置",
+          description: "确认写入 THCPN 外部设备库并刷新平台数据流？",
+          confirmLabel: "确认写入",
+        }))
+      )
         return;
       await run(
         () => api.admin.updateDeviceConfig(device.id, payload),

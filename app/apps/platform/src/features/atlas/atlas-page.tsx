@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import {
   api,
-  formatApiError,
+  formatApiError, formatApiErrorText,
   type DeviceMapItem,
   type AtlasView,
 } from "@thcpn/api";
@@ -139,7 +139,7 @@ function AtlasHome({ workspaceId }: { workspaceId: string }) {
       });
       setDeleting(undefined);
     } catch (e) {
-      setError(formatApiError(e).message);
+      setError(formatApiErrorText(e));
     } finally {
       setBusy(false);
     }
@@ -560,7 +560,7 @@ function AtlasSettings({
           : await api.atlas.create(workspaceId, payload);
       await onSaved(saved);
     } catch (e) {
-      setError(formatApiError(e).message);
+      setError(formatApiErrorText(e));
     } finally {
       setBusy(false);
     }

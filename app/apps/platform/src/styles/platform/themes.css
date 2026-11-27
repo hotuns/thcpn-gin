@@ -377,13 +377,13 @@
   display: block;
 }
 .color-theme-pine .color-theme-swatch i:nth-child(1) {
-  background: #174742;
+  background: #26251e;
 }
 .color-theme-pine .color-theme-swatch i:nth-child(2) {
-  background: #b68a46;
+  background: #f54e00;
 }
 .color-theme-pine .color-theme-swatch i:nth-child(3) {
-  background: #dfe7e4;
+  background: #f7f7f4;
 }
 .color-theme-pulse .color-theme-swatch i:nth-child(1) {
   background: #00665b;

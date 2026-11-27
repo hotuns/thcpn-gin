@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocale } from "@thcpn/i18n";
-import { api, formatApiError, type GatewayNode } from "@thcpn/api";
+import { api, formatApiErrorText, type GatewayNode } from "@thcpn/api";
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, Input } from "../../shared/ui";
 
 export function NodeLocationEditor({ gatewayId, node }: { gatewayId: string; node: GatewayNode }) {
@@ -21,7 +21,7 @@ export function NodeLocationEditor({ gatewayId, node }: { gatewayId: string; nod
       await api.devices.updateNodeLocation(gatewayId, node.target.kind === "gateway_node" ? node.target.node_index : 0, clear ? { latitude: null, longitude: null } : { latitude: Number(lat), longitude: Number(lon) });
       await client.invalidateQueries({ predicate: query => (query.queryKey.includes("nodes") && query.queryKey.includes(gatewayId)) || query.queryKey.includes("device-map") });
       setOpen(false);
-    } catch (e) { setError(formatApiError(e).message); } finally { setBusy(false); }
+    } catch (e) { setError(formatApiErrorText(e)); } finally { setBusy(false); }
   };
   return <><Button variant="ghost" type="button" onClick={() => { setLat(node.latitude?.toString() ?? ""); setLon(node.longitude?.toString() ?? ""); setError(""); setOpen(true); }}>
     {node.latitude != null && node.longitude != null ? `${node.longitude.toFixed(5)}, ${node.latitude.toFixed(5)}` : text("设置位置", "Set location")}

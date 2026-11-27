@@ -17,7 +17,7 @@
   min-height: 38px;
   padding: 0 10px;
   color: var(--ink);
-  background: white;
+  background: var(--control);
   border: 1px solid var(--line);
   border-radius: 6px;
 }
@@ -259,7 +259,7 @@
   min-height: 36px;
   padding: 0 10px;
   color: var(--ink);
-  background: white;
+  background: var(--control);
   border: 1px solid var(--line);
   border-radius: 6px;
 }
@@ -325,8 +325,8 @@
   min-height: 130px;
   padding: 10px;
   resize: vertical;
-  color: #29445e;
-  background: white;
+  color: var(--ink);
+  background: var(--control);
   border: 1px solid var(--line);
   border-radius: 6px;
   font: var(--font-size-small)/1.55 var(--font-family-mono);
@@ -396,7 +396,7 @@
     width: min(280px, calc(100vw - 32px));
     max-height: min(560px, calc(100vh - 100px));
     overflow: auto;
-    background: white;
+    background: var(--panel);
     border: 1px solid var(--line);
     border-radius: 6px;
     box-shadow: 0 16px 42px rgba(27, 53, 78, 0.2);

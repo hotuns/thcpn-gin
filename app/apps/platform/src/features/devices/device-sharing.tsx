@@ -11,7 +11,7 @@ import {
   type JsonRecord,
 } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, CheckboxInput, CopyId, Input, Panel, SelectInput, Sheet, SheetContent, SheetTitle, StateView } from "../../shared/ui";
+import { Badge, Button, CheckboxInput, CopyId, Input, Panel, SelectInput, Sheet, SheetContent, SheetTitle, StateView, useConfirm } from "../../shared/ui";
 import { externalPermission, permissionsForTemplate } from "../settings/access-control";
 import { DevicePublicAccessPanel } from "./device-public-access";
 
@@ -33,6 +33,7 @@ const templateDevicePermissions = (templates: Template[], code: string) =>
 
 export function DeviceSharingTab({ workspaceId, device }: { workspaceId: string; device: Device }) {
   const client = useQueryClient();
+  const confirm = useConfirm();
   const [mode, setMode] = useState<"grant" | "invitation" | null>(null);
   const [feedback, setFeedback] = useState("");
   const scope = useMemo(() => ({ type: "device", id: device.id }), [device.id]);
@@ -99,7 +100,11 @@ export function DeviceSharingTab({ workspaceId, device }: { workspaceId: string;
             </div>
             <ShareRows
               rows={grants.data?.items ?? []}
-              onRevoke={(row) => window.confirm("确认撤销这条设备授权？") && void run(() => api.accessGrants.revoke(text(row.id)), "设备授权已撤销")}
+              onRevoke={async (row) => {
+                if (await confirm({ title: "撤销设备授权", description: "确认撤销这条设备授权？", confirmLabel: "撤销", tone: "danger" })) {
+                  void run(() => api.accessGrants.revoke(text(row.id)), "设备授权已撤销");
+                }
+              }}
             />
           </Panel>
           <Panel>
@@ -109,7 +114,11 @@ export function DeviceSharingTab({ workspaceId, device }: { workspaceId: string;
             </div>
             <InvitationRows
               rows={invitations.data?.items ?? []}
-              onRevoke={(row) => window.confirm("确认撤销这条设备邀请？") && void run(() => api.invitations.revoke(text(row.id)), "设备邀请已撤销")}
+              onRevoke={async (row) => {
+                if (await confirm({ title: "撤销设备邀请", description: "确认撤销这条设备邀请？", confirmLabel: "撤销", tone: "danger" })) {
+                  void run(() => api.invitations.revoke(text(row.id)), "设备邀请已撤销");
+                }
+              }}
             />
           </Panel>
         </div>

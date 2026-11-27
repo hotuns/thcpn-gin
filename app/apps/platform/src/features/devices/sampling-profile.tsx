@@ -10,7 +10,7 @@ import {
   type UpdateSamplingProfile,
 } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, Input, Panel, StateView } from "../../shared/ui";
+import { Badge, Button, Input, Panel, StateView, useConfirm } from "../../shared/ui";
 
 type Mode = SamplingProfile["mode"];
 
@@ -34,6 +34,7 @@ const frequencySummary = (minutes: number[], hours: number[]) =>
     : `${hours.map((hour) => `${String(hour).padStart(2, "0")}:00`).join("、")} 的 ${minutes.map((minute) => String(minute).padStart(2, "0")).join("、")} 分`;
 
 export function SamplingProfilePanel({ deviceId, workspaceId, carbon = false }: { deviceId: string; workspaceId: string; carbon?: boolean }) {
+  const confirm = useConfirm();
   const query = useQuery({
     queryKey: workspaceQueryKey(workspaceId, "device", deviceId, "sampling-profile"),
     queryFn: () => api.devices.samplingProfile(deviceId),
@@ -143,7 +144,7 @@ export function SamplingProfilePanel({ deviceId, workspaceId, carbon = false }: 
     const warning = query.data.advanced
       ? `当前是管理员高级自定义计划。应用后将覆盖数据和图片的采集、上传计划。\n\n新计划：${draftSummary}`
       : `确认更新采集策略？\n\n原计划：${query.data.summary}\n新计划：${draftSummary}`;
-    if (!window.confirm(warning)) return;
+    if (!(await confirm({ title: "更新采集策略", description: warning, confirmLabel: "应用策略" }))) return;
     setBusy(true);
     setMessage("");
     const payload: UpdateSamplingProfile = {

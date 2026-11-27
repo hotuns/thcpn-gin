@@ -9,10 +9,10 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import { PhotoSlider } from "react-photo-view";
 import "react-photo-view/dist/react-photo-view.css";
 import { Activity, Archive, ChartNoAxesCombined, ChevronDown, CirclePause, CirclePlay, Eye, FileImage, ListTree, Plus, RefreshCw, Workflow } from "lucide-react";
-import { api, formatApiError, type Device, type JsonRecord, type MediaItem, type ProcessingExecution, type ProcessingPlan, type ProcessingProcessor, type ProcessingResult, type ProcessingTask } from "@thcpn/api";
+import { api, formatApiError, formatApiErrorText, type Device, type JsonRecord, type MediaItem, type ProcessingExecution, type ProcessingPlan, type ProcessingProcessor, type ProcessingResult, type ProcessingTask } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
 import { useEditorNavigation, useNavigationSource } from "../../app/platform-navigation";
-import { Badge, Button, Input, PageHeader, Panel, SelectInput, StateView, Table, Tabs, TabsContent, TabsList, TabsTrigger } from "../../shared/ui";
+import { Badge, Button, Input, PageHeader, Panel, SelectInput, StateView, Table, Tabs, TabsContent, TabsList, TabsTrigger, useConfirm } from "../../shared/ui";
 import { SummaryCards } from "../../shared/ui/summary-cards";
 import { renderPhotoToolbar } from "../devices/device-media";
 import { DeviceCombobox } from "../../shared/data/device-combobox";
@@ -22,6 +22,7 @@ const statusTone = (status: string) => status === "active" ? "success" : status 
 
 export function ProcessingPage() {
   const { currentId } = useWorkspace();
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const source = useNavigationSource();
   const client = useQueryClient();
@@ -33,7 +34,7 @@ export function ProcessingPage() {
     if (!currentId) return;
     setFeedback("");
     try { await api.processing.status(currentId, task.id, status); await refresh(); }
-    catch (error) { setFeedback(formatApiError(error).message); }
+    catch (error) { setFeedback(formatApiErrorText(error)); }
   };
   return <>
     <PageHeader eyebrow="数据" title="数据处理" description="配置系统内置处理器，将设备数据转为可追溯的派生指标和文件。" actions={<Button data-onboarding="processing-create" onClick={() => navigate("/processing/new", { state: source })}><Plus size={15}/>创建处理任务</Button>} />
@@ -51,7 +52,7 @@ export function ProcessingPage() {
         <td data-label="处理器" className="mobile-cell-wide"><div className="cell-title">{task.plan_name || "历史直接配置任务"}</div><div className="cell-sub mono">{task.processor_code}@{task.processor_version}</div></td>
         <td data-label="目标" className="mobile-cell-wide"><div className="cell-title">{task.target_name || (task.target_type === "device" ? "未命名设备" : "未命名站点")}</div><div className="cell-sub">{task.target_type === "device" ? "设备" : "站点"} · <span className="mono">{task.target_id}</span></div></td>
         <td data-label="版本">v{task.current_version}<div className="cell-sub">{task.last_execution_status ? `最近执行：${task.last_execution_status}` : "等待输入"}</div></td><td data-label="状态" className="mobile-cell-status"><Badge tone={statusTone(task.status) as any}>{statusLabel[task.status]}</Badge></td>
-        <td data-label="操作" className="mobile-cell-actions"><div className="table-actions"><Button variant="secondary" onClick={() => navigate(`/processing/${task.id}`, { state: source })}><Eye size={14}/>查看</Button>{task.status === "active" ? <Button variant="secondary" onClick={() => void updateStatus(task, "paused")}><CirclePause size={14}/>暂停</Button> : task.status === "paused" ? <Button variant="secondary" onClick={() => void updateStatus(task, "active")}><CirclePlay size={14}/>启用</Button> : null}{task.status !== "archived" && <Button variant="secondary" onClick={() => window.confirm(`确认归档 ${task.name}？`) && void updateStatus(task, "archived")}><Archive size={14}/>归档</Button>}</div></td>
+        <td data-label="操作" className="mobile-cell-actions"><div className="table-actions"><Button variant="secondary" onClick={() => navigate(`/processing/${task.id}`, { state: source })}><Eye size={14}/>查看</Button>{task.status === "active" ? <Button variant="secondary" onClick={() => void updateStatus(task, "paused")}><CirclePause size={14}/>暂停</Button> : task.status === "paused" ? <Button variant="secondary" onClick={() => void updateStatus(task, "active")}><CirclePlay size={14}/>启用</Button> : null}{task.status !== "archived" && <Button variant="secondary" onClick={async () => { if (await confirm({ title: "归档处理任务", description: `确认归档 ${task.name}？`, confirmLabel: "归档", tone: "danger" })) void updateStatus(task, "archived"); }}><Archive size={14}/>归档</Button>}</div></td>
       </tr>)}</tbody></Table></div>}
     </Panel>
   </>;
@@ -323,7 +324,7 @@ function CreateProcessingTask({ workspaceId, plans }: { workspaceId: string; pla
       complete(`/processing/${task.id}`);
       toast.success("处理任务已创建");
     } catch (value) {
-      setError(formatApiError(value).message);
+      setError(formatApiErrorText(value));
     } finally {
       setBusy(false);
     }

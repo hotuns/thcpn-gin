@@ -617,7 +617,7 @@
 }
 .sampling-mode-control button.active {
   color: var(--blue-dark);
-  background: white;
+  background: var(--panel);
   box-shadow: 0 1px 4px rgba(24, 49, 73, 0.12);
 }
 .sampling-mode-control button:disabled {
@@ -703,7 +703,7 @@
   min-height: 30px;
   padding: 0;
   color: var(--muted);
-  background: white;
+  background: var(--control);
   border: 1px solid var(--line);
   border-radius: 4px;
   font-size: var(--font-size-caption);
@@ -780,8 +780,8 @@
   min-height: 150px;
   padding: 10px;
   resize: vertical;
-  color: #29445e;
-  background: white;
+  color: var(--ink);
+  background: var(--control);
   border: 1px solid var(--line);
   border-radius: 6px;
   font: var(--font-size-small)/1.55 var(--font-family-mono);
@@ -806,7 +806,7 @@
   padding: 12px 14px;
   text-align: left;
   color: var(--ink);
-  background: white;
+  background: var(--panel);
   border: 0;
   border-right: 1px solid var(--soft-line);
   border-bottom: 1px solid var(--soft-line);
@@ -849,7 +849,7 @@
 .security-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  background: white;
+  background: var(--panel);
   border: 1px solid var(--line);
 }
 .security-summary > div {
