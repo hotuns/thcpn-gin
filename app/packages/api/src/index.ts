@@ -331,7 +331,12 @@ export class ApiError extends Error {
 
 export const apiErrorEvent = "thcpn:api-error";
 
+const isAbortError = (error: unknown) =>
+  (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError") ||
+  (error instanceof Error && error.name === "AbortError");
+
 const notifyApiError = (error: unknown) => {
+  if (isAbortError(error)) return;
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(apiErrorEvent, { detail: error }));
   }
@@ -389,14 +394,16 @@ const parseResponse = async (response: Response) => {
     body = text;
   }
   if (!response.ok) {
-    const message =
+    const rawCandidate =
       body?.error?.message ??
       body?.message ??
-      body?.error ??
-      response.statusText ??
-      "请求失败";
+      (typeof body?.error === "string" ? body.error : undefined);
+    const trimmedCandidate =
+      typeof rawCandidate === "string" ? rawCandidate.trim() : "";
+    const statusText = response.statusText?.trim() ?? "";
+    const message = trimmedCandidate || statusText || `HTTP ${response.status}`;
     throw new ApiError(
-      String(message),
+      message,
       response.status,
       body?.error?.request_id ?? body?.request_id ?? requestId,
       body,
@@ -451,6 +458,7 @@ async function request<T>(
     if (
       error instanceof ApiError &&
       error.status === 401 &&
+      error.message !== "current password is incorrect" &&
       retry &&
       tokens?.refreshToken
     ) {
@@ -511,33 +519,56 @@ async function download(path: string, init: RequestInit = {}): Promise<Blob> {
 }
 
 export const formatApiError = (error: unknown) => {
+  const english = typeof document !== "undefined" && document.documentElement.lang === "en-US";
   if (error instanceof ApiError) {
+    const admin = isAdminContext();
     const messages: Record<string, { zh: string; en: string }> = {
       invalid_argument: { zh: "请求参数不正确", en: "Invalid request parameters" },
-      unauthorized: { zh: "登录状态已失效", en: "Your session has expired" },
+      unauthorized: { zh: "登录状态已失效，请重新登录", en: "Your session has expired. Please sign in again" },
       permission_denied: { zh: "没有执行此操作的权限", en: "You do not have permission for this action" },
       not_found: { zh: "请求的资源不存在", en: "The requested resource was not found" },
       conflict: { zh: "当前状态不允许此操作，请刷新查看最新状态", en: "This action is unavailable in the current state. Refresh and check the latest status" },
       rate_limited: { zh: "操作过于频繁，请稍后重试", en: "Too many requests. Try again later" },
-      data_source_error: { zh: "数据源暂时不可用，请稍后重试；如持续失败，请联系系统管理员检查连接", en: "The data source is temporarily unavailable. Try again later or ask an administrator to check the connection" },
-      internal: { zh: "服务暂时不可用，请稍后重试；如持续失败，请提供请求编号联系管理员", en: "The service is temporarily unavailable. Try again later or contact support with the request ID" },
+      data_source_error: admin
+        ? { zh: "数据源暂时不可用，请检查数据源连接配置或结合请求编号查看平台日志", en: "The data source is temporarily unavailable. Check the data source connection or inspect platform logs with the request ID" }
+        : { zh: "数据源暂时不可用，请稍后重试；如持续失败，请联系系统管理员检查连接", en: "The data source is temporarily unavailable. Try again later or ask an administrator to check the connection" },
+      internal: admin
+        ? { zh: "服务暂时不可用，请重试或结合请求编号查看平台日志", en: "The service is temporarily unavailable. Try again or inspect platform logs with the request ID" }
+        : { zh: "服务暂时不可用，请稍后重试；如持续失败，请提供请求编号联系管理员", en: "The service is temporarily unavailable. Try again later or contact support with the request ID" },
       service_unavailable: { zh: "服务暂时不可用，请稍后重试", en: "The service is temporarily unavailable. Try again later" },
       export_too_large: { zh: "导出范围过大，请缩短时间范围或减少设备数量", en: "The export is too large. Select fewer devices or a shorter time range" },
     };
+    const statusFallbacks: Record<number, { zh: string; en: string }> = {
+      400: messages.invalid_argument,
+      401: messages.unauthorized,
+      403: messages.permission_denied,
+      404: messages.not_found,
+      409: messages.conflict,
+      413: { zh: "上传内容过大，超出服务器限制，请压缩或缩小范围后重试", en: "The uploaded payload is too large. Reduce the size and try again" },
+      429: messages.rate_limited,
+      500: messages.internal,
+      502: messages.service_unavailable,
+      503: messages.service_unavailable,
+      504: { zh: "服务响应超时，请稍后重试", en: "The server timed out. Please try again later" },
+    };
     const normalizedCode = error.code?.toLowerCase();
-    const localized = normalizedCode ? messages[normalizedCode] : undefined;
-    const english = typeof document !== "undefined" && document.documentElement.lang === "en-US";
+    const localized = normalizedCode ? messages[normalizedCode] : statusFallbacks[error.status];
     const envelope = error.details as { error?: { details?: { reason?: string; retry_after_seconds?: number; locked_until?: string; field?: string; maximum?: number; actual?: number; unit?: string } } } | undefined;
     const detail = envelope?.error?.details;
-    const known = publicErrorMessages[error.message];
+    const rawMsg = error.message.trim();
+    const known = publicErrorMessages[rawMsg];
     const limitMessage = formatLimitError(detail, english);
-    const locked = detail?.reason === "ACCOUNT_LOCKED" || ["account is temporarily locked", "administrator account is temporarily locked"].includes(error.message);
+    const locked = detail?.reason === "ACCOUNT_LOCKED" || ["account is temporarily locked", "administrator account is temporarily locked"].includes(rawMsg);
     const seconds = detail?.retry_after_seconds;
-    let message = localized?.[english ? "en" : "zh"] ?? (english ? "The request failed. Try again or contact support with the request ID" : "操作未完成，请重试；如持续失败，请提供请求编号联系管理员");
+    const genericFallback = admin
+      ? (english ? "The request failed. Try again or inspect platform logs with the request ID" : "操作未完成，请重试或结合请求编号查看平台日志")
+      : (english ? "The request failed. Try again or contact support with the request ID" : "操作未完成，请重试；如持续失败，请提供请求编号联系管理员");
+    let message = localized?.[english ? "en" : "zh"] ?? genericFallback;
     if (error.status < 500) {
-      if (known) message = english ? error.message : known;
-      else if (normalizedCode === "invalid_argument" || /[\u3400-\u9fff]/.test(error.message)) message = error.message;
-      else if (!normalizedCode) message = error.message;
+      const isGenericHttpText = !rawMsg || /^HTTP \d{3}$/.test(rawMsg);
+      if (known) message = english ? rawMsg : known;
+      else if (!isGenericHttpText && (normalizedCode === "invalid_argument" || /[\u3400-\u9fff]/.test(rawMsg))) message = rawMsg;
+      else if (!normalizedCode && !isGenericHttpText && !statusFallbacks[error.status]) message = rawMsg;
       if (limitMessage) message = limitMessage;
       if (locked) {
         const minutes = typeof seconds === "number" && Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds / 60) : undefined;
@@ -556,13 +587,20 @@ export const formatApiError = (error: unknown) => {
   return {
     message: error instanceof Error && !/failed to fetch|fetch failed|networkerror|network request failed|load failed/i.test(error.message)
       ? error.message
-      : typeof document !== "undefined" && document.documentElement.lang === "en-US"
+      : english
         ? "Unable to connect. Check your network and try again"
         : "网络连接失败，请检查网络后重试",
     code: undefined,
     requestId: undefined,
     status: 0,
   };
+};
+
+export const formatApiErrorText = (error: unknown) => {
+  const item = formatApiError(error);
+  if (!item.requestId) return item.message;
+  const english = typeof document !== "undefined" && document.documentElement.lang === "en-US";
+  return english ? `${item.message} (Request ID: ${item.requestId})` : `${item.message}（请求编号：${item.requestId}）`;
 };
 
 export type SystemSettingField = {key:string;group:string;label:string;default:number;min:number;max:number;unit:string;kind?:"switch"};
