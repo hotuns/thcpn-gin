@@ -1,5 +1,7 @@
 # 平台访问域名
 
+当前部署结构、组件版本及日常发布操作见[线上部署说明](production-deployment.md)。本文中带日期的切换状态用于保留域名迁移历史。
+
 公有云的目标主地址为 `https://ieswatch.com`，后台为 `https://ieswatch.com/admin/`。`www.ieswatch.com` 和旧 `insitueco.com` / `www.insitueco.com` 保留路径及查询参数跳转到主地址。
 
 ## 应用中的部署地址

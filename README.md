@@ -88,6 +88,8 @@ docker compose down -v
 
 ### 4. 当前生产服务器更新流程
 
+当前拓扑、分组件版本、配置、发布验证和回滚位置见[线上部署说明](docs/production-deployment.md)。以下为简要更新流程。
+
 生产服务器 `8.131.103.198` 的部署目录为 `/home/hotuns/thcpn-gin`。主机 Caddy 直接托管 `/srv/ieswatch/current` 中的用户端和 `/admin/` 后台，并将 `/api/*`、`/healthz`、`/readyz` 转发到 `127.0.0.1:18081`。生产无需前端容器；`5173`、`5174` 仅用于上面的独立部署或本地开发。
 
 后端部署继续使用三个 Compose 文件，并保留 Worker 当前导出并发配置：
