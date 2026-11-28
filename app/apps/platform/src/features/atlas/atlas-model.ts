@@ -9,7 +9,7 @@ import type { AtlasConfig } from "@thcpn/api";
 export const ATLAS_TEMPLATE = "atlas-tech";
 export const defaultAtlasConfig: AtlasConfig = {
   trend_hours: 24,
-  presentation: "technology",
+  presentation: "deep-blue",
   layout: "balanced",
   show_images: true,
   show_trends: true,

@@ -5,7 +5,6 @@ import { api, type AtlasView, type DeviceMapItem } from "@thcpn/api";
 import { AtlasPage } from "../../apps/platform/src/features/atlas/atlas-page";
 import { atlasZh } from "../../packages/i18n/src/atlas";
 import { render, eventually } from "../render";
-import type { AtlasScreenProps } from "../../apps/platform/src/features/atlas/atlas-screen-props";
 
 vi.mock("@thcpn/workspace", () => ({
   useWorkspace: () => ({ currentId: "forest", current: { name: "森林工作区" } }),
@@ -28,11 +27,8 @@ vi.mock("../../apps/platform/src/features/atlas/atlas-device", () => ({
 vi.mock("../../apps/platform/src/features/atlas/eco-device", () => ({
   EcoDeviceInspector: ({ device, selectedNodeKey }: { device: DeviceMapItem; selectedNodeKey?: string }) => { const [count, setCount] = useState(0); return <button data-testid="inspector" data-device-id={device.device_id} data-node-key={selectedNodeKey} onClick={() => setCount(count + 1)}>{device.name} · {count}</button>; },
 }));
-vi.mock("../../apps/platform/src/features/atlas/research-screen", () => ({
-  ResearchScreen: ({ title, map, settings }: AtlasScreenProps) => <section className="research-screen"><h1>{title}</h1>{map}{settings}</section>,
-}));
-vi.mock("../../apps/platform/src/features/atlas/expedition-screen", () => ({
-  ExpeditionScreen: ({ title, map, settings }: AtlasScreenProps) => <section className="expedition-screen"><h1>{title}</h1>{map}{settings}</section>,
+vi.mock("../../apps/platform/src/features/atlas/atlas-filmstrip", () => ({
+  AtlasFilmstrip: () => null,
 }));
 const stamp = "2026-11-03T06:00:00Z";
 function view(id: string, name: string, presentation: "deep-blue" | "technology" | "panorama" = "deep-blue"): AtlasView {
@@ -65,7 +61,7 @@ it("separates saved atlases, registered templates and curated topics, and search
   await eventually(() => expect(host.querySelectorAll(".atlas-saved-card")).toHaveLength(2));
   const tabs = host.querySelector('[role="tablist"]')!;
   const saved = button("我的一张图2", tabs);
-  const templates = button("模板3", tabs);
+  const templates = button("模板1", tabs);
   const topics = button("专题1", tabs);
   expect(saved.getAttribute("aria-selected")).toBe("true");
   const searchInput = host.querySelector<HTMLInputElement>('[aria-label="搜索名称或简介"]')!;
@@ -75,8 +71,8 @@ it("separates saved atlases, registered templates and curated topics, and search
   await act(async () => templates.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })));
   expect(templates.getAttribute("aria-selected")).toBe("true");
   expect(host.querySelector(".atlas-home-templates")?.closest("[hidden]")).toBeNull();
-  expect(host.querySelectorAll(".atlas-home-template")).toHaveLength(3);
-  expect(host.querySelector(".atlas-home-template")?.textContent).toContain("深蓝科技");
+  expect(host.querySelectorAll(".atlas-home-template")).toHaveLength(1);
+  expect(host.querySelector(".atlas-home-template")?.textContent).toContain("苍穹观测台");
   await act(async () => topics.focus());
   expect(topics.getAttribute("aria-selected")).toBe("true");
   expect(host.querySelector(".atlas-custom-showcase")?.closest("[hidden]")).toBeNull();
@@ -87,12 +83,11 @@ it("separates saved atlases, registered templates and curated topics, and search
   expect(host.querySelector('[data-testid="route"]')?.textContent).toBe("/atlas");
 });
 
-it("creates a deep-blue atlas through the save API and opens that same saved view", async () => {
+it("creates a flagship observatory atlas directly through the save API and opens that same saved view", async () => {
   const create = vi.spyOn(api.atlas, "create").mockImplementation(async (_workspace, payload) => { const result = { ...view("created", payload.name), config: payload.config }; views.push(result); return result; });
   const { host } = await mount();
   await eventually(() => expect(api.devices.map).toHaveBeenCalled());
   await click("新建一张图", host);
-  await click("使用模板并自定义 · 深蓝科技", host);
   await eventually(() => expect(document.querySelector('[role="dialog"]')).not.toBeNull());
   await click("保存视图", document.querySelector('[role="dialog"]')!);
   await eventually(() => expect(host.querySelector('[data-testid="route"]')?.textContent).toBe("/atlas/created"));
@@ -186,18 +181,17 @@ it("resolves a virtual map node through its real gateway before opening its insp
 });
 
 
-it.each([
-  ["technology", "research-screen", "research"],
-  ["panorama", "expedition-screen", "expedition"],
-  ["deep-blue", "eco-screen", "deep-blue"],
-] as const)("opens the saved %s template with its own layout and map appearance", async (presentation, rootClass, appearance) => {
+it.each(["technology", "panorama", "deep-blue"] as const)("maps saved %s presentation to the unified flagship observatory and supports map focus toggle", async (presentation) => {
   views = [view("selected", "独立模板观测", presentation)];
   const { host } = await mount("/atlas/selected");
   await eventually(() => expect(host.querySelector('[data-testid="map"]')).not.toBeNull());
-  expect(host.querySelector(`.${rootClass}`)).not.toBeNull();
-  expect(host.querySelector('[data-testid="map"]')?.getAttribute("data-appearance")).toBe(appearance);
-  expect(host.querySelectorAll(".research-screen, .expedition-screen, .eco-screen")).toHaveLength(1);
-  expect(host.querySelector(".atlas-shell, .atlas-template-technology, .atlas-template-panorama, .atlas-template-deep-blue, .obs-masthead")).toBeNull();
+  expect(host.querySelector(".eco-screen")).not.toBeNull();
+  expect(host.querySelector('[data-testid="map"]')?.getAttribute("data-appearance")).toBe("deep-blue");
+  expect(host.querySelector(".atlas-shell, .atlas-template-technology, .atlas-template-panorama, .atlas-template-deep-blue")).toBeNull();
   expect(host.querySelector('[data-testid="route"]')?.textContent).toBe("/atlas/selected");
   expect(host.querySelector("h1")?.textContent).toBe("独立模板观测");
+  expect(host.querySelector(".eco-left-column")?.getAttribute("data-collapsed")).toBe("false");
+  await click("地图专注模式", host);
+  expect(host.querySelector(".eco-left-column")?.getAttribute("data-collapsed")).toBe("true");
+  expect(host.querySelector(".eco-right-column")?.getAttribute("data-collapsed")).toBe("true");
 });

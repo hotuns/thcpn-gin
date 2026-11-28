@@ -4,9 +4,11 @@
 .atlas-management-toolbar { display:flex; gap:12px; align-items:center; }
 .atlas-management-toolbar > :first-child { flex:1; }
 .atlas-management-toolbar > .shadcn-select-trigger { max-width:220px; }
-.atlas-management .atlas-home-templates { grid-template-columns:repeat(3,minmax(0,1fr)); }
-.atlas-management .atlas-home-template { border:1px solid var(--line); border-radius:12px; box-shadow:none; }
-.atlas-management .atlas-home-template > .atlas-template-preview { height:180px; }
+.atlas-management .atlas-home-templates { grid-template-columns:minmax(0,520px); }
+.atlas-management .atlas-home-template { border:1px solid var(--line); border-radius:14px; box-shadow:none; }
+.atlas-management .atlas-home-template > .atlas-template-preview { height:240px; display:block; overflow:hidden; border-radius:10px; }
+.atlas-saved-card > .atlas-template-preview { height:156px; display:block; overflow:hidden; border-radius:8px; }
+.preview-observatory-svg { width:100%; height:100%; display:block; object-fit:cover; }
 .atlas-management .atlas-saved-card > div { gap:12px; }
 .atlas-management .atlas-saved-card small { font-size:11px; color:var(--muted); }
 .atlas-management-card-actions { display:flex; flex-wrap:wrap; gap:8px; border-top:1px solid var(--line); padding-top:10px; }

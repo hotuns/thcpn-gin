@@ -1,7 +1,7 @@
 export const atlasZh = {
   scopeDevices: "当前展示设备",
-  templateDeepBlue: "深蓝科技",
-  templateDeepBlueHint: "全幅地形地图、悬浮数据面板与组网飞线，呈现生态观测全貌。",
+  templateDeepBlue: "苍穹观测台",
+  templateDeepBlueHint: "全幅 3D 地形影像、悬浮液态玻璃观测舱与动态组网链路，一站式洞察全域生态监测。",
   manageTitle: "一张图管理",
   myViews: "我的一张图",
   templates: "模板",
@@ -168,8 +168,8 @@ export const atlasZh = {
 };
 export const atlasEn: Record<keyof typeof atlasZh, string> = {
   scopeDevices: "Devices in this atlas",
-  templateDeepBlue: "Deep blue technology",
-  templateDeepBlueHint: "Full-bleed terrain, floating observations and animated gateway connections.",
+  templateDeepBlue: "Canopy Observatory",
+  templateDeepBlueHint: "Full-bleed 3D terrain imagery, floating obsidian glass observation decks, and live telemetry topology.",
   manageTitle: "Atlas management",
   myViews: "My atlases",
   templates: "Templates",

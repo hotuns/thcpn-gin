@@ -60,8 +60,6 @@ import {
 } from "./atlas-model";
 import { AtlasMetricDefaultsEditor } from "./atlas-metric-settings";
 import { EcoScreen } from "./eco-screen";
-import { ResearchScreen } from "./research-screen";
-import { ExpeditionScreen } from "./expedition-screen";
 import type { AtlasScreenProps } from "./atlas-screen-props";
 import "./atlas.css";
 import "./atlas-templates.css";
@@ -241,8 +239,17 @@ function AtlasHome({ workspaceId }: { workspaceId: string }) {
       <TabsContent value="views" forceMount hidden={section !== "views"} className="atlas-home-saved">
         <div className="atlas-management-toolbar">
           <SearchInput aria-label={a("searchViews")} placeholder={a("searchViews")} value={viewSearch} onChange={event => updateListing("q", event.target.value)} />
-          <SelectInput aria-label={a("displayTemplate")} value={templateFilter} onChange={event => updateListing("template", event.target.value === "all" ? "" : event.target.value)}><option value="all">{a("displayTemplate")} · {a("allTypes")}</option>{atlasTemplates.map(template => <option key={template.id} value={template.id}>{a(template.titleKey)}</option>)}</SelectInput>
-          {boards.data?.can_manage && <Button onClick={() => setSection("templates")}><Plus size={16} />{a("newView")}</Button>}
+          {atlasTemplates.length > 1 && (
+            <SelectInput aria-label={a("displayTemplate")} value={templateFilter} onChange={event => updateListing("template", event.target.value === "all" ? "" : event.target.value)}><option value="all">{a("displayTemplate")} · {a("allTypes")}</option>{atlasTemplates.map(template => <option key={template.id} value={template.id}>{a(template.titleKey)}</option>)}</SelectInput>
+          )}
+          {boards.data?.can_manage && (
+            <Button
+              disabled={atlasTemplates.length <= 1 && (!devices.data || devices.isError)}
+              onClick={() => atlasTemplates.length <= 1 ? setCreating(atlasTemplates[0].id) : setSection("templates")}
+            >
+              <Plus size={16} />{a("newView")}
+            </Button>
+          )}
         </div>
         {boards.data && !saved.length && (
           <Card className="atlas-home-empty">
@@ -398,7 +405,6 @@ function AtlasWorkspace({
     ...defaultAtlasConfig,
     ...board.data?.config,
   };
-  const template = atlasTemplate(config.presentation);
   const rows = devices.data?.items ?? [];
   const scoped = useMemo(
     () => filterDevices(rows, config.device_ids ?? [], "", "all"),
@@ -486,8 +492,6 @@ function AtlasWorkspace({
     setEditingScreen(false);
     if (view.id !== id) navigate(`/atlas/${view.id}`);
   }} /> : null;
-  const Screen = template.id === "deep-blue" ? EcoScreen : template.id === "technology" ? ResearchScreen : ExpeditionScreen;
-  const appearance = template.id === "technology" ? "research" : template.id === "panorama" ? "expedition" : "deep-blue";
   const screenProps: AtlasScreenProps = {
     title: board.data?.name ?? a("defaultName"), workspaceId, boardId: id, config,
     devices: scoped, selectedDevice: inspectorDevice, selectedNodeKey: activeNodeKey, kind,
@@ -497,14 +501,14 @@ function AtlasWorkspace({
     presenting: present, onFullscreen: () => void toggleFullscreen(), settings: settingsDialog,
     warning: devices.error ? formatApiError(devices.error).message : undefined,
     map: <MapBoundary fallback={<AtlasEmpty text={a("mapUnavailable")} />}><Suspense fallback={<div role="status">{a("loading")}</div>}>
-      <AtlasMap appearance={appearance} workspaceId={workspaceId} panorama={template.id !== "technology"}
+      <AtlasMap appearance="deep-blue" workspaceId={workspaceId} panorama
         points={selectedGateway && !visible.some(device => device.device_id === selectedGateway.device_id) ? [...visible, selectedGateway] : visible}
         networkDevices={rows} selectedId={inspectorDevice?.device_id ?? ""} selectedNodeKey={activeNodeKey}
         onSelect={onSelect} onSelectNode={onSelectNode} motionEnabled={motion.enabled}
         reset={reset} onReset={() => { onSelect(""); setReset(value => value + 1); }} />
     </Suspense></MapBoundary>,
   };
-  return <Screen {...screenProps} />;
+  return <EcoScreen {...screenProps} />;
 }
 
 function AtlasSettings({
@@ -595,23 +599,21 @@ function AtlasSettings({
               }
             />
           </label>
-          {config.presentation !== "panorama" && (
-            <label>
-              {a("layout")}
-              <SelectInput
-                value={config.layout}
-                onChange={(e) =>
-                  setConfig({
-                    ...config,
-                    layout: e.target.value as AtlasConfig["layout"],
-                  })
-                }
-              >
-                <option value="balanced">{a("balanced")}</option>
-                <option value="map">{a("mapFocus")}</option>
-              </SelectInput>
-            </label>
-          )}
+          <label>
+            {a("layout")}
+            <SelectInput
+              value={config.layout}
+              onChange={(e) =>
+                setConfig({
+                  ...config,
+                  layout: e.target.value as AtlasConfig["layout"],
+                })
+              }
+            >
+              <option value="balanced">{a("balanced")}</option>
+              <option value="map">{a("mapFocus")}</option>
+            </SelectInput>
+          </label>
           <label>
             {a("trend")}
             <SelectInput

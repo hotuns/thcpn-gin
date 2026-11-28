@@ -83,27 +83,13 @@ export function AtlasMap(props: Props) {
   const deviceLayer = useRef<NativeDeviceLayer | null>(null);
   const padding = (map: Map) => {
     const width = map.getContainer().clientWidth;
-    if (current.current.appearance === "deep-blue" && width > 900) return {
-      top: 150,
-      bottom: 110,
-      left: Math.round(width * .25) + 35,
-      right: Math.round(width * .28) + 35,
+    if (current.current.appearance === "deep-blue" && width > 960) return {
+      top: 96,
+      bottom: 96,
+      left: Math.min(374, Math.round(width * 0.24) + 24),
+      right: Math.min(430, Math.round(width * 0.27) + 24),
     };
-    if (current.current.appearance === "research") return { top: 40, bottom: 40, left: 40, right: 40 };
-    if (current.current.appearance === "expedition") {
-      const height = map.getContainer().clientHeight;
-      const top = Math.min(170, Math.max(30, height - 180));
-      return { top, left: Math.min(285, width * .35), right: 60,
-        bottom: Math.max(0, Math.min(Math.max(414, Math.min(500, height * .4)) + 45, height - top - 100)) };
-    }
-    return current.current.panorama && width > 900
-      ? {
-          top: 120,
-          bottom: 65,
-          left: Math.min(280, width * 0.23),
-          right: Math.min(480, width * 0.36),
-        }
-      : { top: 65, bottom: 55, left: 55, right: 55 };
+    return { top: 76, bottom: 84, left: 48, right: 48 };
   };
   const fit = (map: Map) => {
     if (globeRef.current) {

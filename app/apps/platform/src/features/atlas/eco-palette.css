@@ -1,12 +1,40 @@
-/* Accents stay on small data and category cues; the screen chrome stays blue. */
+/* Canopy Spatial Observatory — Obsidian Glass & Bioluminescent Ecological Palette */
 .eco-screen {
- --eco-gold:#d6b37c; --eco-mint:#86c9ad; --eco-violet:#aca0cf;
+  --obs-bg: #070d14;
+  --obs-glass: rgba(10, 17, 26, 0.72);
+  --obs-glass-strong: rgba(8, 14, 22, 0.86);
+  --obs-glass-elevated: rgba(14, 24, 36, 0.82);
+  --obs-glass-hover: rgba(255, 255, 255, 0.065);
+  --obs-border: rgba(255, 255, 255, 0.095);
+  --obs-border-strong: rgba(255, 255, 255, 0.17);
+  --obs-specular: inset 0 1px 0 rgba(255, 255, 255, 0.11);
+  --obs-shadow: 0 20px 50px rgba(2, 6, 12, 0.52), 0 4px 14px rgba(2, 6, 12, 0.34);
+
+  --obs-emerald: #34d399;
+  --obs-emerald-soft: rgba(52, 211, 153, 0.16);
+  --obs-sky: #38bdf8;
+  --obs-sky-soft: rgba(56, 189, 248, 0.16);
+  --obs-amber: #fbbf24;
+  --obs-amber-soft: rgba(251, 191, 36, 0.16);
+  --obs-violet: #a78bfa;
+  --obs-violet-soft: rgba(167, 139, 250, 0.16);
+  --obs-rose: #fb7185;
+
+  --obs-ink: #f1f5f9;
+  --obs-secondary: #cbd5e1;
+  --obs-muted: #94a3b8;
+  --obs-subtle: #64748b;
+
+  /* Motion scale aligned with transitions.dev tokens */
+  --duration-stagger: 40ms;
+  --duration-micro: 80ms;
+  --duration-quick: 150ms;
+  --duration-fast: 250ms;
+  --duration-medium: 350ms;
+  --duration-slow: 400ms;
+  --duration-very-slow: 500ms;
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --blur-small: 2px;
+  --blur-medium: 3px;
 }
-.eco-screen .eco-overview-count[data-tone="gold"] > svg { color:var(--eco-gold); }
-.eco-screen .eco-overview-count[data-tone="mint"] > svg { color:var(--eco-mint); }
-.eco-screen [data-kind="standalone"] { --eco-category:var(--eco-gold); }
-.eco-screen [data-kind="network"] { --eco-category:var(--eco-cyan); }
-.eco-screen [data-kind="carbon_sink"] { --eco-category:var(--eco-mint); }
-.eco-screen [data-kind="camera"] { --eco-category:var(--eco-violet); }
-.eco-screen .eco-type-switch > button:not([aria-pressed="true"]) > svg { color:var(--eco-category); }
-.eco-screen .eco-distribution-bars i { background:linear-gradient(90deg,color-mix(in srgb,var(--eco-category) 58%,#174065),var(--eco-category)); }
