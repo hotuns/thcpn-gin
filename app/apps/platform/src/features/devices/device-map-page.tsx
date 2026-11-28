@@ -162,11 +162,11 @@ function MapDeviceTypeSelect({ value, options, onChange }: { value: string; opti
   const selected = options.find((term) => term.id === value);
   const select = (next: string) => { onChange(next); setOpen(false); };
   return <div className={`map-device-type-select ${open ? "is-open" : ""}`} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
-    <button type="button" aria-label="设备类型" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
-      <MapDeviceTypeIcon term={selected} /><span>{selected?.name_zh ?? "全部设备类型"}</span><ChevronDown size={14} />
+    <button type="button" aria-label="生态分类" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+      <MapDeviceTypeIcon term={selected} /><span>{selected?.name_zh ?? "全部生态分类"}</span><ChevronDown size={14} />
     </button>
     {open ? <div className="map-device-type-menu" role="listbox">
-      <button type="button" role="option" aria-selected={!value} onClick={() => select("")}><span className="map-device-type-empty" /><span>全部设备类型</span>{!value ? <Check size={13} /> : null}</button>
+      <button type="button" role="option" aria-selected={!value} onClick={() => select("")}><span className="map-device-type-empty" /><span>全部生态分类</span>{!value ? <Check size={13} /> : null}</button>
       {options.map((term) => <button type="button" role="option" aria-selected={term.id === value} key={term.id} onClick={() => select(term.id)}><MapDeviceTypeIcon term={term} /><span>{term.name_zh}</span>{term.id === value ? <Check size={13} /> : null}</button>)}
     </div> : null}
   </div>;
@@ -187,8 +187,8 @@ function DeviceMapDetail({ item, onClose }: { item: DeviceMapItem; onClose: () =
       <p className="mono">资产编号 {item.asset_no || "—"}</p>
       <dl>
         <div><dt>设备形态</dt><dd>{deviceTopologyRoleLabel(item.device_type)}</dd></div>
-        <div><dt>设备类型</dt><dd>{deviceTypeIcon ? <img className="device-map-detail-type-icon" src={deviceTypeIcon} alt="" /> : null}{item.environment.ecosystem?.name_zh ?? "未分类"}</dd></div>
-        <div><dt>观测对象</dt><dd>{item.environment.observation_objects.map((term) => term.name_zh).join("、") || "未设置"}</dd></div>
+        <div><dt>生态分类</dt><dd>{deviceTypeIcon ? <img className="device-map-detail-type-icon" src={deviceTypeIcon} alt="" /> : null}{item.environment.ecosystem?.name_zh ?? "未分类"}</dd></div>
+        <div><dt>产品名称</dt><dd>{item.environment.product?.name_zh || "未设置"}</dd></div>
         <div><dt>坐标</dt><dd className="mono">{item.longitude !== undefined && item.latitude !== undefined ? `${item.longitude.toFixed(5)}, ${item.latitude.toFixed(5)}` : "未定位"}</dd></div>
       </dl>
       <Button onClick={() => window.location.assign(item.gateway_device_id && item.node_index ? `/devices/${item.gateway_device_id}?tab=data&node=${encodeURIComponent(`gateway:${item.gateway_device_id}:node:${item.node_index}`)}` : `/devices/${item.device_id}`)}>查看设备资料<ChevronRight size={15} /></Button>
@@ -207,6 +207,6 @@ function mapPoint(item: DeviceMapItem) {
     child_count: item.child_count,
     ecosystem: item.environment.ecosystem?.name_zh,
     category_icon: item.environment.ecosystem?.icon,
-    purposes: item.environment.observation_objects.map((term) => term.name_zh),
+    product: item.environment.product?.name_zh,
   };
 }

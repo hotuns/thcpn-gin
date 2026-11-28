@@ -303,16 +303,32 @@ export function AdminDeviceScenes({deviceId}:{deviceId:string}){
  const client=useQueryClient();const {message}=App.useApp();const [form]=Form.useForm();const [busy,setBusy]=useState(false);
  const data=useQuery({queryKey:["admin","device",deviceId,"environment"],queryFn:()=>api.admin.deviceEnvironment(deviceId)});
  const catalog=useQuery({queryKey:["admin","device-taxonomy"],queryFn:api.admin.deviceTaxonomy});
- const independent=Form.useWatch("independent",form);
- useEffect(()=>{if(data.data)form.setFieldsValue({independent:["purposes","ecosystem","observation_objects"].some(field=>data.data!.overridden_fields.includes(field)),purpose_ids:data.data.effective.purposes.map(t=>t.id),ecosystem_term_id:data.data.effective.ecosystem?.id,observation_object_ids:data.data.effective.observation_objects.map(t=>t.id)});},[data.data,form]);
- const options=(kind:string)=>(catalog.data?.items??[]).filter(term=>term.kind===kind&&term.status==="active").map(term=>({value:term.id,label:term.name_zh}));
- return <Card title="应用场景与观测分类" loading={data.isLoading||catalog.isLoading}>
- {data.error||catalog.error?<Alert type="error" title="分类读取失败" description={formatApiError(data.error||catalog.error).message}/>:<Form form={form} layout="vertical" onFinish={async values=>{if(!data.data)return;setBusy(true);try{const old=data.data.direct;const keys=["purposes","ecosystem","observation_objects"];await api.admin.updateDeviceEnvironment(deviceId,{purpose_ids:values.purpose_ids??[],ecosystem_term_id:values.ecosystem_term_id??null,observation_object_ids:values.observation_object_ids??[],management_term_id:old.management?.id??null,deployment_term_id:old.deployment?.id??null,commissioned_year:old.commissioned_year??null,research_tags:old.research_tags,overridden_fields:[...data.data.overridden_fields.filter(k=>!keys.includes(k)),...(values.independent?keys:[])]});await client.invalidateQueries({queryKey:["admin","device"]});void message.success("应用场景已保存");}catch(error){void message.error(formatApiErrorText(error));}finally{setBusy(false);}}}>
- <Form.Item name="independent" label="分类来源"><Select options={[{value:false,label:"沿用网关／站点资料"},{value:true,label:"为此设备单独设置"}]}/></Form.Item>
- <Form.Item name="purpose_ids" label="应用场景"><Select mode="multiple" disabled={!independent} options={options("purpose")}/></Form.Item>
- <Form.Item name="ecosystem_term_id" label="生态分类（可选）"><Select allowClear disabled={!independent} options={options("ecosystem")}/></Form.Item>
- <Form.Item name="observation_object_ids" label="观测对象（可选）"><Select mode="multiple" disabled={!independent} options={options("observation_object")}/></Form.Item>
- <Button type="primary" htmlType="submit" loading={busy}>保存分类</Button>
- </Form>}
+ useEffect(() => {
+   if (data.data) form.setFieldsValue({
+     product_term_id: data.data.direct.product?.id,
+     ecosystem_term_id: data.data.direct.ecosystem?.id,
+   });
+ }, [data.data, form]);
+ const options = (kind: "ecosystem" | "product") => (catalog.data?.items ?? [])
+   .filter(term => term.kind === kind && (term.status === "active" || term.id === data.data?.direct[kind]?.id))
+   .map(term => ({value: term.id, label: term.name_zh}));
+ const save = async (values: { product_term_id?: string; ecosystem_term_id?: string }) => {
+   setBusy(true);
+   try {
+     await api.admin.updateDeviceEnvironment(deviceId, {
+       product_term_id: values.product_term_id ?? null, ecosystem_term_id: values.ecosystem_term_id ?? null,
+     });
+     await Promise.all(["device", "device-map", "devices"].map(key => client.invalidateQueries({queryKey: ["admin", key]})));
+     void message.success("设备分类已保存");
+   } catch (error) { void message.error(formatApiErrorText(error)); }
+   finally { setBusy(false); }
+ };
+ return <Card title="设备分类" loading={data.isLoading || catalog.isLoading}>
+   {data.error || catalog.error ? <Alert type="error" title="分类读取失败" description={formatApiError(data.error || catalog.error).message}/> :
+     <Form form={form} layout="vertical" onFinish={save}>
+       <Form.Item name="ecosystem_term_id" label="生态分类"><Select allowClear placeholder={data.data?.direct.ecosystem ? "沿用网关或样地" : data.data?.effective.ecosystem?.name_zh ?? "沿用网关或样地"} options={options("ecosystem")}/></Form.Item>
+       <Form.Item name="product_term_id" label="产品名称"><Select allowClear placeholder="未设置" options={options("product")}/></Form.Item>
+       <Button type="primary" htmlType="submit" loading={busy}>保存分类</Button>
+     </Form>}
  </Card>;
 }

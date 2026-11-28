@@ -21,21 +21,25 @@ INSERT INTO sites (
     location_text,
     latitude,
     longitude,
+    ecosystem_term_id,
+    altitude_m,
     created_by
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, workspace_id, project_id, name, description, location_text, latitude, longitude, status, created_by, created_at, updated_at
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING id, workspace_id, project_id, name, description, location_text, latitude, longitude, status, created_by, created_at, updated_at, ecosystem_term_id, altitude_m
 `
 
 type CreateSiteParams struct {
-	WorkspaceID  uuid.UUID     `json:"workspace_id"`
-	ProjectID    uuid.UUID     `json:"project_id"`
-	Name         string        `json:"name"`
-	Description  *string       `json:"description"`
-	LocationText *string       `json:"location_text"`
-	Latitude     pgtype.Float8 `json:"latitude"`
-	Longitude    pgtype.Float8 `json:"longitude"`
-	CreatedBy    uuid.UUID     `json:"created_by"`
+	WorkspaceID     uuid.UUID     `json:"workspace_id"`
+	ProjectID       uuid.UUID     `json:"project_id"`
+	Name            string        `json:"name"`
+	Description     *string       `json:"description"`
+	LocationText    *string       `json:"location_text"`
+	Latitude        pgtype.Float8 `json:"latitude"`
+	Longitude       pgtype.Float8 `json:"longitude"`
+	EcosystemTermID *uuid.UUID    `json:"ecosystem_term_id"`
+	AltitudeM       pgtype.Float8 `json:"altitude_m"`
+	CreatedBy       uuid.UUID     `json:"created_by"`
 }
 
 func (q *Queries) CreateSite(ctx context.Context, arg CreateSiteParams) (Site, error) {
@@ -47,6 +51,8 @@ func (q *Queries) CreateSite(ctx context.Context, arg CreateSiteParams) (Site, e
 		arg.LocationText,
 		arg.Latitude,
 		arg.Longitude,
+		arg.EcosystemTermID,
+		arg.AltitudeM,
 		arg.CreatedBy,
 	)
 	var i Site
@@ -63,12 +69,14 @@ func (q *Queries) CreateSite(ctx context.Context, arg CreateSiteParams) (Site, e
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EcosystemTermID,
+		&i.AltitudeM,
 	)
 	return i, err
 }
 
 const getSite = `-- name: GetSite :one
-SELECT id, workspace_id, project_id, name, description, location_text, latitude, longitude, status, created_by, created_at, updated_at
+SELECT id, workspace_id, project_id, name, description, location_text, latitude, longitude, status, created_by, created_at, updated_at, ecosystem_term_id, altitude_m
 FROM sites
 WHERE id = $1
 `
@@ -89,12 +97,42 @@ func (q *Queries) GetSite(ctx context.Context, id uuid.UUID) (Site, error) {
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EcosystemTermID,
+		&i.AltitudeM,
+	)
+	return i, err
+}
+
+const getSiteForUpdate = `-- name: GetSiteForUpdate :one
+SELECT id, workspace_id, project_id, name, description, location_text, latitude, longitude, status, created_by, created_at, updated_at, ecosystem_term_id, altitude_m
+FROM sites
+WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) GetSiteForUpdate(ctx context.Context, id uuid.UUID) (Site, error) {
+	row := q.db.QueryRow(ctx, getSiteForUpdate, id)
+	var i Site
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Description,
+		&i.LocationText,
+		&i.Latitude,
+		&i.Longitude,
+		&i.Status,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.EcosystemTermID,
+		&i.AltitudeM,
 	)
 	return i, err
 }
 
 const listSitesByProject = `-- name: ListSitesByProject :many
-SELECT id, workspace_id, project_id, name, description, location_text, latitude, longitude, status, created_by, created_at, updated_at
+SELECT id, workspace_id, project_id, name, description, location_text, latitude, longitude, status, created_by, created_at, updated_at, ecosystem_term_id, altitude_m
 FROM sites
 WHERE project_id = $1
 ORDER BY created_at DESC, id DESC
@@ -122,6 +160,8 @@ func (q *Queries) ListSitesByProject(ctx context.Context, projectID uuid.UUID) (
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.EcosystemTermID,
+			&i.AltitudeM,
 		); err != nil {
 			return nil, err
 		}
@@ -134,7 +174,7 @@ func (q *Queries) ListSitesByProject(ctx context.Context, projectID uuid.UUID) (
 }
 
 const listSitesByWorkspace = `-- name: ListSitesByWorkspace :many
-SELECT id, workspace_id, project_id, name, description, location_text, latitude, longitude, status, created_by, created_at, updated_at
+SELECT id, workspace_id, project_id, name, description, location_text, latitude, longitude, status, created_by, created_at, updated_at, ecosystem_term_id, altitude_m
 FROM sites
 WHERE workspace_id = $1
 ORDER BY created_at DESC, id DESC
@@ -162,6 +202,8 @@ func (q *Queries) ListSitesByWorkspace(ctx context.Context, workspaceID uuid.UUI
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.EcosystemTermID,
+			&i.AltitudeM,
 		); err != nil {
 			return nil, err
 		}
@@ -180,20 +222,24 @@ SET name = $2,
     location_text = $4,
     latitude = $5,
     longitude = $6,
-    status = $7,
+    ecosystem_term_id = $7,
+    altitude_m = $8,
+    status = $9,
     updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, project_id, name, description, location_text, latitude, longitude, status, created_by, created_at, updated_at
+RETURNING id, workspace_id, project_id, name, description, location_text, latitude, longitude, status, created_by, created_at, updated_at, ecosystem_term_id, altitude_m
 `
 
 type UpdateSiteParams struct {
-	ID           uuid.UUID     `json:"id"`
-	Name         string        `json:"name"`
-	Description  *string       `json:"description"`
-	LocationText *string       `json:"location_text"`
-	Latitude     pgtype.Float8 `json:"latitude"`
-	Longitude    pgtype.Float8 `json:"longitude"`
-	Status       string        `json:"status"`
+	ID              uuid.UUID     `json:"id"`
+	Name            string        `json:"name"`
+	Description     *string       `json:"description"`
+	LocationText    *string       `json:"location_text"`
+	Latitude        pgtype.Float8 `json:"latitude"`
+	Longitude       pgtype.Float8 `json:"longitude"`
+	EcosystemTermID *uuid.UUID    `json:"ecosystem_term_id"`
+	AltitudeM       pgtype.Float8 `json:"altitude_m"`
+	Status          string        `json:"status"`
 }
 
 func (q *Queries) UpdateSite(ctx context.Context, arg UpdateSiteParams) (Site, error) {
@@ -204,6 +250,8 @@ func (q *Queries) UpdateSite(ctx context.Context, arg UpdateSiteParams) (Site, e
 		arg.LocationText,
 		arg.Latitude,
 		arg.Longitude,
+		arg.EcosystemTermID,
+		arg.AltitudeM,
 		arg.Status,
 	)
 	var i Site
@@ -220,6 +268,8 @@ func (q *Queries) UpdateSite(ctx context.Context, arg UpdateSiteParams) (Site, e
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EcosystemTermID,
+		&i.AltitudeM,
 	)
 	return i, err
 }

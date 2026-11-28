@@ -142,10 +142,6 @@ function DeviceList() {
       ),
     [mapQuery.data?.items],
   );
-  const tagsByDevice = useMemo(
-    () => new Map((mapQuery.data?.items ?? []).map((item) => [item.device_id, item.environment.research_tags])),
-    [mapQuery.data?.items],
-  );
   const all = query.data?.items ?? [];
   const topLevelDevices = useMemo(() => all.filter(isTopLevelDevice), [all]);
   const runtimeDeviceIDs = useMemo(
@@ -196,7 +192,7 @@ function DeviceList() {
             .toLowerCase()
             .includes(keyword.toLowerCase()),
       ),
-    [topLevelDevices, category, deviceTypeByDevice, deviceTypeId, keyword, tagsByDevice],
+    [topLevelDevices, category, deviceTypeByDevice, deviceTypeId, keyword],
   );
   useEffect(() => {
     if (!query.data || restoredScroll.current) return;

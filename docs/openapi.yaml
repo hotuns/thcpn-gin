@@ -2114,6 +2114,33 @@ paths:
           $ref: "#/components/responses/PermissionDenied"
         "500":
           $ref: "#/components/responses/Internal"
+  /api/v1/admin/sites/{site_id}:
+    parameters: [{ $ref: "#/components/parameters/SiteID" }]
+    patch:
+      tags: [Admin]
+      operationId: adminUpdateSite
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: X-Admin-Reason, in: header, required: true, schema: { type: string, minLength: 5 } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/UpdateSiteRequest" } } } }
+      responses:
+        "200": { description: Updated site., content: { application/json: { schema: { $ref: "#/components/schemas/Site" } } } }
+  /api/v1/admin/sites/{site_id}/environment:
+    parameters: [{ $ref: "#/components/parameters/SiteID" }]
+    get:
+      tags: [Admin]
+      operationId: adminGetSiteEnvironment
+      summary: Get site classification defaults
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Site defaults., content: { application/json: { schema: { $ref: "#/components/schemas/SiteEnvironment" } } } }
+    patch:
+      tags: [Admin]
+      operationId: adminUpdateSiteEnvironment
+      summary: Update site classification defaults
+      security: [{ bearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/UpdateSiteEnvironmentRequest" } } } }
+      responses:
+        "200": { description: Updated site defaults., content: { application/json: { schema: { $ref: "#/components/schemas/SiteEnvironment" } } } }
   /api/v1/admin/data-sources:
     get:
       tags:
@@ -2939,9 +2966,18 @@ paths:
     post:
       tags: [Admin]
       operationId: adminBulkUpdateDeviceEnvironment
-      summary: Bulk replace device environment attributes
+      summary: Update selected classification fields on multiple devices
       security: [{ bearerAuth: [] }]
-      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [device_ids, attributes]
+              properties:
+                device_ids: { type: array, items: { $ref: "#/components/schemas/UUID" } }
+                attributes: { $ref: "#/components/schemas/UpdateDeviceEnvironmentRequest" }
       responses:
         "200": { description: Per-device update result. }
   /api/v1/admin/metadata/device-capabilities/{code}:
@@ -10452,6 +10488,11 @@ components:
           format: double
           minimum: -180
           maximum: 180
+        altitude_m:
+          type: number
+          format: double
+        ecosystem_term_id:
+          $ref: "#/components/schemas/UUID"
         status:
           $ref: "#/components/schemas/SiteStatus"
         created_by:
@@ -10487,15 +10528,19 @@ components:
         location_text:
           type: string
         latitude:
-          type: number
+          type: [number, "null"]
           format: double
           minimum: -90
           maximum: 90
         longitude:
-          type: number
+          type: [number, "null"]
           format: double
           minimum: -180
           maximum: 180
+        altitude_m:
+          type: [number, "null"]
+          format: double
+        ecosystem_term_id: { type: [string, "null"], format: uuid }
     UpdateSiteRequest:
       type: object
       properties:
@@ -10506,15 +10551,19 @@ components:
         location_text:
           type: string
         latitude:
-          type: number
+          type: [number, "null"]
           format: double
           minimum: -90
           maximum: 90
         longitude:
-          type: number
+          type: [number, "null"]
           format: double
           minimum: -180
           maximum: 180
+        altitude_m:
+          type: [number, "null"]
+          format: double
+        ecosystem_term_id: { type: [string, "null"], format: uuid }
         status:
           $ref: "#/components/schemas/SiteStatus"
     Device:
@@ -10562,6 +10611,10 @@ components:
           type: array
           items: {type: string}
         product_id:
+          type: string
+        product_term_id:
+          $ref: "#/components/schemas/UUID"
+        product_name:
           type: string
         serial_no:
           type: string
@@ -10713,7 +10766,7 @@ components:
       required: [id, kind, code, name_zh, name_en, status, sort_order, system_defined]
       properties:
         id: { $ref: "#/components/schemas/UUID" }
-        kind: { type: string, enum: [ecosystem, observation_object, purpose, management, deployment] }
+        kind: { type: string, enum: [ecosystem, product] }
         code: { type: string }
         name_zh: { type: string }
         name_en: { type: string }
@@ -10729,16 +10782,10 @@ components:
         items: { type: array, items: { $ref: "#/components/schemas/DeviceTaxonomyTerm" } }
     DeviceEnvironmentValues:
       type: object
-      required: [observation_objects, purposes, research_tags]
       properties:
         ecosystem: { $ref: "#/components/schemas/DeviceTaxonomyTerm" }
-        observation_objects: { type: array, items: { $ref: "#/components/schemas/DeviceTaxonomyTerm" } }
-        purposes: { type: array, items: { $ref: "#/components/schemas/DeviceTaxonomyTerm" } }
-        management: { $ref: "#/components/schemas/DeviceTaxonomyTerm" }
-        deployment: { $ref: "#/components/schemas/DeviceTaxonomyTerm" }
+        product: { $ref: "#/components/schemas/DeviceTaxonomyTerm" }
         altitude_m: { type: number, format: double }
-        commissioned_year: { type: integer }
-        research_tags: { type: array, items: { type: string } }
     DeviceEnvironment:
       type: object
       required: [device_id, direct, effective, overridden_fields, sources]
@@ -10756,37 +10803,30 @@ components:
       required: [site_id, values]
       properties:
         site_id: { $ref: "#/components/schemas/UUID" }
-        values: { $ref: "#/components/schemas/DeviceEnvironmentValues" }
+        values:
+          type: object
+          properties:
+            ecosystem: { $ref: "#/components/schemas/DeviceTaxonomyTerm" }
+            altitude_m: { type: number, format: double }
         updated_at: { $ref: "#/components/schemas/Timestamp" }
     UpdateSiteEnvironmentRequest:
       type: object
       properties:
-        ecosystem_term_id: { $ref: "#/components/schemas/UUID" }
-        observation_object_ids: { type: array, items: { $ref: "#/components/schemas/UUID" } }
-        purpose_ids: { type: array, items: { $ref: "#/components/schemas/UUID" } }
-        management_term_id: { $ref: "#/components/schemas/UUID" }
-        deployment_term_id: { $ref: "#/components/schemas/UUID" }
-        altitude_m: { type: number, format: double }
-        commissioned_year: { type: integer, minimum: 1900, maximum: 2200 }
-        research_tags: { type: array, items: { type: string } }
+        ecosystem_term_id: { type: [string, "null"], format: uuid }
+        altitude_m: { type: [number, "null"], format: double }
     UpdateDeviceEnvironmentRequest:
       type: object
-      required: [overridden_fields]
       properties:
-        ecosystem_term_id: { $ref: "#/components/schemas/UUID" }
-        observation_object_ids: { type: array, items: { $ref: "#/components/schemas/UUID" } }
-        purpose_ids: { type: array, items: { $ref: "#/components/schemas/UUID" } }
-        management_term_id: { $ref: "#/components/schemas/UUID" }
-        deployment_term_id: { $ref: "#/components/schemas/UUID" }
-        commissioned_year: { type: integer, minimum: 1900, maximum: 2200 }
-        research_tags: { type: array, items: { type: string } }
-        overridden_fields: { type: array, items: { type: string } }
+        ecosystem_term_id: { type: [string, "null"], format: uuid }
+        product_term_id: { type: [string, "null"], format: uuid }
+        overridden_fields: { type: array, items: { type: string, enum: [ecosystem] }, deprecated: true }
     DeviceMapItem:
       type: object
       required: [device_id, name, asset_no, device_type, status, location_source, child_count, environment]
       properties:
         gateway_device_id: { $ref: "#/components/schemas/UUID", description: Parent gateway for a virtual LoRaWAN V2 node; device_id is a stable map marker ID, not an independent device. }
         node_index: { type: integer, minimum: 1, maximum: 254 }
+        tags: { type: array, items: { type: string }, description: Custom tags for the requested workspace }
         node_sn: { type: string, description: Physical LoRaWAN V2 node SN }
         device_id: { $ref: "#/components/schemas/UUID" }
         name: { type: string }
@@ -11469,6 +11509,7 @@ components:
           description: Administrator-maintained SIM card ICCID. Empty string clears it; omitted value preserves it.
         name:
           type: string
+        product_term_id: { type: [string, "null"], format: uuid }
         status:
           $ref: "#/components/schemas/DeviceStatus"
         device_type:

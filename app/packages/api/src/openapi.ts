@@ -2464,6 +2464,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/sites/{site_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Site UUID. */
+                site_id: components["parameters"]["SiteID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["adminUpdateSite"];
+        trace?: never;
+    };
+    "/api/v1/admin/sites/{site_id}/environment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Site UUID. */
+                site_id: components["parameters"]["SiteID"];
+            };
+            cookie?: never;
+        };
+        /** Get site classification defaults */
+        get: operations["adminGetSiteEnvironment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update site classification defaults */
+        patch: operations["adminUpdateSiteEnvironment"];
+        trace?: never;
+    };
     "/api/v1/admin/data-sources": {
         parameters: {
             query?: never;
@@ -3315,7 +3355,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Bulk replace device environment attributes */
+        /** Update selected classification fields on multiple devices */
         post: operations["adminBulkUpdateDeviceEnvironment"];
         delete?: never;
         options?: never;
@@ -8036,6 +8076,9 @@ export interface components {
             latitude?: number;
             /** Format: double */
             longitude?: number;
+            /** Format: double */
+            altitude_m?: number;
+            ecosystem_term_id?: components["schemas"]["UUID"];
             status: components["schemas"]["SiteStatus"];
             created_by: components["schemas"]["UUID"];
             created_at: components["schemas"]["Timestamp"];
@@ -8051,18 +8094,26 @@ export interface components {
             description?: string;
             location_text?: string;
             /** Format: double */
-            latitude?: number;
+            latitude?: number | null;
             /** Format: double */
-            longitude?: number;
+            longitude?: number | null;
+            /** Format: double */
+            altitude_m?: number | null;
+            /** Format: uuid */
+            ecosystem_term_id?: string | null;
         };
         UpdateSiteRequest: {
             name?: string;
             description?: string;
             location_text?: string;
             /** Format: double */
-            latitude?: number;
+            latitude?: number | null;
             /** Format: double */
-            longitude?: number;
+            longitude?: number | null;
+            /** Format: double */
+            altitude_m?: number | null;
+            /** Format: uuid */
+            ecosystem_term_id?: string | null;
             status?: components["schemas"]["SiteStatus"];
         };
         /** @description System-level device asset view. Assignment fields are present only when the device has an active Workspace assignment. */
@@ -8087,6 +8138,8 @@ export interface components {
             source_status?: string;
             features?: string[];
             product_id?: string;
+            product_term_id?: components["schemas"]["UUID"];
+            product_name?: string;
             /**
              * @deprecated
              * @description Legacy platform serial number. Use asset_no to identify the asset in platform clients.
@@ -8196,7 +8249,7 @@ export interface components {
         DeviceTaxonomyTerm: {
             id: components["schemas"]["UUID"];
             /** @enum {string} */
-            kind: "ecosystem" | "observation_object" | "purpose" | "management" | "deployment";
+            kind: "ecosystem" | "product";
             code: string;
             name_zh: string;
             name_en: string;
@@ -8212,14 +8265,9 @@ export interface components {
         };
         DeviceEnvironmentValues: {
             ecosystem?: components["schemas"]["DeviceTaxonomyTerm"];
-            observation_objects: components["schemas"]["DeviceTaxonomyTerm"][];
-            purposes: components["schemas"]["DeviceTaxonomyTerm"][];
-            management?: components["schemas"]["DeviceTaxonomyTerm"];
-            deployment?: components["schemas"]["DeviceTaxonomyTerm"];
+            product?: components["schemas"]["DeviceTaxonomyTerm"];
             /** Format: double */
             altitude_m?: number;
-            commissioned_year?: number;
-            research_tags: string[];
         };
         DeviceEnvironment: {
             device_id: components["schemas"]["UUID"];
@@ -8235,34 +8283,33 @@ export interface components {
         };
         SiteEnvironment: {
             site_id: components["schemas"]["UUID"];
-            values: components["schemas"]["DeviceEnvironmentValues"];
+            values: {
+                ecosystem?: components["schemas"]["DeviceTaxonomyTerm"];
+                /** Format: double */
+                altitude_m?: number;
+            };
             updated_at?: components["schemas"]["Timestamp"];
         };
         UpdateSiteEnvironmentRequest: {
-            ecosystem_term_id?: components["schemas"]["UUID"];
-            observation_object_ids?: components["schemas"]["UUID"][];
-            purpose_ids?: components["schemas"]["UUID"][];
-            management_term_id?: components["schemas"]["UUID"];
-            deployment_term_id?: components["schemas"]["UUID"];
+            /** Format: uuid */
+            ecosystem_term_id?: string | null;
             /** Format: double */
-            altitude_m?: number;
-            commissioned_year?: number;
-            research_tags?: string[];
+            altitude_m?: number | null;
         };
         UpdateDeviceEnvironmentRequest: {
-            ecosystem_term_id?: components["schemas"]["UUID"];
-            observation_object_ids?: components["schemas"]["UUID"][];
-            purpose_ids?: components["schemas"]["UUID"][];
-            management_term_id?: components["schemas"]["UUID"];
-            deployment_term_id?: components["schemas"]["UUID"];
-            commissioned_year?: number;
-            research_tags?: string[];
-            overridden_fields: string[];
+            /** Format: uuid */
+            ecosystem_term_id?: string | null;
+            /** Format: uuid */
+            product_term_id?: string | null;
+            /** @deprecated */
+            overridden_fields?: "ecosystem"[];
         };
         DeviceMapItem: {
             /** @description Parent gateway for a virtual LoRaWAN V2 node; device_id is a stable map marker ID */
             gateway_device_id?: components["schemas"]["UUID"];
             node_index?: number;
+            /** @description Custom tags for the requested workspace */
+            tags?: string[];
             /** @description Physical LoRaWAN V2 node SN */
             node_sn?: string;
             device_id: components["schemas"]["UUID"];
@@ -8711,6 +8758,8 @@ export interface components {
             /** @description Administrator-maintained SIM card ICCID. Empty string clears it; omitted value preserves it. */
             iccid?: string;
             name?: string;
+            /** Format: uuid */
+            product_term_id?: string | null;
             status?: components["schemas"]["DeviceStatus"];
             device_type?: components["schemas"]["DeviceTopologyRole"];
             capabilities?: components["schemas"]["DeviceCapabilityCode"][];
@@ -12146,6 +12195,85 @@ export interface operations {
             500: components["responses"]["Internal"];
         };
     };
+    adminUpdateSite: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Site UUID. */
+                site_id: components["parameters"]["SiteID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSiteRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated site. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Site"];
+                };
+            };
+        };
+    };
+    adminGetSiteEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Site UUID. */
+                site_id: components["parameters"]["SiteID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Site defaults. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteEnvironment"];
+                };
+            };
+        };
+    };
+    adminUpdateSiteEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Site UUID. */
+                site_id: components["parameters"]["SiteID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSiteEnvironmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated site defaults. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteEnvironment"];
+                };
+            };
+        };
+    };
     adminListDataSources: {
         parameters: {
             query?: never;
@@ -13602,7 +13730,10 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": {
+                    device_ids: components["schemas"]["UUID"][];
+                    attributes: components["schemas"]["UpdateDeviceEnvironmentRequest"];
+                };
             };
         };
         responses: {

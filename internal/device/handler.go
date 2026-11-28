@@ -3,6 +3,7 @@ package device
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -42,17 +43,19 @@ type createDeviceRequest struct {
 }
 
 type updateDeviceRequest struct {
-	HardwareSN   *string   `json:"hardware_sn"`
-	ICCID        *string   `json:"iccid"`
-	ProjectID    *string   `json:"project_id"`
-	SiteID       *string   `json:"site_id"`
-	ProductID    *string   `json:"product_id"`
-	Name         *string   `json:"name"`
-	Status       *string   `json:"status"`
-	DeviceType   *string   `json:"device_type"`
-	Capabilities *[]string `json:"capabilities"`
-	ProjectIDSet bool      `json:"-"`
-	SiteIDSet    bool      `json:"-"`
+	HardwareSN       *string   `json:"hardware_sn"`
+	ICCID            *string   `json:"iccid"`
+	ProjectID        *string   `json:"project_id"`
+	SiteID           *string   `json:"site_id"`
+	ProductID        *string   `json:"product_id"`
+	ProductTermID    *string   `json:"product_term_id"`
+	Name             *string   `json:"name"`
+	Status           *string   `json:"status"`
+	DeviceType       *string   `json:"device_type"`
+	Capabilities     *[]string `json:"capabilities"`
+	ProjectIDSet     bool      `json:"-"`
+	SiteIDSet        bool      `json:"-"`
+	ProductTermIDSet bool      `json:"-"`
 }
 
 func (r *updateDeviceRequest) UnmarshalJSON(data []byte) error {
@@ -68,6 +71,7 @@ func (r *updateDeviceRequest) UnmarshalJSON(data []byte) error {
 	*r = updateDeviceRequest(value)
 	_, r.ProjectIDSet = fields["project_id"]
 	_, r.SiteIDSet = fields["site_id"]
+	_, r.ProductTermIDSet = fields["product_term_id"]
 	return nil
 }
 
@@ -225,15 +229,25 @@ func (h *Handler) AdminUpdate(c *gin.Context) {
 		httpx.WriteAppError(c, apperr.New(apperr.KindInvalidArgument, "assignment is managed by separate admin actions"))
 		return
 	}
+	var productTermID *uuid.UUID
+	if req.ProductTermID != nil && strings.TrimSpace(*req.ProductTermID) != "" {
+		parsed, ok := parseUUIDValue(strings.TrimSpace(*req.ProductTermID), "product_term_id", c)
+		if !ok {
+			return
+		}
+		productTermID = &parsed
+	}
 	result, err := h.service.AdminUpdate(c.Request.Context(), AdminUpdateInput{
-		HardwareSN:   req.HardwareSN,
-		ICCID:        req.ICCID,
-		DeviceID:     deviceID,
-		ProductID:    req.ProductID,
-		Name:         req.Name,
-		Status:       req.Status,
-		DeviceType:   req.DeviceType,
-		Capabilities: req.Capabilities,
+		HardwareSN:       req.HardwareSN,
+		ICCID:            req.ICCID,
+		DeviceID:         deviceID,
+		ProductID:        req.ProductID,
+		ProductTermID:    productTermID,
+		ProductTermIDSet: req.ProductTermIDSet,
+		Name:             req.Name,
+		Status:           req.Status,
+		DeviceType:       req.DeviceType,
+		Capabilities:     req.Capabilities,
 	})
 	if err != nil {
 		if !h.record(c, audit.RecordInput{

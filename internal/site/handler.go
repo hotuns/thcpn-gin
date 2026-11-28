@@ -1,7 +1,9 @@
 package site
 
 import (
+	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -25,22 +27,48 @@ type Handler struct {
 }
 
 type createSiteRequest struct {
-	WorkspaceID  string   `json:"workspace_id"`
-	ProjectID    string   `json:"project_id"`
-	Name         string   `json:"name"`
-	Description  string   `json:"description"`
-	LocationText string   `json:"location_text"`
-	Latitude     *float64 `json:"latitude"`
-	Longitude    *float64 `json:"longitude"`
+	WorkspaceID     string   `json:"workspace_id"`
+	ProjectID       string   `json:"project_id"`
+	Name            string   `json:"name"`
+	Description     string   `json:"description"`
+	LocationText    string   `json:"location_text"`
+	Latitude        *float64 `json:"latitude"`
+	Longitude       *float64 `json:"longitude"`
+	AltitudeM       *float64 `json:"altitude_m"`
+	EcosystemTermID *string  `json:"ecosystem_term_id"`
 }
 
 type updateSiteRequest struct {
-	Name         *string  `json:"name"`
-	Description  *string  `json:"description"`
-	LocationText *string  `json:"location_text"`
-	Latitude     *float64 `json:"latitude"`
-	Longitude    *float64 `json:"longitude"`
-	Status       *string  `json:"status"`
+	Name               *string  `json:"name"`
+	Description        *string  `json:"description"`
+	LocationText       *string  `json:"location_text"`
+	Latitude           *float64 `json:"latitude"`
+	Longitude          *float64 `json:"longitude"`
+	AltitudeM          *float64 `json:"altitude_m"`
+	EcosystemTermID    *string  `json:"ecosystem_term_id"`
+	Status             *string  `json:"status"`
+	LatitudeSet        bool     `json:"-"`
+	LongitudeSet       bool     `json:"-"`
+	AltitudeMSet       bool     `json:"-"`
+	EcosystemTermIDSet bool     `json:"-"`
+}
+
+func (r *updateSiteRequest) UnmarshalJSON(data []byte) error {
+	type alias updateSiteRequest
+	var decoded alias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*r = updateSiteRequest(decoded)
+	_, r.LatitudeSet = raw["latitude"]
+	_, r.LongitudeSet = raw["longitude"]
+	_, r.AltitudeMSet = raw["altitude_m"]
+	_, r.EcosystemTermIDSet = raw["ecosystem_term_id"]
+	return nil
 }
 
 func NewHandler(service *Service, checker *permission.Checker, auditServices ...*audit.Service) *Handler {
@@ -143,15 +171,26 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
+	var ecosystemTermID *uuid.UUID
+	if req.EcosystemTermID != nil && strings.TrimSpace(*req.EcosystemTermID) != "" {
+		parsed, ok := parseUUIDValue(strings.TrimSpace(*req.EcosystemTermID), "ecosystem_term_id", c)
+		if !ok {
+			return
+		}
+		ecosystemTermID = &parsed
+	}
+
 	result, err := h.service.Create(c.Request.Context(), CreateInput{
-		WorkspaceID:  workspaceID,
-		ProjectID:    projectID,
-		Name:         req.Name,
-		Description:  req.Description,
-		LocationText: req.LocationText,
-		Latitude:     req.Latitude,
-		Longitude:    req.Longitude,
-		ActorUserID:  actor.UserID,
+		WorkspaceID:     workspaceID,
+		ProjectID:       projectID,
+		Name:            req.Name,
+		Description:     req.Description,
+		LocationText:    req.LocationText,
+		Latitude:        req.Latitude,
+		Longitude:       req.Longitude,
+		AltitudeM:       req.AltitudeM,
+		EcosystemTermID: ecosystemTermID,
+		ActorUserID:     actor.UserID,
 	})
 	if err != nil {
 		if !h.record(c, audit.RecordInput{
@@ -218,14 +257,29 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
+	var ecosystemTermID *uuid.UUID
+	if req.EcosystemTermID != nil && strings.TrimSpace(*req.EcosystemTermID) != "" {
+		parsed, ok := parseUUIDValue(strings.TrimSpace(*req.EcosystemTermID), "ecosystem_term_id", c)
+		if !ok {
+			return
+		}
+		ecosystemTermID = &parsed
+	}
+
 	result, err := h.service.Update(c.Request.Context(), UpdateInput{
-		SiteID:       siteID,
-		Name:         req.Name,
-		Description:  req.Description,
-		LocationText: req.LocationText,
-		Latitude:     req.Latitude,
-		Longitude:    req.Longitude,
-		Status:       req.Status,
+		SiteID:             siteID,
+		Name:               req.Name,
+		Description:        req.Description,
+		LocationText:       req.LocationText,
+		Latitude:           req.Latitude,
+		Longitude:          req.Longitude,
+		AltitudeM:          req.AltitudeM,
+		AltitudeMSet:       req.AltitudeMSet,
+		LatitudeSet:        req.LatitudeSet,
+		LongitudeSet:       req.LongitudeSet,
+		EcosystemTermID:    ecosystemTermID,
+		EcosystemTermIDSet: req.EcosystemTermIDSet,
+		Status:             req.Status,
 	})
 	if err != nil {
 		if !h.record(c, audit.RecordInput{

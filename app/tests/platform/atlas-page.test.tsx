@@ -34,7 +34,7 @@ const stamp = "2026-11-03T06:00:00Z";
 function view(id: string, name: string, presentation: "deep-blue" | "technology" | "panorama" = "deep-blue"): AtlasView {
   return { id, name, workspace_id: "forest", template_code: "atlas-tech", template_version: 1, template_name: "Atlas", component_key: "atlas", status: "active", created_by: "observer", created_at: stamp, updated_at: stamp, config: { presentation, trend_hours: 24, layout: "balanced", show_images: true, show_trends: true } };
 }
-const devices: DeviceMapItem[] = ["standalone", "gateway", "gateway_node", "carbon_sink", "camera"].map((role, index) => ({ device_id: `device-${index}`, asset_no: `SN-${index}`, name: `${role}设备`, device_type: role, status: "active", location_source: "device", child_count: 0, latitude: 30 + index / 10, longitude: 110, environment: { observation_objects: [], purposes: [], research_tags: [] } }));
+const devices: DeviceMapItem[] = ["standalone", "gateway", "gateway_node", "carbon_sink", "camera"].map((role, index) => ({ device_id: `device-${index}`, asset_no: `SN-${index}`, name: `${role}设备`, device_type: role, status: "active", location_source: "device", child_count: 0, latitude: 30 + index / 10, longitude: 110, environment: {} }));
 let views: AtlasView[];
 let canManage: boolean;
 function Location() { const location = useLocation(); return <output data-testid="route" data-search={location.search}>{location.pathname}</output>; }

@@ -17,33 +17,38 @@ import (
 )
 
 type Service struct {
+	db      *pgxpool.Pool
 	queries *sqlc.Queries
 }
 
 type Site struct {
-	ID           uuid.UUID `json:"id"`
-	WorkspaceID  uuid.UUID `json:"workspace_id"`
-	ProjectID    uuid.UUID `json:"project_id"`
-	Name         string    `json:"name"`
-	Description  *string   `json:"description,omitempty"`
-	LocationText *string   `json:"location_text,omitempty"`
-	Latitude     *float64  `json:"latitude,omitempty"`
-	Longitude    *float64  `json:"longitude,omitempty"`
-	Status       string    `json:"status"`
-	CreatedBy    uuid.UUID `json:"created_by"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID              uuid.UUID  `json:"id"`
+	WorkspaceID     uuid.UUID  `json:"workspace_id"`
+	ProjectID       uuid.UUID  `json:"project_id"`
+	Name            string     `json:"name"`
+	Description     *string    `json:"description,omitempty"`
+	LocationText    *string    `json:"location_text,omitempty"`
+	Latitude        *float64   `json:"latitude,omitempty"`
+	Longitude       *float64   `json:"longitude,omitempty"`
+	AltitudeM       *float64   `json:"altitude_m,omitempty"`
+	EcosystemTermID *uuid.UUID `json:"ecosystem_term_id,omitempty"`
+	Status          string     `json:"status"`
+	CreatedBy       uuid.UUID  `json:"created_by"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
 type CreateInput struct {
-	WorkspaceID  uuid.UUID
-	ProjectID    uuid.UUID
-	Name         string
-	Description  string
-	LocationText string
-	Latitude     *float64
-	Longitude    *float64
-	ActorUserID  uuid.UUID
+	WorkspaceID     uuid.UUID
+	ProjectID       uuid.UUID
+	Name            string
+	Description     string
+	LocationText    string
+	Latitude        *float64
+	Longitude       *float64
+	AltitudeM       *float64
+	EcosystemTermID *uuid.UUID
+	ActorUserID     uuid.UUID
 }
 
 type ListInput struct {
@@ -52,17 +57,23 @@ type ListInput struct {
 }
 
 type UpdateInput struct {
-	SiteID       uuid.UUID
-	Name         *string
-	Description  *string
-	LocationText *string
-	Latitude     *float64
-	Longitude    *float64
-	Status       *string
+	SiteID             uuid.UUID
+	Name               *string
+	Description        *string
+	LocationText       *string
+	Latitude           *float64
+	Longitude          *float64
+	AltitudeM          *float64
+	LatitudeSet        bool
+	LongitudeSet       bool
+	AltitudeMSet       bool
+	EcosystemTermID    *uuid.UUID
+	EcosystemTermIDSet bool
+	Status             *string
 }
 
 func NewService(db *pgxpool.Pool) *Service {
-	return &Service{queries: sqlc.New(db)}
+	return &Service{db: db, queries: sqlc.New(db)}
 }
 
 func (s *Service) Create(ctx context.Context, input CreateInput) (Site, error) {
@@ -82,16 +93,21 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Site, error) {
 	if err := validateCoordinates(input.Latitude, input.Longitude); err != nil {
 		return Site{}, err
 	}
+	if err := validateEcosystemTerm(ctx, s.db, input.EcosystemTermID); err != nil {
+		return Site{}, err
+	}
 
 	created, err := s.queries.CreateSite(ctx, sqlc.CreateSiteParams{
-		WorkspaceID:  input.WorkspaceID,
-		ProjectID:    input.ProjectID,
-		Name:         name,
-		Description:  nullableTrimmedString(input.Description),
-		LocationText: nullableTrimmedString(input.LocationText),
-		Latitude:     pgFloat8(input.Latitude),
-		Longitude:    pgFloat8(input.Longitude),
-		CreatedBy:    input.ActorUserID,
+		WorkspaceID:     input.WorkspaceID,
+		ProjectID:       input.ProjectID,
+		Name:            name,
+		Description:     nullableTrimmedString(input.Description),
+		LocationText:    nullableTrimmedString(input.LocationText),
+		Latitude:        pgFloat8(input.Latitude),
+		Longitude:       pgFloat8(input.Longitude),
+		AltitudeM:       pgFloat8(input.AltitudeM),
+		EcosystemTermID: input.EcosystemTermID,
+		CreatedBy:       input.ActorUserID,
 	})
 	if err != nil {
 		return Site{}, mapWriteError(err, "create site")
@@ -146,7 +162,13 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (Site, error) {
 		return Site{}, err
 	}
 
-	current, err := s.queries.GetSite(ctx, input.SiteID)
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Site{}, err
+	}
+	defer tx.Rollback(ctx)
+	queries := s.queries.WithTx(tx)
+	current, err := queries.GetSiteForUpdate(ctx, input.SiteID)
 	if err != nil {
 		return Site{}, mapNotFoundOrInternal(err, "site not found")
 	}
@@ -170,13 +192,28 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (Site, error) {
 	}
 
 	latitude := current.Latitude
-	if input.Latitude != nil {
+	if input.LatitudeSet || input.Latitude != nil {
 		latitude = pgFloat8(input.Latitude)
 	}
 
 	longitude := current.Longitude
-	if input.Longitude != nil {
+	if input.LongitudeSet || input.Longitude != nil {
 		longitude = pgFloat8(input.Longitude)
+	}
+
+	altitudeM := current.AltitudeM
+	if input.AltitudeMSet || input.AltitudeM != nil {
+		altitudeM = pgFloat8(input.AltitudeM)
+	}
+
+	ecosystemTermID := current.EcosystemTermID
+	if input.EcosystemTermIDSet || input.EcosystemTermID != nil {
+		if input.EcosystemTermID != nil && (current.EcosystemTermID == nil || *current.EcosystemTermID != *input.EcosystemTermID) {
+			if err := validateEcosystemTerm(ctx, tx, input.EcosystemTermID); err != nil {
+				return Site{}, err
+			}
+		}
+		ecosystemTermID = input.EcosystemTermID
 	}
 
 	status := current.Status
@@ -187,19 +224,24 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (Site, error) {
 		}
 	}
 
-	updated, err := s.queries.UpdateSite(ctx, sqlc.UpdateSiteParams{
-		ID:           input.SiteID,
-		Name:         name,
-		Description:  description,
-		LocationText: locationText,
-		Latitude:     latitude,
-		Longitude:    longitude,
-		Status:       status,
+	updated, err := queries.UpdateSite(ctx, sqlc.UpdateSiteParams{
+		ID:              input.SiteID,
+		Name:            name,
+		Description:     description,
+		LocationText:    locationText,
+		Latitude:        latitude,
+		Longitude:       longitude,
+		AltitudeM:       altitudeM,
+		EcosystemTermID: ecosystemTermID,
+		Status:          status,
 	})
 	if err != nil {
 		return Site{}, mapWriteError(err, "update site")
 	}
 
+	if err := tx.Commit(ctx); err != nil {
+		return Site{}, err
+	}
 	return fromSQL(updated), nil
 }
 
@@ -222,20 +264,33 @@ func validateCoordinates(latitude *float64, longitude *float64) error {
 	return nil
 }
 
+func validateEcosystemTerm(ctx context.Context, db sqlc.DBTX, id *uuid.UUID) error {
+	if id == nil {
+		return nil
+	}
+	var kind string
+	if err := db.QueryRow(ctx, `SELECT kind FROM device_taxonomy_terms WHERE id=$1 AND status='active'`, *id).Scan(&kind); err != nil || kind != "ecosystem" {
+		return apperr.New(apperr.KindInvalidArgument, "invalid ecosystem_term_id")
+	}
+	return nil
+}
+
 func fromSQL(model sqlc.Site) Site {
 	return Site{
-		ID:           model.ID,
-		WorkspaceID:  model.WorkspaceID,
-		ProjectID:    model.ProjectID,
-		Name:         model.Name,
-		Description:  model.Description,
-		LocationText: model.LocationText,
-		Latitude:     float8Ptr(model.Latitude),
-		Longitude:    float8Ptr(model.Longitude),
-		Status:       model.Status,
-		CreatedBy:    model.CreatedBy,
-		CreatedAt:    pgTime(model.CreatedAt),
-		UpdatedAt:    pgTime(model.UpdatedAt),
+		ID:              model.ID,
+		WorkspaceID:     model.WorkspaceID,
+		ProjectID:       model.ProjectID,
+		Name:            model.Name,
+		Description:     model.Description,
+		LocationText:    model.LocationText,
+		Latitude:        float8Ptr(model.Latitude),
+		Longitude:       float8Ptr(model.Longitude),
+		AltitudeM:       float8Ptr(model.AltitudeM),
+		EcosystemTermID: model.EcosystemTermID,
+		Status:          model.Status,
+		CreatedBy:       model.CreatedBy,
+		CreatedAt:       pgTime(model.CreatedAt),
+		UpdatedAt:       pgTime(model.UpdatedAt),
 	}
 }
 

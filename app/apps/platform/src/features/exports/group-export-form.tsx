@@ -37,13 +37,14 @@ export function GroupExportForm({
   const nodeItems = children.data?.items ?? [];
   const nodes = nodeItems.map((node) => ({
     id: node.key,
+    tags: node.target.kind === "device" ? tagsByDevice.get(node.target.device_id!) ?? [] : [],
     name: nodeOptionLabel(node),
     asset_no: node.asset_no,
     node_sn: node.node_sn,
     description: [node.asset_no ? `资产编号 ${node.asset_no}` : "", node.node_sn ? `SN ${node.node_sn}` : "", node.target.kind === "gateway_node" ? `序号 ${node.target.node_index}` : ""].filter(Boolean).join(" · "),
   }));
   const filteredNodes = nodes.filter((item) =>
-    `${value(item, "name")} ${value(item, "description")} ${(tagsByDevice.get(value(item, "id")) ?? []).join(" ")}`
+    `${value(item, "name")} ${value(item, "description")} ${item.tags.join(" ")}`
       .toLowerCase()
       .includes(keyword.toLowerCase()),
   );

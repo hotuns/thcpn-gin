@@ -32,18 +32,10 @@ function ExportEditor({ currentId, params }: { currentId: string | null; params:
     queryFn: () => api.devices.list(currentId!),
     enabled: Boolean(currentId),
   });
-  const deviceMap = useQuery({
-    queryKey: workspaceQueryKey(currentId, "device-map", "true"),
-    queryFn: () => api.devices.map(currentId!, true),
-    enabled: Boolean(currentId),
-  });
+  const exportDevices = devices.data?.items ?? [];
   const tagsByDevice = useMemo(
-    () => new Map((deviceMap.data?.items ?? []).map((item) => [item.device_id, item.environment.research_tags])),
-    [deviceMap.data?.items],
-  );
-  const exportDevices = useMemo(
-    () => (devices.data?.items ?? []).map((item) => ({ ...item, research_tags: tagsByDevice.get(item.id) ?? [] })),
-    [devices.data?.items, tagsByDevice],
+    () => new Map((devices.data?.items ?? []).map(item => [item.id, item.tags ?? []])),
+    [devices.data?.items],
   );
   const runCreate = async (payload: JsonRecord) => {
     if (!currentId || busy) return false;

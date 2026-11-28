@@ -8,7 +8,7 @@ const node = (key: string, extra: Partial<GatewayNode> = {}): GatewayNode => ({
 });
 const child = (id: string, extra: Partial<DeviceMapItem> = {}): DeviceMapItem => ({
   device_id: id, name: id, asset_no: id, device_type: "gateway_node", status: "active",
-  location_source: "manual", child_count: 0, environment: { research_tags: [], observation_objects: [], purposes: [] }, ...extra,
+  location_source: "device", child_count: 0, environment: {}, ...extra,
 });
 
 describe("atlas network geography", () => {

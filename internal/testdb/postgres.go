@@ -48,6 +48,18 @@ func Open(t *testing.T, through int) *pgxpool.Pool {
 		_, _ = admin.Exec(cleanup, "DROP DATABASE "+pgx.Identifier{name}.Sanitize()+" WITH (FORCE)")
 		_ = admin.Close(cleanup)
 	})
+	applyRange(t, pool, 0, through)
+	return pool
+}
+
+// ApplyAfter upgrades a fixture created at an earlier schema version to the current schema.
+func ApplyAfter(t *testing.T, pool *pgxpool.Pool, version int) {
+	t.Helper()
+	applyRange(t, pool, version, 0)
+}
+
+func applyRange(t *testing.T, pool *pgxpool.Pool, after, through int) {
+	t.Helper()
 	_, file, _, _ := runtime.Caller(0)
 	paths, err := filepath.Glob(filepath.Join(filepath.Dir(file), "../../migrations/*.up.sql"))
 	if err != nil {
@@ -61,9 +73,10 @@ func Open(t *testing.T, through int) *pgxpool.Pool {
 		if through > 0 && n > through {
 			break
 		}
-		Apply(t, pool, path)
+		if n > after {
+			Apply(t, pool, path)
+		}
 	}
-	return pool
 }
 
 func Apply(t *testing.T, pool *pgxpool.Pool, path string) {

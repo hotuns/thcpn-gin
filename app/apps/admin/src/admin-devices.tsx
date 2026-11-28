@@ -136,15 +136,6 @@ export function AdminDevicesPage() {
     queryFn: api.admin.devices,
     enabled:!!deviceId||category!=="node_v2",
   });
-  const mapQuery = useQuery({
-    queryKey: ["admin", "device-map", false],
-    queryFn: () => api.admin.deviceMap(false),
-    enabled:!deviceId&&category!=="node_v2",
-  });
-  const tagsByDevice = useMemo(
-    () => new Map((mapQuery.data?.items ?? []).map((item) => [item.device_id, item.environment.research_tags])),
-    [mapQuery.data?.items],
-  );
   const allRows = query.data?.items ?? [];
   const detailDevice = allRows.find((item) => value(item.id, "") === deviceId);
   const detailKind = categoryOf(detailDevice ?? {});
@@ -226,7 +217,7 @@ export function AdminDevicesPage() {
           matchesAdminDeviceCategory(item,category,categoryOf(item))
         );
       }).sort((a, b) => compareDevices(a, b, sort)),
-    [topLevelRows, keyword, status, lifecycle, assignment, category, sort, tagsByDevice],
+    [topLevelRows, keyword, status, lifecycle, assignment, category, sort],
   );
   const id = value(selected?.id, "");
 

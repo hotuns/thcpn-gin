@@ -41,6 +41,8 @@ type Device struct {
 	ProjectID           *uuid.UUID `json:"project_id,omitempty"`
 	SiteID              *uuid.UUID `json:"site_id,omitempty"`
 	ProductID           *string    `json:"product_id,omitempty"`
+	ProductTermID       *uuid.UUID `json:"product_term_id,omitempty"`
+	ProductName         string     `json:"product_name,omitempty"`
 	SerialNo            string     `json:"serial_no"`
 	Name                string     `json:"name"`
 	Status              string     `json:"status"`
@@ -163,14 +165,16 @@ type DemoPlacementInput struct {
 }
 
 type AdminUpdateInput struct {
-	HardwareSN   *string
-	ICCID        *string
-	DeviceID     uuid.UUID
-	ProductID    *string
-	Name         *string
-	Status       *string
-	DeviceType   *string
-	Capabilities *[]string
+	HardwareSN       *string
+	ICCID            *string
+	DeviceID         uuid.UUID
+	ProductID        *string
+	ProductTermID    *uuid.UUID
+	ProductTermIDSet bool
+	Name             *string
+	Status           *string
+	DeviceType       *string
+	Capabilities     *[]string
 }
 
 type CreateCapabilityDefinitionInput struct {
@@ -1162,6 +1166,17 @@ func (s *Service) AdminUpdate(ctx context.Context, input AdminUpdateInput) (Devi
 	if input.ICCID != nil {
 		if _, err := tx.Exec(ctx, "UPDATE devices SET iccid=NULLIF($2, '') WHERE id=$1", input.DeviceID, *input.ICCID); err != nil {
 			return Device{}, apperr.Wrap(apperr.KindInternal, "update device ICCID", err)
+		}
+	}
+	if input.ProductTermIDSet || input.ProductTermID != nil {
+		if input.ProductTermID != nil {
+			var kind string
+			if err := tx.QueryRow(ctx, `SELECT kind FROM device_taxonomy_terms WHERE id=$1 AND status='active'`, *input.ProductTermID).Scan(&kind); err != nil || kind != "product" {
+				return Device{}, apperr.New(apperr.KindInvalidArgument, "invalid product_term_id")
+			}
+		}
+		if _, err := tx.Exec(ctx, `UPDATE devices SET product_term_id=$2, updated_at=now() WHERE id=$1`, input.DeviceID, input.ProductTermID); err != nil {
+			return Device{}, apperr.Wrap(apperr.KindInternal, "update device product", err)
 		}
 	}
 

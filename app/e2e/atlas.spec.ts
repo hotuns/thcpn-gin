@@ -11,7 +11,7 @@ test('atlas management, deep blue display and personal metric settings', async (
     const body = route.request().method() === 'PUT' ? { ...view, ...route.request().postDataJSON() } : isItem ? view : { items: [view], total: 1, can_manage: true };
     return route.fulfill({ json: body });
   });
-  const environment = { observation_objects: [], purposes: [], research_tags: [] };
+  const environment = {};
   const positions = [
     { ...gateway, name: '青山组网观测站', latitude: 30.10, longitude: 119.10 },
     { ...device, name: '青山标准站', latitude: 30.13, longitude: 119.12 },

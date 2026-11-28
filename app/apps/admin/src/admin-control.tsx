@@ -261,9 +261,32 @@ function Resources({ workspaceId }: { workspaceId: string }) {
   const client = useQueryClient(); const { message } = AntApp.useApp(); const [editing, setEditing] = useState<JsonRecord | null>(null); const [form] = Form.useForm();
   const projects = useQuery({ queryKey: ["admin", "projects", workspaceId], queryFn: () => api.projects.adminList(workspaceId) });
   const sites = useQuery({ queryKey: ["admin", "sites", workspaceId], queryFn: () => api.sites.adminList(workspaceId) });
+  const catalog = useQuery({ queryKey: ["admin", "device-taxonomy"], queryFn: api.admin.deviceTaxonomy, enabled: editing?.kind === "site" });
   const rows = (projects.data?.items ?? []).map((project) => ({ ...project, kind: "project", key: `project-${project.id}`, children: (sites.data?.items ?? []).filter((site) => site.project_id === project.id).map((site) => ({ ...site, kind: "site", key: `site-${site.id}` })) }));
-  const open = (item) => { setEditing(item); form.setFieldsValue({ ...item, reason: "" }); };
-  const save = async () => { if (!editing) return; try { const values = await form.validateFields(); if (editing.kind === "project") await api.admin.updateProject(text(editing.id), values.reason, { name: values.name, description: values.description, status: values.status }); else await api.admin.updateSite(text(editing.id), values.reason, { name: values.name, description: values.description, location_text: values.location_text, latitude: values.latitude, longitude: values.longitude, status: values.status }); setEditing(null); form.resetFields(); await Promise.all([client.invalidateQueries({ queryKey: ["admin", "projects", workspaceId] }), client.invalidateQueries({ queryKey: ["admin", "sites", workspaceId] })]); void message.success("资源信息已更新"); } catch (error) { if (!(error as any)?.errorFields) void message.error(formatApiErrorText(error)); } };
+  const open = (item) => { setEditing(item); form.resetFields(); form.setFieldsValue({ ...item, reason: "" }); };
+  const save = async () => {
+    if (!editing) return;
+    try {
+      const values = await form.validateFields();
+      const { name, description, status, reason, location_text, latitude, longitude, altitude_m, ecosystem_term_id } = values;
+      const fields = { name, description, status };
+      if (editing.kind === "project") {
+        await api.admin.updateProject(text(editing.id), reason, fields);
+      } else {
+        await api.admin.updateSite(text(editing.id), reason, {
+          ...fields, location_text, latitude, longitude,
+          altitude_m: altitude_m ?? null, ecosystem_term_id: ecosystem_term_id ?? null,
+        });
+        await client.invalidateQueries({ queryKey: ["admin", "device-map"] });
+      }
+      setEditing(null);
+      form.resetFields();
+      await Promise.all(["projects", "sites"].map(key => client.invalidateQueries({ queryKey: ["admin", key, workspaceId] })));
+      void message.success("资源信息已更新");
+    } catch (error) {
+      if (!(error as any)?.errorFields) void message.error(formatApiErrorText(error));
+    }
+  };
   if (projects.isLoading || sites.isLoading) return <StateView type="loading" title="正在加载资源层级" description="正在汇总项目和站点。" />;
   if (projects.error || sites.error) return <ErrorState error={projects.error ?? sites.error} title="资源层级加载失败" />;
   return <><Alert type="info" showIcon message="项目与站点在这里用于诊断层级关系；日常创建仍由工作区管理者在用户平台完成。" /><Table className="resource-tree-table" rowKey="key" dataSource={rows} pagination={false} expandable={{ defaultExpandAllRows: true }} columns={[
@@ -273,7 +296,8 @@ function Resources({ workspaceId }: { workspaceId: string }) {
     { title: "下级数量", width: 100, render: (_, item) => item.kind === "project" ? `${item.children?.length ?? 0} 站点` : "—" },
     { title: "状态", width: 90, render: (_, item) => <Tag color={item.status === "active" ? "green" : "default"}>{statusLabel(item.status)}</Tag> },
     { title: "操作", width: 90, render: (_, item) => <Button type="link" icon={<Edit3 size={13} />} onClick={() => open(item)}>修复</Button> },
-  ]} /><Drawer title={`修复${editing?.kind === "project" ? "项目" : "站点"}资料`} open={Boolean(editing)} onClose={() => { setEditing(null); form.resetFields(); }} size={460} extra={<Button type="primary" onClick={() => void save()}>保存</Button>}><Form form={form} layout="vertical"><Form.Item name="name" label="名称" rules={[{ required: true }]}><Input /></Form.Item>{editing?.kind === "site" && <><Form.Item name="location_text" label="地址"><Input /></Form.Item><div className="drawer-grid"><Form.Item name="latitude" label="纬度"><InputNumber min={-90} max={90} style={{ width: "100%" }} /></Form.Item><Form.Item name="longitude" label="经度"><InputNumber min={-180} max={180} style={{ width: "100%" }} /></Form.Item></div></>}<Form.Item name="description" label="说明"><Input.TextArea rows={3} /></Form.Item><Form.Item name="status" label="状态"><Select options={[{ value: "active", label: "启用" }, { value: "archived", label: "归档" }]} /></Form.Item><Form.Item name="reason" label="修改原因" rules={[{ required: true, min: 5, message: "请填写至少 5 个字符的具体原因" }]}><Input.TextArea rows={3} maxLength={300} showCount placeholder="该原因将记录到审计日志" /></Form.Item></Form></Drawer></>;
+  ]} /><Drawer title={`修复${editing?.kind === "project" ? "项目" : "站点"}资料`} open={Boolean(editing)} onClose={() => { setEditing(null); form.resetFields(); }} size={460} extra={<Button type="primary" onClick={() => void save()}>保存</Button>}><Form form={form} layout="vertical"><Form.Item name="name" label="名称" rules={[{ required: true }]}><Input /></Form.Item>{editing?.kind === "site" && <><Form.Item name="location_text" label="地址"><Input /></Form.Item><div className="drawer-grid"><Form.Item name="latitude" label="纬度"><InputNumber min={-90} max={90} style={{ width: "100%" }} /></Form.Item><Form.Item name="longitude" label="经度"><InputNumber min={-180} max={180} style={{ width: "100%" }} /></Form.Item></div><Form.Item name="altitude_m" label="海拔（米）"><InputNumber style={{ width: "100%" }} /></Form.Item>
+       <Form.Item name="ecosystem_term_id" label="生态分类"><Select allowClear loading={catalog.isLoading} options={(catalog.data?.items ?? []).filter(term => term.kind === "ecosystem" && (term.status === "active" || term.id === editing.ecosystem_term_id)).map(term => ({ value:term.id, label:term.name_zh }))}/></Form.Item></>}<Form.Item name="description" label="说明"><Input.TextArea rows={3} /></Form.Item><Form.Item name="status" label="状态"><Select options={[{ value: "active", label: "启用" }, { value: "archived", label: "归档" }]} /></Form.Item><Form.Item name="reason" label="修改原因" rules={[{ required: true, min: 5, message: "请填写至少 5 个字符的具体原因" }]}><Input.TextArea rows={3} maxLength={300} showCount placeholder="该原因将记录到审计日志" /></Form.Item></Form></Drawer></>;
 }
 
 function Sharing({ workspaceId }: { workspaceId: string }) {

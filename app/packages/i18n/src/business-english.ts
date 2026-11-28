@@ -1,5 +1,12 @@
 // Generated from static platform UI copy. Existing hand-written translations in legacy.ts take precedence.
 export const businessEnglish: Record<string, string> = {
+  "样地简介": "Site description",
+  "产品名称": "Product name",
+  "沿用网关或样地": "Inherit from gateway or site",
+  "海拔（米）": "Elevation (m)",
+  "当前分类": "Current classification",
+  "编辑设备分类": "Edit device classification",
+  "正在加载设备分类…": "Loading device classification…",
 "· 已选": "· Selected",
 "个图片来源": "image sources",
 "个指标 ·": "metrics ·",

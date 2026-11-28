@@ -35,7 +35,7 @@ func TestV2NodeScopesDoNotTreatCapacityOrLegacyPositionsAsInstalled(t *testing.T
 	}
 	// Upgrade an existing database. Even with 254 profiles, no legacy slot
 	// becomes current unless the reviewed position is explicitly entered.
-	testdb.Apply(t, db, "../../migrations/000059_lorawan_legacy_nodes.up.sql")
+	testdb.ApplyAfter(t, db, 58)
 	service := NewService(db)
 	asset, err := service.GetAsset(ctx, gateway)
 	if err != nil || asset.ChildCount != 2 {

@@ -18,7 +18,6 @@ import {
   Pencil,
   Plus,
   Star,
-  Target,
   Trash2,
   X,
 } from "lucide-react";
@@ -32,7 +31,7 @@ import {
   type JsonRecord,
 } from "@thcpn/api";
 import { workspaceQueryKey } from "@thcpn/workspace";
-import { Badge, Button, CheckboxInput, Input, Panel, SelectInput, Sheet, SheetContent, SheetTitle, StateView, Switch, Textarea, useConfirm } from "../../shared/ui";
+import { Badge, Button, Input, Panel, SelectInput, Sheet, SheetContent, SheetTitle, StateView, Textarea, useConfirm } from "../../shared/ui";
 import { DeviceProfileGallery } from "./device-profile-gallery";
 import { iconifyIconUrl } from "@thcpn/device-map";
 import { renderPhotoToolbar } from "./device-media";
@@ -425,11 +424,6 @@ function ProfileDatum({ icon, label, value: datumValue, mono = false, className 
   );
 }
 
-function TaxonomyTags({ values, empty = "未设置" }: { values: string[]; empty?: string }) {
-  if (!values.length) return <span className="device-profile-empty-value">{empty}</span>;
-  return <div className="device-profile-tag-list">{values.map((item) => <span key={item}>{item}</span>)}</div>;
-}
-
 function EnvironmentOverview({ environment, loading, onEdit }: { environment?: DeviceEnvironment; loading: boolean; onEdit?: () => void }) {
   const values = environment?.effective;
   const deviceTypeIcon = iconifyIconUrl(values?.ecosystem?.icon);
@@ -438,12 +432,12 @@ function EnvironmentOverview({ environment, loading, onEdit }: { environment?: D
       <div className="device-profile-group-heading">
         <div>
           <Leaf size={16} />
-          <h3>应用场景与分类</h3>
+          <h3>设备分类</h3>
         </div>
         {onEdit && <Button variant="secondary" onClick={onEdit}><Pencil size={14} />编辑资料</Button>}
       </div>
       {loading ? (
-        <div className="device-profile-observation-loading">正在加载应用场景与分类…</div>
+        <div className="device-profile-observation-loading">正在加载设备分类…</div>
       ) : (
         <>
           <div className="device-profile-ecosystem">
@@ -451,10 +445,8 @@ function EnvironmentOverview({ environment, loading, onEdit }: { environment?: D
             <strong>{deviceTypeIcon ? <img src={deviceTypeIcon} width={14} height={14} alt="" /> : <Leaf size={14} />}{values?.ecosystem?.name_zh ?? "未分类"}</strong>
           </div>
           <div className="device-profile-taxonomy-row">
-            <span><Target size={14} />观测对象</span>
-            <TaxonomyTags values={values?.observation_objects.map((term) => term.name_zh) ?? []} />
+            <span>产品名称</span><strong>{values?.product?.name_zh ?? "未设置"}</strong>
           </div>
-          <div className="device-profile-taxonomy-row"><span>应用场景</span><TaxonomyTags values={values?.purposes.map(term=>term.name_zh)??[]}/></div>
         </>
       )}
     </section>
@@ -550,29 +542,21 @@ function ProfileEditor({ section, profile, environment, terms, busy, onClose, on
   const [description, setDescription] = useState(profile.description ?? "");
   const descriptionMax=usePolicyLimit("device_description",500);
   const [locationText, setLocationText] = useState(profile.location_text ?? "");
-  const direct=environment?.direct;
-  const effective=environment?.effective;
-  const [overrides,setOverrides]=useState(()=>new Set((environment?.overridden_fields??[]).filter((field)=>field!=="altitude_m")));
-  const [ecosystem,setEcosystem]=useState(direct?.ecosystem?.id??effective?.ecosystem?.id??"");
-  const [observations,setObservations]=useState(direct?.observation_objects.map((term)=>term.id)??effective?.observation_objects.map((term)=>term.id)??[]);
-  const [year,setYear]=useState(String(direct?.commissioned_year??effective?.commissioned_year??""));
-  const tags=direct?.research_tags??[];
-  const [purposes,setPurposes]=useState<string[]>(direct?.purposes.map(term=>term.id)??effective?.purposes.map(term=>term.id)??[]);
-  const byKind=(kind:string)=>terms.filter((term)=>term.kind===kind&&term.status==="active");
-  const toggle=(field:string)=>setOverrides((current)=>{const next=new Set(current);if(next.has(field))next.delete(field);else next.add(field);return next});
+  const [ecosystem, setEcosystem] = useState(environment?.direct.ecosystem?.id ?? "");
+  const [product, setProduct] = useState(environment?.direct.product?.id ?? "");
   const submit = (event: FormEvent) => {
     event.preventDefault();
     void onSubmit({
       description: description.trim() || null,
       location_text: locationText.trim() || null,
-    },{ecosystem_term_id:ecosystem||null,observation_object_ids:observations,purpose_ids:purposes,management_term_id:direct?.management?.id??null,deployment_term_id:direct?.deployment?.id??null,commissioned_year:year?Number(year):null,research_tags:tags,overridden_fields:Array.from(overrides)});
+    }, { ecosystem_term_id: ecosystem || null, product_term_id: product || null });
   };
   return (
     <Sheet open onOpenChange={(open) => !open && !busy && onClose()}>
       <SheetContent className="access-editor device-profile-editor">
         <Panel className="access-editor-panel">
           <div className="panel-header">
-            <div><SheetTitle className="panel-title">{section === "basic" ? "编辑基本信息" : "编辑应用场景与分类"}</SheetTitle></div>
+            <div><SheetTitle className="panel-title">{section === "basic" ? "编辑基本信息" : "编辑设备分类"}</SheetTitle></div>
             <Button variant="secondary" onClick={onClose}><X size={14} />关闭</Button>
           </div>
           <form className="access-form" onSubmit={submit}>
@@ -590,11 +574,18 @@ function ProfileEditor({ section, profile, environment, terms, busy, onClose, on
               <div className="profile-editor-source-note"><MapPin size={15} /><span>经纬度由设备数据源或所属站点提供；这里维护地址和位置说明。</span></div>
             </div>}
             {section === "observation" && <div className="form-section environment-form-section">
-              <label className="field"><span className="field-label">分类来源</span><SelectInput value={["ecosystem","observation_objects","purposes"].some(key=>overrides.has(key))?"custom":"inherit"} onChange={event=>setOverrides(current=>{const next=new Set(current);for(const key of ["ecosystem","observation_objects","purposes"]){if(event.target.value==="custom")next.add(key);else next.delete(key);}return next;})}><option value="inherit">沿用网关／站点资料</option><option value="custom">为此设备单独设置</option></SelectInput></label>
-              <EnvironmentField label="生态分类" field="ecosystem" overrides={overrides} toggle={toggle}><DeviceTypeSelect disabled={!overrides.has("ecosystem")} options={byKind("ecosystem")} value={ecosystem} onChange={setEcosystem}/></EnvironmentField>
-              <EnvironmentMultiField label="观测对象" field="observation_objects" overrides={overrides} toggle={toggle} options={byKind("observation_object")} value={observations} onChange={setObservations}/>
-              <EnvironmentMultiField label="应用场景" field="purposes" overrides={overrides} toggle={toggle} options={byKind("purpose")} value={purposes} onChange={setPurposes}/>
-
+              {(["ecosystem", "product"] as const).map(kind => {
+                const isEcosystem = kind === "ecosystem";
+                const direct = environment?.direct[kind];
+                const options = terms.filter(term => term.kind === kind);
+                return <label key={kind} className="field"><span className="field-label">{isEcosystem ? "生态分类" : "产品名称"}</span>
+                  <SelectInput value={isEcosystem ? ecosystem : product} onChange={event => (isEcosystem ? setEcosystem : setProduct)(event.target.value)}>
+                    <option value="">{isEcosystem ? "沿用网关或样地" : "未设置"}</option>
+                    {direct && !options.some(term => term.id === direct.id) && <option value={direct.id}>{direct.name_zh}</option>}
+                    {options.map(term => <option key={term.id} value={term.id}>{term.name_zh}</option>)}
+                  </SelectInput>
+                </label>;
+              })}
             </div>}
             </div>
             <div className="form-actions"><Button variant="secondary" type="button" onClick={onClose}>取消</Button><Button type="submit" disabled={busy}>{busy ? "保存中…" : "保存资料"}</Button></div>
@@ -603,21 +594,6 @@ function ProfileEditor({ section, profile, environment, terms, busy, onClose, on
       </SheetContent>
     </Sheet>
   );
-}
-
-function EnvironmentField({label,field,overrides,toggle,children}:{label:string;field:string;overrides:Set<string>;toggle:(field:string)=>void;children:ReactNode}) {
-  const enabled=overrides.has(field);
-  return <div className={`field environment-field ${enabled?"is-overridden":""}`}><div className="field-label"><span>{label}</span></div>{children}</div>;
-}
-
-function DeviceTypeSelect({disabled,options,value,onChange}:{disabled:boolean;options:DeviceTaxonomyTerm[];value:string;onChange:(value:string)=>void}) {
-  return <SelectInput disabled={disabled} value={value} onChange={event=>onChange(event.target.value)}><option value="">未设置</option>{options.map(term=><option key={term.id} value={term.id}>{term.name_zh}</option>)}</SelectInput>;
-}
-
-function EnvironmentMultiField({label,field,overrides,toggle,options,value,onChange}:{label:string;field:string;overrides:Set<string>;toggle:(field:string)=>void;options:DeviceTaxonomyTerm[];value:string[];onChange:(value:string[])=>void}) {
-  const enabled=overrides.has(field);
-  const change=(id:string,checked:boolean)=>onChange(checked?Array.from(new Set([...value,id])):value.filter((item)=>item!==id));
-  return <div className={`field environment-field environment-multi-field ${enabled?"is-overridden":""}`}><span className="field-label">{label}</span><div className="taxonomy-choice-grid" aria-disabled={!enabled}>{options.map((term)=><label key={term.id} className={value.includes(term.id)?"selected":""}><CheckboxInput disabled={!enabled} checked={value.includes(term.id)} onChange={(event)=>change(term.id,event.target.checked)}/><span>{term.name_zh}</span></label>)}</div>{!options.length&&<span className="field-hint">暂无可用分类选项</span>}</div>;
 }
 
 async function moveImage(

@@ -107,6 +107,7 @@ type Querier interface {
 	GetNumericDeviceSourceRefByExternal(ctx context.Context, arg GetNumericDeviceSourceRefByExternalParams) (GetNumericDeviceSourceRefByExternalRow, error)
 	GetProject(ctx context.Context, id uuid.UUID) (Project, error)
 	GetSite(ctx context.Context, id uuid.UUID) (Site, error)
+	GetSiteForUpdate(ctx context.Context, id uuid.UUID) (Site, error)
 	GetSystemRoleByCode(ctx context.Context, code string) (Role, error)
 	GetUser(ctx context.Context, id uuid.UUID) (User, error)
 	GetUserCredential(ctx context.Context, userID uuid.UUID) (UserCredential, error)

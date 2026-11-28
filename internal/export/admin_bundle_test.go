@@ -26,6 +26,7 @@ func TestAdminMultiGatewayExportQueuesOneJobAndDownloadsBoth(t *testing.T) {
 	testdb.Apply(t, db, "../../migrations/000060_admin_device_bundle_exports.up.sql")
 	testdb.Apply(t, db, "../../migrations/000060_admin_device_bundle_exports.down.sql")
 	testdb.Apply(t, db, "../../migrations/000060_admin_device_bundle_exports.up.sql")
+	testdb.ApplyAfter(t, db, 60)
 	ctx := t.Context()
 	admin, source := testdb.Admin(t, db), uuid.New()
 	gateways := []uuid.UUID{uuid.New(), uuid.New()}

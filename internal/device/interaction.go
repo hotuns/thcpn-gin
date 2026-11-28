@@ -89,9 +89,11 @@ func (s *Service) withInteractions(ctx context.Context, items []Device) ([]Devic
                 UNION SELECT node_index FROM lorawan_legacy_nodes WHERE gateway_device_id=d.id) current_nodes)
              ELSE (SELECT count(*) FROM device_relations WHERE parent_device_id=d.id AND relation_type='gateway_node' AND status='active') END,
         EXISTS (SELECT 1 FROM data_streams WHERE device_id=d.id AND status='active' AND type='telemetry'),
-        EXISTS (SELECT 1 FROM data_streams WHERE device_id=d.id AND status='active' AND type='image'), d.iccid, COALESCE(d.asset_no,''), d.hardware_sn
+        EXISTS (SELECT 1 FROM data_streams WHERE device_id=d.id AND status='active' AND type='image'), d.iccid, COALESCE(d.asset_no,''), d.hardware_sn,
+        d.product_term_id, COALESCE(pt.name_zh, '')
         FROM devices d LEFT JOIN device_source_refs ref ON ref.device_id=d.id AND ref.status='active'
-        LEFT JOIN data_sources src ON src.id=ref.data_source_id WHERE d.id=ANY($1::uuid[])`, ids)
+        LEFT JOIN data_sources src ON src.id=ref.data_source_id
+        LEFT JOIN device_taxonomy_terms pt ON pt.id=d.product_term_id WHERE d.id=ANY($1::uuid[])`, ids)
 	if err != nil {
 		return nil, apperr.Wrap(apperr.KindInternal, "load device interaction", err)
 	}
@@ -102,13 +104,15 @@ func (s *Service) withInteractions(ctx context.Context, items []Device) ([]Devic
 		var count int64
 		var telemetry, media bool
 		var iccid, hardwareSN *string
-		var assetNo string
-		if err := rows.Scan(&id, &family, &status, &externalKey, &adapter, &count, &telemetry, &media, &iccid, &assetNo, &hardwareSN); err != nil {
+		var assetNo, productName string
+		var productTermID *uuid.UUID
+		if err := rows.Scan(&id, &family, &status, &externalKey, &adapter, &count, &telemetry, &media, &iccid, &assetNo, &hardwareSN, &productTermID, &productName); err != nil {
 			return nil, err
 		}
 		item := &items[indices[id]]
 		item.ICCID = iccid
 		item.AssetNo, item.HardwareSN = assetNo, hardwareSN
+		item.ProductTermID, item.ProductName = productTermID, productName
 		item.SourceFamily, item.SourceStatus, item.ChildCount = family, status, count
 		item.ExternalKey = externalKey
 		item.Features = interactionFeatures(item.DeviceType, family, telemetry, media)

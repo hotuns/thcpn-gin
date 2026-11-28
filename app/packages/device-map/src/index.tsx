@@ -7,7 +7,7 @@ export { NativeDeviceLayer } from "./native-device-layer";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./styles.css";
 
-export type DeviceMapPoint = { device_id: string; name: string; device_type: string; status: string; latitude?: number; longitude?: number; child_count?: number; ecosystem?: string; category_icon?: string; purposes?: string[] };
+export type DeviceMapPoint = { device_id: string; name: string; device_type: string; status: string; latitude?: number; longitude?: number; child_count?: number; ecosystem?: string; product?: string; category_icon?: string };
 
 export function iconifyIconUrl(icon?: string, color = "#176f58") {
   const match = icon?.trim().match(/^([a-z0-9-]+):([a-z0-9-]+)$/);

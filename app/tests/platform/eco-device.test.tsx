@@ -46,7 +46,7 @@ const device: DeviceMapItem = {
   status: "active",
   location_source: "none",
   child_count: 0,
-  environment: { observation_objects: [], purposes: [], research_tags: [] },
+  environment: {},
 };
 
 it("shows pinned spotlight cards, all grouped compact metrics with inline pinning, and switches into full-height multi-metric trends", async () => {

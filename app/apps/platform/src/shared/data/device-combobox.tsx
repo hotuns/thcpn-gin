@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/primitives/popove
 import { Tabs, TabsList, TabsTrigger } from "../ui/primitives/tabs";
 
 export type DeviceOption = Pick<Device, "id" | "name" | "device_type"> &
-  Partial<Pick<Device, "asset_no" | "topology_role" | "tags">> & { research_tags?: string[] };
+  Partial<Pick<Device, "asset_no" | "topology_role" | "tags">>;
 export type DeviceOptionCategory = "all" | "gateway" | "gateway_node" | "camera" | "carbon_sink" | "standalone";
 
 const categories: Array<{ id: DeviceOptionCategory; label: string }> = [
@@ -39,7 +39,7 @@ export function filterDeviceOptions(
   const normalized = keyword.trim().toLowerCase();
   return devices.filter((device) =>
     (category === "all" || deviceOptionCategory(device) === category) &&
-    (!normalized || [device.name, device.asset_no ?? "", device.id, ...(device.tags ?? []), ...(device.research_tags ?? []), ...(tagsByDevice.get(device.id) ?? [])]
+    (!normalized || [device.name, device.asset_no ?? "", device.id, ...(device.tags ?? []), ...(tagsByDevice.get(device.id) ?? [])]
       .some((item) => item.toLowerCase().includes(normalized))),
   );
 }

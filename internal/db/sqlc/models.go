@@ -301,7 +301,13 @@ type Device struct {
 	// 平台设备类型，例如 gateway、gateway_node、camera、carbon_sink 或 standalone。
 	DeviceType string `json:"device_type"`
 	// 管理员记录的物联卡 ICCID；不随采集数据源同步覆盖。
-	Iccid *string `json:"iccid"`
+	Iccid      *string `json:"iccid"`
+	AssetNo    *string `json:"asset_no"`
+	HardwareSn *string `json:"hardware_sn"`
+	// 设备产品名称词条（kind=product），设备固有属性，不从样地继承。
+	ProductTermID *uuid.UUID `json:"product_term_id"`
+	// 设备生态分类词条（kind=ecosystem）；为空时自动沿用网关或样地生态分类。
+	EcosystemTermID *uuid.UUID `json:"ecosystem_term_id"`
 }
 
 // 物理设备到工作区、项目和站点的当前或历史分配记录；同一设备仅允许一条有效分配。
@@ -384,25 +390,47 @@ type DeviceConfigSnapshot struct {
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 }
 
-// 设备级环境分类覆盖和业务标签，不保存源库实时海拔。
-type DeviceEnvironmentProfile struct {
-	DeviceID         uuid.UUID          `json:"device_id"`
-	EcosystemTermID  *uuid.UUID         `json:"ecosystem_term_id"`
-	ManagementTermID *uuid.UUID         `json:"management_term_id"`
-	DeploymentTermID *uuid.UUID         `json:"deployment_term_id"`
-	CommissionedYear pgtype.Int4        `json:"commissioned_year"`
-	ResearchTags     []string           `json:"research_tags"`
-	OverriddenFields []string           `json:"overridden_fields"`
-	UpdatedBy        *uuid.UUID         `json:"updated_by"`
-	UpdatedActorType string             `json:"updated_actor_type"`
-	CreatedAt        pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+type DeviceInspectionEvent struct {
+	ID             uuid.UUID          `json:"id"`
+	DeviceID       uuid.UUID          `json:"device_id"`
+	EventKey       string             `json:"event_key"`
+	Kind           string             `json:"kind"`
+	Metric         string             `json:"metric"`
+	NodeIndex      pgtype.Int4        `json:"node_index"`
+	Detail         string             `json:"detail"`
+	StartedAt      pgtype.Timestamptz `json:"started_at"`
+	DetectedAt     pgtype.Timestamptz `json:"detected_at"`
+	LastSeenAt     pgtype.Timestamptz `json:"last_seen_at"`
+	ResolvedAt     pgtype.Timestamptz `json:"resolved_at"`
+	AcknowledgedAt pgtype.Timestamptz `json:"acknowledged_at"`
+	AcknowledgedBy *uuid.UUID         `json:"acknowledged_by"`
+	Note           string             `json:"note"`
+	Severity       string             `json:"severity"`
 }
 
-// 设备与多值环境分类词条的关系。
-type DeviceEnvironmentTerm struct {
-	DeviceID uuid.UUID `json:"device_id"`
-	TermID   uuid.UUID `json:"term_id"`
+type DeviceInspectionState struct {
+	DeviceID       uuid.UUID          `json:"device_id"`
+	NextCheckAt    pgtype.Timestamptz `json:"next_check_at"`
+	CheckedAt      pgtype.Timestamptz `json:"checked_at"`
+	LatestSampleAt pgtype.Timestamptz `json:"latest_sample_at"`
+	ScheduleKnown  bool               `json:"schedule_known"`
+	Error          string             `json:"error"`
+	Progress       []byte             `json:"progress"`
+}
+
+type DeviceInspectionTemplate struct {
+	ID           uuid.UUID          `json:"id"`
+	Family       string             `json:"family"`
+	DeviceType   string             `json:"device_type"`
+	MetricCode   string             `json:"metric_code"`
+	Unit         string             `json:"unit"`
+	Kind         string             `json:"kind"`
+	LowerValue   pgtype.Float8      `json:"lower_value"`
+	UpperValue   pgtype.Float8      `json:"upper_value"`
+	InvalidValue pgtype.Float8      `json:"invalid_value"`
+	Consecutive  int32              `json:"consecutive"`
+	Enabled      bool               `json:"enabled"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
 type DeviceInstallationRecord struct {
@@ -561,7 +589,7 @@ type DeviceSourceRef struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
-// 设备生态环境、观测对象、用途、管理方式和部署方式的中英文分类字典。
+// 设备生态分类（ecosystem）与产品名称（product）中英文元数据字典。
 type DeviceTaxonomyTerm struct {
 	ID            uuid.UUID          `json:"id"`
 	Kind          string             `json:"kind"`
@@ -710,6 +738,12 @@ type LorawanGatewayDetail struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+// Explicitly migrated active LoRaWAN V2 node indices with no known physical SN. Never derived from gateway capacity.
+type LorawanLegacyNode struct {
+	GatewayDeviceID uuid.UUID `json:"gateway_device_id"`
+	NodeIndex       int32     `json:"node_index"`
+}
+
 type LorawanPhysicalNode struct {
 	ID              uuid.UUID          `json:"id"`
 	DataSourceID    uuid.UUID          `json:"data_source_id"`
@@ -718,6 +752,8 @@ type LorawanPhysicalNode struct {
 	GatewayDeviceID *uuid.UUID         `json:"gateway_device_id"`
 	NodeIndex       pgtype.Int4        `json:"node_index"`
 	SyncedAt        pgtype.Timestamptz `json:"synced_at"`
+	AssetNo         string             `json:"asset_no"`
+	HardwareSn      *string            `json:"hardware_sn"`
 }
 
 // Platform semantic snapshot for an upstream LoRaWAN V2 node sensor configuration.
@@ -963,27 +999,10 @@ type Site struct {
 	CreatedBy uuid.UUID          `json:"created_by"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
-}
-
-// 站点级单值环境分类及业务属性，供设备继承。
-type SiteEnvironmentProfile struct {
-	SiteID           uuid.UUID          `json:"site_id"`
-	EcosystemTermID  *uuid.UUID         `json:"ecosystem_term_id"`
-	ManagementTermID *uuid.UUID         `json:"management_term_id"`
-	DeploymentTermID *uuid.UUID         `json:"deployment_term_id"`
-	AltitudeM        pgtype.Float8      `json:"altitude_m"`
-	CommissionedYear pgtype.Int4        `json:"commissioned_year"`
-	ResearchTags     []string           `json:"research_tags"`
-	UpdatedBy        *uuid.UUID         `json:"updated_by"`
-	UpdatedActorType string             `json:"updated_actor_type"`
-	CreatedAt        pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
-}
-
-// 站点与多值环境分类词条的关系。
-type SiteEnvironmentTerm struct {
-	SiteID uuid.UUID `json:"site_id"`
-	TermID uuid.UUID `json:"term_id"`
+	// 样地生态分类词条（kind=ecosystem），归属设备默认继承。
+	EcosystemTermID *uuid.UUID `json:"ecosystem_term_id"`
+	// 样地海拔（米）。
+	AltitudeM pgtype.Float8 `json:"altitude_m"`
 }
 
 type SourceOperation struct {
@@ -1044,20 +1063,23 @@ type SystemAnnouncement struct {
 }
 
 type SystemSetting struct {
-	Singleton  bool               `json:"singleton"`
-	ValuesJson []byte             `json:"values_json"`
-	Version    int64              `json:"version"`
-	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
-	UpdatedBy  *uuid.UUID         `json:"updated_by"`
+	Singleton     bool               `json:"singleton"`
+	ValuesJson    []byte             `json:"values_json"`
+	Version       int64              `json:"version"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	UpdatedBy     *uuid.UUID         `json:"updated_by"`
+	PublicBaseUrl *string            `json:"public_base_url"`
 }
 
 type SystemSettingsHistory struct {
-	ID           int64              `json:"id"`
-	ActorAdminID uuid.UUID          `json:"actor_admin_id"`
-	BeforeJson   []byte             `json:"before_json"`
-	AfterJson    []byte             `json:"after_json"`
-	Reason       string             `json:"reason"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	ID                  int64              `json:"id"`
+	ActorAdminID        uuid.UUID          `json:"actor_admin_id"`
+	BeforeJson          []byte             `json:"before_json"`
+	AfterJson           []byte             `json:"after_json"`
+	Reason              string             `json:"reason"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	BeforePublicBaseUrl *string            `json:"before_public_base_url"`
+	AfterPublicBaseUrl  *string            `json:"after_public_base_url"`
 }
 
 // 平台普通用户主表，保存身份、联系方式、账号状态和认证版本，不保存密码正文。

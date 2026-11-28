@@ -14,9 +14,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"thcpn-gin/internal/apperr"
+	"thcpn-gin/internal/site"
 )
 
-var fieldNames = []string{"ecosystem", "observation_objects", "purposes", "management", "deployment", "commissioned_year", "research_tags"}
+var fieldNames = []string{"ecosystem"}
 
 type SourceLocation struct {
 	Latitude  *float64
@@ -45,14 +46,9 @@ type Term struct {
 }
 
 type Values struct {
-	Ecosystem          *Term    `json:"ecosystem,omitempty"`
-	ObservationObjects []Term   `json:"observation_objects"`
-	Purposes           []Term   `json:"purposes"`
-	Management         *Term    `json:"management,omitempty"`
-	Deployment         *Term    `json:"deployment,omitempty"`
-	AltitudeM          *float64 `json:"altitude_m,omitempty"`
-	CommissionedYear   *int     `json:"commissioned_year,omitempty"`
-	ResearchTags       []string `json:"research_tags"`
+	Ecosystem *Term    `json:"ecosystem,omitempty"`
+	Product   *Term    `json:"product,omitempty"`
+	AltitudeM *float64 `json:"altitude_m,omitempty"`
 }
 
 type Environment struct {
@@ -69,14 +65,12 @@ type Environment struct {
 type UpdateInput struct {
 	DeviceID         uuid.UUID
 	EcosystemID      *uuid.UUID
-	ObservationIDs   []uuid.UUID
-	PurposeIDs       []uuid.UUID
-	ManagementID     *uuid.UUID
-	DeploymentID     *uuid.UUID
+	EcosystemSet     bool
+	ProductID        *uuid.UUID
+	ProductSet       bool
 	AltitudeM        *float64
-	CommissionedYear *int
-	ResearchTags     []string
 	OverriddenFields []string
+	OverriddenSet    bool
 	ActorID          uuid.UUID
 	ActorType        string
 }
@@ -88,17 +82,13 @@ type SiteEnvironment struct {
 }
 
 type UpdateSiteInput struct {
-	SiteID           uuid.UUID
-	EcosystemID      *uuid.UUID
-	ObservationIDs   []uuid.UUID
-	PurposeIDs       []uuid.UUID
-	ManagementID     *uuid.UUID
-	DeploymentID     *uuid.UUID
-	AltitudeM        *float64
-	CommissionedYear *int
-	ResearchTags     []string
-	ActorID          uuid.UUID
-	ActorType        string
+	SiteID       uuid.UUID
+	EcosystemID  *uuid.UUID
+	AltitudeM    *float64
+	ActorID      uuid.UUID
+	ActorType    string
+	AltitudeSet  bool
+	EcosystemSet bool
 }
 
 type MapItem struct {
@@ -114,6 +104,7 @@ type MapItem struct {
 	SiteID          *uuid.UUID `json:"site_id,omitempty"`
 	Latitude        *float64   `json:"latitude,omitempty"`
 	Longitude       *float64   `json:"longitude,omitempty"`
+	Tags            []string   `json:"tags,omitempty"`
 	LocationSource  string     `json:"location_source"`
 	ChildCount      int64      `json:"child_count"`
 	Environment     Values     `json:"environment"`
@@ -162,6 +153,9 @@ func (s *Service) UpsertTerm(ctx context.Context, item Term) (Term, error) {
 	if item.Kind == "" || item.Code == "" || item.NameZH == "" || item.NameEN == "" {
 		return Term{}, apperr.New(apperr.KindInvalidArgument, "kind, code, Chinese name and English name are required")
 	}
+	if item.Kind != "ecosystem" && item.Kind != "product" {
+		return Term{}, apperr.New(apperr.KindInvalidArgument, "kind must be ecosystem or product")
+	}
 	if item.Status == "" {
 		item.Status = "active"
 	}
@@ -207,7 +201,8 @@ func (s *Service) Get(ctx context.Context, deviceID uuid.UUID) (Environment, err
 	}
 	locations, err := s.locationLoader(ctx, []uuid.UUID{deviceID})
 	if err != nil {
-		return Environment{}, err
+		// Live altitude is optional; site and device classification are stored locally.
+		return result, ctx.Err()
 	}
 	if location, ok := locations[deviceID]; ok && location.AltitudeM != nil {
 		result.Effective.AltitudeM = location.AltitudeM
@@ -216,159 +211,143 @@ func (s *Service) Get(ctx context.Context, deviceID uuid.UUID) (Environment, err
 	return result, nil
 }
 
+// Use the same precedence for individual device profiles and map markers.
+const classificationFrom = ` FROM devices d
+ LEFT JOIN device_relations rel ON rel.child_device_id=d.id AND rel.relation_type='gateway_node' AND rel.status='active'
+ LEFT JOIN devices gateway ON gateway.id=rel.parent_device_id
+ LEFT JOIN device_assignments own ON own.device_id=d.id AND own.status='active'
+ LEFT JOIN device_assignments parent_assignment ON parent_assignment.device_id=gateway.id AND parent_assignment.status='active'
+ LEFT JOIN sites st ON st.id=COALESCE(own.site_id,parent_assignment.site_id)
+ LEFT JOIN device_taxonomy_terms eco ON eco.id=COALESCE(d.ecosystem_term_id,gateway.ecosystem_term_id,st.ecosystem_term_id)
+ LEFT JOIN device_taxonomy_terms product ON product.id=d.product_term_id`
+
 func (s *Service) getStored(ctx context.Context, deviceID uuid.UUID) (Environment, error) {
-	meta, err := s.deviceMeta(ctx, deviceID)
+	result := Environment{DeviceID: deviceID, Overrides: []string{}, Sources: map[string]string{"product": "none"}}
+	var ecosystemSource string
+	err := s.db.QueryRow(ctx, `SELECT gateway.id, st.id, d.updated_at, row_to_json(eco), row_to_json(product), st.altitude_m,
+   CASE WHEN d.ecosystem_term_id IS NOT NULL THEN 'device' WHEN gateway.ecosystem_term_id IS NOT NULL THEN 'gateway'
+        WHEN st.ecosystem_term_id IS NOT NULL THEN 'site' ELSE 'none' END`+classificationFrom+` WHERE d.id=$1`, deviceID).
+		Scan(&result.ParentDeviceID, &result.SiteID, &result.UpdatedAt, &result.Effective.Ecosystem, &result.Direct.Product, &result.Effective.AltitudeM, &ecosystemSource)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Environment{}, apperr.New(apperr.KindNotFound, "device not found")
+	}
 	if err != nil {
-		return Environment{}, err
+		return Environment{}, apperr.Wrap(apperr.KindInternal, "load device classification", err)
 	}
-	direct, overrides, updatedAt, err := s.loadDeviceValues(ctx, deviceID)
-	if err != nil {
-		return Environment{}, err
+	result.Sources["ecosystem"] = ecosystemSource
+	if ecosystemSource == "device" {
+		result.Direct.Ecosystem = result.Effective.Ecosystem
+		result.Overrides = append(result.Overrides, "ecosystem")
 	}
-	var inherited Values
-	sources := map[string]string{}
-	if meta.ParentID != nil {
-		parent, err := s.getStored(ctx, *meta.ParentID)
-		if err != nil {
-			return Environment{}, err
-		}
-		inherited = parent.Effective
-		for _, field := range fieldNames {
-			sources[field] = "gateway"
-		}
-	} else if meta.SiteID != nil {
-		inherited, err = s.loadSiteValues(ctx, *meta.SiteID)
-		if err != nil {
-			return Environment{}, err
-		}
-		for _, field := range fieldNames {
-			sources[field] = "site"
-		}
-	} else {
-		inherited = emptyValues()
-		for _, field := range fieldNames {
-			sources[field] = "none"
-		}
+	result.Effective.Product = result.Direct.Product
+	if result.Direct.Product != nil {
+		result.Sources["product"] = "device"
 	}
-	effective := inherited
-	for _, field := range overrides {
-		applyField(&effective, direct, field)
-		sources[field] = "device"
+	if result.Effective.AltitudeM != nil {
+		result.Sources["altitude_m"] = "site"
 	}
-	return Environment{DeviceID: deviceID, Direct: direct, Effective: effective, Overrides: overrides, Sources: sources, ParentDeviceID: meta.ParentID, SiteID: meta.SiteID, UpdatedAt: updatedAt}, nil
+	return result, nil
 }
 
 func (s *Service) Update(ctx context.Context, input UpdateInput) (Environment, error) {
 	if input.DeviceID == uuid.Nil || input.ActorID == uuid.Nil {
 		return Environment{}, apperr.New(apperr.KindInvalidArgument, "device and actor are required")
 	}
-	if input.ActorType != "system_admin" {
-		input.ActorType = "user"
+	if input.OverriddenSet {
+		if _, err := normalizeFields(input.OverriddenFields); err != nil {
+			return Environment{}, err
+		}
 	}
-	overrides, err := normalizeFields(input.OverriddenFields)
-	if err != nil {
-		return Environment{}, err
-	}
-	if input.CommissionedYear != nil && (*input.CommissionedYear < 1900 || *input.CommissionedYear > 2200) {
-		return Environment{}, apperr.New(apperr.KindInvalidArgument, "commissioned year must be between 1900 and 2200")
-	}
-	input.ResearchTags = cleanTags(input.ResearchTags)
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return Environment{}, err
 	}
 	defer tx.Rollback(ctx)
-	if err := validateTerms(ctx, tx, input); err != nil {
-		return Environment{}, err
+
+	var currentEcosystem, currentProduct *uuid.UUID
+	if err := tx.QueryRow(ctx, `SELECT ecosystem_term_id, product_term_id FROM devices WHERE id=$1 FOR UPDATE`, input.DeviceID).Scan(&currentEcosystem, &currentProduct); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Environment{}, apperr.New(apperr.KindNotFound, "device not found")
+		}
+		return Environment{}, apperr.Wrap(apperr.KindInternal, "load device classification", err)
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO device_environment_profiles (device_id,ecosystem_term_id,management_term_id,deployment_term_id,commissioned_year,research_tags,overridden_fields,updated_by,updated_actor_type) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (device_id) DO UPDATE SET ecosystem_term_id=EXCLUDED.ecosystem_term_id,management_term_id=EXCLUDED.management_term_id,deployment_term_id=EXCLUDED.deployment_term_id,commissioned_year=EXCLUDED.commissioned_year,research_tags=EXCLUDED.research_tags,overridden_fields=EXCLUDED.overridden_fields,updated_by=EXCLUDED.updated_by,updated_actor_type=EXCLUDED.updated_actor_type,updated_at=now()`, input.DeviceID, input.EcosystemID, input.ManagementID, input.DeploymentID, input.CommissionedYear, input.ResearchTags, overrides, input.ActorID, input.ActorType)
-	if err != nil {
-		return Environment{}, apperr.Wrap(apperr.KindInternal, "save device environment", err)
+
+	nextEcosystem := currentEcosystem
+	if input.OverriddenSet {
+		overrideEco := false
+		for _, field := range input.OverriddenFields {
+			if field == "ecosystem" {
+				overrideEco = true
+				break
+			}
+		}
+		if overrideEco {
+			nextEcosystem = input.EcosystemID
+		} else {
+			nextEcosystem = nil
+		}
+	} else if input.EcosystemSet {
+		nextEcosystem = input.EcosystemID
 	}
-	if _, err = tx.Exec(ctx, `DELETE FROM device_environment_terms WHERE device_id=$1`, input.DeviceID); err != nil {
-		return Environment{}, err
+
+	nextProduct := currentProduct
+	if input.ProductSet {
+		nextProduct = input.ProductID
 	}
-	for _, id := range append(append([]uuid.UUID{}, input.ObservationIDs...), input.PurposeIDs...) {
-		if _, err = tx.Exec(ctx, `INSERT INTO device_environment_terms (device_id,term_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, input.DeviceID, id); err != nil {
+
+	if nextEcosystem != nil && (currentEcosystem == nil || *nextEcosystem != *currentEcosystem) {
+		if err := validateTerm(ctx, tx, nextEcosystem, "ecosystem"); err != nil {
 			return Environment{}, err
 		}
 	}
-	if err = tx.Commit(ctx); err != nil {
+	if nextProduct != nil && (currentProduct == nil || *nextProduct != *currentProduct) {
+		if err := validateTerm(ctx, tx, nextProduct, "product"); err != nil {
+			return Environment{}, err
+		}
+	}
+	if _, err := tx.Exec(ctx, `UPDATE devices SET ecosystem_term_id=$2, product_term_id=$3, updated_at=now() WHERE id=$1`, input.DeviceID, nextEcosystem, nextProduct); err != nil {
+		return Environment{}, apperr.Wrap(apperr.KindInternal, "save device classification", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return Environment{}, err
 	}
 	return s.Get(ctx, input.DeviceID)
 }
 
 func (s *Service) GetSite(ctx context.Context, siteID uuid.UUID) (SiteEnvironment, error) {
-	var exists bool
-	if err := s.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM sites WHERE id=$1)`, siteID).Scan(&exists); err != nil {
-		return SiteEnvironment{}, err
-	}
-	if !exists {
+	result := SiteEnvironment{SiteID: siteID}
+	err := s.db.QueryRow(ctx, `SELECT row_to_json(eco), st.altitude_m, st.updated_at FROM sites st
+ LEFT JOIN device_taxonomy_terms eco ON eco.id=st.ecosystem_term_id WHERE st.id=$1`, siteID).
+		Scan(&result.Values.Ecosystem, &result.Values.AltitudeM, &result.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return SiteEnvironment{}, apperr.New(apperr.KindNotFound, "site not found")
 	}
-	values, err := s.loadSiteValues(ctx, siteID)
-	if err != nil {
-		return SiteEnvironment{}, err
-	}
-	var updatedAt *time.Time
-	_ = s.db.QueryRow(ctx, `SELECT updated_at FROM site_environment_profiles WHERE site_id=$1`, siteID).Scan(&updatedAt)
-	return SiteEnvironment{SiteID: siteID, Values: values, UpdatedAt: updatedAt}, nil
+	return result, err
 }
 
 func (s *Service) UpdateSite(ctx context.Context, input UpdateSiteInput) (SiteEnvironment, error) {
 	if input.SiteID == uuid.Nil || input.ActorID == uuid.Nil {
 		return SiteEnvironment{}, apperr.New(apperr.KindInvalidArgument, "site and actor are required")
 	}
-	if input.ActorType != "system_admin" {
-		input.ActorType = "user"
-	}
-	if input.CommissionedYear != nil && (*input.CommissionedYear < 1900 || *input.CommissionedYear > 2200) {
-		return SiteEnvironment{}, apperr.New(apperr.KindInvalidArgument, "commissioned year must be between 1900 and 2200")
-	}
-	input.ResearchTags = cleanTags(input.ResearchTags)
-	tx, err := s.db.Begin(ctx)
+	_, err := site.NewService(s.db).Update(ctx, site.UpdateInput{
+		SiteID: input.SiteID, EcosystemTermID: input.EcosystemID, EcosystemTermIDSet: input.EcosystemSet,
+		AltitudeM: input.AltitudeM, AltitudeMSet: input.AltitudeSet,
+	})
 	if err != nil {
-		return SiteEnvironment{}, err
-	}
-	defer tx.Rollback(ctx)
-	deviceInput := UpdateInput{EcosystemID: input.EcosystemID, ObservationIDs: input.ObservationIDs, PurposeIDs: input.PurposeIDs, ManagementID: input.ManagementID, DeploymentID: input.DeploymentID}
-	if err := validateTerms(ctx, tx, deviceInput); err != nil {
-		return SiteEnvironment{}, err
-	}
-	result, err := tx.Exec(ctx, `INSERT INTO site_environment_profiles (site_id,ecosystem_term_id,management_term_id,deployment_term_id,altitude_m,commissioned_year,research_tags,updated_by,updated_actor_type) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9 WHERE EXISTS (SELECT 1 FROM sites WHERE id=$1) ON CONFLICT (site_id) DO UPDATE SET ecosystem_term_id=EXCLUDED.ecosystem_term_id,management_term_id=EXCLUDED.management_term_id,deployment_term_id=EXCLUDED.deployment_term_id,altitude_m=EXCLUDED.altitude_m,commissioned_year=EXCLUDED.commissioned_year,research_tags=EXCLUDED.research_tags,updated_by=EXCLUDED.updated_by,updated_actor_type=EXCLUDED.updated_actor_type,updated_at=now()`, input.SiteID, input.EcosystemID, input.ManagementID, input.DeploymentID, input.AltitudeM, input.CommissionedYear, input.ResearchTags, input.ActorID, input.ActorType)
-	if err != nil {
-		return SiteEnvironment{}, apperr.Wrap(apperr.KindInternal, "save site environment", err)
-	}
-	if result.RowsAffected() == 0 {
-		return SiteEnvironment{}, apperr.New(apperr.KindNotFound, "site not found")
-	}
-	if _, err = tx.Exec(ctx, `DELETE FROM site_environment_terms WHERE site_id=$1`, input.SiteID); err != nil {
-		return SiteEnvironment{}, err
-	}
-	for _, id := range append(append([]uuid.UUID{}, input.ObservationIDs...), input.PurposeIDs...) {
-		if _, err = tx.Exec(ctx, `INSERT INTO site_environment_terms (site_id,term_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, input.SiteID, id); err != nil {
-			return SiteEnvironment{}, err
-		}
-	}
-	if err = tx.Commit(ctx); err != nil {
 		return SiteEnvironment{}, err
 	}
 	return s.GetSite(ctx, input.SiteID)
 }
 
-const deviceMapQuery = `SELECT d.id,d.name,COALESCE(d.asset_no,''),d.device_type,d.status,COALESCE(own.workspace_id,parent_assignment.workspace_id),COALESCE(own.site_id,parent_assignment.site_id),
-	COALESCE(dp.latitude,st.latitude),
-	COALESCE(dp.longitude,st.longitude),
-	CASE WHEN dp.latitude IS NOT NULL AND dp.longitude IS NOT NULL THEN 'device' WHEN st.latitude IS NOT NULL AND st.longitude IS NOT NULL THEN 'site' ELSE 'none' END,
-	(SELECT count(*) FROM device_relations cr WHERE cr.parent_device_id=d.id AND cr.relation_type='gateway_node' AND cr.status='active')
-	FROM devices d
-	LEFT JOIN device_relations rel ON rel.child_device_id=d.id AND rel.relation_type='gateway_node' AND rel.status='active'
-	LEFT JOIN device_assignments own ON own.device_id=d.id AND own.status='active'
-	LEFT JOIN device_assignments parent_assignment ON parent_assignment.device_id=rel.parent_device_id AND parent_assignment.status='active'
-	LEFT JOIN device_profiles dp ON dp.device_id=d.id
-	LEFT JOIN sites st ON st.id=COALESCE(own.site_id,parent_assignment.site_id)
-	WHERE ($1::uuid IS NULL OR COALESCE(own.workspace_id,parent_assignment.workspace_id)=$1) AND ($2 OR d.device_type <> 'gateway_node')
+const deviceMapQuery = `SELECT d.id,d.name,COALESCE(d.asset_no,''),d.device_type,d.status,COALESCE(own.workspace_id,parent_assignment.workspace_id),st.id,
+ CASE WHEN dp.latitude IS NOT NULL AND dp.longitude IS NOT NULL THEN dp.latitude WHEN st.longitude IS NOT NULL THEN st.latitude END,
+ CASE WHEN dp.latitude IS NOT NULL AND dp.longitude IS NOT NULL THEN dp.longitude WHEN st.latitude IS NOT NULL THEN st.longitude END,
+ CASE WHEN dp.latitude IS NOT NULL AND dp.longitude IS NOT NULL THEN 'device' WHEN st.latitude IS NOT NULL AND st.longitude IS NOT NULL THEN 'site' ELSE 'none' END,
+ (SELECT count(*) FROM device_relations cr WHERE cr.parent_device_id=d.id AND cr.relation_type='gateway_node' AND cr.status='active'),
+ row_to_json(eco), row_to_json(product), st.altitude_m, wt.tags` + classificationFrom + `
+ LEFT JOIN device_profiles dp ON dp.device_id=d.id
+ LEFT JOIN device_workspace_tags wt ON wt.device_id=d.id AND wt.workspace_id=$1
+ WHERE ($1::uuid IS NULL OR COALESCE(own.workspace_id,parent_assignment.workspace_id)=$1) AND ($2 OR d.device_type <> 'gateway_node')
 	ORDER BY d.name,d.id`
 
 func (s *Service) Map(ctx context.Context, workspaceID *uuid.UUID, includeChildren bool) (MapResult, error) {
@@ -376,18 +355,14 @@ func (s *Service) Map(ctx context.Context, workspaceID *uuid.UUID, includeChildr
 	if err != nil {
 		return MapResult{}, apperr.Wrap(apperr.KindInternal, "list device map", err)
 	}
+	defer rows.Close()
 	result := MapResult{Items: []MapItem{}}
 	deviceIDs := make([]uuid.UUID, 0)
 	for rows.Next() {
 		var item MapItem
-		if err := rows.Scan(&item.DeviceID, &item.Name, &item.AssetNo, &item.DeviceType, &item.Status, &item.WorkspaceID, &item.SiteID, &item.Latitude, &item.Longitude, &item.LocationSource, &item.ChildCount); err != nil {
+		if err := rows.Scan(&item.DeviceID, &item.Name, &item.AssetNo, &item.DeviceType, &item.Status, &item.WorkspaceID, &item.SiteID, &item.Latitude, &item.Longitude, &item.LocationSource, &item.ChildCount, &item.Environment.Ecosystem, &item.Environment.Product, &item.Environment.AltitudeM, &item.Tags); err != nil {
 			return MapResult{}, err
 		}
-		environment, envErr := s.getStored(ctx, item.DeviceID)
-		if envErr != nil {
-			return MapResult{}, envErr
-		}
-		item.Environment = environment.Effective
 		result.Items = append(result.Items, item)
 		deviceIDs = append(deviceIDs, item.DeviceID)
 	}
@@ -404,9 +379,10 @@ func (s *Service) Map(ctx context.Context, workspaceID *uuid.UUID, includeChildr
 	}
 	if s.locationLoader != nil && len(sourceDeviceIDs) > 0 {
 		locations, err := s.locationLoader(ctx, sourceDeviceIDs)
-		if err != nil {
-			return MapResult{}, err
+		if err != nil && ctx.Err() != nil {
+			return MapResult{}, ctx.Err()
 		}
+		// Missing live positions leave the preloaded installation or site coordinates in place.
 		for index := range result.Items {
 			location, ok := locations[result.Items[index].DeviceID]
 			if !ok {
@@ -468,6 +444,8 @@ func (s *Service) appendIndexedNodeLocations(ctx context.Context, result *MapRes
 		item.Longitude = lon
 		item.LocationSource = "node"
 		item.ChildCount = 0
+		item.Environment.Product = nil
+		item.Tags = nil
 		result.Items = append(result.Items, item)
 	}
 	return rows.Err()
@@ -521,127 +499,6 @@ func (s *Service) MapDemo(ctx context.Context, userID uuid.UUID, includeChildren
 	return result, nil
 }
 
-type deviceMetaResult struct{ ParentID, SiteID *uuid.UUID }
-
-func (s *Service) deviceMeta(ctx context.Context, deviceID uuid.UUID) (deviceMetaResult, error) {
-	var result deviceMetaResult
-	err := s.db.QueryRow(ctx, `SELECT rel.parent_device_id,COALESCE(own.site_id,parent_assignment.site_id) FROM devices d LEFT JOIN device_relations rel ON rel.child_device_id=d.id AND rel.relation_type='gateway_node' AND rel.status='active' LEFT JOIN device_assignments own ON own.device_id=d.id AND own.status='active' LEFT JOIN device_assignments parent_assignment ON parent_assignment.device_id=rel.parent_device_id AND parent_assignment.status='active' WHERE d.id=$1`, deviceID).Scan(&result.ParentID, &result.SiteID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return result, apperr.New(apperr.KindNotFound, "device not found")
-	}
-	return result, err
-}
-
-func (s *Service) loadDeviceValues(ctx context.Context, deviceID uuid.UUID) (Values, []string, *time.Time, error) {
-	values := emptyValues()
-	overrides := []string{}
-	var ecosystemID, managementID, deploymentID *uuid.UUID
-	var updatedAt *time.Time
-	err := s.db.QueryRow(ctx, `SELECT ecosystem_term_id,management_term_id,deployment_term_id,commissioned_year,research_tags,overridden_fields,updated_at FROM device_environment_profiles WHERE device_id=$1`, deviceID).Scan(&ecosystemID, &managementID, &deploymentID, &values.CommissionedYear, &values.ResearchTags, &overrides, &updatedAt)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return values, nil, nil, err
-	}
-	if ecosystemID != nil {
-		values.Ecosystem, _ = s.term(ctx, *ecosystemID)
-	}
-	if managementID != nil {
-		values.Management, _ = s.term(ctx, *managementID)
-	}
-	if deploymentID != nil {
-		values.Deployment, _ = s.term(ctx, *deploymentID)
-	}
-	terms, err := s.entityTerms(ctx, "device_environment_terms", "device_id", deviceID)
-	if err != nil {
-		return values, nil, nil, err
-	}
-	for _, term := range terms {
-		if term.Kind == "observation_object" {
-			values.ObservationObjects = append(values.ObservationObjects, term)
-		}
-		if term.Kind == "purpose" {
-			values.Purposes = append(values.Purposes, term)
-		}
-	}
-	return values, overrides, updatedAt, nil
-}
-
-func (s *Service) loadSiteValues(ctx context.Context, siteID uuid.UUID) (Values, error) {
-	values := emptyValues()
-	var ecosystemID, managementID, deploymentID *uuid.UUID
-	err := s.db.QueryRow(ctx, `SELECT ecosystem_term_id,management_term_id,deployment_term_id,altitude_m,commissioned_year,research_tags FROM site_environment_profiles WHERE site_id=$1`, siteID).Scan(&ecosystemID, &managementID, &deploymentID, &values.AltitudeM, &values.CommissionedYear, &values.ResearchTags)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return values, err
-	}
-	if ecosystemID != nil {
-		values.Ecosystem, _ = s.term(ctx, *ecosystemID)
-	}
-	if managementID != nil {
-		values.Management, _ = s.term(ctx, *managementID)
-	}
-	if deploymentID != nil {
-		values.Deployment, _ = s.term(ctx, *deploymentID)
-	}
-	terms, err := s.entityTerms(ctx, "site_environment_terms", "site_id", siteID)
-	if err != nil {
-		return values, err
-	}
-	for _, term := range terms {
-		if term.Kind == "observation_object" {
-			values.ObservationObjects = append(values.ObservationObjects, term)
-		}
-		if term.Kind == "purpose" {
-			values.Purposes = append(values.Purposes, term)
-		}
-	}
-	return values, nil
-}
-
-func (s *Service) term(ctx context.Context, id uuid.UUID) (*Term, error) {
-	var t Term
-	err := s.db.QueryRow(ctx, `SELECT id,kind,code,name_zh,name_en,parent_id,status,sort_order,system_defined,icon FROM device_taxonomy_terms WHERE id=$1`, id).Scan(&t.ID, &t.Kind, &t.Code, &t.NameZH, &t.NameEN, &t.ParentID, &t.Status, &t.SortOrder, &t.SystemDefined, &t.Icon)
-	if err != nil {
-		return nil, err
-	}
-	return &t, nil
-}
-func (s *Service) entityTerms(ctx context.Context, table, column string, id uuid.UUID) ([]Term, error) {
-	rows, err := s.db.Query(ctx, `SELECT t.id,t.kind,t.code,t.name_zh,t.name_en,t.parent_id,t.status,t.sort_order,t.system_defined,t.icon FROM `+table+` et JOIN device_taxonomy_terms t ON t.id=et.term_id WHERE et.`+column+`=$1 ORDER BY t.sort_order,t.name_zh`, id)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Term{}
-	for rows.Next() {
-		var t Term
-		if err := rows.Scan(&t.ID, &t.Kind, &t.Code, &t.NameZH, &t.NameEN, &t.ParentID, &t.Status, &t.SortOrder, &t.SystemDefined, &t.Icon); err != nil {
-			return nil, err
-		}
-		items = append(items, t)
-	}
-	return items, rows.Err()
-}
-
-func emptyValues() Values {
-	return Values{ObservationObjects: []Term{}, Purposes: []Term{}, ResearchTags: []string{}}
-}
-func applyField(dst *Values, src Values, field string) {
-	switch field {
-	case "ecosystem":
-		dst.Ecosystem = src.Ecosystem
-	case "observation_objects":
-		dst.ObservationObjects = src.ObservationObjects
-	case "purposes":
-		dst.Purposes = src.Purposes
-	case "management":
-		dst.Management = src.Management
-	case "deployment":
-		dst.Deployment = src.Deployment
-	case "commissioned_year":
-		dst.CommissionedYear = src.CommissionedYear
-	case "research_tags":
-		dst.ResearchTags = src.ResearchTags
-	}
-}
 func normalizeFields(values []string) ([]string, error) {
 	allowed := map[string]bool{}
 	for _, v := range fieldNames {
@@ -661,43 +518,14 @@ func normalizeFields(values []string) ([]string, error) {
 	sort.Strings(out)
 	return out, nil
 }
-func cleanTags(values []string) []string {
-	seen := map[string]bool{}
-	out := []string{}
-	for _, v := range values {
-		v = strings.TrimSpace(v)
-		if v != "" && !seen[v] {
-			seen[v] = true
-			out = append(out, v)
-		}
+
+func validateTerm(ctx context.Context, tx pgx.Tx, id *uuid.UUID, expectedKind string) error {
+	if id == nil {
+		return nil
 	}
-	sort.Strings(out)
-	return out
-}
-func validateTerms(ctx context.Context, tx pgx.Tx, input UpdateInput) error {
-	checks := []struct {
-		id   *uuid.UUID
-		kind string
-	}{{input.EcosystemID, "ecosystem"}, {input.ManagementID, "management"}, {input.DeploymentID, "deployment"}}
-	for _, c := range checks {
-		if c.id == nil {
-			continue
-		}
-		var kind string
-		if err := tx.QueryRow(ctx, `SELECT kind FROM device_taxonomy_terms WHERE id=$1 AND status='active'`, *c.id).Scan(&kind); err != nil || kind != c.kind {
-			return apperr.New(apperr.KindInvalidArgument, "invalid taxonomy term")
-		}
-	}
-	for _, pair := range []struct {
-		ids  []uuid.UUID
-		kind string
-	}{{input.ObservationIDs, "observation_object"}, {input.PurposeIDs, "purpose"}} {
-		for _, id := range pair.ids {
-			var kind string
-			if err := tx.QueryRow(ctx, `SELECT kind FROM device_taxonomy_terms WHERE id=$1 AND status='active'`, id).Scan(&kind); err != nil || kind != pair.kind {
-				return apperr.New(apperr.KindInvalidArgument, "invalid taxonomy term")
-			}
-		}
+	var kind string
+	if err := tx.QueryRow(ctx, `SELECT kind FROM device_taxonomy_terms WHERE id=$1 AND status='active'`, *id).Scan(&kind); err != nil || kind != expectedKind {
+		return apperr.New(apperr.KindInvalidArgument, "invalid taxonomy term")
 	}
 	return nil
 }

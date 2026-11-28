@@ -1,6 +1,7 @@
 package deviceclassification
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -22,14 +23,31 @@ type Handler struct {
 
 type updateRequest struct {
 	EcosystemID      *string  `json:"ecosystem_term_id"`
-	ObservationIDs   []string `json:"observation_object_ids"`
-	PurposeIDs       []string `json:"purpose_ids"`
-	ManagementID     *string  `json:"management_term_id"`
-	DeploymentID     *string  `json:"deployment_term_id"`
+	ProductID        *string  `json:"product_term_id"`
 	AltitudeM        *float64 `json:"altitude_m"`
-	CommissionedYear *int     `json:"commissioned_year"`
-	ResearchTags     []string `json:"research_tags"`
 	OverriddenFields []string `json:"overridden_fields"`
+	EcosystemSet     bool     `json:"-"`
+	AltitudeSet      bool     `json:"-"`
+	ProductSet       bool     `json:"-"`
+	OverriddenSet    bool     `json:"-"`
+}
+
+func (r *updateRequest) UnmarshalJSON(data []byte) error {
+	type alias updateRequest
+	var decoded alias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*r = updateRequest(decoded)
+	_, r.EcosystemSet = raw["ecosystem_term_id"]
+	_, r.AltitudeSet = raw["altitude_m"]
+	_, r.ProductSet = raw["product_term_id"]
+	_, r.OverriddenSet = raw["overridden_fields"]
+	return nil
 }
 
 type termRequest struct {
@@ -43,6 +61,7 @@ type termRequest struct {
 	SortOrder int     `json:"sort_order"`
 	Icon      *string `json:"icon"`
 }
+
 type bulkRequest struct {
 	DeviceIDs  []string      `json:"device_ids"`
 	Attributes updateRequest `json:"attributes"`
@@ -60,6 +79,7 @@ func (h *Handler) Catalog(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
+
 func (h *Handler) AdminCatalog(c *gin.Context) {
 	items, err := h.service.Catalog(c.Request.Context(), true)
 	if err != nil {
@@ -70,11 +90,10 @@ func (h *Handler) AdminCatalog(c *gin.Context) {
 }
 
 func (h *Handler) Get(c *gin.Context) {
-	id, actor, ok := h.authorize(c, "device.view")
+	id, _, ok := h.authorize(c, "device.view")
 	if !ok {
 		return
 	}
-	_ = actor
 	result, err := h.service.Get(c.Request.Context(), id)
 	if err != nil {
 		httpx.WriteAppError(c, err)
@@ -82,6 +101,7 @@ func (h *Handler) Get(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, result)
 }
+
 func (h *Handler) Update(c *gin.Context) {
 	id, actor, ok := h.authorize(c, "device.configure")
 	if !ok {
@@ -154,6 +174,7 @@ func (h *Handler) AdminMap(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, result)
 }
+
 func (h *Handler) AdminGet(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("device_id"))
 	if err != nil {
@@ -167,6 +188,7 @@ func (h *Handler) AdminGet(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, result)
 }
+
 func (h *Handler) AdminUpdate(c *gin.Context) {
 	actor, ok := auth.ActorFromContext(c)
 	if !ok {
@@ -337,7 +359,15 @@ func (h *Handler) updateSite(c *gin.Context, siteID, actorID uuid.UUID, actorTyp
 		httpx.WriteAppError(c, err)
 		return
 	}
-	result, err := h.service.UpdateSite(c.Request.Context(), UpdateSiteInput{SiteID: siteID, EcosystemID: parsed.EcosystemID, ObservationIDs: parsed.ObservationIDs, PurposeIDs: parsed.PurposeIDs, ManagementID: parsed.ManagementID, DeploymentID: parsed.DeploymentID, AltitudeM: parsed.AltitudeM, CommissionedYear: parsed.CommissionedYear, ResearchTags: parsed.ResearchTags, ActorID: actorID, ActorType: actorType})
+	result, err := h.service.UpdateSite(c.Request.Context(), UpdateSiteInput{
+		SiteID:       siteID,
+		EcosystemID:  parsed.EcosystemID,
+		AltitudeM:    parsed.AltitudeM,
+		AltitudeSet:  req.AltitudeSet,
+		EcosystemSet: req.EcosystemSet,
+		ActorID:      actorID,
+		ActorType:    actorType,
+	})
 	if err != nil {
 		httpx.WriteAppError(c, err)
 		return
@@ -393,6 +423,7 @@ func (h *Handler) authorizeSite(c *gin.Context, action string) (uuid.UUID, auth.
 	}
 	return id, actor, true
 }
+
 func parseUpdate(deviceID, actorID uuid.UUID, actorType string, req updateRequest) (UpdateInput, error) {
 	if deviceID != uuid.Nil {
 		if req.AltitudeM != nil {
@@ -408,24 +439,24 @@ func parseUpdate(deviceID, actorID uuid.UUID, actorType string, req updateReques
 	if err != nil {
 		return UpdateInput{}, err
 	}
-	management, err := parseOptional(req.ManagementID)
+	product, err := parseOptional(req.ProductID)
 	if err != nil {
 		return UpdateInput{}, err
 	}
-	deployment, err := parseOptional(req.DeploymentID)
-	if err != nil {
-		return UpdateInput{}, err
-	}
-	observations, err := parseIDs(req.ObservationIDs)
-	if err != nil {
-		return UpdateInput{}, err
-	}
-	purposes, err := parseIDs(req.PurposeIDs)
-	if err != nil {
-		return UpdateInput{}, err
-	}
-	return UpdateInput{DeviceID: deviceID, EcosystemID: ecosystem, ObservationIDs: observations, PurposeIDs: purposes, ManagementID: management, DeploymentID: deployment, AltitudeM: req.AltitudeM, CommissionedYear: req.CommissionedYear, ResearchTags: req.ResearchTags, OverriddenFields: req.OverriddenFields, ActorID: actorID, ActorType: actorType}, nil
+	return UpdateInput{
+		DeviceID:         deviceID,
+		EcosystemID:      ecosystem,
+		EcosystemSet:     req.EcosystemSet,
+		ProductID:        product,
+		ProductSet:       req.ProductSet,
+		AltitudeM:        req.AltitudeM,
+		OverriddenFields: req.OverriddenFields,
+		OverriddenSet:    req.OverriddenSet,
+		ActorID:          actorID,
+		ActorType:        actorType,
+	}, nil
 }
+
 func parseOptional(raw *string) (*uuid.UUID, error) {
 	if raw == nil || strings.TrimSpace(*raw) == "" {
 		return nil, nil
@@ -436,17 +467,7 @@ func parseOptional(raw *string) (*uuid.UUID, error) {
 	}
 	return &id, nil
 }
-func parseIDs(raw []string) ([]uuid.UUID, error) {
-	out := make([]uuid.UUID, 0, len(raw))
-	for _, value := range raw {
-		id, err := uuid.Parse(value)
-		if err != nil {
-			return nil, apperr.New(apperr.KindInvalidArgument, "invalid taxonomy id")
-		}
-		out = append(out, id)
-	}
-	return out, nil
-}
+
 func recount(result *MapResult) {
 	result.Total = len(result.Items)
 	result.Located = 0
@@ -463,9 +484,11 @@ func recount(result *MapResult) {
 		}
 	}
 }
+
 func (h *Handler) record(c *gin.Context, actorType string, actorID, resourceID uuid.UUID, action, result, reason string) bool {
 	return h.recordResource(c, actorType, actorID, resourceID, "device", action, result, reason)
 }
+
 func (h *Handler) recordResource(c *gin.Context, actorType string, actorID, resourceID uuid.UUID, resourceType, action, result, reason string) bool {
 	if h.audit == nil {
 		return true

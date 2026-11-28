@@ -652,7 +652,7 @@ function AtlasSettings({
           </strong>
           <p>{a("deviceLimit")}</p>
           <DeviceCombobox
-            devices={devices.map((device) => ({ ...device, id: device.device_id, research_tags: device.environment.research_tags }))}
+            devices={devices.map((device) => ({ ...device, id: device.device_id }))}
             variant="inline"
             multiple
             value={config.device_ids ?? []}

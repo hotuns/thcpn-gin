@@ -6,9 +6,8 @@ import { api, deviceLifecycleOptions, formatApiError, type DeviceDeliveryInput, 
 import { adminEdition } from "./edition";
 
 const fields = [
-  { key: "ecosystem", name: "ecosystem_term_id", label: "生态分类", kind: "ecosystem", multiple: false },
-  { key: "observation_objects", name: "observation_object_ids", label: "观测对象", kind: "observation_object", multiple: true },
-  { key: "purposes", name: "purpose_ids", label: "应用场景", kind: "purpose", multiple: true },
+  { key: "ecosystem", name: "ecosystem_term_id", label: "生态分类", kind: "ecosystem" },
+  { key: "product", name: "product_term_id", label: "产品名称", kind: "product" },
 ] as const;
 
 const editLabels = {
@@ -24,8 +23,8 @@ const editLabels = {
 type BulkMode = keyof typeof editLabels | (typeof fields)[number]["key"];
 type BulkValues = DeviceDeliveryInput & {
   delivery_write?: "fill" | "overwrite";
-  operation?: "set" | "clear" | "inherit";
-  classification_value?: string | string[];
+  operation?: "set" | "clear";
+  classification_value?: string;
   tags?: string[];
   status?: "active" | "disabled";
   lifecycle_status?: string;
@@ -59,22 +58,9 @@ async function applyEdit(mode: BulkMode, device: JsonRecord, values: BulkValues)
   const id = String(device.id);
   const definition = fields.find(field => field.key === mode);
   if (definition) {
-    const existing = await api.admin.deviceEnvironment(id);
-    const direct = existing.direct;
-    const overridden = existing.overridden_fields.filter(key => key !== definition.key);
-    const payload: JsonRecord = {
-      ecosystem_term_id: direct.ecosystem?.id ?? null,
-      observation_object_ids: direct.observation_objects.map(term => term.id),
-      purpose_ids: direct.purposes.map(term => term.id),
-      management_term_id: direct.management?.id ?? null,
-      deployment_term_id: direct.deployment?.id ?? null,
-      commissioned_year: direct.commissioned_year ?? null,
-      research_tags: direct.research_tags,
-      overridden_fields: values.operation === "inherit" ? overridden : [...overridden, definition.key],
-    };
-    if (values.operation !== "inherit") payload[definition.name] = values.operation === "clear"
-      ? (definition.multiple ? [] : null) : values.classification_value;
-    await api.admin.updateDeviceEnvironment(id, payload);
+    await api.admin.updateDeviceEnvironment(id, {
+      [definition.name]: values.operation === "set" ? values.classification_value : null,
+    });
   } else if (mode === "delivery") {
     const result = await api.admin.updateDeviceDelivery(id, deliveryInput(values));
     return {
@@ -168,7 +154,7 @@ export function AdminDeviceBulkEdit({ devices, disabled, onSaved }: {
     { key: "ownership", type: "group", label: "归属与分类", children: [
       editItem("assign"),
       ...(adminEdition.showWorkspaceAssignment ? [editItem("unassign")] : []),
-      { key: "classification", label: "应用场景与观测分类", children: fields.map(field => ({
+      { key: "classification", label: "设备分类", children: fields.map(field => ({
         key: field.key, label: field.label, onClick: () => open(field.key),
       })) },
     ] },
@@ -285,11 +271,10 @@ export function AdminDeviceBulkEdit({ devices, disabled, onSaved }: {
           {definition ? <>
             <Form.Item name="operation" label="修改方式"><Select options={[
               { value: "set", label: "设置统一值（替换该字段）" },
-              { value: "clear", label: "清空该字段" },
-              { value: "inherit", label: "沿用网关／站点资料" },
+              { value: "clear", label: mode === "ecosystem" ? "沿用网关或样地" : "清空产品名称" },
             ]} /></Form.Item>
             {operation === "set" && <Form.Item name="classification_value" label={definition.label} rules={[{ required: true, message: `请选择${definition.label}` }]}>
-              <Select showSearch optionFilterProp="label" mode={definition.multiple ? "multiple" : undefined} loading={terms.isLoading} options={(terms.data?.items ?? [])
+              <Select showSearch optionFilterProp="label" loading={terms.isLoading} options={(terms.data?.items ?? [])
                 .filter(term => term.kind === definition.kind && term.status === "active")
                 .map(term => ({ value: term.id, label: term.name_zh }))} />
             </Form.Item>}

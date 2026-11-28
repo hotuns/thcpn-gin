@@ -3,10 +3,10 @@ import { Dialog, DialogContent, DialogTitle } from "../../shared/ui/primitives/d
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, formatApiError, type DeviceTaxonomyTerm, type JsonRecord } from "@thcpn/api";
 import { useWorkspace, workspaceQueryKey } from "@thcpn/workspace";
-import { Pencil, Plus, Tags, X } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Pencil, Plus, X } from "lucide-react";
+import { useRef, useState, type FormEvent } from "react";
 import { policyLimit } from "../../shared/config/system-policy";
-import { Badge, Button, CheckboxInput, Input, Panel, SelectInput, StateView } from "../../shared/ui";
+import { Badge, Button, Textarea, Input, Panel, SelectInput, StateView } from "../../shared/ui";
 import { resourceKindLabel, text } from "./settings-model";
 import { platformEdition } from "../../app/edition";
 
@@ -48,11 +48,11 @@ export function ResourcesTab() {
         if (record) await api.projects.update(text(record.id), payload);
         else await api.projects.create({ workspace_id: currentId, ...payload });
       } else {
-        const { environment, ...sitePayload } = payload;
-        const site = record
-          ? await api.sites.update(text(record.id), sitePayload)
-          : await api.sites.create({ workspace_id: currentId, ...sitePayload });
-        if (environment) await api.sites.updateEnvironment(text(site.id), environment as JsonRecord);
+        if (record) await api.sites.update(text(record.id), payload);
+        else await api.sites.create({ workspace_id: currentId, ...payload });
+        await Promise.all(["device-map", "device"].map(key =>
+          client.invalidateQueries({ queryKey: workspaceQueryKey(currentId, key) })
+        ));
       }
       setMessage(`${resourceKindLabel(kind)}${record ? "已更新" : "已创建"}`);
       setResourceDialog(null);
@@ -221,7 +221,7 @@ function ResourceRows({
           </div>
           <div className="resource-row-actions">
             <Badge tone={item.status === "active" ? "success" : "neutral"}>
-              {text(item.status, "active")}
+              {item.status === "archived" ? "归档" : "启用"}
             </Badge>
             <Button variant="secondary" onClick={() => onEdit(item)}>
               <Pencil size={13} />
@@ -261,46 +261,29 @@ function ResourceFormDialog({
   );
   const [projectId, setProjectId] = useState(text(record?.project_id, ""));
   const [status, setStatus] = useState(text(record?.status, "active"));
-  const siteEnvironment = useQuery({
-    queryKey: ["site-environment", text(record?.id, "")],
-    queryFn: () => api.sites.environment(text(record?.id)),
-    enabled: kind === "Site" && Boolean(record?.id),
-  });
-  const values = siteEnvironment.data?.values;
-  const [ecosystem, setEcosystem] = useState("");
-  const [observations, setObservations] = useState<string[]>([]);
-  const [tags, setTags] = useState("");
-  useEffect(() => {
-    if (!values) return;
-    setEcosystem(values.ecosystem?.id ?? "");
-    setObservations(values.observation_objects.map((term) => term.id));
-    setTags(values.research_tags.join(", "));
-  }, [values]);
+  const [ecosystem, setEcosystem] = useState(text(record?.ecosystem_term_id, ""));
+  const [latitude, setLatitude] = useState(text(record?.latitude, ""));
+  const [longitude, setLongitude] = useState(text(record?.longitude, ""));
+  const [altitude, setAltitude] = useState(text(record?.altitude_m, ""));
   const [busy, setBusy] = useState(false);
   const returnFocus = useRef(document.activeElement as HTMLElement | null);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
     try {
-      const environment = kind !== "Site" ? undefined : {
-        ecosystem_term_id: ecosystem || null,
-        observation_object_ids: observations,
-        purpose_ids: values?.purposes.map((term) => term.id) ?? [],
-        management_term_id: values?.management?.id ?? null,
-        deployment_term_id: values?.deployment?.id ?? null,
-        altitude_m: values?.altitude_m ?? null,
-        commissioned_year: values?.commissioned_year ?? null,
-        research_tags: tags.split(",").map((item) => item.trim()).filter(Boolean),
-      };
       await onSave(
         kind === "Project"
           ? { name: name.trim(), description: description.trim(), status }
           : {
               name: name.trim(),
-              project_id: projectId,
+              ...(editing ? {} : { project_id: projectId }),
+              description: description.trim(),
               location_text: location.trim(),
-              status,
-              environment,
+              ...(editing ? { status } : {}),
+              latitude: latitude === "" ? null : Number(latitude),
+              longitude: longitude === "" ? null : Number(longitude),
+              altitude_m: altitude === "" ? null : Number(altitude),
+              ecosystem_term_id: ecosystem || null,
             },
       );
     } finally {
@@ -349,6 +332,7 @@ function ResourceFormDialog({
               <span className="field-label">所属项目</span>
               <SelectInput
                 required
+                disabled={editing}
                 value={projectId}
                 onChange={(event) => setProjectId(event.target.value)}
               >
@@ -367,29 +351,27 @@ function ResourceFormDialog({
                 onChange={(event) => setLocation(event.target.value)}
               />
             </label>
-            <div className="form-section environment-form-section">
-              <div className="profile-editor-section-head">
-                <span><Tags size={16} /></span>
-                <div><h3>样地观测资料</h3><p>设备默认继承样地的设备类型、观测对象和研究标签。</p></div>
-              </div>
-              <label className="field">
-                <span className="field-label">设备类型</span>
-                <SelectInput value={ecosystem} onChange={(event) => setEcosystem(event.target.value)}>
-                  <option value="">未设置</option>
-                  {terms.filter((term) => term.kind === "ecosystem" && term.status === "active").map((term) => <option key={term.id} value={term.id}>{term.name_zh}</option>)}
-                </SelectInput>
+            <label className="field"><span className="field-label">样地简介</span>
+              <Textarea rows={3} value={description} onChange={event => setDescription(event.target.value)} />
+            </label>
+            <div className="grid grid-2">
+              <label className="field"><span className="field-label">经度</span>
+                <Input type="number" step="any" min={-180} max={180} required={latitude !== ""} value={longitude} onChange={event => setLongitude(event.target.value)} />
               </label>
-              <div className="field environment-multi-field">
-                <span className="field-label">观测对象</span>
-                <div className="taxonomy-choice-grid">
-                  {terms.filter((term) => term.kind === "observation_object" && term.status === "active").map((term) => <label key={term.id} className={observations.includes(term.id) ? "selected" : ""}><CheckboxInput checked={observations.includes(term.id)} onChange={(event) => setObservations((current) => event.target.checked ? Array.from(new Set([...current, term.id])) : current.filter((id) => id !== term.id))} /><span>{term.name_zh}</span></label>)}
-                </div>
-              </div>
-              <label className="field">
-                <span className="field-label">研究方向 / 标签</span>
-                <Input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="例如：碳通量，长期定位观测" />
+              <label className="field"><span className="field-label">纬度</span>
+                <Input type="number" step="any" min={-90} max={90} required={longitude !== ""} value={latitude} onChange={event => setLatitude(event.target.value)} />
               </label>
             </div>
+            <label className="field"><span className="field-label">海拔（米）</span>
+              <Input type="number" step="any" value={altitude} onChange={event => setAltitude(event.target.value)} />
+            </label>
+            <label className="field"><span className="field-label">生态分类</span>
+              <SelectInput value={ecosystem} onChange={event => setEcosystem(event.target.value)}>
+                <option value="">未设置</option>
+                {ecosystem && !terms.some(term => term.id === ecosystem) && <option value={ecosystem}>当前分类</option>}
+                {terms.filter(term => term.kind === "ecosystem").map(term => <option key={term.id} value={term.id}>{term.name_zh}</option>)}
+              </SelectInput>
+            </label>
           </>
         )}
         {editing && (

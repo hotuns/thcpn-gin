@@ -6,7 +6,7 @@ import { render, eventually } from "../render";
 
 const device = (device_id: string, device_type: string, extra: Partial<DeviceMapItem> = {}): DeviceMapItem => ({
   device_id, device_type, name: device_id, asset_no: `${device_id}-SN`, status: "active", location_source: "device", child_count: 0,
-  environment: { research_tags: [], observation_objects: [], purposes: [] }, ...extra,
+  environment: {}, ...extra,
 });
 const gateway = device("gateway", "gateway");
 const total = (value: number) => ({ value, complete: true, covered_devices: 2, total_devices: 2 });

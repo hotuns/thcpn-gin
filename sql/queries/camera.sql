@@ -9,7 +9,7 @@ INSERT INTO devices (
     device_type
 )
 VALUES ($1, $2, 'active', now(), 'online', now(), 'camera')
-RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type, iccid;
+RETURNING id, product_id, serial_no, name, status, activated_at, created_at, updated_at, lifecycle_status, lifecycle_updated_at, device_type, iccid, asset_no, hardware_sn, product_term_id, ecosystem_term_id;
 
 -- name: UpsertCameraBinding :one
 INSERT INTO camera_bindings (

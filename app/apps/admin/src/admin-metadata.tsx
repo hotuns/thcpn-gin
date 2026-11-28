@@ -92,7 +92,7 @@ export function AdminMetadataPage() {
 
 function ProfileOptions() {
   const query = useQuery({ queryKey: ["admin", "device-taxonomy"], queryFn: api.admin.deviceTaxonomy });
-  const [kind, setKind] = useState<"ecosystem" | "observation_object">("ecosystem");
+  const [kind, setKind] = useState<"ecosystem" | "product">("ecosystem");
   const [editing, setEditing] = useState<DeviceTaxonomyTerm | "new" | null>(null);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
@@ -126,11 +126,11 @@ function ProfileOptions() {
   return <>
     <Panel>
       <div className="admin-list-toolbar">
-        <Select value={kind} onChange={setKind} style={{ width: 180 }} options={[{ value: "ecosystem", label: "设备类型" }, { value: "observation_object", label: "观测对象" }]} />
+        <Select value={kind} onChange={setKind} style={{ width: 180 }} options={[{ value: "ecosystem", label: "生态分类" }, { value: "product", label: "产品名称" }]} />
         <Space><Button icon={<RefreshCw size={14} />} onClick={() => void query.refetch()}>刷新</Button><Button type="primary" icon={<Plus size={14} />} onClick={() => open("new")}>新增选项</Button></Space>
       </div>
       {feedback && <div className="admin-feedback">{feedback}</div>}
-      {query.isLoading ? <StateView type="loading" title="正在加载设备资料选项" description="正在读取设备类型和观测对象。" /> : query.error ? <StateView type="error" title="设备资料选项加载失败" description={formatApiError(query.error).message} /> : <Table rowKey="id" dataSource={rows} columns={[
+      {query.isLoading ? <StateView type="loading" title="正在加载设备资料选项" description="正在读取生态分类和产品名称。" /> : query.error ? <StateView type="error" title="设备资料选项加载失败" description={formatApiError(query.error).message} /> : <Table rowKey="id" dataSource={rows} columns={[
         ...(kind === "ecosystem" ? [{ title: "图标", width: 70, render: (_: unknown, item: DeviceTaxonomyTerm) => <EcosystemIcon name={item.icon} /> }] : []),
         { title: "名称", render: (_: unknown, item: DeviceTaxonomyTerm) => <div><div className="cell-title">{item.name_zh}</div><div className="cell-sub">{item.name_en}</div></div> },
         { title: "编码", dataIndex: "code", className: "mono" },
@@ -139,7 +139,7 @@ function ProfileOptions() {
         { title: "操作", width: 150, render: (_: unknown, item: DeviceTaxonomyTerm) => <Space><Button type="link" onClick={() => open(item)}>编辑</Button><Popconfirm title="删除这个选项？" description="已被设备或样地使用的选项无法删除。" onConfirm={() => void remove(item)}><Button type="link" danger>删除</Button></Popconfirm></Space> },
       ]} pagination={false} />}
     </Panel>
-    <Drawer title={editing === "new" ? `新增${kind === "ecosystem" ? "设备类型" : "观测对象"}` : "编辑选项"} open={Boolean(editing)} onClose={close} size={420} extra={<Space><Button onClick={close}>取消</Button><Button type="primary" loading={busy} onClick={() => void save()}>保存</Button></Space>}>
+    <Drawer title={editing === "new" ? `新增${kind === "ecosystem" ? "生态分类" : "产品名称"}` : "编辑选项"} open={Boolean(editing)} onClose={close} size={420} extra={<Space><Button onClick={close}>取消</Button><Button type="primary" loading={busy} onClick={() => void save()}>保存</Button></Space>}>
       <Form form={form} layout="vertical">
         <Form.Item name="code" label="稳定编码" rules={[{ required: true, message: "请输入编码" }]}><Input disabled={editing !== "new"} placeholder="例如 forest" /></Form.Item>
         <Form.Item name="name_zh" label="中文名称" rules={[{ required: true, message: "请输入中文名称" }]}><Input /></Form.Item>
