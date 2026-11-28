@@ -15,6 +15,7 @@ import { useObservatoryMotion } from "../../shared/observatory/observatory-motio
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useNavigationSource, usePlatformReturn } from "../../app/platform-navigation";
+import { platformEdition } from "../../app/edition";
 import {
   Plus,
   Copy,
@@ -109,7 +110,7 @@ function AtlasHome({ workspaceId }: { workspaceId: string }) {
   const client = useQueryClient();
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab");
-  const section = tab === "templates" || tab === "topics" ? tab : "views";
+  const section = tab === "templates" || (platformEdition.showDigitalPlot && tab === "topics") ? tab : "views";
   const viewSearch = params.get("q") ?? "";
   const templateFilter = atlasTemplates.find(template => template.id === params.get("template"))?.id ?? "all";
   const updateListing = (key: "tab" | "q" | "template", value: string) => setParams(current => {
@@ -199,20 +200,22 @@ function AtlasHome({ workspaceId }: { workspaceId: string }) {
         {([
           ["views", "myViews", saved.length],
           ["templates", "templates", atlasTemplates.length],
-          ["topics", "topics", 1],
+          ...(platformEdition.showDigitalPlot ? ([["topics", "topics", 1]] as const) : []),
         ] as const).map(([key, label, count]) => (
           <TabsTrigger key={key} value={key}>
             {a(label)}<span className="ui-count-badge">{formatNumber(count)}</span>
           </TabsTrigger>
         ))}
       </TabsList>
-      <TabsContent value="topics" forceMount hidden={section !== "topics"}>
-        <section className="atlas-custom-showcase" aria-labelledby="atlas-custom-title">
-          <div><span id="atlas-custom-title">{t("digitalPlot.category")}</span><h2>{t("digitalPlot.title")}</h2><p>{t("digitalPlot.description")}</p><Button onClick={() => navigate("/atlas/topics/digital-plot", { state: source })}>{t("digitalPlot.enter")} ↗</Button></div>
-          <img src={hongliulin.preview} alt="" />
-          <span className="atlas-custom-badge">{t("digitalPlot.demo")}</span>
-        </section>
-      </TabsContent>
+      {platformEdition.showDigitalPlot && (
+        <TabsContent value="topics" forceMount hidden={section !== "topics"}>
+          <section className="atlas-custom-showcase" aria-labelledby="atlas-custom-title">
+            <div><span id="atlas-custom-title">{t("digitalPlot.category")}</span><h2>{t("digitalPlot.title")}</h2><p>{t("digitalPlot.description")}</p><Button onClick={() => navigate("/atlas/topics/digital-plot", { state: source })}>{t("digitalPlot.enter")} ↗</Button></div>
+            <img src={hongliulin.preview} alt="" />
+            <span className="atlas-custom-badge">{t("digitalPlot.demo")}</span>
+          </section>
+        </TabsContent>
+      )}
       <TabsContent value="templates" forceMount hidden={section !== "templates"}>
         <section aria-label={a("chooseTemplate")} className="atlas-home-templates">
           {atlasTemplates.map((template) => (

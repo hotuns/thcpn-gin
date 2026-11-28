@@ -7,6 +7,7 @@ import { Button, StateView } from "../shared/ui";
 import { RequirePlatform, RootRedirect } from "./route-guards";
 import { Shell } from "./shell";
 import { DataHubPage, MorePage } from "./mobile-pages";
+import { platformEdition } from "./edition";
 
 const DevicesPage = lazy(() =>
   import("../features/devices/devices-page").then((module) => ({ default: module.DevicesPage })),
@@ -90,49 +91,71 @@ export function PlatformApp() {
     <Suspense fallback={<div className="app-loading t-shimmer" data-text="正在加载页面…">正在加载页面…</div>}>
       <Routes>
         <Route path="/login" element={<AuthPage />} />
-        <Route path="/demo-login" element={<Navigate to="/login?demo=1" replace />} />
-        <Route path="/register" element={<AuthPage register />} />
-        <Route path="/public/devices/:publicSlug" element={<PublicDevicePage />} />
+        <Route
+          path="/demo-login"
+          element={<Navigate to={platformEdition.showDemoLogin ? "/login?demo=1" : "/login"} replace />}
+        />
+        <Route
+          path="/register"
+          element={platformEdition.showSelfRegister ? <AuthPage register /> : <Navigate to="/login" replace />}
+        />
+        {platformEdition.showSharing ? (
+          <Route path="/public/devices/:publicSlug" element={<PublicDevicePage />} />
+        ) : (
+          <Route path="/public/devices/:publicSlug" element={<Navigate to="/login" replace />} />
+        )}
         <Route element={<RequirePlatform />}>
           <Route element={<Shell />}>
-            <Route path="/dashboard" element={<DashboardPage />} />
+            {!platformEdition.lite && <Route path="/dashboard" element={<DashboardPage />} />}
             <Route path="/data" element={<DataHubPage />} />
             <Route path="/more" element={<MorePage />} />
-            <Route path="/workspaces" element={<WorkspacesPage />} />
+            {!platformEdition.lite && <Route path="/workspaces" element={<WorkspacesPage />} />}
             <Route path="/devices" element={<DevicesPage />} />
             <Route path="/device-map" element={<DeviceMapPage />} />
-            <Route path="/alerts" element={<AlertsPage />} />
-            <Route path="/claim" element={<DeviceClaimPage />} />
-            <Route path="/claim/:claimSlug" element={<DeviceClaimPage />} />
+            {platformEdition.showAlerts && <Route path="/alerts" element={<AlertsPage />} />}
+            {platformEdition.showDeviceClaim && (
+              <>
+                <Route path="/claim" element={<DeviceClaimPage />} />
+                <Route path="/claim/:claimSlug" element={<DeviceClaimPage />} />
+              </>
+            )}
             <Route
               path="/devices/:deviceId"
               element={<DeviceCenterDetailPage />}
             />
             <Route path="/device-data" element={<LegacyDeviceDataRedirect />} />
-            <Route path="/data-compare" element={<DataComparisonPage />} />
-            <Route path="/datasets" element={<DatasetsPage />} />
-            <Route path="/datasets/new" element={<DatasetEditorPage />} />
-            <Route
-              path="/datasets/:datasetId/edit"
-              element={<DatasetEditorPage />}
-            />
-            <Route
-              path="/datasets/:datasetId"
-              element={<DatasetDetailPage />}
-            />
+            {!platformEdition.lite && (
+              <>
+                <Route path="/data-compare" element={<DataComparisonPage />} />
+                <Route path="/datasets" element={<DatasetsPage />} />
+                <Route path="/datasets/new" element={<DatasetEditorPage />} />
+                <Route
+                  path="/datasets/:datasetId/edit"
+                  element={<DatasetEditorPage />}
+                />
+                <Route
+                  path="/datasets/:datasetId"
+                  element={<DatasetDetailPage />}
+                />
+                <Route path="/processing" element={<ProcessingPage />} />
+                <Route path="/processing/new" element={<ProcessingTaskCreatePage />} />
+                <Route path="/processing/:taskId" element={<ProcessingTaskDetailPage />} />
+              </>
+            )}
             <Route path="/exports" element={<ExportsPage key="export-list" />} />
             <Route path="/exports/new" element={<ExportEditorPage />} />
-            <Route path="/processing" element={<ProcessingPage />} />
-            <Route path="/processing/new" element={<ProcessingTaskCreatePage />} />
-            <Route path="/processing/:taskId" element={<ProcessingTaskDetailPage />} />
             <Route path="/atlas" element={<AtlasPage />} />
-            <Route path="/atlas/topics/digital-plot" element={<DigitalPlotPage />} />
+            {platformEdition.showDigitalPlot && (
+              <Route path="/atlas/topics/digital-plot" element={<DigitalPlotPage />} />
+            )}
             <Route path="/atlas/:id" element={<AtlasPage />} />
             <Route path="/settings" element={<SettingsPage />} />
-            {billingEnabled ? (
+            {!platformEdition.lite && billingEnabled ? (
               <Route path="/subscription" element={<SubscriptionPage />} />
             ) : null}
-            <Route path="/notifications" element={<NotificationsPage />} />
+            {platformEdition.showNotifications && (
+              <Route path="/notifications" element={<NotificationsPage />} />
+            )}
             <Route path="/account" element={<AccountPage />} />
             <Route path="*" element={<RootRedirect />} />
           </Route>

@@ -1,4 +1,5 @@
 import { generatePath, matchPath, parsePath } from "react-router-dom";
+import { platformEdition } from "./edition";
 
 type RouteMetadata = {
   key: string;
@@ -41,10 +42,13 @@ const routes: Record<string, RouteMetadata> = {
 export function findPlatformRoute(pathname: string): RouteMetadata | undefined {
   for (const [pattern, metadata] of Object.entries(routes)) {
     const match = matchPath(pattern, pathname);
-    if (match) return {
-      ...metadata,
-      parent: metadata.parent ? generatePath(metadata.parent, match.params) : undefined,
-    };
+    if (match) {
+      const parentPattern = platformEdition.lite && pattern === "/settings" ? undefined : metadata.parent;
+      return {
+        ...metadata,
+        parent: parentPattern ? generatePath(parentPattern, match.params) : undefined,
+      };
+    }
   }
 }
 

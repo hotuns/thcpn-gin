@@ -20,6 +20,7 @@ import {
   PanelLeftOpen,
   Radar,
   ScanLine,
+  Settings,
   Table2,
   Workflow
 } from "lucide-react";
@@ -51,7 +52,8 @@ import { AccountMenu, WorkspaceMenu } from "./shell-menus";
 import { useIsMobile } from "../shared/hooks/use-mobile";
 import { ConnectionStatus, MobileHeader, MobileNavigation, useMobileKeyboard } from "./mobile-chrome";
 import { useRouteScroll } from "./use-route-scroll";
-const navGroups = [
+import { platformEdition } from "./edition";
+const fullNavGroups = [
   {
     key: "operations",
     items: [
@@ -79,6 +81,34 @@ const navGroups = [
     ],
   },
 ];
+const liteNavGroups = [
+  {
+    key: "operations",
+    items: [
+      { to: "/atlas", key: "wallboards", icon: ScanLine },
+      { to: "/devices", key: "devices", icon: Boxes },
+      { to: "/device-map", key: "deviceMap", icon: MapPinned },
+    ],
+  },
+  {
+    key: "data",
+    items: [
+      { to: "/exports", key: "exports", icon: Download },
+    ],
+  },
+  {
+    key: "management",
+    items: [
+      { to: "/settings", key: "settings", icon: Settings },
+    ],
+  },
+];
+const navGroups = (platformEdition.lite ? liteNavGroups : fullNavGroups)
+  .map((group) => ({
+    ...group,
+    items: group.items.filter((item) => platformEdition.allowedNavKeys.has(item.key)),
+  }))
+  .filter((group) => group.items.length > 0);
 const sidebarKeys = new Set(navGroups.flatMap(group => group.items.map(item => item.key)));
 
 export function Shell() {
@@ -110,7 +140,11 @@ export function Shell() {
   const isMobile = useIsMobile();
   const keyboardOpen = useMobileKeyboard();
   const focusedPage = Boolean(route?.editor || route?.presentation);
-  const mobileTitle = route?.key === "dataHub" ? t("mobile.data") : t(`platform:navigation.${route?.key ?? "overview"}`);
+  const mobileTitle = route?.key === "dataHub"
+    ? t("mobile.data")
+    : platformEdition.settingsResourcesOnly && route?.key === "settings"
+      ? "项目与样地"
+      : t(`platform:navigation.${route?.key ?? "overview"}`);
   useRouteScroll(workspace.currentId);
   useEffect(() => {
     setActiveSidebarMenu(null);
@@ -124,7 +158,7 @@ export function Shell() {
       const [notices, announcements] = await Promise.all([api.notifications.list(workspace.currentId ?? undefined, 20), api.notifications.announcements(workspace.currentId ?? undefined)]);
       return Number(notices.unread_count ?? 0) + Number(announcements.unread_count ?? 0);
     },
-    enabled: Boolean(workspace.currentId),
+    enabled: platformEdition.showNotifications && Boolean(workspace.currentId),
     refetchInterval: 60_000,
   });
   const sidebarContent = (
@@ -142,28 +176,32 @@ export function Shell() {
             </IconButton>
           </div>
         </div>
-        <WorkspaceMenu
-          open={activeSidebarMenu === "workspace"}
-          collapsed={sidebarCollapsed}
-          workspaces={workspace.workspaces}
-          current={workspace.current}
-          loading={workspace.loading}
-          onToggle={() =>
-            setActiveSidebarMenu((current) =>
-              current === "workspace" ? null : "workspace",
-            )
-          }
-          onClose={() => setActiveSidebarMenu(null)}
-          onSwitch={switchWorkspace}
-          onNavigate={() => setActiveSidebarMenu(null)}
-        />
+        {platformEdition.showWorkspaceSwitcher && (
+          <WorkspaceMenu
+            open={activeSidebarMenu === "workspace"}
+            collapsed={sidebarCollapsed}
+            workspaces={workspace.workspaces}
+            current={workspace.current}
+            loading={workspace.loading}
+            onToggle={() =>
+              setActiveSidebarMenu((current) =>
+                current === "workspace" ? null : "workspace",
+              )
+            }
+            onClose={() => setActiveSidebarMenu(null)}
+            onSwitch={switchWorkspace}
+            onNavigate={() => setActiveSidebarMenu(null)}
+          />
+        )}
         <nav id="platform-sidebar-navigation" className="sidebar-navigation" aria-label={t("mainNavigation")}>
           {navGroups.map((group) => (
             <div className="nav-group" key={group.key}>
               <div className="nav-title">{t(`platform:navigationGroups.${group.key}`)}</div>
               {group.items.filter((item) => item.key !== "subscription" || billingEnabled).map((item) => {
                 const Icon = item.icon;
-                const label = t(`platform:navigation.${item.key}`);
+                const label = platformEdition.settingsResourcesOnly && item.key === "settings"
+                  ? "项目与样地"
+                  : t(`platform:navigation.${item.key}`);
                 const active = item.key === sidebarKey;
                 const navLink = (
                   <Link
@@ -221,7 +259,10 @@ export function Shell() {
               <BreadcrumbList>
                 {breadcrumbs.map((item, index) => {
                   const isParent = index === breadcrumbs.length - 2;
-                  const label = t(`platform:navigation.${isParent ? returnLink.key ?? item.key : item.key}`);
+                  const key = isParent ? returnLink.key ?? item.key : item.key;
+                  const label = platformEdition.settingsResourcesOnly && key === "settings"
+                    ? "项目与样地"
+                    : t(`platform:navigation.${key}`);
                   const to = isParent ? returnLink.target : item.to;
                   return <Fragment key={`${item.key}-${index}`}>
                     {index > 0 && <BreadcrumbSeparator />}
@@ -241,13 +282,17 @@ export function Shell() {
           </div>
           <div className="topbar-actions">
             <LanguageSwitcher compact />
-            <IconButton label={t("openGuide")} onClick={() => setOnboardingSession((current) => current + 1)}>
-              <HelpCircle size={18} />
-            </IconButton>
-            <Link className="topbar-notification" to="/notifications" replace={route?.key === "notifications"} state={route?.key === "notifications" ? location.state : source} aria-label={t("platform:navigation.notifications")}>
-              <Bell size={18} />
-              {(notificationSummary.data ?? 0) > 0 && <span>{Math.min(notificationSummary.data ?? 0, 99)}</span>}
-            </Link>
+            {platformEdition.showOnboarding && (
+              <IconButton label={t("openGuide")} onClick={() => setOnboardingSession((current) => current + 1)}>
+                <HelpCircle size={18} />
+              </IconButton>
+            )}
+            {platformEdition.showNotifications && (
+              <Link className="topbar-notification" to="/notifications" replace={route?.key === "notifications"} state={route?.key === "notifications" ? location.state : source} aria-label={t("platform:navigation.notifications")}>
+                <Bell size={18} />
+                {(notificationSummary.data ?? 0) > 0 && <span>{Math.min(notificationSummary.data ?? 0, 99)}</span>}
+              </Link>
+            )}
           </div>
         </header>}
         <ConnectionStatus />
@@ -256,7 +301,7 @@ export function Shell() {
         </main>
       </div>
       {isMobile && !focusedPage && !keyboardOpen && <MobileNavigation />}
-      {user?.id ? <OnboardingTour key={onboardingSession} userId={user.id} startOpen={onboardingSession > 0} /> : null}
+      {platformEdition.showOnboarding && user?.id ? <OnboardingTour key={onboardingSession} userId={user.id} startOpen={onboardingSession > 0} /> : null}
       <RequestErrorToasts />
     </div>
   );

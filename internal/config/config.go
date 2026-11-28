@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v3"
 )
@@ -38,8 +39,24 @@ type ServerConfig struct {
 	Addr string `yaml:"addr"`
 }
 
+const ProfileOnPremLite = "onprem-lite"
+
 type DeploymentConfig struct {
+	Profile       string `yaml:"profile"`
+	WorkspaceID   string `yaml:"workspace_id"`
 	PublicBaseURL string `yaml:"public_base_url"`
+}
+
+func (d DeploymentConfig) Lite() bool {
+	return strings.EqualFold(strings.TrimSpace(d.Profile), ProfileOnPremLite)
+}
+
+func (d DeploymentConfig) DefaultWorkspaceUUID() uuid.UUID {
+	id, err := uuid.Parse(strings.TrimSpace(d.WorkspaceID))
+	if err != nil {
+		return uuid.Nil
+	}
+	return id
 }
 
 type LoggerConfig struct {
@@ -389,6 +406,14 @@ func loadDotEnv() error {
 }
 
 func (cfg Config) Validate() error {
+	if profile := strings.TrimSpace(cfg.Deployment.Profile); profile != "" && !cfg.Deployment.Lite() {
+		return errors.New("deployment.profile must be empty or onprem-lite")
+	}
+	if ws := strings.TrimSpace(cfg.Deployment.WorkspaceID); ws != "" {
+		if id, err := uuid.Parse(ws); err != nil || id == uuid.Nil {
+			return errors.New("deployment.workspace_id must be a valid UUID")
+		}
+	}
 	if _, err := NormalizePublicBaseURL(cfg.Deployment.PublicBaseURL); err != nil {
 		return err
 	}
@@ -586,6 +611,8 @@ func (cfg Config) Validate() error {
 }
 
 func applyEnv(cfg *Config) {
+	cfg.Deployment.Profile = envOr(cfg.Deployment.Profile, "DEPLOYMENT_PROFILE")
+	cfg.Deployment.WorkspaceID = envOr(cfg.Deployment.WorkspaceID, "DEPLOYMENT_WORKSPACE_ID")
 	cfg.Deployment.PublicBaseURL = envOr(cfg.Deployment.PublicBaseURL, "PLATFORM_PUBLIC_URL")
 	cfg.SMTP.Host = envOr(cfg.SMTP.Host, "SMTP_HOST")
 	cfg.SMTP.Username = envOr(cfg.SMTP.Username, "SMTP_USERNAME")
@@ -893,6 +920,10 @@ func applyEnv(cfg *Config) {
 		if seconds, err := strconv.Atoi(value); err == nil {
 			cfg.Ezviz.AccessTokenTTLSeconds = seconds
 		}
+	}
+	if cfg.Deployment.Lite() {
+		cfg.Billing.Enabled = false
+		cfg.Auth.DevRegisterEnabled = false
 	}
 }
 

@@ -18,6 +18,7 @@ type Service struct {
 	db             *pgxpool.Pool
 	defaults       Values
 	billingEnabled bool
+	lite           bool
 	publicBaseURL  string
 }
 type Snapshot struct {
@@ -52,7 +53,8 @@ type Actor struct {
 
 func New(db *pgxpool.Pool, cfg config.Config) *Service {
 	publicBaseURL, _ := config.NormalizePublicBaseURL(cfg.Deployment.PublicBaseURL)
-	return &Service{db: db, defaults: defaults(cfg), billingEnabled: cfg.Billing.Enabled, publicBaseURL: publicBaseURL}
+	lite := cfg.Deployment.Lite()
+	return &Service{db: db, defaults: defaults(cfg), billingEnabled: cfg.Billing.Enabled && !lite, lite: lite, publicBaseURL: publicBaseURL}
 }
 func clone(values Values) Values {
 	result := Values{}
@@ -91,7 +93,12 @@ func (s *Service) Load(ctx context.Context) (Snapshot, error) {
 			result.Values[key] = value
 		}
 	}
-	result.BillingEnabled = result.Values["billing_enabled"] == 1
+	if s.lite {
+		result.Values["billing_enabled"] = 0
+		result.BillingEnabled = false
+	} else {
+		result.BillingEnabled = result.Values["billing_enabled"] == 1
+	}
 	return result, nil
 }
 func (s *Service) Context(ctx context.Context) (context.Context, error) {

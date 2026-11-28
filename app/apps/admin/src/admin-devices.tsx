@@ -70,6 +70,7 @@ import { AdminDeviceCarbon } from "./admin-device-carbon";
 import { AdminDeviceCamera } from "./admin-device-camera";
 import { AdminSamplingEditor } from "./admin-sampling-editor";
 import { AdminExportsPage } from "./admin-exports";
+import { adminEdition } from "./edition";
 
 type Mode =
   | "edit"
@@ -668,16 +669,18 @@ export function AdminDevicesPage() {
             onChange={(item) => updateListView({ lifecycle: item ?? "", page: 1 })}
             options={deviceLifecycleOptions.map((item) => ({ value: item.value, label: deviceLifecycleLabel(item.value) }))}
           />
-          <Select
-            allowClear
-            placeholder="分配状态"
-            value={assignment || undefined}
-            onChange={(item) => updateListView({ assignment: item ?? "", page: 1 })}
-            options={[
-              { value: "assigned", label: "已分配" },
-              { value: "unassigned", label: "未分配" },
-            ]}
-          />
+          {adminEdition.showWorkspaceAssignment && (
+            <Select
+              allowClear
+              placeholder="分配状态"
+              value={assignment || undefined}
+              onChange={(item) => updateListView({ assignment: item ?? "", page: 1 })}
+              options={[
+                { value: "assigned", label: "已分配" },
+                { value: "unassigned", label: "未分配" },
+              ]}
+            />
+          )}
           <Select<DeviceSort>
             className="admin-device-sort"
             aria-label="排序方式"
@@ -882,11 +885,11 @@ function DeviceDetailPanel({
     </section>
   </div>;
   const assets = <div className="admin-device-detail-content">
-    {(device.device_type === "gateway" || device.device_type === "standalone" || device.device_type === "carbon_sink") ? <ClaimCredentialSection device={device} date={date} /> : null}
+    {adminEdition.showClaimCredential && (device.device_type === "gateway" || device.device_type === "standalone" || device.device_type === "carbon_sink") ? <ClaimCredentialSection device={device} date={date} /> : null}
     <section className="admin-detail-section">
-      <div className="admin-detail-section-head"><div><h2>分配关系</h2><span>设备当前所属的工作区与资源位置</span></div><Space><Button onClick={() => onOpen("assign")}>调整分配</Button>{Boolean(device.workspace_id) && <Popconfirm title="解除工作区分配？" description="设备将不再对该工作区可见。" onConfirm={onUnassign}><Button danger>解除分配</Button></Popconfirm>}</Space></div>
+      <div className="admin-detail-section-head"><div><h2>{adminEdition.showWorkspaceAssignment ? "分配关系" : "项目与样地归属"}</h2><span>{adminEdition.showWorkspaceAssignment ? "设备当前所属的工作区与资源位置" : "设备当前所属的项目与样地位置"}</span></div><Space><Button onClick={() => onOpen("assign")}>{adminEdition.showWorkspaceAssignment ? "调整分配" : "调整项目 / 样地"}</Button>{adminEdition.showWorkspaceAssignment && Boolean(device.workspace_id) && <Popconfirm title="解除工作区分配？" description="设备将不再对该工作区可见。" onConfirm={onUnassign}><Button danger>解除分配</Button></Popconfirm>}</Space></div>
       <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }} items={[
-        { key: "workspace", label: "工作区", children: device.workspace_id ? value(device.workspace_name) : <Tag>未分配</Tag> },
+        ...(adminEdition.showWorkspaceAssignment ? [{ key: "workspace", label: "工作区", children: device.workspace_id ? value(device.workspace_name) : <Tag>未分配</Tag> }] : []),
         { key: "project", label: "项目", children: value(device.project_name, "未设置") },
         { key: "site", label: "样地", children: value(device.site_name, "未设置") },
         { key: "assigned", label: "分配时间", children: date(device.assigned_at) },
@@ -1049,7 +1052,7 @@ function columns() {
           <div className="cell-sub mono">
             {value(row.asset_no)}
           </div>
-          {Array.isArray(row.ops_tags)&&<Space size={[4,4]} wrap>{row.ops_tags.map((tag:string)=><Tag key={tag}>{tag}</Tag>)}</Space>}
+          {adminEdition.showVendorDossier && Array.isArray(row.ops_tags)&&<Space size={[4,4]} wrap>{row.ops_tags.map((tag:string)=><Tag key={tag}>{tag}</Tag>)}</Space>}
         </div>
       ),
     },
@@ -1085,13 +1088,13 @@ function columns() {
         </Tag>
       ),
     },
-    {
+    ...(adminEdition.showWorkspaceAssignment ? [{
       title: "工作区",
       dataIndex: "workspace_id",
       width: 145,
       render: (item: string) =>
         item ? <Tag color="blue">{item.slice(0, 8)}</Tag> : <Tag>未分配</Tag>,
-    },
+    }] : []),
     {
       title: "状态",
       dataIndex: "status",
@@ -1140,6 +1143,11 @@ function DeviceForm({
     queryFn: api.workspaces.adminList,
     enabled: mode === "assign",
   });
+  useEffect(() => {
+    if (!adminEdition.showWorkspaceAssignment && mode === "assign" && !workspaceId && workspaces.data?.items?.[0]?.id) {
+      form.setFieldValue("target_workspace_id", String(workspaces.data.items[0].id));
+    }
+  }, [form, mode, workspaceId, workspaces.data?.items]);
   const projects = useQuery({
     queryKey: ["admin", "projects", workspaceId],
     queryFn: () => api.projects.adminList(workspaceId),
@@ -1201,21 +1209,27 @@ function DeviceForm({
   if (mode === "assign")
     return (
       <>
-        <Form.Item
-          name="target_workspace_id"
-          label="目标工作区"
-          rules={[{ required: true, message: "请选择工作区" }]}
-        >
-          <Select
-            showSearch
-            optionFilterProp="label"
-            loading={workspaces.isLoading}
-            options={workspaceOptions}
-            onChange={() =>
-              form.setFieldsValue({ project_id: undefined, site_id: undefined })
-            }
-          />
-        </Form.Item>
+        {adminEdition.showWorkspaceAssignment ? (
+          <Form.Item
+            name="target_workspace_id"
+            label="目标工作区"
+            rules={[{ required: true, message: "请选择工作区" }]}
+          >
+            <Select
+              showSearch
+              optionFilterProp="label"
+              loading={workspaces.isLoading}
+              options={workspaceOptions}
+              onChange={() =>
+                form.setFieldsValue({ project_id: undefined, site_id: undefined })
+              }
+            />
+          </Form.Item>
+        ) : (
+          <Form.Item name="target_workspace_id" hidden rules={[{ required: true, message: "缺少默认空间配置" }]}>
+            <Input />
+          </Form.Item>
+        )}
         <div className="drawer-grid">
           <Form.Item name="project_id" label="项目">
             <Select
@@ -1242,7 +1256,7 @@ function DeviceForm({
         <Alert
           type="info"
           showIcon
-          title="项目与站点选项会随工作区自动更新；网关节点自动继承网关归属"
+          title={adminEdition.showWorkspaceAssignment ? "项目与站点选项会随工作区自动更新；网关节点自动继承网关归属" : "网关节点会自动继承网关的项目与站点归属"}
         />
       </>
     );
@@ -1826,6 +1840,11 @@ function CameraCreateFields({ form }: { form: FormInstance<any> }) {
     queryKey: ["admin", "workspaces", "camera-create"],
     queryFn: api.workspaces.adminList,
   });
+  useEffect(() => {
+    if (!adminEdition.showWorkspaceAssignment && !workspaceId && workspaces.data?.items?.[0]?.id) {
+      form.setFieldValue("target_workspace_id", String(workspaces.data.items[0].id));
+    }
+  }, [form, workspaceId, workspaces.data?.items]);
   const projects = useQuery({
     queryKey: ["admin", "projects", "camera-create", workspaceId],
     queryFn: () => api.projects.adminList(workspaceId),
@@ -1861,19 +1880,25 @@ function CameraCreateFields({ form }: { form: FormInstance<any> }) {
         <Input />
       </Form.Item>
       <CameraBindingFields />
-      <Form.Item name="target_workspace_id" label="目标工作区">
-        <Select
-          allowClear
-          showSearch
-          optionFilterProp="label"
-          loading={workspaces.isLoading}
-          options={workspaceOptions}
-          placeholder="可选，留空则只创建系统资产"
-          onChange={() =>
-            form.setFieldsValue({ project_id: undefined, site_id: undefined })
-          }
-        />
-      </Form.Item>
+      {adminEdition.showWorkspaceAssignment ? (
+        <Form.Item name="target_workspace_id" label="目标工作区">
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            loading={workspaces.isLoading}
+            options={workspaceOptions}
+            placeholder="可选，留空则只创建系统资产"
+            onChange={() =>
+              form.setFieldsValue({ project_id: undefined, site_id: undefined })
+            }
+          />
+        </Form.Item>
+      ) : (
+        <Form.Item name="target_workspace_id" hidden>
+          <Input />
+        </Form.Item>
+      )}
       <div className="drawer-grid">
         <Form.Item name="project_id" label="项目">
           <Select
@@ -1953,7 +1978,7 @@ function drawerTitle(mode: Mode, selected: JsonRecord | null) {
     (
       {
         edit: "编辑资料",
-        assign: "分配工作区",
+        assign: adminEdition.showWorkspaceAssignment ? "分配工作区" : "分配项目 / 站点",
         child: "添加子节点",
         lifecycle: "更新生命周期",
         capabilities: "设备能力",

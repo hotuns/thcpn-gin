@@ -2,16 +2,24 @@ import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useLocale } from "@thcpn/i18n";
 import { useWorkspace } from "@thcpn/workspace";
-import { AlertTriangle, ArrowLeft, Bell, Boxes, Building2, Check, ChevronDown, Gauge, Grid2X2, Layers3 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bell, Boxes, Building2, Check, ChevronDown, Gauge, Grid2X2, Layers3, MapPinned, ScanLine } from "lucide-react";
 import { BrandLogo, Command, CommandEmpty, CommandInput, CommandItem, CommandList, IconButton, Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "../shared/ui";
 import { useNavigationSource, type usePlatformReturn } from "./platform-navigation";
 import { findPlatformRoute } from "./platform-routes";
+import { platformEdition } from "./edition";
 
-const tabs = [
+const fullTabs = [
   { section: "overview", to: "/dashboard", label: "platform:navigation.overview", icon: Gauge },
   { section: "devices", to: "/devices", label: "platform:navigation.devices", icon: Boxes },
   { section: "alerts", to: "/alerts", label: "platform:navigation.alerts", icon: AlertTriangle },
   { section: "data", to: "/data", label: "mobile.data", icon: Layers3 },
+  { section: "more", to: "/more", label: "mobile.more", icon: Grid2X2 },
+] as const;
+
+const liteTabs = [
+  { section: "wallboards", to: "/atlas", label: "platform:navigation.wallboards", icon: ScanLine },
+  { section: "devices", to: "/devices", label: "platform:navigation.devices", icon: Boxes },
+  { section: "deviceMap", to: "/device-map", label: "platform:navigation.deviceMap", icon: MapPinned },
   { section: "more", to: "/more", label: "mobile.more", icon: Grid2X2 },
 ] as const;
 
@@ -27,13 +35,29 @@ export function MobileHeader({ title, unread, returnLink, onSwitchWorkspace }: {
   const source = useNavigationSource();
   const notifications = findPlatformRoute(location.pathname)?.key === "notifications";
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  if (!platformEdition.showWorkspaceSwitcher) {
+    return (
+      <header className="mobile-app-header">
+        {returnLink?.key ? <IconButton label={t("mobile.backTo", { page: t(`platform:navigation.${returnLink.key}`) })} onClick={returnLink.back}><ArrowLeft size={20} /></IconButton> : <span className="mobile-brand-mark"><BrandLogo /></span>}
+        <div className="mobile-context-trigger">
+          <strong>{title}</strong>
+          {workspace.current?.name && <span>{workspace.current.name}</span>}
+        </div>
+        {platformEdition.showNotifications ? (
+          <Link className="mobile-notification" to="/notifications" replace={notifications} state={notifications ? location.state : source} aria-label={t("mobile.openNotifications")}><Bell size={21} />{unread > 0 && <span>{unread > 99 ? "99+" : unread}</span>}</Link>
+        ) : <span />}
+      </header>
+    );
+  }
   return <Sheet open={workspaceOpen} onOpenChange={setWorkspaceOpen}>
     <header className="mobile-app-header">
       {returnLink?.key ? <IconButton label={t("mobile.backTo", { page: t(`platform:navigation.${returnLink.key}`) })} onClick={returnLink.back}><ArrowLeft size={20} /></IconButton> : <span className="mobile-brand-mark"><BrandLogo /></span>}
       <SheetTrigger asChild><button type="button" className="mobile-context-trigger" aria-label={t("mobile.workspacePicker")}>
         <strong>{title}</strong><span>{workspace.current?.name ?? t("mobile.noWorkspace")}<ChevronDown size={12} aria-hidden="true" /></span>
       </button></SheetTrigger>
-      <Link className="mobile-notification" to="/notifications" replace={notifications} state={notifications ? location.state : source} aria-label={t("mobile.openNotifications")}><Bell size={21} />{unread > 0 && <span>{unread > 99 ? "99+" : unread}</span>}</Link>
+      {platformEdition.showNotifications ? (
+        <Link className="mobile-notification" to="/notifications" replace={notifications} state={notifications ? location.state : source} aria-label={t("mobile.openNotifications")}><Bell size={21} />{unread > 0 && <span>{unread > 99 ? "99+" : unread}</span>}</Link>
+      ) : <span />}
     </header>
       <SheetContent side="bottom" className="mobile-workspace-sheet">
         <SheetHeader><SheetTitle>{t("mobile.workspacePicker")}</SheetTitle></SheetHeader>
@@ -54,7 +78,17 @@ export function MobileHeader({ title, unread, returnLink, onSwitchWorkspace }: {
 export function MobileNavigation() {
   const { t } = useLocale();
   const { pathname } = useLocation();
-  const section = findPlatformRoute(pathname)?.mobileSection ?? "more";
+  const route = findPlatformRoute(pathname);
+  const tabs = platformEdition.lite ? liteTabs : fullTabs;
+  const section = platformEdition.lite
+    ? (route?.key === "wallboards" || route?.key === "atlasView"
+      ? "wallboards"
+      : route?.key === "devices" || route?.key === "deviceDetails"
+        ? "devices"
+        : route?.key === "deviceMap"
+          ? "deviceMap"
+          : "more")
+    : (route?.mobileSection ?? "more");
   return <nav className="mobile-app-navigation" aria-label={t("mobile.mobileNavigation")}>
     {tabs.map(({ section: key, to, label, icon: Icon }) => <Link key={key} to={to} aria-current={section === key ? "page" : undefined} className={section === key ? "active" : undefined}><Icon size={22} aria-hidden="true" /><span>{t(label)}</span></Link>)}
   </nav>;

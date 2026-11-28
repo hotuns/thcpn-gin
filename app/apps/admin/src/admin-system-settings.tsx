@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, App, Button, Card, Col, Drawer, Form, Input, InputNumber, Modal, Row, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { api, formatApiError, formatApiErrorText, type SystemSettingField, type SystemSettingsChange } from "@thcpn/api";
 import { AdminDeploymentSettings } from "./admin-deployment-settings";
+import { adminEdition } from "./edition";
 
 const key = ["admin", "system-settings"];
 export function AdminSystemSettings() {
@@ -17,7 +18,9 @@ export function AdminSystemSettings() {
   const query = useQuery({ queryKey: key, queryFn: api.admin.settings.get });
   const history = useQuery({ queryKey: [...key, "history"], queryFn: api.admin.settings.history, enabled: historyOpen });
   useEffect(() => { if (query.data) form.setFieldsValue(query.data.values); }, [query.data, form]);
-  const fields = query.data?.fields ?? [];
+  const fields = (query.data?.fields ?? []).filter(
+    field => adminEdition.showBillingSettings || field.group !== "套餐参数",
+  );
   const groups = [...new Set(fields.map(field => field.group))];
   const currentFields = fields.filter(field => field.group === active);
   const changes = (values: Record<string, number>) => currentFields.filter(field => values[field.key] !== query.data?.values[field.key]).map(field => ({ ...field, before: query.data?.values[field.key], after: values[field.key] }));

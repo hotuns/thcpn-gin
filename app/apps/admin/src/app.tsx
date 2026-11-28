@@ -51,6 +51,7 @@ import { Alert, Avatar, Breadcrumb, Dropdown, FloatButton, Input, Menu, Modal, S
 import { Button, IconButton } from "@thcpn/admin-ui";
 import { api, formatApiError, formatApiErrorText } from "@thcpn/api";
 import { billingEnabled } from "./features";
+import { adminEdition } from "./edition";
 import { useAdminAuth } from "@thcpn/auth";
 import {
   Badge,
@@ -135,7 +136,7 @@ const adminNavGroups = [
   { key: "accounts", icon: UsersRound },
   { key: "system", icon: Settings },
 ] as const;
-const adminNav = [
+const allAdminNav = [
   { to: "/admin", key: "overview", icon: Home, group: "overview" },
   { to: "/admin/devices", key: "devices", icon: Boxes, group: "operations" },
   { to: "/admin/device-inspection", key: "deviceInspection", icon: Activity, group: "operations" },
@@ -151,13 +152,14 @@ const adminNav = [
   { to: "/admin/workspaces", key: "workspaces", icon: Network, group: "accounts" },
   { to: "/admin/demo-accounts", key: "demoAccounts", icon: MonitorUp, group: "accounts" },
   { to: "/admin/announcements", key: "announcements", icon: Megaphone, group: "accounts" },
-  ...(billingEnabled
+  ...(!adminEdition.lite && billingEnabled
     ? [{ to: "/admin/billing", key: "billing", icon: CreditCard, group: "accounts" } as const]
     : []),
   { to: "/admin/logs", key: "logs", icon: FileText, group: "system" },
   { to: "/admin/administrators", key: "administrators", icon: UsersRound, group: "system" },
   { to: "/admin/settings", key: "settings", icon: Settings, group: "system" },
 ] as const;
+const adminNav = allAdminNav.filter((item) => adminEdition.allowedNavKeys.has(item.key));
 function AdminShell() {
   const platformUrl = usePlatformBaseUrl();
   const { locale, setLocale, t } = useLocale();
@@ -230,12 +232,14 @@ function AdminShell() {
   const groupedItems: MenuProps["items"] = [
     ...adminNav.filter(item => item.group === "overview").map(navigationItem),
     { type: "divider" },
-    ...adminNavGroups.map(group => ({
-      key: group.key,
-      icon: <group.icon size={17} />,
-      label: t(`admin:navigationGroups.${group.key}`),
-      children: adminNav.filter(item => item.group === group.key).map(navigationItem),
-    })),
+    ...adminNavGroups
+      .map(group => ({
+        key: group.key,
+        icon: <group.icon size={17} />,
+        label: t(`admin:navigationGroups.${group.key}`),
+        children: adminNav.filter(item => item.group === group.key).map(navigationItem),
+      }))
+      .filter(group => group.children.length > 0),
   ];
   const accountItems: MenuProps["items"] = [
     { key: "identity", label: <div className="admin-account-identity"><strong>{user?.name ?? t("admin:administrator")}</strong><span>{user?.email ?? t("admin:administrator")}</span></div>, disabled: true },
@@ -255,7 +259,7 @@ function AdminShell() {
         closeNavigation();
       } else setPasswordOpen(true);
     }
-    if (key === "platform") window.location.assign(`${platformUrl}/dashboard`);
+    if (key === "platform") window.location.assign(`${platformUrl}${adminEdition.platformHomePath}`);
     if (key === "logout") void signOut();
   };
   const changePassword = async (event: FormEvent<HTMLFormElement>) => {
@@ -381,7 +385,7 @@ function AdminShell() {
               </IconButton>
             </Tooltip>
             <Tooltip title={t("admin:navigation.backPlatform")}>
-              <IconButton label={t("admin:navigation.backPlatform")} onClick={() => window.location.assign(`${platformUrl}/dashboard`)}>
+              <IconButton label={t("admin:navigation.backPlatform")} onClick={() => window.location.assign(`${platformUrl}${adminEdition.platformHomePath}`)}>
                 <ExternalLink size={17} />
               </IconButton>
             </Tooltip>
@@ -422,7 +426,7 @@ function Forbidden() {
         title="403 · 无权访问系统后台"
         description="系统后台使用独立的管理员账号登录。工作区负责人或普通成员权限不能替代系统管理员身份。"
         action={
-          <a href={`${platformUrl}/dashboard`}>
+          <a href={`${platformUrl}${adminEdition.platformHomePath}`}>
             <Button type="primary">
               <Home size={15} />
               返回用户平台
@@ -489,6 +493,7 @@ function AdminOverview() {
   const workspaces = useQuery({
     queryKey: ["admin", "overview", "workspaces"],
     queryFn: () => api.admin.workspaces.list({ page: 1, page_size: 100 }),
+    enabled: adminEdition.showCommercialOverview,
   });
   const users = useQuery({
     queryKey: ["admin", "overview", "users"],
@@ -514,7 +519,9 @@ function AdminOverview() {
       page_size: 6,
     }),
   });
-  const queries = [health, sources, devices, workspaces, users, errorLogs, warningLogs];
+  const queries = adminEdition.showCommercialOverview
+    ? [health, sources, devices, workspaces, users, errorLogs, warningLogs]
+    : [health, sources, devices, users, errorLogs, warningLogs];
   const refreshAll = () => queries.forEach((query) => void query.refetch());
   const refreshing = queries.some((query) => query.isFetching);
   const refreshedAt = Math.max(...queries.map((query) => query.dataUpdatedAt || 0));
@@ -539,17 +546,31 @@ function AdminOverview() {
     .sort((a, b) => new Date(String(b.timestamp ?? b.time ?? 0)).getTime() - new Date(String(a.timestamp ?? a.time ?? 0)).getTime())
     .slice(0, 6);
   const attentionItems = [
-    { label: "未分配设备", count: unassignedDevices, detail: "尚未进入任何工作区", to: "/admin/devices", tone: unassignedDevices ? "warning" : "success" },
+    ...(adminEdition.showCommercialOverview
+      ? [{ label: "未分配设备", count: unassignedDevices, detail: "尚未进入任何工作区", to: "/admin/devices", tone: unassignedDevices ? "warning" : "success" } as const]
+      : []),
     { label: "待登记设备", count: pendingDevices, detail: "生命周期仍处于待登记", to: "/admin/devices", tone: pendingDevices ? "warning" : "success" },
     { label: "异常数据源", count: inactiveSources, detail: "已停用或状态异常", to: "/admin/sources", tone: inactiveSources ? "danger" : "success" },
     { label: "受限用户", count: restrictedUsers, detail: "账号停用或已锁定", to: "/admin/users", tone: restrictedUsers ? "danger" : "success" },
-    { label: "停用工作区", count: disabledWorkspaces, detail: "当前不可正常使用", to: "/admin/workspaces?status=disabled", tone: disabledWorkspaces ? "warning" : "success" },
+    ...(adminEdition.showCommercialOverview
+      ? [{ label: "停用工作区", count: disabledWorkspaces, detail: "当前不可正常使用", to: "/admin/workspaces?status=disabled", tone: disabledWorkspaces ? "warning" : "success" } as const]
+      : []),
   ] as const;
   const metrics = [
-    { label: "设备列表", value: overviewCount(devices), suffix: "台", issue: unassignedDevices, issueLabel: "未分配", icon: Boxes, to: "/admin/devices" },
+    {
+      label: "设备列表",
+      value: overviewCount(devices),
+      suffix: "台",
+      issue: adminEdition.showCommercialOverview ? unassignedDevices : pendingDevices,
+      issueLabel: adminEdition.showCommercialOverview ? "未分配" : "待登记",
+      icon: Boxes,
+      to: "/admin/devices",
+    },
     { label: "数据源", value: overviewCount(sources), suffix: "个", issue: inactiveSources, issueLabel: "异常", icon: Database, to: "/admin/sources" },
     { label: "平台用户", value: overviewCount(users), suffix: "人", issue: restrictedUsers, issueLabel: "受限", icon: UserRound, to: "/admin/users" },
-    { label: "工作区", value: overviewCount(workspaces), suffix: "个", issue: disabledWorkspaces, issueLabel: "停用", icon: Network, to: "/admin/workspaces" },
+    ...(adminEdition.showCommercialOverview
+      ? [{ label: "工作区", value: overviewCount(workspaces), suffix: "个", issue: disabledWorkspaces, issueLabel: "停用", icon: Network, to: "/admin/workspaces" }]
+      : []),
   ];
   return (
     <>
@@ -649,16 +670,20 @@ function AdminRoot() {
         <Route path="device-inspection" element={<AdminInspectionPage />} />
         <Route path="device-map" element={<AdminDeviceInsightsPage />} />
         <Route path="logs" element={<AdminLogsPage />} />
-        <Route path="workspaces" element={<AdminWorkspacesPage />} />
-        <Route path="workspaces/:workspaceId" element={<AdminWorkspaceDetailPage />} />
-        {billingEnabled ? <Route path="billing" element={<AdminBillingPage />} /> : null}
-        <Route path="announcements" element={<AdminAnnouncementsPage />} />
+        {!adminEdition.lite && (
+          <>
+            <Route path="workspaces" element={<AdminWorkspacesPage />} />
+            <Route path="workspaces/:workspaceId" element={<AdminWorkspaceDetailPage />} />
+            {billingEnabled ? <Route path="billing" element={<AdminBillingPage />} /> : null}
+            <Route path="announcements" element={<AdminAnnouncementsPage />} />
+            <Route path="demo-accounts" element={<AdminDemoAccountsPage />} />
+            <Route path="metadata" element={<AdminMetadataPage />} />
+            <Route path="processing-plans" element={<AdminProcessingPlansPage />} />
+          </>
+        )}
         <Route path="users" element={<AdminUsersPage />} />
         <Route path="users/:userId" element={<AdminUserDetailPage />} />
-        <Route path="demo-accounts" element={<AdminDemoAccountsPage />} />
 		<Route path="administrators" element={<SystemAdminsPage />} />
-        <Route path="metadata" element={<AdminMetadataPage />} />
-        <Route path="processing-plans" element={<AdminProcessingPlansPage />} />
         <Route path="settings" element={<AdminSettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/admin" replace />} />

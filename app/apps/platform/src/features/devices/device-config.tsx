@@ -7,6 +7,7 @@ import { SamplingProfilePanel } from "./sampling-profile";
 import { DeviceCaptureSettings } from "./device-capture-config";
 import { ComputedStreamsPanel, DeviceMetadataPanel } from "./device-computed-data";
 import { SystemDeviceConfig } from "./system-device-config";
+import { platformEdition } from "../../app/edition";
 
 export function DeviceConfig({
   device,
@@ -40,32 +41,34 @@ export function DeviceConfig({
       {systemAdmin && (
         <SystemDeviceConfig device={device} workspaces={workspaces} run={run} />
       )}
-      <Panel className="section-gap danger-zone">
-        <div className="panel-header">
-          <div>
-            <h2 className="panel-title">危险操作</h2>
+      {platformEdition.showDeviceUnbind && (
+        <Panel className="section-gap danger-zone">
+          <div className="panel-header">
+            <div>
+              <h2 className="panel-title">危险操作</h2>
 
+            </div>
+            <Button
+              variant="danger"
+              onClick={async () => {
+                if (
+                  await confirm({
+                    title: "解绑设备",
+                    description: `确认解绑“${device.name}”？`,
+                    confirmLabel: "解绑",
+                    tone: "danger",
+                  })
+                ) {
+                  void run(() => api.devices.unbind(device.id), "设备已解绑", true);
+                }
+              }}
+            >
+              <Trash2 size={14} />
+              解绑设备
+            </Button>
           </div>
-          <Button
-            variant="danger"
-            onClick={async () => {
-              if (
-                await confirm({
-                  title: "解绑设备",
-                  description: `确认解绑“${device.name}”？`,
-                  confirmLabel: "解绑",
-                  tone: "danger",
-                })
-              ) {
-                void run(() => api.devices.unbind(device.id), "设备已解绑", true);
-              }
-            }}
-          >
-            <Trash2 size={14} />
-            解绑设备
-          </Button>
-        </div>
-      </Panel>
+        </Panel>
+      )}
     </div>
   );
 }

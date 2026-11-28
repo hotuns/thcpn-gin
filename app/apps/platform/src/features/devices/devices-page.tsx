@@ -6,6 +6,7 @@ import "./device-mobile.css";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useNavigationSource } from "../../app/platform-navigation";
+import { platformEdition } from "../../app/edition";
 import { ChevronDown, ChevronRight, Clock3, Eye, FileText, ListFilter, RefreshCw, ScanLine, Settings2, X } from "lucide-react";
 import { api, formatApiError, type Device, type DeviceTaxonomyTerm, type THCPNLatestAttributesResponse } from "@thcpn/api";
 import { iconifyIconUrl } from "@thcpn/device-map";
@@ -307,7 +308,7 @@ function DeviceList() {
           <Button variant="secondary" onClick={refreshDevices} disabled={query.isFetching}>
             <RefreshCw size={15} aria-hidden="true" />{t("platform:deviceList.refresh")}
           </Button>
-          {!user?.is_demo && <Button data-onboarding="claim-entry" onClick={() => navigate("/claim", { state: source })}>
+          {platformEdition.showDeviceClaim && !user?.is_demo && <Button data-onboarding="claim-entry" onClick={() => navigate("/claim", { state: source })}>
             <ScanLine size={16} aria-hidden="true" />{t("platform:deviceList.add")}
           </Button>}
         </>}

@@ -5,6 +5,7 @@ import dayjs, { type Dayjs } from "dayjs";
 import { api, formatApiError, formatApiErrorText, type DeviceInstallation, type DeviceInstallationInput, type JsonRecord, type ListResponse } from "@thcpn/api";
 import { opsTime } from "./admin-device-ops-model";
 import { formatInstallationAddress, installationRegions, splitInstallationAddress } from "./installation-address";
+import { adminEdition } from "./edition";
 
 type DossierFields = Pick<DeviceInstallationInput, "organization" | "contact_name" | "contact_phone" | "project_name" | "ops_tags"> & {
   installed_on?: Dayjs | null;
@@ -74,10 +75,10 @@ export function AdminDeviceDossier({ deviceId, lifecycle }: { deviceId: string; 
 
   return <>
     <Card
-      title={<Space wrap>安装与交付档案{status}</Space>}
+      title={<Space wrap>{adminEdition.showVendorDossier ? "安装与交付档案" : "安装档案"}{status}</Space>}
       loading={data.isLoading}
       extra={record && <Space wrap>
-        <Button onClick={() => open("copy")}>{copyLabel}</Button>
+        {adminEdition.showVendorDossier && <Button onClick={() => open("copy")}>{copyLabel}</Button>}
         <Button type={lifecycle === "inbound" && record.installed_on ? "default" : "primary"} onClick={() => open("edit")}>{hasDossier ? "编辑档案" : "填写档案"}</Button>
         {lifecycle === "inbound" && <Button type={record.installed_on ? "primary" : "default"} onClick={() => open("complete")}>完成安装</Button>}
       </Space>}
@@ -93,15 +94,20 @@ export function AdminDeviceDossier({ deviceId, lifecycle }: { deviceId: string; 
               { key: "retired", label: "退役日期", children: display(record.retired_on) },
               { key: "retirement", label: "退役原因", children: display(record.retirement_reason) },
             ] : []),
+            ...(!adminEdition.showVendorDossier ? [
+              { key: "updated", label: "最近修改", children: record.updated_at ? opsTime(record.updated_at) : "—" },
+            ] : []),
           ]}/>
-          <Descriptions title="交付与运维" column={{ xs: 1, sm: 2, lg: 2 }} size="small" bordered items={[
-            { key: "organization", label: "所属单位", children: display(record.organization) },
-            { key: "project", label: "项目名称", children: display(record.project_name) },
-            { key: "contact", label: "联系人", children: display(record.contact_name) },
-            { key: "phone", label: "联系电话", children: display(record.contact_phone) },
-            { key: "tags", label: "运维标签", children: record.ops_tags?.length ? <Space size={[4, 4]} wrap>{record.ops_tags.map(tag => <Tag key={tag}>{tag}</Tag>)}</Space> : display() },
-            { key: "updated", label: "最近修改", children: record.updated_at ? opsTime(record.updated_at) : "—" },
-          ]}/>
+          {adminEdition.showVendorDossier && (
+            <Descriptions title="交付与运维" column={{ xs: 1, sm: 2, lg: 2 }} size="small" bordered items={[
+              { key: "organization", label: "所属单位", children: display(record.organization) },
+              { key: "project", label: "项目名称", children: display(record.project_name) },
+              { key: "contact", label: "联系人", children: display(record.contact_name) },
+              { key: "phone", label: "联系电话", children: display(record.contact_phone) },
+              { key: "tags", label: "运维标签", children: record.ops_tags?.length ? <Space size={[4, 4]} wrap>{record.ops_tags.map(tag => <Tag key={tag}>{tag}</Tag>)}</Space> : display() },
+              { key: "updated", label: "最近修改", children: record.updated_at ? opsTime(record.updated_at) : "—" },
+            ]}/>
+          )}
         </Space>
       )}
     </Card>
@@ -179,44 +185,50 @@ function DossierEditor({ record, pending, error, copyInitiallyOpen, onSave }: {
     }
     onSave({
       installed_on: values.installed_on?.format("YYYY-MM-DD") ?? null,
-      organization: values.organization,
-      contact_name: values.contact_name,
-      contact_phone: values.contact_phone,
-      project_name: record.linked_project_name ? initialValues.project_name : values.project_name,
-      ops_tags: values.ops_tags,
+      organization: adminEdition.showVendorDossier ? values.organization : initialValues.organization,
+      contact_name: adminEdition.showVendorDossier ? values.contact_name : initialValues.contact_name,
+      contact_phone: adminEdition.showVendorDossier ? values.contact_phone : initialValues.contact_phone,
+      project_name: !adminEdition.showVendorDossier || record.linked_project_name ? initialValues.project_name : values.project_name,
+      ops_tags: adminEdition.showVendorDossier ? values.ops_tags : initialValues.ops_tags,
       ...(addressChanged || description !== (record.description ?? "") ? { profile: { location_text: location, description } } : {}),
     });
   }}>
-    <Space orientation="vertical" style={{ display: "flex", marginBottom: 24 }}>
-      <Button aria-expanded={copyOpen} onClick={() => setCopyOpen(!copyOpen)}>{copyOpen ? "收起来源设备选择" : copyLabel}</Button>
-      {copyOpen && <DossierSource record={record} onApply={({ delivery, location }) => {
-        form.setFieldsValue(delivery);
-        if (location !== undefined) {
-          setCopiedAddress(location);
-          form.setFieldsValue(splitInstallationAddress(location));
-        }
-        setCopyOpen(false);
-        requestAnimationFrame(() => form.scrollToField(location !== undefined ? "region" : "organization", { block: "nearest" }));
-        void message.success("已带入所选内容，保存档案后生效");
-      }} />}
-    </Space>
+    {adminEdition.showVendorDossier && (
+      <Space orientation="vertical" style={{ display: "flex", marginBottom: 24 }}>
+        <Button aria-expanded={copyOpen} onClick={() => setCopyOpen(!copyOpen)}>{copyOpen ? "收起来源设备选择" : copyLabel}</Button>
+        {copyOpen && <DossierSource record={record} onApply={({ delivery, location }) => {
+          form.setFieldsValue(delivery);
+          if (location !== undefined) {
+            setCopiedAddress(location);
+            form.setFieldsValue(splitInstallationAddress(location));
+          }
+          setCopyOpen(false);
+          requestAnimationFrame(() => form.scrollToField(location !== undefined ? "region" : "organization", { block: "nearest" }));
+          void message.success("已带入所选内容，保存档案后生效");
+        }} />}
+      </Space>
+    )}
     <Form.Item name="installed_on" label="安装日期"><DatePicker style={{ width: "100%" }}/></Form.Item>
     <Form.Item name="region" label="省 / 市 / 区县">
       <Cascader options={installationRegions} changeOnSelect showSearch placeholder="请选择省、市和区县" style={{ width: "100%" }}/>
     </Form.Item>
     <Form.Item name="detail" label="详细地址"><Input maxLength={500} placeholder="街道门牌、园区、样地或其他地址"/></Form.Item>
     <Form.Item name="description" label="安装说明"><Input.TextArea rows={3} maxLength={4000}/></Form.Item>
-    <Divider titlePlacement="start">交付与运维</Divider>
-    <Row gutter={16}>
-      <Col xs={24} sm={12}><Form.Item name="organization" label="所属单位"><Input maxLength={200}/></Form.Item></Col>
-      <Col xs={24} sm={12}>{record.linked_project_name
-        ? <Form.Item label="关联项目"><Input value={record.linked_project_name} readOnly/></Form.Item>
-        : <Form.Item name="project_name" label="项目名称"><Input maxLength={200}/></Form.Item>}
-      </Col>
-      <Col xs={24} sm={12}><Form.Item name="contact_name" label="联系人"><Input maxLength={200}/></Form.Item></Col>
-      <Col xs={24} sm={12}><Form.Item name="contact_phone" label="联系电话"><Input maxLength={200} inputMode="tel"/></Form.Item></Col>
-    </Row>
-    <Form.Item name="ops_tags" label="运维标签"><Select mode="tags" tokenSeparators={[",", "，"]} maxCount={30}/></Form.Item>
+    {adminEdition.showVendorDossier && (
+      <>
+        <Divider titlePlacement="start">交付与运维</Divider>
+        <Row gutter={16}>
+          <Col xs={24} sm={12}><Form.Item name="organization" label="所属单位"><Input maxLength={200}/></Form.Item></Col>
+          <Col xs={24} sm={12}>{record.linked_project_name
+            ? <Form.Item label="关联项目"><Input value={record.linked_project_name} readOnly/></Form.Item>
+            : <Form.Item name="project_name" label="项目名称"><Input maxLength={200}/></Form.Item>}
+          </Col>
+          <Col xs={24} sm={12}><Form.Item name="contact_name" label="联系人"><Input maxLength={200}/></Form.Item></Col>
+          <Col xs={24} sm={12}><Form.Item name="contact_phone" label="联系电话"><Input maxLength={200} inputMode="tel"/></Form.Item></Col>
+        </Row>
+        <Form.Item name="ops_tags" label="运维标签"><Select mode="tags" tokenSeparators={[",", "，"]} maxCount={30}/></Form.Item>
+      </>
+    )}
     {error && <Alert type="error" showIcon title="安装档案未保存" description={error}/>}
   </Form>;
 }

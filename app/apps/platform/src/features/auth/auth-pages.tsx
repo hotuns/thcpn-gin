@@ -9,6 +9,7 @@ import { useAuth } from "@thcpn/auth";
 import { Brand, Button, Input, Switch } from "../../shared/ui";
 import { LanguageSwitcher, useLocale } from "@thcpn/i18n";
 import { LoginVisualCarousel } from "./login-visual-carousel";
+import { platformEdition } from "../../app/edition";
 
 export const validPassword = (value: string) => {
   const bytes = new TextEncoder().encode(value).length;
@@ -30,7 +31,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
   const { user, signIn } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [demoMode, setDemoMode] = useState(() => demoModeFromSearch(location.search));
+  const [demoMode, setDemoMode] = useState(() => platformEdition.showDemoLogin && demoModeFromSearch(location.search));
   const [mode, setMode] = useState<"password" | "sms">("password");
   const [forgotPassword, setForgotPassword] = useState(false);
   const [identifier, setIdentifier] = useState("");
@@ -47,7 +48,12 @@ export function AuthPage({ register = false }: { register?: boolean }) {
   const [initialPasswordToken, setInitialPasswordToken] = useState("");
   const [initialPassword, setInitialPassword] = useState("");
   const [initialPasswordConfirm, setInitialPasswordConfirm] = useState("");
-  const visuals = useQuery({ queryKey: ["login-visuals"], queryFn: api.auth.loginVisuals, staleTime: 5 * 60_000 });
+  const visuals = useQuery({
+    queryKey: ["login-visuals"],
+    queryFn: api.auth.loginVisuals,
+    staleTime: 5 * 60_000,
+    enabled: platformEdition.showLoginVisuals,
+  });
   useEffect(() => {
     if (cooldown <= 0) return;
     const timer = window.setInterval(
@@ -59,7 +65,8 @@ export function AuthPage({ register = false }: { register?: boolean }) {
   const next = platformNextPath(
     new URLSearchParams(location.search).get("next"),
   );
-  if (user) return <Navigate to={next ?? "/dashboard"} replace />;
+  if (register && !platformEdition.showSelfRegister) return <Navigate to="/login" replace />;
+  if (user) return <Navigate to={next ?? platformEdition.homePath} replace />;
   const finish = (result: Awaited<ReturnType<typeof api.auth.login>>) => {
     if (result.password_change_required && result.password_change_token) {
       setInitialPasswordToken(result.password_change_token);
@@ -71,7 +78,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
     }
     signIn(result);
     if (next) navigate(next, { replace: true });
-    else navigate("/dashboard", { replace: true });
+    else navigate(platformEdition.homePath, { replace: true });
   };
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -247,7 +254,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                 ? t("platform:auth.completeMfa")
                 : t("platform:auth.welcome")}
           </h1>
-          {!demoMode && !initialPasswordToken && !forgotPassword && !register && !mfaRequired && (
+          {platformEdition.showSmsLogin && !demoMode && !initialPasswordToken && !forgotPassword && !register && !mfaRequired && (
             <div className="auth-mode">
               <button
                 type="button"
@@ -385,7 +392,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                 />
-              </label>{!demoMode && <button type="button" className="link auth-forgot-link" onClick={() => { setForgotPassword(true); setMessage(""); setSuccess(false); }}>{t("platform:auth.forgotPassword")}</button>}</>
+              </label>{platformEdition.showSmsLogin && !demoMode && <button type="button" className="link auth-forgot-link" onClick={() => { setForgotPassword(true); setMessage(""); setSuccess(false); }}>{t("platform:auth.forgotPassword")}</button>}</>
             )}
             {mfaRequired && (
               <label className="field mfa-challenge">
@@ -440,11 +447,21 @@ export function AuthPage({ register = false }: { register?: boolean }) {
               </Button>
             )}
           </form>
-          {forgotPassword ? <div className="auth-form-footer"><button type="button" className="link" onClick={() => { setForgotPassword(false); setMessage(""); }}>{t("platform:auth.backLogin")}</button></div> : <div className="auth-form-footer">
-            <span>{register ? t("platform:auth.hasAccount") : t("platform:auth.noAccount")}</span>
-            <Link className="link" to={register ? "/login" : "/register"}>{register ? t("platform:auth.backLogin") : t("platform:auth.register")}</Link>
-            {!register && <label className="demo-mode-toggle"><span>演示模式</span><Switch checked={demoMode} onCheckedChange={switchDemoMode} /></label>}
-          </div>}
+          {forgotPassword ? (
+            <div className="auth-form-footer"><button type="button" className="link" onClick={() => { setForgotPassword(false); setMessage(""); }}>{t("platform:auth.backLogin")}</button></div>
+          ) : (platformEdition.showSelfRegister || platformEdition.showDemoLogin) ? (
+            <div className="auth-form-footer">
+              {platformEdition.showSelfRegister && (
+                <>
+                  <span>{register ? t("platform:auth.hasAccount") : t("platform:auth.noAccount")}</span>
+                  <Link className="link" to={register ? "/login" : "/register"}>{register ? t("platform:auth.backLogin") : t("platform:auth.register")}</Link>
+                </>
+              )}
+              {!register && platformEdition.showDemoLogin && (
+                <label className="demo-mode-toggle"><span>演示模式</span><Switch checked={demoMode} onCheckedChange={switchDemoMode} /></label>
+              )}
+            </div>
+          ) : null}
         </div>
       </section>
     </div>

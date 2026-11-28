@@ -6,6 +6,7 @@ import { Button, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from "..
 import { AccessControlTab } from "./access-control";
 import { AuditTab } from "./audit-tab";
 import { ResourcesTab } from "./resources-tab";
+import { platformEdition } from "../../app/edition";
 
 export function SettingsPage() {
  const billingEnabled=useSystemPolicy().data?.billing_enabled;
@@ -14,6 +15,18 @@ export function SettingsPage() {
   const tab = params.get("tab") ?? "resources";
   if (tab === "security")
     return <Navigate to="/account?tab=security" replace />;
+  if (platformEdition.settingsResourcesOnly) {
+    return (
+      <>
+        <PageHeader
+          eyebrow="基础配置"
+          title="项目与样地"
+          description="管理当前系统的项目与样地分组，供设备归类、筛选与地图展示使用。"
+        />
+        <ResourcesTab />
+      </>
+    );
+  }
   if (billingEnabled && tab === "billing")
     return <Navigate to="/subscription" replace />;
   if (tab === "billing") return <Navigate to="/settings" replace />;

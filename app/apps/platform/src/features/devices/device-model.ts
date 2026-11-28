@@ -1,4 +1,5 @@
 import { deviceTopologyRoleLabel, type Device, type DeviceTaxonomyTerm, type JsonRecord, type THCPNLatestAttributesResponse } from "@thcpn/api";
+import { platformEdition } from "../../app/edition";
 
 export type DeviceCategory = "gateway" | "gateway_node" | "camera" | "carbon_sink" | "standalone";
 
@@ -220,12 +221,14 @@ export const deviceDetailTab = (
   requested: string | null,
   camera: boolean,
   carbon = false,
+  allowedTabs: ReadonlySet<string> = platformEdition.allowedDeviceTabs,
 ): DeviceTab => {
-  const allowed: DeviceTab[] = camera
+  const candidates: DeviceTab[] = camera
     ? ["video", "profile", "activity"]
     : carbon
       ? ["overview", "data", "profile", "config", "sharing", "activity"]
       : ["overview", "data", "profile", "config", "sharing", "activity"];
+  const allowed = candidates.filter((tab) => allowedTabs.has(tab));
   return requested && allowed.includes(requested as DeviceTab)
     ? (requested as DeviceTab)
     : camera

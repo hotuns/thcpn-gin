@@ -6,6 +6,7 @@ import {
   Navigate,
   Outlet
 } from "react-router-dom";
+import { platformEdition } from "./edition";
 
 
 
@@ -13,7 +14,7 @@ export function RootRedirect() {
   const { user, loading } = useAuth();
   if (loading) return <div className="app-loading t-shimmer" data-text="正在恢复会话…">正在恢复会话…</div>;
   if (!user) return <Navigate to="/login" replace />;
-  return <Navigate to="/dashboard" replace />;
+  return <Navigate to={platformEdition.homePath} replace />;
 }
 export function RequirePlatform() {
   return (

@@ -27,6 +27,7 @@ import { DeviceOverview } from "./device-overview";
 import { DeviceProfileOperational } from "./device-profile-operational";
 import { DeviceActivity } from "./device-activity";
 import { DeviceConfig } from "./device-config";
+import { platformEdition } from "../../app/edition";
 
 function DeviceQuickSwitcher({
   device,
@@ -165,7 +166,7 @@ export function DeviceCenterDetailPage() {
       return false;
     }
   };
-  const tabs = (
+  const tabs = ((
     camera
       ? [
           { id: "video", label: "实时视频" },
@@ -180,7 +181,9 @@ export function DeviceCenterDetailPage() {
           { id: "sharing", label: "分享" },
           { id: "activity", label: "记录" },
         ]
-  ) as Array<{ id: DeviceTab; label: string }>;
+  ) as Array<{ id: DeviceTab; label: string }>).filter((item) =>
+    platformEdition.allowedDeviceTabs.has(item.id),
+  );
   const selectTab = (nextTab: string) => setParams((current) => {
     const next = new URLSearchParams(current);
     next.set("tab", nextTab);
@@ -211,9 +214,11 @@ export function DeviceCenterDetailPage() {
               onSwitch={switchDevice}
             />
           )}
-          <Link to={`/alerts?new=1&device=${device.id}`}>
-            <Button variant="secondary"><BellRing size={14}/>创建预警</Button>
-          </Link>
+          {platformEdition.showAlerts && (
+            <Link to={`/alerts?new=1&device=${device.id}`}>
+              <Button variant="secondary"><BellRing size={14}/>创建预警</Button>
+            </Link>
+          )}
         </div>
       </div>
 

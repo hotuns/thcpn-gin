@@ -18,8 +18,9 @@ import (
 )
 
 type Service struct {
-	db      *pgxpool.Pool
-	passCfg config.PasswordConfig
+	db                 *pgxpool.Pool
+	passCfg            config.PasswordConfig
+	defaultWorkspaceID uuid.UUID
 }
 
 type ListInput struct {
@@ -139,6 +140,10 @@ type UpdateInput struct {
 
 func NewService(db *pgxpool.Pool, passCfg config.PasswordConfig) *Service {
 	return &Service{db: db, passCfg: passCfg}
+}
+
+func (s *Service) SetDefaultWorkspaceID(id uuid.UUID) {
+	s.defaultWorkspaceID = id
 }
 
 func (s *Service) List(ctx context.Context, input ListInput) (ListResult, error) {
@@ -306,17 +311,29 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (UserDetail, st
 		return UserDetail{}, "", apperr.Wrap(apperr.KindInternal, "create user credentials", err)
 	}
 	var workspaceID, memberID, roleID uuid.UUID
-	if err := tx.QueryRow(ctx, `INSERT INTO workspaces (type, name, owner_user_id) VALUES ('personal', $1, $2) RETURNING id`, personalWorkspaceName(name), id).Scan(&workspaceID); err != nil {
-		return UserDetail{}, "", apperr.Wrap(apperr.KindInternal, "create personal workspace", err)
+	roleCode := "owner"
+	joinedDefault := false
+	if s.defaultWorkspaceID != uuid.Nil {
+		var existingID uuid.UUID
+		if err := tx.QueryRow(ctx, `SELECT id FROM workspaces WHERE id = $1 AND status = 'active'`, s.defaultWorkspaceID).Scan(&existingID); err == nil {
+			workspaceID = existingID
+			roleCode = "admin"
+			joinedDefault = true
+		}
 	}
-	if err := tx.QueryRow(ctx, `SELECT id FROM roles WHERE code = 'owner' AND workspace_id IS NULL`).Scan(&roleID); err != nil {
-		return UserDetail{}, "", apperr.Wrap(apperr.KindInternal, "find owner role", err)
+	if !joinedDefault {
+		if err := tx.QueryRow(ctx, `INSERT INTO workspaces (type, name, owner_user_id) VALUES ('personal', $1, $2) RETURNING id`, personalWorkspaceName(name), id).Scan(&workspaceID); err != nil {
+			return UserDetail{}, "", apperr.Wrap(apperr.KindInternal, "create personal workspace", err)
+		}
 	}
-	if err := tx.QueryRow(ctx, `INSERT INTO workspace_members (workspace_id, user_id, role_id, scope_type, scope_id, template_code) VALUES ($1, $2, $3, 'workspace', $1, 'owner') RETURNING id`, workspaceID, id, roleID).Scan(&memberID); err != nil {
-		return UserDetail{}, "", apperr.Wrap(apperr.KindInternal, "create owner membership", err)
+	if err := tx.QueryRow(ctx, `SELECT id FROM roles WHERE code = $1 AND workspace_id IS NULL`, roleCode).Scan(&roleID); err != nil {
+		return UserDetail{}, "", apperr.Wrap(apperr.KindInternal, "find workspace role", err)
+	}
+	if err := tx.QueryRow(ctx, `INSERT INTO workspace_members (workspace_id, user_id, role_id, scope_type, scope_id, template_code) VALUES ($1, $2, $3, 'workspace', $1, $4) RETURNING id`, workspaceID, id, roleID, roleCode).Scan(&memberID); err != nil {
+		return UserDetail{}, "", apperr.Wrap(apperr.KindInternal, "create workspace membership", err)
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO workspace_member_permissions (member_id, permission_id) SELECT $1, rp.permission_id FROM role_permissions rp WHERE rp.role_id = $2`, memberID, roleID); err != nil {
-		return UserDetail{}, "", apperr.Wrap(apperr.KindInternal, "create owner permissions", err)
+		return UserDetail{}, "", apperr.Wrap(apperr.KindInternal, "create workspace permissions", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return UserDetail{}, "", apperr.Wrap(apperr.KindInternal, "commit user creation", err)

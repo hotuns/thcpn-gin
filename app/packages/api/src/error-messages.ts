@@ -125,6 +125,7 @@ export const publicErrorMessages: Record<string, string> = {
   "ICCID is managed by system administrators": "ICCID 由系统管理员维护，请联系系统管理员",
   "creation is managed by the Workspace owner in the user platform": "请由空间所有者在用户端创建",
   "dev registration is disabled": "开发注册已关闭，请使用正式注册入口",
+ "this feature is disabled in lite deployment": "当前精简版未启用此功能",
  "phone or email already exists": "手机号或邮箱已被注册，请直接登录或更换后重试",
  "credential already exists": "该登录凭据已存在，请直接登录或更换后重试",
  "resource already exists": "目标资源已存在，请勿重复创建",

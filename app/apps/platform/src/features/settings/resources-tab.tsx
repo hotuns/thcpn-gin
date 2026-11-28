@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { policyLimit } from "../../shared/config/system-policy";
 import { Badge, Button, CheckboxInput, Input, Panel, SelectInput, StateView } from "../../shared/ui";
 import { resourceKindLabel, text } from "./settings-model";
+import { platformEdition } from "../../app/edition";
 
 
 export function ResourcesTab() {
@@ -90,7 +91,7 @@ export function ResourcesTab() {
   return (
     <>
       <div className="workspace-resource-layout" data-onboarding="organization-resources">
-      {current && <Panel className="workspace-settings-summary"><div className="workspace-setting-row"><div><strong>组织名称</strong></div><div className="workspace-setting-value"><span title={current.name}>{current.name}</span><Button variant="secondary" onClick={() => { setMessage(""); setEditingWorkspace(true); }}><Pencil size={13} />编辑</Button></div></div></Panel>}
+      {!platformEdition.settingsResourcesOnly && current && <Panel className="workspace-settings-summary"><div className="workspace-setting-row"><div><strong>组织名称</strong></div><div className="workspace-setting-value"><span title={current.name}>{current.name}</span><Button variant="secondary" onClick={() => { setMessage(""); setEditingWorkspace(true); }}><Pencil size={13} />编辑</Button></div></div></Panel>}
       <div className="grid grid-2 workspace-resource-grid">
         <Panel>
           <div className="panel-header">

@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Col, DatePicker, Dropdown, Form, Input, Modal, Row, Select, Space, Table, Tag, type MenuProps } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import { api, deviceLifecycleOptions, formatApiError, type DeviceDeliveryInput, type JsonRecord } from "@thcpn/api";
+import { adminEdition } from "./edition";
 
 const fields = [
   { key: "ecosystem", name: "ecosystem_term_id", label: "生态分类", kind: "ecosystem", multiple: false },
@@ -125,10 +126,17 @@ export function AdminDeviceBulkEdit({ devices, disabled, onSaved }: {
   const definition = fields.find(field => field.key === mode);
   const terms = useQuery({ queryKey: ["admin", "device-taxonomy"], queryFn: api.admin.deviceTaxonomy, enabled: !!definition });
   const workspaces = useQuery({ queryKey: ["admin", "workspaces", "assignment"], queryFn: api.workspaces.adminList, enabled: mode === "assign" });
+  useEffect(() => {
+    if (!adminEdition.showWorkspaceAssignment && mode === "assign" && !workspace && workspaces.data?.items?.[0]?.id) {
+      form.setFieldValue("target_workspace_id", String(workspaces.data.items[0].id));
+    }
+  }, [form, mode, workspace, workspaces.data?.items]);
   const projects = useQuery({ queryKey: ["admin", "projects", workspace], queryFn: () => api.projects.adminList(workspace!), enabled: mode === "assign" && !!workspace });
   const sites = useQuery({ queryKey: ["admin", "sites", workspace, project], queryFn: () => api.sites.adminList(workspace!, project), enabled: mode === "assign" && !!workspace && !!project });
   const options = (items: JsonRecord[] = []) => items.map(item => ({ value: String(item.id), label: String(item.name) }));
-  const label = definition?.label ?? (mode && mode in editLabels ? editLabels[mode as keyof typeof editLabels] : "");
+  const editLabelFor = (key: keyof typeof editLabels) =>
+    key === "assign" && !adminEdition.showWorkspaceAssignment ? "分配项目 / 站点" : editLabels[key];
+  const label = definition?.label ?? (mode && mode in editLabels ? editLabelFor(mode as keyof typeof editLabels) : "");
   const optionsError = definition ? terms.error : mode === "assign" ? workspaces.error || projects.error || sites.error : null;
   const failed = results.filter(result => result.outcome === "failed");
   const skipped = results.filter(result => result.outcome === "skipped").length;
@@ -144,12 +152,22 @@ export function AdminDeviceBulkEdit({ devices, disabled, onSaved }: {
     form.resetFields();
     form.setFieldsValue({ operation: "set", delivery_write: "fill", occurred_at: dayjs() });
   };
-  const editItem = (key: keyof typeof editLabels) => ({ key, label: editLabels[key], onClick: () => open(key) });
+  const editItem = (key: keyof typeof editLabels) => ({ key, label: editLabelFor(key), onClick: () => open(key) });
   const menu: MenuProps["items"] = [
-    { key: "installation", type: "group", label: "安装与交付", children: [editItem("delivery"), editItem("profile"), editItem("ops_tags")] },
+    {
+      key: "installation",
+      type: "group",
+      label: adminEdition.showVendorDossier ? "安装与交付" : "安装档案",
+      children: [
+        ...(adminEdition.showVendorDossier ? [editItem("delivery")] : []),
+        editItem("profile"),
+        ...(adminEdition.showVendorDossier ? [editItem("ops_tags")] : []),
+      ],
+    },
     { key: "state", type: "group", label: "设备状态", children: [editItem("status"), editItem("lifecycle")] },
     { key: "ownership", type: "group", label: "归属与分类", children: [
-      editItem("assign"), editItem("unassign"),
+      editItem("assign"),
+      ...(adminEdition.showWorkspaceAssignment ? [editItem("unassign")] : []),
       { key: "classification", label: "应用场景与观测分类", children: fields.map(field => ({
         key: field.key, label: field.label, onClick: () => open(field.key),
       })) },
@@ -288,7 +306,11 @@ export function AdminDeviceBulkEdit({ devices, disabled, onSaved }: {
             </Row>
           </> : mode === "ops_tags" ? <Form.Item name="tags" label="运维标签"><Select mode="tags" maxCount={30} tokenSeparators={[",", "，"]} /></Form.Item>
           : mode === "assign" ? <>
-            <Form.Item name="target_workspace_id" label="工作区" rules={[{ required: true, message: "请选择工作区" }]}><Select showSearch optionFilterProp="label" loading={workspaces.isLoading} options={options(workspaces.data?.items)} onChange={() => form.setFieldsValue({ project_id: undefined, site_id: undefined })} /></Form.Item>
+            {adminEdition.showWorkspaceAssignment ? (
+              <Form.Item name="target_workspace_id" label="工作区" rules={[{ required: true, message: "请选择工作区" }]}><Select showSearch optionFilterProp="label" loading={workspaces.isLoading} options={options(workspaces.data?.items)} onChange={() => form.setFieldsValue({ project_id: undefined, site_id: undefined })} /></Form.Item>
+            ) : (
+              <Form.Item name="target_workspace_id" hidden rules={[{ required: true, message: "缺少默认空间配置" }]}><Input /></Form.Item>
+            )}
             <Form.Item name="project_id" label="项目"><Select allowClear showSearch optionFilterProp="label" disabled={!workspace || busy || !!review} loading={projects.isLoading} options={options(projects.data?.items)} onChange={() => form.setFieldValue("site_id", undefined)} /></Form.Item>
             <Form.Item name="site_id" label="站点"><Select allowClear showSearch optionFilterProp="label" placeholder={project ? "请选择站点（选填）" : "请先选择项目"} disabled={!project || busy || !!review} loading={sites.isLoading} options={options(sites.data?.items)} /></Form.Item>
           </> : mode === "profile" ? <>
