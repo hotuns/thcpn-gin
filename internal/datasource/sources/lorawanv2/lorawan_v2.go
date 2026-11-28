@@ -138,6 +138,7 @@ var loraWANV2MetricNames = map[string]string{
 var loraWANV2GatewayMetricUnits = map[string]string{
 	"altitude":  "m",
 	"battery":   "V",
+	"cell":      "CSQ",
 	"latitude":  "°",
 	"longitude": "°",
 }
@@ -699,6 +700,20 @@ func (s *Service) persistLoRaWANV2Gateway(ctx context.Context, source sqlc.DataS
 	if err != nil {
 		return LoRaWANV2GatewaySyncResult{}, err
 	}
+	if len(nodeScope) == 0 {
+		missing, err := missingGatewayStatusSpecs(ctx, q, ref)
+		if err != nil {
+			return LoRaWANV2GatewaySyncResult{}, err
+		}
+		if len(missing) > 0 {
+			statusStreams, statusBindings, err := s.projectLoRaWANV2Streams(ctx, tx, source.ID, device.ID, missing, false, actorID)
+			if err != nil {
+				return LoRaWANV2GatewaySyncResult{}, err
+			}
+			streams = append(streams, statusStreams...)
+			bindings = append(bindings, statusBindings...)
+		}
+	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return LoRaWANV2GatewaySyncResult{}, apperr.Wrap(apperr.KindInternal, "commit lorawan_v2 gateway sync", err)
@@ -756,6 +771,22 @@ func (s *Service) projectLoRaWANV2Streams(ctx context.Context, tx pgx.Tx, source
 	return streams, bindings, nil
 }
 
+func loraWANV2MetricSpec(gatewaySN string, node *int, metric, unit, configHash string) loraWANV2StreamSpec {
+	prefix, name := "gateway", "网关"
+	if node != nil {
+		prefix, name = "node_"+strconv.Itoa(*node), "节点 "+strconv.Itoa(*node)
+	}
+	metricName := loraWANV2MetricNames[metric]
+	if metricName == "" {
+		metricName = metric
+	}
+	config, _ := json.Marshal(loraWANV2TelemetryConfig{GatewaySN: gatewaySN, NodeIndex: node, Metric: metric})
+	return loraWANV2StreamSpec{
+		Code: loraWANV2StreamCode(prefix, metric), Name: name + " · " + metricName,
+		Unit: unit, AdapterConfig: config, ConfigHash: configHash,
+	}
+}
+
 func loraWANV2DiscoverStreams(ctx context.Context, client *LoraWANV2Client, gateway LoRaWANV2Gateway, nodeScope ...int) ([]loraWANV2StreamSpec, error) {
 	if gateway.NodeCount < 0 || gateway.NodeCount > 254 {
 		return nil, apperr.New(apperr.KindDataSource, "invalid lorawan_v2 node count")
@@ -769,21 +800,12 @@ func loraWANV2DiscoverStreams(ctx context.Context, client *LoraWANV2Client, gate
 		}
 		sort.Strings(keys)
 		for _, key := range keys {
-			prefix, name := "gateway", "网关"
-			if node != nil {
-				prefix, name = "node_"+strconv.Itoa(*node), "节点 "+strconv.Itoa(*node)
-			}
-			code := loraWANV2StreamCode(prefix, key)
-			if previous, ok := seen[code]; ok && previous != key {
+			spec := loraWANV2MetricSpec(gateway.SN, node, key, units[key], configHash)
+			if previous, ok := seen[spec.Code]; ok && previous != key {
 				return apperr.New(apperr.KindDataSource, "lorawan_v2 metric codes collide: "+previous+" / "+key)
 			}
-			seen[code] = key
-			cfg, _ := json.Marshal(loraWANV2TelemetryConfig{GatewaySN: gateway.SN, NodeIndex: node, Metric: key})
-			metricName := key
-			if translated := loraWANV2MetricNames[key]; translated != "" {
-				metricName = translated
-			}
-			specs = append(specs, loraWANV2StreamSpec{Code: code, Name: name + " · " + metricName, Unit: units[key], AdapterConfig: cfg, ConfigHash: configHash})
+			seen[spec.Code] = key
+			specs = append(specs, spec)
 		}
 		return nil
 	}

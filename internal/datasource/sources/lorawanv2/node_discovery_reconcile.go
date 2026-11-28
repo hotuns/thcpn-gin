@@ -13,8 +13,8 @@ import (
 	"thcpn-gin/internal/datasource/platform"
 )
 
-// Node discovery belongs to the receiving service. This worker only projects
-// its current bindings and sensor configuration into the platform catalogue.
+// Node discovery belongs to the receiving service. This worker projects its
+// current bindings, sensor configuration and built-in status fields.
 type NodeDiscoveryReconcileResult struct {
 	Gateways int `json:"gateways"`
 	Nodes    int `json:"nodes"`
@@ -100,6 +100,16 @@ func (s *Service) RefreshDiscoveredNodes(ctx context.Context, deviceID uuid.UUID
 		return PhysicalNodes{}, err
 	}
 	defer unlock()
+
+	missing, err := missingGatewayStatusSpecs(ctx, s.Queries, ref)
+	if err != nil {
+		return PhysicalNodes{}, err
+	}
+	if len(missing) > 0 {
+		if err := s.persistDiscoveredStreams(ctx, source.ID, deviceID, source.CreatedBy, missing); err != nil {
+			return PhysicalNodes{}, err
+		}
+	}
 
 	// Validate a complete source response before changing the cached directory.
 	nodes, err := readPhysicalNodes(ctx, client, ref.GatewaySN)
@@ -243,14 +253,14 @@ func (s *Service) RefreshDiscoveredNodes(ctx context.Context, deviceID uuid.UUID
 		if configured {
 			scope = []int{index}
 		}
-		if err := s.persistDiscoveredNodeStreams(ctx, source.ID, deviceID, source.CreatedBy, specs, scope...); err != nil {
+		if err := s.persistDiscoveredStreams(ctx, source.ID, deviceID, source.CreatedBy, specs, scope...); err != nil {
 			failures = append(failures, fmt.Errorf("node %d: %w", index, err))
 		}
 	}
 	return nodes, errors.Join(failures...)
 }
 
-func (s *Service) persistDiscoveredNodeStreams(ctx context.Context, sourceID, deviceID, actorID uuid.UUID, specs []loraWANV2StreamSpec, scope ...int) error {
+func (s *Service) persistDiscoveredStreams(ctx context.Context, sourceID, deviceID, actorID uuid.UUID, specs []loraWANV2StreamSpec, scope ...int) error {
 	tx, err := s.DB.Begin(ctx)
 	if err != nil {
 		return err

@@ -115,3 +115,95 @@ func TestLatestTimestampFormatsAreTheSameUTCInstant(t *testing.T) {
 		})
 	}
 }
+
+func TestDiscoveryRepairsMissingGatewayHistoryStreams(t *testing.T) {
+	db := testdb.Open(t, 0)
+	ctx := t.Context()
+	actor := testdb.Admin(t, db)
+	gateway, source := uuid.New(), uuid.New()
+	mustExec := func(query string, args ...any) {
+		t.Helper()
+		if _, err := db.Exec(ctx, query, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustExec(`INSERT INTO data_sources(id,name,type,source_family,dsn_secret_ref,created_by) VALUES($1,'LoRa','http_api','lorawan_v2','secret:test',$2)`, source, actor)
+	mustExec(`INSERT INTO devices(id,name,device_type) VALUES($1,'Gateway','gateway')`, gateway)
+	mustExec(`INSERT INTO device_source_refs(device_id,data_source_id,adapter_code,external_key) VALUES($1,$2,'lorawan_v2','GW')`, gateway, source)
+	var historyReads atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("unexpected source write: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		switch r.URL.Path {
+		case "/device/GW/nodes":
+			fmt.Fprint(w, `{"success":true,"payload":{"gateway_sn":"GW","bound_node_count":0,"data":[]}}`)
+		case "/device/GW/info":
+			fmt.Fprint(w, `{"success":true,"payload":{"ts":{"$date":{"$numberLong":"1700000000000"}},"battery":0,"cell":30}}`)
+		case "/device/GW/infos":
+			historyReads.Add(1)
+			fmt.Fprint(w, `{"success":true,"payload":{"data":[{"ts":1699956800,"battery":12.4,"cell":29},{"ts":1700000000,"battery":0,"cell":30}],"pagination":{"total_page":1}}}`)
+		default:
+			t.Errorf("unexpected source query: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	s := newTestService(db)
+	secret, _ := json.Marshal(map[string]string{"base_url": server.URL, "username": "test", "password": "test"})
+	s.Runtime = newTestRuntime(staticResolver(secret))
+	readIDs := func() map[string]uuid.UUID {
+		t.Helper()
+		payload, err := s.ReadGatewayStatusInfo(ctx, gateway)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var info struct {
+			IDs map[string]uuid.UUID `json:"history_stream_ids"`
+		}
+		if err := json.Unmarshal(payload, &info); err != nil {
+			t.Fatal(err)
+		}
+		return info.IDs
+	}
+	if ids := readIDs(); len(ids) != 0 {
+		t.Fatalf("fixture already has gateway history IDs: %v", ids)
+	}
+	refresh := func() {
+		t.Helper()
+		if _, err := s.ReconcileDiscoveredNodes(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	refresh()
+	ids := readIDs()
+	if len(ids) != 2 || ids["battery"] == uuid.Nil || ids["cell"] == uuid.Nil {
+		t.Fatalf("gateway latest status still has no history: %v", ids)
+	}
+	if historyReads.Load() != 0 {
+		t.Fatal("reconciling known status fields should not read history")
+	}
+	dataSource, err := s.Queries.GetDataSource(ctx, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for metric, expected := range map[string][]float64{"battery": {12.4, 0}, "cell": {29, 30}} {
+		binding, err := s.Queries.GetActiveDataStreamBinding(ctx, ids[metric])
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, err := s.Runtime.QueryTelemetry(ctx, platform.DataSourceFromSQL(dataSource), platform.TelemetryQuery{
+			Binding: platform.BindingFromSQL(binding), Start: time.Unix(1699913601, 0), End: time.Unix(1700000001, 0), Limit: 5000,
+		})
+		if err != nil || len(result.Points) != 2 || result.Points[0].Value != expected[0] || result.Points[1].Value != expected[1] {
+			t.Fatalf("%s history points = %+v, err = %v", metric, result.Points, err)
+		}
+	}
+	mustExec(`UPDATE data_streams SET status='disabled' WHERE id=$1`, ids["cell"])
+	refresh()
+	if current := readIDs(); len(current) != 1 || current["battery"] != ids["battery"] {
+		t.Fatalf("refresh changed the existing gateway history or restored a disabled stream: %v", current)
+	}
+}

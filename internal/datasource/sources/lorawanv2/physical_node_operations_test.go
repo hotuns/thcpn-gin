@@ -57,7 +57,7 @@ func TestPhysicalNodeOperationsSynchronizeOnlyAffectedNode(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if err := s.persistDiscoveredNodeStreams(ctx, source, gateway, actor, []loraWANV2StreamSpec{{
+				if err := s.persistDiscoveredStreams(ctx, source, gateway, actor, []loraWANV2StreamSpec{{
 					Code: fmt.Sprintf("lora_node_%d_temp", index), Name: "温度", Unit: "C", AdapterConfig: binding, ConfigHash: "original",
 				}}); err != nil {
 					t.Fatal(err)

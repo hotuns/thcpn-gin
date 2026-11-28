@@ -63,6 +63,15 @@ func TestCreateLoRaWANV2GatewayUsesUpstreamSNAndSurvivesCatalogFailure(t *testin
 	if result.ConfigError != "" {
 		t.Fatalf("default config failed: %s", result.ConfigError)
 	}
+	statusCodes := map[string]bool{}
+	for _, stream := range result.Sync.DataStreams {
+		if stream.Purpose == "status" {
+			statusCodes[stream.Code] = true
+		}
+	}
+	if !statusCodes["lora_gateway_battery"] || !statusCodes["lora_gateway_cell"] {
+		t.Fatalf("a new gateway needs both history streams even before its first report: %v", statusCodes)
+	}
 	var serial string
 	if err := db.QueryRow(ctx, `SELECT serial_no FROM devices WHERE id=$1`, result.Sync.Device.ID).Scan(&serial); err != nil {
 		t.Fatal(err)

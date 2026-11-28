@@ -151,7 +151,7 @@ type Querier interface {
 	ListExportJobsByRequesterAndWorkspace(ctx context.Context, arg ListExportJobsByRequesterAndWorkspaceParams) ([]ExportJob, error)
 	ListExportJobsByWorkspace(ctx context.Context, arg ListExportJobsByWorkspaceParams) ([]ExportJob, error)
 	ListInvitationsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]ListInvitationsByWorkspaceRow, error)
-	ListLoRaWANV2GatewayStatusStreams(ctx context.Context, deviceID uuid.UUID) ([]ListLoRaWANV2GatewayStatusStreamsRow, error)
+	ListLoRaWANV2GatewayStatusStreams(ctx context.Context, arg ListLoRaWANV2GatewayStatusStreamsParams) ([]ListLoRaWANV2GatewayStatusStreamsRow, error)
 	ListPendingInvitationsForIdentity(ctx context.Context, arg ListPendingInvitationsForIdentityParams) ([]ListPendingInvitationsForIdentityRow, error)
 	ListPendingPhysicalNodeDeletions(ctx context.Context, dataSourceID uuid.UUID) ([][]byte, error)
 	ListPermissionCodesByTemplate(ctx context.Context, code string) ([]string, error)
